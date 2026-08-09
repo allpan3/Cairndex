@@ -881,7 +881,7 @@ export const moveGroupingProposalFile = (
     { target_proposal_id: targetProposalId, target_index: targetIndex },
   )
 
-/** Move a bundle suggestion into a collection suggestion or to top level. */
+/** Move a bundle or new collection suggestion, including to top level */
 export const reparentGroupingProposal = (
   planId: string,
   proposalId: string,

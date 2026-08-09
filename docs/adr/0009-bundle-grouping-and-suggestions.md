@@ -1,6 +1,7 @@
 # ADR-0009: Suggestion-based bundle grouping (Option A+)
 
-- Status: **accepted**; primary-file selection provisions superseded by ADR-0016
+- Status: **accepted**, amended 2026-08-09; primary-file selection provisions
+  superseded by ADR-0016
 - Date: 2026-06-29
 - Branch/PR: `docs/adr-0009-bundle-grouping`
 
@@ -76,10 +77,12 @@ Concretely:
    **BUNDLE** or **CONTAINER**, plus file roles, ordering, confidence, and a
    human-readable reason.
 4. **The user reviews and applies the plan.** A review surface shows proposed
-   bundles/containers with accept-all, merge, split, reclassify
-   (bundle ↔ container), and rename. Applying the plan is the only step that
-   creates confirmed grouping decisions: confirming bundles, assigning roles,
-   creating logical collections/memberships, and linking subtitles.
+   bundles/containers with bundle selection, merge, split, reclassify
+   (bundle ↔ container), rename, and explicit collection placement. Collection
+   rows are structural paths and tri-state bulk selectors, not independently
+   accepted work. Applying the plan is the only step that creates confirmed
+   grouping decisions: confirming bundles, assigning roles, creating logical
+   collections/memberships, and linking subtitles.
 5. **User decisions are durable and win over heuristics on re-scan.** A confirmed
    bundle is never silently re-split or merged. Existing confirmed membership
    remains the source of truth; new files appearing later are suggested into
@@ -89,7 +92,10 @@ Concretely:
    remains untouched when new-bundle mode is applied. Relevant existing
    collection branches remain reviewable context: an addition defaults to its
    target's collection, and a fresh proposal may reuse a matching collection
-   path, without reopening any confirmed bundle as a grouping candidate.
+   path, without reopening any confirmed bundle as a grouping candidate. As
+   amended on 2026-08-09, existing collection context carries stable collection
+   identity and is read-only; selecting a nested bundle resolves its complete
+   ancestor path even when no collection checkbox was directly selected.
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external
@@ -106,6 +112,10 @@ Concretely:
    This does not make a confirmed uncategorized bundle eligible for regrouping:
    confirmed bundles remain settled regardless of collection membership, and an
    untouched suggestion still cannot silently split, merge, or retitle one.
+   As amended on 2026-08-09, new collection proposals may also be reparented,
+   with cycle rejection. Existing collection context cannot be renamed, moved,
+   or reclassified because it describes a stable destination rather than new
+   work.
 
 ## Provisional bundle model
 
@@ -155,6 +165,7 @@ grouping_proposals
 - proposal_kind: bundle | container
 - proposed_title
 - proposed_parent_collection_id
+- target_collection_id (for stable existing collection context)
 - confidence
 - reason
 - payload_json
@@ -174,6 +185,10 @@ must hold:
   disappeared, been manually regrouped, or no longer matches the proposal;
 - conflicts should be localized to the affected proposal where possible, not
   force the whole scan result to be discarded;
+- selected acceptance applies file-backed bundle work and resolves only its
+  required structural collection ancestors;
+- existing collection context resolves by stable id and conflicts if the target
+  disappeared or moved, rather than falling back to a same-name collection;
 - regenerating suggestions should not overwrite confirmed user decisions.
 
 ## Folder classification heuristic (BUNDLE vs CONTAINER)

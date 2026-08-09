@@ -215,6 +215,7 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
 
     proposed_paths = _proposed_collection_paths(plan.proposals)
     key_by_id: dict[str, str] = {}
+    target_collection_by_key: dict[str, str] = {}
     additions: list[GroupingProposal] = []
     ordered = sorted(
         (contexts[collection_id] for collection_id in needed_ids),
@@ -224,6 +225,7 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
         collection = context.collection
         key = proposed_paths.get(context.path, f"@existing-collection/{collection.id}")
         key_by_id[collection.id] = key
+        target_collection_by_key[key] = collection.id
         if context.path in proposed_paths:
             continue
         additions.append(
@@ -234,13 +236,24 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
                 title=collection.name,
                 confidence=1.0,
                 reason="existing collection",
+                target_collection_id=collection.id,
             )
         )
 
     updated = tuple(
-        replace(proposal, parent_directory=key_by_id[chosen[index].collection.id])
-        if index in chosen
-        else proposal
+        replace(
+            proposal,
+            parent_directory=(
+                key_by_id[chosen[index].collection.id]
+                if index in chosen
+                else proposal.parent_directory
+            ),
+            target_collection_id=(
+                target_collection_by_key.get(proposal.directory)
+                if proposal.kind is ProposalKind.CONTAINER
+                else proposal.target_collection_id
+            ),
+        )
         for index, proposal in enumerate(plan.proposals)
     )
     return GroupingPlan(plan.rule_version, (*additions, *updated), plan.stem_modes)

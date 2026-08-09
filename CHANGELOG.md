@@ -36,6 +36,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Nested grouping suggestions now apply to the intended collection path.**
+  Collection rows are tri-state bulk selectors rather than accepted work, so an
+  individually selected inner bundle carries its full ancestor path without
+  selecting sibling bundles. Existing collection context is labeled, read-only,
+  and resolved by stable id; if it disappeared or moved, apply reports a conflict
+  instead of creating a duplicate at the top level. New bundles and collection
+  suggestions can be placed explicitly with a keyboard-accessible selector or
+  drag-and-drop, including back to the top level.
 - **Clicking elsewhere in the Bundle Inspector now leaves the active note.**
   The desktop webview could keep a note textarea focused when a pointer press
   landed on non-interactive inspector content. The inspector now blurs that

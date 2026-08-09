@@ -96,6 +96,8 @@ def rename_proposal(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
         raise ValidationError("addition suggestion titles cannot be changed")
+    if proposal.target_collection_id is not None:
+        raise ValidationError("existing collection context titles cannot be changed")
 
     normalized = title.strip()
     if not normalized:
@@ -239,21 +241,25 @@ def move_proposal_file(
     return [source] if source.id == target.id else [source, target]
 
 
-# Reparent a bundle proposal into a collection proposal or back to top level
-def reparent_bundle_proposal(
+# Reparent proposed work without moving an existing collection context node
+def reparent_proposal(
     session: Session,
     plan_id: str,
     proposal_id: str,
     parent_proposal_id: str | None,
 ) -> GroupingProposal:
-    """Set a bundle suggestion's proposed collection parent before apply."""
+    """Move a bundle or new collection suggestion before apply."""
     proposal = _open_proposal(session, plan_id, proposal_id)
-    if proposal.kind is not ProposalKind.BUNDLE:
-        raise ValidationError("only bundle suggestions can move into collections")
+    if proposal.kind is ProposalKind.CONTAINER and proposal.target_collection_id is not None:
+        raise ValidationError("existing collection context cannot be moved")
     if parent_proposal_id is not None:
         parent = _open_proposal(session, plan_id, parent_proposal_id)
         if parent.kind is not ProposalKind.CONTAINER:
-            raise ValidationError("bundle suggestions can move only into collection suggestions")
+            raise ValidationError("suggestions can move only into collection suggestions")
+        if parent.id == proposal.id or any(
+            descendant.id == parent.id for descendant in _descendants(session, proposal)
+        ):
+            raise ValidationError("a collection suggestion cannot move inside itself")
     proposal.parent_proposal_id = parent_proposal_id
     proposal.owner_edited = True
     session.flush()
@@ -420,6 +426,8 @@ def convert_proposal_kind(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.kind is kind:
         raise ValidationError(f"this suggestion is already a {kind.value}")
+    if proposal.target_collection_id is not None:
+        raise ValidationError("existing collection context cannot change kind")
     if _is_addition(proposal):
         raise ValidationError(
             "a suggestion that adds files to an existing bundle cannot become a collection"
@@ -545,6 +553,7 @@ def set_directory_stem_mode(
             target_bundle_title=proposal.target_bundle_title,
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
+            target_collection_id=proposal.target_collection_id,
         )
         session.add(row)
         session.flush()
@@ -668,6 +677,7 @@ def persist_plan(
             target_bundle_title=proposal.target_bundle_title,
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
+            target_collection_id=proposal.target_collection_id,
         )
         session.add(row)
         session.flush()

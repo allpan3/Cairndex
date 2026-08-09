@@ -109,6 +109,8 @@ class GroupingProposal:
     # Existing bundle whose identity this proposal should preserve if the owner
     # edits a confirmed grouping before apply
     base_bundle_id: str | None = None
+    # Existing logical collection represented by this structural context node
+    target_collection_id: str | None = None
 
 
 @dataclass(frozen=True)
