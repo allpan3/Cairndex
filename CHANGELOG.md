@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Long grouping plans can now be folded without changing the plan.** Each
+  collection can hide its descendant proposals and each bundle can hide its
+  file list, with Collapse all / Expand all controls beside selection. Reviews
+  still open fully expanded, and folding is presentation-only: selection
+  counts, placement, drag-and-drop, and the accepted bundle ids are unchanged.
 - **A multi-file import can now be stopped from the sidebar.** Browser uploads
   abort their in-flight request, while the desktop shell carries the same stop
   across IPC into the Rust reader streaming the current file; both stop the
@@ -36,6 +41,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Nested grouping suggestions now apply to the intended collection path.**
+  Collection rows are tri-state bulk selectors rather than accepted work, so an
+  individually selected inner bundle carries its full ancestor path without
+  selecting sibling bundles. Existing collection context is labeled, read-only,
+  and resolved by stable id; if it disappeared or moved, apply reports a conflict
+  instead of creating a duplicate at the top level. New bundles and collection
+  suggestions can be placed explicitly with a keyboard-accessible selector or
+  drag-and-drop, including back to the top level. The selector now lists only
+  collections already persisted in the current library; speculative collection
+  suggestions remain editable in the review tree but are never presented as
+  settled destinations.
 - **Clicking elsewhere in the Bundle Inspector now leaves the active note.**
   The desktop webview could keep a note textarea focused when a pointer press
   landed on non-interactive inspector content. The inspector now blurs that
@@ -285,6 +301,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Grouping destinations now use a collection tree instead of a repeated-path
+  dropdown.** The proposal row shows only its direct destination, while the
+  bounded picker mirrors the collection hierarchy with indentation and
+  independently foldable branches. Search keeps pinyin matching and adds only
+  the direct parent needed to disambiguate a result; full paths remain available
+  to assistive technology and as tooltips without consuming every visible row.
 - **Job progress moved to the bottom of the sidebar, beside the file-transfer
   indicator, and survives a page refresh.** It used to sit under the Update
   button that started it and vanish on reload, which is misleading twice over:

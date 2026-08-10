@@ -229,7 +229,10 @@ def test_rename_collection_and_reparent_bundle_proposal(
     assert renamed.status_code == 200
     assert renamed.json()["title"] == "Films"
     assert reparented.status_code == 200
-    assert reparented.json()["parent_proposal_id"] == container["id"]
+    moved = next(
+        proposal for proposal in reparented.json()["proposals"] if proposal["id"] == loose["id"]
+    )
+    assert moved["parent_proposal_id"] == container["id"]
 
     applied = client.post(f"{base}/plans/{plan['id']}/apply")
     assert applied.status_code == 200
@@ -239,6 +242,79 @@ def test_rename_collection_and_reparent_bundle_proposal(
         select(AssetBundle).join(AssetBundle.collections).where(Collection.id == collection.id)
     ).all()
     assert {bundle.title for bundle in collection_bundles} == {"Cosmos", "Waves", "Loose"}
+
+
+# A placement can target a collection created after the grouping plan snapshot
+def test_reparent_bundle_into_current_persisted_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    (library_root / "Incoming").mkdir()
+    (library_root / "Incoming" / "sample.mp4").write_text("v")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    bundle_proposal = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+
+    ambiguous = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{bundle_proposal['id']}/parent",
+        json={
+            "parent_proposal_id": bundle_proposal["id"],
+            "target_collection_id": "01K00000000000000000000000",
+        },
+    )
+    assert ambiguous.status_code == 422
+
+    root = Collection(name="Current Archive")
+    destination = Collection(name="Current Series", parent=root)
+    session.add_all([root, destination])
+    session.flush()
+
+    response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{bundle_proposal['id']}/parent",
+        json={"target_collection_id": destination.id},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    contexts = {
+        proposal["target_collection_id"]: proposal
+        for proposal in updated["proposals"]
+        if proposal["target_collection_id"] is not None
+    }
+    moved = next(
+        proposal for proposal in updated["proposals"] if proposal["id"] == bundle_proposal["id"]
+    )
+    assert contexts[root.id]["parent_proposal_id"] is None
+    assert contexts[destination.id]["parent_proposal_id"] == contexts[root.id]["id"]
+    assert moved["parent_proposal_id"] == contexts[destination.id]["id"]
+
+    root_response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{bundle_proposal['id']}/parent",
+        json={"target_collection_id": root.id},
+    )
+    assert root_response.status_code == 200
+    root_contexts = {
+        proposal["target_collection_id"]: proposal
+        for proposal in root_response.json()["proposals"]
+        if proposal["target_collection_id"] is not None
+    }
+    assert set(root_contexts) == {root.id}
+
+    response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{bundle_proposal['id']}/parent",
+        json={"target_collection_id": destination.id},
+    )
+    assert response.status_code == 200
+
+    applied = client.post(
+        f"{base}/plans/{plan['id']}/apply",
+        json={"proposal_ids": [bundle_proposal["id"]]},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["collections_created"] == 0
+    confirmed = session.scalar(select(AssetBundle).where(AssetBundle.title == "Incoming"))
+    assert confirmed is not None
+    assert destination in confirmed.collections
 
 
 # Existing broader-scope plans remain safely editable after the scope is retired
@@ -391,6 +467,62 @@ def test_bundle_converts_to_a_collection_of_bundles(
     for child in children:
         paths = [f["relative_path"] for f in child["files"]]
         assert any(p.endswith(".mp4") for p in paths), paths
+
+
+# New collection suggestions can be placed explicitly without allowing cycles
+def test_new_collection_proposal_can_move_between_parent_and_top_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_mixed_folder(session, library_root)
+    for name in ("Alpha", "Beta"):
+        folder = library_root / "Shelf" / name
+        folder.mkdir(parents=True)
+        (folder / f"{name}.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    shelf = next(
+        proposal
+        for proposal in plan["proposals"]
+        if proposal["kind"] == "container" and proposal["title"] == "Shelf"
+    )
+    trip = max(
+        (proposal for proposal in plan["proposals"] if proposal["kind"] == "bundle"),
+        key=lambda proposal: len(proposal["files"]),
+    )
+    converted = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/kind",
+        json={"kind": "container"},
+    ).json()
+    trip = next(proposal for proposal in converted["proposals"] if proposal["id"] == trip["id"])
+
+    nested = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/parent",
+        json={"parent_proposal_id": shelf["id"]},
+    )
+    assert nested.status_code == 200, nested.text
+    nested_trip = next(
+        proposal for proposal in nested.json()["proposals"] if proposal["id"] == trip["id"]
+    )
+    assert nested_trip["parent_proposal_id"] == shelf["id"]
+
+    cycle = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{shelf['id']}/parent",
+        json={"parent_proposal_id": trip["id"]},
+    )
+    assert cycle.status_code == 422
+    assert cycle.json()["code"] == "validation_error"
+
+    root = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/parent",
+        json={"parent_proposal_id": None},
+    )
+    assert root.status_code == 200, root.text
+    root_trip = next(
+        proposal for proposal in root.json()["proposals"] if proposal["id"] == trip["id"]
+    )
+    assert root_trip["parent_proposal_id"] is None
 
 
 def test_converted_collection_applies_as_a_real_collection(

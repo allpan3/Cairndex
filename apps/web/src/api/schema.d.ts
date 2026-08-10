@@ -1784,7 +1784,7 @@ export interface paths {
         get?: never;
         /**
          * Reparent Proposal
-         * @description Move a bundle suggestion into a collection suggestion or to top level.
+         * @description Move suggested work into current collection state or another suggestion.
          */
         put: operations["reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put"];
         post?: never;
@@ -3959,6 +3959,8 @@ export interface components {
             files: components["schemas"]["ProposalFileRead"][];
             /** Id */
             id: string;
+            /** Is Collection Context */
+            is_collection_context: boolean;
             kind: components["schemas"]["ProposalKind"];
             /** Parent Proposal Id */
             parent_proposal_id: string | null;
@@ -3968,13 +3970,17 @@ export interface components {
             target_bundle_id: string | null;
             /** Target Bundle Title */
             target_bundle_title: string | null;
+            /** Target Collection Id */
+            target_collection_id: string | null;
             /** Title */
             title: string | null;
         };
         /** ProposalReparent */
         ProposalReparent: {
             /** Parent Proposal Id */
-            parent_proposal_id: string | null;
+            parent_proposal_id?: string | null;
+            /** Target Collection Id */
+            target_collection_id?: string | null;
         };
         /** ProposalUpdate */
         ProposalUpdate: {
@@ -7984,7 +7990,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalRead"];
+                    "application/json": components["schemas"]["PlanRead"];
                 };
             };
             /** @description Validation Error */

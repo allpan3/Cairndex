@@ -1,8 +1,9 @@
 """API schemas for grouping plans and apply results (ADR-0009 phase 3)."""
 
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind, StemMode
 
@@ -28,6 +29,14 @@ class ProposalRead(BaseModel):
     target_bundle_id: str | None
     target_bundle_title: str | None
     create_new_bundle: bool
+    # Existing collection represented by this structural placement node
+    target_collection_id: str | None
+    # True only for a synthesized read-only node standing in for a live
+    # collection. An ordinary folder suggestion may also resolve to an existing
+    # collection (so apply reuses it rather than duplicating it) while staying
+    # editable, so the client must gate its read-only rendering on this and not
+    # on ``target_collection_id``.
+    is_collection_context: bool
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
@@ -49,9 +58,28 @@ class ProposalFileMove(BaseModel):
     target_index: int = Field(ge=0)
 
 
-# Validate a bundle suggestion's collection parent edit
+# Validate a bundle or new-collection suggestion's persisted or proposed parent
 class ProposalReparent(BaseModel):
-    parent_proposal_id: str | None
+    # Unknown keys are refused: both destinations are nullable, so a misspelled
+    # one would otherwise be dropped silently and read as "move to the top
+    # level" — detaching the proposal instead of filing it.
+    model_config = ConfigDict(extra="forbid")
+
+    parent_proposal_id: str | None = None
+    target_collection_id: str | None = None
+
+    # Reject a destination that names two different parent domains
+    @model_validator(mode="after")
+    def one_destination(self) -> Self:
+        if self.parent_proposal_id is not None and self.target_collection_id is not None:
+            raise ValueError("choose either a collection suggestion or an existing collection")
+        # Moving to the top level is a real request, but it has to be *asked* for:
+        # an empty body used to be a 422 and must not become a silent detach.
+        if not self.model_fields_set:
+            raise ValueError(
+                "name a destination, or send an explicit null to move to the top level"
+            )
+        return self
 
 
 # Validate a suggestion's bundle-versus-collection override

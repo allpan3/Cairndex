@@ -123,16 +123,25 @@ def move_proposal_file(
     return [ProposalRead.model_validate(proposal) for proposal in proposals]
 
 
-# Move one reviewed bundle into a collection suggestion
-@router.put("/plans/{plan_id}/proposals/{proposal_id}/parent", response_model=ProposalRead)
+# Move reviewed bundle or new-collection work into a persisted or proposed collection
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/parent", response_model=PlanRead)
 def reparent_proposal(
     plan_id: str, proposal_id: str, payload: ProposalReparent, db: LibrarySession
-) -> ProposalRead:
-    """Move a bundle suggestion into a collection suggestion or to top level."""
-    proposal = plan_store.reparent_bundle_proposal(
-        db, plan_id, proposal_id, payload.parent_proposal_id
+) -> PlanRead:
+    """Move suggested work into current collection state or another suggestion."""
+    plan_store.reparent_proposal(
+        db,
+        plan_id,
+        proposal_id,
+        payload.parent_proposal_id,
+        target_collection_id=payload.target_collection_id,
     )
-    return ProposalRead.model_validate(proposal)
+    # Selecting persisted state can create structural context ids returned to
+    # the client, so make them durable before an immediate apply can use them
+    db.commit()
+    db.expire_all()
+    plan = plan_store.get_plan(db, plan_id)
+    return PlanRead.model_validate(plan)
 
 
 # Adjust one directory's stem sensitivity without rebuilding the plan
