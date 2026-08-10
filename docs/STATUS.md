@@ -1,5 +1,32 @@
 # Project status
 
+> **Repository note (2026-08-09): the repository was recreated a second time.**
+> The 2026-07-30 recreation (below) removed user data from the *old* repo, but the
+> same strings came back in with the source that was pushed to the new one — a
+> performer name, a studio domain, and dated release titles across 40 lines of
+> four files, published on `main`.
+>
+> An in-place history rewrite could not have fixed it. GitHub maintains
+> `refs/pull/N/head` for every pull request; those refs are permanent, cannot be
+> deleted by the owner, and survive branch deletion and force-pushes. All eleven
+> of them held the offending commits as ancestors, so every commit would have
+> stayed reachable at its SHA after any rewrite. **That is the trap to remember:
+> deleting tags, releases, and branches does not orphan anything a PR ref pins.**
+>
+> So: `allpan3/Cairndex` is again a new repo, carrying the full 637-commit history
+> with **every SHA rewritten** and the strings replaced by invented
+> shape-equivalents throughout. The previous repo is `allpan3/Cairndex-archive-2`,
+> **private and archived**; the one before it remains `allpan3/Cairndex-archive`.
+> Tags and releases were deliberately **not** carried over — v0.1.0 and v0.1.1 are
+> gone, and the next release will be **v0.2.0** cut directly from this history.
+> SHAs quoted in these docs were remapped from `filter-repo`'s commit map (77
+> references); the fourteen noted below remain unresolvable for the same reason as
+> before.
+>
+> Verified after the move: zero occurrences of any original token across all 637
+> commits and every blob; 972 backend tests and 577 frontend tests green on the
+> rewritten tree, with lint and type checks clean.
+>
 > **Repository note (2026-07-30):** the repository was **recreated** to remove user
 > data from published history. `allpan3/Cairndex` is a new repo carrying the full
 > history with **every commit SHA rewritten**; the previous repo is
@@ -33,8 +60,8 @@
 > `just check-web` gate that had not been type-checking anything. The viewer's
 > failure copy (PR #36) and the MP4 keyframe-index read (PR #37) are **merged**,
 > as are file formats, encoding facts and richer file rows (PR #38). **`main` is
-> the v0.1.0 content**, and **[v0.1.0 is published](https://github.com/allpan3/Cairndex/releases/tag/v0.1.0)**
-> (2026-07-28) — tag `v0.1.0` at `2036cc2`, one Apple Silicon DMG with its
+> the v0.1.0 content**, and **v0.1.0 was published** (release withdrawn in the 2026-08-09 recreation)
+> (2026-07-28) — tag `v0.1.0` at `0821890`, one Apple Silicon DMG with its
 > checksum and the third-party notices, verified by the owner on a genuinely
 > downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
 > *not* in this release; it lives on as branch `plan/folder-as-bundle-member`.
@@ -53,7 +80,7 @@
 > frame of every video. Running it against a network-mounted library then showed
 > the remaining cost is the read, not the decode; the section below records both
 > the fixture numbers and what the share actually did. **Job control followed
-> and is merged** (PR #5, `48b447d`): every running job can now be stopped from
+> and is merged** (PR #5, `34295b3`): every running job can now be stopped from
 > the sidebar, and a job whose server died no longer claims to be running.
 >
 > **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
@@ -93,13 +120,13 @@
 
 ## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
-Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`, open as
+Branch `codex/fix-grouping-selection-placement` off `main` at `7acc7bc`, open as
 **PR #11**, not yet merged.
 
 > **Review pass, 2026-08-09.** A max-effort review of this branch (10 finder
 > angles, 5 adversarial verifiers, 1 gap sweep) found 11 confirmed correctness
 > defects, three of them regressions against `main`. All 11 are fixed in commits
-> `3b12d87`, `e8eb67f`, `2bb37ff`, and the commit adding this note; each carries
+> `d7d3db4`, `219ec50`, `dc5f5aa`, and the commit adding this note; each carries
 > a regression test, and the two most severe were proved to fail against the old
 > code before the fix landed. One candidate — an out-of-order query-cache
 > overwrite in `useReparentGroupingProposal` — was **refuted**: every reparent
@@ -179,7 +206,7 @@ changed, so Rust and packaging gates are unaffected.
 
 ## In progress: stoppable multi-file imports (2026-08-01)
 
-Branch `codex/stoppable-import-batches` off current `main` at `ba76475`. Imports
+Branch `codex/stoppable-import-batches` off current `main` at `c322449`. Imports
 remain client-owned, sequential one-file requests rather than registry jobs:
 the browser owns an `AbortController`, while the desktop shell registers a
 batch-scoped cancellation token and carries Stop across IPC into the Rust file
@@ -270,7 +297,7 @@ changed, so the Rust/packaging gates are unaffected.
 
 ## In progress: desktop Add Library refresh recovery (2026-07-31)
 
-Branch `codex/fix-desktop-library-refresh` off current `main` at `b5c4572`.
+Branch `codex/fix-desktop-library-refresh` off current `main` at `f12d3f9`.
 Frontend-only: no host command, server contract, migration, or native Rust code
 changed.
 
@@ -335,8 +362,8 @@ host-side code changed.
 
 ## Merged: job control (2026-07-30)
 
-Branch `fix/job-control` off `main` at `d9b53a3`, **merged as PR #5**
-(`48b447d`). Everything here came out of using the app while testing the
+Branch `fix/job-control` off `main` at `8eac71c`, **merged as PR #5**
+(`34295b3`). Everything here came out of using the app while testing the
 storyboard change — including one fault an agent caused, by switching branches
 under a running dev server.
 
@@ -403,7 +430,7 @@ failure's register for something the owner asked for.
 ## In progress: one inspector, collection consistency, cover scope (2026-07-30)
 
 Branch `fix/inspector-parity-and-collection-covers`, rebased onto `main` at
-`48b447d` (the job-control merge). Five owner reports from using the app, three
+`34295b3` (the job-control merge). Five owner reports from using the app, three
 of them about collections. **Not yet reviewed; no PR opened** (owner-triggered).
 
 **The Bundle Inspector shown during playback was starved, not forked.** It has
@@ -586,9 +613,9 @@ made against a live app instead).
 
 ## Merged: collection counts refresh late, or never (2026-07-30)
 
-Branch `fix/collection-count-refresh`, rebased onto `main` at `9a4a24a` (the
-storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`, **merged
-as PR #4** (`d9b53a3`). The section above continues this work: the counts moved
+Branch `fix/collection-count-refresh`, rebased onto `main` at `851e7c1` (the
+storyboard keyframe-sampling merge); commits `9d028ff` and `75a44a8`, **merged
+as PR #4** (`8eac71c`). The section above continues this work: the counts moved
 with the drop, and the listings under them did not.
 Owner-reported: dragging a bundle from one collection to another
 does not immediately update the count in the sidebar; after related work landed,
@@ -673,7 +700,7 @@ layer instead.
 
 ## Merged: storyboard generation was decoding everything (2026-07-30)
 
-Branch `perf/storyboard-keyframe-sampling`, rebased onto `main` at `2bd4694`
+Branch `perf/storyboard-keyframe-sampling`, rebased onto `main` at `b97925f`
 (the job-progress merge plus changelog-driven release notes). Owner question:
 why does generating storyboards take so long over a library on an SMB share?
 
@@ -766,7 +793,7 @@ directory in the storyboard cache with nothing to sweep it. One branch.
 
 ## In progress: library journal-mode lifecycle (2026-07-30)
 
-Branch `fix/library-journal-mode-portability`, rebased onto `main` at `2589ea3`.
+Branch `fix/library-journal-mode-portability`, rebased onto `main` at `7276a53`.
 Owner-reported production incident, fully diagnosed before implementation began:
 a library became unopenable from the owner's Mac after the NAS container served
 it, surfacing as HTTP 500 from `/bundles/browse` with a traceback ending at
@@ -851,15 +878,15 @@ unidentifiable filesystem deliberately still attempts WAL and settles the
 question by reading back what SQLite did.
 
 **Not done / next:** nothing outstanding on this branch. No PR opened — that is
-owner-triggered. Rebased twice as `main` moved: first onto `2bd4694`
+owner-triggered. Rebased twice as `main` moved: first onto `b97925f`
 (`fix/job-progress` and `feat/release-notes-from-changelog` merging), then onto
-`2589ea3` (PR #6, inspector/collection/file-workflow polish, merging). Each
+`7276a53` (PR #6, inspector/collection/file-workflow polish, merging). Each
 rebase's only real overlap was the shared `Unreleased` changelog section; the
 full gate was re-run clean after both.
 
 ## In progress: Docker dev and deployment (2026-07-28)
 
-Branch `chore/docker-dev-and-deploy`, rebased onto `main` at `387c5aa`
+Branch `chore/docker-dev-and-deploy`, rebased onto `main` at `9c3a607`
 (2026-07-30; it was written before the repository was recreated, so its original
 base SHA no longer exists). Owner-requested:
 make Docker the real path for regular use (a Linux NAS) while staying usable on
@@ -1054,7 +1081,7 @@ dependency on capture semantics rather than patching a quirk, which is the reaso
 to expect it to hold there.
 
 
-Branch `feat/half-star-ratings`, off `main` at `ae44ef4`. Owner-requested:
+Branch `feat/half-star-ratings`, off `main` at `708d788`. Owner-requested:
 ratings go to half-star granularity.
 
 **The design decision worth recording.** A rating is stored as a **number of
@@ -1115,14 +1142,14 @@ scale: the half fill and the hover-swapped facet count both behave.
 **One pre-existing failure, not from this branch.** The e2e test
 `transparently re-attaches a fresh session when HLS segments fail`
 (`e2e/player.spec.ts:2230`) fails on `main` too — confirmed against a clean
-worktree at `66f4b65`, in isolation as well as in the full suite, so it is
+worktree at `7b4bded`, in isolation as well as in the full suite, so it is
 neither flake nor cross-test interference. Only the initial playback decision is
 recorded where the test expects a re-attach. Untouched here; it belongs to the
 ADR-0014 HLS session path.
 
 ## Merged: grouping review round trips (2026-07-30)
 
-Branch `perf/grouping-plan-round-trips`, off `main` at `17e3efc`, merged
+Branch `perf/grouping-plan-round-trips`, off `main` at `d913a62`, merged
 fast-forward. Owner report:
 pressing the bundle/collection conversion on one folder froze the panel for 30
 seconds. **Not reproduced at that magnitude** — see the honesty note below — but
@@ -1188,7 +1215,7 @@ matters.
 
 ## Merged: drop destination, rename and toasts (2026-07-30)
 
-Branch `fix/drop-destination-rename-and-toasts`, off `main` at `57a931d`, merged
+Branch `fix/drop-destination-rename-and-toasts`, off `main` at `3743931`, merged
 fast-forward (no PR; the repository was recreated the same day, so it has none). Five
 owner-reported faults, found by using the app after PR #40 landed. Two are
 behaviour bugs with a data or filesystem edge, three are interaction faults; one
@@ -1324,7 +1351,7 @@ the File Browser together, with `original_filename` still
 ## Merged: grouping review state and collection conversion (PR #40, 2026-07-29)
 
 Branch `fix/grouping-review-state-and-collection-conversion`, off `main` at
-`66f4b65`, merged as PR #40. It started as the two owner-reported problems below
+`7b4bded`, merged as PR #40. It started as the two owner-reported problems below
 and grew to ten across eight feedback rounds. Before merge the branch's ten
 commits were restructured into four, squashing only those that superseded an
 earlier commit on the same branch; each of the four lands on a tree that existed
@@ -1560,7 +1587,7 @@ propose a bare container for `Show`.
 `typecheck`, `test` (469 passed), `build`; `test:e2e:frontend` (91 passed, 1
 failed). That failure is `transparently re-attaches a fresh session when HLS
 segments fail` (`e2e/player.spec.ts:2230`), which fails on clean `main` at
-`66f4b65` too — verified in isolation as well as in the full suite, so neither
+`7b4bded` too — verified in isolation as well as in the full suite, so neither
 flake nor cross-test interference; it belongs to the ADR-0014 HLS session path
 and is untouched here. Desktop gates were not run locally, no Rust or
 `apps/desktop` file having changed; all seven CI jobs passed on the merged head.
@@ -1579,8 +1606,8 @@ three children. Earlier round additionally verified apply end-to-end
 
 ## Shipped: v0.1.0, the first public release (2026-07-28)
 
-**[Published](https://github.com/allpan3/Cairndex/releases/tag/v0.1.0)** at
-11:12 UTC. Tag `v0.1.0` → `2036cc2`; assets are `Cairndex_0.1.0_aarch64.dmg`
+**Published** (release withdrawn in the 2026-08-09 recreation) at
+11:12 UTC. Tag `v0.1.0` → `0821890`; assets are `Cairndex_0.1.0_aarch64.dmg`
 (95.4 MB), its `.sha256`, and `THIRD-PARTY-NOTICES.md`, which has to travel with
 the artifact because the bundle carries a GPL ffmpeg.
 
@@ -1610,7 +1637,7 @@ on the post-release list.
 
 ## Release prep: v0.1.0 is one tag away (2026-07-28)
 
-Branch `docs/prep-v0.1.0`, off `main` at `1092b14`. No code — the changelog cut
+Branch `docs/prep-v0.1.0`, off `main` at `58c3d22`. No code — the changelog cut
 and two milestone rows that had gone stale.
 
 **Nothing is published today.** The release workflow ran green for `v0.1.0` on
@@ -1685,8 +1712,8 @@ wants writing.
 ## Merged: PR #35 — HEVC `hev1` sources never played (2026-07-28)
 
 **[PR #35](https://github.com/allpan3/Cairndex/pull/35) merged** to `main` as
-`20e1eb0` on 2026-07-28; branch deleted. All seven CI jobs green, squashed to one
-commit off `main` at `5befbc7`.
+`fcca119` on 2026-07-28; branch deleted. All seven CI jobs green, squashed to one
+commit off `main` at `986320d`.
 
 Owner reported one video in `lex` failing with the viewer's "Playback
 interrupted" card, retry never helping, and the same file having played before.
@@ -1756,11 +1783,11 @@ widens a shared type: the local gate could not have caught it.
 ## Merged: PR #34 — UI refinements, eight owner rounds (2026-07-28)
 
 **[PR #34](https://github.com/allpan3/Cairndex/pull/34) merged** to `main` as
-`ee3953f` on 2026-07-28; branch deleted. All seven CI jobs green, and `main`
+`7259aad` on 2026-07-28; branch deleted. All seven CI jobs green, and `main`
 re-verified after the merge: full gate plus **92/92** browser e2e — the suite had
 been red on `main` before this. It went in
 squashed to four commits by subsystem (server / desktop / web / docs), off `main`
-at `0a9d3b4`. A whole-branch review pass before the PR caught three things no
+at `b2c2814`. A whole-branch review pass before the PR caught three things no
 single round would have: the tag delete skipped its own confirmation when the
 impact lookup failed (an unknown cost is a reason to *ask*), the filename scan
 was O(files²) and unmemoized in a component that re-renders on every drag move,
@@ -2184,7 +2211,7 @@ covered by Rust tests/typechecking and need an owner pass in the shell.
 
 ## Merged: plan 4 W6 — write-mode hardening (2026-07-26, PR #33)
 
-Branch `fix/write-mode-hardening`, rebased onto `main` at `d6af909`. W6 is the last
+Branch `fix/write-mode-hardening`, rebased onto `main` at `90a71d4`. W6 is the last
 unblocked write-mode slice (W2 still waits on plan 1 M11, which is in the future
 bucket), and it is a bag of independent items rather than one change. **The
 correctness and safety items are done; three feature-sized ones are deliberately
@@ -2318,7 +2345,7 @@ than claims).
 ## Merged: collection-creation affordances (2026-07-26)
 
 Branch `fix/collection-creation-affordances`, fast-forwarded into `main` at
-`d6af909` at the owner's request (no PR).
+`90a71d4` at the owner's request (no PR).
 Owner-reported: there was no way to add a collection from the grid or the shell
 menu, no way to add a subcollection by right-clicking one, and the sidebar's **+**
 created inside the currently open collection rather than at the top level.
@@ -2379,7 +2406,7 @@ browser, so it is covered by the keymap contract test rather than end-to-end.
 
 ## Merged: one media viewer shell for both browsing surfaces (2026-07-26)
 
-Branch `feat/file-browser-app-player`, off `main` at `bd124f6`. Owner-reported:
+Branch `feat/file-browser-app-player`, off `main` at `1f8b147`. Owner-reported:
 playing a video from the File Browser did not use the app's player. It didn't —
 the File Browser had kept its own path-based lightbox (`FileEntryViewer`) with a
 bare `<video controls>` since plan 1 M2, a deferral recorded in this file at the
@@ -2452,7 +2479,7 @@ frontend gate and Playwright suite (92) green.
 
 ## Merged: post-merge interaction fixes (2026-07-26)
 
-Branch `fix/post-merge-fixes`, 11 commits, merged as PR #31 (`bd124f6`). Owner
+Branch `fix/post-merge-fixes`, 11 commits, merged as PR #31 (`1f8b147`). Owner
 testing of the merged build produced several rounds of drag-and-drop, selection
 and layout fixes; the branch history was squashed from 37 commits to 11 coherent
 ones (same tree) before review. The findings worth carrying forward:
@@ -2958,7 +2985,7 @@ is covered by the Vitest suite.
 
 ## Implemented: plan 4 W0 — the write-mode gate (2026-07-23)
 
-Branch `feat/write-mode-w0-gate`, based on `main` at `060b605`. Not merged; no
+Branch `feat/write-mode-w0-gate`, based on `main` at `7cf32ec`. Not merged; no
 PR opened (owner-triggered). Three commits: the D7/phase-H docs already in the
 working tree, the server gate, then the web toggle, with this documentation
 slice on top.
@@ -3109,9 +3136,9 @@ remaining suspect is the generate-then-serve path.
 
 ## Historical detail: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
 
-Branch `feat/d7-first-public-release`, based on `main` at `af2c5fe`. Pushed and
+Branch `feat/d7-first-public-release`, based on `main` at `94291e0`. Pushed and
 merged through a PR at the owner's request (2026-07-23), after two review
-rounds on the branch — the last engineering commit is `4b1e03c` (workflow
+rounds on the branch — the last engineering commit is `5e95d5d` (workflow
 hardening).
 
 *This section is the working record of the branch, kept for the reasoning in it.
@@ -3263,7 +3290,7 @@ link 3.6.1.
 
 **`v0.1.0` was tagged and the release workflow run at the owner's request
 (2026-07-23), and it passed on both architectures.** The tag is annotated,
-points at `83d0ec6` (the D7 merge), and matches the `0.1.0` in
+points at `7a56cbe` (the D7 merge), and matches the `0.1.0` in
 `tauri.conf.json` — which matters because artifact names come from the config,
 not the tag, and nothing enforces that they agree.
 
@@ -3355,7 +3382,7 @@ server's first library, and `localStorage` being undefined in jsdom.
 
 ## Implemented: unified library add/remove flow (2026-07-22)
 
-Branch `feat/unified-library-manager`, based on `main` at `d2edc25`. PR opened at
+Branch `feat/unified-library-manager`, based on `main` at `9005400`. PR opened at
 the owner's request; not merged. Commits run server endpoints → shell → web
 modal → docs, then a review follow-up and four rounds from an owner pass on the
 packaged app.
@@ -3466,7 +3493,7 @@ blocker is pinning a static ffmpeg (ADR-0019 §3).
 
 Branch `fix/desktop-startup-flash-root-cause`, based on `main`.
 
-- Reverted the off-screen priming workaround (`860cdfd`): it raced WebKit's
+- Reverted the off-screen priming workaround (`9f9cbc6`): it raced WebKit's
   compositor using undocumented off-screen rAF behavior that macOS occlusion
   throttling could legitimately break. The workaround is preserved on branch
   `archive/startup-offscreen-priming` and in `main` history.
@@ -4209,7 +4236,7 @@ prerequisite is now in place.
 
 ## Completed: server-side library ownership lease (ADR-0018 §2–§4)
 
-Branch `feat/library-ownership-lease` from `main` at `9d39c9e`. This is build-order
+Branch `feat/library-ownership-lease` from `main` at `d953d95`. This is build-order
 **phase F's first item** and the stated prerequisite for plan 3 D6 — the owner
 asked to start D6 on 2026-07-20, and the gate had not landed, so the lease was
 built first (owner-chosen, same day).
@@ -4529,7 +4556,7 @@ gated on the server-side ownership lease landing first; see
 
 Branch `codex/plan3-d5b-deeplinks-notifications`, stacked on the **unmerged**
 `codex/plan3-d5a-menus-shortcuts` (it builds on that platform seam), from
-`7acdb80`.
+`7482cdd`.
 
 Implementation:
 
@@ -4679,7 +4706,7 @@ D5a receipt).
 
 ## Completed: Plan 3 D5a — menus, shortcuts, window state, viewer fullscreen
 
-Branch `codex/plan3-d5a-menus-shortcuts` from `main` at `53511ea`. The owner
+Branch `codex/plan3-d5a-menus-shortcuts` from `main` at `1a39ff0`. The owner
 split D5 into three slices on 2026-07-19 (D5a menus/shortcuts/window, D5b deep
 links/notifications/export seam, D5c signing), **deferred the updater**, and
 asked for left-click play/pause. This receipt covers D5a.
@@ -4838,7 +4865,7 @@ work heads phase F: server-side lease first, then the plan 3 D6 sidecar.
 
 ## Completed: Plan 3 D4 second review round — drag hardening
 
-Branch `codex/plan3-d4-drag`; tip `b284ce1` (docs receipt follows). A second
+Branch `codex/plan3-d4-drag`; tip `34a3e63` (docs receipt follows). A second
 external review of the D4 hardening produced two unifying data-model changes,
 one more P0, and P1/P2 items — all applied.
 
@@ -4874,7 +4901,7 @@ one more P0, and P1/P2 items — all applied.
   render guards; the `resolve_file_in_root` passthrough is gone
   (`resolve_within_verified_root` is `pub(crate)`).
 
-Verification at `b284ce1`: desktop `cargo fmt --check`, Clippy `-D warnings`,
+Verification at `34a3e63`: desktop `cargo fmt --check`, Clippy `-D warnings`,
 **33 unit tests** (categorized reverse-map + echoed-absolutes cases); backend
 Ruff, `ruff format --check`, mypy, full pytest (**452 passed**, +confirmed-skip,
 per-reason, and preview==apply cases); web Prettier, ESLint, `tsc -b`, full
@@ -4886,11 +4913,11 @@ gesture itself still needs the owner's manual pass on a packaged build.
 
 ## Completed: Plan 3 D4 review pass — drag hardening
 
-Branch `codex/plan3-d4-drag` continues below the D4 receipt; tips `c5833c9`
-(the fixes) then `8ab3fb1` (a guard self-clearing follow-up and a comment). An
+Branch `codex/plan3-d4-drag` continues below the D4 receipt; tips `8cb2249`
+(the fixes) then `0121468` (a guard self-clearing follow-up and a comment). An
 external code review of D4 produced three P0s, seven P1s, and two P2 cleanups —
-all applied. (The gate counts below are from the `c5833c9` full-suite run; the
-`8ab3fb1` follow-up re-ran only the platform Vitest. A second review round then
+all applied. (The gate counts below are from the `8cb2249` full-suite run; the
+`0121468` follow-up re-ran only the platform Vitest. A second review round then
 carried this further — see the round-2 receipt above.)
 
 - **Drag-in batch tolerance (P0-1).** A dropped directory or a non-media sidecar
@@ -4932,7 +4959,7 @@ build (unchanged from the D4 receipt below).
 
 ## Completed: Plan 3 D4 — drag-out to Finder plus drag-in reverse-mapping
 
-Branch `codex/plan3-d4-drag` from `main` at `1ac910f`; tip `fe3e6fc`. Delivers
+Branch `codex/plan3-d4-drag` from `main` at `c5a381b`; tip `b492e43`. Delivers
 plan 3 §6 on top of the D3 mapping/validation boundary.
 
 Implementation:
@@ -5042,7 +5069,7 @@ disk" resolution.
 
 ## Completed: Plan 3 D3 — library mappings plus reveal/open
 
-Branch `codex/plan3-d3-path-mappings` from `main` at `8ef9670`.
+Branch `codex/plan3-d3-path-mappings` from `main` at `5da047f`.
 
 Implementation:
 
@@ -5090,7 +5117,7 @@ Next recommended task: **Plan 3 D4 — drag-out / drag-in**.
 
 ## Completed: Plan 3 D2 — platform seam + desktop pairing auth
 
-Branch `feat/desktop-platform-auth` from `main` at `dc177a8`. The first D2
+Branch `feat/desktop-platform-auth` from `main` at `f16a361`. The first D2
 completion receipt was invalidated after review found a cross-library auth
 correctness gap and an under-specified relay security boundary. The correction
 keeps the accepted ADR-0015 fail-closed bearer behavior and fixes the desktop
@@ -5181,8 +5208,8 @@ Next recommended task: **Plan 3 D3 — library path mappings plus reveal/open**.
 
 ## Completed: Plan 3 D1 — Tauri 2 shell bootstrap
 
-Branch `feat/desktop-shell` from `origin/main` at `f8f72b0`; reviewed and tested
-implementation tip `53ff802`; first fully green PR #15 tip `3a4161f`.
+Branch `feat/desktop-shell` from `origin/main` at `1098882`; reviewed and tested
+implementation tip `a5a5d37`; first fully green PR #15 tip `aabc8b1`.
 
 Completed:
 
@@ -5269,7 +5296,7 @@ Verification (temporary databases/libraries only; no user, Demo, or Eagle media)
   pre-existing real-backend flake did not reproduce in this run.
 - Desktop: Rust format, Clippy with warnings denied, and **4 unit tests** passed;
   release `tauri build` produced `Cairndex.app`.
-- PR #15 ran all six CI jobs green on `3a4161f`: macOS desktop Clippy/tests/build
+- PR #15 ran all six CI jobs green on `aabc8b1`: macOS desktop Clippy/tests/build
   (**11m54s**), Ubuntu desktop Clippy/tests (**6m30s**), backend, frontend,
   full-stack real-backend e2e, and Docker. The final documentation-only receipt
   commit is required to repeat that same CI set before merge.
