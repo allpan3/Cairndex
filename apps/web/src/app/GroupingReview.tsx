@@ -1,13 +1,4 @@
-import {
-  type DragEvent,
-  type ReactNode,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import { createPortal } from 'react-dom'
+import { type DragEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   CollectionRead,
@@ -32,16 +23,8 @@ import {
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
 import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
-import {
-  IconChevron,
-  IconChevronsIn,
-  IconChevronsOut,
-  IconFolder,
-  IconGroup,
-  IconLayers,
-  IconRefreshCw,
-  IconUngroup,
-} from './icons'
+import { GroupingRowActions, type RowAction } from './GroupingRowActions'
+import { IconChevron, IconFolder, IconLayers } from './icons'
 
 /**
  * Review grouping suggestions and apply them (ADR-0009 phase 4).
@@ -82,101 +65,6 @@ function baseName(path: string): string {
 interface TreeNode {
   proposal: GroupingProposal
   children: TreeNode[]
-}
-
-/**
- * A compact icon button whose tooltip escapes the dialog's scrolling body.
- *
- * The body is `overflow: auto`, which clips an absolutely positioned `::after`
- * tooltip against the panel edge — reported for exactly these controls, whose
- * tooltips are the longest in the dialog (owner-reported, 2026-07-30). This
- * renders the tooltip into `document.body` at `position: fixed`, placed from the
- * button's own rect, so no ancestor can cut it off.
- *
- * The hover handlers sit on a wrapper rather than the button because a *disabled*
- * button fires no mouse events, and Narrow/Widen are disabled at the ends of
- * their scale — precisely when someone wants to know why. `data-tip` stays on the
- * button: it keeps the markup self-describing and is what the review tests read.
- */
-function TipButton({
-  tip,
-  children,
-  className,
-  onClick,
-  ...buttonProps
-}: {
-  tip: string
-  children: ReactNode
-  className: string
-} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'>) {
-  const ref = useRef<HTMLButtonElement>(null)
-  // The tip text is stored with the position, so a placement computed for a label
-  // that has since changed is simply not rendered — see below.
-  const [shown, setShown] = useState<{ tip: string; style: React.CSSProperties } | null>(null)
-
-  const show = () => {
-    const rect = ref.current?.getBoundingClientRect()
-    if (!rect) return
-    // Right-aligned via the CSS `right` property, so the width never has to be
-    // measured; the clamp keeps a long tooltip on a right-hand control inside the
-    // viewport. Above by default, below when a control near the top has no room.
-    const right = Math.max(8, window.innerWidth - rect.right)
-    const style =
-      rect.top > 72
-        ? { right, bottom: window.innerHeight - rect.top + 6 }
-        : { right, top: rect.bottom + 6 }
-    setShown({ tip, style })
-  }
-  const hide = () => setShown(null)
-
-  // Only show a placement that was computed for the label being shown now. The
-  // label flips once the action lands ("…a collection" → "…one bundle") and the
-  // rows move in the same commit, while nothing makes the pointer leave the
-  // button — so no `mouseleave` fires and the tooltip would otherwise hang around
-  // at its old coordinates with the new text (owner-reported, 2026-07-30).
-  // Derived rather than cleared in an effect, which would cascade a render.
-  const placement = shown?.tip === tip ? shown.style : null
-
-  // A fixed tooltip does not follow its button, and this list scrolls under the
-  // pointer often enough that a stale one would be noticed.
-  useEffect(() => {
-    if (!placement) return
-    window.addEventListener('scroll', hide, true)
-    window.addEventListener('resize', hide)
-    return () => {
-      window.removeEventListener('scroll', hide, true)
-      window.removeEventListener('resize', hide)
-    }
-  }, [placement])
-
-  return (
-    <span className="grp-tip-anchor" onMouseEnter={show} onMouseLeave={hide}>
-      <button
-        ref={ref}
-        type="button"
-        className={className}
-        data-tip={tip}
-        onFocus={show}
-        onBlur={hide}
-        // Dismiss on activation: the click is what moves the row out from under
-        // the pointer, and a tooltip anchored to where it used to be is noise.
-        onClick={(event) => {
-          hide()
-          onClick?.(event)
-        }}
-        {...buttonProps}
-      >
-        {children}
-      </button>
-      {placement &&
-        createPortal(
-          <span className="grp-tip" style={placement} role="tooltip">
-            {tip}
-          </span>,
-          document.body,
-        )}
-    </span>
-  )
 }
 
 /** The character index under a point, for placing the caret where it was clicked.
@@ -585,31 +473,6 @@ function destinationActionLabel(proposal: GroupingProposal): string {
     : 'Create a new bundle from these files'
 }
 
-/** Render a compact accessible destination switch beside an addition title */
-function DestinationToggle({
-  proposal,
-  hasItems,
-  destination,
-}: {
-  proposal: GroupingProposal
-  hasItems: boolean
-  destination: DestinationControls
-}) {
-  const label = destinationActionLabel(proposal)
-  return (
-    <TipButton
-      className="grp-destination"
-      tip={label}
-      aria-label={label}
-      aria-pressed={proposal.create_new_bundle}
-      disabled={!destination.canEdit || destination.pending || !hasItems}
-      onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
-    >
-      <IconRefreshCw />
-    </TipButton>
-  )
-}
-
 /** Whether this suggestion can be flipped between bundle and collection.
  *
  * An addition puts its files into a bundle that already exists and is not going
@@ -654,78 +517,7 @@ function kindActionLabel(proposal: GroupingProposal): string {
     : 'Make this one bundle instead'
 }
 
-/** Flip one suggestion between being a bundle and being a collection.
- *
- * The suggester decides from filenames alone whether a folder holds one thing
- * or several, and Narrow/Widen cannot always overrule it — a folder whose files
- * carry explicit part markers reads as one bundle at every sensitivity. This is
- * the direct override, and it works in both directions so it is not a one-way
- * door. Same compact icon-button shape as the destination toggle beside it.
- */
-function KindToggle({ proposal, kind }: { proposal: GroupingProposal; kind: KindControls }) {
-  const label = kindActionLabel(proposal)
-  return (
-    <TipButton
-      className="grp-destination"
-      tip={label}
-      aria-label={label}
-      disabled={!kind.canEdit || kind.pending}
-      onClick={() => kind.set(proposal)}
-    >
-      {proposal.kind === 'bundle' ? <IconUngroup /> : <IconGroup />}
-    </TipButton>
-  )
-}
-
 const STEM_MODES: GroupingStemMode[] = ['narrow', 'balanced', 'wide']
-
-/** Render one-step narrower/wider controls for a represented folder.
- *
- * These belong to a **folder**, not to the row they sit on. Exactly one pair is
- * placed per folder (``stemControlOwners``), on whichever row speaks for it —
- * which is a collection row when the folder became a collection and a bundle row
- * when it became one bundle. That made it look like two different controls
- * (owner-reported, 2026-07-30), so the tooltips name the folder and say what
- * will happen to it in plain terms rather than talking about "stem matching".
- *
- * Two compact icon buttons in the same shape as the destination and kind
- * toggles. The current mode is named in each tooltip rather than printed between
- * them: a third piece of text per folder row was more clutter than the
- * three-state value was worth, and the buttons already disable at the ends.
- */
-function StemModeControls({ directory, stem }: { directory: string; stem: StemControls }) {
-  const current = stem.modes[directory] ?? 'balanced'
-  const index = STEM_MODES.indexOf(current)
-  const label = directory || 'library root'
-  const change = (delta: -1 | 1) => stem.set(directory, STEM_MODES[index + delta]!)
-  // "Folder X:" leads both, because the pair applies to the folder rather than to
-  // the bundle or collection row it happens to be attached to.
-  const scope = `Folder ${label} (matching: ${current})`
-  const narrowTip = `${scope} — split into more bundles by matching more of each filename`
-  const widenTip = `${scope} — merge into fewer bundles by matching a shorter filename prefix`
-  return (
-    <span className="grp-stem" aria-label={`Stem matching for ${label}`}>
-      <TipButton
-        className="grp-destination"
-        tip={narrowTip}
-        disabled={!stem.canEdit || stem.pending || index === 0}
-        aria-label={`Narrow stem matching in ${label}`}
-        onClick={() => change(-1)}
-      >
-        <IconChevronsIn />
-      </TipButton>
-      <TipButton
-        className="grp-destination"
-        tip={widenTip}
-        disabled={!stem.canEdit || stem.pending || index === STEM_MODES.length - 1}
-        aria-label={`Widen stem matching in ${label}`}
-        onClick={() => change(1)}
-      >
-        <IconChevronsOut />
-      </TipButton>
-    </span>
-  )
-}
 
 /** Show a compact file count for either destination of an addition proposal */
 function additionFileCount(proposal: GroupingProposal): string {
@@ -941,6 +733,72 @@ function ProposalDisclosure({
   )
 }
 
+/** The named edits a row offers, in the order they are worth reaching for.
+ *
+ * Same predicates the loose glyph buttons used; only the presentation changed.
+ * Stem sensitivity belongs to a *folder* rather than to the row it is attached
+ * to, so its items name that folder explicitly — the bare `>< <>` pair beside a
+ * title read as a property of the bundle.
+ */
+function rowActions({
+  proposal,
+  parent,
+  hasItems,
+  destination,
+  kind,
+  stem,
+  stemDirectory,
+}: {
+  proposal: GroupingProposal
+  parent: GroupingProposal | undefined
+  hasItems: boolean
+  destination: DestinationControls
+  kind: KindControls
+  stem: StemControls
+  stemDirectory: string | undefined
+}): RowAction[] {
+  const actions: RowAction[] = []
+  if (proposal.target_bundle_id !== null) {
+    actions.push({
+      key: 'destination',
+      label: destinationActionLabel(proposal),
+      disabled: !destination.canEdit || destination.pending || !hasItems,
+      onSelect: () => destination.set(proposal, !proposal.create_new_bundle),
+    })
+  }
+  const offersKind =
+    proposal.kind === 'container'
+      ? !proposal.is_collection_context
+      : canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent)
+  if (offersKind) {
+    actions.push({
+      key: 'kind',
+      label: kindActionLabel(proposal),
+      disabled: !kind.canEdit || kind.pending,
+      onSelect: () => kind.set(proposal),
+    })
+  }
+  if (stemDirectory !== undefined) {
+    const current = stem.modes[stemDirectory] ?? 'balanced'
+    const index = STEM_MODES.indexOf(current)
+    const folder = stemDirectory || 'the library root'
+    const blocked = !stem.canEdit || stem.pending
+    actions.push({
+      key: 'narrow',
+      label: `Split ${folder} into more bundles`,
+      disabled: blocked || index === 0,
+      onSelect: () => stem.set(stemDirectory, STEM_MODES[index - 1]!),
+    })
+    actions.push({
+      key: 'widen',
+      label: `Merge ${folder} into fewer bundles`,
+      disabled: blocked || index === STEM_MODES.length - 1,
+      onSelect: () => stem.set(stemDirectory, STEM_MODES[index + 1]!),
+    })
+  }
+  return actions
+}
+
 function ProposalNode({
   node,
   selection,
@@ -1030,14 +888,20 @@ function ProposalNode({
                 outside this guard and let an "Existing" row regenerate rows for
                 a directory it does not even name. */}
             {!proposal.is_collection_context && (
-              <>
-                <ProposalPlacement proposal={proposal} placement={placement} />
-                <KindToggle proposal={proposal} kind={kind} />
-                {stemOwners.has(proposal.id) && (
-                  <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
-                )}
-              </>
+              <ProposalPlacement proposal={proposal} placement={placement} />
             )}
+            <GroupingRowActions
+              label={`Actions for collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
+              actions={rowActions({
+                proposal,
+                parent,
+                hasItems,
+                destination,
+                kind,
+                stem,
+                stemDirectory: stemOwners.get(proposal.id),
+              })}
+            />
           </span>
         </div>
         {children.length > 0 && (
@@ -1119,13 +983,6 @@ function ProposalNode({
         <span className="grp-row__content">
           <span className="grp-title-cluster">
             <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
-            {hasDestinationChoice && (
-              <DestinationToggle
-                proposal={proposal}
-                hasItems={hasItems}
-                destination={destination}
-              />
-            )}
           </span>
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : fileSummary(proposal)}
@@ -1143,12 +1000,18 @@ function ProposalNode({
               "create a new bundle" clears `isAddition`, and the control returns
               with a real meaning. */}
           {!isAddition && <ProposalPlacement proposal={proposal} placement={placement} />}
-          {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent) && (
-            <KindToggle proposal={proposal} kind={kind} />
-          )}
-          {stemOwners.has(proposal.id) && (
-            <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
-          )}
+          <GroupingRowActions
+            label={`Actions for bundle suggestion ${displayTitle}`}
+            actions={rowActions({
+              proposal,
+              parent,
+              hasItems,
+              destination,
+              kind,
+              stem,
+              stemDirectory: stemOwners.get(proposal.id),
+            })}
+          />
         </span>
       </div>
       <ul
