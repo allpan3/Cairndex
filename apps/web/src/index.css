@@ -3011,6 +3011,67 @@ code {
   white-space: nowrap;
 }
 
+/* One trigger at a fixed right edge, so the eye can run down the column. The
+   glyph buttons this replaced sat after variable-length text and landed at a
+   different x on every row. */
+.grp-actions {
+  display: inline-flex;
+  margin-left: auto;
+  align-self: center;
+}
+.grp-actions__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+}
+.grp-row:hover .grp-actions__trigger,
+.grp-actions__trigger:hover,
+.grp-actions__trigger[aria-expanded='true'],
+.grp-actions__trigger:focus-visible {
+  opacity: 1;
+  color: var(--text-strong);
+}
+.grp-actions__trigger .icon {
+  width: 14px;
+  height: 14px;
+}
+.grp-actions__menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 4px;
+}
+.grp-actions__item {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.grp-actions__item:hover:not(:disabled),
+.grp-actions__item:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.grp-actions__item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .grp-filter {
   display: inline-flex;
   border: 1px solid var(--border);

@@ -333,6 +333,15 @@ export const IconLayers = () => (
 
 /** One block splitting into two (Lucide "ungroup") — the grouping review's
  * "make this bundle a collection of bundles" action. */
+/** Three dots (Lucide "more-horizontal") — a row's named overflow actions. */
+export const IconMore = () => (
+  <Svg>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+    <circle cx="5" cy="12" r="1" />
+  </Svg>
+)
+
 export const IconUngroup = () => (
   <Svg>
     <rect width="8" height="6" x="5" y="4" rx="1" />
