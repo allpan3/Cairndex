@@ -1012,7 +1012,11 @@ test('existing collection context is labeled and cannot be edited or moved', asy
       name: 'Rename collection suggestion Series',
     }),
   ).toBeNull()
-  expect(within(row as HTMLElement).queryByRole('combobox')).toBeNull()
+  expect(
+    within(row as HTMLElement).queryByRole('button', {
+      name: 'Placement for collection suggestion Series',
+    }),
+  ).toBeNull()
   expect(
     within(row as HTMLElement).queryByRole('button', { name: 'Make this one bundle instead' }),
   ).toBeNull()
@@ -1024,14 +1028,20 @@ test('a proposed collection placement control moves between parent and top level
   renderReview()
 
   const label = 'Placement for collection suggestion Series'
-  fireEvent.change(await screen.findByRole('combobox', { name: label }), {
-    target: { value: '' },
-  })
+  fireEvent.click(await screen.findByRole('button', { name: label }))
+  fireEvent.click(
+    within(screen.getByRole('listbox', { name: 'Collection destinations' })).getByRole('option', {
+      name: 'Top level',
+    }),
+  )
   await screen.findByText('Collection moved to the top level.')
 
-  fireEvent.change(screen.getByRole('combobox', { name: label }), {
-    target: { value: 'outer-collection' },
-  })
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  fireEvent.click(
+    within(screen.getByRole('listbox', { name: 'Collection destinations' })).getByRole('option', {
+      name: 'Library',
+    }),
+  )
   await screen.findByText('Collection moved into “Library”.')
 
   const bodies = fetchMock.mock.calls
@@ -1040,6 +1050,44 @@ test('a proposed collection placement control moves between parent and top level
     )
     .map(([, init]) => JSON.parse(init?.body as string))
   expect(bodies).toEqual([{ parent_proposal_id: null }, { parent_proposal_id: 'outer-collection' }])
+})
+
+test('placement picker presents a foldable searchable hierarchy without repeated prefixes', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Placement for bundle suggestion Episode One',
+    }),
+  )
+  const panel = screen.getByRole('dialog', { name: 'Place bundle suggestion Episode One' })
+  const list = within(panel).getByRole('listbox', { name: 'Collection destinations' })
+  const nested = within(list).getByRole('option', { name: 'Library / Series' })
+  expect(nested).toHaveTextContent('Series')
+  expect(nested).not.toHaveTextContent('Library / Series')
+
+  fireEvent.click(within(panel).getByRole('button', { name: 'Collapse destination Library' }))
+  expect(nested).not.toBeInTheDocument()
+  fireEvent.click(within(panel).getByRole('button', { name: 'Expand destination Library' }))
+  expect(within(list).getByRole('option', { name: 'Library / Series' })).toBeVisible()
+
+  const search = within(panel).getByRole('textbox', { name: 'Search collection destinations' })
+  fireEvent.change(search, { target: { value: 'Series' } })
+  const result = within(list).getByRole('option', { name: 'Library / Series' })
+  expect(result).toHaveTextContent('Series')
+  expect(result).not.toHaveTextContent('Library / Series')
+  fireEvent.change(search, { target: { value: 'Library' } })
+  fireEvent.keyDown(search, { key: 'Enter' })
+
+  await screen.findByText('Bundle moved into “Library”.')
+  const reparentCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/nested-one/parent') && init?.method === 'PUT',
+  )
+  expect(reparentCall?.[1]).toMatchObject({
+    body: JSON.stringify({ parent_proposal_id: 'outer-collection' }),
+  })
 })
 
 test('drags a proposed collection to the top level', async () => {
@@ -1191,7 +1239,9 @@ test('a conversion elsewhere survives Widen', async () => {
 
   // Still a collection, child row intact, and the way back still offered.
   expect(screen.getByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
-  const converted = screen.getByText('Two Subjects').closest('.grp-row')!
+  const converted = screen
+    .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
+    .closest('.grp-row')!
   expect(
     within(converted as HTMLElement).getByRole('button', { name: 'Make this one bundle instead' }),
   ).toBeInTheDocument()
@@ -1246,7 +1296,9 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
   expect(screen.getByRole('checkbox', { name: 'Accept beta.mp4' })).toBeInTheDocument()
   // And the row offers the way back, so the override is not a one-way door.
-  const converted = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  const converted = screen
+    .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
+    .closest('.grp-row')!
   expect(
     within(converted as HTMLElement).getByRole('button', {
       name: 'Make this one bundle instead',
@@ -1378,7 +1430,9 @@ test('a tooltip is dismissed when its label changes underneath it', async () => 
   // Re-hover the same control, now labelled the other way, and confirm the
   // tooltip that appears is the current one rather than a leftover.
   const flipped = within(
-    screen.getByText('Two Subjects').closest('.grp-row') as HTMLElement,
+    screen
+      .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
+      .closest('.grp-row') as HTMLElement,
   ).getByRole('button', { name: 'Make this one bundle instead' })
   hover(flipped.closest('.grp-tip-anchor') as HTMLElement)
   const tips = document.querySelectorAll('.grp-tip')

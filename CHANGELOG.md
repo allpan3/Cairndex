@@ -298,6 +298,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Grouping destinations now use a collection tree instead of a repeated-path
+  dropdown.** The proposal row shows only its direct destination, while the
+  bounded picker mirrors the collection hierarchy with indentation and
+  independently foldable branches. Search keeps pinyin matching and adds only
+  the direct parent needed to disambiguate a result; full paths remain available
+  to assistive technology and as tooltips without consuming every visible row.
 - **Job progress moved to the bottom of the sidebar, beside the file-transfer
   indicator, and survives a page refresh.** It used to sit under the Update
   button that started it and vanish on reload, which is misleading twice over:

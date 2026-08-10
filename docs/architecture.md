@@ -485,9 +485,12 @@ Grouping behavior:
 - grouping review persists whole-row file drag-and-drop within or across bundle
   proposals, accepting either the target bundle heading or file list as a drop.
   Bundle and new-collection proposals can be reparented by drag-and-drop or a
-  native placement selector; new proposals can be retitled/reclassified before
-  apply, while existing collection context is read-only. Reviewed file sequence
-  becomes playlist order;
+  bounded, searchable placement popover that renders the collection hierarchy
+  as independently foldable indented rows. Proposal rows show only their direct
+  destination; full paths remain in accessibility labels and tooltips, while
+  search results add only their direct parent for visible disambiguation. New
+  proposals can be retitled/reclassified before apply, while existing collection
+  context is read-only. Reviewed file sequence becomes playlist order;
 - review folding is client-only state keyed by proposal content: a collection
   disclosure hides its descendant proposal list and a bundle disclosure hides
   its file list. Plans start expanded; per-row and global fold controls never
