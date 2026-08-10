@@ -3959,6 +3959,8 @@ export interface components {
             files: components["schemas"]["ProposalFileRead"][];
             /** Id */
             id: string;
+            /** Is Collection Context */
+            is_collection_context: boolean;
             kind: components["schemas"]["ProposalKind"];
             /** Parent Proposal Id */
             parent_proposal_id: string | null;

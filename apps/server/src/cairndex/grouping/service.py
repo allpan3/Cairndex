@@ -14,7 +14,13 @@ from dataclasses import dataclass, replace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileAvailability, GroupingState, ProposalKind, StemMode
+from cairndex.domain.enums import (
+    FileAvailability,
+    GroupingState,
+    ProposalKind,
+    StemMode,
+    context_directory,
+)
 from cairndex.grouping.suggester import (
     FileObservation,
     GroupingPlan,
@@ -223,7 +229,7 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
     )
     for context in ordered:
         collection = context.collection
-        key = proposed_paths.get(context.path, f"@existing-collection/{collection.id}")
+        key = proposed_paths.get(context.path, context_directory(collection.id))
         key_by_id[collection.id] = key
         target_collection_by_key[key] = collection.id
         if context.path in proposed_paths:
@@ -237,6 +243,7 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
                 confidence=1.0,
                 reason="existing collection",
                 target_collection_id=collection.id,
+                is_collection_context=True,
             )
         )
 

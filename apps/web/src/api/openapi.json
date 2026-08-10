@@ -4876,6 +4876,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_collection_context": {
+            "title": "Is Collection Context",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/ProposalKind"
           },
@@ -4956,6 +4960,7 @@
           "target_bundle_title",
           "create_new_bundle",
           "target_collection_id",
+          "is_collection_context",
           "confidence",
           "reason",
           "files"
@@ -4964,6 +4969,7 @@
         "type": "object"
       },
       "ProposalReparent": {
+        "additionalProperties": false,
         "properties": {
           "parent_proposal_id": {
             "anyOf": [

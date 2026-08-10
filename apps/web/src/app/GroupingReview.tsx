@@ -724,7 +724,7 @@ function ProposalTitle({
   const displayTitle = proposalDisplayTitle(proposal)
   const kindLabel = proposal.kind === 'container' ? 'collection' : 'bundle'
   const inputLabel = `${kindLabel[0]?.toUpperCase()}${kindLabel.slice(1)} suggestion title`
-  const editable = rename.canEdit && !isAddition && proposal.target_collection_id === null
+  const editable = rename.canEdit && !isAddition && !proposal.is_collection_context
   if (editable && rename.editingId === proposal.id) {
     return <ProposalTitleEditor proposal={proposal} inputLabel={inputLabel} rename={rename} />
   }
@@ -902,7 +902,7 @@ function ProposalNode({
   const collapsed = fold.collapsed.has(foldKey)
   if (proposal.kind === 'container') {
     const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
-    const movable = proposal.target_collection_id === null
+    const movable = !proposal.is_collection_context
     return (
       <li className="grp-node grp-node--container">
         <div
@@ -942,20 +942,22 @@ function ProposalNode({
           </span>
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
-            {proposal.target_collection_id !== null && (
-              <span className="grp-existing">Existing</span>
-            )}
-            {proposal.reason && proposal.target_collection_id === null && (
+            {proposal.is_collection_context && <span className="grp-existing">Existing</span>}
+            {proposal.reason && !proposal.is_collection_context && (
               <span className="grp-reason">{proposal.reason}</span>
             )}
-            {proposal.target_collection_id === null && (
+            {/* Every control below edits the plan, so a read-only context node
+                gets none of them — including the folder's stem pair, which sat
+                outside this guard and let an "Existing" row regenerate rows for
+                a directory it does not even name. */}
+            {!proposal.is_collection_context && (
               <>
                 <ProposalPlacement proposal={proposal} placement={placement} />
                 <KindToggle proposal={proposal} kind={kind} />
+                {stemOwners.has(proposal.id) && (
+                  <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
+                )}
               </>
-            )}
-            {stemOwners.has(proposal.id) && (
-              <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
             )}
           </span>
         </div>
@@ -994,8 +996,9 @@ function ProposalNode({
         // The whole row is the drag affordance — the file rows below already
         // worked this way, which is what made their ⠿ handles redundant. Not
         // draggable while this row's title is being renamed: `draggable` on an
-        // ancestor hijacks text selection inside the edit box.
-        draggable={drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
+        // ancestor hijacks text selection inside the edit box, nor while this is
+        // an addition, which has no placement of its own (see below).
+        draggable={drag.canEdit && !drag.pending && rename.editingId !== proposal.id && !isAddition}
         onDragStart={(event) => drag.startProposal(event, proposal)}
         onDragEnd={drag.end}
         onDragOver={(event) => {
@@ -1044,7 +1047,14 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
-          <ProposalPlacement proposal={proposal} placement={placement} />
+          {/* An addition has no placement of its own: its files join a bundle
+              that already exists and already sits wherever it sits. Offering the
+              picker here filed that *confirmed* bundle into a second collection
+              — membership is append-only, so nothing moved — while "Top level"
+              did nothing at all and still reported a move. Switching the row to
+              "create a new bundle" clears `isAddition`, and the control returns
+              with a real meaning. */}
+          {!isAddition && <ProposalPlacement proposal={proposal} placement={placement} />}
           {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent) && (
             <KindToggle proposal={proposal} kind={kind} />
           )}

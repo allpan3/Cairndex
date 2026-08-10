@@ -120,7 +120,13 @@ function PlacementOptions({
   const exact = matches.find(
     (option) => option.name.normalize('NFKC').toLocaleLowerCase() === normalizedSearch,
   )
-  const enterTarget = exact ?? (matches.length === 1 ? matches[0] : undefined)
+  // Only a typed query can resolve Enter. With an empty box `matches` is the
+  // whole list, so a library holding exactly one collection made the very first
+  // Enter after opening the picker — the input autofocuses — file the proposal
+  // there. `CollectionPicker` guards the same way.
+  const enterTarget = trimmedSearch
+    ? (exact ?? (matches.length === 1 ? matches[0] : undefined))
+    : undefined
 
   return (
     <>

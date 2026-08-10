@@ -12,7 +12,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
-from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind, StemMode
+from cairndex.domain.enums import (
+    GroupingPlanStatus,
+    GroupingState,
+    ProposalKind,
+    StemMode,
+    context_directory,
+)
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
@@ -97,7 +103,7 @@ def rename_proposal(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
         raise ValidationError("addition suggestion titles cannot be changed")
-    if proposal.target_collection_id is not None:
+    if proposal.is_collection_context:
         raise ValidationError("existing collection context titles cannot be changed")
 
     normalized = title.strip()
@@ -288,11 +294,12 @@ def _materialize_collection_context(
                 plan=plan,
                 kind=ProposalKind.CONTAINER,
                 title=collection.name,
-                directory=f"@existing-collection/{collection.id}",
+                directory=context_directory(collection.id),
                 confidence=1.0,
                 reason="existing collection",
                 sort_order=next_order,
                 target_collection_id=collection.id,
+                is_collection_context=True,
             )
             next_order += 1
             session.add(context)
@@ -324,7 +331,7 @@ def _prune_empty_collection_context(session: Session, plan: GroupingPlan) -> Non
         removable = [
             proposal
             for proposal in remaining
-            if proposal.target_collection_id is not None and proposal.id not in parent_ids
+            if proposal.is_collection_context and proposal.id not in parent_ids
         ]
         if not removable:
             return
@@ -346,8 +353,14 @@ def reparent_proposal(
 ) -> None:
     """Move suggested work under a proposed or current persisted collection."""
     proposal = _open_proposal(session, plan_id, proposal_id)
-    if proposal.kind is ProposalKind.CONTAINER and proposal.target_collection_id is not None:
+    if proposal.is_collection_context:
         raise ValidationError("existing collection context cannot be moved")
+    if _is_addition(proposal):
+        # Its files join a bundle that already exists and already has whatever
+        # collection membership it has; "placing" the addition only ever added
+        # that confirmed bundle to a second collection. Switching the row to a
+        # new bundle first makes placement meaningful, and legal.
+        raise ValidationError("an addition suggestion has no placement of its own")
     if parent_proposal_id is not None and target_collection_id is not None:
         raise ValidationError("choose either a collection suggestion or an existing collection")
 
@@ -536,7 +549,7 @@ def convert_proposal_kind(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.kind is kind:
         raise ValidationError(f"this suggestion is already a {kind.value}")
-    if proposal.target_collection_id is not None:
+    if proposal.is_collection_context:
         raise ValidationError("existing collection context cannot change kind")
     if _is_addition(proposal):
         raise ValidationError(
@@ -664,6 +677,7 @@ def set_directory_stem_mode(
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
             target_collection_id=proposal.target_collection_id,
+            is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
         session.flush()
@@ -788,6 +802,7 @@ def persist_plan(
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
             target_collection_id=proposal.target_collection_id,
+            is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
         session.flush()
