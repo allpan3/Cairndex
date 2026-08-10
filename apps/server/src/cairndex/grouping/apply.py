@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
+    CONTEXT_DIRECTORY_PREFIX,
     FileAvailability,
     FileRole,
     GroupingPlanStatus,
@@ -237,7 +238,7 @@ def _parent_first(containers: list[GroupingProposal]) -> list[GroupingProposal]:
 def _target_collection_id(proposal: GroupingProposal) -> str | None:
     if proposal.target_collection_id is not None:
         return proposal.target_collection_id
-    prefix = "@existing-collection/"
+    prefix = CONTEXT_DIRECTORY_PREFIX
     return proposal.directory[len(prefix) :] if proposal.directory.startswith(prefix) else None
 
 

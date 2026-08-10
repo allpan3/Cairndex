@@ -16,6 +16,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_title: null,
     create_new_bundle: false,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.9,
     reason: 'holds related bundles',
     files: [],
@@ -30,6 +31,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_title: null,
     create_new_bundle: false,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.95,
     reason: 'same filename stem',
     files: [
@@ -63,6 +65,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_title: null,
     create_new_bundle: false,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.8,
     reason: 'same folder',
     files: [
@@ -86,6 +89,7 @@ const ADDITION: GroupingProposal = {
   target_bundle_title: 'Sky, Sand, Sea & Salt - 4K',
   create_new_bundle: false,
   target_collection_id: null,
+  is_collection_context: false,
   confidence: 0.8,
   reason: 'add 3 new file(s) to existing bundle',
   files: [
@@ -128,6 +132,7 @@ const DIVISIBLE: GroupingProposal = {
   target_bundle_title: null,
   create_new_bundle: false,
   target_collection_id: null,
+  is_collection_context: false,
   confidence: 0.7,
   reason: '2 unrelated files',
   files: [
@@ -444,6 +449,7 @@ function mockGroupingApi(
             target_bundle_title: null,
             create_new_bundle: false,
             target_collection_id: item.id,
+            is_collection_context: true,
             confidence: 1,
             reason: 'existing collection',
             files: [],
@@ -1077,7 +1083,11 @@ test('a nested collection checkbox selects only its descendant bundles', async (
 test('existing collection context is labeled and cannot be edited or moved', async () => {
   const proposals = NESTED_PROPOSALS.map((proposal) =>
     proposal.kind === 'container'
-      ? { ...proposal, target_collection_id: `target-${proposal.id}` }
+      ? {
+          ...proposal,
+          target_collection_id: `target-${proposal.id}`,
+          is_collection_context: true,
+        }
       : proposal,
   )
   vi.stubGlobal('fetch', mockGroupingApi(proposals))
@@ -1101,6 +1111,41 @@ test('existing collection context is labeled and cannot be edited or moved', asy
   expect(
     within(row as HTMLElement).queryByRole('button', { name: 'Make this one bundle instead' }),
   ).toBeNull()
+})
+
+// A folder suggestion may resolve to a collection that already exists, so apply
+// reuses it rather than creating a duplicate. That is a *destination*, not a
+// claim of immutability — the row is still the owner's to rename, move, or
+// reclassify. Gating read-only rendering on `target_collection_id` froze exactly
+// these rows whenever a folder happened to share a collection's name.
+test('a folder suggestion that reuses an existing collection stays editable', async () => {
+  const proposals = NESTED_PROPOSALS.map((proposal) =>
+    proposal.kind === 'container'
+      ? {
+          ...proposal,
+          target_collection_id: `target-${proposal.id}`,
+          is_collection_context: false,
+        }
+      : proposal,
+  )
+  vi.stubGlobal('fetch', mockGroupingApi(proposals))
+  renderReview()
+
+  const title = await screen.findByText('Series', { selector: '.grp-title' })
+  const row = title.closest('.grp-row--collection')
+  if (!row) throw new Error('missing collection row')
+  expect(within(row as HTMLElement).queryByText('Existing')).toBeNull()
+  expect(row).toHaveAttribute('draggable', 'true')
+  expect(
+    within(row as HTMLElement).getByRole('button', {
+      name: 'Rename collection suggestion Series',
+    }),
+  ).toBeInTheDocument()
+  expect(
+    within(row as HTMLElement).getByRole('button', {
+      name: 'Placement for collection suggestion Series',
+    }),
+  ).toBeInTheDocument()
 })
 
 test('a proposed collection placement control moves between parent and top level', async () => {

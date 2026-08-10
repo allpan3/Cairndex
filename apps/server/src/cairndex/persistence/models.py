@@ -547,6 +547,10 @@ class GroupingProposal(Base):
     create_new_bundle: Mapped[bool] = mapped_column(default=False, server_default="0")
     # Stable identity for an existing collection shown as placement context
     target_collection_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    # Distinguishes a synthesized read-only context node from an ordinary
+    # folder suggestion that merely resolves to an existing collection. Only
+    # the former is immutable and prunable.
+    is_collection_context: Mapped[bool] = mapped_column(default=False, server_default="0")
     # Preserve a proposal's original bundle identity through an explicit edit
     base_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     owner_edited: Mapped[bool] = mapped_column(default=False, server_default="0")

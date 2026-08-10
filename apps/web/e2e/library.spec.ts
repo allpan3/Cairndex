@@ -308,6 +308,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
     target_bundle_title: null,
     create_new_bundle: true,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.9,
     reason: 'matching synthetic filenames',
     files: [
@@ -437,6 +438,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
     parent_proposal_id: null,
     target_bundle_id: null,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.9,
     reason: 'old plan',
     files: [
@@ -554,6 +556,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_title: null,
       create_new_bundle: false,
       target_collection_id: null as string | null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'holds related bundles',
       files: [],
@@ -569,6 +572,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_title: null,
       create_new_bundle: false,
       target_collection_id: null as string | null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'same filename stem',
       files: [
@@ -675,6 +679,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     target_bundle_title: targetTitle,
     create_new_bundle: createNewBundle,
     target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.8,
     reason: 'add 2 new file(s) to existing bundle',
     files: [
@@ -839,6 +844,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
       target_bundle_title: null,
       create_new_bundle: false,
       target_collection_id: null as string | null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'synthetic hierarchy',
       files: [],
@@ -853,6 +859,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
       target_bundle_title: null,
       create_new_bundle: false,
       target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'synthetic hierarchy',
       files: [],
@@ -867,6 +874,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
       target_bundle_title: null,
       create_new_bundle: false,
       target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'synthetic hierarchy',
       files: [],
@@ -929,6 +937,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
     target_bundle_title: null,
     create_new_bundle: true,
     target_collection_id: null as string | null,
+    is_collection_context: false,
     confidence: 0.95,
     reason: 'synthetic filename match',
     files: [
@@ -1008,6 +1017,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
             target_bundle_title: null,
             create_new_bundle: false,
             target_collection_id: collection.id,
+            is_collection_context: true,
             confidence: 1,
             reason: 'existing collection',
             files: [],
@@ -1097,6 +1107,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
       target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'shared directory',
       files: [],
@@ -1109,6 +1120,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
       target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.95,
       reason: 'same filename stem',
       files: [
@@ -1140,6 +1152,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
       target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.8,
       reason: 'same directory',
       files: [
