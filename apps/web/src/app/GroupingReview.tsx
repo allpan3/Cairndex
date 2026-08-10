@@ -324,13 +324,23 @@ function collectKeys(nodes: TreeNode[]): Map<string, string> {
   return keys
 }
 
-/** Collect every proposal with content that can be folded */
+/** Collect every proposal with content that can be folded.
+ *
+ * Keyed by proposal **id**, not by ``proposalKey``. The content key exists so a
+ * checkbox survives a regeneration that reissues ids, and it deliberately
+ * collides for rows with the same content — but folding needs to address one
+ * row. Two file-less bundles both key to `b::`, and a bundle converted to a
+ * collection keeps its parent's directory so both key to the same `c:<dir>`, so
+ * a shared key made two rows collapse as one and hid the row that was clicked
+ * inside its own collapsed ancestor. Folds reset when ids change, which is
+ * right: those rows are genuinely new.
+ */
 function collectFoldKeys(nodes: TreeNode[]): string[] {
   const keys = new Set<string>()
   const visit = (items: TreeNode[]) => {
     for (const node of items) {
       if (node.proposal.kind === 'bundle' || node.children.length > 0) {
-        keys.add(proposalKey(node.proposal))
+        keys.add(node.proposal.id)
       }
       visit(node.children)
     }
@@ -852,8 +862,10 @@ function ProposalDisclosure({
       aria-label={`${action} ${subject}`}
       title={`${action} ${subject}`}
       draggable={false}
+      // Read by the row's own dragstart handler, which is where a press that
+      // began here has to be rejected — see ``startProposalDrag``.
+      data-no-row-drag=""
       onMouseDown={(event) => event.stopPropagation()}
-      onDragStart={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation()
         onToggle()
@@ -898,7 +910,9 @@ function ProposalNode({
   const checked = selectionState.total > 0 && selectionState.selected === selectionState.total
   const mixed = selectionState.selected > 0 && !checked
   const hasItems = selectionState.total > 0
-  const foldKey = proposalKey(proposal)
+  // By id, so two rows with identical content still fold independently — see
+  // ``collectFoldKeys``.
+  const foldKey = proposal.id
   const collapsed = fold.collapsed.has(foldKey)
   if (proposal.kind === 'container') {
     const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
@@ -1368,6 +1382,16 @@ export function GroupingReview({
   }
 
   const startProposalDrag = (event: DragEvent, proposal: GroupingProposal) => {
+    // A press that began on one of the row's own controls is not a row drag. The
+    // controls carry `draggable={false}` and used to stop propagation, but a
+    // non-draggable child is never on the path: the browser fires `dragstart` at
+    // the nearest *draggable* ancestor, which is this row. So the origin has to
+    // be tested here. Only jsdom, which dispatches a synthetic event straight at
+    // the button, ever saw the old guard work.
+    if (event.target instanceof Element && event.target.closest('[data-no-row-drag]')) {
+      event.preventDefault()
+      return
+    }
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', proposal.id)

@@ -122,6 +122,30 @@ Concretely:
    or reclassified because it describes a stable destination rather than new
    work.
 
+   Further amended on 2026-08-09, after review found the owner-edited flag being
+   read more broadly than it is set. "Owner-edited" now names two distinct
+   things, because only one of them may override a confirmed decision:
+
+   - `owner_edited` still marks any explicit edit — rename, destination switch,
+     placement — and still lets apply revise *provisional* membership.
+   - `membership_edited` marks only a change to **which files** a proposal
+     holds, and is the sole licence to move a file out of an already-confirmed
+     bundle. Without the split, choosing where a suggestion is filed silently
+     unlocked a confirmed bundle, contradicting §5 above.
+
+   Read-only-ness is likewise its own fact rather than an inference. A folder
+   suggestion whose title path matches a persisted collection resolves to that
+   collection — which is how re-scanning an applied folder avoids duplicating
+   it — but it remains the owner's row to rename, move, and reclassify. Only a
+   node synthesized to stand in for a live collection is immutable, and only
+   such a node is prunable when it stops leading to proposed work.
+
+   An addition has no placement of its own. Its files join a bundle that already
+   exists and already has whatever collection membership it has, and that
+   membership is append-only, so "placing" an addition could only ever add the
+   confirmed bundle to a second collection. Switching the row to a new bundle
+   first makes placement meaningful, and permitted.
+
 ## Provisional bundle model
 
 Option A+ avoids nullable `AssetFile.bundle_id` and avoids making ungrouped files

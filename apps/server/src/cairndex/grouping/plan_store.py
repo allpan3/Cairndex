@@ -745,6 +745,11 @@ def set_directory_stem_mode(
 
     session.flush()
     session.expire(plan, ["proposals"])
+    # Re-suggesting a directory replaces its rows, which can leave an existing
+    # collection context path leading nowhere. Those nodes are read-only with a
+    # permanently disabled checkbox, so nothing in the UI could clear them.
+    _prune_empty_collection_context(session, plan)
+    session.expire(plan, ["proposals"])
     # Deterministic order: survivors keep their unique sort_orders; the fresh
     # rows share insert_at and fall back to id order, which is creation (and
     # therefore suggester) order because ids are ULIDs.

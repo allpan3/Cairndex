@@ -340,10 +340,19 @@ Durable, reviewable snapshots of the grouping suggester output.
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
   `target_bundle_title` (nullable display snapshot), `create_new_bundle`
   (additive destination override, default false),
-  `target_collection_id` (nullable plain id, not an FK, for a read-only existing
-  collection context node so stale targets remain detectable),
+  `target_collection_id` (nullable plain id, not an FK: the existing collection
+  this row resolves to, so stale targets stay detectable and apply reuses that
+  collection instead of creating a same-named duplicate),
+  `is_collection_context` (true only for a synthesized read-only node standing in
+  for a live collection — an ordinary folder suggestion may resolve to an
+  existing collection and still be renamed, moved, and reclassified, so
+  immutability and context pruning key off this and never off
+  `target_collection_id`),
   `base_bundle_id` (the stable original identity used by explicitly edited
-  bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
+  bundle proposals), `owner_edited`, `membership_edited` (set only when the owner
+  changed *which files* the proposal holds; apply treats that, and only that, as
+  licence to move a file out of an already-confirmed bundle),
+  `kind` (`bundle` | `container`), `title`,
   `directory`, `confidence`, `reason`, `sort_order`.
 - `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
   (snapshot id, not an FK), `relative_path` (display snapshot), `proposed_role`,
@@ -356,7 +365,9 @@ subtitles, creates suggested collections, and never touches the filesystem.
 BUNDLE rows are accepted work. CONTAINER rows are structural: apply computes the
 complete ancestor path for each selected bundle, creates or reuses only those
 paths, and marks the plan applied, so unchecked bundles are not retained as
-pending work for the same plan. Existing collection context resolves by
+pending work for the same plan. A plan in which *no* selected bundle applied —
+every one blocked by a stale collection path or a vanished file — stays open, so
+the owner's renames, destination switches, and placements survive. Existing collection context resolves by
 `target_collection_id`; a missing or reparented target conflicts before its
 descendant bundle is confirmed rather than creating a same-name replacement.
 `PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
@@ -418,9 +429,13 @@ editing one in place.
 - **CONTAINER → BUNDLE** collapses every descendant into one bundle and deletes
   them, so the override is reversible rather than a one-way door.
 
-Both mark `owner_edited`. An **addition** proposal (`target_bundle_id` set and
-`create_new_bundle` false) is rejected in both directions: its files join a
-bundle that already exists and is not going to become a collection.
+Both mark `owner_edited` and `membership_edited`. An **addition** proposal
+(`target_bundle_id` set and `create_new_bundle` false) is rejected in both
+directions: its files join a bundle that already exists and is not going to
+become a collection. An addition also has no placement of its own — its target
+bundle already sits wherever it sits, and collection membership is append-only —
+so reparenting one is refused rather than quietly filing that confirmed bundle
+into a second collection.
 
 A conversion lives in the open plan like every other owner edit, and like them
 it survives a Narrow/Widen on *other* directories (see `stem-modes` above).

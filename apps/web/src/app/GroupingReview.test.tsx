@@ -533,6 +533,33 @@ test('folds and restores descendant proposals under a collection', async () => {
   expect(innerTitle).toBeVisible()
 })
 
+// Fold state is per row, not per content. Two file-less bundles hash to the same
+// content key, and so does a bundle converted to a collection under a container
+// for the same directory — a shared fold key collapsed both rows at once and hid
+// the row that was clicked inside its own collapsed ancestor.
+test('two suggestions with identical content fold independently', async () => {
+  const emptied: GroupingProposal[] = [
+    { ...PROPOSALS[1]!, id: 'empty-a', title: 'Emptied A', files: [] },
+    { ...PROPOSALS[1]!, id: 'empty-b', title: 'Emptied B', files: [] },
+  ]
+  vi.stubGlobal('fetch', mockGroupingApi(emptied))
+  renderReview()
+
+  const first = await screen.findByRole('button', { name: 'Collapse bundle suggestion Emptied A' })
+  const second = screen.getByRole('button', { name: 'Collapse bundle suggestion Emptied B' })
+  expect(first).toHaveAttribute('aria-expanded', 'true')
+  expect(second).toHaveAttribute('aria-expanded', 'true')
+
+  fireEvent.click(first)
+
+  expect(
+    screen.getByRole('button', { name: 'Expand bundle suggestion Emptied A' }),
+  ).toHaveAttribute('aria-expanded', 'false')
+  expect(
+    screen.getByRole('button', { name: 'Collapse bundle suggestion Emptied B' }),
+  ).toHaveAttribute('aria-expanded', 'true')
+})
+
 test('folds and restores the file list under a bundle', async () => {
   vi.stubGlobal('fetch', mockGroupingApi())
   const review = renderReview()

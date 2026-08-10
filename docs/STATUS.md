@@ -93,7 +93,32 @@
 
 ## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
-Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`.
+Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`, open as
+**PR #11**, not yet merged.
+
+> **Review pass, 2026-08-09.** A max-effort review of this branch (10 finder
+> angles, 5 adversarial verifiers, 1 gap sweep) found 11 confirmed correctness
+> defects, three of them regressions against `main`. All 11 are fixed in commits
+> `3b12d87`, `e8eb67f`, `2bb37ff`, and the commit adding this note; each carries
+> a regression test, and the two most severe were proved to fail against the old
+> code before the fix landed. One candidate — an out-of-order query-cache
+> overwrite in `useReparentGroupingProposal` — was **refuted**: every reparent
+> entry point is gated by the shared `busy` flag, so the race is unreachable from
+> the UI.
+>
+> Three lower-confidence findings are **not** fixed and are follow-up work:
+> `service._with_collection_context` collapses two persisted collections that
+> share a name path *and* `sort_order` onto one plan node, making the applied
+> destination depend on set iteration order; the proposal tree is not virtualized
+> and folding hides rather than unmounts, so Collapse all frees no work at scale;
+> and `GroupingReview.tsx` is ~1700 lines and wants splitting on the seams the
+> review named.
+>
+> Separately, and **pre-existing on `main` rather than from this branch**: real
+> library content sits in two test fixtures and is published. The owner has seen
+> it and deferred the purge. Note for whoever plans it that the strings are also
+> in tags `v0.1.0` and `v0.1.1`, whose releases are published — so a history
+> rewrite would move tags AGENTS.md says never to move once released.
 
 Grouping review now separates **what is accepted** from **where it is filed**.
 Only file-backed bundle proposals are accepted. Collection checkboxes are
