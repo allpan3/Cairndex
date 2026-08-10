@@ -1589,6 +1589,27 @@ export function GroupingReview({
     stemModeMutation.error ??
     apply.error) as Error | null
   const selectedCount = selectedIds.size
+  // Additions fold files into a bundle that already exists; new bundles are new
+  // work. "Accept 12" hid that difference, and said nothing about the rows left
+  // unchecked — which stay unbundled and come back next scan.
+  const selectedAdditions = useMemo(
+    () =>
+      [...selectedIds].filter((id) => {
+        const proposal = proposalById.get(id)
+        return proposal?.target_bundle_id != null && !proposal.create_new_bundle
+      }).length,
+    [selectedIds, proposalById],
+  )
+  const selectedBundles = selectedCount - selectedAdditions
+  const skippedCount = bundleProposalIds.length - selectedCount
+  const acceptLabel = [
+    selectedBundles > 0 ? `${selectedBundles} ${selectedBundles === 1 ? 'bundle' : 'bundles'}` : '',
+    selectedAdditions > 0
+      ? `${selectedAdditions} ${selectedAdditions === 1 ? 'addition' : 'additions'}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' + ')
   const someFolded = foldKeys.some((key) => collapsedKeys.has(key))
   const allFolded = foldKeys.length > 0 && foldKeys.every((key) => collapsedKeys.has(key))
   const renameControls: RenameControls = {
@@ -1679,23 +1700,35 @@ export function GroupingReview({
               now carries its own tooltip, so only what a row cannot say for
               itself is left: what is in scope, what Accept does, and the safety
               guarantee. */}
-          <p className="grp-intro">
-            Proposed grouping for unbundled files and new additions.{' '}
-            <strong>Nothing on disk changes.</strong>
-          </p>
-          <ul className="grp-intro-points">
-            <li>Collection checkboxes select their bundles; the shown hierarchy sets placement.</li>
-            <li>Drag files between bundles, or place new bundles and collections explicitly.</li>
-            <li>Reflects the last scan — run Scan new files if the folder changed since.</li>
-          </ul>
+          {/* One line by default. The three points below are true and worth
+              having, but they are the same three every time and were costing a
+              sixth of the list's height permanently. */}
+          <details className="grp-intro-details">
+            <summary className="grp-intro">
+              Proposed grouping for unbundled files and new additions.{' '}
+              <strong>Nothing on disk changes.</strong>
+            </summary>
+            <ul className="grp-intro-points">
+              <li>
+                Collection checkboxes select their bundles; the shown hierarchy sets placement.
+              </li>
+              <li>Drag files between bundles, or place new bundles and collections explicitly.</li>
+              <li>Reflects the last scan — run Scan new files if the folder changed since.</li>
+            </ul>
+          </details>
 
-          {error && <div className="grp-error">{error.message}</div>}
-          {renameError && <div className="grp-error">{renameError}</div>}
-          {notice && !result && (
-            <div className="grp-notice" role="status">
-              {notice}
-            </div>
-          )}
+          {/* One reserved line, always present. These used to be inserted into
+              the flow, so every action nudged the whole list down under the
+              pointer that had just clicked something. */}
+          <div className="grp-status" role="status" aria-live="polite">
+            {error ? (
+              <span className="grp-error">{error.message}</span>
+            ) : renameError ? (
+              <span className="grp-error">{renameError}</span>
+            ) : notice && !result ? (
+              <span className="grp-notice">{notice}</span>
+            ) : null}
+          </div>
 
           {result && <ResultPanel result={result} />}
 
@@ -1830,6 +1863,12 @@ export function GroupingReview({
           <button className="btn" onClick={onGenerate} disabled={actionBlocked}>
             {generate.isPending ? 'Suggesting…' : 'Suggest grouping'}
           </button>
+          {!applied && skippedCount > 0 && (
+            <span className="grp-foot__note">
+              {skippedCount} skipped {skippedCount === 1 ? 'stays' : 'stay'} unbundled and{' '}
+              {skippedCount === 1 ? 'is' : 'are'} suggested again next scan
+            </span>
+          )}
           <div className="grp-foot__spacer" />
           {applied ? (
             <button className="btn btn--primary" onClick={onClose}>
@@ -1841,7 +1880,11 @@ export function GroupingReview({
               onClick={onApply}
               disabled={actionBlocked || !plan.data || selectedCount === 0 || status !== 'open'}
             >
-              {apply.isPending ? 'Accepting…' : 'Accept selected'}
+              {apply.isPending
+                ? 'Accepting…'
+                : acceptLabel
+                  ? `Accept ${acceptLabel}`
+                  : 'Accept selected'}
             </button>
           )}
         </div>

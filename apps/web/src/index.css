@@ -2682,6 +2682,33 @@ code {
      2026-07-30). Still capped by viewport width. */
   width: min(1100px, 96vw);
 }
+/* Fixed, not max: the list is the thing being scanned, and letting the dialog
+   grow and shrink with its contents moved the footer under the pointer every
+   time a row folded or a filter narrowed the view. */
+.grp-modal {
+  height: min(88vh, 900px);
+}
+.grp-intro-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.grp-intro-details > summary::-webkit-details-marker {
+  display: none;
+}
+.grp-intro-details > summary::after {
+  content: ' ⓘ';
+  color: var(--text-muted);
+}
+/* Reserved so a notice never pushes the list down mid-click. */
+.grp-status {
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.grp-foot__note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .grp-body {
   overflow: auto;
   display: flex;

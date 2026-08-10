@@ -301,6 +301,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The grouping review's chrome stopped competing with its contents.** The
+  three-line preamble folds behind a one-line summary, the dialog holds a fixed
+  height so folding a row no longer slides the footer under the pointer,
+  notices occupy a reserved line rather than pushing the list down mid-click,
+  and Accept names what it will do — "Accept 3 bundles + 1 addition" — with the
+  skipped rows spelled out beside it rather than left unexplained.
 - **The grouping review now leads with what needs deciding.** The suggester
   already scores its own certainty, so the toolbar counts the suggestions it is
   unsure about and can filter to just those; a flagged row carries a warm left

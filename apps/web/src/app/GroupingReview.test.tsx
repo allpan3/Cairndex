@@ -1084,7 +1084,7 @@ test('selecting one nested bundle leaves its collection ancestors indeterminate'
   expect(first).not.toBeVisible()
   expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(
@@ -1269,6 +1269,23 @@ test('a flagged row carries its reason; a confident one carries its contents', a
     .closest('.grp-row')
   expect(confident).not.toHaveClass('grp-row--attention')
   expect(review.container.querySelectorAll('.grp-row--attention')).toHaveLength(1)
+})
+
+test('the footer names what Accept does and what it leaves behind', async () => {
+  const addition = { ...ADDITION, id: 'add-1' }
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, addition]))
+  renderReview()
+
+  // Two new bundles plus one addition, all selected to begin with.
+  expect(await screen.findByRole('button', { name: 'Accept 2 bundles + 1 addition' })).toBeEnabled()
+  expect(screen.queryByText(/skipped/)).toBeNull()
+
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' }))
+
+  expect(screen.getByRole('button', { name: 'Accept 1 bundle + 1 addition' })).toBeEnabled()
+  expect(
+    screen.getByText('1 skipped stays unbundled and is suggested again next scan'),
+  ).toBeInTheDocument()
 })
 
 test('a root row keeps its printed destination', async () => {
@@ -1585,7 +1602,7 @@ test('accepts only file-backed child bundles returned by a conversion', async ()
   )
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(
