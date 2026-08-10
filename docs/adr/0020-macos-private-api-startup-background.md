@@ -35,7 +35,7 @@ startup reveal timing irrelevant to flash behavior.
 The window still starts hidden and is revealed after the renderer acknowledges
 the mounted shell (with the two-second native fail-safe). That gate is retained
 for content polish — the window appears with UI already present — not as a
-flash defense. The off-screen priming workaround (commit `860cdfd`) is
+flash defense. The off-screen priming workaround (commit `9f9cbc6`) is
 reverted; it is preserved on branch `archive/startup-offscreen-priming`.
 
 ## Alternatives considered
@@ -71,4 +71,4 @@ reverted; it is preserved on branch `archive/startup-offscreen-priming`.
 - wry 0.55.1 `src/wkwebview/mod.rs` — `drawsBackground` handling gated on the
   `transparent` feature.
 - ADR-0012 client platform strategy (macOS desktop shell direction).
-- Reverted workaround: commit `860cdfd`, branch `archive/startup-offscreen-priming`.
+- Reverted workaround: commit `9f9cbc6`, branch `archive/startup-offscreen-priming`.
