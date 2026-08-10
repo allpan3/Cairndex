@@ -2954,6 +2954,70 @@ code {
   max-width: 100%;
   min-width: 0;
 }
+
+/* A nested row's destination is the row it is drawn inside, so the compact
+   affordance keeps the control without reprinting the indentation. */
+.grp-placement-picker--compact {
+  width: auto;
+}
+.grp-placement-picker--compact .grp-placement {
+  padding: 0 4px;
+  opacity: 0.55;
+}
+.grp-row:hover .grp-placement-picker--compact .grp-placement,
+.grp-placement-picker--compact .grp-placement:hover:not(:disabled),
+.grp-placement-picker--compact .grp-placement:focus-visible {
+  opacity: 1;
+}
+
+/* Suggester-flagged rows. A warm left edge is enough to find them while
+   scanning; the reason text beside the title says why. */
+.grp-row--attention {
+  border-left: 2px solid var(--warn, #fbbf24);
+  border-radius: 0 5px 5px 0;
+  padding-left: 4px;
+  margin-left: -6px;
+}
+.grp-attention {
+  font-size: 11px;
+  color: var(--warn, #fbbf24);
+  white-space: nowrap;
+}
+
+.grp-filter {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.grp-filter__tab {
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.grp-filter__tab:last-child {
+  border-right: 0;
+}
+.grp-filter__tab--on {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.grp-filter__tab:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.grp-filter__count {
+  margin-left: 5px;
+  color: var(--text-muted);
+}
+.grp-filter__tab--on .grp-filter__count {
+  color: var(--accent);
+}
 .grp-placement {
   display: inline-flex;
   align-items: center;
