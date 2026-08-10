@@ -307,6 +307,8 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
     target_bundle_id: null,
     target_bundle_title: null,
     create_new_bundle: true,
+    target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.9,
     reason: 'matching synthetic filenames',
     files: [
@@ -435,6 +437,8 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
     directory: 'Settled',
     parent_proposal_id: null,
     target_bundle_id: null,
+    target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.9,
     reason: 'old plan',
     files: [
@@ -551,6 +555,8 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_id: null,
       target_bundle_title: null,
       create_new_bundle: false,
+      target_collection_id: null as string | null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'holds related bundles',
       files: [],
@@ -565,6 +571,8 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_id: null,
       target_bundle_title: null,
       create_new_bundle: false,
+      target_collection_id: null as string | null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'same filename stem',
       files: [
@@ -670,6 +678,8 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     target_bundle_id: 'existing-ui',
     target_bundle_title: targetTitle,
     create_new_bundle: createNewBundle,
+    target_collection_id: null,
+    is_collection_context: false,
     confidence: 0.8,
     reason: 'add 2 new file(s) to existing bundle',
     files: [
@@ -820,6 +830,272 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   expect(destinationWrites).toEqual([true, false])
 })
 
+test('grouping placement uses a bounded searchable collection tree', async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 760 })
+  await mockApi(page)
+  const draftHierarchy = [
+    {
+      id: 'draft-archive',
+      kind: 'container',
+      title: 'Draft Archive',
+      directory: 'Draft Archive',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null as string | null,
+      is_collection_context: false,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+    {
+      id: 'draft-season',
+      kind: 'container',
+      title: 'Draft Season',
+      directory: 'Draft Archive/Draft Season',
+      parent_proposal_id: 'draft-archive' as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null,
+      is_collection_context: false,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+    {
+      id: 'draft-chapter',
+      kind: 'container',
+      title: 'Draft Chapter',
+      directory: 'Draft Archive/Draft Season/Draft Chapter',
+      parent_proposal_id: 'draft-season' as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null,
+      is_collection_context: false,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+  ]
+  const currentHierarchy = [
+    {
+      id: 'archive',
+      parent_id: null as string | null,
+      name: 'Archive',
+      note: null,
+      cover_bundle_id: null,
+      sort_order: 0,
+      created_at: '2026-08-09T00:00:00Z',
+      updated_at: '2026-08-09T00:00:00Z',
+      version: 1,
+    },
+    {
+      id: 'seasons',
+      parent_id: 'archive' as string | null,
+      name: 'Seasons',
+      note: null,
+      cover_bundle_id: null,
+      sort_order: 0,
+      created_at: '2026-08-09T00:00:00Z',
+      updated_at: '2026-08-09T00:00:00Z',
+      version: 1,
+    },
+    {
+      id: 'chapter-blue',
+      parent_id: 'seasons' as string | null,
+      name: 'Chapter Blue',
+      note: null,
+      cover_bundle_id: null,
+      sort_order: 0,
+      created_at: '2026-08-09T00:00:00Z',
+      updated_at: '2026-08-09T00:00:00Z',
+      version: 1,
+    },
+  ]
+  const fillerCollections = Array.from({ length: 28 }, (_, index) => ({
+    id: `shelf-${index + 1}`,
+    parent_id: null as string | null,
+    name: `Shelf ${String(index + 1).padStart(2, '0')}`,
+    note: null,
+    cover_bundle_id: null,
+    sort_order: index + 1,
+    created_at: '2026-08-09T00:00:00Z',
+    updated_at: '2026-08-09T00:00:00Z',
+    version: 1,
+  }))
+  const persistedCollections = [...currentHierarchy, ...fillerCollections]
+  const sampleBundle = {
+    id: 'sample-bundle',
+    kind: 'bundle',
+    title: 'Sample Clip',
+    directory: 'Draft Archive/Draft Season/Draft Chapter',
+    parent_proposal_id: 'draft-chapter' as string | null,
+    target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: true,
+    target_collection_id: null as string | null,
+    is_collection_context: false,
+    confidence: 0.95,
+    reason: 'synthetic filename match',
+    files: [
+      {
+        asset_file_id: 'sample-file',
+        relative_path: 'Draft Archive/Draft Season/Draft Chapter/sample.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  let proposals = [...draftHierarchy, sampleBundle]
+  const parentWrites: Array<{
+    parent_proposal_id: string | null
+    target_collection_id: string | null
+  }> = []
+
+  await page.route('**/collections?*', (route) =>
+    route.fulfill({ json: { items: persistedCollections, next_cursor: null } }),
+  )
+
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-placement',
+          status: 'open',
+          rule_version: 5,
+          generated_at: '2026-08-09T00:00:00Z',
+          applied_at: null,
+          proposal_count: proposals.length,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-placement', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-placement',
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: null,
+        stem_modes: {},
+        generated_at: '2026-08-09T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan-placement/proposals/sample-bundle/parent', (route) => {
+    const payload = route.request().postDataJSON() as {
+      parent_proposal_id: string | null
+      target_collection_id: string | null
+    }
+    parentWrites.push(payload)
+
+    let parentProposalId = payload.parent_proposal_id
+    if (payload.target_collection_id) {
+      const byId = new Map(persistedCollections.map((collection) => [collection.id, collection]))
+      const path: typeof persistedCollections = []
+      let current = byId.get(payload.target_collection_id)
+      while (current) {
+        path.push(current)
+        current = current.parent_id ? byId.get(current.parent_id) : undefined
+      }
+      parentProposalId = null
+      for (const collection of path.reverse()) {
+        let context = proposals.find((proposal) => proposal.target_collection_id === collection.id)
+        if (!context) {
+          context = {
+            id: `context-${collection.id}`,
+            kind: 'container',
+            title: collection.name,
+            directory: `@existing-collection/${collection.id}`,
+            parent_proposal_id: parentProposalId,
+            target_bundle_id: null,
+            target_bundle_title: null,
+            create_new_bundle: false,
+            target_collection_id: collection.id,
+            is_collection_context: true,
+            confidence: 1,
+            reason: 'existing collection',
+            files: [],
+          }
+          proposals = [...proposals, context]
+        }
+        context.parent_proposal_id = parentProposalId
+        parentProposalId = context.id
+      }
+    }
+    sampleBundle.parent_proposal_id = parentProposalId
+    return route.fulfill({
+      json: {
+        id: 'plan-placement',
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: null,
+        stem_modes: {},
+        generated_at: '2026-08-09T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+
+  const anchor = page.getByRole('button', {
+    name: 'Placement for bundle suggestion Sample Clip',
+  })
+  await expect(anchor.locator('.grp-placement__label')).toHaveText('Suggested: Draft Chapter')
+  await anchor.click()
+
+  const panel = page.getByRole('dialog', { name: 'Place bundle suggestion Sample Clip' })
+  await expect(
+    panel.getByRole('option', {
+      name: 'Draft Archive / Draft Season / Draft Chapter',
+      exact: true,
+    }),
+  ).toHaveCount(0)
+  const nested = panel.getByRole('option', {
+    name: 'Archive / Seasons / Chapter Blue',
+    exact: true,
+  })
+  await expect(nested).toContainText('Chapter Blue')
+  await expect(nested).not.toContainText('Archive / Seasons')
+  const panelBox = await panel.boundingBox()
+  if (!panelBox) throw new Error('missing grouping placement panel geometry')
+  expect(panelBox.height).toBeLessThanOrEqual(520)
+  expect(panelBox.y).toBeGreaterThanOrEqual(0)
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(760)
+  expect(await panel.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+
+  await panel.getByRole('button', { name: 'Collapse destination Archive' }).click()
+  await expect(panel.getByRole('option', { name: 'Archive / Seasons', exact: true })).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Expand destination Archive' }).click()
+  await expect(panel.getByRole('option', { name: 'Archive / Seasons', exact: true })).toBeVisible()
+
+  const search = panel.getByRole('textbox', { name: 'Search collection destinations' })
+  await search.fill('Chapter Blue')
+  const result = panel.getByRole('option', {
+    name: 'Archive / Seasons / Chapter Blue',
+    exact: true,
+  })
+  await expect(result).toContainText('Chapter Blue')
+  await expect(result.locator('.pick-row__parent')).toHaveText('Seasons')
+  await expect(result).not.toContainText('Archive / Seasons')
+
+  await search.fill('Archive')
+  await search.press('Enter')
+  await expect
+    .poll(() => parentWrites)
+    .toEqual([{ parent_proposal_id: null, target_collection_id: 'archive' }])
+  await expect(anchor.locator('.grp-placement__label')).toHaveText('Archive')
+})
+
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
   await mockApi(page)
   const proposals = [
@@ -830,6 +1106,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: '',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.9,
       reason: 'shared directory',
       files: [],
@@ -841,6 +1119,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: 'SRCV-005',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.95,
       reason: 'same filename stem',
       files: [
@@ -871,6 +1151,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: 'Extras',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
+      is_collection_context: false,
       confidence: 0.8,
       reason: 'same directory',
       files: [
@@ -934,11 +1216,26 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     return route.fulfill({ json: [source, target] })
   })
   await page.route('**/grouping/plans/plan1/proposals/proposal1/parent', (route) => {
-    const bundleParent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
-      .parent_proposal_id
+    const bundleParent = (
+      route.request().postDataJSON() as {
+        parent_proposal_id: string | null
+        target_collection_id: string | null
+      }
+    ).parent_proposal_id
     bundleParents.push(bundleParent)
     proposals[1].parent_proposal_id = bundleParent
-    return route.fulfill({ json: proposals[1] })
+    return route.fulfill({
+      json: {
+        id: 'plan1',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: 'job1',
+        stem_modes: {},
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    })
   })
 
   await page.goto('/')
@@ -984,11 +1281,23 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await bundleHandle.dispatchEvent('dragend', { dataTransfer: collectionTransfer })
   await collectionTransfer.dispose()
   await expect.poll(() => bundleParents).toEqual(['collection1'])
-  const collectionCheckbox = page.getByRole('checkbox', { name: 'Accept Favorites' })
+  const collectionCheckbox = page.getByRole('checkbox', {
+    name: 'Select bundles in Favorites',
+  })
   await expect(collectionCheckbox).toBeChecked()
   await expect(
     collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),
   ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Collapse collection suggestion Favorites' }).click()
+  await expect(bundleHandle).toBeHidden()
+  await expect(page.getByText('1 bundle selected')).toBeVisible()
+  await page.getByRole('button', { name: 'Expand collection suggestion Favorites' }).click()
+  await expect(bundleHandle).toBeVisible()
+
+  await page.getByRole('button', { name: 'Collapse bundle suggestion SRCV-005 - cut' }).click()
+  await expect(targetList).toBeHidden()
+  await expect(bundleHandle).toBeVisible()
 
   const rootTarget = page.locator('.grp-root-drop')
   const rootTransfer = await page.evaluateHandle(() => new DataTransfer())
@@ -1001,6 +1310,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await expect.poll(() => bundleParents).toEqual(['collection1', null])
   await expect(collectionCheckbox).not.toBeChecked()
   await expect(collectionCheckbox).toBeDisabled()
+  await page.getByRole('button', { name: 'Expand all' }).click()
+  await expect(targetList).toBeVisible()
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {

@@ -58,12 +58,12 @@ desktop-only Settings page maps each server library to its local/SMB mount after
 matching the portable manifest UUID; mapped files gain safe reveal/default-app
 actions plus drag-out to Finder and reverse-mapped drag-in, while browser and
 unmapped-library behavior remain unchanged.
-Important follow-ups
-include grouping bundle/container reclassification, File Browser write mode with
-drag-in copy-into-library, cross-filesystem repair candidates, and token
-rotation/expiry policy. Job progress bars, large-library browse indexing,
-whole-library indexed text search (SQLite FTS5), media fallback/transcoding,
-and pinyin matching in local tag/collection and file pickers are implemented.
+Important follow-ups include cross-filesystem repair candidates and token
+rotation/expiry policy. Bundle/container reclassification and File Browser
+write-mode drag-in copy are implemented. Job progress bars, large-library browse
+indexing, whole-library indexed text search (SQLite FTS5), media
+fallback/transcoding, and pinyin matching in local tag/collection and file
+pickers are implemented.
 See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
 recommended next tasks.
 

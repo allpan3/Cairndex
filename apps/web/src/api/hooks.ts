@@ -996,21 +996,24 @@ export function useMoveGroupingProposalFile(planId: string | null) {
   })
 }
 
-/** Reparent one reviewed bundle and update the open plan in-place. */
+/** Reparent reviewed bundle or new collection work in the open plan */
 export function useReparentGroupingProposal(planId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
       proposalId,
       parentProposalId,
+      targetCollectionId,
     }: {
       proposalId: string
       parentProposalId: string | null
+      targetCollectionId: string | null
     }) => {
       if (!planId) throw new Error('no grouping plan selected')
-      return reparentGroupingProposal(planId, proposalId, parentProposalId)
+      return reparentGroupingProposal(planId, proposalId, parentProposalId, targetCollectionId)
     },
-    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
+    // A persisted destination can materialize or prune structural context rows
+    onSuccess: (plan) => qc.setQueryData<GroupingPlan>(['grouping-plan', planId], plan),
   })
 }
 

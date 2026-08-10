@@ -14,6 +14,7 @@ the whole plan or silently overriding a confirmed user decision.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
+    CONTEXT_DIRECTORY_PREFIX,
     FileAvailability,
     FileRole,
     GroupingPlanStatus,
@@ -82,14 +84,40 @@ def apply_plan(
         unknown_ids = proposal_ids - known_ids
         if unknown_ids:
             raise ConflictError("one or more selected grouping proposals no longer exist")
-    proposals = [p for p in all_proposals if proposal_ids is None or p.id in proposal_ids]
+    selected_bundles = [
+        proposal
+        for proposal in all_proposals
+        if proposal.kind is ProposalKind.BUNDLE
+        and (proposal_ids is None or proposal.id in proposal_ids)
+    ]
+    if not selected_bundles:
+        raise ConflictError("select at least one bundle suggestion to accept")
+
+    ancestors_by_bundle = _container_ancestors(all_proposals, selected_bundles)
+    structural_containers = _unique_containers(ancestors_by_bundle.values())
+    invalid_containers = _invalid_collection_targets(
+        session, all_proposals, structural_containers, result
+    )
+    # A bundle under a stale existing-collection path is skipped, but the conflict
+    # above names the *container*. Report the skip against the row the owner
+    # actually selected too, or the result panel says "0 confirmed" with nothing
+    # attached to anything they checked.
+    bundles: list[GroupingProposal] = []
+    for proposal in selected_bundles:
+        blocked = any(
+            ancestor.id in invalid_containers for ancestor in ancestors_by_bundle[proposal.id]
+        )
+        if blocked:
+            result.conflicts.append(
+                _conflict(proposal, "its collection destination is no longer valid")
+            )
+        else:
+            bundles.append(proposal)
     target_bundle_by_proposal: dict[str, str] = {}
     source_bundles: set[AssetBundle] = set()
 
     # 1) Bundles first, so containers can reference the resulting bundles.
-    for proposal in proposals:
-        if proposal.kind is not ProposalKind.BUNDLE:
-            continue
+    for proposal in bundles:
         if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
             outcome = _apply_addition(session, proposal, result, source_bundles)
         else:
@@ -98,24 +126,34 @@ def apply_plan(
             target_bundle_by_proposal[proposal.id] = outcome.target_bundle_id
     _cleanup_sources(session, source_bundles, result)
 
-    # 2) Containers, parent-first (shallower directories first), creating the
-    #    logical collections and nesting child collections under parents.
+    # 2) Resolve only the structural ancestors of bundles that actually applied
+    applied_bundles = [proposal for proposal in bundles if proposal.id in target_bundle_by_proposal]
+    applied_ancestors = _container_ancestors(all_proposals, applied_bundles)
+    containers = _unique_containers(applied_ancestors.values())
     collection_by_proposal: dict[str, str] = {}
-    containers = [p for p in proposals if p.kind is ProposalKind.CONTAINER]
-    for proposal in sorted(containers, key=lambda p: p.directory.count("/")):
-        parent_collection_id = (
-            collection_by_proposal.get(proposal.parent_proposal_id)
-            if proposal.parent_proposal_id is not None
-            else None
-        )
-        collection, created = _ensure_collection(session, proposal, parent_collection_id)
+    for proposal in _parent_first(containers):
+        if (
+            proposal.parent_proposal_id is not None
+            and proposal.parent_proposal_id not in collection_by_proposal
+        ):
+            result.conflicts.append(
+                _conflict(proposal, "the parent collection could not be resolved")
+            )
+            continue
+        parent_collection_id = collection_by_proposal.get(proposal.parent_proposal_id or "")
+        collection, created, reason = _ensure_collection(session, proposal, parent_collection_id)
+        if collection is None:
+            result.conflicts.append(
+                _conflict(proposal, reason or "collection could not be resolved")
+            )
+            continue
         collection_by_proposal[proposal.id] = collection.id
         if created:
             result.collections_created += 1
 
     # 3) Wire bundle membership: each bundle joins its container's collection.
-    for proposal in proposals:
-        if proposal.kind is not ProposalKind.BUNDLE or proposal.parent_proposal_id is None:
+    for proposal in applied_bundles:
+        if proposal.parent_proposal_id is None:
             continue
         collection_id = collection_by_proposal.get(proposal.parent_proposal_id)
         bundle_id = target_bundle_by_proposal.get(proposal.id)
@@ -124,10 +162,114 @@ def apply_plan(
         if _add_bundle_to_collection(session, bundle_id, collection_id):
             result.bundles_added_to_collections += 1
 
-    plan.status = GroupingPlanStatus.APPLIED
-    plan.applied_at = utcnow()
+    # Only a plan that actually confirmed something is closed. A plan whose every
+    # selected bundle was blocked (a stale collection path, a vanished file) has
+    # confirmed nothing, and closing it would strand every rename, destination
+    # switch, and placement the owner made in it: an applied plan can never be
+    # reopened or re-selected, so the only way forward would be to regenerate and
+    # lose the lot. Partial success still closes the plan, which is the settled
+    # behaviour the selected-accept and missing-file tests pin.
+    if target_bundle_by_proposal:
+        plan.status = GroupingPlanStatus.APPLIED
+        plan.applied_at = utcnow()
     session.flush()
     return result
+
+
+# Resolve every structural collection ancestor of the selected bundle work
+def _container_ancestors(
+    all_proposals: list[GroupingProposal], bundles: list[GroupingProposal]
+) -> dict[str, list[GroupingProposal]]:
+    """Return each bundle's root-to-leaf collection proposal path."""
+    by_id = {proposal.id: proposal for proposal in all_proposals}
+    result: dict[str, list[GroupingProposal]] = {}
+    for bundle in bundles:
+        path: list[GroupingProposal] = []
+        seen: set[str] = set()
+        parent_id = bundle.parent_proposal_id
+        while parent_id is not None:
+            if parent_id in seen:
+                raise ConflictError("grouping proposal collection hierarchy contains a cycle")
+            seen.add(parent_id)
+            parent = by_id.get(parent_id)
+            if parent is None or parent.kind is not ProposalKind.CONTAINER:
+                raise ConflictError("grouping proposal has an invalid collection parent")
+            path.append(parent)
+            parent_id = parent.parent_proposal_id
+        result[bundle.id] = list(reversed(path))
+    return result
+
+
+# Collapse per-bundle paths to one stable set of needed collection proposals
+def _unique_containers(
+    paths: Iterable[list[GroupingProposal]],
+) -> list[GroupingProposal]:
+    """Deduplicate collection paths without losing plan order."""
+    unique: dict[str, GroupingProposal] = {}
+    for path in paths:
+        for proposal in path:
+            unique.setdefault(proposal.id, proposal)
+    return list(unique.values())
+
+
+# Sort edited collection hierarchies by proposal ancestry rather than file paths
+def _parent_first(containers: list[GroupingProposal]) -> list[GroupingProposal]:
+    """Order collection proposals so every included parent resolves first."""
+    by_id = {proposal.id: proposal for proposal in containers}
+    depths: dict[str, int] = {}
+
+    def depth(proposal: GroupingProposal, visiting: set[str]) -> int:
+        if proposal.id in depths:
+            return depths[proposal.id]
+        if proposal.id in visiting:
+            raise ConflictError("grouping proposal collection hierarchy contains a cycle")
+        parent = by_id.get(proposal.parent_proposal_id or "")
+        value = 0 if parent is None else depth(parent, {*visiting, proposal.id}) + 1
+        depths[proposal.id] = value
+        return value
+
+    return sorted(
+        containers,
+        key=lambda proposal: (depth(proposal, set()), proposal.sort_order, proposal.id),
+    )
+
+
+# Read a stable collection target, including the marker used by legacy open plans
+def _target_collection_id(proposal: GroupingProposal) -> str | None:
+    if proposal.target_collection_id is not None:
+        return proposal.target_collection_id
+    prefix = CONTEXT_DIRECTORY_PREFIX
+    return proposal.directory[len(prefix) :] if proposal.directory.startswith(prefix) else None
+
+
+# Fail stale existing-collection paths before confirming their selected bundles
+def _invalid_collection_targets(
+    session: Session,
+    all_proposals: list[GroupingProposal],
+    containers: list[GroupingProposal],
+    result: ApplyResult,
+) -> set[str]:
+    """Validate stable existing collection identities without creating anything."""
+    by_id = {proposal.id: proposal for proposal in all_proposals}
+    invalid: set[str] = set()
+    for proposal in _parent_first(containers):
+        target_id = _target_collection_id(proposal)
+        if target_id is None:
+            continue
+        parent = by_id.get(proposal.parent_proposal_id or "")
+        expected_parent_id = _target_collection_id(parent) if parent is not None else None
+        target = session.get(Collection, target_id)
+        if target is None:
+            reason = "the existing collection no longer exists"
+        elif parent is not None and expected_parent_id is None:
+            reason = "an existing collection cannot be nested under a new collection suggestion"
+        elif target.parent_id != expected_parent_id:
+            reason = "the existing collection hierarchy changed after this plan was generated"
+        else:
+            continue
+        invalid.add(proposal.id)
+        result.conflicts.append(_conflict(proposal, reason))
+    return invalid
 
 
 def _apply_bundle(
@@ -276,14 +418,24 @@ def _apply_addition(
     role_by_id = {pf.asset_file_id: pf.proposed_role for pf in proposal.files}
     base_sequence = max((row.sequence for row in target.files), default=-1) + 1
     moved = 0
+    # Counted apart from ``moved`` so "nothing left to do" can be told from
+    # "nothing could be done" — see the return below.
+    already_present = 0
     for offset, pf in enumerate(proposal.files):
         row = session.get(AssetFile, pf.asset_file_id)
         if row is None:
             result.conflicts.append(_conflict(proposal, "a file to add no longer exists"))
             continue
         if row.bundle_id == target.id:
+            already_present += 1
             continue  # already added (idempotent)
-        if row.bundle.grouping_state is GroupingState.CONFIRMED and not proposal.owner_edited:
+        # ``membership_edited``, not ``owner_edited``: taking a file out of a
+        # confirmed bundle is licensed only by the owner explicitly moving it here.
+        # ``owner_edited`` is also set by renaming a suggestion and, before this,
+        # by choosing where it is filed — so one click in the placement picker
+        # silently disarmed this guard, against ADR-0009 §5's promise that a
+        # confirmed bundle is never silently re-split or merged.
+        if row.bundle.grouping_state is GroupingState.CONFIRMED and not proposal.membership_edited:
             result.conflicts.append(
                 _conflict(
                     proposal, "a file to add was already grouped into another confirmed bundle"
@@ -298,7 +450,12 @@ def _apply_addition(
         moved += 1
 
     if moved == 0:
-        return _BundleOutcome(target.id)
+        # Re-applying a settled addition is a clean no-op and must still report the
+        # target, or step 2 would drop its collection ancestors. An addition where
+        # *every* file conflicted applied nothing, so it must not: reporting a
+        # target there created the proposal's collections for work that never
+        # happened, and filed the untouched confirmed bundle into them.
+        return _BundleOutcome(target.id if already_present else None)
     result.files_added_to_bundles += moved
     session.flush()
     result.subtitles_linked += len(auto_link_external_subtitles(session, target.id))
@@ -321,7 +478,20 @@ def _bundle_holds_exactly(session: Session, bundle_id: str, file_ids: set[str]) 
 
 def _ensure_collection(
     session: Session, proposal: GroupingProposal, parent_collection_id: str | None
-) -> tuple[Collection, bool]:
+) -> tuple[Collection | None, bool, str | None]:
+    target_id = _target_collection_id(proposal)
+    if target_id is not None:
+        target = session.get(Collection, target_id)
+        if target is None:
+            return None, False, "the existing collection no longer exists"
+        if target.parent_id != parent_collection_id:
+            return (
+                None,
+                False,
+                "the existing collection hierarchy changed after this plan was generated",
+            )
+        return target, False, None
+
     name = (proposal.title or proposal.directory.rsplit("/", 1)[-1] or "Untitled").strip()
     existing = session.scalar(
         select(Collection).where(
@@ -329,11 +499,11 @@ def _ensure_collection(
         )
     )
     if existing is not None:
-        return existing, False
+        return existing, False, None
     collection = Collection(name=name, parent_id=parent_collection_id)
     session.add(collection)
     session.flush()
-    return collection, True
+    return collection, True, None
 
 
 def _add_bundle_to_collection(session: Session, bundle_id: str, collection_id: str) -> bool:

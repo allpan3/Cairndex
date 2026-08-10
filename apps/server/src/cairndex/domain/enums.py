@@ -150,6 +150,18 @@ class ProposalKind(StrEnum):
     CONTAINER = "container"
 
 
+# Marker path used by a synthesized context node standing in for a live
+# collection, which has no filesystem directory of its own. Defined once so the
+# suggester, the plan store, apply, and the additive-column backfills cannot
+# disagree about its spelling or its length.
+CONTEXT_DIRECTORY_PREFIX = "@existing-collection/"
+
+
+def context_directory(collection_id: str) -> str:
+    """The marker path for a context node standing in for ``collection_id``."""
+    return f"{CONTEXT_DIRECTORY_PREFIX}{collection_id}"
+
+
 class GroupingPlanStatus(StrEnum):
     """Lifecycle of a durable grouping plan (ADR-0009).
 

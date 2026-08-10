@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 
 import type {
+  CollectionRead,
   GroupingApplyResult,
   GroupingPlan,
   GroupingProposal,
@@ -18,6 +19,7 @@ import type {
 } from '../api/client'
 import {
   useApplyGroupingPlan,
+  useCollections,
   useGenerateGroupingPlan,
   useGroupingPlan,
   useGroupingPlans,
@@ -29,7 +31,9 @@ import {
   useSetGroupingStemMode,
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
+import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
 import {
+  IconChevron,
   IconChevronsIn,
   IconChevronsOut,
   IconFolder,
@@ -230,7 +234,7 @@ interface KindControls {
 
 type ReviewDragItem =
   | { kind: 'file'; proposalId: string; assetFileId: string }
-  | { kind: 'bundle'; proposalId: string }
+  | { kind: 'proposal'; proposalId: string; proposalKind: 'bundle' | 'container' }
 
 type ReviewDropSlot =
   | { kind: 'file'; proposalId: string; assetFileId: string; before: boolean }
@@ -245,11 +249,29 @@ interface DragControls {
   item: ReviewDragItem | null
   slot: ReviewDropSlot | null
   startFile: (event: DragEvent, proposalId: string, assetFileId: string) => void
-  startBundle: (event: DragEvent, proposalId: string) => void
+  startProposal: (event: DragEvent, proposal: GroupingProposal) => void
   hover: (slot: ReviewDropSlot) => void
   dropFile: (targetProposalId: string, targetIndex: number) => void
-  dropBundle: (parentProposalId: string | null) => void
+  canDropProposal: (parentProposalId: string | null) => boolean
+  dropProposal: (parentProposalId: string | null) => void
   end: () => void
+}
+
+/** Coordinate explicit keyboard-accessible placement of reviewed proposals */
+interface PlacementControls {
+  canEdit: boolean
+  pending: boolean
+  loading: boolean
+  error: boolean
+  options: GroupingPlacementOption[]
+  proposals: Map<string, GroupingProposal>
+  setCollection: (proposal: GroupingProposal, targetCollectionId: string | null) => void
+}
+
+/** Coordinate view-only folding across the recursive proposal tree */
+interface FoldControls {
+  collapsed: ReadonlySet<string>
+  set: (key: string, collapsed: boolean) => void
 }
 
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
@@ -266,10 +288,6 @@ function buildTree(proposals: GroupingProposal[]): TreeNode[] {
       children: make(proposal.id),
     }))
   return make(null)
-}
-
-function collectIds(nodes: TreeNode[]): string[] {
-  return nodes.flatMap((node) => [node.proposal.id, ...collectIds(node.children)])
 }
 
 /**
@@ -304,6 +322,106 @@ function collectKeys(nodes: TreeNode[]): Map<string, string> {
   }
   visit(nodes)
   return keys
+}
+
+/** Collect every proposal with content that can be folded.
+ *
+ * Keyed by proposal **id**, not by ``proposalKey``. The content key exists so a
+ * checkbox survives a regeneration that reissues ids, and it deliberately
+ * collides for rows with the same content — but folding needs to address one
+ * row. Two file-less bundles both key to `b::`, and a bundle converted to a
+ * collection keeps its parent's directory so both key to the same `c:<dir>`, so
+ * a shared key made two rows collapse as one and hid the row that was clicked
+ * inside its own collapsed ancestor. Folds reset when ids change, which is
+ * right: those rows are genuinely new.
+ */
+function collectFoldKeys(nodes: TreeNode[]): string[] {
+  const keys = new Set<string>()
+  const visit = (items: TreeNode[]) => {
+    for (const node of items) {
+      if (node.proposal.kind === 'bundle' || node.children.length > 0) {
+        keys.add(node.proposal.id)
+      }
+      visit(node.children)
+    }
+  }
+  visit(nodes)
+  return [...keys]
+}
+
+/** Collect only file-backed bundle rows; collection rows are structural paths */
+function collectBundleIds(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((node) => [
+    ...(node.proposal.kind === 'bundle' && node.proposal.files.length > 0
+      ? [node.proposal.id]
+      : []),
+    ...collectBundleIds(node.children),
+  ])
+}
+
+/** Aggregate actionable bundle selection below one review node */
+interface NodeSelection {
+  total: number
+  selected: number
+}
+
+/** Compute checked/empty/mixed state from each node's actionable bundles */
+function selectionByNode(nodes: TreeNode[], selectedIds: Set<string>): Map<string, NodeSelection> {
+  const result = new Map<string, NodeSelection>()
+  const visit = (node: TreeNode): NodeSelection => {
+    const own =
+      node.proposal.kind === 'bundle' && node.proposal.files.length > 0
+        ? { total: 1, selected: selectedIds.has(node.proposal.id) ? 1 : 0 }
+        : { total: 0, selected: 0 }
+    const state = node.children.reduce((sum, child) => {
+      const childState = visit(child)
+      return {
+        total: sum.total + childState.total,
+        selected: sum.selected + childState.selected,
+      }
+    }, own)
+    result.set(node.proposal.id, state)
+    return state
+  }
+  for (const node of nodes) visit(node)
+  return result
+}
+
+/** Build picker destinations from the library's current persisted collections */
+function collectionPlacementOptions(collections: CollectionRead[]): GroupingPlacementOption[] {
+  const byId = new Map(collections.map((collection) => [collection.id, collection]))
+  return collections.map((collection) => {
+    const names: string[] = []
+    const seen = new Set<string>()
+    let current: CollectionRead | undefined = collection
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id)
+      names.push(current.name)
+      current = current.parent_id ? byId.get(current.parent_id) : undefined
+    }
+    return {
+      id: collection.id,
+      parent_id: collection.parent_id,
+      name: collection.name,
+      path: names.reverse().join(' / '),
+    }
+  })
+}
+
+/** Describe a proposal's ancestry for the placement anchor only */
+function proposalPlacementPath(
+  proposal: GroupingProposal,
+  proposals: Map<string, GroupingProposal>,
+): string {
+  const names: string[] = []
+  const seen = new Set<string>()
+  let current: GroupingProposal | undefined = proposal
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id)
+    names.push(proposalDisplayTitle(current))
+    current = current.parent_proposal_id ? proposals.get(current.parent_proposal_id) : undefined
+  }
+  return names.reverse().join(' / ')
 }
 
 /** The folder one file lives in, from its library-relative path. */
@@ -374,18 +492,13 @@ function stemControlOwners(nodes: TreeNode[]): Map<string, string> {
   return owners
 }
 
-/** Determine whether a proposal still contains any file-backed item. */
-function nodeHasItems(node: TreeNode): boolean {
-  return node.proposal.kind === 'bundle'
-    ? node.proposal.files.length > 0
-    : node.children.some(nodeHasItems)
-}
-
-/** Collect suggestions that became empty after a review drag. */
-function collectEmptyIds(nodes: TreeNode[]): string[] {
+/** Collect bundle suggestions that became empty after a review drag */
+function collectEmptyBundleIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [
-    ...(nodeHasItems(node) ? [] : [node.proposal.id]),
-    ...collectEmptyIds(node.children),
+    ...(node.proposal.kind === 'bundle' && node.proposal.files.length === 0
+      ? [node.proposal.id]
+      : []),
+    ...collectEmptyBundleIds(node.children),
   ])
 }
 
@@ -621,7 +734,7 @@ function ProposalTitle({
   const displayTitle = proposalDisplayTitle(proposal)
   const kindLabel = proposal.kind === 'container' ? 'collection' : 'bundle'
   const inputLabel = `${kindLabel[0]?.toUpperCase()}${kindLabel.slice(1)} suggestion title`
-  const editable = rename.canEdit && !isAddition
+  const editable = rename.canEdit && !isAddition && !proposal.is_collection_context
   if (editable && rename.editingId === proposal.id) {
     return <ProposalTitleEditor proposal={proposal} inputLabel={inputLabel} rename={rename} />
   }
@@ -651,88 +764,233 @@ function ProposalTitle({
   return <span className="grp-title">{displayTitle}</span>
 }
 
+/** Render a native three-state checkbox for one proposal subtree */
+function ProposalCheckbox({
+  checked,
+  mixed,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  mixed: boolean
+  disabled: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = mixed
+  }, [mixed])
+  return (
+    <input
+      ref={ref}
+      className="grp-check"
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      aria-checked={mixed ? 'mixed' : checked}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+      aria-label={label}
+    />
+  )
+}
+
+/** Make a proposal's collection placement explicit and keyboard accessible */
+function ProposalPlacement({
+  proposal,
+  placement,
+}: {
+  proposal: GroupingProposal
+  placement: PlacementControls
+}) {
+  const kind = proposal.kind === 'container' ? 'collection' : 'bundle'
+  const title = proposalDisplayTitle(proposal)
+  const parent = proposal.parent_proposal_id
+    ? placement.proposals.get(proposal.parent_proposal_id)
+    : undefined
+  const currentId = parent ? (parent.target_collection_id ?? undefined) : null
+  const suggestedParent = parent && parent.target_collection_id === null ? parent : undefined
+  const persistedParent = parent?.target_collection_id ? parent : undefined
+  return (
+    <GroupingPlacementPicker
+      kind={kind}
+      title={title}
+      currentId={currentId}
+      currentLabel={
+        suggestedParent
+          ? `Suggested: ${proposalDisplayTitle(suggestedParent)}`
+          : persistedParent
+            ? proposalDisplayTitle(persistedParent)
+            : undefined
+      }
+      currentPath={
+        suggestedParent
+          ? `Suggested: ${proposalPlacementPath(suggestedParent, placement.proposals)}`
+          : persistedParent
+            ? proposalPlacementPath(persistedParent, placement.proposals)
+            : undefined
+      }
+      options={placement.options}
+      disabled={!placement.canEdit || placement.pending}
+      loading={placement.loading}
+      error={placement.error}
+      onChange={(targetCollectionId) => placement.setCollection(proposal, targetCollectionId)}
+    />
+  )
+}
+
+/** Render one disclosure triangle without starting the draggable parent row */
+function ProposalDisclosure({
+  subject,
+  collapsed,
+  collapsible,
+  onToggle,
+}: {
+  subject: string
+  collapsed: boolean
+  collapsible: boolean
+  onToggle: () => void
+}) {
+  if (!collapsible) return <span className="grp-disclosure-spacer" aria-hidden="true" />
+  const action = collapsed ? 'Expand' : 'Collapse'
+  return (
+    <button
+      type="button"
+      className="grp-disclosure"
+      aria-expanded={!collapsed}
+      aria-label={`${action} ${subject}`}
+      title={`${action} ${subject}`}
+      draggable={false}
+      // Read by the row's own dragstart handler, which is where a press that
+      // began here has to be rejected — see ``startProposalDrag``.
+      data-no-row-drag=""
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+    >
+      <IconChevron open={!collapsed} />
+    </button>
+  )
+}
+
 function ProposalNode({
   node,
-  selectedIds,
+  selection,
   onToggle,
   rename,
   drag,
+  placement,
   destination,
   stem,
   stemOwners,
   kind,
+  fold,
   parent,
 }: {
   node: TreeNode
-  selectedIds: Set<string>
+  selection: Map<string, NodeSelection>
   onToggle: (node: TreeNode, checked: boolean) => void
   rename: RenameControls
   drag: DragControls
+  placement: PlacementControls
   destination: DestinationControls
   stem: StemControls
   stemOwners: Map<string, string>
   kind: KindControls
+  fold: FoldControls
   /** The enclosing suggestion, which decides whether a single-subject bundle is
    * offered the collection override (see ``canBecomeCollection``). */
   parent?: GroupingProposal
 }) {
   const { proposal, children } = node
-  const checked = selectedIds.has(proposal.id)
-  const hasItems = nodeHasItems(node)
+  const selectionState = selection.get(proposal.id) ?? { total: 0, selected: 0 }
+  const checked = selectionState.total > 0 && selectionState.selected === selectionState.total
+  const mixed = selectionState.selected > 0 && !checked
+  const hasItems = selectionState.total > 0
+  // By id, so two rows with identical content still fold independently — see
+  // ``collectFoldKeys``.
+  const foldKey = proposal.id
+  const collapsed = fold.collapsed.has(foldKey)
   if (proposal.kind === 'container') {
     const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
+    const movable = !proposal.is_collection_context
     return (
       <li className="grp-node grp-node--container">
         <div
-          className={`grp-row grp-row--collection${isDropTarget ? ' grp-row--drop' : ''}`}
+          className={`grp-row grp-row--collection${movable ? ' grp-row--draggable' : ''}${isDropTarget ? ' grp-row--drop' : ''}`}
+          draggable={movable && drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
+          onDragStart={(event) => drag.startProposal(event, proposal)}
+          onDragEnd={drag.end}
           onDragOver={(event) => {
-            if (drag.item?.kind !== 'bundle') return
+            if (drag.item?.kind !== 'proposal' || !drag.canDropProposal(proposal.id)) return
             event.preventDefault()
             event.stopPropagation()
             event.dataTransfer.dropEffect = 'move'
             drag.hover({ kind: 'collection', proposalId: proposal.id })
           }}
           onDrop={(event) => {
-            if (drag.item?.kind !== 'bundle') return
+            if (drag.item?.kind !== 'proposal' || !drag.canDropProposal(proposal.id)) return
             event.preventDefault()
             event.stopPropagation()
-            drag.dropBundle(proposal.id)
+            drag.dropProposal(proposal.id)
           }}
         >
-          <input
-            className="grp-check"
-            type="checkbox"
+          <ProposalDisclosure
+            subject={`collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
+            collapsed={collapsed}
+            collapsible={children.length > 0}
+            onToggle={() => fold.set(foldKey, !collapsed)}
+          />
+          <ProposalCheckbox
             checked={checked}
+            mixed={mixed}
             disabled={!hasItems}
-            onChange={(e) => onToggle(node, e.currentTarget.checked)}
-            aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
+            onChange={(next) => onToggle(node, next)}
+            label={`Select bundles in ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
           <span className="grp-kind">
             <IconFolder />
           </span>
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
-            {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
-            <KindToggle proposal={proposal} kind={kind} />
-            {stemOwners.has(proposal.id) && (
-              <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
+            {proposal.is_collection_context && <span className="grp-existing">Existing</span>}
+            {proposal.reason && !proposal.is_collection_context && (
+              <span className="grp-reason">{proposal.reason}</span>
+            )}
+            {/* Every control below edits the plan, so a read-only context node
+                gets none of them — including the folder's stem pair, which sat
+                outside this guard and let an "Existing" row regenerate rows for
+                a directory it does not even name. */}
+            {!proposal.is_collection_context && (
+              <>
+                <ProposalPlacement proposal={proposal} placement={placement} />
+                <KindToggle proposal={proposal} kind={kind} />
+                {stemOwners.has(proposal.id) && (
+                  <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
+                )}
+              </>
             )}
           </span>
         </div>
         {children.length > 0 && (
-          <ul className="grp-children">
+          <ul className="grp-children" hidden={collapsed}>
             {children.map((c) => (
               <ProposalNode
                 key={c.proposal.id}
                 node={c}
-                selectedIds={selectedIds}
+                selection={selection}
                 onToggle={onToggle}
                 rename={rename}
                 drag={drag}
+                placement={placement}
                 destination={destination}
                 stem={stem}
                 stemOwners={stemOwners}
                 kind={kind}
+                fold={fold}
                 parent={proposal}
               />
             ))}
@@ -752,9 +1010,10 @@ function ProposalNode({
         // The whole row is the drag affordance — the file rows below already
         // worked this way, which is what made their ⠿ handles redundant. Not
         // draggable while this row's title is being renamed: `draggable` on an
-        // ancestor hijacks text selection inside the edit box.
-        draggable={drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
-        onDragStart={(event) => drag.startBundle(event, proposal.id)}
+        // ancestor hijacks text selection inside the edit box, nor while this is
+        // an addition, which has no placement of its own (see below).
+        draggable={drag.canEdit && !drag.pending && rename.editingId !== proposal.id && !isAddition}
+        onDragStart={(event) => drag.startProposal(event, proposal)}
         onDragEnd={drag.end}
         onDragOver={(event) => {
           if (drag.item?.kind !== 'file') return
@@ -770,13 +1029,18 @@ function ProposalNode({
           drag.dropFile(proposal.id, proposal.files.length)
         }}
       >
-        <input
-          className="grp-check"
-          type="checkbox"
+        <ProposalDisclosure
+          subject={`bundle suggestion ${displayTitle}`}
+          collapsed={collapsed}
+          collapsible
+          onToggle={() => fold.set(foldKey, !collapsed)}
+        />
+        <ProposalCheckbox
           checked={checked}
+          mixed={false}
           disabled={!hasItems}
-          onChange={(e) => onToggle(node, e.currentTarget.checked)}
-          aria-label={`Accept ${proposal.title || 'bundle'}`}
+          onChange={(next) => onToggle(node, next)}
+          label={`Accept ${proposal.title || 'bundle'}`}
         />
         {!isAddition && (
           <span className="grp-kind">
@@ -797,6 +1061,14 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
+          {/* An addition has no placement of its own: its files join a bundle
+              that already exists and already sits wherever it sits. Offering the
+              picker here filed that *confirmed* bundle into a second collection
+              — membership is append-only, so nothing moved — while "Top level"
+              did nothing at all and still reported a move. Switching the row to
+              "create a new bundle" clears `isAddition`, and the control returns
+              with a real meaning. */}
+          {!isAddition && <ProposalPlacement proposal={proposal} placement={placement} />}
           {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent) && (
             <KindToggle proposal={proposal} kind={kind} />
           )}
@@ -808,6 +1080,7 @@ function ProposalNode({
       <ul
         className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
         aria-label={`Files in ${displayTitle}`}
+        hidden={collapsed}
         onDragOver={(event) => {
           if (drag.item?.kind !== 'file') return
           event.preventDefault()
@@ -913,6 +1186,7 @@ export function GroupingReview({
   const openPlan = plans.data?.find((p) => p.status === 'open') ?? null
   const planId = chosenId ?? openPlan?.id ?? null
   const plan = useGroupingPlan(planId)
+  const collections = useCollections()
   const generate = useGenerateGroupingPlan()
   const rename = useRenameGroupingProposal(planId)
   const moveProposalFile = useMoveGroupingProposalFile(planId)
@@ -927,6 +1201,7 @@ export function GroupingReview({
   // does not silently re-check everything the owner had unchecked. See
   // ``proposalKey``.
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{
     id: string
     original: string
@@ -939,21 +1214,30 @@ export function GroupingReview({
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
   const stemOwners = useMemo(() => stemControlOwners(tree), [tree])
-  const allProposalIds = useMemo(() => collectIds(tree), [tree])
+  const bundleProposalIds = useMemo(() => collectBundleIds(tree), [tree])
   const keyById = useMemo(() => collectKeys(tree), [tree])
-  const emptyProposalIds = useMemo(() => new Set(collectEmptyIds(tree)), [tree])
-  const selectedIds = useMemo(
-    () =>
-      new Set(
-        allProposalIds.filter(
-          (id) => !deselectedKeys.has(keyById.get(id) ?? id) && !emptyProposalIds.has(id),
-        ),
-      ),
-    [allProposalIds, deselectedKeys, emptyProposalIds, keyById],
+  const foldKeys = useMemo(() => collectFoldKeys(tree), [tree])
+  const placementOptions = useMemo(
+    () => collectionPlacementOptions(collections.data ?? []),
+    [collections.data],
   )
+  const collectionById = useMemo(
+    () => new Map((collections.data ?? []).map((collection) => [collection.id, collection])),
+    [collections.data],
+  )
+  const proposalById = useMemo(
+    () => new Map((plan.data?.proposals ?? []).map((proposal) => [proposal.id, proposal])),
+    [plan.data],
+  )
+  const emptyBundleIds = useMemo(() => new Set(collectEmptyBundleIds(tree)), [tree])
+  const selectedIds = useMemo(
+    () => new Set(bundleProposalIds.filter((id) => !deselectedKeys.has(keyById.get(id) ?? id))),
+    [bundleProposalIds, deselectedKeys, keyById],
+  )
+  const nodeSelection = useMemo(() => selectionByNode(tree, selectedIds), [tree, selectedIds])
 
   const toggleNode = (node: TreeNode, checked: boolean) => {
-    const keys = [...collectKeys([node]).values()]
+    const keys = collectBundleIds([node]).map((id) => keyById.get(id) ?? id)
     setDeselectedKeys((prev) => {
       const next = new Set(prev)
       for (const key of keys) {
@@ -976,6 +1260,7 @@ export function GroupingReview({
     // state, so stale deselections do not carry into it. Narrow/Widen no longer
     // comes through here at all — it edits the open plan in place.
     setDeselectedKeys(new Set())
+    setCollapsedKeys(new Set())
     setNotice(message)
   }
 
@@ -1096,12 +1381,58 @@ export function GroupingReview({
     setDropSlot(null)
   }
 
-  const startBundleDrag = (event: DragEvent, proposalId: string) => {
+  const startProposalDrag = (event: DragEvent, proposal: GroupingProposal) => {
+    // A press that began on one of the row's own controls is not a row drag. The
+    // controls carry `draggable={false}` and used to stop propagation, but a
+    // non-draggable child is never on the path: the browser fires `dragstart` at
+    // the nearest *draggable* ancestor, which is this row. So the origin has to
+    // be tested here. Only jsdom, which dispatches a synthetic event straight at
+    // the button, ever saw the old guard work.
+    if (event.target instanceof Element && event.target.closest('[data-no-row-drag]')) {
+      event.preventDefault()
+      return
+    }
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', proposalId)
-    setDragItem({ kind: 'bundle', proposalId })
+    event.dataTransfer.setData('text/plain', proposal.id)
+    setDragItem({ kind: 'proposal', proposalId: proposal.id, proposalKind: proposal.kind })
     setDropSlot(null)
+  }
+
+  const canPlaceProposal = (proposalId: string, parentProposalId: string | null) => {
+    if (parentProposalId === null) return true
+    let current = proposalById.get(parentProposalId)
+    const seen = new Set<string>()
+    while (current) {
+      if (current.id === proposalId || seen.has(current.id)) return false
+      seen.add(current.id)
+      current = proposalById.get(current.parent_proposal_id ?? '')
+    }
+    return true
+  }
+
+  const setPlacement = (
+    proposal: GroupingProposal,
+    parentProposalId: string | null,
+    targetCollectionId: string | null = null,
+  ) => {
+    reparentProposal.mutate(
+      { proposalId: proposal.id, parentProposalId, targetCollectionId },
+      {
+        onSuccess: () => {
+          const kind = proposal.kind === 'container' ? 'Collection' : 'Bundle'
+          const parent = parentProposalId ? proposalById.get(parentProposalId) : null
+          const collection = targetCollectionId ? collectionById.get(targetCollectionId) : null
+          setNotice(
+            collection
+              ? `${kind} moved into “${collection.name}”.`
+              : parent
+                ? `${kind} moved into “${parent.title ?? 'collection'}”.`
+                : `${kind} moved to the top level.`,
+          )
+        },
+      },
+    )
   }
 
   const rememberEmptiedSuggestions = (updated: GroupingProposal[]) => {
@@ -1110,8 +1441,8 @@ export function GroupingReview({
     const projected = plan.data.proposals.map((proposal) => byId.get(proposal.id) ?? proposal)
     const projectedTree = buildTree(projected)
     const projectedKeys = collectKeys(projectedTree)
-    const emptied = collectEmptyIds(projectedTree)
-      .filter((proposalId) => !emptyProposalIds.has(proposalId))
+    const emptied = collectEmptyBundleIds(projectedTree)
+      .filter((proposalId) => !emptyBundleIds.has(proposalId))
       .map((proposalId) => projectedKeys.get(proposalId))
       .filter((key): key is string => key !== undefined)
     if (emptied.length === 0) return
@@ -1138,21 +1469,11 @@ export function GroupingReview({
     clearDrag()
   }
 
-  const dropBundle = (parentProposalId: string | null) => {
-    if (dragItem?.kind !== 'bundle') return
-    reparentProposal.mutate(
-      { proposalId: dragItem.proposalId, parentProposalId },
-      {
-        onSuccess: (updated) => {
-          rememberEmptiedSuggestions([updated])
-          setNotice(
-            parentProposalId
-              ? 'Bundle moved into the collection suggestion.'
-              : 'Bundle moved to the top level.',
-          )
-        },
-      },
-    )
+  const dropProposal = (parentProposalId: string | null) => {
+    if (dragItem?.kind !== 'proposal' || !canPlaceProposal(dragItem.proposalId, parentProposalId))
+      return
+    const proposal = proposalById.get(dragItem.proposalId)
+    if (proposal) setPlacement(proposal, parentProposalId)
     clearDrag()
   }
 
@@ -1176,6 +1497,8 @@ export function GroupingReview({
     stemModeMutation.error ??
     apply.error) as Error | null
   const selectedCount = selectedIds.size
+  const someFolded = foldKeys.some((key) => collapsedKeys.has(key))
+  const allFolded = foldKeys.length > 0 && foldKeys.every((key) => collapsedKeys.has(key))
   const renameControls: RenameControls = {
     canEdit: status === 'open',
     editingId: editing?.id ?? null,
@@ -1186,16 +1509,28 @@ export function GroupingReview({
     cancel: cancelRename,
   }
   const dragControls: DragControls = {
-    canEdit: status === 'open',
-    pending: moveProposalFile.isPending || reparentProposal.isPending || destination.isPending,
+    canEdit: status === 'open' && editing === null,
+    pending: busy,
     item: dragItem,
     slot: dropSlot,
     startFile: startFileDrag,
-    startBundle: startBundleDrag,
+    startProposal: startProposalDrag,
     hover: setDropSlot,
     dropFile,
-    dropBundle,
+    canDropProposal: (parentProposalId) =>
+      dragItem?.kind === 'proposal' && canPlaceProposal(dragItem.proposalId, parentProposalId),
+    dropProposal,
     end: clearDrag,
+  }
+  const placementControls: PlacementControls = {
+    canEdit: status === 'open' && editing === null,
+    pending: busy,
+    loading: collections.isLoading,
+    error: collections.isError,
+    options: placementOptions,
+    proposals: proposalById,
+    setCollection: (proposal, targetCollectionId) =>
+      setPlacement(proposal, null, targetCollectionId),
   }
   const destinationControls: DestinationControls = {
     canEdit: status === 'open' && editing === null,
@@ -1212,6 +1547,16 @@ export function GroupingReview({
     canEdit: status === 'open' && editing === null,
     pending: busy,
     set: convertKind,
+  }
+  const foldControls: FoldControls = {
+    collapsed: collapsedKeys,
+    set: (key, collapsed) =>
+      setCollapsedKeys((current) => {
+        const next = new Set(current)
+        if (collapsed) next.add(key)
+        else next.delete(key)
+        return next
+      }),
   }
 
   return (
@@ -1241,10 +1586,8 @@ export function GroupingReview({
             <strong>Nothing on disk changes.</strong>
           </p>
           <ul className="grp-intro-points">
-            <li>Accept applies only the checked rows.</li>
-            <li>
-              Drag files between bundles, or bundles into collections; double-click to rename.
-            </li>
+            <li>Collection checkboxes select their bundles; the shown hierarchy sets placement.</li>
+            <li>Drag files between bundles, or place new bundles and collections explicitly.</li>
             <li>Reflects the last scan — run Scan new files if the folder changed since.</li>
           </ul>
 
@@ -1261,31 +1604,63 @@ export function GroupingReview({
           {!result && plan.data && tree.length > 0 && (
             <>
               <div className="grp-selectbar">
-                <span>{selectedCount} selected</span>
-                <button className="btn btn--compact" onClick={() => setDeselectedKeys(new Set())}>
-                  Select all
-                </button>
-                <button
-                  className="btn btn--compact"
-                  onClick={() => setDeselectedKeys(new Set(keyById.values()))}
-                >
-                  Deselect all
-                </button>
+                <div className="grp-selectbar__group">
+                  <span>
+                    {selectedCount} {selectedCount === 1 ? 'bundle' : 'bundles'} selected
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    onClick={() => setDeselectedKeys(new Set())}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    onClick={() =>
+                      setDeselectedKeys(
+                        new Set(bundleProposalIds.map((id) => keyById.get(id) ?? id)),
+                      )
+                    }
+                  >
+                    Deselect all
+                  </button>
+                </div>
+                <div className="grp-selectbar__group">
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    disabled={allFolded}
+                    onClick={() => setCollapsedKeys(new Set(foldKeys))}
+                  >
+                    Collapse all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    disabled={!someFolded}
+                    onClick={() => setCollapsedKeys(new Set())}
+                  >
+                    Expand all
+                  </button>
+                </div>
               </div>
-              {dragItem?.kind === 'bundle' && (
+              {dragItem?.kind === 'proposal' && (
                 <div
                   className={`grp-root-drop${dropSlot?.kind === 'root' ? ' grp-root-drop--over' : ''}`}
                   onDragOver={(event) => {
+                    if (!canPlaceProposal(dragItem.proposalId, null)) return
                     event.preventDefault()
                     event.dataTransfer.dropEffect = 'move'
                     setDropSlot({ kind: 'root' })
                   }}
                   onDrop={(event) => {
                     event.preventDefault()
-                    dropBundle(null)
+                    dropProposal(null)
                   }}
                 >
-                  Drop here to leave the bundle outside a collection
+                  Drop here to move the {dragItem.proposalKind} to the top level
                 </div>
               )}
               <ul className="grp-tree">
@@ -1293,14 +1668,16 @@ export function GroupingReview({
                   <ProposalNode
                     key={node.proposal.id}
                     node={node}
-                    selectedIds={selectedIds}
+                    selection={nodeSelection}
                     onToggle={toggleNode}
                     rename={renameControls}
                     drag={dragControls}
+                    placement={placementControls}
                     destination={destinationControls}
                     stem={stemControls}
                     stemOwners={stemOwners}
                     kind={kindControls}
+                    fold={foldControls}
                   />
                 ))}
               </ul>
