@@ -423,6 +423,73 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+test('folds and restores descendant proposals under a collection', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
+  renderReview()
+
+  const innerTitle = await screen.findByRole('button', {
+    name: 'Rename collection suggestion Series',
+  })
+  const collapse = screen.getByRole('button', {
+    name: 'Collapse collection suggestion Library',
+  })
+  expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  expect(innerTitle).toBeVisible()
+
+  fireEvent.click(collapse)
+
+  expect(innerTitle).not.toBeVisible()
+  expect(screen.getByText('3 bundles selected')).toBeInTheDocument()
+  const expand = screen.getByRole('button', { name: 'Expand collection suggestion Library' })
+  expect(expand).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(expand)
+  expect(innerTitle).toBeVisible()
+})
+
+test('folds and restores the file list under a bundle', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  const review = renderReview()
+
+  const files = await screen.findByRole('list', { name: 'Files in SRCV-005 - cut' })
+  const collapse = screen.getByRole('button', {
+    name: 'Collapse bundle suggestion SRCV-005 - cut',
+  })
+  fireEvent.dragStart(collapse, { dataTransfer: dragData() })
+  expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
+
+  fireEvent.click(collapse)
+
+  expect(files).not.toBeVisible()
+  const expand = screen.getByRole('button', {
+    name: 'Expand bundle suggestion SRCV-005 - cut',
+  })
+  expect(expand).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(expand)
+  expect(files).toBeVisible()
+})
+
+test('collapses and expands every collection and bundle', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
+  renderReview()
+
+  const files = await screen.findByRole('list', { name: 'Files in Episode One' })
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+
+  expect(files).not.toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Expand collection suggestion Library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Expand collection suggestion Series' }))
+  expect(screen.getByRole('button', { name: 'Expand bundle suggestion Episode One' })).toBeVisible()
+  expect(files).not.toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+
+  expect(files).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Collapse collection suggestion Library' }),
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Expand all' })).toBeDisabled()
+})
+
 test('double-click renames a bundle suggestion and persists it', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
@@ -884,6 +951,10 @@ test('selecting one nested bundle leaves its collection ancestors indeterminate'
   })
   expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
 
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse collection suggestion Library' }))
+  expect(first).not.toBeVisible()
+  expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
+
   fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
   await waitFor(() =>
     expect(
@@ -1131,6 +1202,9 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
   renderReviewAt('plan-gen0')
 
   const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  const secondFiles = screen.getByRole('list', { name: 'Files in Second bundle' })
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse bundle suggestion Second bundle' }))
+  expect(secondFiles).not.toBeVisible()
   fireEvent.click(second)
   await screen.findByText('1 bundle selected')
 
@@ -1142,6 +1216,10 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
   await waitFor(() =>
     expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).toBeChecked(),
   )
+  expect(
+    screen.getByRole('button', { name: 'Collapse bundle suggestion Second bundle' }),
+  ).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('list', { name: 'Files in Second bundle' })).toBeVisible()
   expect(screen.getByText('2 bundles selected')).toBeInTheDocument()
 })
 

@@ -1000,6 +1000,16 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),
   ).toBeVisible()
 
+  await page.getByRole('button', { name: 'Collapse collection suggestion Favorites' }).click()
+  await expect(bundleHandle).toBeHidden()
+  await expect(page.getByText('1 bundle selected')).toBeVisible()
+  await page.getByRole('button', { name: 'Expand collection suggestion Favorites' }).click()
+  await expect(bundleHandle).toBeVisible()
+
+  await page.getByRole('button', { name: 'Collapse bundle suggestion SRCV-005 - cut' }).click()
+  await expect(targetList).toBeHidden()
+  await expect(bundleHandle).toBeVisible()
+
   const rootTarget = page.locator('.grp-root-drop')
   const rootTransfer = await page.evaluateHandle(() => new DataTransfer())
   await bundleHandle.dispatchEvent('dragstart', { dataTransfer: rootTransfer })
@@ -1011,6 +1021,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await expect.poll(() => bundleParents).toEqual(['collection1', null])
   await expect(collectionCheckbox).not.toBeChecked()
   await expect(collectionCheckbox).toBeDisabled()
+  await page.getByRole('button', { name: 'Expand all' }).click()
+  await expect(targetList).toBeVisible()
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {

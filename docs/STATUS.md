@@ -91,7 +91,7 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Completed on branch: grouping selection and placement (2026-08-09)
+## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
 Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`.
 
@@ -115,12 +115,21 @@ selector alongside drag-and-drop, including an explicit top-level destination.
 Collection moves reject cycles. Grouping remains metadata-only: apply changes
 bundle/collection records and never touches source files.
 
+The follow-up review UI now starts expanded but can fold any collection's
+descendant proposals or any bundle's file list. **Collapse all** and **Expand
+all** sit beside selection controls. This state is view-only and content-keyed,
+so selection counts and apply ids remain unchanged, proposal headings remain
+drop targets, and stable in-place plan edits retain the owner's fold choices;
+an explicit fresh Suggest grouping resets to expanded.
+
 Verification: backend Ruff check/format, mypy (**167 source files**), and all
 **966 pytest tests** pass. Frontend ESLint, Prettier, TypeScript, all **79 Vitest
-files / 570 tests**, and the production build pass; the existing large-chunk
-warning remains. The complete frontend `e2e/library.spec.ts` Playwright file
-passes all **34 tests**. OpenAPI and generated frontend types are current. No
-desktop host code changed, so Rust and packaging gates are unaffected.
+files / 573 tests**, and the production build pass; unit coverage includes
+folded selection/apply invariance. The existing large-chunk warning remains. The
+complete frontend `e2e/library.spec.ts` Playwright file passes all **34 tests**,
+including per-row folding and dragging a bundle heading while its files are
+folded. OpenAPI and generated frontend types are current. No desktop host code
+changed, so Rust and packaging gates are unaffected.
 
 ## In progress: stoppable multi-file imports (2026-08-01)
 

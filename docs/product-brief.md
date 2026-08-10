@@ -396,6 +396,10 @@ Current workflow details:
   by drag-and-drop or a keyboard-accessible placement selector. New suggestions
   remain renameable/reclassifiable; an existing collection context is labeled
   and read-only;
+- grouping review opens fully expanded, but collection rows can fold their
+  descendant proposals and bundle rows can fold their file lists. Collapse all
+  and Expand all shorten or restore the complete tree without changing
+  selection, placement, drag-and-drop, or which proposal ids apply;
 - a re-scan addition recommends its existing confirmed bundle by default, with
   a compact, tooltip-described destination icon converting that same proposal
   in place to a new bundle; the owner can switch back without losing selection,

@@ -2731,9 +2731,20 @@ code {
 .grp-selectbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--text-muted);
   font-size: 12px;
+}
+.grp-selectbar__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.grp-selectbar__group > span {
+  white-space: nowrap;
 }
 .grp-node {
   margin: 4px 0;
@@ -2754,10 +2765,39 @@ code {
    the title. */
 .grp-node--bundle,
 .grp-node--container {
+  --grp-disclosure: 14px;
   --grp-check: 14px;
   --grp-icon: 16px;
   --grp-lead-gap: 3px;
-  --grp-lead: calc(var(--grp-check) + var(--grp-icon) + 2 * var(--grp-lead-gap));
+  --grp-lead: calc(
+    var(--grp-disclosure) + var(--grp-check) + var(--grp-icon) + 3 * var(--grp-lead-gap)
+  );
+}
+.grp-row > .grp-disclosure,
+.grp-row > .grp-disclosure-spacer {
+  flex: 0 0 var(--grp-disclosure);
+  width: var(--grp-disclosure);
+  height: 18px;
+}
+.grp-disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.grp-disclosure:hover,
+.grp-disclosure:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.grp-disclosure:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 .grp-row > .grp-check {
   flex: 0 0 auto;

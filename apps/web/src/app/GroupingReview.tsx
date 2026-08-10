@@ -30,6 +30,7 @@ import {
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
 import {
+  IconChevron,
   IconChevronsIn,
   IconChevronsOut,
   IconFolder,
@@ -268,6 +269,12 @@ interface PlacementControls {
   set: (proposal: GroupingProposal, parentProposalId: string | null) => void
 }
 
+/** Coordinate view-only folding across the recursive proposal tree */
+interface FoldControls {
+  collapsed: ReadonlySet<string>
+  set: (key: string, collapsed: boolean) => void
+}
+
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
   const byParent = new Map<string | null, GroupingProposal[]>()
   for (const p of proposals) {
@@ -316,6 +323,21 @@ function collectKeys(nodes: TreeNode[]): Map<string, string> {
   }
   visit(nodes)
   return keys
+}
+
+/** Collect every proposal with content that can be folded */
+function collectFoldKeys(nodes: TreeNode[]): string[] {
+  const keys = new Set<string>()
+  const visit = (items: TreeNode[]) => {
+    for (const node of items) {
+      if (node.proposal.kind === 'bundle' || node.children.length > 0) {
+        keys.add(proposalKey(node.proposal))
+      }
+      visit(node.children)
+    }
+  }
+  visit(nodes)
+  return [...keys]
 }
 
 /** Collect only file-backed bundle rows; collection rows are structural paths */
@@ -776,6 +798,40 @@ function ProposalPlacement({
   )
 }
 
+/** Render one disclosure triangle without starting the draggable parent row */
+function ProposalDisclosure({
+  subject,
+  collapsed,
+  collapsible,
+  onToggle,
+}: {
+  subject: string
+  collapsed: boolean
+  collapsible: boolean
+  onToggle: () => void
+}) {
+  if (!collapsible) return <span className="grp-disclosure-spacer" aria-hidden="true" />
+  const action = collapsed ? 'Expand' : 'Collapse'
+  return (
+    <button
+      type="button"
+      className="grp-disclosure"
+      aria-expanded={!collapsed}
+      aria-label={`${action} ${subject}`}
+      title={`${action} ${subject}`}
+      draggable={false}
+      onMouseDown={(event) => event.stopPropagation()}
+      onDragStart={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+    >
+      <IconChevron open={!collapsed} />
+    </button>
+  )
+}
+
 function ProposalNode({
   node,
   selection,
@@ -787,6 +843,7 @@ function ProposalNode({
   stem,
   stemOwners,
   kind,
+  fold,
   parent,
 }: {
   node: TreeNode
@@ -799,6 +856,7 @@ function ProposalNode({
   stem: StemControls
   stemOwners: Map<string, string>
   kind: KindControls
+  fold: FoldControls
   /** The enclosing suggestion, which decides whether a single-subject bundle is
    * offered the collection override (see ``canBecomeCollection``). */
   parent?: GroupingProposal
@@ -808,6 +866,8 @@ function ProposalNode({
   const checked = selectionState.total > 0 && selectionState.selected === selectionState.total
   const mixed = selectionState.selected > 0 && !checked
   const hasItems = selectionState.total > 0
+  const foldKey = proposalKey(proposal)
+  const collapsed = fold.collapsed.has(foldKey)
   if (proposal.kind === 'container') {
     const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
     const movable = proposal.target_collection_id === null
@@ -832,6 +892,12 @@ function ProposalNode({
             drag.dropProposal(proposal.id)
           }}
         >
+          <ProposalDisclosure
+            subject={`collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
+            collapsed={collapsed}
+            collapsible={children.length > 0}
+            onToggle={() => fold.set(foldKey, !collapsed)}
+          />
           <ProposalCheckbox
             checked={checked}
             mixed={mixed}
@@ -862,7 +928,7 @@ function ProposalNode({
           </span>
         </div>
         {children.length > 0 && (
-          <ul className="grp-children">
+          <ul className="grp-children" hidden={collapsed}>
             {children.map((c) => (
               <ProposalNode
                 key={c.proposal.id}
@@ -876,6 +942,7 @@ function ProposalNode({
                 stem={stem}
                 stemOwners={stemOwners}
                 kind={kind}
+                fold={fold}
                 parent={proposal}
               />
             ))}
@@ -913,6 +980,12 @@ function ProposalNode({
           drag.dropFile(proposal.id, proposal.files.length)
         }}
       >
+        <ProposalDisclosure
+          subject={`bundle suggestion ${displayTitle}`}
+          collapsed={collapsed}
+          collapsible
+          onToggle={() => fold.set(foldKey, !collapsed)}
+        />
         <ProposalCheckbox
           checked={checked}
           mixed={false}
@@ -951,6 +1024,7 @@ function ProposalNode({
       <ul
         className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
         aria-label={`Files in ${displayTitle}`}
+        hidden={collapsed}
         onDragOver={(event) => {
           if (drag.item?.kind !== 'file') return
           event.preventDefault()
@@ -1070,6 +1144,7 @@ export function GroupingReview({
   // does not silently re-check everything the owner had unchecked. See
   // ``proposalKey``.
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{
     id: string
     original: string
@@ -1084,6 +1159,7 @@ export function GroupingReview({
   const stemOwners = useMemo(() => stemControlOwners(tree), [tree])
   const bundleProposalIds = useMemo(() => collectBundleIds(tree), [tree])
   const keyById = useMemo(() => collectKeys(tree), [tree])
+  const foldKeys = useMemo(() => collectFoldKeys(tree), [tree])
   const placementOptions = useMemo(() => collectionPlacementOptions(tree), [tree])
   const proposalById = useMemo(
     () => new Map((plan.data?.proposals ?? []).map((proposal) => [proposal.id, proposal])),
@@ -1120,6 +1196,7 @@ export function GroupingReview({
     // state, so stale deselections do not carry into it. Narrow/Widen no longer
     // comes through here at all — it edits the open plan in place.
     setDeselectedKeys(new Set())
+    setCollapsedKeys(new Set())
     setNotice(message)
   }
 
@@ -1340,6 +1417,8 @@ export function GroupingReview({
     stemModeMutation.error ??
     apply.error) as Error | null
   const selectedCount = selectedIds.size
+  const someFolded = foldKeys.some((key) => collapsedKeys.has(key))
+  const allFolded = foldKeys.length > 0 && foldKeys.every((key) => collapsedKeys.has(key))
   const renameControls: RenameControls = {
     canEdit: status === 'open',
     editingId: editing?.id ?? null,
@@ -1385,6 +1464,16 @@ export function GroupingReview({
     canEdit: status === 'open' && editing === null,
     pending: busy,
     set: convertKind,
+  }
+  const foldControls: FoldControls = {
+    collapsed: collapsedKeys,
+    set: (key, collapsed) =>
+      setCollapsedKeys((current) => {
+        const next = new Set(current)
+        if (collapsed) next.add(key)
+        else next.delete(key)
+        return next
+      }),
   }
 
   return (
@@ -1432,20 +1521,47 @@ export function GroupingReview({
           {!result && plan.data && tree.length > 0 && (
             <>
               <div className="grp-selectbar">
-                <span>
-                  {selectedCount} {selectedCount === 1 ? 'bundle' : 'bundles'} selected
-                </span>
-                <button className="btn btn--compact" onClick={() => setDeselectedKeys(new Set())}>
-                  Select all
-                </button>
-                <button
-                  className="btn btn--compact"
-                  onClick={() =>
-                    setDeselectedKeys(new Set(bundleProposalIds.map((id) => keyById.get(id) ?? id)))
-                  }
-                >
-                  Deselect all
-                </button>
+                <div className="grp-selectbar__group">
+                  <span>
+                    {selectedCount} {selectedCount === 1 ? 'bundle' : 'bundles'} selected
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    onClick={() => setDeselectedKeys(new Set())}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    onClick={() =>
+                      setDeselectedKeys(
+                        new Set(bundleProposalIds.map((id) => keyById.get(id) ?? id)),
+                      )
+                    }
+                  >
+                    Deselect all
+                  </button>
+                </div>
+                <div className="grp-selectbar__group">
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    disabled={allFolded}
+                    onClick={() => setCollapsedKeys(new Set(foldKeys))}
+                  >
+                    Collapse all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    disabled={!someFolded}
+                    onClick={() => setCollapsedKeys(new Set())}
+                  >
+                    Expand all
+                  </button>
+                </div>
               </div>
               {dragItem?.kind === 'proposal' && (
                 <div
@@ -1478,6 +1594,7 @@ export function GroupingReview({
                     stem={stemControls}
                     stemOwners={stemOwners}
                     kind={kindControls}
+                    fold={foldControls}
                   />
                 ))}
               </ul>
