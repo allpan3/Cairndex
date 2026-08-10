@@ -254,8 +254,8 @@ export function GroupingPlacementPicker({
         title={`Current placement: ${path ?? 'Suggested hierarchy'}`}
         disabled={disabled}
         draggable={false}
+        data-no-row-drag=""
         onMouseDown={(event) => event.stopPropagation()}
-        onDragStart={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation()
           setOpen((value) => !value)
