@@ -1050,7 +1050,11 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   const anchor = page.getByRole('button', {
     name: 'Placement for bundle suggestion Sample Clip',
   })
-  await expect(anchor.locator('.grp-placement__label')).toHaveText('Suggested: Draft Chapter')
+  await expect(anchor).toHaveAttribute(
+    'title',
+    'Current placement: Suggested: Draft Archive / Draft Season / Draft Chapter',
+  )
+  await expect(anchor.locator('.grp-placement__label')).toHaveCount(0)
   await anchor.click()
 
   const panel = page.getByRole('dialog', { name: 'Place bundle suggestion Sample Clip' })
@@ -1093,7 +1097,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   await expect
     .poll(() => parentWrites)
     .toEqual([{ parent_proposal_id: null, target_collection_id: 'archive' }])
-  await expect(anchor.locator('.grp-placement__label')).toHaveText('Archive')
+  await expect(anchor).toHaveAttribute('title', 'Current placement: Archive')
 })
 
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
@@ -1251,6 +1255,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   ).toBeVisible()
 
+  await page.getByRole('button', { name: 'Show files' }).click()
   const targetList = page.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   const targetBundleRow = page.locator('.grp-row--bundle', {
     has: page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
@@ -1295,7 +1300,9 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await page.getByRole('button', { name: 'Expand collection suggestion Favorites' }).click()
   await expect(bundleHandle).toBeVisible()
 
-  await page.getByRole('button', { name: 'Collapse bundle suggestion SRCV-005 - cut' }).click()
+  await page
+    .getByRole('button', { name: 'Collapse files in bundle suggestion SRCV-005 - cut' })
+    .click()
   await expect(targetList).toBeHidden()
   await expect(bundleHandle).toBeVisible()
 
@@ -1310,7 +1317,11 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await expect.poll(() => bundleParents).toEqual(['collection1', null])
   await expect(collectionCheckbox).not.toBeChecked()
   await expect(collectionCheckbox).toBeDisabled()
-  await page.getByRole('button', { name: 'Expand all' }).click()
+  // Expand all governs collections; a file list closed by its own disclosure is
+  // reopened the same way (or by the toolbar's Show files default).
+  await page
+    .getByRole('button', { name: 'Expand files in bundle suggestion SRCV-005 - cut' })
+    .click()
   await expect(targetList).toBeVisible()
 })
 
