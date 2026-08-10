@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Long grouping plans can now be folded without changing the plan.** Each
+  collection can hide its descendant proposals and each bundle can hide its
+  file list, with Collapse all / Expand all controls beside selection. Reviews
+  still open fully expanded, and folding is presentation-only: selection
+  counts, placement, drag-and-drop, and the accepted bundle ids are unchanged.
 - **A multi-file import can now be stopped from the sidebar.** Browser uploads
   abort their in-flight request, while the desktop shell carries the same stop
   across IPC into the Rust reader streaming the current file; both stop the
