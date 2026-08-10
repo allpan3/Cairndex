@@ -97,13 +97,21 @@ def apply_plan(
     invalid_containers = _invalid_collection_targets(
         session, all_proposals, structural_containers, result
     )
-    bundles = [
-        proposal
-        for proposal in selected_bundles
-        if not any(
+    # A bundle under a stale existing-collection path is skipped, but the conflict
+    # above names the *container*. Report the skip against the row the owner
+    # actually selected too, or the result panel says "0 confirmed" with nothing
+    # attached to anything they checked.
+    bundles: list[GroupingProposal] = []
+    for proposal in selected_bundles:
+        blocked = any(
             ancestor.id in invalid_containers for ancestor in ancestors_by_bundle[proposal.id]
         )
-    ]
+        if blocked:
+            result.conflicts.append(
+                _conflict(proposal, "its collection destination is no longer valid")
+            )
+        else:
+            bundles.append(proposal)
     target_bundle_by_proposal: dict[str, str] = {}
     source_bundles: set[AssetBundle] = set()
 
@@ -153,8 +161,16 @@ def apply_plan(
         if _add_bundle_to_collection(session, bundle_id, collection_id):
             result.bundles_added_to_collections += 1
 
-    plan.status = GroupingPlanStatus.APPLIED
-    plan.applied_at = utcnow()
+    # Only a plan that actually confirmed something is closed. A plan whose every
+    # selected bundle was blocked (a stale collection path, a vanished file) has
+    # confirmed nothing, and closing it would strand every rename, destination
+    # switch, and placement the owner made in it: an applied plan can never be
+    # reopened or re-selected, so the only way forward would be to regenerate and
+    # lose the lot. Partial success still closes the plan, which is the settled
+    # behaviour the selected-accept and missing-file tests pin.
+    if target_bundle_by_proposal:
+        plan.status = GroupingPlanStatus.APPLIED
+        plan.applied_at = utcnow()
     session.flush()
     return result
 
@@ -401,12 +417,16 @@ def _apply_addition(
     role_by_id = {pf.asset_file_id: pf.proposed_role for pf in proposal.files}
     base_sequence = max((row.sequence for row in target.files), default=-1) + 1
     moved = 0
+    # Counted apart from ``moved`` so "nothing left to do" can be told from
+    # "nothing could be done" — see the return below.
+    already_present = 0
     for offset, pf in enumerate(proposal.files):
         row = session.get(AssetFile, pf.asset_file_id)
         if row is None:
             result.conflicts.append(_conflict(proposal, "a file to add no longer exists"))
             continue
         if row.bundle_id == target.id:
+            already_present += 1
             continue  # already added (idempotent)
         if row.bundle.grouping_state is GroupingState.CONFIRMED and not proposal.owner_edited:
             result.conflicts.append(
@@ -423,7 +443,12 @@ def _apply_addition(
         moved += 1
 
     if moved == 0:
-        return _BundleOutcome(target.id)
+        # Re-applying a settled addition is a clean no-op and must still report the
+        # target, or step 2 would drop its collection ancestors. An addition where
+        # *every* file conflicted applied nothing, so it must not: reporting a
+        # target there created the proposal's collections for work that never
+        # happened, and filed the untouched confirmed bundle into them.
+        return _BundleOutcome(target.id if already_present else None)
     result.files_added_to_bundles += moved
     session.flush()
     result.subtitles_linked += len(auto_link_external_subtitles(session, target.id))
