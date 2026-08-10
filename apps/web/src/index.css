@@ -2947,11 +2947,21 @@ code {
   font-weight: 600;
   line-height: 16px;
 }
+.grp-placement-picker {
+  display: inline-flex;
+  align-self: center;
+  width: 180px;
+  max-width: 100%;
+  min-width: 0;
+}
 .grp-placement {
-  min-width: 88px;
-  max-width: 180px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
   height: 20px;
-  padding: 0 20px 0 6px;
+  padding: 0 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
@@ -2959,6 +2969,19 @@ code {
   font: inherit;
   font-size: 11px;
   line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.grp-placement .icon {
+  width: 12px;
+  height: 12px;
+}
+.grp-placement__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .grp-placement:hover:not(:disabled),
 .grp-placement:focus-visible {
@@ -2967,6 +2990,59 @@ code {
 }
 .grp-placement:disabled {
   opacity: 0.55;
+  cursor: default;
+}
+.grp-placement-panel {
+  z-index: 310;
+  width: 360px;
+  max-width: min(420px, calc(100vw - 16px));
+  overscroll-behavior: contain;
+}
+.grp-placement-panel__head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding-bottom: 4px;
+  background: var(--surface);
+}
+.grp-placement-row {
+  min-height: 28px;
+  gap: 0;
+  padding: 0;
+}
+.grp-placement-row:focus-within {
+  background: var(--bg-2);
+}
+.grp-placement-row__choice {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 7px;
+  align-self: stretch;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.grp-placement-row__choice:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.grp-placement-row > .pick-row__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 28px;
+}
+.grp-placement-row > .pick-row__toggle .chevron {
+  width: 8px;
+  height: 12px;
 }
 .grp-stem {
   display: inline-flex;

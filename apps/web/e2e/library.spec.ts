@@ -825,6 +825,172 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   expect(destinationWrites).toEqual([true, false])
 })
 
+test('grouping placement uses a bounded searchable collection tree', async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 760 })
+  await mockApi(page)
+  const hierarchy = [
+    {
+      id: 'archive',
+      kind: 'container',
+      title: 'Archive',
+      directory: 'Archive',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+    {
+      id: 'seasons',
+      kind: 'container',
+      title: 'Seasons',
+      directory: 'Archive/Seasons',
+      parent_proposal_id: 'archive' as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+    {
+      id: 'chapter-blue',
+      kind: 'container',
+      title: 'Chapter Blue',
+      directory: 'Archive/Seasons/Chapter Blue',
+      parent_proposal_id: 'seasons' as string | null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      target_collection_id: null,
+      confidence: 0.9,
+      reason: 'synthetic hierarchy',
+      files: [],
+    },
+  ]
+  const fillerCollections = Array.from({ length: 28 }, (_, index) => ({
+    id: `shelf-${index + 1}`,
+    kind: 'container',
+    title: `Shelf ${String(index + 1).padStart(2, '0')}`,
+    directory: `Shelf ${String(index + 1).padStart(2, '0')}`,
+    parent_proposal_id: null as string | null,
+    target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: false,
+    target_collection_id: null,
+    confidence: 0.8,
+    reason: 'synthetic hierarchy',
+    files: [],
+  }))
+  const sampleBundle = {
+    id: 'sample-bundle',
+    kind: 'bundle',
+    title: 'Sample Clip',
+    directory: 'Archive/Seasons/Chapter Blue',
+    parent_proposal_id: 'chapter-blue' as string | null,
+    target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: true,
+    target_collection_id: null,
+    confidence: 0.95,
+    reason: 'synthetic filename match',
+    files: [
+      {
+        asset_file_id: 'sample-file',
+        relative_path: 'Archive/Seasons/Chapter Blue/sample.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  const proposals = [...hierarchy, ...fillerCollections, sampleBundle]
+  const parentWrites: Array<string | null> = []
+
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-placement',
+          status: 'open',
+          rule_version: 5,
+          generated_at: '2026-08-09T00:00:00Z',
+          applied_at: null,
+          proposal_count: proposals.length,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-placement', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-placement',
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: null,
+        stem_modes: {},
+        generated_at: '2026-08-09T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan-placement/proposals/sample-bundle/parent', (route) => {
+    const parent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
+      .parent_proposal_id
+    parentWrites.push(parent)
+    sampleBundle.parent_proposal_id = parent
+    return route.fulfill({ json: sampleBundle })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+
+  const anchor = page.getByRole('button', {
+    name: 'Placement for bundle suggestion Sample Clip',
+  })
+  await expect(anchor.locator('.grp-placement__label')).toHaveText('Chapter Blue')
+  await anchor.click()
+
+  const panel = page.getByRole('dialog', { name: 'Place bundle suggestion Sample Clip' })
+  const nested = panel.getByRole('option', {
+    name: 'Archive / Seasons / Chapter Blue',
+    exact: true,
+  })
+  await expect(nested).toContainText('Chapter Blue')
+  await expect(nested).not.toContainText('Archive / Seasons')
+  const panelBox = await panel.boundingBox()
+  if (!panelBox) throw new Error('missing grouping placement panel geometry')
+  expect(panelBox.height).toBeLessThanOrEqual(520)
+  expect(panelBox.y).toBeGreaterThanOrEqual(0)
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(760)
+  expect(await panel.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+
+  await panel.getByRole('button', { name: 'Collapse destination Archive' }).click()
+  await expect(panel.getByRole('option', { name: 'Archive / Seasons', exact: true })).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Expand destination Archive' }).click()
+  await expect(panel.getByRole('option', { name: 'Archive / Seasons', exact: true })).toBeVisible()
+
+  const search = panel.getByRole('textbox', { name: 'Search collection destinations' })
+  await search.fill('Chapter Blue')
+  const result = panel.getByRole('option', {
+    name: 'Archive / Seasons / Chapter Blue',
+    exact: true,
+  })
+  await expect(result).toContainText('Chapter Blue')
+  await expect(result.locator('.pick-row__parent')).toHaveText('Seasons')
+  await expect(result).not.toContainText('Archive / Seasons')
+
+  await search.fill('Archive')
+  await search.press('Enter')
+  await expect.poll(() => parentWrites).toEqual(['archive'])
+  await expect(anchor.locator('.grp-placement__label')).toHaveText('Archive')
+})
+
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
   await mockApi(page)
   const proposals = [

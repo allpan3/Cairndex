@@ -29,6 +29,7 @@ import {
   useSetGroupingStemMode,
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
+import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
 import {
   IconChevron,
   IconChevronsIn,
@@ -254,17 +255,11 @@ interface DragControls {
   end: () => void
 }
 
-/** One collection destination shown in a proposal placement control */
-interface PlacementOption {
-  id: string
-  label: string
-}
-
 /** Coordinate explicit keyboard-accessible placement of reviewed proposals */
 interface PlacementControls {
   canEdit: boolean
   pending: boolean
-  options: PlacementOption[]
+  options: GroupingPlacementOption[]
   canPlace: (proposalId: string, parentProposalId: string | null) => boolean
   set: (proposal: GroupingProposal, parentProposalId: string | null) => void
 }
@@ -378,15 +373,20 @@ function selectionByNode(nodes: TreeNode[], selectedIds: Set<string>): Map<strin
   return result
 }
 
-/** Build disambiguating root-to-leaf labels for every collection destination */
-function collectionPlacementOptions(nodes: TreeNode[]): PlacementOption[] {
-  const options: PlacementOption[] = []
+/** Build hierarchical collection destinations with disambiguating paths */
+function collectionPlacementOptions(nodes: TreeNode[]): GroupingPlacementOption[] {
+  const options: GroupingPlacementOption[] = []
   const visit = (items: TreeNode[], path: string[]) => {
     for (const node of items) {
       if (node.proposal.kind !== 'container') continue
       const title = node.proposal.title || baseName(node.proposal.directory) || 'Untitled'
       const nextPath = [...path, title]
-      options.push({ id: node.proposal.id, label: `Inside ${nextPath.join(' / ')}` })
+      options.push({
+        id: node.proposal.id,
+        parent_id: node.proposal.parent_proposal_id,
+        name: title,
+        path: nextPath.join(' / '),
+      })
       visit(node.children, nextPath)
     }
   }
@@ -778,23 +778,14 @@ function ProposalPlacement({
   const title = proposalDisplayTitle(proposal)
   const options = placement.options.filter((option) => placement.canPlace(proposal.id, option.id))
   return (
-    <select
-      className="grp-placement"
-      aria-label={`Placement for ${kind} suggestion ${title}`}
-      title={`Place this ${kind}`}
-      value={proposal.parent_proposal_id ?? ''}
+    <GroupingPlacementPicker
+      kind={kind}
+      title={title}
+      currentId={proposal.parent_proposal_id}
+      options={options}
       disabled={!placement.canEdit || placement.pending}
-      onMouseDown={(event) => event.stopPropagation()}
-      onDragStart={(event) => event.stopPropagation()}
-      onChange={(event) => placement.set(proposal, event.currentTarget.value || null)}
-    >
-      <option value="">Top level</option>
-      {options.map((option) => (
-        <option key={option.id} value={option.id}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      onChange={(parentProposalId) => placement.set(proposal, parentProposalId)}
+    />
   )
 }
 

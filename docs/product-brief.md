@@ -393,9 +393,12 @@ Current workflow details:
   complete collection ancestor path into apply without selecting siblings;
 - selection and placement are separate: file rows can move within or across
   bundle suggestions, while bundle and new-collection proposals can be placed
-  by drag-and-drop or a keyboard-accessible placement selector. New suggestions
-  remain renameable/reclassifiable; an existing collection context is labeled
-  and read-only;
+  by drag-and-drop or a keyboard-accessible, searchable collection-tree picker.
+  The picker shows one collection name per indented row, supports folding its
+  branches, and uses full paths only for disambiguation and accessibility instead
+  of repeating every ancestor visibly. New suggestions remain
+  renameable/reclassifiable; an existing collection context is labeled and
+  read-only;
 - grouping review opens fully expanded, but collection rows can fold their
   descendant proposals and bundle rows can fold their file lists. Collapse all
   and Expand all shorten or restore the complete tree without changing
