@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { type GroupingProposal, setActiveLibraryId } from '../api/client'
+import { type CollectionRead, type GroupingProposal, setActiveLibraryId } from '../api/client'
 import { GroupingReview } from './GroupingReview'
 
 const PROPOSALS: GroupingProposal[] = [
@@ -207,14 +207,55 @@ const NESTED_PROPOSALS: GroupingProposal[] = [
   },
 ]
 
+const CURRENT_COLLECTIONS: CollectionRead[] = [
+  {
+    id: 'current-archive',
+    parent_id: null,
+    name: 'Current Archive',
+    note: null,
+    cover_bundle_id: null,
+    sort_order: 0,
+    created_at: '2026-08-09T00:00:00Z',
+    updated_at: '2026-08-09T00:00:00Z',
+    version: 1,
+  },
+  {
+    id: 'current-series',
+    parent_id: 'current-archive',
+    name: 'Current Series',
+    note: null,
+    cover_bundle_id: null,
+    sort_order: 0,
+    created_at: '2026-08-09T00:00:00Z',
+    updated_at: '2026-08-09T00:00:00Z',
+    version: 1,
+  },
+  {
+    id: 'current-reference',
+    parent_id: null,
+    name: 'Reference',
+    note: null,
+    cover_bundle_id: null,
+    sort_order: 1,
+    created_at: '2026-08-09T00:00:00Z',
+    updated_at: '2026-08-09T00:00:00Z',
+    version: 1,
+  },
+]
+
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
-function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
+function mockGroupingApi(
+  initialProposals: GroupingProposal[] = PROPOSALS,
+  collections: CollectionRead[] = CURRENT_COLLECTIONS,
+) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
   let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
-    if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
+    if (url.includes('/collections?')) {
+      body = { items: collections, next_cursor: null }
+    } else if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       planId = 'plan2'
       stemModes = (
         JSON.parse(init.body as string) as {
@@ -377,17 +418,57 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
       }
     } else if (url.match(/\/proposals\/[^/]+\/parent$/) && init?.method === 'PUT') {
       const proposalId = url.split('/').at(-2)!
-      const parentProposalId = (
-        JSON.parse(init.body as string) as {
-          parent_proposal_id: string | null
+      const payload = JSON.parse(init.body as string) as {
+        parent_proposal_id: string | null
+        target_collection_id: string | null
+      }
+      let parentProposalId = payload.parent_proposal_id
+      if (payload.target_collection_id) {
+        const byCollectionId = new Map(collections.map((collection) => [collection.id, collection]))
+        const path: CollectionRead[] = []
+        let collection = byCollectionId.get(payload.target_collection_id)
+        while (collection) {
+          path.push(collection)
+          collection = collection.parent_id ? byCollectionId.get(collection.parent_id) : undefined
         }
-      ).parent_proposal_id
+        let contextParentId: string | null = null
+        for (const item of path.reverse()) {
+          const existing = proposals.find((proposal) => proposal.target_collection_id === item.id)
+          const context: GroupingProposal = existing ?? {
+            id: `context-${item.id}`,
+            kind: 'container',
+            title: item.name,
+            directory: `@existing-collection/${item.id}`,
+            parent_proposal_id: contextParentId,
+            target_bundle_id: null,
+            target_bundle_title: null,
+            create_new_bundle: false,
+            target_collection_id: item.id,
+            confidence: 1,
+            reason: 'existing collection',
+            files: [],
+          }
+          context.parent_proposal_id = contextParentId
+          if (!existing) proposals = [...proposals, context]
+          contextParentId = context.id
+        }
+        parentProposalId = contextParentId
+      }
       proposals = proposals.map((proposal) =>
         proposal.id === proposalId
           ? { ...proposal, parent_proposal_id: parentProposalId }
           : proposal,
       )
-      body = proposals.find((proposal) => proposal.id === proposalId)
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      }
     } else if (url.endsWith(`/grouping/plans/${planId}/apply`) && init?.method === 'POST') {
       body = {
         bundles_confirmed: 2,
@@ -891,7 +972,7 @@ test('drags a bundle suggestion into a collection suggestion', async () => {
     ([url, init]) => url.endsWith('/proposals/proposal1/parent') && init?.method === 'PUT',
   )
   expect(reparentCall?.[1]).toMatchObject({
-    body: JSON.stringify({ parent_proposal_id: 'collection1' }),
+    body: JSON.stringify({ parent_proposal_id: 'collection1', target_collection_id: null }),
   })
 })
 
@@ -923,7 +1004,7 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
     ([url, init]) => url.endsWith('/proposals/proposal1/parent') && init?.method === 'PUT',
   )
   expect(reparentCall?.[1]).toMatchObject({
-    body: JSON.stringify({ parent_proposal_id: null }),
+    body: JSON.stringify({ parent_proposal_id: null, target_collection_id: null }),
   })
 })
 
@@ -1039,17 +1120,36 @@ test('a proposed collection placement control moves between parent and top level
   fireEvent.click(screen.getByRole('button', { name: label }))
   fireEvent.click(
     within(screen.getByRole('listbox', { name: 'Collection destinations' })).getByRole('option', {
-      name: 'Library',
+      name: 'Current Archive',
     }),
   )
-  await screen.findByText('Collection moved into “Library”.')
+  await screen.findByText('Collection moved into “Current Archive”.')
 
   const bodies = fetchMock.mock.calls
     .filter(
       ([url, init]) => url.endsWith('/proposals/inner-collection/parent') && init?.method === 'PUT',
     )
     .map(([, init]) => JSON.parse(init?.body as string))
-  expect(bodies).toEqual([{ parent_proposal_id: null }, { parent_proposal_id: 'outer-collection' }])
+  expect(bodies).toEqual([
+    { parent_proposal_id: null, target_collection_id: null },
+    { parent_proposal_id: null, target_collection_id: 'current-archive' },
+  ])
+})
+
+test('placement picker excludes draft collections when the library has none', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS, []))
+  renderReview()
+
+  const anchor = await screen.findByRole('button', {
+    name: 'Placement for bundle suggestion Episode One',
+  })
+  expect(within(anchor).getByText('Suggested: Series')).toBeInTheDocument()
+  fireEvent.click(anchor)
+
+  const list = screen.getByRole('listbox', { name: 'Collection destinations' })
+  expect(within(list).getByRole('option', { name: 'Top level' })).toBeVisible()
+  expect(within(list).queryByRole('option', { name: 'Library / Series' })).toBeNull()
+  expect(within(list).getByText('No collections yet')).toBeVisible()
 })
 
 test('placement picker presents a foldable searchable hierarchy without repeated prefixes', async () => {
@@ -1064,29 +1164,38 @@ test('placement picker presents a foldable searchable hierarchy without repeated
   )
   const panel = screen.getByRole('dialog', { name: 'Place bundle suggestion Episode One' })
   const list = within(panel).getByRole('listbox', { name: 'Collection destinations' })
-  const nested = within(list).getByRole('option', { name: 'Library / Series' })
-  expect(nested).toHaveTextContent('Series')
-  expect(nested).not.toHaveTextContent('Library / Series')
+  expect(within(list).queryByRole('option', { name: 'Library / Series' })).toBeNull()
+  const nested = within(list).getByRole('option', {
+    name: 'Current Archive / Current Series',
+  })
+  expect(nested).toHaveTextContent('Current Series')
+  expect(nested).not.toHaveTextContent('Current Archive / Current Series')
 
-  fireEvent.click(within(panel).getByRole('button', { name: 'Collapse destination Library' }))
+  fireEvent.click(
+    within(panel).getByRole('button', { name: 'Collapse destination Current Archive' }),
+  )
   expect(nested).not.toBeInTheDocument()
-  fireEvent.click(within(panel).getByRole('button', { name: 'Expand destination Library' }))
-  expect(within(list).getByRole('option', { name: 'Library / Series' })).toBeVisible()
+  fireEvent.click(within(panel).getByRole('button', { name: 'Expand destination Current Archive' }))
+  expect(
+    within(list).getByRole('option', { name: 'Current Archive / Current Series' }),
+  ).toBeVisible()
 
   const search = within(panel).getByRole('textbox', { name: 'Search collection destinations' })
-  fireEvent.change(search, { target: { value: 'Series' } })
-  const result = within(list).getByRole('option', { name: 'Library / Series' })
-  expect(result).toHaveTextContent('Series')
-  expect(result).not.toHaveTextContent('Library / Series')
-  fireEvent.change(search, { target: { value: 'Library' } })
+  fireEvent.change(search, { target: { value: 'Current Series' } })
+  const result = within(list).getByRole('option', {
+    name: 'Current Archive / Current Series',
+  })
+  expect(result).toHaveTextContent('Current Series')
+  expect(result).not.toHaveTextContent('Current Archive / Current Series')
+  fireEvent.change(search, { target: { value: 'Current Archive' } })
   fireEvent.keyDown(search, { key: 'Enter' })
 
-  await screen.findByText('Bundle moved into “Library”.')
+  await screen.findByText('Bundle moved into “Current Archive”.')
   const reparentCall = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/proposals/nested-one/parent') && init?.method === 'PUT',
   )
   expect(reparentCall?.[1]).toMatchObject({
-    body: JSON.stringify({ parent_proposal_id: 'outer-collection' }),
+    body: JSON.stringify({ parent_proposal_id: null, target_collection_id: 'current-archive' }),
   })
 })
 
@@ -1112,7 +1221,7 @@ test('drags a proposed collection to the top level', async () => {
     ([url, init]) => url.endsWith('/proposals/inner-collection/parent') && init?.method === 'PUT',
   )
   expect(reparentCall?.[1]).toMatchObject({
-    body: JSON.stringify({ parent_proposal_id: null }),
+    body: JSON.stringify({ parent_proposal_id: null, target_collection_id: null }),
   })
 })
 

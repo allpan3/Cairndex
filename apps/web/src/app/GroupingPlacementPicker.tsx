@@ -6,7 +6,7 @@ import { PickGuides } from './PickGuides'
 import { usePinyinSearch } from './pinyin'
 import { usePopover, visibleHierarchy } from './usePopover'
 
-/** One collection destination in the grouping plan's logical hierarchy */
+/** One persisted collection destination in the library's current hierarchy */
 export interface GroupingPlacementOption {
   id: string
   parent_id: string | null
@@ -94,12 +94,16 @@ function PlacementOptions({
   options,
   currentId,
   collapsed,
+  loading,
+  error,
   onSelect,
   onToggle,
 }: {
   options: GroupingPlacementOption[]
-  currentId: string | null
+  currentId: string | null | undefined
   collapsed: Set<string>
+  loading: boolean
+  error: boolean
   onSelect: (id: string | null) => void
   onToggle: (id: string) => void
 }) {
@@ -179,32 +183,46 @@ function PlacementOptions({
         {!showTopLevel && rows.length === 0 && (
           <div className="pick-group">No matching destinations</div>
         )}
+        {!trimmedSearch && loading && <div className="pick-group">Loading collections…</div>}
+        {!trimmedSearch && error && <div className="pick-group">Could not load collections</div>}
+        {!trimmedSearch && !loading && !error && rows.length === 0 && (
+          <div className="pick-group">No collections yet</div>
+        )}
       </div>
     </>
   )
 }
 
-/** Choose one grouping-proposal parent from a bounded hierarchical popover */
+/** Choose one persisted collection destination from a bounded hierarchy */
 export function GroupingPlacementPicker({
   kind,
   title,
   currentId,
+  currentLabel,
+  currentPath,
   options,
   disabled,
+  loading = false,
+  error = false,
   onChange,
 }: {
   kind: 'bundle' | 'collection'
   title: string
-  currentId: string | null
+  currentId: string | null | undefined
+  currentLabel?: string
+  currentPath?: string
   options: GroupingPlacementOption[]
   disabled: boolean
+  loading?: boolean
+  error?: boolean
   onChange: (id: string | null) => void
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const current = currentId ? options.find((option) => option.id === currentId) : undefined
-  const currentLabel = current?.name ?? 'Top level'
-  const currentPath = current?.path ?? 'Top level'
+  const current =
+    typeof currentId === 'string' ? options.find((option) => option.id === currentId) : undefined
+  const label = current?.name ?? (currentId === null ? 'Top level' : currentLabel)
+  const path = current?.path ?? (currentId === null ? 'Top level' : currentPath)
 
   const select = (id: string | null) => {
     setOpen(false)
@@ -227,7 +245,7 @@ export function GroupingPlacementPicker({
         aria-label={`Placement for ${kind} suggestion ${title}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={`Current placement: ${currentPath}`}
+        title={`Current placement: ${path ?? 'Suggested hierarchy'}`}
         disabled={disabled}
         draggable={false}
         onMouseDown={(event) => event.stopPropagation()}
@@ -238,7 +256,7 @@ export function GroupingPlacementPicker({
         }}
       >
         <IconFolder />
-        <span className="grp-placement__label">{currentLabel}</span>
+        <span className="grp-placement__label">{label ?? 'Suggested hierarchy'}</span>
         <IconChevron open={open} />
       </button>
       {open &&
@@ -261,6 +279,8 @@ export function GroupingPlacementPicker({
               options={options}
               currentId={currentId}
               collapsed={collapsed}
+              loading={loading}
+              error={error}
               onSelect={select}
               onToggle={toggle}
             />

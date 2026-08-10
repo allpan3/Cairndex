@@ -4975,11 +4975,19 @@
               }
             ],
             "title": "Parent Proposal Id"
+          },
+          "target_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Collection Id"
           }
         },
-        "required": [
-          "parent_proposal_id"
-        ],
         "title": "ProposalReparent",
         "type": "object"
       },
@@ -14142,7 +14150,7 @@
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
       "put": {
-        "description": "Move a bundle or new collection suggestion, including to top level.",
+        "description": "Move suggested work into current collection state or another suggestion.",
         "operationId": "reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put",
         "parameters": [
           {
@@ -14220,7 +14228,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposalRead"
+                  "$ref": "#/components/schemas/PlanRead"
                 }
               }
             },
