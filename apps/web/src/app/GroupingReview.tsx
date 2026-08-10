@@ -268,10 +268,23 @@ interface PlacementControls {
   setCollection: (proposal: GroupingProposal, targetCollectionId: string | null) => void
 }
 
-/** Coordinate view-only folding across the recursive proposal tree */
+/** Coordinate view-only folding across the recursive proposal tree.
+ *
+ * Two separate facts, because they have opposite defaults. A collection's
+ * children are shown unless folded; a bundle's *file list* is hidden unless
+ * asked for. Files tripled the row count of a plan the owner is scanning, and
+ * they are verification detail — the summary on the row carries the shape.
+ */
 interface FoldControls {
   collapsed: ReadonlySet<string>
   set: (key: string, collapsed: boolean) => void
+  /** Per-row choices, which override the toolbar default below. */
+  fileOverrides: ReadonlyMap<string, boolean>
+  setFiles: (key: string, open: boolean) => void
+  /** The toolbar's default for rows the owner has not decided about. */
+  filesDefault: boolean
+  /** Forced on during a file drag, so every list is a visible drop target. */
+  forceFiles: boolean
 }
 
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
@@ -312,6 +325,57 @@ function proposalKey(proposal: GroupingProposal): string {
   return `b:${proposal.target_bundle_id ?? ''}:${files}`
 }
 
+/** Confidence below which the suggester is guessing rather than matching.
+ *
+ * The suggester scores 0.9 for one video with sidecars and 0.75 for explicit
+ * multi-part video, and drops to 0.5–0.55 when it is really only going on the
+ * folder. That gap is the useful line: above it the row is worth a glance,
+ * below it the owner has to decide something. Mirrors `_bundle_reason` in
+ * `grouping/suggester.py`, which is the authority.
+ */
+const LOW_CONFIDENCE = 0.75
+
+/** Whether this row is one the suggester is unsure about. */
+function needsALook(proposal: GroupingProposal): boolean {
+  return (
+    proposal.kind === 'bundle' && proposal.files.length > 0 && proposal.confidence < LOW_CONFIDENCE
+  )
+}
+
+/** Summarise a bundle's contents so its file list can stay closed.
+ *
+ * "3 files · video, subtitle, cover" answers the question the open list was
+ * being kept open for — is this the shape I expect — in one line instead of
+ * three, and the list is one click away when it is not.
+ */
+function fileSummary(proposal: GroupingProposal): string {
+  const count = proposal.files.length
+  if (count === 0) return 'no files'
+  const kinds: string[] = []
+  for (const file of proposal.files) {
+    // Roles that carry no media kind are simply left out: "other" names nothing
+    // the owner can act on, and the count already says the file is there.
+    const kind = ROLE_MEDIA_KIND[file.proposed_role]
+    if (kind && !kinds.includes(kind)) kinds.push(kind)
+  }
+  const files = `${count} ${count === 1 ? 'file' : 'files'}`
+  return kinds.length > 0 ? `${files} · ${kinds.join(', ')}` : files
+}
+
+/** Keep matching rows and every ancestor that leads to one.
+ *
+ * Ancestors are kept even when they do not match, because a bundle's placement
+ * is the branch it sits in — showing it re-rooted would misreport where it
+ * would be filed.
+ */
+function filterTree(nodes: TreeNode[], keep: (p: GroupingProposal) => boolean): TreeNode[] {
+  return nodes.flatMap((node) => {
+    const children = filterTree(node.children, keep)
+    if (keep(node.proposal) || children.length > 0) return [{ ...node, children }]
+    return []
+  })
+}
+
 function collectKeys(nodes: TreeNode[]): Map<string, string> {
   const keys = new Map<string, string>()
   const visit = (items: TreeNode[]) => {
@@ -339,9 +403,9 @@ function collectFoldKeys(nodes: TreeNode[]): string[] {
   const keys = new Set<string>()
   const visit = (items: TreeNode[]) => {
     for (const node of items) {
-      if (node.proposal.kind === 'bundle' || node.children.length > 0) {
-        keys.add(node.proposal.id)
-      }
+      // Containers only: a bundle's disclosure now opens its file list, which
+      // has its own default and its own toolbar toggle.
+      if (node.children.length > 0) keys.add(node.proposal.id)
       visit(node.children)
     }
   }
@@ -835,6 +899,7 @@ function ProposalPlacement({
       disabled={!placement.canEdit || placement.pending}
       loading={placement.loading}
       error={placement.error}
+      compact={proposal.parent_proposal_id !== null}
       onChange={(targetCollectionId) => placement.setCollection(proposal, targetCollectionId)}
     />
   )
@@ -1003,10 +1068,14 @@ function ProposalNode({
   const isAddition = hasDestinationChoice && !proposal.create_new_bundle
   const fileListDrop = drag.slot?.kind === 'file-list' && drag.slot.proposalId === proposal.id
   const displayTitle = proposalDisplayTitle(proposal)
+  const filesShown = fold.forceFiles || (fold.fileOverrides.get(proposal.id) ?? fold.filesDefault)
+  const attention = needsALook(proposal)
   return (
     <li className="grp-node grp-node--bundle">
       <div
-        className={`grp-row grp-row--bundle${fileListDrop ? ' grp-row--file-drop' : ''}`}
+        className={`grp-row grp-row--bundle${fileListDrop ? ' grp-row--file-drop' : ''}${
+          attention ? ' grp-row--attention' : ''
+        }`}
         // The whole row is the drag affordance — the file rows below already
         // worked this way, which is what made their ⠿ handles redundant. Not
         // draggable while this row's title is being renamed: `draggable` on an
@@ -1030,10 +1099,10 @@ function ProposalNode({
         }}
       >
         <ProposalDisclosure
-          subject={`bundle suggestion ${displayTitle}`}
-          collapsed={collapsed}
+          subject={`files in bundle suggestion ${displayTitle}`}
+          collapsed={!filesShown}
           collapsible
-          onToggle={() => fold.set(foldKey, !collapsed)}
+          onToggle={() => fold.setFiles(foldKey, !filesShown)}
         />
         <ProposalCheckbox
           checked={checked}
@@ -1059,8 +1128,13 @@ function ProposalNode({
             )}
           </span>
           <span className="grp-reason">
-            {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
+            {hasDestinationChoice ? additionFileCount(proposal) : fileSummary(proposal)}
           </span>
+          {attention && (
+            <span className="grp-attention" title={proposal.reason ?? undefined}>
+              {proposal.reason || 'grouped by folder only'}
+            </span>
+          )}
           {/* An addition has no placement of its own: its files join a bundle
               that already exists and already sits wherever it sits. Offering the
               picker here filed that *confirmed* bundle into a second collection
@@ -1080,7 +1154,7 @@ function ProposalNode({
       <ul
         className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
         aria-label={`Files in ${displayTitle}`}
-        hidden={collapsed}
+        hidden={!filesShown}
         onDragOver={(event) => {
           if (drag.item?.kind !== 'file') return
           event.preventDefault()
@@ -1202,6 +1276,9 @@ export function GroupingReview({
   // ``proposalKey``.
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
+  const [fileOverrides, setFileOverrides] = useState<Map<string, boolean>>(new Map())
+  const [showAllFiles, setShowAllFiles] = useState(false)
+  const [onlyNeedsALook, setOnlyNeedsALook] = useState(false)
   const [editing, setEditing] = useState<{
     id: string
     original: string
@@ -1212,11 +1289,21 @@ export function GroupingReview({
   const [dropSlot, setDropSlot] = useState<ReviewDropSlot | null>(null)
   const committingRename = useRef<string | null>(null)
 
-  const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
-  const stemOwners = useMemo(() => stemControlOwners(tree), [tree])
-  const bundleProposalIds = useMemo(() => collectBundleIds(tree), [tree])
-  const keyById = useMemo(() => collectKeys(tree), [tree])
-  const foldKeys = useMemo(() => collectFoldKeys(tree), [tree])
+  const fullTree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
+  const attentionCount = useMemo(
+    () => (plan.data?.proposals ?? []).filter(needsALook).length,
+    [plan.data],
+  )
+  // Selection, folding and stem ownership all read the *unfiltered* tree, so
+  // narrowing the view never changes what Accept would do.
+  const tree = useMemo(
+    () => (onlyNeedsALook ? filterTree(fullTree, needsALook) : fullTree),
+    [fullTree, onlyNeedsALook],
+  )
+  const stemOwners = useMemo(() => stemControlOwners(fullTree), [fullTree])
+  const bundleProposalIds = useMemo(() => collectBundleIds(fullTree), [fullTree])
+  const keyById = useMemo(() => collectKeys(fullTree), [fullTree])
+  const foldKeys = useMemo(() => collectFoldKeys(fullTree), [fullTree])
   const placementOptions = useMemo(
     () => collectionPlacementOptions(collections.data ?? []),
     [collections.data],
@@ -1229,12 +1316,15 @@ export function GroupingReview({
     () => new Map((plan.data?.proposals ?? []).map((proposal) => [proposal.id, proposal])),
     [plan.data],
   )
-  const emptyBundleIds = useMemo(() => new Set(collectEmptyBundleIds(tree)), [tree])
+  const emptyBundleIds = useMemo(() => new Set(collectEmptyBundleIds(fullTree)), [fullTree])
   const selectedIds = useMemo(
     () => new Set(bundleProposalIds.filter((id) => !deselectedKeys.has(keyById.get(id) ?? id))),
     [bundleProposalIds, deselectedKeys, keyById],
   )
-  const nodeSelection = useMemo(() => selectionByNode(tree, selectedIds), [tree, selectedIds])
+  const nodeSelection = useMemo(
+    () => selectionByNode(fullTree, selectedIds),
+    [fullTree, selectedIds],
+  )
 
   const toggleNode = (node: TreeNode, checked: boolean) => {
     const keys = collectBundleIds([node]).map((id) => keyById.get(id) ?? id)
@@ -1261,6 +1351,8 @@ export function GroupingReview({
     // comes through here at all — it edits the open plan in place.
     setDeselectedKeys(new Set())
     setCollapsedKeys(new Set())
+    setFileOverrides(new Map())
+    setOnlyNeedsALook(false)
     setNotice(message)
   }
 
@@ -1557,6 +1649,12 @@ export function GroupingReview({
         else next.delete(key)
         return next
       }),
+    fileOverrides,
+    setFiles: (key, open) => setFileOverrides((current) => new Map(current).set(key, open)),
+    filesDefault: showAllFiles,
+    // A file drag needs every list visible, or the only drop targets are the
+    // ones that happened to be open.
+    forceFiles: dragItem?.kind === 'file',
   }
 
   return (
@@ -1601,10 +1699,34 @@ export function GroupingReview({
 
           {result && <ResultPanel result={result} />}
 
-          {!result && plan.data && tree.length > 0 && (
+          {!result && plan.data && fullTree.length > 0 && (
             <>
               <div className="grp-selectbar">
                 <div className="grp-selectbar__group">
+                  {/* The suggester already scores its own certainty; surfacing it
+                      turns "read every row" into "read the few it is unsure
+                      about". Filtering is view-only — selection and Accept still
+                      read the whole plan. */}
+                  <span className="grp-filter" role="group" aria-label="Filter suggestions">
+                    <button
+                      type="button"
+                      className={`grp-filter__tab${onlyNeedsALook ? '' : ' grp-filter__tab--on'}`}
+                      aria-pressed={!onlyNeedsALook}
+                      onClick={() => setOnlyNeedsALook(false)}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      className={`grp-filter__tab${onlyNeedsALook ? ' grp-filter__tab--on' : ''}`}
+                      aria-pressed={onlyNeedsALook}
+                      disabled={attentionCount === 0}
+                      onClick={() => setOnlyNeedsALook(true)}
+                    >
+                      Needs a look
+                      <span className="grp-filter__count">{attentionCount}</span>
+                    </button>
+                  </span>
                   <span>
                     {selectedCount} {selectedCount === 1 ? 'bundle' : 'bundles'} selected
                   </span>
@@ -1643,6 +1765,17 @@ export function GroupingReview({
                     onClick={() => setCollapsedKeys(new Set())}
                   >
                     Expand all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--compact"
+                    aria-pressed={showAllFiles}
+                    onClick={() => {
+                      setShowAllFiles((value) => !value)
+                      setFileOverrides(new Map())
+                    }}
+                  >
+                    {showAllFiles ? 'Hide files' : 'Show files'}
                   </button>
                 </div>
               </div>
@@ -1684,7 +1817,7 @@ export function GroupingReview({
             </>
           )}
 
-          {!result && (!plan.data || tree.length === 0) && !plan.isLoading && (
+          {!result && (!plan.data || fullTree.length === 0) && !plan.isLoading && (
             <div className="grp-empty">
               {planId
                 ? 'Nothing to group — there are no unbundled files awaiting suggestions.'

@@ -301,6 +301,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The grouping review now leads with what needs deciding.** The suggester
+  already scores its own certainty, so the toolbar counts the suggestions it is
+  unsure about and can filter to just those; a flagged row carries a warm left
+  edge and says why it was grouped. Filtering is view-only — selection and
+  Accept still cover the whole plan. Bundle rows state what they contain
+  ("3 files · video, subtitle, image") with the file list one click away rather
+  than open by default, and a nested row's placement control drops its printed
+  destination, which only ever repeated the row it is drawn inside. Root rows
+  keep the full label, every control keeps its accessible name, and a file drag
+  reveals every list so nothing becomes an invisible drop target.
 - **Grouping destinations now use a collection tree instead of a repeated-path
   dropdown.** The proposal row shows only its direct destination, while the
   bounded picker mirrors the collection hierarchy with indentation and
