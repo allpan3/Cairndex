@@ -275,6 +275,47 @@ def test_missing_existing_collection_target_does_not_confirm_or_duplicate(
     plan_store.rename_proposal(session, plan.id, addition.id, "Still Editable")
 
 
+# Placement must not unlock a file held by another confirmed bundle. Renaming an
+# addition is already refused outright, so placement is the reachable edit here.
+@pytest.mark.parametrize("edit", ["none", "placement"])
+def test_non_membership_edits_do_not_override_a_confirmed_bundle(
+    session: Session, library_root: Path, edit: str
+) -> None:
+    _confirm_movie_folder(session, library_root)
+    _scan_sequel(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+
+    # The files this addition would fold in are claimed by another *confirmed*
+    # bundle before apply runs.
+    claimed = session.scalars(
+        select(AssetFile).where(
+            AssetFile.id.in_([pf.asset_file_id for pf in addition.files]),
+        )
+    ).all()
+    assert claimed
+    rival = AssetBundle(title="Rival", grouping_state=GroupingState.CONFIRMED)
+    session.add(rival)
+    session.flush()
+    for row in claimed:
+        row.bundle = rival
+        row.bundle_id = rival.id
+    session.flush()
+
+    if edit == "placement":
+        plan_store.reparent_proposal(session, plan.id, addition.id, None)
+
+    result = apply_service.apply_plan(session, plan, proposal_ids={addition.id})
+
+    assert result.files_added_to_bundles == 0
+    assert "a file to add was already grouped into another confirmed bundle" in [
+        conflict.reason for conflict in result.conflicts
+    ]
+    for row in claimed:
+        session.refresh(row)
+        assert row.bundle_id == rival.id
+
+
 # A plan that confirmed something still closes, even alongside a conflict
 def test_partial_success_still_closes_the_plan(session: Session, library_root: Path) -> None:
     (library_root / "Reel").mkdir()
