@@ -392,13 +392,15 @@ Current workflow details:
   descendant bundles; selecting one nested bundle automatically carries its
   complete collection ancestor path into apply without selecting siblings;
 - selection and placement are separate: file rows can move within or across
-  bundle suggestions, while bundle and new-collection proposals can be placed
-  by drag-and-drop or a keyboard-accessible, searchable collection-tree picker.
-  The picker shows one collection name per indented row, supports folding its
-  branches, and uses full paths only for disambiguation and accessibility instead
-  of repeating every ancestor visibly. New suggestions remain
-  renameable/reclassifiable; an existing collection context is labeled and
-  read-only;
+  bundle suggestions, while bundle and new-collection proposals can be moved
+  among speculative collection proposals by drag-and-drop or placed into the
+  library's current persisted collection hierarchy with a keyboard-accessible,
+  searchable picker. Suggested collections are not picker destinations because
+  they are still unconfirmed. The picker shows one persisted collection name per
+  indented row, supports folding its branches, and uses full paths only for
+  disambiguation and accessibility instead of repeating every ancestor visibly.
+  New suggestions remain renameable/reclassifiable; an existing collection
+  context is labeled and read-only;
 - grouping review opens fully expanded, but collection rows can fold their
   descendant proposals and bundle rows can fold their file lists. Collapse all
   and Expand all shorten or restore the complete tree without changing

@@ -48,7 +48,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   and resolved by stable id; if it disappeared or moved, apply reports a conflict
   instead of creating a duplicate at the top level. New bundles and collection
   suggestions can be placed explicitly with a keyboard-accessible selector or
-  drag-and-drop, including back to the top level.
+  drag-and-drop, including back to the top level. The selector now lists only
+  collections already persisted in the current library; speculative collection
+  suggestions remain editable in the review tree but are never presented as
+  settled destinations.
 - **Clicking elsewhere in the Bundle Inspector now leaves the active note.**
   The desktop webview could keep a note textarea focused when a pointer press
   landed on non-interactive inspector content. The inspector now blurs that

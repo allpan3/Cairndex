@@ -1003,14 +1003,17 @@ export function useReparentGroupingProposal(planId: string | null) {
     mutationFn: ({
       proposalId,
       parentProposalId,
+      targetCollectionId,
     }: {
       proposalId: string
       parentProposalId: string | null
+      targetCollectionId: string | null
     }) => {
       if (!planId) throw new Error('no grouping plan selected')
-      return reparentGroupingProposal(planId, proposalId, parentProposalId)
+      return reparentGroupingProposal(planId, proposalId, parentProposalId, targetCollectionId)
     },
-    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
+    // A persisted destination can materialize or prune structural context rows
+    onSuccess: (plan) => qc.setQueryData<GroupingPlan>(['grouping-plan', planId], plan),
   })
 }
 

@@ -80,9 +80,12 @@ Concretely:
    bundles/containers with bundle selection, merge, split, reclassify
    (bundle ↔ container), rename, and explicit collection placement. Collection
    rows are structural paths and tri-state bulk selectors, not independently
-   accepted work. Applying the plan is the only step that creates confirmed
-   grouping decisions: confirming bundles, assigning roles, creating logical
-   collections/memberships, and linking subtitles.
+   accepted work. A placement picker offers only the library's currently
+   persisted collections; speculative collection proposals remain rearrangeable
+   by drag-and-drop but are not presented as settled destinations. Applying the
+   plan is the only step that creates confirmed grouping decisions: confirming
+   bundles, assigning roles, creating logical collections/memberships, and
+   linking subtitles.
 5. **User decisions are durable and win over heuristics on re-scan.** A confirmed
    bundle is never silently re-split or merged. Existing confirmed membership
    remains the source of truth; new files appearing later are suggested into
@@ -96,6 +99,8 @@ Concretely:
    amended on 2026-08-09, existing collection context carries stable collection
    identity and is read-only; selecting a nested bundle resolves its complete
    ancestor path even when no collection checkbox was directly selected.
+   Choosing a persisted destination resolves its current ancestor path at edit
+   time, so the plan records the same committed hierarchy the picker displayed.
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external

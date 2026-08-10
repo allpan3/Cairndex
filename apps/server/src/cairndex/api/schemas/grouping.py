@@ -1,8 +1,9 @@
 """API schemas for grouping plans and apply results (ADR-0009 phase 3)."""
 
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind, StemMode
 
@@ -51,9 +52,17 @@ class ProposalFileMove(BaseModel):
     target_index: int = Field(ge=0)
 
 
-# Validate a bundle or new-collection suggestion's parent edit
+# Validate a bundle or new-collection suggestion's persisted or proposed parent
 class ProposalReparent(BaseModel):
-    parent_proposal_id: str | None
+    parent_proposal_id: str | None = None
+    target_collection_id: str | None = None
+
+    # Reject a destination that names two different parent domains
+    @model_validator(mode="after")
+    def one_destination(self) -> Self:
+        if self.parent_proposal_id is not None and self.target_collection_id is not None:
+            raise ValueError("choose either a collection suggestion or an existing collection")
+        return self
 
 
 # Validate a suggestion's bundle-versus-collection override
