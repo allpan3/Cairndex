@@ -372,11 +372,16 @@ and derive their fresh-bundle title on first switch. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
 stable file id to an exact position within any BUNDLE proposal and rewrites dense
 sequence/derived-role values for every affected proposal. `PUT
-/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE or new
-CONTAINER proposal into a CONTAINER proposal or back to the top level, rejecting
-cycles and moves of existing collection context. These owner edits are marked
-explicitly so apply can preserve `base_bundle_id` across reviewed provisional
-membership changes. Confirmed bundles remain outside regenerated plans.
+/grouping/plans/{id}/proposals/{proposal_id}/parent` accepts mutually exclusive
+`parent_proposal_id` and `target_collection_id` destinations. The first reparents
+a BUNDLE or new CONTAINER proposal within the speculative plan tree for
+drag-and-drop; the second resolves a currently persisted collection's live
+root-to-leaf path into stable, read-only context rows. Null moves the proposal to
+the top level. The endpoint rejects cycles and moves of existing context, prunes
+unused context paths, commits newly materialized context before responding, and
+returns the refreshed whole plan. These owner edits are marked explicitly so
+apply can preserve `base_bundle_id` across reviewed provisional membership
+changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
 that snapshot; omitting a directory selects the balanced default.
 

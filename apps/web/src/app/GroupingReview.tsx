@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 
 import type {
+  CollectionRead,
   GroupingApplyResult,
   GroupingPlan,
   GroupingProposal,
@@ -18,6 +19,7 @@ import type {
 } from '../api/client'
 import {
   useApplyGroupingPlan,
+  useCollections,
   useGenerateGroupingPlan,
   useGroupingPlan,
   useGroupingPlans,
@@ -259,9 +261,11 @@ interface DragControls {
 interface PlacementControls {
   canEdit: boolean
   pending: boolean
+  loading: boolean
+  error: boolean
   options: GroupingPlacementOption[]
-  canPlace: (proposalId: string, parentProposalId: string | null) => boolean
-  set: (proposal: GroupingProposal, parentProposalId: string | null) => void
+  proposals: Map<string, GroupingProposal>
+  setCollection: (proposal: GroupingProposal, targetCollectionId: string | null) => void
 }
 
 /** Coordinate view-only folding across the recursive proposal tree */
@@ -373,25 +377,41 @@ function selectionByNode(nodes: TreeNode[], selectedIds: Set<string>): Map<strin
   return result
 }
 
-/** Build hierarchical collection destinations with disambiguating paths */
-function collectionPlacementOptions(nodes: TreeNode[]): GroupingPlacementOption[] {
-  const options: GroupingPlacementOption[] = []
-  const visit = (items: TreeNode[], path: string[]) => {
-    for (const node of items) {
-      if (node.proposal.kind !== 'container') continue
-      const title = node.proposal.title || baseName(node.proposal.directory) || 'Untitled'
-      const nextPath = [...path, title]
-      options.push({
-        id: node.proposal.id,
-        parent_id: node.proposal.parent_proposal_id,
-        name: title,
-        path: nextPath.join(' / '),
-      })
-      visit(node.children, nextPath)
+/** Build picker destinations from the library's current persisted collections */
+function collectionPlacementOptions(collections: CollectionRead[]): GroupingPlacementOption[] {
+  const byId = new Map(collections.map((collection) => [collection.id, collection]))
+  return collections.map((collection) => {
+    const names: string[] = []
+    const seen = new Set<string>()
+    let current: CollectionRead | undefined = collection
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id)
+      names.push(current.name)
+      current = current.parent_id ? byId.get(current.parent_id) : undefined
     }
+    return {
+      id: collection.id,
+      parent_id: collection.parent_id,
+      name: collection.name,
+      path: names.reverse().join(' / '),
+    }
+  })
+}
+
+/** Describe a proposal's ancestry for the placement anchor only */
+function proposalPlacementPath(
+  proposal: GroupingProposal,
+  proposals: Map<string, GroupingProposal>,
+): string {
+  const names: string[] = []
+  const seen = new Set<string>()
+  let current: GroupingProposal | undefined = proposal
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id)
+    names.push(proposalDisplayTitle(current))
+    current = current.parent_proposal_id ? proposals.get(current.parent_proposal_id) : undefined
   }
-  visit(nodes, [])
-  return options
+  return names.reverse().join(' / ')
 }
 
 /** The folder one file lives in, from its library-relative path. */
@@ -776,15 +796,36 @@ function ProposalPlacement({
 }) {
   const kind = proposal.kind === 'container' ? 'collection' : 'bundle'
   const title = proposalDisplayTitle(proposal)
-  const options = placement.options.filter((option) => placement.canPlace(proposal.id, option.id))
+  const parent = proposal.parent_proposal_id
+    ? placement.proposals.get(proposal.parent_proposal_id)
+    : undefined
+  const currentId = parent ? (parent.target_collection_id ?? undefined) : null
+  const suggestedParent = parent && parent.target_collection_id === null ? parent : undefined
+  const persistedParent = parent?.target_collection_id ? parent : undefined
   return (
     <GroupingPlacementPicker
       kind={kind}
       title={title}
-      currentId={proposal.parent_proposal_id}
-      options={options}
+      currentId={currentId}
+      currentLabel={
+        suggestedParent
+          ? `Suggested: ${proposalDisplayTitle(suggestedParent)}`
+          : persistedParent
+            ? proposalDisplayTitle(persistedParent)
+            : undefined
+      }
+      currentPath={
+        suggestedParent
+          ? `Suggested: ${proposalPlacementPath(suggestedParent, placement.proposals)}`
+          : persistedParent
+            ? proposalPlacementPath(persistedParent, placement.proposals)
+            : undefined
+      }
+      options={placement.options}
       disabled={!placement.canEdit || placement.pending}
-      onChange={(parentProposalId) => placement.set(proposal, parentProposalId)}
+      loading={placement.loading}
+      error={placement.error}
+      onChange={(targetCollectionId) => placement.setCollection(proposal, targetCollectionId)}
     />
   )
 }
@@ -1121,6 +1162,7 @@ export function GroupingReview({
   const openPlan = plans.data?.find((p) => p.status === 'open') ?? null
   const planId = chosenId ?? openPlan?.id ?? null
   const plan = useGroupingPlan(planId)
+  const collections = useCollections()
   const generate = useGenerateGroupingPlan()
   const rename = useRenameGroupingProposal(planId)
   const moveProposalFile = useMoveGroupingProposalFile(planId)
@@ -1151,7 +1193,14 @@ export function GroupingReview({
   const bundleProposalIds = useMemo(() => collectBundleIds(tree), [tree])
   const keyById = useMemo(() => collectKeys(tree), [tree])
   const foldKeys = useMemo(() => collectFoldKeys(tree), [tree])
-  const placementOptions = useMemo(() => collectionPlacementOptions(tree), [tree])
+  const placementOptions = useMemo(
+    () => collectionPlacementOptions(collections.data ?? []),
+    [collections.data],
+  )
+  const collectionById = useMemo(
+    () => new Map((collections.data ?? []).map((collection) => [collection.id, collection])),
+    [collections.data],
+  )
   const proposalById = useMemo(
     () => new Map((plan.data?.proposals ?? []).map((proposal) => [proposal.id, proposal])),
     [plan.data],
@@ -1328,18 +1377,24 @@ export function GroupingReview({
     return true
   }
 
-  const setPlacement = (proposal: GroupingProposal, parentProposalId: string | null) => {
+  const setPlacement = (
+    proposal: GroupingProposal,
+    parentProposalId: string | null,
+    targetCollectionId: string | null = null,
+  ) => {
     reparentProposal.mutate(
-      { proposalId: proposal.id, parentProposalId },
+      { proposalId: proposal.id, parentProposalId, targetCollectionId },
       {
-        onSuccess: (updated) => {
-          rememberEmptiedSuggestions([updated])
+        onSuccess: () => {
           const kind = proposal.kind === 'container' ? 'Collection' : 'Bundle'
           const parent = parentProposalId ? proposalById.get(parentProposalId) : null
+          const collection = targetCollectionId ? collectionById.get(targetCollectionId) : null
           setNotice(
-            parent
-              ? `${kind} moved into “${parent.title ?? 'collection'}”.`
-              : `${kind} moved to the top level.`,
+            collection
+              ? `${kind} moved into “${collection.name}”.`
+              : parent
+                ? `${kind} moved into “${parent.title ?? 'collection'}”.`
+                : `${kind} moved to the top level.`,
           )
         },
       },
@@ -1436,9 +1491,12 @@ export function GroupingReview({
   const placementControls: PlacementControls = {
     canEdit: status === 'open' && editing === null,
     pending: busy,
+    loading: collections.isLoading,
+    error: collections.isError,
     options: placementOptions,
-    canPlace: canPlaceProposal,
-    set: setPlacement,
+    proposals: proposalById,
+    setCollection: (proposal, targetCollectionId) =>
+      setPlacement(proposal, null, targetCollectionId),
   }
   const destinationControls: DestinationControls = {
     canEdit: status === 'open' && editing === null,

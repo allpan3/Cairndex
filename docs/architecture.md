@@ -484,13 +484,18 @@ Grouping behavior:
   directly into the client cache;
 - grouping review persists whole-row file drag-and-drop within or across bundle
   proposals, accepting either the target bundle heading or file list as a drop.
-  Bundle and new-collection proposals can be reparented by drag-and-drop or a
-  bounded, searchable placement popover that renders the collection hierarchy
-  as independently foldable indented rows. Proposal rows show only their direct
-  destination; full paths remain in accessibility labels and tooltips, while
-  search results add only their direct parent for visible disambiguation. New
-  proposals can be retitled/reclassified before apply, while existing collection
-  context is read-only. Reviewed file sequence becomes playlist order;
+  Bundle and new-collection proposals can be reparented among speculative
+  CONTAINER proposals by drag-and-drop. Their bounded, searchable placement
+  popover instead reads only the library's current persisted collections and
+  renders that hierarchy as independently foldable indented rows; draft
+  collection suggestions never appear as settled picker destinations. Proposal
+  rows show only their direct destination; full paths remain in accessibility
+  labels and tooltips, while search results add only their direct parent for
+  visible disambiguation. Choosing a persisted collection resolves its current
+  ancestor path into stable read-only plan context and returns the committed
+  whole plan. New proposals can be retitled/reclassified before apply, while
+  existing collection context is read-only. Reviewed file sequence becomes
+  playlist order;
 - review folding is client-only state keyed by proposal content: a collection
   disclosure hides its descendant proposal list and a bundle disclosure hides
   its file list. Plans start expanded; per-row and global fold controls never

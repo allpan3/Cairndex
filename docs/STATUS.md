@@ -123,6 +123,15 @@ shows only a direct-parent hint in filtered results. Full paths remain available
 to assistive technology and in tooltips, and keyboard users can move through
 results or accept an exact search match with Enter.
 
+The selector's destinations now come from the current persisted collection
+query, the same source used by Bundle Inspector, rather than from the grouping
+plan's speculative CONTAINER proposals. A proposal still shows its suggested
+parent in the row and remains rearrangeable by drag-and-drop, but that draft
+path is not a picker choice. Choosing a persisted destination sends its stable
+collection id; the server resolves its current ancestor path into read-only plan
+context and commits the refreshed whole plan before the client can immediately
+apply it.
+
 The follow-up review UI now starts expanded but can fold any collection's
 descendant proposals or any bundle's file list. **Collapse all** and **Expand
 all** sit beside selection controls. This state is view-only and content-keyed,
@@ -131,16 +140,17 @@ drop targets, and stable in-place plan edits retain the owner's fold choices;
 an explicit fresh Suggest grouping resets to expanded.
 
 Verification: backend Ruff check/format, mypy (**167 source files**), and all
-**966 pytest tests** pass. Frontend ESLint, Prettier, TypeScript, all **79 Vitest
-files / 574 tests**, and the production build pass; unit coverage includes
-folded selection/apply invariance plus picker hierarchy, folding, search, and
-keyboard placement. The existing large-chunk warning remains. The complete
+**967 pytest tests** pass. Frontend ESLint, Prettier, TypeScript, all **79 Vitest
+files / 575 tests**, and the production build pass; unit coverage includes
+folded selection/apply invariance plus persisted-only picker destinations,
+hierarchy, folding, search, and keyboard placement. The existing large-chunk
+warning remains. The complete
 frontend `e2e/library.spec.ts` Playwright file passes all **35 tests**, including
 per-row review folding, dragging a bundle heading while its files are folded,
-and a long synthetic placement tree whose bounded panel, compact labels, search,
-and stable-id write are verified in Chromium. OpenAPI and generated frontend
-types are current. No desktop host code changed, so Rust and packaging gates are
-unaffected.
+and separate draft/current collection trees whose bounded panel, compact labels,
+search, speculative-option exclusion, and stable-id write are verified in
+Chromium. OpenAPI and generated frontend types are current. No desktop host code
+changed, so Rust and packaging gates are unaffected.
 
 ## In progress: stoppable multi-file imports (2026-08-01)
 

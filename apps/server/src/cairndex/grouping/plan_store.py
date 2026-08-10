@@ -28,6 +28,7 @@ from cairndex.grouping.suggester import (
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
+    Collection,
     GroupingPlan,
     GroupingProposal,
     GroupingProposalFile,
@@ -241,29 +242,133 @@ def move_proposal_file(
     return [source] if source.id == target.id else [source, target]
 
 
+# Resolve the current persisted ancestor path for one collection destination
+def _collection_path(session: Session, target_collection_id: str) -> list[Collection]:
+    """Load a collection's current root-to-leaf path with cycle protection."""
+    target = session.get(Collection, target_collection_id)
+    if target is None:
+        raise ValidationError("the selected collection no longer exists")
+
+    path: list[Collection] = []
+    seen: set[str] = set()
+    current: Collection | None = target
+    while current is not None:
+        if current.id in seen:
+            raise ValidationError("the selected collection hierarchy contains a cycle")
+        seen.add(current.id)
+        path.append(current)
+        current = current.parent
+    return list(reversed(path))
+
+
+# Materialize only the persisted collection path an owner explicitly selected
+def _materialize_collection_context(
+    session: Session,
+    plan: GroupingPlan,
+    target_collection_id: str,
+    forbidden_proposal_ids: set[str],
+) -> GroupingProposal:
+    """Represent a live collection path as stable read-only plan context."""
+    by_target = {
+        proposal.target_collection_id: proposal
+        for proposal in plan.proposals
+        if proposal.target_collection_id is not None
+    }
+    next_order = max((proposal.sort_order for proposal in plan.proposals), default=-1) + 1
+    parent: GroupingProposal | None = None
+    for collection in _collection_path(session, target_collection_id):
+        context = by_target.get(collection.id)
+        if context is not None and context.id in forbidden_proposal_ids:
+            raise ValidationError("a collection suggestion cannot move inside itself")
+        if context is None:
+            context = GroupingProposal(
+                plan=plan,
+                kind=ProposalKind.CONTAINER,
+                title=collection.name,
+                directory=f"@existing-collection/{collection.id}",
+                confidence=1.0,
+                reason="existing collection",
+                sort_order=next_order,
+                target_collection_id=collection.id,
+            )
+            next_order += 1
+            session.add(context)
+            session.flush()
+            by_target[collection.id] = context
+        else:
+            # An explicit selection refreshes this structural snapshot from the
+            # same current collection tree the picker displayed
+            context.title = collection.name
+            context.reason = "existing collection"
+        context.parent_proposal_id = parent.id if parent is not None else None
+        parent = context
+
+    if parent is None:  # guarded by the target lookup above
+        raise ValidationError("the selected collection no longer exists")
+    return parent
+
+
+# Remove context paths that no longer lead to any proposed work
+def _prune_empty_collection_context(session: Session, plan: GroupingPlan) -> None:
+    """Delete read-only context leaves made unused by a placement edit."""
+    remaining = list(plan.proposals)
+    while True:
+        parent_ids = {
+            proposal.parent_proposal_id
+            for proposal in remaining
+            if proposal.parent_proposal_id is not None
+        }
+        removable = [
+            proposal
+            for proposal in remaining
+            if proposal.target_collection_id is not None and proposal.id not in parent_ids
+        ]
+        if not removable:
+            return
+        removable_ids = {proposal.id for proposal in removable}
+        for proposal in removable:
+            session.delete(proposal)
+        remaining = [proposal for proposal in remaining if proposal.id not in removable_ids]
+        session.flush()
+
+
 # Reparent proposed work without moving an existing collection context node
 def reparent_proposal(
     session: Session,
     plan_id: str,
     proposal_id: str,
     parent_proposal_id: str | None,
-) -> GroupingProposal:
-    """Move a bundle or new collection suggestion before apply."""
+    *,
+    target_collection_id: str | None = None,
+) -> None:
+    """Move suggested work under a proposed or current persisted collection."""
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.kind is ProposalKind.CONTAINER and proposal.target_collection_id is not None:
         raise ValidationError("existing collection context cannot be moved")
-    if parent_proposal_id is not None:
+    if parent_proposal_id is not None and target_collection_id is not None:
+        raise ValidationError("choose either a collection suggestion or an existing collection")
+
+    descendants = _descendants(session, proposal)
+    if target_collection_id is not None:
+        parent = _materialize_collection_context(
+            session,
+            proposal.plan,
+            target_collection_id,
+            {descendant.id for descendant in descendants},
+        )
+        parent_proposal_id = parent.id
+    elif parent_proposal_id is not None:
         parent = _open_proposal(session, plan_id, parent_proposal_id)
         if parent.kind is not ProposalKind.CONTAINER:
             raise ValidationError("suggestions can move only into collection suggestions")
         if parent.id == proposal.id or any(
-            descendant.id == parent.id for descendant in _descendants(session, proposal)
+            descendant.id == parent.id for descendant in descendants
         ):
             raise ValidationError("a collection suggestion cannot move inside itself")
     proposal.parent_proposal_id = parent_proposal_id
     proposal.owner_edited = True
     session.flush()
-    return proposal
+    _prune_empty_collection_context(session, proposal.plan)
 
 
 def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingProposal]:

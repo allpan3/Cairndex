@@ -1784,7 +1784,7 @@ export interface paths {
         get?: never;
         /**
          * Reparent Proposal
-         * @description Move a bundle or new collection suggestion, including to top level.
+         * @description Move suggested work into current collection state or another suggestion.
          */
         put: operations["reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put"];
         post?: never;
@@ -3976,7 +3976,9 @@ export interface components {
         /** ProposalReparent */
         ProposalReparent: {
             /** Parent Proposal Id */
-            parent_proposal_id: string | null;
+            parent_proposal_id?: string | null;
+            /** Target Collection Id */
+            target_collection_id?: string | null;
         };
         /** ProposalUpdate */
         ProposalUpdate: {
@@ -7986,7 +7988,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalRead"];
+                    "application/json": components["schemas"]["PlanRead"];
                 };
             };
             /** @description Validation Error */
