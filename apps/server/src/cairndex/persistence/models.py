@@ -550,6 +550,11 @@ class GroupingProposal(Base):
     # Preserve a proposal's original bundle identity through an explicit edit
     base_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     owner_edited: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Narrower than ``owner_edited``: set only when the owner changed *which files*
+    # this proposal holds. Apply treats that, and only that, as licence to move a
+    # file out of an already-confirmed bundle (ADR-0009 §5/§7) — renaming a
+    # suggestion or choosing where it is filed must never grant it.
+    membership_edited: Mapped[bool] = mapped_column(default=False, server_default="0")
     kind: Mapped[ProposalKind] = mapped_column(Enum(ProposalKind, native_enum=False, length=16))
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     directory: Mapped[str] = mapped_column(Text, default="")
