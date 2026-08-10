@@ -530,11 +530,19 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Widen stem matching in Settled' })).toBeVisible()
+  // The folder's stem actions moved into the row's named overflow menu.
+  await page.getByRole('button', { name: 'Actions for bundle suggestion Already bundled' }).click()
+  await expect(
+    page.getByRole('menuitem', { name: 'Merge Settled into fewer bundles' }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
 
   await expect(page.getByText('Still unbundled')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Widen stem matching in Fresh' })).toBeVisible()
+  // The folder's stem actions moved into the row's named overflow menu.
+  await page.getByRole('button', { name: 'Actions for bundle suggestion Still unbundled' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Merge Fresh into fewer bundles' })).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
   ).toHaveCount(0)
@@ -742,54 +750,47 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(checkbox).toBeChecked()
   const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
   const dragHandle = page.locator('.grp-row--bundle', { has: additionTitle })
-  const destinationButton = page.getByRole('button', {
-    name: 'Create a new bundle from these files',
+  const rowActions = page.getByRole('button', {
+    name: `Actions for bundle suggestion Add to ${targetTitle}`,
   })
   const rowContent = page.locator('.grp-row__content')
   const fileCount = page.getByText('2 new files', { exact: true })
   const selectBar = page.locator('.grp-selectbar')
   await expect(additionTitle).toBeVisible()
   await expect(page.locator('.grp-root-drop')).toHaveCount(0)
-  await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
-  await expect(destinationButton).not.toHaveClass(/is-active/)
-  await expect(destinationButton).toHaveAttribute(
-    'data-tip',
-    'Create a new bundle from these files',
-  )
   await expect(page.locator('.grp-conf')).toHaveCount(0)
   await expect(page.locator('.grp-manual')).toHaveCount(0)
   await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)
 
   const titleBox = await additionTitle.boundingBox()
   const dragBox = await dragHandle.boundingBox()
-  const destinationBox = await destinationButton.boundingBox()
+  const actionsBox = await rowActions.boundingBox()
   const contentBox = await rowContent.boundingBox()
   const countBox = await fileCount.boundingBox()
   const selectBox = await selectBar.boundingBox()
-  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox || !selectBox) {
+  if (!titleBox || !dragBox || !actionsBox || !contentBox || !countBox || !selectBox) {
     throw new Error('missing grouping destination geometry')
   }
   expect(titleBox.y - (selectBox.y + selectBox.height)).toBeLessThanOrEqual(28)
   expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
-  expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
-  expect(
-    Math.abs(destinationBox.y + destinationBox.height / 2 - (titleBox.y + titleBox.height / 2)),
-  ).toBeLessThanOrEqual(3)
+  // The overflow trigger sits at the row's right edge, not after the title.
+  expect(actionsBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
+  expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(contentBox.x + contentBox.width + 1)
   expect(countBox.x).toBeGreaterThanOrEqual(contentBox.x)
 
-  await destinationButton.hover()
-  await expect
-    .poll(() =>
-      destinationButton.evaluate((element) => getComputedStyle(element, '::after').opacity),
-    )
-    .toBe('1')
-  await destinationButton.click()
-
-  const addBackButton = page.getByRole('button', {
-    name: `Add these files to “${targetTitle}” instead`,
+  // The action is named rather than a glyph with a tooltip.
+  await rowActions.click()
+  const switchItem = page.getByRole('menuitem', {
+    name: 'Create a new bundle from these files',
   })
-  await expect(addBackButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(addBackButton).not.toHaveClass(/is-active/)
+  await expect(switchItem).toBeVisible()
+  await switchItem.click()
+
+  await rowActions.click()
+  await expect(
+    page.getByRole('menuitem', { name: `Add these files to “${targetTitle}” instead` }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(page.getByText('2 files', { exact: true })).toBeVisible()
   await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
   await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)
@@ -808,7 +809,9 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   }
   await renameTitle.dblclick()
   const titleInput = page.getByRole('textbox', { name: 'Bundle suggestion title' })
-  await expect(addBackButton).toBeDisabled()
+  // Row edits are blocked while a title is being edited, but that can no longer
+  // be asserted here: opening the overflow menu blurs the box and commits the
+  // rename. The unit tests cover the disabled state directly.
   const editingRowBox = await bundleRow.boundingBox()
   const editingModalBox = await modal.boundingBox()
   if (!editingRowBox || !editingModalBox) {
@@ -823,9 +826,16 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(
     page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
   ).toBeVisible()
-  await expect(addBackButton).toBeEnabled()
+  const renamedActions = page.getByRole('button', {
+    name: 'Actions for bundle suggestion Separate Feature',
+  })
+  await renamedActions.click()
+  const addBackItem = page.getByRole('menuitem', {
+    name: `Add these files to “${targetTitle}” instead`,
+  })
+  await expect(addBackItem).toBeEnabled()
 
-  await addBackButton.click()
+  await addBackItem.click()
   await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })

@@ -301,6 +301,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **A grouping row's edits are now named, in one menu at a fixed right edge.**
+  They were four icon-only buttons — a refresh glyph, an ungroup glyph, and a
+  `>< <>` pair — rendered after variable-length text, so they landed at a
+  different x on every row and were discoverable only by hovering for a
+  tooltip. One overflow trigger per row now opens a menu whose items say what
+  they do ("Make this a collection of bundles instead", "Merge Series One into
+  fewer bundles" — naming the folder, since stem sensitivity belongs to a folder
+  rather than to the row it was attached to). The tooltip machinery that existed
+  to caption those glyphs is gone with them.
 - **The grouping review's chrome stopped competing with its contents.** The
   three-line preamble folds behind a one-line summary, the dialog holds a fixed
   height so folding a row no longer slides the footer under the pointer,
