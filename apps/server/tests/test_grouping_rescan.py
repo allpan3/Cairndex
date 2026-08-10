@@ -7,11 +7,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, ValidationError
-from cairndex.domain.enums import FileRole, GroupingState
+from cairndex.domain.enums import FileRole, GroupingPlanStatus, GroupingState
 from cairndex.grouping import ProposalKind, plan_store
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping.service import suggest_for_session
-from cairndex.persistence.models import AssetBundle, AssetFile, Collection, SubtitleTrack
+from cairndex.persistence.models import (
+    AssetBundle,
+    AssetFile,
+    Collection,
+    GroupingProposal,
+    SubtitleTrack,
+)
 from cairndex.scanning.scanner import scan_library
 
 
@@ -253,11 +259,84 @@ def test_missing_existing_collection_target_does_not_confirm_or_duplicate(
     assert result.bundles_confirmed == 0
     assert result.collections_created == 0
     assert [conflict.reason for conflict in result.conflicts] == [
-        "the existing collection no longer exists"
+        "the existing collection no longer exists",
+        "its collection destination is no longer valid",
     ]
+    # The second conflict names the row the owner actually selected. Reporting only
+    # the container left the result panel blaming a read-only "Existing" row while
+    # the selected bundle vanished from the report entirely.
+    assert {conflict.proposal_id for conflict in result.conflicts} >= {addition.id}
     assert session.scalar(select(func.count()).select_from(Collection)) == 0
     staged = session.scalars(select(AssetFile).where(AssetFile.id.in_(new_file_ids))).all()
     assert all(file.bundle.grouping_state is GroupingState.PROVISIONAL for file in staged)
+    # Nothing was confirmed, so the plan stays open and the owner's edits survive.
+    assert plan.status is GroupingPlanStatus.OPEN
+    assert plan.applied_at is None
+    plan_store.rename_proposal(session, plan.id, addition.id, "Still Editable")
+
+
+# A plan that confirmed something still closes, even alongside a conflict
+def test_partial_success_still_closes_the_plan(session: Session, library_root: Path) -> None:
+    (library_root / "Reel").mkdir()
+    (library_root / "Reel" / "one.mp4").write_text("a")
+    (library_root / "Reel" / "two.mp4").write_text("b")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+    bundles = [p for p in plan.proposals if p.kind is ProposalKind.BUNDLE]
+    assert len(bundles) == 2
+    # One proposal's file disappears; the other is still perfectly applicable.
+    (library_root / "Reel" / "two.mp4").unlink()
+    scan_library(session, library_root)
+
+    result = apply_service.apply_plan(session, plan)
+
+    assert result.bundles_confirmed >= 1
+    assert plan.status is GroupingPlanStatus.APPLIED
+    assert plan.applied_at is not None
+
+
+# An addition whose every file conflicted must not create its collections
+def test_fully_conflicted_addition_creates_no_collection(
+    session: Session, library_root: Path
+) -> None:
+    bundle_id = _confirm_movie_folder(session, library_root)
+    new_file_ids = _scan_sequel(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+    assert addition.parent_proposal_id is None
+
+    # Give the addition a brand-new collection suggestion as its parent, so a
+    # spurious "applied" outcome would be visible as a created collection.
+    parent = GroupingProposal(
+        plan_id=plan.id,
+        kind=ProposalKind.CONTAINER,
+        title="Vault",
+        directory="Vault",
+        confidence=1.0,
+        reason="test",
+    )
+    session.add(parent)
+    session.flush()
+    addition.parent_proposal_id = parent.id
+    session.flush()
+    session.expire(plan, ["proposals"])
+
+    # Every file to add vanishes before apply.
+    for file_id in new_file_ids:
+        row = session.get(AssetFile, file_id)
+        assert row is not None
+        session.delete(row)
+    session.flush()
+
+    result = apply_service.apply_plan(session, plan, proposal_ids={addition.id})
+
+    assert result.files_added_to_bundles == 0
+    assert result.collections_created == 0
+    assert result.bundles_added_to_collections == 0
+    assert session.scalar(select(func.count()).select_from(Collection)) == 0
+    target = session.get(AssetBundle, bundle_id)
+    assert target is not None
+    assert target.collections == []
 
 
 # A direct fresh file reuses a matching collection hidden by confirmed siblings
