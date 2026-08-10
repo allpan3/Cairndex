@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import LibraryDatabaseOpenError
+from cairndex.domain.enums import CONTEXT_DIRECTORY_PREFIX as _CONTEXT_DIRECTORY_PREFIX
 from cairndex.persistence import journal
 
 logger = logging.getLogger(__name__)
@@ -189,21 +190,42 @@ def ensure_content_indexes(engine: Engine) -> None:
             table = Base.metadata.tables[table_name]
             table.create(bind=conn, checkfirst=True)
             existing.add(table_name)
+        # Which columns this open actually added. A backfill belongs to the
+        # migration that introduced its column, so running it on every library
+        # open — as the grouping backfill below used to — costs a full scan and a
+        # write transaction forever, to find nothing.
+        added: set[tuple[str, str]] = set()
         for table_name, column, sql_type in _ADDITIVE_CONTENT_COLUMNS:
             if table_name not in existing:
                 continue
             columns = {col["name"] for col in inspector.get_columns(table_name)}
             if column not in columns:
                 conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {sql_type}"))
-        if "grouping_proposals" in existing:
-            # Preserve exact existing-collection identity for pre-upgrade open plans
+                added.add((table_name, column))
+        # Recover exact existing-collection identity for plans written before the
+        # column existed. ``_CONTEXT_DIRECTORY_PREFIX`` is the marker those rows
+        # used; its length is taken from the constant rather than written as a
+        # literal offset, so renaming it cannot silently truncate ids here.
+        if ("grouping_proposals", "target_collection_id") in added:
             conn.execute(
                 text(
-                    """UPDATE grouping_proposals
-                       SET target_collection_id = substr(directory, 22)
-                       WHERE target_collection_id IS NULL
-                         AND directory LIKE '@existing-collection/%'"""
-                )
+                    "UPDATE grouping_proposals "
+                    "SET target_collection_id = substr(directory, :start) "
+                    "WHERE target_collection_id IS NULL AND directory LIKE :pattern"
+                ),
+                {
+                    "start": len(_CONTEXT_DIRECTORY_PREFIX) + 1,
+                    "pattern": f"{_CONTEXT_DIRECTORY_PREFIX}%",
+                },
+            )
+        # Same marker identifies the synthesized read-only context rows themselves.
+        if ("grouping_proposals", "is_collection_context") in added:
+            conn.execute(
+                text(
+                    "UPDATE grouping_proposals SET is_collection_context = 1 "
+                    "WHERE directory LIKE :pattern"
+                ),
+                {"pattern": f"{_CONTEXT_DIRECTORY_PREFIX}%"},
             )
         if "asset_files" in existing:
             # rtrim stops at the final slash; the second rtrim removes that slash

@@ -275,9 +275,23 @@ def test_missing_existing_collection_target_does_not_confirm_or_duplicate(
     plan_store.rename_proposal(session, plan.id, addition.id, "Still Editable")
 
 
-# Placement must not unlock a file held by another confirmed bundle. Renaming an
-# addition is already refused outright, so placement is the reachable edit here.
-@pytest.mark.parametrize("edit", ["none", "placement"])
+# An addition is filed wherever its target bundle already is; it has no placement
+def test_addition_cannot_be_reparented(session: Session, library_root: Path) -> None:
+    _confirm_movie_folder(session, library_root)
+    _scan_sequel(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+
+    with pytest.raises(ValidationError, match="no placement of its own"):
+        plan_store.reparent_proposal(session, plan.id, addition.id, None)
+
+    # Switching it to a new bundle makes placement meaningful, and allowed.
+    plan_store.set_proposal_destination(session, plan.id, addition.id, True)
+    plan_store.reparent_proposal(session, plan.id, addition.id, None)
+
+
+# Only an explicit file move may take a file out of another confirmed bundle
+@pytest.mark.parametrize("edit", ["none", "owner_edited"])
 def test_non_membership_edits_do_not_override_a_confirmed_bundle(
     session: Session, library_root: Path, edit: str
 ) -> None:
@@ -302,8 +316,12 @@ def test_non_membership_edits_do_not_override_a_confirmed_bundle(
         row.bundle_id = rival.id
     session.flush()
 
-    if edit == "placement":
-        plan_store.reparent_proposal(session, plan.id, addition.id, None)
+    if edit == "owner_edited":
+        # Every non-membership edit lands here: rename, destination switch, and
+        # placement all set `owner_edited`. None of them may unlock the guard.
+        addition.owner_edited = True
+        session.flush()
+    assert addition.membership_edited is False
 
     result = apply_service.apply_plan(session, plan, proposal_ids={addition.id})
 

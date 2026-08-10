@@ -111,6 +111,11 @@ class GroupingProposal:
     base_bundle_id: str | None = None
     # Existing logical collection represented by this structural context node
     target_collection_id: str | None = None
+    # True only for a synthesized read-only node standing in for a live
+    # collection. A suggester-authored folder container may also carry a
+    # ``target_collection_id`` (so apply reuses that collection instead of
+    # duplicating it) while staying fully editable.
+    is_collection_context: bool = False
 
 
 @dataclass(frozen=True)
