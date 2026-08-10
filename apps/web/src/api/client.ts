@@ -881,17 +881,17 @@ export const moveGroupingProposalFile = (
     { target_proposal_id: targetProposalId, target_index: targetIndex },
   )
 
-/** Move a bundle suggestion into a collection suggestion or to top level. */
+/** Move suggested work under another proposal, a persisted collection, or top level */
 export const reparentGroupingProposal = (
   planId: string,
   proposalId: string,
   parentProposalId: string | null,
-): Promise<GroupingProposal> =>
-  send<GroupingProposal>(
-    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/parent`,
-    'PUT',
-    { parent_proposal_id: parentProposalId },
-  )
+  targetCollectionId: string | null,
+): Promise<GroupingPlan> =>
+  send<GroupingPlan>(`${lib()}/grouping/plans/${planId}/proposals/${proposalId}/parent`, 'PUT', {
+    parent_proposal_id: parentProposalId,
+    target_collection_id: targetCollectionId,
+  })
 
 /** Set one directory's stem sensitivity and re-suggest that directory in place.
  *

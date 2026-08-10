@@ -340,8 +340,19 @@ Durable, reviewable snapshots of the grouping suggester output.
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
   `target_bundle_title` (nullable display snapshot), `create_new_bundle`
   (additive destination override, default false),
+  `target_collection_id` (nullable plain id, not an FK: the existing collection
+  this row resolves to, so stale targets stay detectable and apply reuses that
+  collection instead of creating a same-named duplicate),
+  `is_collection_context` (true only for a synthesized read-only node standing in
+  for a live collection — an ordinary folder suggestion may resolve to an
+  existing collection and still be renamed, moved, and reclassified, so
+  immutability and context pruning key off this and never off
+  `target_collection_id`),
   `base_bundle_id` (the stable original identity used by explicitly edited
-  bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
+  bundle proposals), `owner_edited`, `membership_edited` (set only when the owner
+  changed *which files* the proposal holds; apply treats that, and only that, as
+  licence to move a file out of an already-confirmed bundle),
+  `kind` (`bundle` | `container`), `title`,
   `directory`, `confidence`, `reason`, `sort_order`.
 - `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
   (snapshot id, not an FK), `relative_path` (display snapshot), `proposed_role`,
@@ -350,11 +361,18 @@ Durable, reviewable snapshots of the grouping suggester output.
 Apply is idempotent and conflict-aware: it merges/splits provisional bundles
 preserving `AssetFile.id`, assigns roles, selects a cover, links external
 subtitles, creates suggested collections, and never touches the filesystem.
-`POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
-that selected subset is accepted and the plan is marked applied, so unchecked
-proposals are not retained as pending work for the same plan.
+`POST /grouping/plans/{id}/apply` may include `proposal_ids`; only file-backed
+BUNDLE rows are accepted work. CONTAINER rows are structural: apply computes the
+complete ancestor path for each selected bundle, creates or reuses only those
+paths, and marks the plan applied, so unchecked bundles are not retained as
+pending work for the same plan. A plan in which *no* selected bundle applied —
+every one blocked by a stale collection path or a vanished file — stays open, so
+the owner's renames, destination switches, and placements survive. Existing collection context resolves by
+`target_collection_id`; a missing or reparented target conflicts before its
+descendant bundle is confirmed rather than creating a same-name replacement.
 `PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
-CONTAINER proposal while the plan is open. `PUT
+new CONTAINER proposal while the plan is open; existing collection context is
+read-only. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/destination` switches an addition
 between its existing target and a separate new bundle while retaining the target
 id as a reversible alternative. Existing mode uses addition roles; new mode uses
@@ -365,10 +383,16 @@ and derive their fresh-bundle title on first switch. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
 stable file id to an exact position within any BUNDLE proposal and rewrites dense
 sequence/derived-role values for every affected proposal. `PUT
-/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
-into a CONTAINER proposal or back to the top level. These owner edits are marked
-explicitly so apply can preserve `base_bundle_id` across reviewed provisional
-membership changes. Confirmed bundles remain outside regenerated plans.
+/grouping/plans/{id}/proposals/{proposal_id}/parent` accepts mutually exclusive
+`parent_proposal_id` and `target_collection_id` destinations. The first reparents
+a BUNDLE or new CONTAINER proposal within the speculative plan tree for
+drag-and-drop; the second resolves a currently persisted collection's live
+root-to-leaf path into stable, read-only context rows. Null moves the proposal to
+the top level. The endpoint rejects cycles and moves of existing context, prunes
+unused context paths, commits newly materialized context before responding, and
+returns the refreshed whole plan. These owner edits are marked explicitly so
+apply can preserve `base_bundle_id` across reviewed provisional membership
+changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
 that snapshot; omitting a directory selects the balanced default.
 
@@ -390,8 +414,9 @@ the plan and rebuilds everything.
 
 `PUT /grouping/plans/{id}/proposals/{proposal_id}/kind` overrides the
 suggester's bundle-versus-collection decision for one suggestion, in either
-direction, and returns the **whole plan** because a conversion adds or removes
-sibling rows rather than editing one in place.
+direction, except for read-only existing collection context, and returns the
+**whole plan** because a conversion adds or removes sibling rows rather than
+editing one in place.
 
 - **BUNDLE → CONTAINER** splits the proposal's files into one child BUNDLE
   proposal per video subject and empties the parent, which then holds only its
@@ -404,9 +429,13 @@ sibling rows rather than editing one in place.
 - **CONTAINER → BUNDLE** collapses every descendant into one bundle and deletes
   them, so the override is reversible rather than a one-way door.
 
-Both mark `owner_edited`. An **addition** proposal (`target_bundle_id` set and
-`create_new_bundle` false) is rejected in both directions: its files join a
-bundle that already exists and is not going to become a collection.
+Both mark `owner_edited` and `membership_edited`. An **addition** proposal
+(`target_bundle_id` set and `create_new_bundle` false) is rejected in both
+directions: its files join a bundle that already exists and is not going to
+become a collection. An addition also has no placement of its own — its target
+bundle already sits wherever it sits, and collection membership is append-only —
+so reparenting one is refused rather than quietly filing that confirmed bundle
+into a second collection.
 
 A conversion lives in the open plan like every other owner edit, and like them
 it survives a Narrow/Widen on *other* directories (see `stem-modes` above).

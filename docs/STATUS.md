@@ -91,6 +91,92 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Completed on branch: grouping selection, placement, and folding (2026-08-09)
+
+Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`, open as
+**PR #11**, not yet merged.
+
+> **Review pass, 2026-08-09.** A max-effort review of this branch (10 finder
+> angles, 5 adversarial verifiers, 1 gap sweep) found 11 confirmed correctness
+> defects, three of them regressions against `main`. All 11 are fixed in commits
+> `3b12d87`, `e8eb67f`, `2bb37ff`, and the commit adding this note; each carries
+> a regression test, and the two most severe were proved to fail against the old
+> code before the fix landed. One candidate — an out-of-order query-cache
+> overwrite in `useReparentGroupingProposal` — was **refuted**: every reparent
+> entry point is gated by the shared `busy` flag, so the race is unreachable from
+> the UI.
+>
+> Three lower-confidence findings are **not** fixed and are follow-up work:
+> `service._with_collection_context` collapses two persisted collections that
+> share a name path *and* `sort_order` onto one plan node, making the applied
+> destination depend on set iteration order; the proposal tree is not virtualized
+> and folding hides rather than unmounts, so Collapse all frees no work at scale;
+> and `GroupingReview.tsx` is ~1700 lines and wants splitting on the seams the
+> review named.
+>
+> Separately, and **pre-existing on `main` rather than from this branch**: real
+> library content sits in two test fixtures and is published. The owner has seen
+> it and deferred the purge. Note for whoever plans it that the strings are also
+> in tags `v0.1.0` and `v0.1.1`, whose releases are published — so a history
+> rewrite would move tags AGENTS.md says never to move once released.
+
+Grouping review now separates **what is accepted** from **where it is filed**.
+Only file-backed bundle proposals are accepted. Collection checkboxes are
+tri-state bulk selectors for descendant bundles, so selecting one nested bundle
+makes each ancestor indeterminate, leaves siblings unchecked, and sends only
+that bundle id. Apply computes the selected bundle's full structural ancestor
+path and creates or reuses only that path.
+
+Existing collection context now carries a stable `target_collection_id`, is
+labeled **Existing**, and cannot be renamed, moved, or reclassified. Matching
+new suggestions reuse that exact nested collection even when another collection
+has the same name elsewhere; a target removed or reparented after plan generation
+conflicts before its bundle is confirmed instead of creating a top-level
+lookalike. Existing libraries gain the nullable field through additive bootstrap,
+including a legacy marker backfill for open plans.
+
+New bundle and collection proposals have a keyboard-accessible placement
+selector alongside drag-and-drop, including an explicit top-level destination.
+Collection moves reject cycles. Grouping remains metadata-only: apply changes
+bundle/collection records and never touches source files.
+
+The placement selector now follows the Bundle Inspector's collection-picker
+shape instead of flattening every destination into a repeated root-to-leaf
+label. Its viewport-bounded popover renders one collection name per indented
+row, folds branches independently, searches with the shared pinyin matcher, and
+shows only a direct-parent hint in filtered results. Full paths remain available
+to assistive technology and in tooltips, and keyboard users can move through
+results or accept an exact search match with Enter.
+
+The selector's destinations now come from the current persisted collection
+query, the same source used by Bundle Inspector, rather than from the grouping
+plan's speculative CONTAINER proposals. A proposal still shows its suggested
+parent in the row and remains rearrangeable by drag-and-drop, but that draft
+path is not a picker choice. Choosing a persisted destination sends its stable
+collection id; the server resolves its current ancestor path into read-only plan
+context and commits the refreshed whole plan before the client can immediately
+apply it.
+
+The follow-up review UI now starts expanded but can fold any collection's
+descendant proposals or any bundle's file list. **Collapse all** and **Expand
+all** sit beside selection controls. This state is view-only and content-keyed,
+so selection counts and apply ids remain unchanged, proposal headings remain
+drop targets, and stable in-place plan edits retain the owner's fold choices;
+an explicit fresh Suggest grouping resets to expanded.
+
+Verification: backend Ruff check/format, mypy (**167 source files**), and all
+**967 pytest tests** pass. Frontend ESLint, Prettier, TypeScript, all **79 Vitest
+files / 575 tests**, and the production build pass; unit coverage includes
+folded selection/apply invariance plus persisted-only picker destinations,
+hierarchy, folding, search, and keyboard placement. The existing large-chunk
+warning remains. The complete
+frontend `e2e/library.spec.ts` Playwright file passes all **35 tests**, including
+per-row review folding, dragging a bundle heading while its files are folded,
+and separate draft/current collection trees whose bounded panel, compact labels,
+search, speculative-option exclusion, and stable-id write are verified in
+Chromium. OpenAPI and generated frontend types are current. No desktop host code
+changed, so Rust and packaging gates are unaffected.
+
 ## In progress: stoppable multi-file imports (2026-08-01)
 
 Branch `codex/stoppable-import-batches` off current `main` at `ba76475`. Imports

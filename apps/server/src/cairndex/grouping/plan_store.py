@@ -12,7 +12,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
-from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind, StemMode
+from cairndex.domain.enums import (
+    GroupingPlanStatus,
+    GroupingState,
+    ProposalKind,
+    StemMode,
+    context_directory,
+)
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
@@ -28,6 +34,7 @@ from cairndex.grouping.suggester import (
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
+    Collection,
     GroupingPlan,
     GroupingProposal,
     GroupingProposalFile,
@@ -96,6 +103,8 @@ def rename_proposal(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
         raise ValidationError("addition suggestion titles cannot be changed")
+    if proposal.is_collection_context:
+        raise ValidationError("existing collection context titles cannot be changed")
 
     normalized = title.strip()
     if not normalized:
@@ -232,6 +241,9 @@ def move_proposal_file(
 
     source.owner_edited = True
     target.owner_edited = True
+    # The one edit that genuinely changes which files a proposal holds.
+    source.membership_edited = True
+    target.membership_edited = True
     session.flush()
     session.expire(source, ["files"])
     if target.id != source.id:
@@ -239,25 +251,140 @@ def move_proposal_file(
     return [source] if source.id == target.id else [source, target]
 
 
-# Reparent a bundle proposal into a collection proposal or back to top level
-def reparent_bundle_proposal(
+# Resolve the current persisted ancestor path for one collection destination
+def _collection_path(session: Session, target_collection_id: str) -> list[Collection]:
+    """Load a collection's current root-to-leaf path with cycle protection."""
+    target = session.get(Collection, target_collection_id)
+    if target is None:
+        raise ValidationError("the selected collection no longer exists")
+
+    path: list[Collection] = []
+    seen: set[str] = set()
+    current: Collection | None = target
+    while current is not None:
+        if current.id in seen:
+            raise ValidationError("the selected collection hierarchy contains a cycle")
+        seen.add(current.id)
+        path.append(current)
+        current = current.parent
+    return list(reversed(path))
+
+
+# Materialize only the persisted collection path an owner explicitly selected
+def _materialize_collection_context(
+    session: Session,
+    plan: GroupingPlan,
+    target_collection_id: str,
+    forbidden_proposal_ids: set[str],
+) -> GroupingProposal:
+    """Represent a live collection path as stable read-only plan context."""
+    by_target = {
+        proposal.target_collection_id: proposal
+        for proposal in plan.proposals
+        if proposal.target_collection_id is not None
+    }
+    next_order = max((proposal.sort_order for proposal in plan.proposals), default=-1) + 1
+    parent: GroupingProposal | None = None
+    for collection in _collection_path(session, target_collection_id):
+        context = by_target.get(collection.id)
+        if context is not None and context.id in forbidden_proposal_ids:
+            raise ValidationError("a collection suggestion cannot move inside itself")
+        if context is None:
+            context = GroupingProposal(
+                plan=plan,
+                kind=ProposalKind.CONTAINER,
+                title=collection.name,
+                directory=context_directory(collection.id),
+                confidence=1.0,
+                reason="existing collection",
+                sort_order=next_order,
+                target_collection_id=collection.id,
+                is_collection_context=True,
+            )
+            next_order += 1
+            session.add(context)
+            session.flush()
+            by_target[collection.id] = context
+        else:
+            # An explicit selection refreshes this structural snapshot from the
+            # same current collection tree the picker displayed
+            context.title = collection.name
+            context.reason = "existing collection"
+        context.parent_proposal_id = parent.id if parent is not None else None
+        parent = context
+
+    if parent is None:  # guarded by the target lookup above
+        raise ValidationError("the selected collection no longer exists")
+    return parent
+
+
+# Remove context paths that no longer lead to any proposed work
+def _prune_empty_collection_context(session: Session, plan: GroupingPlan) -> None:
+    """Delete read-only context leaves made unused by a placement edit."""
+    remaining = list(plan.proposals)
+    while True:
+        parent_ids = {
+            proposal.parent_proposal_id
+            for proposal in remaining
+            if proposal.parent_proposal_id is not None
+        }
+        removable = [
+            proposal
+            for proposal in remaining
+            if proposal.is_collection_context and proposal.id not in parent_ids
+        ]
+        if not removable:
+            return
+        removable_ids = {proposal.id for proposal in removable}
+        for proposal in removable:
+            session.delete(proposal)
+        remaining = [proposal for proposal in remaining if proposal.id not in removable_ids]
+        session.flush()
+
+
+# Reparent proposed work without moving an existing collection context node
+def reparent_proposal(
     session: Session,
     plan_id: str,
     proposal_id: str,
     parent_proposal_id: str | None,
-) -> GroupingProposal:
-    """Set a bundle suggestion's proposed collection parent before apply."""
+    *,
+    target_collection_id: str | None = None,
+) -> None:
+    """Move suggested work under a proposed or current persisted collection."""
     proposal = _open_proposal(session, plan_id, proposal_id)
-    if proposal.kind is not ProposalKind.BUNDLE:
-        raise ValidationError("only bundle suggestions can move into collections")
-    if parent_proposal_id is not None:
+    if proposal.is_collection_context:
+        raise ValidationError("existing collection context cannot be moved")
+    if _is_addition(proposal):
+        # Its files join a bundle that already exists and already has whatever
+        # collection membership it has; "placing" the addition only ever added
+        # that confirmed bundle to a second collection. Switching the row to a
+        # new bundle first makes placement meaningful, and legal.
+        raise ValidationError("an addition suggestion has no placement of its own")
+    if parent_proposal_id is not None and target_collection_id is not None:
+        raise ValidationError("choose either a collection suggestion or an existing collection")
+
+    descendants = _descendants(session, proposal)
+    if target_collection_id is not None:
+        parent = _materialize_collection_context(
+            session,
+            proposal.plan,
+            target_collection_id,
+            {descendant.id for descendant in descendants},
+        )
+        parent_proposal_id = parent.id
+    elif parent_proposal_id is not None:
         parent = _open_proposal(session, plan_id, parent_proposal_id)
         if parent.kind is not ProposalKind.CONTAINER:
-            raise ValidationError("bundle suggestions can move only into collection suggestions")
+            raise ValidationError("suggestions can move only into collection suggestions")
+        if parent.id == proposal.id or any(
+            descendant.id == parent.id for descendant in descendants
+        ):
+            raise ValidationError("a collection suggestion cannot move inside itself")
     proposal.parent_proposal_id = parent_proposal_id
     proposal.owner_edited = True
     session.flush()
-    return proposal
+    _prune_empty_collection_context(session, proposal.plan)
 
 
 def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingProposal]:
@@ -336,6 +463,8 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
             reason=None,
             sort_order=order,
             owner_edited=True,
+            # A split redistributes the parent's files across new rows.
+            membership_edited=proposal.membership_edited,
         )
         session.add(child)
         session.flush()
@@ -420,6 +549,8 @@ def convert_proposal_kind(
     proposal = _open_proposal(session, plan_id, proposal_id)
     if proposal.kind is kind:
         raise ValidationError(f"this suggestion is already a {kind.value}")
+    if proposal.is_collection_context:
+        raise ValidationError("existing collection context cannot change kind")
     if _is_addition(proposal):
         raise ValidationError(
             "a suggestion that adds files to an existing bundle cannot become a collection"
@@ -545,6 +676,8 @@ def set_directory_stem_mode(
             target_bundle_title=proposal.target_bundle_title,
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
+            target_collection_id=proposal.target_collection_id,
+            is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
         session.flush()
@@ -612,6 +745,11 @@ def set_directory_stem_mode(
 
     session.flush()
     session.expire(plan, ["proposals"])
+    # Re-suggesting a directory replaces its rows, which can leave an existing
+    # collection context path leading nowhere. Those nodes are read-only with a
+    # permanently disabled checkbox, so nothing in the UI could clear them.
+    _prune_empty_collection_context(session, plan)
+    session.expire(plan, ["proposals"])
     # Deterministic order: survivors keep their unique sort_orders; the fresh
     # rows share insert_at and fall back to id order, which is creation (and
     # therefore suggester) order because ids are ULIDs.
@@ -668,6 +806,8 @@ def persist_plan(
             target_bundle_title=proposal.target_bundle_title,
             create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
+            target_collection_id=proposal.target_collection_id,
+            is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
         session.flush()

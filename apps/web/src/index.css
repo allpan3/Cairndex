@@ -2731,9 +2731,20 @@ code {
 .grp-selectbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--text-muted);
   font-size: 12px;
+}
+.grp-selectbar__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.grp-selectbar__group > span {
+  white-space: nowrap;
 }
 .grp-node {
   margin: 4px 0;
@@ -2754,10 +2765,39 @@ code {
    the title. */
 .grp-node--bundle,
 .grp-node--container {
+  --grp-disclosure: 14px;
   --grp-check: 14px;
   --grp-icon: 16px;
   --grp-lead-gap: 3px;
-  --grp-lead: calc(var(--grp-check) + var(--grp-icon) + 2 * var(--grp-lead-gap));
+  --grp-lead: calc(
+    var(--grp-disclosure) + var(--grp-check) + var(--grp-icon) + 3 * var(--grp-lead-gap)
+  );
+}
+.grp-row > .grp-disclosure,
+.grp-row > .grp-disclosure-spacer {
+  flex: 0 0 var(--grp-disclosure);
+  width: var(--grp-disclosure);
+  height: 18px;
+}
+.grp-disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.grp-disclosure:hover,
+.grp-disclosure:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.grp-disclosure:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 .grp-row > .grp-check {
   flex: 0 0 auto;
@@ -2785,7 +2825,8 @@ code {
   /* The row itself is the drag affordance now that the ⠿ handle is gone. */
   cursor: grab;
 }
-.grp-row--bundle:active {
+.grp-row--bundle:active,
+.grp-row--draggable:active {
   cursor: grabbing;
 }
 
@@ -2811,6 +2852,9 @@ code {
   gap: var(--grp-lead-gap);
   border-radius: 5px;
   padding: 2px 4px;
+}
+.grp-row--draggable {
+  cursor: grab;
 }
 .grp-row--drop {
   background: var(--accent-soft);
@@ -2893,6 +2937,112 @@ code {
 .grp-reason {
   font-size: 11px;
   color: var(--text-muted);
+}
+.grp-existing {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.grp-placement-picker {
+  display: inline-flex;
+  align-self: center;
+  width: 180px;
+  max-width: 100%;
+  min-width: 0;
+}
+.grp-placement {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.grp-placement .icon {
+  width: 12px;
+  height: 12px;
+}
+.grp-placement__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grp-placement:hover:not(:disabled),
+.grp-placement:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+}
+.grp-placement:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.grp-placement-panel {
+  z-index: 310;
+  width: 360px;
+  max-width: min(420px, calc(100vw - 16px));
+  overscroll-behavior: contain;
+}
+.grp-placement-panel__head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding-bottom: 4px;
+  background: var(--surface);
+}
+.grp-placement-row {
+  min-height: 28px;
+  gap: 0;
+  padding: 0;
+}
+.grp-placement-row:focus-within {
+  background: var(--bg-2);
+}
+.grp-placement-row__choice {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 7px;
+  align-self: stretch;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.grp-placement-row__choice:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.grp-placement-row > .pick-row__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 28px;
+}
+.grp-placement-row > .pick-row__toggle .chevron {
+  width: 8px;
+  height: 12px;
 }
 .grp-stem {
   display: inline-flex;

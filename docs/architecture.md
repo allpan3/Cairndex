@@ -483,9 +483,24 @@ Grouping behavior:
   regenerate a complete superseding snapshot while seeding the returned plan
   directly into the client cache;
 - grouping review persists whole-row file drag-and-drop within or across bundle
-  proposals, accepting either the target bundle heading or file list as a drop,
-  bundle reparenting into suggested collections, and bundle/collection title
-  edits before apply; reviewed file sequence becomes playlist order;
+  proposals, accepting either the target bundle heading or file list as a drop.
+  Bundle and new-collection proposals can be reparented among speculative
+  CONTAINER proposals by drag-and-drop. Their bounded, searchable placement
+  popover instead reads only the library's current persisted collections and
+  renders that hierarchy as independently foldable indented rows; draft
+  collection suggestions never appear as settled picker destinations. Proposal
+  rows show only their direct destination; full paths remain in accessibility
+  labels and tooltips, while search results add only their direct parent for
+  visible disambiguation. Choosing a persisted collection resolves its current
+  ancestor path into stable read-only plan context and returns the committed
+  whole plan. New proposals can be retitled/reclassified before apply, while
+  existing collection context is read-only. Reviewed file sequence becomes
+  playlist order;
+- review folding is client-only state keyed by proposal content: a collection
+  disclosure hides its descendant proposal list and a bundle disclosure hides
+  its file list. Plans start expanded; per-row and global fold controls never
+  change selection, placement, drag targets, persisted plan data, or apply
+  payloads;
 - additions to confirmed bundles retain that bundle as a reversible target while
   persisting a target-title snapshot, a derived fresh-bundle title, and the
   owner's existing/new destination choice; switching modes recomputes roles but
@@ -493,9 +508,13 @@ Grouping behavior:
 - relevant existing collection branches remain in the review plan even when
   their confirmed bundles are excluded; additions prefer their target bundle's
   collection, while fresh top-level proposals reuse the deepest matching
-  collection path, and apply resolves those nodes to existing collections;
-- bundle proposals with no files and collection proposals with no file-backed
-  descendants are automatically excluded from the accepted selection;
+  collection path. Those structural nodes carry stable `target_collection_id`
+  values, so apply reuses the exact collection and conflicts if it disappeared
+  or moved instead of inferring identity from a repeated name;
+- only file-backed bundle proposals are accepted. Collection checkboxes are
+  tri-state bulk selectors for descendant bundles, and apply computes the full
+  ancestor closure of each selected bundle. Empty bundles and collections with
+  no file-backed descendants therefore expose no selectable work;
 - explicitly edited proposals retain their original bundle identity while
   confirmed bundles remain outside every grouping-regeneration candidate set;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
@@ -510,9 +529,10 @@ Grouping behavior:
   commits the new child proposal IDs and reloads the complete plan before those
   IDs reach the client, so an immediate apply request cannot outrun request
   teardown or inherit a stale ORM proposal collection;
-- the apply API supports selected proposal ids. Applying selected proposals marks
-  the plan applied; unchecked proposals are intentionally left unapplied for that
-  plan and can be re-suggested by regenerating against current library state.
+- the apply API supports selected proposal ids. Applying selected bundles marks
+  the plan applied and resolves only their required collection paths; unchecked
+  bundles are intentionally left unapplied for that plan and can be re-suggested
+  by regenerating against current library state.
   Apply commits before responding because the client immediately refreshes
   bundle and collection queries from that response.
 
