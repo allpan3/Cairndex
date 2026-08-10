@@ -488,6 +488,11 @@ Grouping behavior:
   native placement selector; new proposals can be retitled/reclassified before
   apply, while existing collection context is read-only. Reviewed file sequence
   becomes playlist order;
+- review folding is client-only state keyed by proposal content: a collection
+  disclosure hides its descendant proposal list and a bundle disclosure hides
+  its file list. Plans start expanded; per-row and global fold controls never
+  change selection, placement, drag targets, persisted plan data, or apply
+  payloads;
 - additions to confirmed bundles retain that bundle as a reversible target while
   persisting a target-title snapshot, a derived fresh-bundle title, and the
   owner's existing/new destination choice; switching modes recomputes roles but
