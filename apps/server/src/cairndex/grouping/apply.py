@@ -428,7 +428,13 @@ def _apply_addition(
         if row.bundle_id == target.id:
             already_present += 1
             continue  # already added (idempotent)
-        if row.bundle.grouping_state is GroupingState.CONFIRMED and not proposal.owner_edited:
+        # ``membership_edited``, not ``owner_edited``: taking a file out of a
+        # confirmed bundle is licensed only by the owner explicitly moving it here.
+        # ``owner_edited`` is also set by renaming a suggestion and, before this,
+        # by choosing where it is filed — so one click in the placement picker
+        # silently disarmed this guard, against ADR-0009 §5's promise that a
+        # confirmed bundle is never silently re-split or merged.
+        if row.bundle.grouping_state is GroupingState.CONFIRMED and not proposal.membership_edited:
             result.conflicts.append(
                 _conflict(
                     proposal, "a file to add was already grouped into another confirmed bundle"

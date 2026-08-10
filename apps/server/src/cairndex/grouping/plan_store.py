@@ -235,6 +235,9 @@ def move_proposal_file(
 
     source.owner_edited = True
     target.owner_edited = True
+    # The one edit that genuinely changes which files a proposal holds.
+    source.membership_edited = True
+    target.membership_edited = True
     session.flush()
     session.expire(source, ["files"])
     if target.id != source.id:
@@ -447,6 +450,8 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
             reason=None,
             sort_order=order,
             owner_edited=True,
+            # A split redistributes the parent's files across new rows.
+            membership_edited=proposal.membership_edited,
         )
         session.add(child)
         session.flush()
