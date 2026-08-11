@@ -301,6 +301,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Runs of identical suggestions collapse to one line, and the review can be
+  driven from the keyboard.** A folder of numbered clips produced a row each,
+  all treated identically by the suggester; three or more in a row now read as
+  "SET-025-01 … SET-025-04 · 4 bundles, same shape · each 2 files · video,
+  image", with one checkbox for the run and "Show all 4" when one needs a closer
+  look. Suggestions the suggester is unsure about are never folded away, and
+  they break a run rather than hiding inside it. The tree is also a single tab
+  stop now: arrows move between rows, left and right fold, space accepts or
+  skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
+  footer.
 - **A grouping row's edits are now named, in one menu at a fixed right edge.**
   They were four icon-only buttons — a refresh glyph, an ungroup glyph, and a
   `>< <>` pair — rendered after variable-length text, so they landed at a
