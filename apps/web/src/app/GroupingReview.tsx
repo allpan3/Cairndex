@@ -173,6 +173,9 @@ interface FoldControls {
   filesDefault: boolean
   /** Forced on during a file drag, so every list is a visible drop target. */
   forceFiles: boolean
+  /** Runs of same-shape siblings the owner has expanded. */
+  rollupsOpen: ReadonlySet<string>
+  setRollup: (key: string, open: boolean) => void
 }
 
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
@@ -248,6 +251,52 @@ function fileSummary(proposal: GroupingProposal): string {
   }
   const files = `${count} ${count === 1 ? 'file' : 'files'}`
   return kinds.length > 0 ? `${files} · ${kinds.join(', ')}` : files
+}
+
+/** How many identical-shape siblings before they are worth summarising as one.
+ *
+ * Three, not two: a pair is as cheap to read as the summary that would replace
+ * it, and hiding it would cost a click for nothing. */
+const ROLLUP_THRESHOLD = 3
+
+/** What makes two sibling suggestions "the same shape", or null if not eligible.
+ *
+ * A folder of numbered clips produces N rows the suggester treated identically
+ * — same file count, same media kinds, same reason, same confidence band. They
+ * are the rows an owner scrolls past, so they collapse to one line that says
+ * how many and what each contains. Rows with children, additions, and rows the
+ * suggester is unsure about are never folded away: those are the ones worth
+ * looking at individually.
+ */
+function shapeKey(node: TreeNode): string | null {
+  const { proposal } = node
+  if (proposal.kind !== 'bundle') return null
+  if (node.children.length > 0) return null
+  if (proposal.files.length === 0) return null
+  if (proposal.target_bundle_id !== null) return null
+  if (needsALook(proposal)) return null
+  const kinds = proposal.files.map((file) => ROLE_MEDIA_KIND[file.proposed_role] ?? 'other')
+  return [proposal.files.length, kinds.join('+'), proposal.reason ?? ''].join('|')
+}
+
+/** One rendered entry: a single row, or a run of same-shape siblings. */
+type SiblingRun = { key: string; nodes: TreeNode[]; shape: string | null }
+
+/** Collapse each run of consecutive same-shape siblings into one entry. */
+function groupSiblings(nodes: TreeNode[]): SiblingRun[] {
+  const runs: SiblingRun[] = []
+  for (const node of nodes) {
+    const shape = shapeKey(node)
+    const last = runs[runs.length - 1]
+    if (shape !== null && last && last.shape === shape) {
+      last.nodes.push(node)
+      continue
+    }
+    runs.push({ key: node.proposal.id, nodes: [node], shape })
+  }
+  return runs.map((run) =>
+    run.shape !== null && run.nodes.length >= ROLLUP_THRESHOLD ? run : { ...run, shape: null },
+  )
 }
 
 /** Keep matching rows and every ancestor that leads to one.
@@ -799,6 +848,137 @@ function rowActions({
   return actions
 }
 
+/** One line standing in for a run of identical-shape suggestions.
+ *
+ * Carries the run's combined checkbox, so accepting or skipping the whole run is
+ * one action, and expands to the individual rows when one of them needs a
+ * closer look.
+ */
+function RollupRow({
+  run,
+  selection,
+  onToggle,
+  fold,
+}: {
+  run: SiblingRun
+  selection: Map<string, NodeSelection>
+  onToggle: (nodes: TreeNode[], checked: boolean) => void
+  fold: FoldControls
+}) {
+  const totals = run.nodes.reduce(
+    (sum, node) => {
+      const state = selection.get(node.proposal.id) ?? { total: 0, selected: 0 }
+      return { total: sum.total + state.total, selected: sum.selected + state.selected }
+    },
+    { total: 0, selected: 0 },
+  )
+  const checked = totals.total > 0 && totals.selected === totals.total
+  const mixed = totals.selected > 0 && !checked
+  const first = run.nodes[0]!.proposal
+  const last = run.nodes[run.nodes.length - 1]!.proposal
+  const span = `${first.title || 'Untitled'} … ${last.title || 'Untitled'}`
+  const count = run.nodes.length
+
+  return (
+    <li className="grp-node grp-node--rollup">
+      <div className="grp-row grp-row--rollup" tabIndex={-1}>
+        <span className="grp-disclosure-spacer" aria-hidden="true" />
+        <ProposalCheckbox
+          checked={checked}
+          mixed={mixed}
+          disabled={totals.total === 0}
+          onChange={(next) => onToggle(run.nodes, next)}
+          label={`Accept ${count} suggestions from ${span}`}
+        />
+        <span className="grp-kind">
+          <IconLayers />
+        </span>
+        <span className="grp-row__content">
+          <span className="grp-title">{span}</span>
+          <span className="grp-reason">
+            {count} bundles, same shape · each {fileSummary(first)}
+          </span>
+          <button
+            type="button"
+            className="btn btn--compact grp-rollup__expand"
+            onClick={() => fold.setRollup(run.key, true)}
+          >
+            Show all {count}
+          </button>
+        </span>
+      </div>
+    </li>
+  )
+}
+
+/** Drive the review from the keyboard, which is what a repetitive queue wants.
+ *
+ * Rows are focusable but out of the tab order; the tree itself is the single
+ * tab stop, and arrows move within it. Everything acts on the row's own
+ * controls rather than duplicating their logic, so a key press and a click take
+ * exactly the same path.
+ *
+ * Only fires when the row container itself has focus. A press inside the rename
+ * box, the placement search, or a button belongs to that control — hijacking
+ * Space there would break typing.
+ */
+function handleTreeKey(event: React.KeyboardEvent<HTMLUListElement>, onAccept: () => void) {
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    event.preventDefault()
+    onAccept()
+    return
+  }
+  const tree = event.currentTarget
+  const target = event.target as HTMLElement
+  const onTree = target === tree
+  const row = target.closest<HTMLElement>('.grp-row')
+  if (!onTree && (!row || target !== row)) return
+
+  // Folded rows live under a `hidden` list, which is the check that holds in
+  // both a browser and jsdom — `offsetParent` is always null in the latter.
+  const rows = [...tree.querySelectorAll<HTMLElement>('.grp-row')].filter(
+    (candidate) => candidate.closest('[hidden]') === null,
+  )
+  if (rows.length === 0) return
+  const index = row ? rows.indexOf(row) : -1
+
+  const focus = (next: number) => {
+    event.preventDefault()
+    rows[Math.max(0, Math.min(rows.length - 1, next))]?.focus()
+  }
+  switch (event.key) {
+    case 'ArrowDown':
+      return focus(index + 1)
+    case 'ArrowUp':
+      return focus(index === -1 ? 0 : index - 1)
+    case 'Home':
+      return focus(0)
+    case 'End':
+      return focus(rows.length - 1)
+    case 'ArrowRight':
+    case 'ArrowLeft': {
+      if (!row) return
+      const disclosure = row.querySelector<HTMLButtonElement>('.grp-disclosure')
+      const expanded = disclosure?.getAttribute('aria-expanded') === 'true'
+      if (disclosure && expanded !== (event.key === 'ArrowRight')) {
+        event.preventDefault()
+        disclosure.click()
+      }
+      return
+    }
+    case ' ': {
+      const checkbox = row?.querySelector<HTMLInputElement>('.grp-check')
+      if (checkbox && !checkbox.disabled) {
+        event.preventDefault()
+        checkbox.click()
+      }
+      return
+    }
+    default:
+      return
+  }
+}
+
 function ProposalNode({
   node,
   selection,
@@ -815,7 +995,7 @@ function ProposalNode({
 }: {
   node: TreeNode
   selection: Map<string, NodeSelection>
-  onToggle: (node: TreeNode, checked: boolean) => void
+  onToggle: (nodes: TreeNode[], checked: boolean) => void
   rename: RenameControls
   drag: DragControls
   placement: PlacementControls
@@ -844,6 +1024,7 @@ function ProposalNode({
       <li className="grp-node grp-node--container">
         <div
           className={`grp-row grp-row--collection${movable ? ' grp-row--draggable' : ''}${isDropTarget ? ' grp-row--drop' : ''}`}
+          tabIndex={-1}
           draggable={movable && drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
           onDragStart={(event) => drag.startProposal(event, proposal)}
           onDragEnd={drag.end}
@@ -871,7 +1052,7 @@ function ProposalNode({
             checked={checked}
             mixed={mixed}
             disabled={!hasItems}
-            onChange={(next) => onToggle(node, next)}
+            onChange={(next) => onToggle([node], next)}
             label={`Select bundles in ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
           <span className="grp-kind">
@@ -906,23 +1087,35 @@ function ProposalNode({
         </div>
         {children.length > 0 && (
           <ul className="grp-children" hidden={collapsed}>
-            {children.map((c) => (
-              <ProposalNode
-                key={c.proposal.id}
-                node={c}
-                selection={selection}
-                onToggle={onToggle}
-                rename={rename}
-                drag={drag}
-                placement={placement}
-                destination={destination}
-                stem={stem}
-                stemOwners={stemOwners}
-                kind={kind}
-                fold={fold}
-                parent={proposal}
-              />
-            ))}
+            {groupSiblings(children).map((run) =>
+              run.shape !== null && !fold.rollupsOpen.has(run.key) ? (
+                <RollupRow
+                  key={run.key}
+                  run={run}
+                  selection={selection}
+                  onToggle={onToggle}
+                  fold={fold}
+                />
+              ) : (
+                run.nodes.map((c) => (
+                  <ProposalNode
+                    key={c.proposal.id}
+                    node={c}
+                    selection={selection}
+                    onToggle={onToggle}
+                    rename={rename}
+                    drag={drag}
+                    placement={placement}
+                    destination={destination}
+                    stem={stem}
+                    stemOwners={stemOwners}
+                    kind={kind}
+                    fold={fold}
+                    parent={proposal}
+                  />
+                ))
+              ),
+            )}
           </ul>
         )}
       </li>
@@ -940,6 +1133,7 @@ function ProposalNode({
         className={`grp-row grp-row--bundle${fileListDrop ? ' grp-row--file-drop' : ''}${
           attention ? ' grp-row--attention' : ''
         }`}
+        tabIndex={-1}
         // The whole row is the drag affordance — the file rows below already
         // worked this way, which is what made their ⠿ handles redundant. Not
         // draggable while this row's title is being renamed: `draggable` on an
@@ -972,7 +1166,7 @@ function ProposalNode({
           checked={checked}
           mixed={false}
           disabled={!hasItems}
-          onChange={(next) => onToggle(node, next)}
+          onChange={(next) => onToggle([node], next)}
           label={`Accept ${proposal.title || 'bundle'}`}
         />
         {!isAddition && (
@@ -1140,6 +1334,7 @@ export function GroupingReview({
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
   const [fileOverrides, setFileOverrides] = useState<Map<string, boolean>>(new Map())
+  const [openRollups, setOpenRollups] = useState<Set<string>>(new Set())
   const [showAllFiles, setShowAllFiles] = useState(false)
   const [onlyNeedsALook, setOnlyNeedsALook] = useState(false)
   const [editing, setEditing] = useState<{
@@ -1189,8 +1384,8 @@ export function GroupingReview({
     [fullTree, selectedIds],
   )
 
-  const toggleNode = (node: TreeNode, checked: boolean) => {
-    const keys = collectBundleIds([node]).map((id) => keyById.get(id) ?? id)
+  const toggleNode = (nodes: TreeNode[], checked: boolean) => {
+    const keys = collectBundleIds(nodes).map((id) => keyById.get(id) ?? id)
     setDeselectedKeys((prev) => {
       const next = new Set(prev)
       for (const key of keys) {
@@ -1215,6 +1410,7 @@ export function GroupingReview({
     setDeselectedKeys(new Set())
     setCollapsedKeys(new Set())
     setFileOverrides(new Map())
+    setOpenRollups(new Set())
     setOnlyNeedsALook(false)
     setNotice(message)
   }
@@ -1539,6 +1735,14 @@ export function GroupingReview({
     // A file drag needs every list visible, or the only drop targets are the
     // ones that happened to be open.
     forceFiles: dragItem?.kind === 'file',
+    rollupsOpen: openRollups,
+    setRollup: (key, open) =>
+      setOpenRollups((current) => {
+        const next = new Set(current)
+        if (open) next.add(key)
+        else next.delete(key)
+        return next
+      }),
   }
 
   return (
@@ -1692,23 +1896,41 @@ export function GroupingReview({
                   Drop here to move the {dragItem.proposalKind} to the top level
                 </div>
               )}
-              <ul className="grp-tree">
-                {tree.map((node) => (
-                  <ProposalNode
-                    key={node.proposal.id}
-                    node={node}
-                    selection={nodeSelection}
-                    onToggle={toggleNode}
-                    rename={renameControls}
-                    drag={dragControls}
-                    placement={placementControls}
-                    destination={destinationControls}
-                    stem={stemControls}
-                    stemOwners={stemOwners}
-                    kind={kindControls}
-                    fold={foldControls}
-                  />
-                ))}
+              {/* One tab stop for the whole list; arrows move inside it. */}
+              <ul
+                className="grp-tree"
+                tabIndex={0}
+                aria-label="Grouping suggestions — use arrow keys to move, space to accept a row"
+                onKeyDown={(event) => handleTreeKey(event, onApply)}
+              >
+                {groupSiblings(tree).map((run) =>
+                  run.shape !== null && !openRollups.has(run.key) ? (
+                    <RollupRow
+                      key={run.key}
+                      run={run}
+                      selection={nodeSelection}
+                      onToggle={toggleNode}
+                      fold={foldControls}
+                    />
+                  ) : (
+                    run.nodes.map((node) => (
+                      <ProposalNode
+                        key={node.proposal.id}
+                        node={node}
+                        selection={nodeSelection}
+                        onToggle={toggleNode}
+                        rename={renameControls}
+                        drag={dragControls}
+                        placement={placementControls}
+                        destination={destinationControls}
+                        stem={stemControls}
+                        stemOwners={stemOwners}
+                        kind={kindControls}
+                        fold={foldControls}
+                      />
+                    ))
+                  ),
+                )}
               </ul>
             </>
           )}
