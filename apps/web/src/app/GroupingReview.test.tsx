@@ -1243,6 +1243,148 @@ function findRowAction(name: string | RegExp, subject?: string): HTMLElement {
   return item
 }
 
+test('a run of identical-shape suggestions folds into one row', async () => {
+  // Four numbered clips the suggester treated identically: same file count,
+  // same kinds, same reason. They are the rows an owner scrolls past.
+  const clips = [1, 2, 3, 4].map((i) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `SET-025-0${i}`,
+    reason: 'numbered sequence',
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/SET-025-0${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+      {
+        asset_file_id: `c${i}`,
+        relative_path: `d/SET-025-0${i}.webp`,
+        proposed_role: 'cover' as const,
+        sequence: 1,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi(clips))
+  renderReview()
+
+  const rollup = await screen.findByText('SET-025-01 … SET-025-04')
+  expect(screen.getByText('4 bundles, same shape · each 2 files · video, image')).toBeVisible()
+  // The individual rows are not rendered until asked for.
+  expect(screen.queryByRole('checkbox', { name: 'Accept SET-025-02' })).toBeNull()
+  // ...but they are all still selected, and Accept still counts them.
+  expect(screen.getByRole('button', { name: 'Accept 4 bundles' })).toBeEnabled()
+
+  // One checkbox skips the whole run.
+  const combined = screen.getByRole('checkbox', {
+    name: 'Accept 4 suggestions from SET-025-01 … SET-025-04',
+  })
+  expect(combined).toBeChecked()
+  fireEvent.click(combined)
+  expect(screen.getByText('0 bundles selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show all 4' }))
+
+  expect(screen.getByRole('checkbox', { name: 'Accept SET-025-02' })).toBeInTheDocument()
+  expect(rollup).not.toBeInTheDocument()
+})
+
+test('a run stops at a suggestion worth looking at', async () => {
+  // The low-confidence row is never folded away, and it breaks the run.
+  const shape = (i: number, confidence: number) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `Clip 0${i}`,
+    reason: 'numbered sequence',
+    confidence,
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/c${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  })
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi([shape(1, 0.9), shape(2, 0.5), shape(3, 0.9), shape(4, 0.9), shape(5, 0.9)]),
+  )
+  renderReview()
+
+  // The uncertain row keeps its own line…
+  expect(await screen.findByRole('checkbox', { name: 'Accept Clip 02' })).toBeInTheDocument()
+  // …the three after it are a run…
+  expect(screen.getByText('Clip 03 … Clip 05')).toBeVisible()
+  // …and the single row before it is too short to fold.
+  expect(screen.getByRole('checkbox', { name: 'Accept Clip 01' })).toBeInTheDocument()
+})
+
+test('the review can be driven from the keyboard', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  await screen.findByRole('button', { name: 'Rename collection suggestion Library' })
+  const tree = screen.getByRole('list', { name: /^Grouping suggestions/ })
+  const rowOf = (name: string) =>
+    screen.getByRole('button', { name }).closest('.grp-row') as HTMLElement
+
+  // The tree is one tab stop; the first arrow lands on the first row.
+  tree.focus()
+  fireEvent.keyDown(tree, { key: 'ArrowDown' })
+  const library = rowOf('Rename collection suggestion Library')
+  expect(library).toHaveFocus()
+
+  // Left folds, right unfolds — via the row's own disclosure.
+  fireEvent.keyDown(library, { key: 'ArrowLeft' })
+  expect(
+    screen.getByRole('button', { name: 'Expand collection suggestion Library' }),
+  ).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.keyDown(library, { key: 'ArrowRight' })
+  expect(
+    screen.getByRole('button', { name: 'Collapse collection suggestion Library' }),
+  ).toHaveAttribute('aria-expanded', 'true')
+
+  // Down reaches the nested rows, and space toggles the row's checkbox.
+  fireEvent.keyDown(library, { key: 'ArrowDown' })
+  const series = rowOf('Rename collection suggestion Series')
+  expect(series).toHaveFocus()
+  fireEvent.keyDown(series, { key: 'ArrowDown' })
+  const episode = rowOf('Rename bundle suggestion Episode One')
+  expect(episode).toHaveFocus()
+
+  const accept = screen.getByRole('checkbox', { name: 'Accept Episode One' })
+  expect(accept).toBeChecked()
+  fireEvent.keyDown(episode, { key: ' ' })
+  expect(accept).not.toBeChecked()
+
+  // Cmd+Enter applies without reaching for the footer.
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  await waitFor(() =>
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/apply'))).toBe(true),
+  )
+})
+
+test('a key press inside a row control is left to that control', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  const title = await screen.findByRole('button', {
+    name: 'Rename bundle suggestion SRCV-005 - cut',
+  })
+  fireEvent.doubleClick(title)
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  const checkbox = screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  const checkedBefore = (checkbox as HTMLInputElement).checked
+
+  // Space in the rename box is a space, not an accept toggle.
+  fireEvent.keyDown(input, { key: ' ' })
+  expect((checkbox as HTMLInputElement).checked).toBe(checkedBefore)
+  expect(input).toBeInTheDocument()
+})
+
 // --- Triage: confidence filter, contents summary, compact placement ----------
 
 test('the toolbar counts and filters the suggestions the suggester is unsure about', async () => {

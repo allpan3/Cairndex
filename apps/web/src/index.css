@@ -3011,6 +3011,27 @@ code {
   white-space: nowrap;
 }
 
+/* A run of identical-shape suggestions, standing in for its rows until asked. */
+.grp-row--rollup {
+  gap: var(--grp-lead-gap);
+}
+.grp-rollup__expand {
+  margin-left: auto;
+}
+.grp-node--rollup {
+  --grp-disclosure: 14px;
+  --grp-check: 14px;
+  --grp-icon: 16px;
+  --grp-lead-gap: 3px;
+}
+/* The tree is one tab stop; the focused row is what moves. */
+.grp-tree:focus-visible,
+.grp-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 5px;
+}
+
 /* One trigger at a fixed right edge, so the eye can run down the column. The
    glyph buttons this replaced sat after variable-length text and landed at a
    different x on every row. */
