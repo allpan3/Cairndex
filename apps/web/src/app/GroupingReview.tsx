@@ -1,6 +1,7 @@
 import {
   type DragEvent,
   Fragment,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -141,6 +142,96 @@ function stemDial(levels: GroupingStemLevels, directory: string) {
   const dial = levels[directory]
   const level = dial?.level ?? GROUPING_DEFAULT_STEM_LEVEL
   return { level, max: Math.max(dial?.max ?? GROUPING_DEFAULT_STEM_LEVEL, level) }
+}
+
+/**
+ * A folder's stem dial, on the row that speaks for that folder.
+ *
+ * Named `Narrow` and `Widen` — the domain's own words, which the owner already
+ * had. This branch briefly renamed them to "Split/Merge into more/fewer bundles"
+ * and hid them in the row's overflow menu, and the owner could not find the
+ * control at all (owner-reported, 2026-08-13). A **folder**-level setting does
+ * not belong in a row menu, and it does not belong behind two bare glyphs
+ * either: the level is stated as text, so the value is readable rather than
+ * inferable from which end happens to be spent.
+ *
+ * Two plain buttons rather than one segmented chip: a chip implies a small set of
+ * named stops, which is exactly what the dial stopped being.
+ */
+function StemDial({ directory, stem }: { directory: string; stem: StemControls }) {
+  const { level, max } = stemDial(stem.levels, directory)
+  const folder = directory || 'the library root'
+  const blocked = !stem.canEdit || stem.pending
+  const atBottom = level <= 0
+  const atTop = level >= max
+  return (
+    <span className="grp-dial" data-no-row-drag="">
+      <span
+        className="grp-dial__level"
+        title={`How much of each filename in ${folder} has to match: ${level} of ${max}. Narrow matches more of it, Widen less.`}
+      >
+        stem {level} of {max}
+      </span>
+      <button
+        type="button"
+        className="btn btn--compact"
+        disabled={blocked || atBottom}
+        // Says what it does to the *stem*, then what that does to the bundles.
+        // "More bundles" alone never explained why a name-matching control was
+        // labelled that way.
+        title={
+          atBottom
+            ? `${folder} already matches complete filenames — there is nothing more to match`
+            : `Match more of each filename in ${folder}, creating more, smaller bundles`
+        }
+        aria-label={`Narrow the filename match in ${folder}`}
+        draggable={false}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          stem.set(directory, level - 1)
+        }}
+      >
+        Narrow
+      </button>
+      <button
+        type="button"
+        className="btn btn--compact"
+        disabled={blocked || atTop}
+        title={
+          atTop
+            ? `${folder} is already matched on the first part of each filename — there is nothing left to widen`
+            : `Match a shorter part of each filename in ${folder}, creating fewer, larger bundles`
+        }
+        aria-label={`Widen the filename match in ${folder}`}
+        draggable={false}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          stem.set(directory, level + 1)
+        }}
+      >
+        Widen
+      </button>
+      {level !== GROUPING_DEFAULT_STEM_LEVEL && (
+        <button
+          type="button"
+          className="btn btn--compact"
+          disabled={blocked}
+          title={`Put ${folder} back to the stem the suggester chose`}
+          aria-label={`Reset the filename match in ${folder}`}
+          draggable={false}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            stem.set(directory, GROUPING_DEFAULT_STEM_LEVEL)
+          }}
+        >
+          Reset
+        </button>
+      )}
+    </span>
+  )
 }
 
 /** Coordinate the bundle-versus-collection override on one suggestion. */
@@ -802,25 +893,22 @@ function ProposalDisclosure({
 
 /** The named edits a row offers, in the order they are worth reaching for.
  *
- * Same predicates the loose glyph buttons used; only the presentation changed.
- * Stem sensitivity belongs to a *folder* rather than to the row it is attached
- * to, so its items name that folder explicitly — the bare `>< <>` pair beside a
- * title read as a property of the bundle.
+ * Row-scoped only. The folder's stem dial used to be here too and is now a
+ * visible control on the row that speaks for the folder (`StemDial`): a menu can
+ * hold a row's own edits, but it cannot show a folder-level *value*, and hiding
+ * one behind a `...` on whichever row happened to own it meant the owner could
+ * not find it (owner-reported, 2026-08-13).
  */
 function rowActions({
   proposal,
   hasItems,
   destination,
   kind,
-  stem,
-  stemDirectory,
 }: {
   proposal: GroupingProposal
   hasItems: boolean
   destination: DestinationControls
   kind: KindControls
-  stem: StemControls
-  stemDirectory: string | undefined
 }): RowAction[] {
   const actions: RowAction[] = []
   if (proposal.target_bundle_id !== null) {
@@ -847,39 +935,6 @@ function rowActions({
       onSelect: () => kind.set(proposal),
     })
   }
-  // A context node describes a destination that already exists; it owns no
-  // filesystem directory and must not be able to re-suggest one (the guard the
-  // kind action already had, and these items did not).
-  if (stemDirectory !== undefined && !proposal.is_collection_context) {
-    const { level, max } = stemDial(stem.levels, stemDirectory)
-    const folder = stemDirectory || 'the library root'
-    const blocked = !stem.canEdit || stem.pending
-    // The level is named in each label, and the dial's length with it. Both used
-    // to be a single greyed-out glyph, leaving the value inferable only from
-    // which end happened to be spent (owner-reported, 2026-08-13).
-    actions.push({
-      key: 'narrow',
-      label: `Narrow ${folder} (stem ${level} of ${max})`,
-      disabled: blocked || level <= 0,
-      reason: level <= 0 ? `${folder} already matches complete filenames` : undefined,
-      onSelect: () => stem.set(stemDirectory, level - 1),
-    })
-    actions.push({
-      key: 'widen',
-      label: `Widen ${folder} (stem ${level} of ${max})`,
-      disabled: blocked || level >= max,
-      reason: level >= max ? `${folder} is already matched as widely as it goes` : undefined,
-      onSelect: () => stem.set(stemDirectory, level + 1),
-    })
-    if (level !== GROUPING_DEFAULT_STEM_LEVEL) {
-      actions.push({
-        key: 'default',
-        label: `Reset ${folder} to the suggested stem`,
-        disabled: blocked,
-        onSelect: () => stem.set(stemDirectory, GROUPING_DEFAULT_STEM_LEVEL),
-      })
-    }
-  }
   return actions
 }
 
@@ -894,16 +949,16 @@ function RollupRow({
   selection,
   onToggle,
   fold,
-  actions,
+  dial,
 }: {
   run: SiblingRun
   selection: Map<string, NodeSelection>
   onToggle: (nodes: TreeNode[], checked: boolean) => void
   fold: FoldControls
-  /** The folder-scoped edits of whichever member speaks for its directory.
-   *  Rolling a run up used to remove them, and a folder of identically shaped
-   *  clips is the canonical "this was over-fragmented, merge it" case. */
-  actions: RowAction[]
+  /** The stem dial of whichever member speaks for the run's directory, if one
+   *  does. Rolling a run up used to hide it, and a folder of identically shaped
+   *  clips is exactly the folder worth widening. */
+  dial: ReactNode
 }) {
   const totals = run.nodes.reduce(
     (sum, node) => {
@@ -945,10 +1000,7 @@ function RollupRow({
           >
             Show all {count}
           </button>
-          <GroupingRowActions
-            label={`Actions for the ${count} suggestions from ${span}`}
-            actions={actions}
-          />
+          {dial}
         </span>
       </div>
     </li>
@@ -1085,7 +1137,7 @@ function handleTreeKey(
  * it to the raw state hook.
  */
 function ProposalRows({ nodes, shared }: { nodes: TreeNode[]; shared: SharedNodeProps }) {
-  const { fold, selection, onToggle, stem, stemOwners, destination, kind } = shared
+  const { fold, selection, onToggle, stem, stemOwners } = shared
   return (
     <>
       {groupSiblings(nodes, !fold.forceFiles).map((run) => {
@@ -1102,8 +1154,11 @@ function ProposalRows({ nodes, shared }: { nodes: TreeNode[]; shared: SharedNode
             </Fragment>
           )
         }
-        // The folder's own edits belong to whichever member speaks for it.
+        // The folder's dial belongs to whichever member speaks for it, and a
+        // rolled-up run is the canonical "this folder was over-fragmented, widen
+        // it" case — so folding the run up must not take the dial away with it.
         const owner = run.nodes.find((node) => stemOwners.has(node.proposal.id))
+        const directory = owner ? stemOwners.get(owner.proposal.id) : undefined
         return (
           <RollupRow
             key={run.key}
@@ -1111,18 +1166,7 @@ function ProposalRows({ nodes, shared }: { nodes: TreeNode[]; shared: SharedNode
             selection={selection}
             onToggle={onToggle}
             fold={fold}
-            actions={
-              owner
-                ? rowActions({
-                    proposal: owner.proposal,
-                    hasItems: true,
-                    destination,
-                    kind,
-                    stem,
-                    stemDirectory: stemOwners.get(owner.proposal.id),
-                  }).filter((action) => action.key === 'narrow' || action.key === 'widen')
-                : []
-            }
+            dial={directory === undefined ? null : <StemDial directory={directory} stem={stem} />}
           />
         )
       })}
@@ -1174,6 +1218,10 @@ function ProposalNode({
     fold,
   }
   const { proposal, children } = node
+  // The folder this row speaks for, if any. A read-only context node owns no
+  // filesystem directory and must not be able to re-suggest one — the guard the
+  // stem controls kept escaping when they lived elsewhere.
+  const stemDirectory = proposal.is_collection_context ? undefined : stemOwners.get(proposal.id)
   const selectionState = selection.get(proposal.id) ?? { total: 0, selected: 0 }
   const checked = selectionState.total > 0 && selectionState.selected === selectionState.total
   const mixed = selectionState.selected > 0 && !checked
@@ -1188,7 +1236,10 @@ function ProposalNode({
     return (
       <li className="grp-node grp-node--container">
         <div
-          className={`grp-row grp-row--collection${movable ? ' grp-row--draggable' : ''}${isDropTarget ? ' grp-row--drop' : ''}`}
+          // A collection suggestion that speaks for a folder is that folder's
+          // header — its own dial, and the rows beneath it are its contents — so
+          // it is set off from them rather than reading as one more sibling.
+          className={`grp-row grp-row--collection${stemDirectory === undefined ? '' : ' grp-row--folder'}${movable ? ' grp-row--draggable' : ''}${isDropTarget ? ' grp-row--drop' : ''}`}
           tabIndex={-1}
           draggable={movable && drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
           onDragStart={(event) => drag.startProposal(event, proposal)}
@@ -1236,16 +1287,13 @@ function ProposalNode({
             {!proposal.is_collection_context && (
               <ProposalPlacement proposal={proposal} placement={placement} />
             )}
+            {/* A collection suggestion for a folder *is* that folder's header —
+                same name, same scope — so the dial belongs on it rather than on
+                a second line above it. */}
+            {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
             <GroupingRowActions
               label={`Actions for collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
-              actions={rowActions({
-                proposal,
-                hasItems,
-                destination,
-                kind,
-                stem,
-                stemDirectory: stemOwners.get(proposal.id),
-              })}
+              actions={rowActions({ proposal, hasItems, destination, kind })}
             />
           </span>
         </div>
@@ -1339,16 +1387,12 @@ function ProposalNode({
               "create a new bundle" clears `isAddition`, and the control returns
               with a real meaning. */}
           {!isAddition && <ProposalPlacement proposal={proposal} placement={placement} />}
+          {/* A bundle that fills its own folder speaks for it, and there is no
+              collection row above to carry the dial. */}
+          {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
           <GroupingRowActions
             label={`Actions for bundle suggestion ${displayTitle}`}
-            actions={rowActions({
-              proposal,
-              hasItems,
-              destination,
-              kind,
-              stem,
-              stemDirectory: stemOwners.get(proposal.id),
-            })}
+            actions={rowActions({ proposal, hasItems, destination, kind })}
           />
         </span>
       </div>
