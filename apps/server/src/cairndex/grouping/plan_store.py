@@ -414,18 +414,6 @@ def _is_addition(proposal: GroupingProposal) -> bool:
     return proposal.target_bundle_id is not None and not proposal.create_new_bundle
 
 
-def _sits_in_a_collection_for_its_own_folder(session: Session, proposal: GroupingProposal) -> bool:
-    """Whether this suggestion's parent is a collection for its own directory."""
-    if proposal.parent_proposal_id is None:
-        return False
-    parent = session.get(GroupingProposal, proposal.parent_proposal_id)
-    return (
-        parent is not None
-        and parent.kind is ProposalKind.CONTAINER
-        and parent.directory == proposal.directory
-    )
-
-
 def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """Turn one bundle suggestion into a collection holding its files' bundles.
 
@@ -436,18 +424,28 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """
     observations = _proposal_observations(session, list(proposal.files))
     groups = split_for_collection(observations)
-    if len(groups) < 2 and _sits_in_a_collection_for_its_own_folder(session, proposal):
-        # Converting a single subject is allowed — the owner may be making a home
-        # for siblings they are about to drag in — but not when it already sits in
-        # a collection for this very folder. There the new layer would just repeat
-        # the name it is already inside, and since the child it creates is in the
-        # same position it could be converted again without limit
-        # (owner-reported, 2026-07-30). This is also what bounds the recursion:
-        # the child of a conversion always lands in exactly that position.
-        raise ValidationError(
-            "this suggestion is already inside a collection for its own folder, so "
-            "another one would add no structure"
-        )
+    # Bounded by whether the conversion would *change* anything, not by where the
+    # row sits.
+    #
+    # The previous rule refused any single subject already inside a collection for
+    # its own folder, to stop unbounded re-conversion (the child lands in the same
+    # position, so it could be converted again forever). But that also refused the
+    # case the owner actually wants: a folder holding one release today, which
+    # should become a collection named for the folder with the release inside it
+    # named by its own shared stem (owner-reported, 2026-08-13).
+    #
+    # The recursion is bounded just as tightly by asking whether the new layer
+    # renames anything. A folder-named bundle converts to a folder-named
+    # collection holding a stem-named bundle — a real change. Convert *that* and
+    # the child's title equals its parent's, which adds nothing, and is refused.
+    if len(groups) == 1:
+        only = _media_first(groups[0])
+        child_title = _new_bundle_title(only, proposal.directory)
+        if child_title == (proposal.title or "").strip():
+            raise ValidationError(
+                "this suggestion holds one subject that already carries its own name, "
+                "so a collection around it would add no structure"
+            )
 
     for order, group in enumerate(groups):
         ordered = _media_first(group)
