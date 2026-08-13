@@ -130,13 +130,28 @@ class GroupingSource(StrEnum):
     IMPORT = "import"
 
 
-# Controls how aggressively filename stems combine files within one directory
-class StemMode(StrEnum):
-    """Sensitivity used by grouping-plan stem matching."""
+# How much of each filename has to match for two files to join one bundle,
+# per directory. A dial rather than named stops: this was a three-value
+# ``StemMode`` (narrow / balanced / wide), and three stops were both too few and
+# not actually points on one scale — ``balanced`` folded a rendition tag while
+# ``wide`` switched to a different key entirely, so "one step wider" meant two
+# unrelated things. The owner's model is the right one: keep widening until
+# there is nothing left to widen.
+#
+#   level 0     the complete normalized stem, renditions included
+#   level 1     rendition-folded (the DEFAULT, and what every library
+#               already groups by, so an upgrade regroups nothing)
+#   level N>=2  rendition-folded, then N-1 further trailing segments dropped
+#
+# The top of the dial depends on the folder's own filenames — it is the level
+# where every stem is down to its first segment — so only the server can say
+# what it is. See ``suggester.max_stem_level``.
+DEFAULT_STEM_LEVEL = 1
 
-    NARROW = "narrow"
-    BALANCED = "balanced"
-    WIDE = "wide"
+# Hygiene bound for a stored or posted level. Anything at or above a folder's
+# own maximum behaves identically (every stem is already one segment), so this
+# only keeps absurd values out of the database.
+STEM_LEVEL_CEILING = 1024
 
 
 class ProposalKind(StrEnum):

@@ -11,12 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import (
+    DEFAULT_STEM_LEVEL,
     FileRole,
     Grouping,
     GroupingSource,
     GroupingState,
     MediaKind,
-    StemMode,
 )
 from cairndex.grouping import (
     FileObservation,
@@ -25,6 +25,7 @@ from cairndex.grouping import (
     suggest_grouping,
 )
 from cairndex.grouping.service import suggest_for_session
+from cairndex.grouping.suggester import max_stem_level
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fast_add import fast_add
 from cairndex.scanning.scanner import scan_library
@@ -224,8 +225,8 @@ def test_rendition_suffix_matches_a_confirmed_bundle() -> None:
     assert bundles[0].target_bundle_title == title
 
 
-# Narrow and wide are one-step sensitivity controls around the balanced default
-def test_stem_modes_split_renditions_or_merge_semantic_prefixes() -> None:
+# The stem level is a dial: widening merges monotonically to a fixed endpoint
+def test_widening_the_stem_level_only_ever_merges_and_reaches_one_bundle() -> None:
     directory = "Western/Nora Vance"
     studio_one = "Nora Vance - [Lumina.com] - [2023.02.07] - A Walk In The Park - 4K"
     studio_two = "Nora Vance - [Lumina.com] - [2023.05.09] - Old Barn - 4K"
@@ -238,23 +239,50 @@ def test_stem_modes_split_renditions_or_merge_semantic_prefixes() -> None:
         _f(f"{directory}/{web_release}.mp4", MediaKind.VIDEO),
         _f(f"{directory}/{web_release}.jpg", MediaKind.IMAGE),
     ]
+    top = max_stem_level(file.relative_path for file in files)
 
-    balanced = suggest_grouping(files)
-    wide = suggest_grouping(files, {directory: StemMode.WIDE})
-    quality_files = [
+    plans = [suggest_grouping(files, {directory: level}) for level in range(top + 1)]
+    counts = [len(_bundles(plan.proposals)) for plan in plans]
+
+    # The default is unchanged by the move to a dial: three separate releases.
+    assert counts[DEFAULT_STEM_LEVEL] == 3
+    # Widening never splits. This is the whole promise of a dial, and what three
+    # named stops could not offer: "balanced" folded a rendition tag while "wide"
+    # switched to an unrelated key, so one step could go either way.
+    assert counts == sorted(counts, reverse=True), counts
+    # Partway up, the two releases from one studio meet — and they meet each
+    # other, not whichever pair happens to shorten at the same rate. Every name in
+    # the folder is compared on the same number of leading segments, which is why
+    # this dial is absolute rather than "drop one segment from each name".
+    merged = next(
+        bundle for plan in plans for bundle in _bundles(plan.proposals) if len(bundle.files) == 4
+    )
+    assert {file.asset_file_id for file in merged.files} == {
+        f"{directory}/{studio_one}.mp4",
+        f"{directory}/{studio_one}.jpg",
+        f"{directory}/{studio_two}.mp4",
+        f"{directory}/{studio_two}.jpg",
+    }
+    # And the top of the dial is genuinely the top: every name is down to its
+    # first segment, so there is nothing left to widen.
+    assert counts[top] == 1
+    assert plans[top].stem_levels == {directory: top}
+
+
+# Level 0 is the complete stem, renditions included; the default folds them
+def test_level_zero_keeps_renditions_of_one_title_apart() -> None:
+    files = [
         _f("Versions/Movie.mp4", MediaKind.VIDEO),
         _f("Versions/Movie.jpg", MediaKind.IMAGE),
         _f("Versions/Movie - 720p.mp4", MediaKind.VIDEO),
         _f("Versions/Movie - 720p.jpg", MediaKind.IMAGE),
     ]
-    narrow = suggest_grouping(quality_files, {"Versions": StemMode.NARROW})
-    folded = suggest_grouping(quality_files)
 
-    assert len(_bundles(balanced.proposals)) == 3
-    assert len(_bundles(wide.proposals)) == 2
-    assert len(_bundles(narrow.proposals)) == 2
-    assert len(_bundles(folded.proposals)) == 1
-    assert wide.stem_modes == {directory: StemMode.WIDE}
+    assert len(_bundles(suggest_grouping(files, {"Versions": 0}).proposals)) == 2
+    assert len(_bundles(suggest_grouping(files).proposals)) == 1
+    # Nothing to widen: every folded stem is already one segment, so the dial
+    # for this folder ends at the default and Widen has to be offered as spent.
+    assert max_stem_level(file.relative_path for file in files) == DEFAULT_STEM_LEVEL
 
 
 # Image-only folders remain item collections even when camera prefixes match
@@ -499,7 +527,10 @@ def test_prefix_grouped_bundle_is_titled_by_the_shared_stem() -> None:
         )
     ]
 
-    plan = suggest_grouping(files, stem_modes={"Scenes": StemMode.WIDE})
+    # Widened to where the four dated releases meet: they agree on their first
+    # three segments only, and this folder's dial tops out at eleven, so level 9
+    # is the rung that compares three (``max - level + 1``).
+    plan = suggest_grouping(files, stem_levels={"Scenes": 9})
     bundle = next(p for p in _bundles(plan.proposals) if len(p.files) == 4)
     # The shared part, trimmed to a delimiter so it never ends mid-token.
     assert bundle.title == "StudioAlpha.19.12"

@@ -18,7 +18,6 @@ from cairndex.domain.enums import (
     FileAvailability,
     GroupingState,
     ProposalKind,
-    StemMode,
     context_directory,
 )
 from cairndex.grouping.suggester import (
@@ -263,14 +262,14 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
         )
         for index, proposal in enumerate(plan.proposals)
     )
-    return GroupingPlan(plan.rule_version, (*additions, *updated), plan.stem_modes)
+    return GroupingPlan(plan.rule_version, (*additions, *updated), plan.stem_levels)
 
 
 def suggest_for_session(
-    session: Session, *, stem_modes: dict[str, StemMode] | None = None
+    session: Session, *, stem_levels: dict[str, int] | None = None
 ) -> GroupingPlan:
     """Build a grouping plan with relevant existing collections as review context."""
     return _with_collection_context(
         session,
-        suggest_grouping(gather_observations(session), stem_modes),
+        suggest_grouping(gather_observations(session), stem_levels),
     )

@@ -248,34 +248,54 @@ const CURRENT_COLLECTIONS: CollectionRead[] = [
   },
 ]
 
+/** How far a fixture folder's stem dial goes.
+ *
+ * A fixture rather than a computation: the real maximum comes from the
+ * suggester's filename normalization, which is why the server reports it per
+ * folder instead of the client deriving it (`plan_store.stem_levels`).
+ */
+const STEM_DIAL_MAX = 4
+
+/** The dial map the server sends: one entry per folder the plan's files live in. */
+function stemDials(
+  proposals: GroupingProposal[],
+  levels: Record<string, number>,
+): Record<string, { level: number; max: number }> {
+  const dials: Record<string, { level: number; max: number }> = {}
+  for (const proposal of proposals) {
+    for (const file of proposal.files) {
+      const directory = file.relative_path.split('/').slice(0, -1).join('/')
+      const level = levels[directory] ?? 1
+      dials[directory] = { level, max: Math.max(STEM_DIAL_MAX, level) }
+    }
+  }
+  return dials
+}
+
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi(
   initialProposals: GroupingProposal[] = PROPOSALS,
   collections: CollectionRead[] = CURRENT_COLLECTIONS,
-  // Lets a test hand back a mode this build does not know, which is how the
-  // stem index arithmetic went wrong.
-  initialStemModes: Record<string, string> = {},
+  // Lets a test start a folder partway along its dial, including at either end.
+  initialStemLevels: Record<string, number> = {},
 ) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
-  let stemModes: Record<string, string> = { ...initialStemModes }
+  let stemLevels: Record<string, number> = { ...initialStemLevels }
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.includes('/collections?')) {
       body = { items: collections, next_cursor: null }
     } else if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       planId = 'plan2'
-      stemModes = (
-        JSON.parse(init.body as string) as {
-          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
-        }
-      ).stem_modes
+      stemLevels = (JSON.parse(init.body as string) as { stem_levels: Record<string, number> })
+        .stem_levels
       body = {
         id: planId,
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals,
@@ -297,7 +317,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -368,13 +388,16 @@ function mockGroupingApi(
         (proposal) => updated.find((item) => item.id === proposal.id) ?? proposal,
       )
       body = updated
-    } else if (url.match(/\/stem-modes$/) && init?.method === 'PUT') {
-      const { directory, mode } = JSON.parse(init.body as string) as {
+    } else if (url.match(/\/stem-levels$/) && init?.method === 'PUT') {
+      const { directory, level } = JSON.parse(init.body as string) as {
         directory: string
-        mode: 'narrow' | 'balanced' | 'wide'
+        level: number
       }
-      if (mode === 'balanced') delete stemModes[directory]
-      else stemModes[directory] = mode
+      // Clamped and defaulted exactly as the server does, so a test cannot pass
+      // against a level the real endpoint would never store.
+      const clamped = Math.max(0, Math.min(level, STEM_DIAL_MAX))
+      if (clamped === 1) delete stemLevels[directory]
+      else stemLevels[directory] = clamped
       // In place: only the adjusted directory's rows are replaced (new ids).
       proposals = proposals.map((proposal) =>
         proposal.directory === directory ? { ...proposal, id: `${proposal.id}-regen` } : proposal,
@@ -384,7 +407,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -419,7 +442,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -473,7 +496,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -786,23 +809,24 @@ test('regenerating suggestions keeps returned candidates visible immediately', a
   ).toBe(true)
 })
 
-test('widens one folder in place and keeps the mode', async () => {
+test('widens one folder in place, one rung at a time', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  fireEvent.click(await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/))
+  fireEvent.click(await findRowActionAsync(/^Widen SRCV-005/))
 
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
-  // Already at the widest setting, so the item stays but cannot be reached again.
-  expect(findRowAction(/^Merge SRCV-005 into fewer bundles/)).toBeDisabled()
-  // One directory's mode, sent to the in-place endpoint — no plan regeneration.
+  // Mid-dial, so it can be reached again — the point of a dial over three stops.
+  expect(findRowAction(/^Widen SRCV-005/)).toBeEnabled()
+  expect(findRowAction(/^Widen SRCV-005/)).toHaveTextContent('stem 2 of 4')
+  // One directory's level, sent to the in-place endpoint — no plan regeneration.
   const put = fetchMock.mock.calls.find(
-    ([url, init]) => url.endsWith('/stem-modes') && init?.method === 'PUT',
+    ([url, init]) => url.endsWith('/stem-levels') && init?.method === 'PUT',
   )
   expect(put?.[1]).toMatchObject({
-    body: JSON.stringify({ directory: 'SRCV-005', mode: 'wide' }),
+    body: JSON.stringify({ directory: 'SRCV-005', level: 2 }),
   })
   expect(
     fetchMock.mock.calls.some(
@@ -837,9 +861,9 @@ test('places a folder stem control on the deepest matching container row', async
 
   await screen.findByRole('button', { name: 'Rename collection suggestion Western' })
 
-  // The folder's split/merge actions belong to the deepest row that speaks for
-  // it, and to that row only.
-  const folderAction = /^Merge Western\/Nora Vance into fewer bundles/
+  // The folder's stem actions belong to the deepest row that speaks for it, and
+  // to that row only.
+  const folderAction = /^Widen Western\/Nora Vance/
   expect(queryRowAction(folderAction, 'collection suggestion Western')).toBeNull()
   expect(findRowAction(folderAction, 'collection suggestion Nora Vance')).toBeInTheDocument()
 })
@@ -1444,34 +1468,48 @@ test('a read-only existing-collection row offers no folder actions', async () =>
   vi.stubGlobal('fetch', mockGroupingApi([context, ...NESTED_PROPOSALS.slice(1)]))
   renderReview()
 
-  // Split/Merge regenerate plan rows for a directory this row does not name.
-  await expectNoRowAction(/into (more|fewer) bundles/, 'collection suggestion Library')
+  // Narrow/Widen regenerate plan rows for a directory this row does not name.
+  await expectNoRowAction(/^(Narrow|Widen) /, 'collection suggestion Library')
 })
 
-test('the folder actions name the current mode and can reset to balanced', async () => {
-  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': 'wide' }))
+test('the folder actions state the level, the dial length, and a way back', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': STEM_DIAL_MAX }))
   renderReview()
 
-  // The mode was inferable only from which end was greyed out, and balanced was
-  // unreachable from either end.
-  const widen = await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/)
-  expect(widen).toHaveTextContent('now: wide')
+  // The value was inferable only from which end was greyed out, and the default
+  // was unreachable from either end.
+  const widen = await findRowActionAsync(/^Widen SRCV-005/)
+  expect(widen).toHaveTextContent(`stem ${STEM_DIAL_MAX} of ${STEM_DIAL_MAX}`)
   expect(widen).toBeDisabled()
-  expect(widen).toHaveAttribute('title', 'SRCV-005 is already merged as far as it goes')
-  expect(findRowAction(/^Split SRCV-005 into more bundles/)).toHaveTextContent('now: wide')
-  expect(findRowAction('Reset SRCV-005 to balanced matching')).toBeEnabled()
+  expect(widen).toHaveAttribute('title', 'SRCV-005 is already matched as widely as it goes')
+  expect(findRowAction(/^Narrow SRCV-005/)).toBeEnabled()
+  expect(findRowAction('Reset SRCV-005 to the suggested stem')).toBeEnabled()
 })
 
-test('an unrecognised stem mode offers no folder actions', async () => {
-  vi.stubGlobal(
-    'fetch',
-    mockGroupingApi(undefined, undefined, { 'SRCV-005': 'exact', Second: 'exact' }),
-  )
+test('the bottom of the dial explains itself and offers no further step', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': 0 }))
   renderReview()
 
-  // index === -1 slipped past both endpoint guards: Merge resolved to `narrow`
-  // and split the folder instead.
-  await expectNoRowAction(/into (more|fewer) bundles/)
+  const narrow = await findRowActionAsync(/^Narrow SRCV-005/)
+  expect(narrow).toBeDisabled()
+  expect(narrow).toHaveAttribute('title', 'SRCV-005 already matches complete filenames')
+  expect(findRowAction(/^Widen SRCV-005/)).toBeEnabled()
+  // At the default there is nothing to reset to, so the item is absent there —
+  // but level 0 is not the default.
+  expect(findRowAction('Reset SRCV-005 to the suggested stem')).toBeEnabled()
+})
+
+test('a folder with a one-segment dial offers Widen as spent rather than hiding it', async () => {
+  // `max` is per folder: a folder whose names are a single segment has nothing to
+  // widen, and saying so beats an action that would silently change nothing.
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}))
+  renderReview()
+
+  const widen = await findRowActionAsync(/^Widen SRCV-005/)
+  expect(widen).toHaveTextContent('stem 1 of 4')
+  expect(widen).toBeEnabled()
+  expect(findRowAction(/^Narrow SRCV-005/)).toBeEnabled()
+  expect(queryRowAction('Reset SRCV-005 to the suggested stem')).toBeNull()
 })
 
 test('an expanded run can be folded back', async () => {
@@ -1711,7 +1749,7 @@ test('drags a proposed collection to the top level', async () => {
  */
 function mockRegeneratingApi() {
   let generation = 0
-  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  let stemLevels: Record<string, number> = {}
   const proposalsFor = (gen: number): GroupingProposal[] =>
     structuredClone(PROPOSALS).map((p) => ({ ...p, id: `${p.id}-gen${gen}` }))
 
@@ -1720,17 +1758,14 @@ function mockRegeneratingApi() {
     let body: unknown
     if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       generation += 1
-      stemModes = (
-        JSON.parse(init.body as string) as {
-          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
-        }
-      ).stem_modes
+      stemLevels = (JSON.parse(init.body as string) as { stem_levels: Record<string, number> })
+        .stem_levels
       body = {
         id: `plan-gen${generation}`,
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposalsFor(generation), stemLevels),
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals: proposalsFor(generation),
@@ -1753,7 +1788,7 @@ function mockRegeneratingApi() {
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposalsFor(gen), stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals: proposalsFor(gen),
@@ -1791,8 +1826,8 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   expect(second).not.toBeChecked()
   await screen.findByText('1 bundle selected')
 
-  fireEvent.click(await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/))
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  fireEvent.click(await findRowActionAsync(/^Widen SRCV-005/))
+  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
 
   // The adjusted directory's row returns as a fresh (checked) suggestion; the
   // deselection elsewhere survives.
@@ -1818,8 +1853,8 @@ test('a conversion elsewhere survives Widen', async () => {
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
 
-  fireEvent.click(findRowAction(/^Merge SRCV-005 into fewer bundles/))
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  fireEvent.click(findRowAction(/^Widen SRCV-005/))
+  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
 
   // Still a collection, child row intact, and the way back still offered.
   expect(screen.getByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
