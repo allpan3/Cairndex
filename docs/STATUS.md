@@ -172,6 +172,44 @@ whole-plan-read-twice fix has no honest unit test — the query *count* is
 unchanged, only the rows loaded — so it is recorded here as a measurement rather
 than asserted as a green test that proves nothing.
 
+### Round two: the plan was written a row at a time
+
+Owner tested again: generating took "quite long" to show anything, and conversion
+was still not instant. Profiling `POST /plans` found the real cost was never the
+heuristic — it was **10,416 SQL statements** for a 3,605-suggestion plan, from two
+independent faults in `persist_plan`:
+
+* it flushed inside its loop, solely to learn the id it was about to need for the
+  row's files. `UlidPk` defaults to a plain Python callable, so assigning `id`
+  explicitly makes every primary key known before the insert and lets SQLAlchemy
+  batch them (the self-referential parent FK is why it otherwise inserts one row
+  at a time).
+* the files were linked by `proposal_id` rather than through `row.files`, so
+  serializing the response lazy-loaded each row's files: one SELECT per proposal.
+
+Priming the collection needs `set_committed_value` **after** the flush — turning a
+pending instance persistent resets that bookkeeping, so doing it earlier silently
+does nothing, and plain assignment leaves an *empty* collection unloaded so every
+container still paid a query. `extend` is worse than either: it loads before
+appending.
+
+`POST /plans` at 3,605 suggestions: **4,173 ms → 1,560 ms**, 10,416 statements →
+4 batched inserts plus a handful of reads. The suggester itself is ~0.7s of that
+and was never the problem. The same per-row flush is gone from
+`_bundle_to_container` and the stem splice; the splice keeps one flush before its
+parent-link pass, because the foreign key is enforced immediately.
+
+Server-side per edit at 3,605 suggestions is now: convert 145–317 ms, reparent
+114 ms, stem level 829 ms, plus ~130 ms to serialize the response.
+
+**Still not instant, and why.** Every edit returns the *whole* plan — 3 MB at
+3,605 suggestions — because a conversion changes the tree's shape. The client then
+re-parses it and rebuilds ten O(plan) memos. That is the remaining cost and it is
+structural: the next step is a delta response (`{removed_proposal_ids, proposals}`)
+that the client patches into its cache, across the four mutating endpoints. Not
+attempted here — it is a contract change to the area where a bug means a lost or
+duplicated file, and it wants its own slice.
+
 ### The controls
 
 The `...` menu is gone. The row's own kind glyph is the convert control, which is
@@ -328,8 +366,8 @@ rewriting it for the unmounting fold made it deterministic, and the spec has sin
 passed 35/35 four runs running. Whether the hidden list was the cause or only
 where the race surfaced is unproven.
 
-Next recommended task: owner testing against the real library again, now that a
-large plan is workable. If it is still slow with folders expanded, the remaining
+Next recommended task: the delta response described above — it is the one
+remaining lever on "instant" for an edit. Then owner testing again. If it is still slow with folders expanded, the remaining
 fix is virtualizing the tree, which needs flattening the nested `ul`/`li` render
 (drag targets, selection, fold keys, rollup and keyboard nav are all built on that
 nesting) and is its own branch.
