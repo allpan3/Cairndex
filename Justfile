@@ -1,4 +1,5 @@
-# Cairndex task runner. Run `just` on its own to list everything.
+# Cairndex task runner. `just` on its own prints the few you need; `just --list`
+# shows everything, grouped.
 #
 # Requires `just` (brew install just). Recipes are thin wrappers around the real
 # commands in docs/development.md — that document stays the explanation, this file
@@ -14,37 +15,23 @@ tauri_dir := "apps/desktop/src-tauri"
 # trust before the desktop shell can call it (see docs/development.md).
 dev_origin := "http://127.0.0.1:5173"
 
-default:
-    @just --list
-
-# ---------------------------------------------------------------- development --
-
-# Backend on :8000 (live-reloading).
-server:
-    cd {{server_dir}} && uv run uvicorn cairndex.main:app --reload --port 8000
-
-# Backend on :8000, trusting the `tauri dev` webview origin. Use with `just desktop`.
-server-desktop:
-    cd {{server_dir}} && CAIRNDEX_CORS_EXTRA_ORIGINS={{dev_origin}} \
-      uv run uvicorn cairndex.main:app --reload --port 8000
-
-# Frontend on :5173, proxying /api to :8000.
-web:
-    cd {{web_dir}} && npm run dev
-
-# A library's database lives inside the library (ADR-0008), so opening a
-# NAS-hosted library from this Mac sends every query over SMB — measured at
-# 35.9 ms against 0.021 ms for the same database on local disk. Serving it from
-# the machine that holds the files removes that; this points the dev frontend at
-# that server, so the UI under test is still the one in your working tree.
-# Needs the server reachable (`CAIRNDEX_BIND_ADDR` in its `.env`) and, since there
-# is no authentication yet, a private network only.
+# Only three of these are the answer most days, so a bare `just` points at them
+# instead of dumping the lot.
 #
-# Frontend on :5173 against a server elsewhere: `just web-remote nas.local:8000`.
-web-remote host:
-    cd {{web_dir}} && VITE_API_PROXY_TARGET="http://{{host}}" npm run dev
+# The three commands you actually need.
+default:
+    @echo ""
+    @echo "  just dev      ← start here. Backend on :8000, frontend on :5173."
+    @echo "  just check      everything CI checks (server, web, desktop)."
+    @echo "  just fmt        auto-fix formatting across all three."
+    @echo ""
+    @echo "  just --list     everything else, grouped: start / check / docker / build."
+    @echo ""
 
-# Backend + frontend together; Ctrl-C stops both.
+# ---------------------------------------------------------------------- start --
+
+# Backend + frontend together; Ctrl-C stops both. The one to reach for.
+[group('start')]
 dev:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -71,36 +58,139 @@ dev:
     web_pid=$!
     wait
 
+# Backend on :8000 (live-reloading). Half of `just dev`, for a separate terminal.
+[group('start')]
+server:
+    cd {{server_dir}} && uv run uvicorn cairndex.main:app --reload --port 8000
+
+# Frontend on :5173, proxying /api to :8000. The other half of `just dev`.
+[group('start')]
+web:
+    cd {{web_dir}} && npm run dev
+
+# Needs a Cairndex server already running at that host — this starts only the
+# frontend. A library's database lives inside the library (ADR-0008), so opening a
+# NAS-hosted library from this Mac sends every query over SMB: measured at 35.9 ms
+# against 0.021 ms for the same database on local disk. Serving it from the machine
+# that holds the files removes that, and this points the dev frontend there so the
+# UI under test is still your working tree's. The server needs
+# `CAIRNDEX_BIND_ADDR` set to something reachable, on a private network only —
+# there is no authentication yet. The packaged desktop app needs none of this; see
+# docs/development.md.
+#
+# Frontend on :5173 against a server elsewhere: `just web-remote nas.local:8000`.
+[group('start')]
+web-remote host:
+    cd {{web_dir}} && VITE_API_PROXY_TARGET="http://{{host}}" npm run dev
+
+# Backend on :8000, trusting the `tauri dev` webview origin. Use with `just desktop`.
+[group('start')]
+server-desktop:
+    cd {{server_dir}} && CAIRNDEX_CORS_EXTRA_ORIGINS={{dev_origin}} \
+      uv run uvicorn cairndex.main:app --reload --port 8000
+
 # Desktop shell against a live source server (run `just server-desktop` first).
+[group('start')]
 desktop:
     cd {{desktop_dir}} && npm run tauri dev
 
-# `tauri dev` — both desktop recipes below — serves React's development build
-# from Vite. The Tauri root omits StrictMode replay because abort/reissue can
-# strand WKWebView startup requests; browser development still exercises it.
-# Judge shipped performance with `just release`.
+# `tauri dev` — both desktop recipes — serves React's development build from Vite.
+# The Tauri root omits StrictMode replay because abort/reissue can strand
+# WKWebView startup requests; browser development still exercises it. Judge
+# shipped performance with `just release`.
 
 # Desktop shell on its bundled sidecar, rebuilt if stale (dev frontend).
+[group('start')]
 bundled:
     cd {{desktop_dir}} && npm run dev:bundled
 
-# Run the optimized build without packaging it — for judging real performance.
-release:
-    cd {{desktop_dir}} && npx tauri build --no-bundle
-    @echo ""
-    @echo "→ open {{tauri_dir}}/target/release/cairndex-desktop"
+# ---------------------------------------------------------------------- check --
 
-# -------------------------------------------------------------------- docker --
+# Everything: server, web, desktop. What CI checks.
+[group('check')]
+check: check-server check-web check-desktop
+
+[group('check')]
+check-server:
+    cd {{server_dir}} && uv run ruff format --check . \
+      && uv run ruff check . \
+      && uv run mypy src packaging \
+      && uv run pytest -q
+
+# `npm run typecheck` is `tsc -b`, not `tsc --noEmit`. The root tsconfig is
+# solution-style (`"files": []` plus project references), so a plain `tsc
+# --noEmit` type-checks *nothing* and exits 0 — this gate passed clean while CI
+# failed on three type errors in test files. Build mode follows the references.
+#
+# `npm run build` is here too: type-checking the references is not the same as
+# proving the bundle builds, and that used to be a separate recipe nobody ran.
+#
+# Lint, format, types, unit tests, and the production bundle.
+[group('check')]
+check-web:
+    cd {{web_dir}} && npm run lint \
+      && npm run format:check \
+      && npm run typecheck \
+      && npm run test \
+      && npm run build
+
+[group('check')]
+check-desktop:
+    cd {{tauri_dir}} && cargo fmt --check \
+      && cargo clippy --all-targets -- -D warnings \
+      && cargo test
+
+# The full sweep is `just check`; these take arguments, e.g. `just test-web
+# GroupingReview`.
+#
+# One stack's tests, with arguments.
+[group('check')]
+test-server *ARGS:
+    cd {{server_dir}} && uv run pytest {{ARGS}}
+
+[group('check')]
+test-web *ARGS:
+    cd {{web_dir}} && npx vitest run {{ARGS}}
+
+[group('check')]
+test-desktop *ARGS:
+    cd {{tauri_dir}} && cargo test {{ARGS}}
+
+# Browser-only end-to-end tests (APIs intercepted; boots its own dev server).
+[group('check')]
+e2e *ARGS:
+    cd {{web_dir}} && npm run test:e2e:frontend -- {{ARGS}}
+
+# End-to-end against a real backend. Needs `uv sync` and ffmpeg.
+[group('check')]
+e2e-full *ARGS:
+    cd {{web_dir}} && npm run test:e2e:fullstack -- {{ARGS}}
+
+# Exercise `just dev` itself and prove Ctrl-C releases an acquired lease.
+[group('check')]
+dev-smoke:
+    cd {{ server_dir }} && uv run python ../../infra/dev_smoke.py
+
+# Auto-fix formatting and the lint rules that can be fixed.
+[group('check')]
+fmt:
+    cd {{server_dir}} && uv run ruff format . && uv run ruff check --fix .
+    cd {{web_dir}} && npm run format
+    cd {{tauri_dir}} && cargo fmt
+
+# --------------------------------------------------------------------- docker --
 
 # Needs a .env (`cp .env.example .env`). Ctrl-C stops it; see `docker-dev-down`.
 #
 # Containerized dev stack: API on :8000, Vite on :5173, both hot-reloading.
+[group('docker')]
 docker-dev *ARGS:
     docker compose up --build {{ARGS}}
 
 # Without --volumes it keeps the registry DB, so registered libraries survive.
 #
 # Stop the dev stack (preferred over killing it: shutdown releases leases).
+[group('docker')]
 docker-dev-down *ARGS:
     docker compose down {{ARGS}}
 
@@ -108,23 +198,23 @@ docker-dev-down *ARGS:
 # large library to benchmark against, use devtools.synthetic_library instead.
 #
 # Seed a small scratch library for the dev stack at var/docker-library.
+[group('docker')]
 docker-dev-library *ARGS:
     ./infra/docker/dev-library.sh {{ARGS}}
 
-# Same image the NAS runs; no source mount, no reload.
+# Same image the NAS runs; no source mount, no reload. Stop it with
+# `docker compose -f docker-compose.prod.yml down`.
 #
 # Run the production stack locally, to check a deployment change before shipping.
+[group('docker')]
 docker-prod *ARGS:
     docker compose -f docker-compose.prod.yml up --build {{ARGS}}
-
-# Stop the local production stack.
-docker-prod-down *ARGS:
-    docker compose -f docker-compose.prod.yml down {{ARGS}}
 
 # --load leaves it in the local daemon so you can `docker save` it; add a
 # registry and swap --load for --push if you have somewhere to push it.
 #
 # Cross-build the production image for an amd64 NAS from this arm64 Mac.
+[group('docker')]
 docker-build-nas tag="cairndex:nas":
     docker buildx build --platform linux/amd64 \
       -f infra/docker/production.Dockerfile -t {{tag}} --load .
@@ -135,84 +225,29 @@ docker-build-nas tag="cairndex:nas":
 # generated video, and checks a graceful stop releases the lease. CI runs this.
 #
 # Prove the production image actually serves, not just that it builds.
+[group('docker')]
 docker-smoke:
     ./infra/docker/smoke.sh
 
-# ---------------------------------------------------------------------- gates --
-
-# Everything: server, web, desktop. What CI checks.
-check: check-server check-web check-desktop
-
-check-server:
-    cd {{server_dir}} && uv run ruff format --check . \
-      && uv run ruff check . \
-      && uv run mypy src packaging \
-      && uv run pytest -q
-
-# `npm run typecheck` is `tsc -b`, not `tsc --noEmit`. The root tsconfig is
-# solution-style (`"files": []` plus project references), so a plain `tsc
-# --noEmit` type-checks *nothing* and exits 0 — this gate passed clean while CI
-# failed on three type errors in test files. Build mode follows the references
-# and is what `npm run build` (and therefore CI) actually enforces.
-check-web:
-    cd {{web_dir}} && npm run lint \
-      && npm run format:check \
-      && npm run typecheck \
-      && npm run test
-
-check-desktop:
-    cd {{tauri_dir}} && cargo fmt --check \
-      && cargo clippy --all-targets -- -D warnings \
-      && cargo test
-
-# ---------------------------------------------------------------------- tests --
-
-test: test-server test-web test-desktop
-
-# Exercise `just dev` itself and prove Ctrl-C releases an acquired lease.
-dev-smoke:
-    cd {{ server_dir }} && uv run python ../../infra/dev_smoke.py
-
-test-server *ARGS:
-    cd {{server_dir}} && uv run pytest {{ARGS}}
-
-test-web *ARGS:
-    cd {{web_dir}} && npx vitest run {{ARGS}}
-
-test-desktop *ARGS:
-    cd {{tauri_dir}} && cargo test {{ARGS}}
-
-# Browser-only end-to-end tests (APIs intercepted; boots its own dev server).
-e2e *ARGS:
-    cd {{web_dir}} && npm run test:e2e:frontend -- {{ARGS}}
-
-# End-to-end against a real backend. Needs `uv sync` and ffmpeg.
-e2e-full *ARGS:
-    cd {{web_dir}} && npm run test:e2e:fullstack -- {{ARGS}}
-
-# ------------------------------------------------------------------ formatting --
-
-# Auto-fix formatting and the lint rules that can be fixed.
-fmt:
-    cd {{server_dir}} && uv run ruff format . && uv run ruff check --fix .
-    cd {{web_dir}} && npm run format
-    cd {{tauri_dir}} && cargo fmt
-
-# ------------------------------------------------------------------- artifacts --
+# ---------------------------------------------------------------------- build --
 
 # Regenerate openapi.json + the typed client. Run after any route change; commit both.
+[group('build')]
 api:
     cd {{server_dir}} && uv run python -m cairndex.devtools.openapi > ../web/src/api/openapi.json
     cd {{web_dir}} && npm run gen:api
 
-# Build the PyInstaller sidecar the desktop app bundles as its local server.
-sidecar:
+# Run the optimized build without packaging it — for judging real performance.
+[group('build')]
+release:
+    cd {{desktop_dir}} && npx tauri build --no-bundle
+    @echo ""
+    @echo "→ open {{tauri_dir}}/target/release/cairndex-desktop"
+
+# Builds the PyInstaller sidecar first — the local server the app bundles.
+#
+# Package the desktop app (.app/.dmg).
+[group('build')]
+build-desktop:
     cd {{server_dir}} && uv run python packaging/build_sidecar.py
-
-# Package the desktop app (.app/.dmg). Requires a built sidecar.
-build-desktop: sidecar
     cd {{desktop_dir}} && npm run tauri build
-
-# Production SPA build.
-build-web:
-    cd {{web_dir}} && npm run build

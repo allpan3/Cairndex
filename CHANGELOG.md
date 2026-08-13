@@ -68,6 +68,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   single ffmpeg call — one storyboard file over a network share is about half a
   minute — stops there instead of at the next checkpoint behind it.
 
+### Changed
+
+- **`just` on its own now names the three commands you need** rather than dumping
+  thirty-two, and `just --list` groups the rest into start / check / docker /
+  build. Four recipes are gone: `just sidecar` folded into `build-desktop`, its
+  only caller; `just build-web` folded into `just check-web`, which type-checked
+  the project references without ever proving the bundle builds; `just test`
+  duplicated `just check`; and `just docker-prod-down` was a one-line wrapper now
+  named in `docker-prod`'s own help.
+
 ### Fixed
 
 - **`just web-remote <host>` points the dev frontend at a server elsewhere.** A
