@@ -791,12 +791,12 @@ test('widens one folder in place and keeps the mode', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  fireEvent.click(await findRowActionAsync('Merge SRCV-005 into fewer bundles'))
+  fireEvent.click(await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/))
 
   await screen.findByText('SRCV-005 now uses wide stem matching.')
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
   // Already at the widest setting, so the item stays but cannot be reached again.
-  expect(findRowAction('Merge SRCV-005 into fewer bundles')).toBeDisabled()
+  expect(findRowAction(/^Merge SRCV-005 into fewer bundles/)).toBeDisabled()
   // One directory's mode, sent to the in-place endpoint — no plan regeneration.
   const put = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/stem-modes') && init?.method === 'PUT',
@@ -839,7 +839,7 @@ test('places a folder stem control on the deepest matching container row', async
 
   // The folder's split/merge actions belong to the deepest row that speaks for
   // it, and to that row only.
-  const folderAction = 'Merge Western/Nora Vance into fewer bundles'
+  const folderAction = /^Merge Western\/Nora Vance into fewer bundles/
   expect(queryRowAction(folderAction, 'collection suggestion Western')).toBeNull()
   expect(findRowAction(folderAction, 'collection suggestion Nora Vance')).toBeInTheDocument()
 })
@@ -1448,6 +1448,20 @@ test('a read-only existing-collection row offers no folder actions', async () =>
   await expectNoRowAction(/into (more|fewer) bundles/, 'collection suggestion Library')
 })
 
+test('the folder actions name the current mode and can reset to balanced', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': 'wide' }))
+  renderReview()
+
+  // The mode was inferable only from which end was greyed out, and balanced was
+  // unreachable from either end.
+  const widen = await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/)
+  expect(widen).toHaveTextContent('now: wide')
+  expect(widen).toBeDisabled()
+  expect(widen).toHaveAttribute('title', 'SRCV-005 is already merged as far as it goes')
+  expect(findRowAction(/^Split SRCV-005 into more bundles/)).toHaveTextContent('now: wide')
+  expect(findRowAction('Reset SRCV-005 to balanced matching')).toBeEnabled()
+})
+
 test('an unrecognised stem mode offers no folder actions', async () => {
   vi.stubGlobal(
     'fetch',
@@ -1777,7 +1791,7 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   expect(second).not.toBeChecked()
   await screen.findByText('1 bundle selected')
 
-  fireEvent.click(await findRowActionAsync('Merge SRCV-005 into fewer bundles'))
+  fireEvent.click(await findRowActionAsync(/^Merge SRCV-005 into fewer bundles/))
   await screen.findByText('SRCV-005 now uses wide stem matching.')
 
   // The adjusted directory's row returns as a fresh (checked) suggestion; the
@@ -1804,7 +1818,7 @@ test('a conversion elsewhere survives Widen', async () => {
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
 
-  fireEvent.click(findRowAction('Merge SRCV-005 into fewer bundles'))
+  fireEvent.click(findRowAction(/^Merge SRCV-005 into fewer bundles/))
   await screen.findByText('SRCV-005 now uses wide stem matching.')
 
   // Still a collection, child row intact, and the way back still offered.

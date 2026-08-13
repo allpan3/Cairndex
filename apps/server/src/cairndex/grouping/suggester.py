@@ -493,6 +493,14 @@ def _shared_stem_title(files: list[FileObservation]) -> str | None:
         shared = shared[:index]
         if not shared:
             return None
+    # Nothing to trim when every stem *is* the shared part: the prefix is not
+    # partial, it is the whole name. Reachable only since sidecars joined the
+    # comparison (a video and its cover often share their filename exactly), and
+    # without this guard an identical pair lost everything after its last
+    # delimiter — "A - B - 4K" became "A - B".
+    if all(stem == shared for stem in stems):
+        return shared or None
+
     # Drop a trailing partial token, and the delimiter run before it.
     boundaries = list(_SUBJECT_DELIMITER.finditer(shared))
     if boundaries and boundaries[-1].end() == len(shared):
@@ -517,7 +525,16 @@ def _bundle_proposal(
     # A bundle that fills its whole folder takes the folder's name. Otherwise:
     # several files grouped together are titled by the part they share, and a
     # single subject by its own filename.
-    subjects = videos if len(videos) > 1 else ([] if videos else files)
+    #
+    # With two or more videos the sidecars are excluded, because a cover named
+    # for the folder rather than for a video would drag the shared prefix shorter
+    # than the thing it is naming. With one video the sidecars are exactly what
+    # gives the useful name: a release video and its cover share the release's
+    # own identifier, so `n0203 - long title.mp4` + `n0203.jpg` is "n0203" rather
+    # than the video's whole filename (owner-reported, 2026-08-13). When they
+    # share no prefix at all — `cosmos.mp4` + `poster.jpg` — `_shared_stem_title`
+    # returns None and the fallback below still names it after the video.
+    subjects = videos if len(videos) > 1 else files
     title = (
         _basename(directory)
         if owns_directory and directory
