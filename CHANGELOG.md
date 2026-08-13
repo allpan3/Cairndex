@@ -10,6 +10,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **How much of a filename has to match is now a dial, not three named stops.**
+  Grouping compares filename stems, and the sensitivity was `narrow` /
+  `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
+  folded a trailing rendition tag while `wide` switched to an unrelated key, so
+  "one step wider" meant two different things and could split as readily as
+  merge. A folder now sits at a level, and each step compares one segment less
+  of every name in it, up to a maximum that folder's own filenames decide. The
+  default reproduces the old `balanced` exactly, so an existing library regroups
+  nothing; a plan left open across the upgrade has its stored mode translated,
+  with `wide` landing on that folder's maximum.
+- **Narrow and Widen are visible again, on the folder they belong to.** They had
+  moved into a row's overflow menu, where a folder-level control does not belong
+  and where a folder-level *value* cannot be shown at all — the level was
+  inferable only from which end was greyed out. Each folder's row now states it
+  as text ("stem 2 of 6") beside plain `Narrow` and `Widen` buttons, with
+  `Reset` when there is something to reset to. Every tooltip says what the
+  button does to the filename match and then what that does to the bundles, and
+  each end of the dial explains why it stops. A collection suggestion for a
+  folder is that folder's header, so it carries the dial and is set off from the
+  rows beneath it; a leaf folder that is one bundle carries its own.
 - **Long grouping plans can now be folded without changing the plan.** Each
   collection can hide its descendant proposals and each bundle can hide its
   file list, with Collapse all / Expand all controls beside selection. Reviews
@@ -387,10 +407,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   `>< <>` pair — rendered after variable-length text, so they landed at a
   different x on every row and were discoverable only by hovering for a
   tooltip. One overflow trigger per row now opens a menu whose items say what
-  they do ("Make this a collection of bundles instead", "Merge Series One into
-  fewer bundles" — naming the folder, since stem sensitivity belongs to a folder
-  rather than to the row it was attached to). The tooltip machinery that existed
-  to caption those glyphs is gone with them.
+  they do ("Make this a collection of bundles instead"). The tooltip machinery
+  that existed to caption those glyphs is gone with them. The folder-scoped
+  Narrow/Widen pair went in there too and has since come back out onto the row
+  as a visible dial — see below.
 - **The grouping review's chrome stopped competing with its contents.** The
   three-line preamble folds behind a one-line summary, the dialog holds a fixed
   height so folding a row no longer slides the footer under the pointer,

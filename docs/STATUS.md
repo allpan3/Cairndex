@@ -118,85 +118,74 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Next task, specified: continuous stem level, then folder group headers (2026-08-13)
+## Completed on branch: the stem dial (2026-08-13)
 
-Owner-agreed sequence after testing the review dialog. **Neither is started**; this
-is the executable spec so it does not have to be re-derived.
+Both halves of the task specified here on 2026-08-13, in commits `dc097d0c`
+(backend) and `022c19e8` (frontend). Kept for the reasoning; the outcome is in
+`CHANGELOG.md`, `docs/data-model.md`, and ADR-0009.
 
-### Why
+### The level
 
-`StemMode` has only ever had three values (`narrow` / `balanced` / `wide`, one
-commit, verified). The owner's mental model — and the better one — is a
-continuous dial: keep widening until there is nothing left to widen. Three named
-stops are also an odd fit for what the dial really controls, which is *how much
-of each filename has to match*. `balanced` is not a midpoint either: it does a
-rendition-specific fold, while `wide` keeps only the leading title chunk, so the
-three are not points on one scale.
+`StemMode` had only ever had three values (`narrow` / `balanced` / `wide`, one
+commit). The owner's model was the better one — a dial you keep turning until
+there is nothing left to turn — and the three stops were not points on one scale
+anyway: `balanced` folded a rendition tag while `wide` switched to a separate
+semantic-chunk key, so "one step wider" meant two unrelated things.
 
-The owner also could not find Narrow/Widen at all after they moved into a row's
-overflow menu, because a **folder**-level control does not belong in a row menu.
+At level `L` a folder compares the first `max - L + 1` segments of every name it
+holds, where `max` is the longest name there. Level 1 compares whole
+rendition-folded stems and is the default — byte-identical to the old
+`balanced`, so nothing regroups on upgrade — and level `max` compares first
+segments alone. Level 0 is the one rung outside the scheme (the complete stem,
+rendition tag included), because folding `4K [tag]` versus `720p` is not
+expressible as a segment count.
 
-### Part 2 first — continuous stem level (backend)
+**The mistake worth not repeating.** The first implementation read the level
+*relatively*: drop `L - 1` trailing segments from each name. It is the obvious
+design and it is broken. Two names with different segment counts then produce
+keys of different lengths, which can never be equal, so nothing merges until the
+top rung clamps every name to one segment and the whole folder merges at once.
+The 12-and-9-segment pair in the suggester test reached "two bundles" by pairing
+the *wrong* two files, and the test passed. `_StemKey` is per folder for exactly
+this reason, and the regression test asserts which files meet, not just how many
+bundles result.
 
-Replace the enum with an integer level, chosen so today's behaviour is the
-default and nothing regroups on upgrade:
+`_StemKey` is also now the only definition of "do these two names match?" —
+`wide` used to group by a key `_owner_match_score` never saw, so addition
+matching silently stayed at the balanced key. `_wide_stem_keys`,
+`_semantic_segments` and the `wide`-only scoring tier are gone with it.
 
-- **level 0** — the complete normalized stem, no folding. Today's `narrow`.
-- **level 1** — rendition-folded (drop a trailing `4K`/`1080p`-style tag).
-  Today's `balanced`, and the **default**.
-- **level N ≥ 2** — rendition-folded, then drop `N - 1` further trailing
-  delimiter-separated segments.
-- **max** — the level that leaves one segment. Widen stops there, Narrow at 0.
+`max` depends on a folder's filenames, so `PlanRead.stem_levels` reports
+`{level, max}` for every folder the plan's files come from — the client cannot
+derive it without reimplementing the normalization. `PUT .../stem-levels` clamps
+rather than refuses, since the client asks against the maximum it was last told.
+`grouping_plans.stem_modes` keeps its column name (no migration chain can rename
+a column) with `stem_level_overrides` mapped onto it, and stored legacy strings
+are coerced on read with `wide` resolving to that folder's maximum.
 
-Migration: `narrow -> 0`, `balanced -> 1`, `wide -> max for that directory`.
-`GroupingPlan.stem_modes` is a JSON column holding directory -> value, so the
-additive-column machinery does not apply: coerce string values to ints on read in
-`plan_store`, and keep accepting both for one release.
+### The controls
 
-The maximum depends on the folder's filenames, so the server must report it —
-the client cannot compute it. Add to `PlanRead`:
+Narrow/Widen are visible on the row that speaks for the folder, with the level as
+text and tooltips that say what each does to the *stem* before what it does to
+the bundles. The owner's own words are back; this branch's "Split/Merge into
+more/fewer bundles" was churn.
 
-    stem_levels: dict[str, {"level": int, "max": int}]
+**What the folder-header spec got wrong.** It called for re-grouping the rendered
+rows by source directory, and named as "the hard part" that the tree nests by
+`parent_proposal_id` instead. That framing was backwards. A collection suggestion
+for a folder *already is* that folder's header — same name, same scope, its rows
+nested beneath it — so the tree already groups by folder wherever a folder has a
+collection row. Re-parenting the render would have duplicated that for no gain
+while breaking drop targets, tri-state selection, fold keys, sibling rollup, and
+keyboard navigation, all of which are structured around the proposal tree. What
+was actually wrong was only that the folder's controls were hidden in a row menu.
+So the dial goes on the header row that exists, a leaf folder that is one bundle
+carries its own, and `stemControlOwners` — which already answered "which row
+speaks for this folder?" — needed no change.
 
-`PUT .../stem-modes` takes `{directory, level}` and the server clamps to
-`[0, max]`. Keep the field name `stem_modes` on the wire for one release or
-rename with the contract regenerated; either is fine, but do not leave the
-generated `openapi.json` / `schema.d.ts` stale.
-
-Touches 18 files (`grep -rl 'StemMode\|stem_mode\|stemMode'`), 34 references in
-`suggester.py` alone. `_comparison_stem` is the single seam: it already takes the
-mode and returns the string to compare, so the level maths belongs there.
-
-### Part 1 second — folder group headers (frontend)
-
-Group the rendered rows by **source directory** rather than by proposal parent,
-and put the folder's own settings on its header:
-
-    Genre / Studio Beta        stem: 2 of 4   [Narrow] [Widen]    -> Archive / Seasons
-
-- **Restore the names.** `Narrow` / `Widen`, not the "Split/Merge into
-  more/fewer bundles" this branch invented — the domain's own words, which the
-  owner already understood. Drop the "matching" heading entirely; it labelled
-  nothing. Two plain buttons, not a segmented chip.
-- **Tooltips are required**, and must say what the button does to the *stem*:
-  Narrow — "match more of each filename, creating more, smaller bundles";
-  Widen — "match a shorter filename prefix, creating fewer, larger bundles".
-  Disabled ends explain themselves.
-- State the current level as text (`stem: 2 of 4`), which the old glyph pair
-  showed and the menu items do not.
-- The **destination appears once per folder** on the header rather than on every
-  row beneath it.
-- Rows then carry only per-row facts: accept, name, contents, confidence, and a
-  `...` menu for rename and bundle<->collection.
-
-**The hard part**, and the reason this is its own branch: the tree currently
-nests by `parent_proposal_id`, and grouping by source directory is not the same
-relation. A hand-merged row spans several folders, and `bundleDirectories`
-already exists for exactly that reason — a row with more than one directory gets
-no folder header and must render outside the groups.
-
-Once headers land, the left-hand destination pane from the earlier mockup loses
-most of its justification; its remaining value is bulk placement across folders.
+Not done, deliberately: the destination is still per row. Two bundles from one
+folder can be filed into different collections, and moving the picker onto the
+header would remove that to fix repetition that is only cosmetic.
 
 ## Open on branch: grouping suggestion review (2026-08-10)
 
@@ -226,7 +215,9 @@ the unfixed code. The two that mattered most:
 
 Also fixed: stem actions leaking back onto read-only existing-collection rows
 (the regression the previous branch closed); an unrecognised stem mode making
-"Merge" split instead; a filtered collection checkbox that could never reach
+"Merge" split instead (moot since the dial replaced the enum, and the guard is
+now structural — there is no unrecognised level); a filtered collection checkbox
+that could never reach
 unchecked; a rolled-up run hiding its folder's actions and being unreachable as
 a drop target; the filter stranding a blank list; a run that could be expanded
 but never folded back; rollup/file state keyed by ids that in-place regeneration
@@ -248,12 +239,33 @@ and the reviewers' recommendation is a server-side `needs_review` flag on
 and `GroupingReview.tsx` remains large enough that its pure plan logic wants a
 sibling module.
 
-Tests run: backend 972; frontend 591 across 79 files; Playwright 111/112 with
-the one pre-existing `player.spec.ts` HLS failure that reproduces on `main`;
-lint, format, typecheck and build clean on both stacks.
+Then, after owner testing against the real library: the confidence tabs replaced
+by a per-row confidence label (a two-tab filter can *hide* the mislabeled row
+from the view that claims to show what needs deciding), bundle↔collection
+conversion restored as always-available, the shortest shared prefix as the
+default bundle title, and the migration repair below. The stem dial that closed
+this round is written up in its own section above.
 
-Next recommended task: owner testing of the dialog against a real library,
-then either the two-pane layout or the server-side `needs_review` field.
+Also fixed, live: `OperationalError: table grouping_proposals has no column named
+is_collection_context`. The column reached the model and the backfill gate but
+not `_ADDITIVE_CONTENT_COLUMNS`, so an existing library could not insert a
+proposal at all. Two tests now bind the model to that list, and one names any
+future unlisted column.
+
+Tests run: backend 979; frontend 591 across 79 files; `library.spec.ts` 34/35 —
+the failure is the `switches one addition row` flake described below, which
+passes in isolation and predates this branch's review fixes. Lint, format,
+typecheck and build clean on both stacks.
+
+Known flake, pre-existing: `library.spec.ts` "switches one addition row" fails
+roughly one full-spec run in four on a 30s timeout and passes in isolation. It
+was already flaky at `3337e62a`, before the review fixes, so it is not from them
+— but it is unexplained, not benign.
+
+Next recommended task: owner testing of the stem dial against the real library.
+Then either the two-pane destination layout — whose remaining justification is
+bulk placement across folders, now that folder headers carry the dial — or the
+server-side `needs_review` field the reviewers recommended.
 
 ## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
