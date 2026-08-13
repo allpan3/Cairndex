@@ -179,7 +179,37 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
-- **Keeping `library.db` inside the library package costs 36 ms a query on SMB**,
+### Correction: writes over SMB are ~1,000x, not 36x
+
+The 35.9 ms figure was a *read*. Measured separately on the same share, with a
+throwaway database:
+
+| on the share | local |
+| --- | --- |
+| 750-row `executemany` — 100 ms | 0.6 ms |
+| its commit — **450 ms** | 0.4 ms |
+| eight small write+commit cycles — **2,220 ms** | 0.3 ms |
+
+SQLite cannot host WAL on SMB (ADR-0021 detects this and heals the file back to a
+rollback journal), so every transaction journals the original pages, writes, and
+fsyncs. Bulk row writes are therefore hopeless there, and no amount of statement
+batching changes it: running `persist_plan` against a copy of the owner's library
+**placed on the share** took **420 seconds** for 340 proposals — with 8 statements.
+Local: 85 ms.
+
+That is what "Writing grouping suggestions" was stuck on. The fix is not to make
+the write faster but to stop doing it: an Update that changed nothing now keeps the
+open plan (420 s -> 5.8 s, the remainder being the eager read of 340 proposals).
+Pruning is bounded per run for the same reason — its delete cascades, and clearing
+a hundred plans at once is minutes of writes.
+
+**So the earlier "you probably don't need a NAS server" was wrong**, and it was
+wrong because it was reasoned from read latency alone. Any operation that writes a
+few hundred rows is minutes on that share. The reuse path avoids the common case;
+the first Update after a real change still pays it.
+
+- **Keeping `library.db` inside the library package costs 36 ms a *read* on SMB and
+  ~300 ms a *write*,**
   which is ADR-0008's deliberate trade (the database travels with the library).
   Running a server on the NAS instead is the structural answer, and it is **not
   urgent**: after the fixes above the owner's operations are 8–21 statements, so

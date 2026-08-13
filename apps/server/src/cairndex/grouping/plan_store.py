@@ -26,6 +26,7 @@ from cairndex.domain.enums import (
 )
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
+    SUGGESTER_RULE_VERSION,
     FileObservation,
     _addition_roles_in_order,
     _dirname,
@@ -901,6 +902,62 @@ def supersede_open_plans(session: Session) -> None:
 # a 404.
 _KEEP_SUPERSEDED = 1
 
+# Plans deleted per call. Bounded because the delete cascades: each plan takes its
+# proposals and their file rows with it, and on a library whose database sits on a
+# network share those page writes are journaled one transaction at a time — a
+# hundred plans at once turns a single Update into minutes of deletes. A backlog
+# drains over the next few instead, and steady state is one plan per generation
+# anyway (owner-reported, 2026-08-13).
+_PRUNE_PER_RUN = 4
+
+
+def reusable_open_plan(session: Session) -> GroupingPlan | None:
+    """The open plan, when regenerating it could not produce anything different.
+
+    A plan is a snapshot of suggestions over the files not yet in a confirmed
+    bundle. If nothing in the library has been touched since it was written, that
+    set is unchanged and so is every suggestion over it — so regenerating writes a
+    few hundred rows of identical content and supersedes the plan the owner was
+    working through.
+
+    On local disk that waste is milliseconds. On a library whose database is on a
+    network share it was **seven minutes**, every press of Update, because the cost
+    is scattered journaled page writes rather than a few statements
+    (owner-reported, 2026-08-13).
+
+    The test is "has anything been modified since", not the scan's own summary:
+    ``ScanSummary.updated`` counts every *examined* row, changed or not, so it is
+    non-zero for any library with files in it. A timestamp comparison also covers
+    what a scan summary cannot — a bundle deleted or fast-added through the UI
+    between scans.
+
+    Returns ``None`` whenever the answer could differ: something was touched, there
+    is no open plan, or the plan predates the current suggester rules.
+    """
+    plan = session.scalar(
+        select(GroupingPlan)
+        .where(GroupingPlan.status == GroupingPlanStatus.OPEN)
+        .order_by(GroupingPlan.generated_at.desc())
+        .options(selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files))
+    )
+    if plan is None or plan.rule_version != SUGGESTER_RULE_VERSION:
+        return None
+    touched = [
+        session.scalar(select(func.max(AssetFile.updated_at))),
+        session.scalar(select(func.max(AssetBundle.updated_at))),
+    ]
+    generated = plan.generated_at
+    for stamp in touched:
+        if stamp is None:
+            continue
+        # Stored as UTC either way; compare on equal footing rather than trusting
+        # both to carry a tzinfo.
+        left = stamp.replace(tzinfo=None) if stamp.tzinfo else stamp
+        right = generated.replace(tzinfo=None) if generated.tzinfo else generated
+        if left > right:
+            return None
+    return plan
+
 
 def prune_obsolete_plans(session: Session) -> int:
     """Delete plans that can no longer be opened, applied, or otherwise used.
@@ -928,6 +985,7 @@ def prune_obsolete_plans(session: Session) -> int:
         )
         .order_by(GroupingPlan.generated_at.desc())
         .offset(_KEEP_SUPERSEDED)
+        .limit(_PRUNE_PER_RUN)
     )
     ids = list(session.scalars(obsolete))
     if not ids:
@@ -1050,8 +1108,8 @@ def generate_plan(
     """Persist grouping suggestions without reopening confirmed bundles."""
     data = suggest_for_session(session, stem_levels=stem_levels)
     plan = persist_plan(session, data, scan_job_id=scan_job_id, on_progress=on_progress)
-    # After the new plan exists, so the one being replaced is already superseded
-    # and there is always something for a stale client id to resolve to.
+    # After the new plan is in, so a slow delete never delays the thing the caller
+    # is waiting for, and a stale client id always resolves to something.
     prune_obsolete_plans(session)
     return plan
 

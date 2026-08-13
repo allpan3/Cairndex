@@ -34,15 +34,24 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     # with nothing to say for it, which reads as a hang (owner-reported,
     # 2026-08-13). Suggesting has no count to offer — it recurses a directory
     # tree — so it says what it is doing; writing counts its rows.
-    ctx.set_phase(JobPhase.GROUPING, "Matching filenames")
-    data = suggest_for_session(ctx.session)
-    ctx.set_phase(JobPhase.GROUPING, "Writing grouping suggestions")
-    plan = plan_store.persist_plan(
-        ctx.session,
-        data,
-        scan_job_id=ctx.job_id,
-        on_progress=lambda written, total: ctx.progress(written, total),
-    )
+    # Nothing new, moved, or missing means every suggestion over the unbundled
+    # files is the one already on the open plan — so keep it, rather than writing a
+    # few hundred identical rows and discarding the owner's selections with the
+    # plan they were made on. On a network-hosted library that rewrite was seven
+    # minutes per Update (owner-reported, 2026-08-13).
+    plan = plan_store.reusable_open_plan(ctx.session)
+    if plan is None:
+        ctx.set_phase(JobPhase.GROUPING, "Matching filenames")
+        data = suggest_for_session(ctx.session)
+        ctx.set_phase(JobPhase.GROUPING, "Writing grouping suggestions")
+        plan = plan_store.persist_plan(
+            ctx.session,
+            data,
+            scan_job_id=ctx.job_id,
+            on_progress=lambda written, total: ctx.progress(written, total),
+        )
+        # Bounded, and after the plan the caller is waiting for is already in.
+        plan_store.prune_obsolete_plans(ctx.session)
     ctx.set_phase(JobPhase.FINALIZING)
     return {
         "discovered": summary.discovered,
