@@ -750,8 +750,8 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(checkbox).toBeChecked()
   const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
   const dragHandle = page.locator('.grp-row--bundle', { has: additionTitle })
-  const rowActions = page.getByRole('button', {
-    name: `Actions for bundle suggestion Add to ${targetTitle}`,
+  const switchDestination = page.getByRole('button', {
+    name: 'Create a new bundle from these files',
   })
   const rowContent = page.locator('.grp-row__content')
   const fileCount = page.getByText('2 new files', { exact: true })
@@ -766,39 +766,37 @@ test('switches one addition row between an existing and a new bundle', async ({ 
 
   const titleBox = await additionTitle.boundingBox()
   const dragBox = await dragHandle.boundingBox()
-  const actionsBox = await rowActions.boundingBox()
+  const switchBox = await switchDestination.boundingBox()
   const contentBox = await rowContent.boundingBox()
   const countBox = await fileCount.boundingBox()
   const selectBox = await selectBar.boundingBox()
-  if (!titleBox || !dragBox || !actionsBox || !contentBox || !countBox || !selectBox) {
+  if (!titleBox || !dragBox || !switchBox || !contentBox || !countBox || !selectBox) {
     throw new Error('missing grouping destination geometry')
   }
   expect(titleBox.y - (selectBox.y + selectBox.height)).toBeLessThanOrEqual(28)
   expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
-  // The overflow trigger sits at the row's right edge, not after the title.
-  expect(actionsBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
-  expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(contentBox.x + contentBox.width + 1)
+  // Beside the name, in reach — this was an item in a `...` menu at the row's
+  // right edge, which is two clicks and a read for one switch.
+  expect(switchBox.x).toBeGreaterThanOrEqual(titleBox.x)
+  expect(switchBox.x).toBeLessThan(contentBox.x + contentBox.width)
   expect(countBox.x).toBeGreaterThanOrEqual(contentBox.x)
 
-  // The action is named rather than a glyph with a tooltip.
-  await rowActions.click()
-  const switchItem = page.getByRole('menuitem', {
-    name: 'Create a new bundle from these files',
-  })
-  await expect(switchItem).toBeVisible()
-  await switchItem.click()
-
-  await rowActions.click()
+  // One click, and the button then offers the way back.
+  await switchDestination.click()
   await expect(
-    page.getByRole('menuitem', { name: `Add these files to “${targetTitle}” instead` }),
+    page.getByRole('button', { name: `Add these files to “${targetTitle}” instead` }),
   ).toBeVisible()
-  await page.keyboard.press('Escape')
   await expect(page.getByText('2 files', { exact: true })).toBeVisible()
   await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
   await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)
   await expect(checkbox).toBeChecked()
   await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
+  // Closed file lists are unmounted rather than hidden, so there is nothing to
+  // count until the list is opened.
+  await expect(page.locator('.grp-files')).toHaveCount(0)
+  await page.getByRole('button', { name: /^Expand files in bundle suggestion / }).click()
   await expect(page.locator('.grp-files')).toHaveCount(1)
+  await page.getByRole('button', { name: /^Collapse files in bundle suggestion / }).click()
   const renameTitle = page.getByRole('button', {
     name: 'Rename bundle suggestion Surf On The Ridge - 4K',
   })
@@ -828,16 +826,12 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(
     page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
   ).toBeVisible()
-  const renamedActions = page.getByRole('button', {
-    name: 'Actions for bundle suggestion Separate Feature',
-  })
-  await renamedActions.click()
-  const addBackItem = page.getByRole('menuitem', {
+  const addBack = page.getByRole('button', {
     name: `Add these files to “${targetTitle}” instead`,
   })
-  await expect(addBackItem).toBeEnabled()
+  await expect(addBack).toBeEnabled()
 
-  await addBackItem.click()
+  await addBack.click()
   await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })

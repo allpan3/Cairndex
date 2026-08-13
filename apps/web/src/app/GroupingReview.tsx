@@ -32,7 +32,6 @@ import {
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
 import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
-import { GroupingRowActions, type RowAction } from './GroupingRowActions'
 import { IconChevron, IconFolder, IconLayers } from './icons'
 
 /**
@@ -347,6 +346,11 @@ function proposalKey(proposal: GroupingProposal): string {
  */
 const LOW_CONFIDENCE = 0.75
 
+// Above this many suggestions, the review opens with its collections folded.
+// Not a rendering threshold so much as a reviewing one: nobody reads four
+// thousand rows top to bottom, and folded rows now cost nothing at all.
+const FOLD_ON_OPEN_ABOVE = 400
+
 /** How sure the suggester is, in words, for every row that carries a score.
  *
  * This replaced a two-tab "All / Needs a look" filter. Hiding the confident rows
@@ -358,9 +362,12 @@ const LOW_CONFIDENCE = 0.75
  */
 function confidenceLabel(proposal: GroupingProposal): string | null {
   if (proposal.files.length === 0) return null
-  if (proposal.confidence >= 0.85) return 'matched'
+  // Plainly how sure the suggester is, on one scale. This said "matched", which
+  // does not say *what* matched, and the owner asked what it meant
+  // (owner-reported, 2026-08-13).
+  if (proposal.confidence >= 0.85) return 'confident'
   if (proposal.confidence >= LOW_CONFIDENCE) return 'likely'
-  return 'guessed'
+  return 'guess'
 }
 
 /** Whether the suggester was really only going on the folder. */
@@ -671,12 +678,6 @@ function canConvertKind(proposal: GroupingProposal): boolean {
   return !(proposal.target_bundle_id !== null && !proposal.create_new_bundle)
 }
 
-function kindActionLabel(proposal: GroupingProposal): string {
-  return proposal.kind === 'bundle'
-    ? 'Make this a collection of bundles instead'
-    : 'Make this one bundle instead'
-}
-
 /** Show a compact file count for either destination of an addition proposal */
 function additionFileCount(proposal: GroupingProposal): string {
   const count = proposal.files.length
@@ -891,67 +892,87 @@ function ProposalDisclosure({
   )
 }
 
-/** The named edits a row offers, in the order they are worth reaching for.
+/** Turn this suggestion into the other kind, in one click beside its name.
  *
- * Row-scoped only. The folder's stem dial used to be here too and is now a
- * visible control on the row that speaks for the folder (`StemDial`): a menu can
- * hold a row's own edits, but it cannot show a folder-level *value*, and hiding
- * one behind a `...` on whichever row happened to own it meant the owner could
- * not find it (owner-reported, 2026-08-13).
+ * This was an item in a `...` menu, which is two clicks and a read for the one
+ * edit an owner makes constantly (owner-reported, 2026-08-13). The icon shows the
+ * kind it would *become* — the same folder and layers glyphs the rows already
+ * lead with — so a bundle offers a folder and a collection offers layers.
  */
-function rowActions({
+function ConvertKindButton({
   proposal,
-  hasItems,
-  rename,
-  destination,
   kind,
+  hasItems,
 }: {
   proposal: GroupingProposal
-  hasItems: boolean
-  rename: RenameControls
-  destination: DestinationControls
   kind: KindControls
-}): RowAction[] {
-  const actions: RowAction[] = []
-  // Renaming is a double-click on the title, which is fast once known and
-  // invisible until then. Naming it here also means a row with no other edit — a
-  // single-file bundle that cannot become a collection — has a menu that says
-  // something rather than one that says "no edits available".
-  if (!proposal.is_collection_context) {
-    actions.push({
-      key: 'rename',
-      label: proposal.kind === 'container' ? 'Rename this collection' : 'Rename this bundle',
-      disabled: !rename.canEdit || rename.pending,
-      reason: rename.canEdit ? undefined : 'this plan can no longer be edited',
-      takesFocus: true,
-      onSelect: () => rename.start(proposal),
-    })
-  }
-  if (proposal.target_bundle_id !== null) {
-    actions.push({
-      key: 'destination',
-      label: destinationActionLabel(proposal),
-      disabled: !destination.canEdit || destination.pending || !hasItems,
-      onSelect: () => destination.set(proposal, !proposal.create_new_bundle),
-    })
-  }
+  hasItems: boolean
+}) {
+  const icon = proposal.kind === 'container' ? <IconFolder /> : <IconLayers />
   // Always offered, both directions. The client used to withhold it whenever a
   // single-subject bundle already sat in a collection for its own folder, which
   // is exactly the case an owner reaches for it (owner-reported, 2026-08-13). The
   // server still refuses the one conversion that renames nothing, and says so.
-  const offersKind =
+  const offered =
     proposal.kind === 'container'
       ? !proposal.is_collection_context
       : canConvertKind(proposal) && hasItems
-  if (offersKind) {
-    actions.push({
-      key: 'kind',
-      label: kindActionLabel(proposal),
-      disabled: !kind.canEdit || kind.pending,
-      onSelect: () => kind.set(proposal),
-    })
-  }
-  return actions
+  // Not offered: still the row's kind, just not a control.
+  if (!offered) return <span className="grp-kind">{icon}</span>
+  const label = proposal.kind === 'bundle' ? 'Convert to collection' : 'Convert to bundle'
+  return (
+    <button
+      type="button"
+      className="grp-kind grp-kind--convert"
+      disabled={!kind.canEdit || kind.pending}
+      title={label}
+      aria-label={`${label}: ${proposalDisplayTitle(proposal)}`}
+      draggable={false}
+      data-no-row-drag=""
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        kind.set(proposal)
+      }}
+    >
+      {icon}
+    </button>
+  )
+}
+
+/** Switch an addition between joining its existing bundle and starting a new one.
+ *
+ * Named rather than a glyph: it is rare enough that a word is faster to read than
+ * a symbol to decode, and the two states are not opposites of one shape.
+ */
+function AdditionDestinationButton({
+  proposal,
+  destination,
+  hasItems,
+}: {
+  proposal: GroupingProposal
+  destination: DestinationControls
+  hasItems: boolean
+}) {
+  if (proposal.target_bundle_id === null) return null
+  return (
+    <button
+      type="button"
+      className="btn btn--compact grp-dest"
+      disabled={!destination.canEdit || destination.pending || !hasItems}
+      title={destinationActionLabel(proposal)}
+      aria-label={destinationActionLabel(proposal)}
+      draggable={false}
+      data-no-row-drag=""
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        destination.set(proposal, !proposal.create_new_bundle)
+      }}
+    >
+      {proposal.create_new_bundle ? 'Add to bundle' : 'New bundle'}
+    </button>
+  )
 }
 
 /** One line standing in for a run of identical-shape suggestions.
@@ -1287,9 +1308,7 @@ function ProposalNode({
             onChange={(next) => onToggle([node], next)}
             label={`Select bundles in ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
-          <span className="grp-kind">
-            <IconFolder />
-          </span>
+          <ConvertKindButton proposal={proposal} kind={kind} hasItems={hasItems} />
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
             {proposal.is_collection_context && <span className="grp-existing">Existing</span>}
@@ -1307,16 +1326,15 @@ function ProposalNode({
                 same name, same scope — so the dial belongs on it rather than on
                 a second line above it. */}
             {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
-            <GroupingRowActions
-              label={`Actions for collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
-              actions={rowActions({ proposal, hasItems, rename, destination, kind })}
-            />
           </span>
         </div>
-        {children.length > 0 && (
-          <ul className="grp-children" hidden={collapsed}>
-            {<ProposalRows nodes={children} shared={shared} />}
-          </ul>
+        {/* Unmounted when folded, not `hidden`. A hidden subtree is still built,
+            reconciled and laid out on every render of the plan, so folding freed
+            no work at all — the thing it exists to do. At 2800 suggestions the
+            invisible rows were a third of ~94k nodes (owner-reported: seconds to
+            render, 2026-08-13). */}
+        {children.length > 0 && !collapsed && (
+          <ul className="grp-children">{<ProposalRows nodes={children} shared={shared} />}</ul>
         )}
       </li>
     )
@@ -1370,14 +1388,15 @@ function ProposalNode({
           onChange={(next) => onToggle([node], next)}
           label={`Accept ${proposal.title || 'bundle'}`}
         />
-        {!isAddition && (
-          <span className="grp-kind">
-            <IconLayers />
-          </span>
-        )}
+        {!isAddition && <ConvertKindButton proposal={proposal} kind={kind} hasItems={hasItems} />}
         <span className="grp-row__content">
           <span className="grp-title-cluster">
             <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
+            <AdditionDestinationButton
+              proposal={proposal}
+              destination={destination}
+              hasItems={hasItems}
+            />
           </span>
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : fileSummary(proposal)}
@@ -1406,80 +1425,82 @@ function ProposalNode({
           {/* A bundle that fills its own folder speaks for it, and there is no
               collection row above to carry the dial. */}
           {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
-          <GroupingRowActions
-            label={`Actions for bundle suggestion ${displayTitle}`}
-            actions={rowActions({ proposal, hasItems, rename, destination, kind })}
-          />
         </span>
       </div>
-      <ul
-        className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
-        aria-label={`Files in ${displayTitle}`}
-        hidden={!filesShown}
-        onDragOver={(event) => {
-          if (drag.item?.kind !== 'file') return
-          event.preventDefault()
-          event.stopPropagation()
-          event.dataTransfer.dropEffect = 'move'
-          drag.hover({ kind: 'file-list', proposalId: proposal.id })
-        }}
-        onDrop={(event) => {
-          if (drag.item?.kind !== 'file') return
-          event.preventDefault()
-          event.stopPropagation()
-          drag.dropFile(proposal.id, proposal.files.length)
-        }}
-      >
-        {proposal.files.length === 0 && <li className="grp-file-empty">Drop files here</li>}
-        {proposal.files.map((f, index) => (
-          <li
-            key={f.asset_file_id}
-            className={`grp-file${drag.canEdit ? ' grp-file--draggable' : ''}${
-              drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
-                ? ' grp-file--dragging'
-                : ''
-            }`}
-            draggable={drag.canEdit && !drag.pending}
-            data-drop={
-              drag.slot?.kind === 'file' &&
-              drag.slot.proposalId === proposal.id &&
-              drag.slot.assetFileId === f.asset_file_id
-                ? drag.slot.before
-                  ? 'before'
-                  : 'after'
-                : undefined
-            }
-            onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
-            onDragEnd={drag.end}
-            onDragOver={(event) => {
-              if (drag.item?.kind !== 'file') return
-              event.preventDefault()
-              event.stopPropagation()
-              event.dataTransfer.dropEffect = 'move'
-              const rect = event.currentTarget.getBoundingClientRect()
-              drag.hover({
-                kind: 'file',
-                proposalId: proposal.id,
-                assetFileId: f.asset_file_id,
-                before: event.clientY < rect.top + rect.height / 2,
-              })
-            }}
-            onDrop={(event) => {
-              if (drag.item?.kind !== 'file') return
-              event.preventDefault()
-              event.stopPropagation()
-              const rect = event.currentTarget.getBoundingClientRect()
-              const before = event.clientY < rect.top + rect.height / 2
-              drag.dropFile(proposal.id, index + (before ? 0 : 1))
-            }}
-          >
-            <span className="grp-file__name">{baseName(f.relative_path)}</span>
-            <span className="grp-file__role">
-              {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {/* Same reason as a folded collection's children: closed file lists were
+          still rendered, and with lists closed by default that was every file in
+          the plan built for nothing. A file drag sets `fold.forceFiles`, so every
+          list is mounted while there is something to drop, and the row itself
+          stays a drop target regardless. */}
+      {filesShown && (
+        <ul
+          className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
+          aria-label={`Files in ${displayTitle}`}
+          onDragOver={(event) => {
+            if (drag.item?.kind !== 'file') return
+            event.preventDefault()
+            event.stopPropagation()
+            event.dataTransfer.dropEffect = 'move'
+            drag.hover({ kind: 'file-list', proposalId: proposal.id })
+          }}
+          onDrop={(event) => {
+            if (drag.item?.kind !== 'file') return
+            event.preventDefault()
+            event.stopPropagation()
+            drag.dropFile(proposal.id, proposal.files.length)
+          }}
+        >
+          {proposal.files.length === 0 && <li className="grp-file-empty">Drop files here</li>}
+          {proposal.files.map((f, index) => (
+            <li
+              key={f.asset_file_id}
+              className={`grp-file${drag.canEdit ? ' grp-file--draggable' : ''}${
+                drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
+                  ? ' grp-file--dragging'
+                  : ''
+              }`}
+              draggable={drag.canEdit && !drag.pending}
+              data-drop={
+                drag.slot?.kind === 'file' &&
+                drag.slot.proposalId === proposal.id &&
+                drag.slot.assetFileId === f.asset_file_id
+                  ? drag.slot.before
+                    ? 'before'
+                    : 'after'
+                  : undefined
+              }
+              onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
+              onDragEnd={drag.end}
+              onDragOver={(event) => {
+                if (drag.item?.kind !== 'file') return
+                event.preventDefault()
+                event.stopPropagation()
+                event.dataTransfer.dropEffect = 'move'
+                const rect = event.currentTarget.getBoundingClientRect()
+                drag.hover({
+                  kind: 'file',
+                  proposalId: proposal.id,
+                  assetFileId: f.asset_file_id,
+                  before: event.clientY < rect.top + rect.height / 2,
+                })
+              }}
+              onDrop={(event) => {
+                if (drag.item?.kind !== 'file') return
+                event.preventDefault()
+                event.stopPropagation()
+                const rect = event.currentTarget.getBoundingClientRect()
+                const before = event.clientY < rect.top + rect.height / 2
+                drag.dropFile(proposal.id, index + (before ? 0 : 1))
+              }}
+            >
+              <span className="grp-file__name">{baseName(f.relative_path)}</span>
+              <span className="grp-file__role">
+                {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   )
 }
@@ -1536,7 +1557,10 @@ export function GroupingReview({
   // does not silently re-check everything the owner had unchecked. See
   // ``proposalKey``.
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
+  // `null` means "the owner has not folded anything yet", so the default policy
+  // below still applies. Distinct from an empty set, which means they expanded
+  // everything on purpose.
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string> | null>(null)
   const [fileOverrides, setFileOverrides] = useState<Map<string, boolean>>(new Map())
   const [openRollups, setOpenRollups] = useState<Set<string>>(new Set())
   const [showAllFiles, setShowAllFiles] = useState(false)
@@ -1563,6 +1587,16 @@ export function GroupingReview({
   const bundleProposalIds = useMemo(() => collectBundleIds(fullTree), [fullTree])
   const keyById = useMemo(() => collectKeys(fullTree), [fullTree])
   const foldKeys = useMemo(() => collectFoldKeys(fullTree), [fullTree])
+  // A plan longer than this opens folded. Two reasons, and they agree: a list of
+  // thousands of rows is reviewed a folder at a time regardless of how fast it
+  // renders, and folding now *unmounts* rather than hides — so opening expanded
+  // made the first render and every edit after it pay for rows nobody had looked
+  // at yet (owner-reported: conversion took over ten seconds, 2026-08-13).
+  const openFolded = foldKeys.length > 0 && (plan.data?.proposals.length ?? 0) > FOLD_ON_OPEN_ABOVE
+  const effectiveCollapsed = useMemo(
+    () => collapsedKeys ?? (openFolded ? new Set(foldKeys) : new Set<string>()),
+    [collapsedKeys, openFolded, foldKeys],
+  )
   const placementOptions = useMemo(
     () => collectionPlacementOptions(collections.data ?? []),
     [collections.data],
@@ -1626,7 +1660,7 @@ export function GroupingReview({
     // state, so stale deselections do not carry into it. Narrow/Widen no longer
     // comes through here at all — it edits the open plan in place.
     setDeselectedKeys(new Set())
-    setCollapsedKeys(new Set())
+    setCollapsedKeys(null)
     setFileOverrides(new Map())
     setOpenRollups(new Set())
     setNotice(message)
@@ -1892,8 +1926,8 @@ export function GroupingReview({
   ]
     .filter(Boolean)
     .join(' + ')
-  const someFolded = foldKeys.some((key) => collapsedKeys.has(key))
-  const allFolded = foldKeys.length > 0 && foldKeys.every((key) => collapsedKeys.has(key))
+  const someFolded = foldKeys.some((key) => effectiveCollapsed.has(key))
+  const allFolded = foldKeys.length > 0 && foldKeys.every((key) => effectiveCollapsed.has(key))
   const renameControls: RenameControls = {
     canEdit: status === 'open',
     editingId: editing?.id ?? null,
@@ -1944,10 +1978,10 @@ export function GroupingReview({
     set: convertKind,
   }
   const foldControls: FoldControls = {
-    collapsed: collapsedKeys,
+    collapsed: effectiveCollapsed,
     set: (key, collapsed) =>
       setCollapsedKeys((current) => {
-        const next = new Set(current)
+        const next = new Set(current ?? effectiveCollapsed)
         if (collapsed) next.add(key)
         else next.delete(key)
         return next

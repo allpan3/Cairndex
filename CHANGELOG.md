@@ -20,6 +20,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   default reproduces the old `balanced` exactly, so an existing library regroups
   nothing; a plan left open across the upgrade has its stored mode translated,
   with `wide` landing on that folder's maximum.
+- **The review's row controls are one click, not two.** A `...` menu per row
+  collected the bundle↔collection conversion and the addition's destination
+  switch; both are now beside the name they act on. The row's own kind glyph
+  *is* the convert control — one click, in the place the kind is already shown,
+  labelled `Convert to collection` / `Convert to bundle` rather than the
+  sentence-long menu items it replaced. Renaming stays a double-click on the
+  title, which is what it always was. Each row also says how sure the suggester
+  is in words that mean something — `confident` / `likely` / `guess`, where the
+  first of those used to read `matched`, which did not say what had matched.
 - **Narrow and Widen are visible again, on the folder they belong to.** They had
   moved into a row's overflow menu, where a folder-level control does not belong
   and where a folder-level *value* cannot be shown at all — the level was
@@ -61,12 +70,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
-- **A rename started from a grouping row's menu no longer commits itself
-  immediately.** The menu restores focus to its trigger when it closes, so a
-  keyboard user dismissing it is not left with focus nowhere — but the rename
-  editor focuses on mount and commits on blur, so that restore ended the edit
-  before a character could be typed. An action that takes focus for itself now
-  says so and the menu leaves it alone.
+- **Editing a large grouping plan is no longer measured in seconds.** On a
+  library of ~20,000 files a conversion took over ten seconds. Two independent
+  causes. On the client, folding a collection or closing a file list *hid* the
+  rows rather than unmounting them, so every render of the plan still built and
+  reconciled them — with file lists closed by default that was every file in the
+  plan, a third of ~94,000 DOM nodes at 2,800 suggestions; folding now unmounts,
+  and a plan longer than 400 suggestions opens folded, which is how one is read
+  anyway. On the server, every mutation read the whole plan twice because the
+  open-plan check went through the eager loader that exists for serializing a
+  response, and merging a collection then fetched each descendant's files in its
+  own query. Measured on a synthetic 2,700-suggestion plan: opening 2.2s → 0.75s,
+  a conversion 5.0s → 0.8s on the client, and 0.4s → 0.1s on the server.
 - **An identically named video and cover no longer lose their name's last
   segment.** `_shared_stem_title` trimmed at the last delimiter even when every
   filename *was* the shared part, so a pair like `A - B - 4K.mp4` / `A - B - 4K.jpg`
@@ -409,16 +424,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   stop now: arrows move between rows, left and right fold, space accepts or
   skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
   footer.
-- **A grouping row's edits are now named, in one menu at a fixed right edge.**
-  They were four icon-only buttons — a refresh glyph, an ungroup glyph, and a
-  `>< <>` pair — rendered after variable-length text, so they landed at a
-  different x on every row and were discoverable only by hovering for a
-  tooltip. One overflow trigger per row now opens a menu whose items say what
-  they do ("Make this a collection of bundles instead", "Rename this bundle" —
-  which was a double-click on the title and nothing else, fast once known and
-  invisible until then). The tooltip machinery that existed to caption those
-  glyphs is gone with them. The folder-scoped Narrow/Widen pair went in there too
-  and has since come back out onto the row as a visible dial — see below.
+- **A grouping row's controls are named rather than glyphs.** They were four
+  icon-only buttons — a refresh glyph, an ungroup glyph, and a `>< <>` pair —
+  rendered after variable-length text, so they landed at a different x on every
+  row and were discoverable only by hovering for a tooltip. Every one of them now
+  either says what it does or sits where its meaning is already shown; the
+  tooltip machinery that existed to caption them is gone with them. See the two
+  entries above for where each ended up.
 - **The grouping review's chrome stopped competing with its contents.** The
   three-line preamble folds behind a one-line summary, the dialog holds a fixed
   height so folding a row no longer slides the footer under the pointer,
