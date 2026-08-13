@@ -118,6 +118,86 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Next task, specified: continuous stem level, then folder group headers (2026-08-13)
+
+Owner-agreed sequence after testing the review dialog. **Neither is started**; this
+is the executable spec so it does not have to be re-derived.
+
+### Why
+
+`StemMode` has only ever had three values (`narrow` / `balanced` / `wide`, one
+commit, verified). The owner's mental model — and the better one — is a
+continuous dial: keep widening until there is nothing left to widen. Three named
+stops are also an odd fit for what the dial really controls, which is *how much
+of each filename has to match*. `balanced` is not a midpoint either: it does a
+rendition-specific fold, while `wide` keeps only the leading title chunk, so the
+three are not points on one scale.
+
+The owner also could not find Narrow/Widen at all after they moved into a row's
+overflow menu, because a **folder**-level control does not belong in a row menu.
+
+### Part 2 first — continuous stem level (backend)
+
+Replace the enum with an integer level, chosen so today's behaviour is the
+default and nothing regroups on upgrade:
+
+- **level 0** — the complete normalized stem, no folding. Today's `narrow`.
+- **level 1** — rendition-folded (drop a trailing `4K`/`1080p`-style tag).
+  Today's `balanced`, and the **default**.
+- **level N ≥ 2** — rendition-folded, then drop `N - 1` further trailing
+  delimiter-separated segments.
+- **max** — the level that leaves one segment. Widen stops there, Narrow at 0.
+
+Migration: `narrow -> 0`, `balanced -> 1`, `wide -> max for that directory`.
+`GroupingPlan.stem_modes` is a JSON column holding directory -> value, so the
+additive-column machinery does not apply: coerce string values to ints on read in
+`plan_store`, and keep accepting both for one release.
+
+The maximum depends on the folder's filenames, so the server must report it —
+the client cannot compute it. Add to `PlanRead`:
+
+    stem_levels: dict[str, {"level": int, "max": int}]
+
+`PUT .../stem-modes` takes `{directory, level}` and the server clamps to
+`[0, max]`. Keep the field name `stem_modes` on the wire for one release or
+rename with the contract regenerated; either is fine, but do not leave the
+generated `openapi.json` / `schema.d.ts` stale.
+
+Touches 18 files (`grep -rl 'StemMode\|stem_mode\|stemMode'`), 34 references in
+`suggester.py` alone. `_comparison_stem` is the single seam: it already takes the
+mode and returns the string to compare, so the level maths belongs there.
+
+### Part 1 second — folder group headers (frontend)
+
+Group the rendered rows by **source directory** rather than by proposal parent,
+and put the folder's own settings on its header:
+
+    Genre / Studio Beta        stem: 2 of 4   [Narrow] [Widen]    -> Archive / Seasons
+
+- **Restore the names.** `Narrow` / `Widen`, not the "Split/Merge into
+  more/fewer bundles" this branch invented — the domain's own words, which the
+  owner already understood. Drop the "matching" heading entirely; it labelled
+  nothing. Two plain buttons, not a segmented chip.
+- **Tooltips are required**, and must say what the button does to the *stem*:
+  Narrow — "match more of each filename, creating more, smaller bundles";
+  Widen — "match a shorter filename prefix, creating fewer, larger bundles".
+  Disabled ends explain themselves.
+- State the current level as text (`stem: 2 of 4`), which the old glyph pair
+  showed and the menu items do not.
+- The **destination appears once per folder** on the header rather than on every
+  row beneath it.
+- Rows then carry only per-row facts: accept, name, contents, confidence, and a
+  `...` menu for rename and bundle<->collection.
+
+**The hard part**, and the reason this is its own branch: the tree currently
+nests by `parent_proposal_id`, and grouping by source directory is not the same
+relation. A hand-merged row spans several folders, and `bundleDirectories`
+already exists for exactly that reason — a row with more than one directory gets
+no folder header and must render outside the groups.
+
+Once headers land, the left-hand destination pane from the earlier mockup loses
+most of its justification; its remaining value is bulk placement across folders.
+
 ## Open on branch: grouping review triage (2026-08-10)
 
 Branch `feat/grouping-review-triage` off `main` at `6523fec8`. **Not merged, no PR.**
