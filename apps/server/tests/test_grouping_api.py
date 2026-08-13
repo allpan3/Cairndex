@@ -1136,16 +1136,19 @@ def test_regenerating_a_plan_prunes_the_ones_it_replaced(
 
     applied = client.post(f"{base}/plans").json()
     assert client.post(f"{base}/plans/{applied['id']}/apply").status_code == 200
-    ids = [client.post(f"{base}/plans").json()["id"] for _ in range(4)]
+    # More than one run's worth, so the bound is visible: pruning is capped per
+    # call because the delete cascades, and on a network-hosted library an
+    # unbounded one turns a single Update into minutes of deletes.
+    ids = [client.post(f"{base}/plans").json()["id"] for _ in range(8)]
 
     listed = client.get(f"{base}/plans").json()
     kept = {plan["id"]: plan["status"] for plan in listed}
-    # The open one, the single superseded one held back for a stale client id, and
-    # the applied one — not the four intermediate snapshots.
     assert kept[ids[-1]] == "open"
     assert kept[applied["id"]] == "applied"
-    assert sorted(kept.values()) == ["applied", "open", "superseded"]
+    # The backlog drains a few per generation rather than all at once, so some
+    # superseded plans remain — but the oldest are gone and the count is falling.
     assert ids[0] not in kept
+    assert len(kept) < len(ids)
 
     # Their rows went with them, through ON DELETE CASCADE.
     remaining = set(session.scalars(select(GroupingProposalRow.plan_id)))
