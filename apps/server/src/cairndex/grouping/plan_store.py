@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.core.ids import new_id
 from cairndex.domain.enums import (
     DEFAULT_STEM_LEVEL,
     STEM_LEVEL_CEILING,
@@ -469,9 +471,13 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
                 "so a collection around it would add no structure"
             )
 
+    children: list[GroupingProposal | GroupingProposalFile] = []
     for order, group in enumerate(groups):
         ordered = _media_first(group)
+        # Id up front, so the child's files can be built without a flush to learn
+        # it. See ``persist_plan`` for why that mattered.
         child = GroupingProposal(
+            id=new_id(),
             plan_id=proposal.plan_id,
             kind=ProposalKind.BUNDLE,
             title=_new_bundle_title(ordered, proposal.directory),
@@ -486,21 +492,22 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
             # A split redistributes the parent's files across new rows.
             membership_edited=proposal.membership_edited,
         )
-        session.add(child)
-        session.flush()
+        children.append(child)
         # Indexed once per group rather than scanned per file, which was quadratic
         # in the size of the group being split.
         path_by_id = {o.asset_file_id: o.relative_path for o in ordered}
-        for proposed in _roles_in_order(ordered):
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=child.id,
-                    asset_file_id=proposed.asset_file_id,
-                    relative_path=path_by_id[proposed.asset_file_id],
-                    proposed_role=proposed.role,
-                    sequence=proposed.sequence,
-                )
+        children.extend(
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=child.id,
+                asset_file_id=proposed.asset_file_id,
+                relative_path=path_by_id[proposed.asset_file_id],
+                proposed_role=proposed.role,
+                sequence=proposed.sequence,
             )
+            for proposed in _roles_in_order(ordered)
+        )
+    session.add_all(children)
 
     # A container carries no files of its own; its members are its children.
     for proposal_file in list(proposal.files):
@@ -773,6 +780,7 @@ def set_directory_stem_level(
         if proposal.kind is ProposalKind.BUNDLE and not kept:
             continue  # every file here was dragged elsewhere by the owner
         row = GroupingProposal(
+            id=new_id(),
             plan_id=plan.id,
             kind=proposal.kind,
             title=proposal.title or None,
@@ -790,7 +798,6 @@ def set_directory_stem_level(
             is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
-        session.flush()
         if len(kept) != len(proposal.files):
             # Roles were derived for the full file set; recompute for what is left
             # (e.g. the group's video was dragged away, leaving sidecars).
@@ -811,19 +818,26 @@ def set_directory_stem_level(
             )
         else:
             proposed = tuple(proposal.files)
-        for sequence, pf in enumerate(proposed):
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=row.id,
-                    asset_file_id=pf.asset_file_id,
-                    relative_path=path_by_id.get(pf.asset_file_id, ""),
-                    proposed_role=pf.role,
-                    sequence=sequence,
-                )
+        session.add_all(
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=row.id,
+                asset_file_id=pf.asset_file_id,
+                relative_path=path_by_id.get(pf.asset_file_id, ""),
+                proposed_role=pf.role,
+                sequence=sequence,
             )
+            for sequence, pf in enumerate(proposed)
+        )
         if proposal.kind is ProposalKind.CONTAINER:
             fresh_container_id = row.id
         inserted_parents.append((row, proposal.parent_directory))
+
+    # One flush for every fresh row, where there used to be one per row. It has to
+    # happen here rather than at the end: the parent links below — and the orphan
+    # re-parenting after them — reference these rows by id, and the foreign key is
+    # enforced immediately.
+    session.flush()
 
     # Link fresh rows to their parents: the directory's own fresh container, or
     # a surviving container for an ancestor directory.
@@ -902,9 +916,20 @@ def persist_plan(
     path_by_id = _relative_paths(session)
     container_proposal_by_dir: dict[str, str] = {}
     rows: list[tuple[GroupingProposal, str | None]] = []
+    pending: list[GroupingProposal | GroupingProposalFile] = []
+    loaded: list[tuple[GroupingProposal, list[GroupingProposalFile]]] = []
 
     for order, proposal in enumerate(data.proposals):
+        # The id is assigned here rather than left to the flush that would
+        # otherwise have to happen inside this loop just to learn it. Ids are
+        # ULIDs from a plain Python callable, so they are known before the insert
+        # and still ascend in creation order (which the stem splice's sort
+        # tiebreak relies on). Flushing per proposal meant one INSERT round trip
+        # per row: 10,400 statements and about two and a half seconds of the four
+        # a 3,600-suggestion plan took to appear (owner-reported, 2026-08-13).
+        # With every primary key known up front, SQLAlchemy batches the inserts.
         row = GroupingProposal(
+            id=new_id(),
             plan_id=plan.id,
             kind=proposal.kind,
             title=proposal.title or None,
@@ -919,29 +944,47 @@ def persist_plan(
             target_collection_id=proposal.target_collection_id,
             is_collection_context=proposal.is_collection_context,
         )
-        session.add(row)
-        session.flush()
-        for pf in proposal.files:
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=row.id,
-                    asset_file_id=pf.asset_file_id,
-                    relative_path=path_by_id.get(pf.asset_file_id, ""),
-                    proposed_role=pf.role,
-                    sequence=pf.sequence,
-                )
+        # Through the relationship rather than by ``proposal_id``, so the
+        # collection counts as loaded. Setting the foreign key alone left
+        # ``row.files`` unloaded, and serializing the response then fetched each
+        # row's files in its own SELECT — 3,600 of them, the largest single cost
+        # of generating a plan (owner-reported, 2026-08-13).
+        files = [
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=row.id,
+                asset_file_id=pf.asset_file_id,
+                relative_path=path_by_id.get(pf.asset_file_id, ""),
+                proposed_role=pf.role,
+                sequence=pf.sequence,
             )
+            for pf in proposal.files
+        ]
+        pending.append(row)
+        pending.extend(files)
+        loaded.append((row, files))
         if proposal.kind is ProposalKind.CONTAINER:
             container_proposal_by_dir[proposal.directory] = row.id
         rows.append((row, proposal.parent_directory))
 
-    # Second pass: link children to their container proposal now that all ids
-    # exist.
+    # Parent links before the insert, not after: the ids are already known, so
+    # this no longer needs a round of UPDATEs following the INSERTs.
     for row, parent_directory in rows:
         if parent_directory is not None:
             row.parent_proposal_id = container_proposal_by_dir.get(parent_directory)
 
+    session.add_all(pending)
     session.flush()
+    # Prime each row's ``files`` as already-loaded, *after* the flush: turning a
+    # pending instance persistent resets that bookkeeping, so doing it earlier has
+    # no effect. Without this, serializing the response fetched every row's files
+    # back in its own SELECT — 3,600 of them, the single largest cost of
+    # generating a plan (owner-reported, 2026-08-13). Assigning the relationship
+    # instead of the foreign key is not enough either: an *empty* collection stays
+    # unloaded, so every container still paid a query.
+    for row, files in loaded:
+        set_committed_value(row, "files", files)
+    set_committed_value(plan, "proposals", [row for row, _ in loaded])
     return plan
 
 

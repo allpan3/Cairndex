@@ -1119,6 +1119,48 @@ def test_image_only_bundle_divides_per_file(
     assert all(len(c["files"]) == 1 for c in children)
 
 
+def test_generating_a_plan_writes_it_in_a_bounded_number_of_statements(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Suggesting a grouping must not cost a round trip per suggestion.
+
+    It did, twice over (owner-reported: the dialog took seconds to show anything,
+    2026-08-13). ``persist_plan`` flushed inside its loop purely to learn the id it
+    was about to need for the row's files — but ids are ULIDs from a plain Python
+    callable, so they are known before the insert. And because the files were
+    linked by foreign key rather than through the relationship, serializing the
+    response fetched every row's files back one row at a time.
+
+    Bound is on statements, loose on purpose: what matters is that it does not
+    grow with the number of suggestions.
+    """
+    for index in range(40):
+        folder = library_root / f"Set{index:02d}"
+        folder.mkdir()
+        for part in range(3):
+            stem = f"Set{index:02d}.24.{part:02d}.Release.Title"
+            (folder / f"{stem}.mp4").write_text("v")
+            (folder / f"{stem}.jpg").write_text("i")
+    scan_library(session, library_root)
+    session.commit()
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    statements, listener = _count_statements(session)
+    try:
+        created = client.post(f"{base}/plans")
+        assert created.status_code == 201, created.text
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", listener)
+
+    plan = created.json()
+    assert len(plan["proposals"]) >= 150
+    assert sum(len(p["files"]) for p in plan["proposals"]) >= 240
+    assert len(statements) <= 40, (
+        f"generating a plan of {len(plan['proposals'])} suggestions issued "
+        f"{len(statements)} statements"
+    )
+
+
 def test_merging_a_collection_reads_its_bundles_files_in_one_query(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
