@@ -666,7 +666,9 @@ test('keeps suggestion reasons without rendering numeric confidence badges', asy
   // reason only earns a line when the suggester is unsure (see the filter test).
   expect(screen.getByText('3 files · video, image')).toBeInTheDocument()
   expect(screen.queryByText('same filename stem')).not.toBeInTheDocument()
-  expect(review.container.querySelectorAll('.grp-conf')).toHaveLength(0)
+  // A worded band, never a raw score — the percentages were rejected as noise.
+  expect(review.container.querySelectorAll('.grp-conf')).not.toHaveLength(0)
+  expect(review.container.textContent).not.toMatch(/\d+(\.\d+)?%/)
   expect(screen.queryByText('90%')).not.toBeInTheDocument()
   expect(screen.queryByText('95%')).not.toBeInTheDocument()
 })
@@ -1433,41 +1435,6 @@ test('Cmd+Enter obeys the same guards as the Accept button', async () => {
   await waitFor(() => expect(applied()).toBe(true))
 })
 
-test('a filtered collection checkbox still toggles its whole subtree', async () => {
-  // One flagged child and one confident child under the same collection.
-  const weak = { ...PROPOSALS[2]!, id: 'weak', title: 'Weak child', confidence: 0.5 }
-  vi.stubGlobal(
-    'fetch',
-    mockGroupingApi([...NESTED_PROPOSALS, { ...weak, parent_proposal_id: 'inner-collection' }]),
-  )
-  renderReview()
-
-  fireEvent.click(await screen.findByRole('button', { name: /Needs a look/ }))
-  const box = screen.getByRole('checkbox', { name: 'Select bundles in Series' })
-  expect(box).toBeChecked()
-
-  // Reading the full subtree but writing only the visible part made this
-  // oscillate checked <-> mixed and never reach unchecked.
-  fireEvent.click(box)
-  await waitFor(() => expect(box).not.toBeChecked())
-  expect(box).not.toBePartiallyChecked()
-})
-
-test('the filter falls back to the whole plan when nothing is flagged', async () => {
-  const weak = { ...PROPOSALS[1]!, id: 'weak', title: 'Only Weak', confidence: 0.5 }
-  vi.stubGlobal('fetch', mockGroupingApi([PROPOSALS[1]!, weak]))
-  renderReview()
-
-  fireEvent.click(await screen.findByRole('button', { name: /Needs a look/ }))
-  expect(screen.queryByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeNull()
-
-  // Emptying the flagged row resolves the last uncertainty; the view must not
-  // strand the owner on a blank list under a pressed, disabled tab.
-  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
-  const stillWeak = screen.getByRole('checkbox', { name: 'Accept Only Weak' })
-  expect(stillWeak).toBeInTheDocument()
-})
-
 test('a read-only existing-collection row offers no folder actions', async () => {
   const context = {
     ...NESTED_PROPOSALS[0]!,
@@ -1547,25 +1514,30 @@ test('arrow keys keep working after focus lands on a row control', async () => {
 
 // --- Triage: confidence filter, contents summary, compact placement ----------
 
-test('the toolbar counts and filters the suggestions the suggester is unsure about', async () => {
+test('every row states its confidence, and the guessed ones are counted', async () => {
+  // Replaced a two-tab filter: hiding the confident rows meant a *mis*-scored row
+  // was filtered out of the view claiming to show what needed deciding.
   const unsure = { ...PROPOSALS[1]!, id: 'weak', title: 'Loose Clip', confidence: 0.5 }
   vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, unsure]))
   renderReview()
 
-  const filter = await screen.findByRole('button', { name: /Needs a look/ })
-  expect(filter).toHaveTextContent('1')
+  // Nothing is hidden: both rows are present, each carrying its own label.
+  await screen.findByRole('checkbox', { name: 'Accept Loose Clip' })
   expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeInTheDocument()
+  expect(screen.getByText('1 guessed from the folder')).toBeInTheDocument()
 
-  fireEvent.click(filter)
+  const weakRow = screen
+    .getByRole('button', { name: 'Rename bundle suggestion Loose Clip' })
+    .closest('.grp-row') as HTMLElement
+  expect(within(weakRow).getByText('guessed')).toBeInTheDocument()
 
-  // Only the low-confidence row survives the filter...
-  expect(screen.getByRole('checkbox', { name: 'Accept Loose Clip' })).toBeInTheDocument()
-  expect(screen.queryByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeNull()
-  // ...but filtering is view-only: Accept still covers the whole plan.
-  expect(screen.getByText('3 bundles selected')).toBeInTheDocument()
+  const strongRow = screen
+    .getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' })
+    .closest('.grp-row') as HTMLElement
+  expect(within(strongRow).getByText('matched')).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'All' }))
-  expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeInTheDocument()
+  // No filter tabs to hide anything behind.
+  expect(screen.queryByRole('button', { name: /Needs a look/ })).toBeNull()
 })
 
 test('a flagged row carries its reason; a confident one carries its contents', async () => {
@@ -1930,9 +1902,12 @@ test('a single-subject bundle may still become a collection', async () => {
   expect(await findRowActionAsync('Make this a collection of bundles instead')).toBeInTheDocument()
 })
 
-test('a single-subject bundle already inside its own folder collection is not', async () => {
-  // Another layer would just repeat the name it is already inside — and since the
-  // child of a conversion always lands here, this is what bounds the nesting.
+test('a single-subject bundle inside its own folder collection can still convert', async () => {
+  // The client used to withhold the conversion here, on the grounds that another
+  // layer would repeat the name it is inside. That is exactly the row an owner
+  // reaches for it on — a folder holding one release that should be a collection
+  // (owner-reported, 2026-08-13). The server still refuses the one conversion
+  // that would rename nothing, and says so.
   const collection: GroupingProposal = {
     ...PROPOSALS[0]!,
     id: 'own-folder',
@@ -1943,7 +1918,12 @@ test('a single-subject bundle already inside its own folder collection is not', 
   vi.stubGlobal('fetch', mockGroupingApi([collection, child]))
   renderReview()
 
-  await expectNoRowAction('Make this a collection of bundles instead')
+  expect(
+    await findRowActionAsync(
+      'Make this a collection of bundles instead',
+      `bundle suggestion ${child.title}`,
+    ),
+  ).toBeInTheDocument()
 })
 
 test('an addition suggestion offers no collection override', async () => {

@@ -69,7 +69,10 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
     }
   }, [open, panelRef])
 
-  if (actions.length === 0) return null
+  // Never absent. A row whose actions are all unavailable used to render no
+  // trigger at all, which read as "the feature was removed" rather than "not
+  // here" — the owner could not tell the difference (owner-reported,
+  // 2026-08-13). An empty menu says so instead.
 
   return (
     <span className="grp-actions" ref={ref}>
@@ -111,6 +114,9 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
             }}
             onMouseDown={(event) => event.stopPropagation()}
           >
+            {actions.length === 0 && (
+              <p className="grp-actions__empty">No edits available for this row</p>
+            )}
             {actions.map((action) => (
               <button
                 key={action.key}
