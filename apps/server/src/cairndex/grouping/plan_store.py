@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -896,6 +896,49 @@ def supersede_open_plans(session: Session) -> None:
     )
 
 
+# One superseded plan is kept so a client that is still holding its id — the review
+# dialog open on it while a scan generates a new one — refetches a plan rather than
+# a 404.
+_KEEP_SUPERSEDED = 1
+
+
+def prune_obsolete_plans(session: Session) -> int:
+    """Delete plans that can no longer be opened, applied, or otherwise used.
+
+    A superseded or cancelled plan is a snapshot that was replaced or abandoned
+    before it was applied (ADR-0009). Nothing can be done with one: every edit
+    path refuses a non-open plan, and so does apply. They were only ever marked,
+    never removed, so they accumulated one per regeneration — the owner's library
+    had **116 superseded plans holding 5,455 proposal rows** for 412 files, in a
+    5.75 MB database on an SMB share where every page read costs about 36 ms
+    (2026-08-13).
+
+    Applied plans are kept: they record what was actually applied, and a scan job's
+    result references its plan id. They accrue once per apply — a deliberate owner
+    action — rather than once per regeneration.
+
+    Returns how many plans were deleted. The proposal and file rows go with them
+    through ``ON DELETE CASCADE``, which is why this is a bulk statement and not a
+    loop over ORM instances.
+    """
+    obsolete = (
+        select(GroupingPlan.id)
+        .where(
+            GroupingPlan.status.in_((GroupingPlanStatus.SUPERSEDED, GroupingPlanStatus.CANCELLED))
+        )
+        .order_by(GroupingPlan.generated_at.desc())
+        .offset(_KEEP_SUPERSEDED)
+    )
+    ids = list(session.scalars(obsolete))
+    if not ids:
+        return 0
+    # Expire first: instances of the rows about to vanish may be in the identity
+    # map, and a later flush would try to update what is no longer there.
+    session.expire_all()
+    session.execute(delete(GroupingPlan).where(GroupingPlan.id.in_(ids)))
+    return len(ids)
+
+
 def persist_plan(
     session: Session,
     data: PlanData,
@@ -1006,7 +1049,11 @@ def generate_plan(
 ) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
     data = suggest_for_session(session, stem_levels=stem_levels)
-    return persist_plan(session, data, scan_job_id=scan_job_id, on_progress=on_progress)
+    plan = persist_plan(session, data, scan_job_id=scan_job_id, on_progress=on_progress)
+    # After the new plan exists, so the one being replaced is already superseded
+    # and there is always something for a stale client id to resolve to.
+    prune_obsolete_plans(session)
+    return plan
 
 
 def _relative_paths(session: Session) -> dict[str, str]:

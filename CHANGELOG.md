@@ -70,6 +70,22 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Accepting a selection keeps the review open on what is left.** Reviewing a long
+  plan happens in batches, and every accept used to end the dialog, so carrying on
+  meant reopening it. Accepting now confirms the chosen bundles and immediately
+  suggests again for whatever is still unbundled, saying what it accepted and how
+  much is left. The rows the owner skipped stay skipped — a second accept must not
+  be one click away from confirming exactly what was just declined. A conflict, or
+  nothing left to suggest, still ends the review with its summary.
+- **A folder states its destination once instead of on every row beneath it.** The
+  placement pill repeated the same answer as many times as the folder had
+  suggestions. Rows inside a folder now fade theirs out at rest and show it on
+  hover or focus — faded rather than dropped, because it is the keyboard path for
+  moving a single row out of its folder.
+- **Superseded grouping plans are deleted rather than kept forever.** They were
+  marked and never removed, accumulating one per regeneration with a full set of
+  proposal and file rows each — 116 of them holding 5,455 rows for a 412-file
+  library. Applied plans stay, since they record what was applied.
 - **A folder holding thousands of releases no longer groups in quadratic time.**
   Sidecars were matched by scanning every candidate bundle for every sidecar, with
   a nested scan over each bundle's stems inside that — so one folder of 1,600

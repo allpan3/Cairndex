@@ -211,6 +211,7 @@ export function GroupingPlacementPicker({
   loading = false,
   error = false,
   compact = false,
+  restated = false,
   onChange,
 }: {
   kind: 'bundle' | 'collection'
@@ -231,6 +232,8 @@ export function GroupingPlacementPicker({
    * the same `aria-label`; only the redundant text goes. Root rows, which have
    * no enclosing row to read, keep the full label. */
   compact?: boolean
+  /** Something above already states this destination; fade out until wanted. */
+  restated?: boolean
   onChange: (id: string | null) => void
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
@@ -255,7 +258,9 @@ export function GroupingPlacementPicker({
 
   return (
     <div
-      className={`grp-placement-picker${compact ? ' grp-placement-picker--compact' : ''}`}
+      className={`grp-placement-picker${compact ? ' grp-placement-picker--compact' : ''}${
+        restated ? ' grp-placement-picker--restated' : ''
+      }`}
       ref={ref}
     >
       <button

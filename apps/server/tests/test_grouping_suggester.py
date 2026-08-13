@@ -250,20 +250,25 @@ def test_a_large_flat_folder_groups_in_linear_time() -> None:
             files.append(_f(f"Flat/{stem}.en.srt", MediaKind.SUBTITLE))
         return files
 
-    def elapsed(subjects: int) -> float:
+    def fastest(subjects: int) -> float:
+        """Best of several runs: contention only ever makes a run slower, so the
+        minimum is the measurement least polluted by whatever else the machine is
+        doing. A single timed run made this test fail under a full-suite load."""
         files = folder(subjects)
-        start = time.perf_counter()
-        plan = suggest_grouping(files)
-        taken = time.perf_counter() - start
-        # Each subject is still its own bundle: this is about cost, not grouping.
-        assert len(_bundles(plan.proposals)) == subjects
-        return taken
+        best = float("inf")
+        for _ in range(5):
+            start = time.perf_counter()
+            plan = suggest_grouping(files)
+            best = min(best, time.perf_counter() - start)
+            # Each subject is still its own bundle: this is about cost, not grouping.
+            assert len(_bundles(plan.proposals)) == subjects
+        return best
 
-    small = elapsed(300)
-    large = elapsed(1200)
+    small = fastest(300)
+    large = fastest(1200)
 
     # Four times the work should cost about four times as much. Quadratic would be
-    # sixteen; the bound is loose enough for a noisy machine and nowhere near it.
+    # sixteen; the bound sits well clear of both.
     assert large < small * 8, f"4x the folder cost {large / small:.1f}x the time"
 
 

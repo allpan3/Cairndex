@@ -155,12 +155,27 @@ suggested. **The lesson for future work here: on this library, count statements,
 not milliseconds.** `get_plan`'s docstring already said as much about NAS latency;
 it should have been read as a constraint on the whole module, not one function.
 
-Still outstanding, in round-trip order:
+Per-operation statement counts on the owner's library, after the fixes — the
+number that matters, at ~36 ms each:
 
-- **134 plans and 7,724 proposal rows for 412 files.** `supersede_open_plans` marks
-  old plans superseded and nothing ever deletes them, so the tables grow without
-  bound and every read touches more pages on a volume where a page costs 36 ms.
-  Pruning superseded plans is the next concrete win.
+| operation | statements | ~SMB |
+| --- | --- | --- |
+| Suggest grouping | 8 | 0.3 s |
+| GET one plan | 3 | 0.1 s |
+| Convert | 11 | 0.4 s |
+| Narrow/Widen | 21 | 0.8 s |
+
+**This is why the delta-response idea was dropped.** Returning only the changed
+rows instead of the whole plan would save the response's own re-read: about three
+statements, ~0.1 s per edit. That is not worth a contract change in the area where
+a bug means a file lost from the plan or claimed by two bundles. The whole-plan
+response is cheap now that the reads behind it are; it was never the payload.
+
+Still outstanding:
+
+- ~~134 plans and 7,724 proposal rows for 412 files~~ — **done**: superseded and
+  cancelled plans are deleted when a new one is generated, keeping one so a client
+  still holding a stale id resolves rather than 404s. Applied plans stay.
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.

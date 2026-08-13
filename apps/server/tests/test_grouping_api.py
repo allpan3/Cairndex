@@ -1119,6 +1119,39 @@ def test_image_only_bundle_divides_per_file(
     assert all(len(c["files"]) == 1 for c in children)
 
 
+def test_regenerating_a_plan_prunes_the_ones_it_replaced(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Superseded plans were marked and never removed, so they piled up forever.
+
+    One per regeneration, each carrying a full set of proposal and file rows. The
+    owner's library had 116 of them holding 5,455 rows for 412 files, in a database
+    on an SMB share where a page read costs about 36 ms (2026-08-13).
+
+    Applied plans stay: they record what was applied, and a scan job's result
+    references its plan id.
+    """
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    applied = client.post(f"{base}/plans").json()
+    assert client.post(f"{base}/plans/{applied['id']}/apply").status_code == 200
+    ids = [client.post(f"{base}/plans").json()["id"] for _ in range(4)]
+
+    listed = client.get(f"{base}/plans").json()
+    kept = {plan["id"]: plan["status"] for plan in listed}
+    # The open one, the single superseded one held back for a stale client id, and
+    # the applied one — not the four intermediate snapshots.
+    assert kept[ids[-1]] == "open"
+    assert kept[applied["id"]] == "applied"
+    assert sorted(kept.values()) == ["applied", "open", "superseded"]
+    assert ids[0] not in kept
+
+    # Their rows went with them, through ON DELETE CASCADE.
+    remaining = set(session.scalars(select(GroupingProposalRow.plan_id)))
+    assert remaining <= set(kept)
+
+
 def test_generating_a_plan_writes_it_in_a_bounded_number_of_statements(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
