@@ -40,6 +40,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   minute — stops there instead of at the next checkpoint behind it.
 
 ### Fixed
+- **An identically named video and cover no longer lose their name's last
+  segment.** `_shared_stem_title` trimmed at the last delimiter even when every
+  filename *was* the shared part, so a pair like `A - B - 4K.mp4` / `A - B - 4K.jpg`
+  would have been titled "A - B". Latent until sidecars joined the comparison.
 - **A library created before the latest grouping columns opens again.**
   `grouping_proposals.is_collection_context` reached the model and the startup
   backfill but never the additive-column list, so an existing library never
@@ -339,6 +343,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   with a count when the work has one.
 
 ### Changed
+- **A bundle is named by the shortest prefix its files share.** A release video
+  and its cover carry the release's own identifier, so a folder holding
+  `n0203 - a long title.mp4` and `n0203.jpg` is now "n0203" rather than the
+  video's whole filename. Sidecars join the comparison whenever there is at most
+  one video; with several videos they are still excluded, because a cover named
+  for the folder would drag the shared prefix shorter than the thing it names.
+  Files sharing no prefix are still named after the video.
+- **The folder's Split/Merge actions name the current matching mode and can
+  reset to balanced.** The mode used to sit beside the old icon pair and nowhere
+  else, so moving those into the row menu left it inferable only from which end
+  was greyed out — and balanced, previously a directly selectable state, was
+  unreachable from either end.
 - **Grouping review shows each suggestion's confidence instead of filtering by
   it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
   suggester was sure about and wrong about — was not merely unflagged but

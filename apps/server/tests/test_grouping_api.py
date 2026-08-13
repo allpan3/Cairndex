@@ -857,12 +857,12 @@ def test_folder_named_bundle_converts_to_a_named_collection(
     assert collection["kind"] == "container"
     assert collection["title"] == "Studio Beta"
 
-    # The release inside carries its own name rather than the folder's. A
-    # single-video bundle is named after that video (`_new_bundle_title`), so this
-    # is the video's stem, not the shorter prefix it shares with the cover.
+    # The release inside is named by the shortest prefix its files share — the
+    # release's own identifier — rather than by the video's whole filename or the
+    # folder's name (owner-reported, 2026-08-13).
     children = [p for p in proposals if p["parent_proposal_id"] == bundle["id"]]
     assert len(children) == 1
-    assert children[0]["title"] == "n0203 - a long release name"
+    assert children[0]["title"] == "n0203"
     assert children[0]["title"] != collection["title"]
     assert len(children[0]["files"]) == 2
 
