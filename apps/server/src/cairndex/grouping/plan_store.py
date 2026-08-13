@@ -8,6 +8,8 @@ supersedes any earlier still-open plan so there is a single active plan.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -895,7 +897,11 @@ def supersede_open_plans(session: Session) -> None:
 
 
 def persist_plan(
-    session: Session, data: PlanData, *, scan_job_id: str | None = None
+    session: Session,
+    data: PlanData,
+    *,
+    scan_job_id: str | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> GroupingPlan:
     """Store a suggester plan as durable rows, superseding prior open plans.
 
@@ -914,6 +920,7 @@ def persist_plan(
     session.flush()
 
     path_by_id = _relative_paths(session)
+    total = len(data.proposals)
     container_proposal_by_dir: dict[str, str] = {}
     rows: list[tuple[GroupingProposal, str | None]] = []
     pending: list[GroupingProposal | GroupingProposalFile] = []
@@ -963,6 +970,8 @@ def persist_plan(
         pending.append(row)
         pending.extend(files)
         loaded.append((row, files))
+        if on_progress is not None:
+            on_progress(order + 1, total)
         if proposal.kind is ProposalKind.CONTAINER:
             container_proposal_by_dir[proposal.directory] = row.id
         rows.append((row, proposal.parent_directory))
@@ -993,10 +1002,11 @@ def generate_plan(
     *,
     scan_job_id: str | None = None,
     stem_levels: dict[str, int] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
     data = suggest_for_session(session, stem_levels=stem_levels)
-    return persist_plan(session, data, scan_job_id=scan_job_id)
+    return persist_plan(session, data, scan_job_id=scan_job_id, on_progress=on_progress)
 
 
 def _relative_paths(session: Session) -> dict[str, str]:

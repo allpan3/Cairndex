@@ -15,6 +15,8 @@ from cairndex.domain.enums import (
     JobType,
     MediaKind,
 )
+from cairndex.grouping import plan_store
+from cairndex.grouping.service import suggest_for_session
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import execute_job
 from cairndex.persistence.engine import create_app_engine
@@ -232,6 +234,33 @@ def test_scan_job_generates_grouping_plan_without_applying(
             assert states == {GroupingState.PROVISIONAL}
     finally:
         eng.dispose()
+
+
+def test_writing_grouping_suggestions_reports_its_own_progress(
+    session: Session, library_root: Path
+) -> None:
+    """The grouping phase must count its work, not just animate.
+
+    It was one opaque call, so on a large library the bar ran indeterminate for
+    tens of seconds under a label that never changed — which reads as a hang
+    (owner-reported, 2026-08-13). Suggesting recurses a directory tree and has no
+    count to offer, so it says what it is doing; writing the rows does have one.
+    """
+    for index in range(6):
+        folder = library_root / f"Set{index}"
+        folder.mkdir()
+        (folder / f"clip{index}.mp4").write_text("v")
+    scan_library(session, library_root)
+    data = suggest_for_session(session)
+    seen: list[tuple[int, int]] = []
+
+    plan_store.persist_plan(
+        session, data, on_progress=lambda done, total: seen.append((done, total))
+    )
+
+    assert len(seen) == len(data.proposals) >= 6
+    assert seen[0] == (1, len(data.proposals))
+    assert seen[-1] == (len(data.proposals), len(data.proposals))
 
 
 def test_progress_is_reported_for_a_library_smaller_than_one_batch(

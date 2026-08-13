@@ -10,6 +10,7 @@ from typing import Any
 
 from cairndex.domain.enums import JobPhase
 from cairndex.grouping import plan_store
+from cairndex.grouping.service import suggest_for_session
 from cairndex.jobs.worker import JobContext
 from cairndex.scanning.scanner import scan_library
 
@@ -28,8 +29,20 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         on_phase=lambda name: ctx.set_phase(JobPhase(name)),
         batch_size=batch_size,
     )
-    ctx.set_phase(JobPhase.GROUPING, "Generating grouping suggestions")
-    plan = plan_store.generate_plan(ctx.session, scan_job_id=ctx.job_id)
+    # Two steps with their own messages, because grouping is the one phase that
+    # used to be a single opaque call: on a large library the bar sat animating
+    # with nothing to say for it, which reads as a hang (owner-reported,
+    # 2026-08-13). Suggesting has no count to offer — it recurses a directory
+    # tree — so it says what it is doing; writing counts its rows.
+    ctx.set_phase(JobPhase.GROUPING, "Matching filenames")
+    data = suggest_for_session(ctx.session)
+    ctx.set_phase(JobPhase.GROUPING, "Writing grouping suggestions")
+    plan = plan_store.persist_plan(
+        ctx.session,
+        data,
+        scan_job_id=ctx.job_id,
+        on_progress=lambda written, total: ctx.progress(written, total),
+    )
     ctx.set_phase(JobPhase.FINALIZING)
     return {
         "discovered": summary.discovered,

@@ -249,6 +249,20 @@ def max_stem_level(names: Iterable[str]) -> int:
     return max(DEFAULT_STEM_LEVEL, longest)
 
 
+def _space_prefixes(stem: str) -> list[str]:
+    """Every proper prefix of ``stem`` that ends on a token boundary.
+
+    ``"a b c"`` gives ``["a b", "a"]``. Lets a sidecar find the video stems it
+    extends without being compared against every one of them.
+    """
+    prefixes: list[str] = []
+    cut = stem.rfind(" ")
+    while cut > 0:
+        prefixes.append(stem[:cut])
+        cut = stem.rfind(" ", 0, cut)
+    return prefixes
+
+
 def _natural_key(name: str) -> list[object]:
     """Sort key that orders ``ep2`` before ``ep10`` (numeric runs compared as
     ints), case-insensitively."""
@@ -344,29 +358,34 @@ def _bundle_groups(
         for group in groups
         if prefix_counts[_subject_prefix(group[0].relative_path)] == 1
     }
-    stems_by_group = [{keys.of(video.relative_path) for video in group} for group in groups]
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
         stem = keys.of(f.relative_path)
-        exact_matches = [
-            group
-            for video_stems, group in zip(stems_by_group, groups, strict=True)
-            if stem in video_stems
-        ]
-        suffix_matches = [
-            group
-            for video_stems, group in zip(stems_by_group, groups, strict=True)
-            if any(stem.startswith(f"{video_stem} ") for video_stem in video_stems)
+        # Every group is keyed by exactly one stem (that is how it was formed), so
+        # "the group whose stem this sidecar equals" is a dict lookup, and "the
+        # groups whose stem this sidecar *extends*" is one lookup per
+        # space-delimited prefix of the sidecar's own stem.
+        #
+        # This used to scan every group for every sidecar, with a nested scan over
+        # each group's stems inside it — quadratic in the size of the folder. One
+        # folder of 1,600 subjects spent 10.2 million `startswith` calls here and
+        # 4.3 seconds; a folder of several thousand took minutes, and Narrow or
+        # Widen re-runs the whole suggester (owner-reported, 2026-08-13).
+        exact_match = groups_by_key.get(stem)
+        extended = [
+            found
+            for prefix in _space_prefixes(stem)
+            if (found := groups_by_key.get(prefix)) is not None
         ]
         # Last resort for a sidecar that matches no video stem at all: the leading
         # filename token, when exactly one group owns it. Withheld at level 0,
         # where the owner has asked for the complete filename to be what matches.
         matched_group = (
-            exact_matches[0]
-            if len(exact_matches) == 1
+            exact_match
+            if exact_match is not None
             else (
-                suffix_matches[0]
-                if not exact_matches and len(suffix_matches) == 1
+                extended[0]
+                if len(extended) == 1
                 else group_by_prefix.get(_subject_prefix(f.relative_path))
                 if level >= DEFAULT_STEM_LEVEL
                 else None
@@ -646,16 +665,19 @@ def _classify(
     media = node.files
     stem_level = stem_levels.get(node.path, DEFAULT_STEM_LEVEL)
     proposals: list[GroupingProposal] = []
+    # Once per folder, for every branch below. Grouping sorts the folder and
+    # builds a stem key per file, so doing it twice was pure repetition.
+    groups = _bundle_groups(media, stem_level) if media else []
 
     if has_subbundles and not is_root:
         # This folder is a CONTAINER for the bundles found beneath it.
-        direct_count = len(_bundle_groups(media, stem_level)) + len(
+        direct_count = len(groups) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
         )
         proposals.append(_container_proposal(node.path, parent, child_count=direct_count))
         proposals.extend(
             _direct_media_proposals(
-                media, node.path, parent_for_children=node.path, stem_level=stem_level
+                groups, node.path, parent_for_children=node.path, stem_level=stem_level
             )
         )
         proposals.extend(child_proposals)
@@ -663,7 +685,7 @@ def _classify(
 
     if has_subbundles and is_root:
         proposals.extend(
-            _direct_media_proposals(media, "", parent_for_children=None, stem_level=stem_level)
+            _direct_media_proposals(groups, "", parent_for_children=None, stem_level=stem_level)
         )
         proposals.extend(child_proposals)
         return proposals
@@ -671,7 +693,6 @@ def _classify(
     # Leaf folder (no sub-bundles).
     if not media:
         return []
-    groups = _bundle_groups(media, stem_level)
     if len(groups) == 1:
         proposals.append(
             _bundle_proposal(
@@ -682,28 +703,34 @@ def _classify(
     if is_root:
         # Unrelated loose files at the root: bundle by subject where possible, no root container
         proposals.extend(
-            _direct_media_proposals(media, "", parent_for_children=None, stem_level=stem_level)
+            _direct_media_proposals(groups, "", parent_for_children=None, stem_level=stem_level)
         )
         return proposals
     # A container of unrelated items: one child bundle per subject or file
     proposals.append(_container_proposal(node.path, parent, child_count=len(groups)))
     proposals.extend(
         _direct_media_proposals(
-            media, node.path, parent_for_children=node.path, stem_level=stem_level
+            groups, node.path, parent_for_children=node.path, stem_level=stem_level
         )
     )
     return proposals
 
 
 def _direct_media_proposals(
-    media: list[FileObservation],
+    groups: list[list[FileObservation]],
     directory: str,
     *,
     parent_for_children: str | None,
     stem_level: int,
 ) -> list[GroupingProposal]:
-    """Proposals for a container's own direct media (those not in a subfolder)."""
-    groups = _bundle_groups(media, stem_level)
+    """Proposals for a container's own direct media (those not in a subfolder).
+
+    Takes the grouping rather than the files: every caller has already grouped
+    this folder to decide *whether* to make a container of it, and grouping is the
+    expensive part — it sorts the folder naturally and builds a stem key per file.
+    Recomputing it here ran the whole thing twice per folder, a third of the time
+    it took a plan to appear (owner-reported, 2026-08-13).
+    """
     return [
         _bundle_proposal(
             group,
