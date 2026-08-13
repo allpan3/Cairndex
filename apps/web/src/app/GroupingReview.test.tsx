@@ -252,10 +252,13 @@ const CURRENT_COLLECTIONS: CollectionRead[] = [
 function mockGroupingApi(
   initialProposals: GroupingProposal[] = PROPOSALS,
   collections: CollectionRead[] = CURRENT_COLLECTIONS,
+  // Lets a test hand back a mode this build does not know, which is how the
+  // stem index arithmetic went wrong.
+  initialStemModes: Record<string, string> = {},
 ) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
-  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  let stemModes: Record<string, string> = { ...initialStemModes }
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.includes('/collections?')) {
@@ -1128,7 +1131,7 @@ test('existing collection context is labeled and cannot be edited or moved', asy
       name: 'Placement for collection suggestion Series',
     }),
   ).toBeNull()
-  expect(queryRowAction('Make this one bundle instead')).toBeNull()
+  await expectNoRowAction('Make this one bundle instead')
 })
 
 // A folder suggestion may resolve to a collection that already exists, so apply
@@ -1213,6 +1216,18 @@ test('a proposed collection placement control moves between parent and top level
  * `bundle suggestion Two Subjects`) when it matters *which* row offers it;
  * without it, the first row whose menu carries the action wins.
  */
+/** Assert an action is absent — only meaningful once rows exist.
+ *
+ * `queryRowAction` returns null both when no row offers the action and when no
+ * row has rendered yet, so a bare negative assertion after `renderReview()`
+ * passed against an empty DOM and would have passed if the action *were*
+ * offered. This awaits the rows first.
+ */
+async function expectNoRowAction(name: string | RegExp, subject?: string): Promise<void> {
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  expect(queryRowAction(name, subject)).toBeNull()
+}
+
 function queryRowAction(name: string | RegExp, subject?: string): HTMLElement | null {
   // A previous lookup may have left its menu open, in which case the first
   // click below would close it rather than open the one being looked for.
@@ -1224,7 +1239,8 @@ function queryRowAction(name: string | RegExp, subject?: string): HTMLElement | 
     : screen.queryAllByRole('button', { name: /^Actions for / })
   for (const trigger of triggers) {
     fireEvent.click(trigger)
-    const item = screen.queryByRole('menuitem', { name })
+    // AllBy: a regex can match both endpoints of a pair, and queryBy throws.
+    const item = screen.queryAllByRole('menuitem', { name })[0] ?? null
     if (item) return item
     fireEvent.click(trigger)
   }
@@ -1383,6 +1399,150 @@ test('a key press inside a row control is left to that control', async () => {
   fireEvent.keyDown(input, { key: ' ' })
   expect((checkbox as HTMLInputElement).checked).toBe(checkedBefore)
   expect(input).toBeInTheDocument()
+})
+
+// --- Review fixes (2026-08-10) -----------------------------------------------
+
+test('Cmd+Enter obeys the same guards as the Accept button', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const tree = await screen.findByRole('list', { name: /^Grouping suggestions/ })
+  const applied = () => fetchMock.mock.calls.some(([url]) => url.endsWith('/apply'))
+
+  // Nothing selected: the button is disabled, so the shortcut must be too.
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept/ })).toBeDisabled())
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  expect(applied()).toBe(false)
+
+  // Mid-rename: likewise blocked, and the keystroke belongs to the text box.
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+  fireEvent.doubleClick(
+    screen.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
+  )
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
+  expect(applied()).toBe(false)
+
+  // Escape out of the rename, and then it works.
+  fireEvent.keyDown(input, { key: 'Escape' })
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept/ })).toBeEnabled())
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  await waitFor(() => expect(applied()).toBe(true))
+})
+
+test('a filtered collection checkbox still toggles its whole subtree', async () => {
+  // One flagged child and one confident child under the same collection.
+  const weak = { ...PROPOSALS[2]!, id: 'weak', title: 'Weak child', confidence: 0.5 }
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi([...NESTED_PROPOSALS, { ...weak, parent_proposal_id: 'inner-collection' }]),
+  )
+  renderReview()
+
+  fireEvent.click(await screen.findByRole('button', { name: /Needs a look/ }))
+  const box = screen.getByRole('checkbox', { name: 'Select bundles in Series' })
+  expect(box).toBeChecked()
+
+  // Reading the full subtree but writing only the visible part made this
+  // oscillate checked <-> mixed and never reach unchecked.
+  fireEvent.click(box)
+  await waitFor(() => expect(box).not.toBeChecked())
+  expect(box).not.toBePartiallyChecked()
+})
+
+test('the filter falls back to the whole plan when nothing is flagged', async () => {
+  const weak = { ...PROPOSALS[1]!, id: 'weak', title: 'Only Weak', confidence: 0.5 }
+  vi.stubGlobal('fetch', mockGroupingApi([PROPOSALS[1]!, weak]))
+  renderReview()
+
+  fireEvent.click(await screen.findByRole('button', { name: /Needs a look/ }))
+  expect(screen.queryByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeNull()
+
+  // Emptying the flagged row resolves the last uncertainty; the view must not
+  // strand the owner on a blank list under a pressed, disabled tab.
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
+  const stillWeak = screen.getByRole('checkbox', { name: 'Accept Only Weak' })
+  expect(stillWeak).toBeInTheDocument()
+})
+
+test('a read-only existing-collection row offers no folder actions', async () => {
+  const context = {
+    ...NESTED_PROPOSALS[0]!,
+    target_collection_id: 'live',
+    is_collection_context: true,
+  }
+  vi.stubGlobal('fetch', mockGroupingApi([context, ...NESTED_PROPOSALS.slice(1)]))
+  renderReview()
+
+  // Split/Merge regenerate plan rows for a directory this row does not name.
+  await expectNoRowAction(/into (more|fewer) bundles/, 'collection suggestion Library')
+})
+
+test('an unrecognised stem mode offers no folder actions', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi(undefined, undefined, { 'SRCV-005': 'exact', Second: 'exact' }),
+  )
+  renderReview()
+
+  // index === -1 slipped past both endpoint guards: Merge resolved to `narrow`
+  // and split the folder instead.
+  await expectNoRowAction(/into (more|fewer) bundles/)
+})
+
+test('an expanded run can be folded back', async () => {
+  const clips = [1, 2, 3].map((i) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `Clip 0${i}`,
+    reason: 'numbered sequence',
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/c${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi(clips))
+  renderReview()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Show all 3' }))
+  expect(screen.getByRole('checkbox', { name: 'Accept Clip 02' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Fold 3 back into one row' }))
+
+  expect(screen.queryByRole('checkbox', { name: 'Accept Clip 02' })).toBeNull()
+  expect(screen.getByText('Clip 01 … Clip 03')).toBeVisible()
+})
+
+test('Collapse all is disabled when there is nothing to collapse', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi([PROPOSALS[1]!]))
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  // A flat plan has no collections; the button used to be enabled and inert.
+  expect(screen.getByRole('button', { name: 'Collapse all' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Expand all' })).toBeDisabled()
+})
+
+test('arrow keys keep working after focus lands on a row control', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
+  renderReview()
+
+  const first = await screen.findByRole('checkbox', { name: 'Select bundles in Library' })
+  first.focus()
+  expect(first).toHaveFocus()
+
+  // Navigation used to die here until the owner clicked bare row whitespace.
+  fireEvent.keyDown(first, { key: 'ArrowDown' })
+  expect(
+    screen.getByRole('button', { name: 'Rename collection suggestion Series' }).closest('.grp-row'),
+  ).toHaveFocus()
 })
 
 // --- Triage: confidence filter, contents summary, compact placement ----------
@@ -1783,7 +1943,7 @@ test('a single-subject bundle already inside its own folder collection is not', 
   vi.stubGlobal('fetch', mockGroupingApi([collection, child]))
   renderReview()
 
-  expect(queryRowAction('Make this a collection of bundles instead')).toBeNull()
+  await expectNoRowAction('Make this a collection of bundles instead')
 })
 
 test('an addition suggestion offers no collection override', async () => {
@@ -1793,12 +1953,10 @@ test('an addition suggestion offers no collection override', async () => {
   // An addition puts its files into a bundle that already exists, which is not
   // going to become a collection.
   await screen.findByText(/Add to/)
-  expect(
-    queryRowAction(
-      'Make this a collection of bundles instead',
-      'bundle suggestion Add to Sky, Sand, Sea & Salt - 4K',
-    ),
-  ).toBeNull()
+  await expectNoRowAction(
+    'Make this a collection of bundles instead',
+    'bundle suggestion Add to Sky, Sand, Sea & Salt - 4K',
+  )
 })
 
 // --- Tooltips do not outlive the control they belong to ----------------------
