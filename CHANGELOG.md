@@ -108,6 +108,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Update no longer rewrites a plan that would come out identical.** A plan is a
+  snapshot of suggestions over the files not yet in a confirmed bundle; if nothing
+  in the library has been touched since it was written, regenerating produces the
+  same few hundred rows and supersedes the plan the owner was working through. On a
+  library whose database sits on a network share that rewrite measured **seven
+  minutes, every press of Update** — the cost is journaled page writes, not
+  statement count. Now the open plan is kept, which also means selections and edits
+  survive an Update. The test is "was anything modified since", not the scan's own
+  summary: `ScanSummary.updated` counts every row *examined*, so it is non-zero for
+  any library with files in it, and a timestamp also catches a bundle deleted or
+  fast-added through the UI between scans.
+- **A first scan no longer inserts one row at a time.** Every new file cost two
+  INSERT round trips — `session.add(bundle); session.flush()` inside the loop, just
+  so the file could learn its bundle's id, which is knowable before the insert.
+  1,803 statements for 900 files became 5.
+- **Superseded plans are pruned a few per run rather than all at once.** The delete
+  cascades through proposals and their file rows, so clearing a long backlog in one
+  go is itself minutes of writes on a network share. The backlog drains over the
+  next few generations instead.
 - **Suggesting a grouping no longer writes the plan one row at a time.** The plan
   was persisted with a flush inside its loop, purely to learn the id it was about
   to need for that row's files — but ids are ULIDs from a plain Python callable,

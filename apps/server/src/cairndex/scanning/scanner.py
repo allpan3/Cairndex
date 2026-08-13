@@ -27,6 +27,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from cairndex.core.ids import new_id
 from cairndex.core.paths import normalize_relative_path
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
@@ -306,19 +307,29 @@ def scan_library(
     session.flush()
 
     # Pass 3: create bundles for genuinely new paths (not repaired moves).
+    #
+    # Ids are assigned here rather than left to a flush inside the loop, which is
+    # all that flush was for — the file needs its bundle's id. `UlidPk` defaults to
+    # a plain Python callable, so every primary key is known before the insert and
+    # SQLAlchemy can batch them. Flushing per file made a scan of new files cost
+    # two INSERT round trips each: on a library whose database sits on a network
+    # share, where one statement costs ~36 ms, that is a minute per thousand files
+    # (owner-reported, 2026-08-13). `persist_plan` had the same shape.
     created = 0
+    pending: list[AssetBundle | AssetFile] = []
     for obs in new_obs:
         if obs.rel in repaired_rel:
             continue
         bundle = AssetBundle(
+            id=new_id(),
             title=Path(obs.name).stem,
             grouping_state=GroupingState.PROVISIONAL,
             grouping_source=GroupingSource.SCAN_SUGGESTION,
             grouping_rule_version=SCAN_GROUPING_RULE_VERSION,
         )
-        session.add(bundle)
-        session.flush()
+        pending.append(bundle)
         new_file = AssetFile(
+            id=new_id(),
             bundle_id=bundle.id,
             relative_path=obs.rel,
             original_filename=obs.name,
@@ -333,8 +344,9 @@ def scan_library(
             identity_available=obs.identity_available,
             availability=FileAvailability.AVAILABLE,
         )
-        session.add(new_file)
+        pending.append(new_file)
         created += 1
+    session.add_all(pending)
 
     # Disappeared rows that were not repaired into a new path are missing.
     still_missing = [row for row in missing_rows if row.id not in repaired_row_ids]
