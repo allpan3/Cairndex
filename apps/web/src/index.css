@@ -3051,6 +3051,21 @@ code {
   border-radius: 5px;
 }
 
+/* A row inside a folder: the header above already states where it goes, so its own
+   picker fades out at rest. Faded rather than removed — it is the keyboard path
+   for moving one row out of its folder, and removing it left only drag-and-drop.
+   Space is still reserved, so revealing it does not shift the row. */
+.grp-placement-picker--restated {
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.grp-row:hover .grp-placement-picker--restated,
+.grp-row:focus-within .grp-placement-picker--restated,
+.grp-placement-picker--restated:focus-within,
+.grp-placement-picker--restated:hover {
+  opacity: 1;
+}
+
 /* The row's kind glyph *is* the convert control — one click, in the place the
    kind is already shown, rather than a second folder-ish icon on the same row or
    an item two clicks into a `...` menu. */

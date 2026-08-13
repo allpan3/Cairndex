@@ -278,9 +278,13 @@ function mockGroupingApi(
   collections: CollectionRead[] = CURRENT_COLLECTIONS,
   // Lets a test start a folder partway along its dial, including at either end.
   initialStemLevels: Record<string, number> = {},
+  // What accepting produces, and what the plan holds afterwards — the review stays
+  // open on the remainder now, so both matter.
+  afterApply: { conflicts?: unknown[]; proposals?: GroupingProposal[] } = {},
 ) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
+  let applied = false
   let stemLevels: Record<string, number> = { ...initialStemLevels }
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
@@ -290,6 +294,11 @@ function mockGroupingApi(
       planId = 'plan2'
       stemLevels = (JSON.parse(init.body as string) as { stem_levels: Record<string, number> })
         .stem_levels
+      // What is left after an accept, as the server produces: the confirmed
+      // bundles have gone, the skipped ones come back.
+      if (applied && afterApply.proposals !== undefined) {
+        proposals = structuredClone(afterApply.proposals)
+      }
       body = {
         id: planId,
         status: 'open',
@@ -502,6 +511,7 @@ function mockGroupingApi(
         proposals,
       }
     } else if (url.endsWith(`/grouping/plans/${planId}/apply`) && init?.method === 'POST') {
+      applied = true
       body = {
         bundles_confirmed: 2,
         bundles_removed: 0,
@@ -509,7 +519,7 @@ function mockGroupingApi(
         bundles_added_to_collections: 2,
         files_added_to_bundles: 0,
         subtitles_linked: 0,
-        conflicts: [],
+        conflicts: afterApply.conflicts ?? [],
       }
     } else {
       body = {}
@@ -613,6 +623,112 @@ test('folds and restores the file list under a bundle', async () => {
   expect(collapse).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(collapse)
   expect(screen.queryByRole('list', { name: 'Files in SRCV-005 - cut' })).toBeNull()
+})
+
+test('a folder states its destination once, without taking it off its rows', async () => {
+  // The picker repeated the same answer as many times as the folder had
+  // suggestions (owner-requested, 2026-08-13). Faded at rest rather than removed:
+  // it is the keyboard path for moving a single row out of its folder, and taking
+  // it away left only drag-and-drop — which the placement e2e caught.
+  const folder: GroupingProposal = {
+    ...PROPOSALS[0]!,
+    id: 'studio',
+    title: 'Studio',
+    directory: 'Genre/Studio',
+    parent_proposal_id: null,
+    files: [],
+  }
+  const inFolder = [1, 2].map((n) => ({
+    ...PROPOSALS[1]!,
+    id: `rel-${n}`,
+    title: `Release ${n}`,
+    directory: 'Genre/Studio',
+    parent_proposal_id: 'studio',
+    files: [
+      {
+        asset_file_id: `v${n}`,
+        relative_path: `Genre/Studio/Release ${n}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi([folder, ...inFolder]))
+  renderReview()
+
+  await screen.findByRole('button', { name: 'Rename collection suggestion Studio' })
+
+  // The folder's own destination is stated plainly on its header.
+  const header = within(rowOf('Studio')).getByRole('button', { name: /^Placement for / })
+  expect(header.closest('.grp-placement-picker--restated')).toBeNull()
+
+  // Its rows still carry theirs — reachable, but not restating the header at rest.
+  for (const title of ['Release 1', 'Release 2']) {
+    const row = within(rowOf(title)).getByRole('button', { name: /^Placement for / })
+    expect(row.closest('.grp-placement-picker--restated')).not.toBeNull()
+  }
+})
+
+test('accepting keeps the review open on what is left', async () => {
+  // Reviewing a long plan happens in batches, and closing on every accept meant
+  // reopening the dialog to carry on (owner-requested, 2026-08-13).
+  // The same suggestion the owner skipped, with the fresh id a regeneration
+  // issues. Its *content* is unchanged, which is what `proposalKey` matches on and
+  // therefore what carries the deselection across.
+  const skipped = PROPOSALS.find((proposal) => proposal.title === 'Second bundle')!
+  const leftover: GroupingProposal = { ...skipped, id: 'left-1' }
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}, { proposals: [leftover] }))
+  renderReview()
+
+  // Skip one row, accept the rest.
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  fireEvent.click(second)
+  await screen.findByText('1 bundle selected')
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  // Still reviewing, with what was accepted stated and the remainder counted.
+  await screen.findByText(/Accepted 2 bundles, 1 collection\. 1 suggestion left to review\./)
+  expect(screen.getByRole('button', { name: /^Accept / })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
+
+  // And the row the owner skipped is still skipped: a second accept must not be
+  // one click away from confirming exactly what they just declined.
+  const remaining = screen.getByRole('checkbox', { name: 'Accept Second bundle' })
+  expect(remaining).not.toBeChecked()
+})
+
+test('accepting the last suggestion closes the review with a summary', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}, { proposals: [] }))
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  expect(await screen.findByRole('button', { name: 'Done' })).toBeInTheDocument()
+  expect(screen.getByText(/Accepted/)).toBeInTheDocument()
+})
+
+test('a conflict ends the review rather than scrolling past unread', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi(
+      undefined,
+      undefined,
+      {},
+      {
+        conflicts: [{ proposal_id: 'p', title: 'Second bundle', reason: 'a file went missing' }],
+        proposals: [PROPOSALS[1]!],
+      },
+    ),
+  )
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  // Carrying on would leave the conflict behind unread.
+  expect(await screen.findByText(/need attention/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
 })
 
 test('a long plan opens folded, and Expand all still opens it', async () => {
