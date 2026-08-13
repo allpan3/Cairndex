@@ -630,6 +630,51 @@ dev server proxies `/api/*` to `http://localhost:8000` (see
 `apps/web/vite.config.ts`), so it needs no CORS configuration. The Tauri host
 uses the server URL stored by its first-run screen instead.
 
+## Working with a library the server does not hold locally
+
+A library's database lives inside the library package (ADR-0008), so it travels
+with it. That is the right default, and it has one sharp consequence: if the
+library sits on a network share, **every query crosses the network**. Measured on
+an SMB-mounted library, read-only, against a local copy of the same file:
+
+| a trivial `SELECT` on `library.db` | |
+| --- | --- |
+| over SMB | 35.9 ms |
+| the identical database copied to local disk | 0.021 ms |
+
+A full directory walk of that library's 2,683 files took 6.8 s — 2.5 ms per
+`stat`, against 0.036 ms per file for a library on the internal disk. This is why
+the grouping code is written to minimise *round trips* rather than milliseconds:
+generating a plan once issued 10,416 statements, which is six minutes at that
+latency and imperceptible on local disk. When changing anything that touches a
+library database, count statements.
+
+The fix is not to move the database — it is to run the server on the machine that
+holds the files, and point this repo's frontend at it:
+
+```bash
+just web-remote nas.local:8000     # Vite on :5173, /api proxied to the NAS
+```
+
+The dev server proxies, so the browser still sees one origin and needs no CORS.
+The UI under test is the one in your working tree; only the server and the files
+are elsewhere. The desktop shell can do the same through the server URL on its
+first-run screen.
+
+Two things to get right on the server side:
+
+- It has to be reachable. `CAIRNDEX_BIND_ADDR` defaults to `127.0.0.1`, which
+  means the NAS only. Set it to an address your machine can reach — and, since
+  there is no authentication yet (AGENTS.md §12), keep that to a private network
+  or Tailscale.
+- Do not also register the network library on your development machine. Opening it
+  here is exactly the 36 ms-a-query path this arrangement exists to avoid, and
+  two machines opening one library contend for its ownership lease (ADR-0018).
+
+For everyday work, keep a **local** library: `just docker-dev-library` seeds a
+small real one, and `devtools.synthetic_library` generates a large one to
+benchmark against.
+
 ## Running with Docker
 
 The native loop above is the primary one. The containerized stack is the
