@@ -815,9 +815,18 @@ function ProposalCheckbox({
 function ProposalPlacement({
   proposal,
   placement,
+  restated = false,
 }: {
   proposal: GroupingProposal
   placement: PlacementControls
+  /** The folder header above already says where this goes.
+   *
+   *  Kept in the DOM rather than dropped: it is the keyboard path for moving a
+   *  single row out of its folder, and dropping it left only drag-and-drop
+   *  (caught by the placement e2e). It fades out at rest instead, so the
+   *  destination is stated once per folder but is still one hover — or one focus —
+   *  from being changed on any row (owner-requested, 2026-08-13). */
+  restated?: boolean
 }) {
   const kind = proposal.kind === 'container' ? 'collection' : 'bundle'
   const title = proposalDisplayTitle(proposal)
@@ -851,6 +860,7 @@ function ProposalPlacement({
       loading={placement.loading}
       error={placement.error}
       compact={proposal.parent_proposal_id !== null}
+      restated={restated}
       onChange={(targetCollectionId) => placement.setCollection(proposal, targetCollectionId)}
     />
   )
@@ -1221,6 +1231,9 @@ interface SharedNodeProps {
   destination: DestinationControls
   stem: StemControls
   stemOwners: Map<string, string>
+  /** Rows that head a folder. Their children's destination is "inside this", which
+   *  the header states once, so those children carry no picker of their own. */
+  folderHeaders: Set<string>
   kind: KindControls
   fold: FoldControls
 }
@@ -1235,6 +1248,7 @@ function ProposalNode({
   destination,
   stem,
   stemOwners,
+  folderHeaders,
   kind,
   fold,
 }: {
@@ -1251,10 +1265,17 @@ function ProposalNode({
     destination,
     stem,
     stemOwners,
+    folderHeaders,
     kind,
     fold,
   }
   const { proposal, children } = node
+  // Its destination is stated once, by the folder header it sits under. Showing it
+  // again on every row beneath repeated the same answer as many times as the
+  // folder had suggestions (owner-requested, 2026-08-13). A row moved out from
+  // under its folder gets its picker back, which is exactly when it differs.
+  const insideFolder =
+    proposal.parent_proposal_id !== null && folderHeaders.has(proposal.parent_proposal_id)
   // The folder this row speaks for, if any. A read-only context node owns no
   // filesystem directory and must not be able to re-suggest one — the guard the
   // stem controls kept escaping when they lived elsewhere.
@@ -1320,7 +1341,11 @@ function ProposalNode({
                 outside this guard and let an "Existing" row regenerate rows for
                 a directory it does not even name. */}
             {!proposal.is_collection_context && (
-              <ProposalPlacement proposal={proposal} placement={placement} />
+              <ProposalPlacement
+                proposal={proposal}
+                placement={placement}
+                restated={insideFolder}
+              />
             )}
             {/* A collection suggestion for a folder *is* that folder's header —
                 same name, same scope — so the dial belongs on it rather than on
@@ -1421,7 +1446,9 @@ function ProposalNode({
               did nothing at all and still reported a move. Switching the row to
               "create a new bundle" clears `isAddition`, and the control returns
               with a real meaning. */}
-          {!isAddition && <ProposalPlacement proposal={proposal} placement={placement} />}
+          {!isAddition && (
+            <ProposalPlacement proposal={proposal} placement={placement} restated={insideFolder} />
+          )}
           {/* A bundle that fills its own folder speaks for it, and there is no
               collection row above to carry the dial. */}
           {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
@@ -1609,6 +1636,18 @@ export function GroupingReview({
     () => new Map((plan.data?.proposals ?? []).map((proposal) => [proposal.id, proposal])),
     [plan.data],
   )
+  // A folder header is the editable collection row that speaks for a folder. Its
+  // children need no destination of their own — see `insideFolder`.
+  const folderHeaders = useMemo(
+    () =>
+      new Set(
+        [...stemOwners.keys()].filter((id) => {
+          const owner = proposalById.get(id)
+          return owner?.kind === 'container' && !owner.is_collection_context
+        }),
+      ),
+    [stemOwners, proposalById],
+  )
   const emptyBundleIds = useMemo(() => new Set(collectEmptyBundleIds(fullTree)), [fullTree])
   const selectedIds = useMemo(
     () => new Set(bundleProposalIds.filter((id) => !deselectedKeys.has(keyById.get(id) ?? id))),
@@ -1664,6 +1703,32 @@ export function GroupingReview({
     setFileOverrides(new Map())
     setOpenRollups(new Set())
     setNotice(message)
+  }
+
+  /** Move on to the plan that follows an apply, keeping what the owner skipped.
+   *
+   * Deliberately not ``finishGeneration``: that clears the deselections, because
+   * "Suggest grouping" is an explicit fresh start. Here they are the whole point —
+   * the rows left over *are* the ones the owner chose not to accept, and
+   * re-checking them would put a second Accept one click away from confirming
+   * exactly what was just declined. ``deselectedKeys`` is keyed by content for
+   * this reason, so it survives the new plan's fresh ids.
+   */
+  const continueAfterApply = (fresh: GroupingPlan, r: GroupingApplyResult) => {
+    setChosenId(fresh.id)
+    setResult(null)
+    setEditing(null)
+    setRenameError(null)
+    setDragItem(null)
+    setDropSlot(null)
+    destination.reset()
+    setCollapsedKeys(null)
+    setFileOverrides(new Map())
+    setOpenRollups(new Set())
+    const left = fresh.proposals.filter((proposal) => proposal.files.length > 0).length
+    setNotice(
+      `${appliedSummary(r)} ${left} ${left === 1 ? 'suggestion' : 'suggestions'} left to review.`,
+    )
   }
 
   // Carry the owner's per-folder levels into the fresh plan; the response's dial
@@ -1749,17 +1814,55 @@ export function GroupingReview({
     )
   }
 
+  /** What an apply did, for the notice that carries it into the next round. */
+  const appliedSummary = (r: GroupingApplyResult): string => {
+    const parts = [
+      r.bundles_confirmed > 0
+        ? `${r.bundles_confirmed} ${r.bundles_confirmed === 1 ? 'bundle' : 'bundles'}`
+        : '',
+      r.collections_created > 0
+        ? `${r.collections_created} ${r.collections_created === 1 ? 'collection' : 'collections'}`
+        : '',
+      r.files_added_to_bundles > 0
+        ? `${r.files_added_to_bundles} ${r.files_added_to_bundles === 1 ? 'file' : 'files'} added`
+        : '',
+    ].filter(Boolean)
+    return parts.length > 0 ? `Accepted ${parts.join(', ')}.` : 'Nothing was accepted.'
+  }
+
   const onApply = () => {
-    if (planId)
-      apply.mutate(
-        { id: planId, proposalIds: [...selectedIds] },
-        {
-          onSuccess: (r) => {
-            setNotice(null)
+    if (!planId) return
+    apply.mutate(
+      { id: planId, proposalIds: [...selectedIds] },
+      {
+        onSuccess: (r) => {
+          setNotice(null)
+          // Conflicts have to be read, so they end the review the way they always
+          // did. Everything else carries on below.
+          if (r.conflicts.length > 0) {
             setResult(r)
-          },
+            return
+          }
+          // Stay in the pane and pick up the remaining work. Applying confirms the
+          // accepted bundles, so they leave the plan; whatever was skipped is still
+          // unbundled and comes back in a fresh one. Closing on every accept meant
+          // reopening the dialog to carry on with a plan reviewed in batches
+          // (owner-requested, 2026-08-13).
+          generate.mutate(stemLevelInput(plan.data?.stem_levels ?? {}), {
+            onSuccess: (fresh) => {
+              if (fresh.proposals.length === 0) {
+                setResult(r)
+                return
+              }
+              continueAfterApply(fresh, r)
+            },
+            // If the fresh suggestion fails, fall back to the summary rather than
+            // leaving the owner on a plan that has already been applied.
+            onError: () => setResult(r),
+          })
         },
-      )
+      },
+    )
   }
 
   const setDestination = (proposal: GroupingProposal, createNewBundle: boolean) => {
@@ -2010,6 +2113,7 @@ export function GroupingReview({
     destination: destinationControls,
     stem: stemControls,
     stemOwners,
+    folderHeaders,
     kind: kindControls,
     fold: foldControls,
   }
