@@ -839,18 +839,38 @@ function rowActions({
     // guard catches it, and the arithmetic then indexes off the ends: "Merge"
     // resolved to `narrow` and split the folder instead.
     if (index === -1) return actions
+    // The mode is named in each label. It used to be printed beside the old
+    // `>< <>` glyph pair and nowhere else, so moving those into the menu left the
+    // three-state value inferable only from which end happened to be greyed
+    // out — the owner could not tell narrow from balanced from wide, or find the
+    // control at all (owner-reported, 2026-08-13).
     actions.push({
       key: 'narrow',
-      label: `Split ${folder} into more bundles`,
+      label: `Split ${folder} into more bundles (now: ${current})`,
       disabled: blocked || index === 0,
+      reason: index === 0 ? `${folder} is already split as far as it goes` : undefined,
       onSelect: () => stem.set(stemDirectory, STEM_MODES[index - 1]!),
     })
     actions.push({
       key: 'widen',
-      label: `Merge ${folder} into fewer bundles`,
+      label: `Merge ${folder} into fewer bundles (now: ${current})`,
       disabled: blocked || index === STEM_MODES.length - 1,
+      reason:
+        index === STEM_MODES.length - 1
+          ? `${folder} is already merged as far as it goes`
+          : undefined,
       onSelect: () => stem.set(stemDirectory, STEM_MODES[index + 1]!),
     })
+    // Balanced was a directly selectable state before; the pair alone could not
+    // return to it from either end.
+    if (current !== 'balanced') {
+      actions.push({
+        key: 'balanced',
+        label: `Reset ${folder} to balanced matching`,
+        disabled: blocked,
+        onSelect: () => stem.set(stemDirectory, 'balanced'),
+      })
+    }
   }
   return actions
 }

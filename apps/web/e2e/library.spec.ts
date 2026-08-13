@@ -533,7 +533,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   // The folder's stem actions moved into the row's named overflow menu.
   await page.getByRole('button', { name: 'Actions for bundle suggestion Already bundled' }).click()
   await expect(
-    page.getByRole('menuitem', { name: 'Merge Settled into fewer bundles' }),
+    page.getByRole('menuitem', { name: /^Merge Settled into fewer bundles/ }),
   ).toBeVisible()
   await page.keyboard.press('Escape')
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
@@ -541,7 +541,9 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await expect(page.getByText('Still unbundled')).toBeVisible()
   // The folder's stem actions moved into the row's named overflow menu.
   await page.getByRole('button', { name: 'Actions for bundle suggestion Still unbundled' }).click()
-  await expect(page.getByRole('menuitem', { name: 'Merge Fresh into fewer bundles' })).toBeVisible()
+  await expect(
+    page.getByRole('menuitem', { name: /^Merge Fresh into fewer bundles/ }),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
