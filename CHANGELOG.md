@@ -60,6 +60,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   minute — stops there instead of at the next checkpoint behind it.
 
 ### Fixed
+
+- **A rename started from a grouping row's menu no longer commits itself
+  immediately.** The menu restores focus to its trigger when it closes, so a
+  keyboard user dismissing it is not left with focus nowhere — but the rename
+  editor focuses on mount and commits on blur, so that restore ended the edit
+  before a character could be typed. An action that takes focus for itself now
+  says so and the menu leaves it alone.
 - **An identically named video and cover no longer lose their name's last
   segment.** `_shared_stem_title` trimmed at the last delimiter even when every
   filename *was* the shared part, so a pair like `A - B - 4K.mp4` / `A - B - 4K.jpg`
@@ -407,10 +414,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   `>< <>` pair — rendered after variable-length text, so they landed at a
   different x on every row and were discoverable only by hovering for a
   tooltip. One overflow trigger per row now opens a menu whose items say what
-  they do ("Make this a collection of bundles instead"). The tooltip machinery
-  that existed to caption those glyphs is gone with them. The folder-scoped
-  Narrow/Widen pair went in there too and has since come back out onto the row
-  as a visible dial — see below.
+  they do ("Make this a collection of bundles instead", "Rename this bundle" —
+  which was a double-click on the title and nothing else, fast once known and
+  invisible until then). The tooltip machinery that existed to caption those
+  glyphs is gone with them. The folder-scoped Narrow/Widen pair went in there too
+  and has since come back out onto the row as a visible dial — see below.
 - **The grouping review's chrome stopped competing with its contents.** The
   three-line preamble folds behind a one-line summary, the dialog holds a fixed
   height so folding a row no longer slides the footer under the pointer,

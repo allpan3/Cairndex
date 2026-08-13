@@ -902,15 +902,31 @@ function ProposalDisclosure({
 function rowActions({
   proposal,
   hasItems,
+  rename,
   destination,
   kind,
 }: {
   proposal: GroupingProposal
   hasItems: boolean
+  rename: RenameControls
   destination: DestinationControls
   kind: KindControls
 }): RowAction[] {
   const actions: RowAction[] = []
+  // Renaming is a double-click on the title, which is fast once known and
+  // invisible until then. Naming it here also means a row with no other edit — a
+  // single-file bundle that cannot become a collection — has a menu that says
+  // something rather than one that says "no edits available".
+  if (!proposal.is_collection_context) {
+    actions.push({
+      key: 'rename',
+      label: proposal.kind === 'container' ? 'Rename this collection' : 'Rename this bundle',
+      disabled: !rename.canEdit || rename.pending,
+      reason: rename.canEdit ? undefined : 'this plan can no longer be edited',
+      takesFocus: true,
+      onSelect: () => rename.start(proposal),
+    })
+  }
   if (proposal.target_bundle_id !== null) {
     actions.push({
       key: 'destination',
@@ -1293,7 +1309,7 @@ function ProposalNode({
             {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
             <GroupingRowActions
               label={`Actions for collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
-              actions={rowActions({ proposal, hasItems, destination, kind })}
+              actions={rowActions({ proposal, hasItems, rename, destination, kind })}
             />
           </span>
         </div>
@@ -1392,7 +1408,7 @@ function ProposalNode({
           {stemDirectory !== undefined && <StemDial directory={stemDirectory} stem={stem} />}
           <GroupingRowActions
             label={`Actions for bundle suggestion ${displayTitle}`}
-            actions={rowActions({ proposal, hasItems, destination, kind })}
+            actions={rowActions({ proposal, hasItems, rename, destination, kind })}
           />
         </span>
       </div>
