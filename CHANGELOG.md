@@ -40,6 +40,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   minute — stops there instead of at the next checkpoint behind it.
 
 ### Fixed
+- **A library created before the latest grouping columns opens again.**
+  `grouping_proposals.is_collection_context` reached the model and the startup
+  backfill but never the additive-column list, so an existing library never
+  gained it and the first proposal insert after a scan failed with
+  "table grouping_proposals has no column named is_collection_context". A new
+  test binds the model to that list and fails for any future column added to one
+  and not the other.
 - **A popover left open no longer desynchronises a checkbox from what will be
   applied.** Dismissing a picker stopped the click reaching React but not the
   browser, so on a controlled input the DOM toggled while application state did

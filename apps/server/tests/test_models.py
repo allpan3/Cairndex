@@ -5,13 +5,15 @@ level (SQLite enforces foreign keys only when the pragma is on, which the engine
 sets), independent of any service-layer logic.
 """
 
+import contextlib
+
 import pytest
 from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
-from cairndex.persistence.engine import ensure_content_indexes
+from cairndex.persistence.engine import _ADDITIVE_CONTENT_COLUMNS, ensure_content_indexes
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -122,6 +124,86 @@ def test_tag_adjacency_parent_child(session: Session) -> None:
     assert [c.name for c in loaded.children] == ["thriller"]
     assert child.parent is not None
     assert child.parent.name == "genre"
+
+
+# The columns ``grouping_proposals`` shipped with. Everything the model has
+# beyond this set was added later, so it must also appear in
+# ``engine._ADDITIVE_CONTENT_COLUMNS`` or an existing library never gains it.
+_GROUPING_PROPOSAL_BASE_COLUMNS = frozenset(
+    {
+        "id",
+        "plan_id",
+        "parent_proposal_id",
+        "target_bundle_id",
+        "kind",
+        "title",
+        "directory",
+        "confidence",
+        "reason",
+        "sort_order",
+        "created_at",
+        "updated_at",
+    }
+)
+
+
+def test_every_later_grouping_column_is_patched_into_old_libraries() -> None:
+    """Bind the model to the additive list, which nothing did before.
+
+    ``create_all`` never alters an existing table and there is no migration
+    chain, so a column added to the model has to be listed for the additive
+    bootstrap too. The per-column tests below each name one column, so a model
+    column missing from the list was never exercised — and shipped, producing
+    "table grouping_proposals has no column named is_collection_context" on the
+    first insert against a real library (owner-reported, 2026-08-13).
+
+    This fails for *any* future column added to the model and not to the list.
+    """
+    from cairndex.persistence.base import Base
+
+    model_columns = {c.name for c in Base.metadata.tables["grouping_proposals"].columns}
+    listed = {c for table, c, _ in _ADDITIVE_CONTENT_COLUMNS if table == "grouping_proposals"}
+    added_since_release = model_columns - _GROUPING_PROPOSAL_BASE_COLUMNS
+
+    missing = added_since_release - listed
+    assert not missing, (
+        f"{sorted(missing)} are on GroupingProposal but not in _ADDITIVE_CONTENT_COLUMNS, "
+        "so a library created before them will fail to insert a proposal"
+    )
+    # And the reverse, so the base set above cannot quietly rot.
+    assert listed <= model_columns
+
+
+def test_an_old_library_can_insert_an_addition_proposal(session: Session, engine: Engine) -> None:
+    """The owner-reported failure, in its own shape: an addition proposal insert.
+
+    A re-scan suggests new files into a confirmed bundle, and persisting that
+    proposal is the first write that touches every column on the table.
+    """
+    with engine.begin() as conn, contextlib.suppress(Exception):
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN is_collection_context"))
+
+    ensure_content_indexes(engine)
+
+    plan = GroupingPlan(rule_version=1)
+    session.add(plan)
+    session.flush()
+    session.add(
+        GroupingProposal(
+            plan_id=plan.id,
+            kind=ProposalKind.BUNDLE,
+            title="Studio Alpha - [2024.01.02] - A Long Release Style Name",
+            directory="Genre/Studio Alpha",
+            target_bundle_id="01JBUNDLEIDPLACEHOLDER0001",
+            target_bundle_title="Studio Alpha - [2024.01.02] - A Long Release Style Name",
+            confidence=0.8,
+            reason="add 2 new file(s) to existing bundle",
+        )
+    )
+    session.flush()
+
+    stored = session.scalars(select(GroupingProposal)).one()
+    assert stored.is_collection_context is False
 
 
 def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> None:
