@@ -170,6 +170,11 @@ def _normalize_text(value: str) -> str:
     return " ".join(part for part in _SUBJECT_DELIMITER.split(value.casefold()) if part)
 
 
+def _folded_stem(name: str) -> str:
+    """``name``'s stem, case-folded, with a trailing rendition tag removed."""
+    return _fold_rendition_suffix(_stem(name).casefold())
+
+
 # Normalize separators while retaining the complete filename subject
 def _normalized_stem(name: str, *, fold_rendition: bool = False) -> str:
     """Return a comparable full stem across spaces, dots, dashes, and underscores."""
@@ -234,8 +239,11 @@ def max_stem_level(names: Iterable[str]) -> int:
     maximum is ``DEFAULT_STEM_LEVEL``), while a folder of long dotted release
     names has many rungs left.
     """
+    # Counted rather than normalized: this runs over every file in a plan on
+    # every plan response, and the joined string ``_normalized_stem`` builds is
+    # thrown away here.
     longest = max(
-        (len(_normalized_stem(name, fold_rendition=True).split()) for name in names),
+        (sum(1 for part in _SUBJECT_DELIMITER.split(_folded_stem(name)) if part) for name in names),
         default=1,
     )
     return max(DEFAULT_STEM_LEVEL, longest)

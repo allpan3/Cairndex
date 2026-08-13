@@ -85,13 +85,27 @@ def proposal_counts(session: Session, plan_ids: list[str]) -> dict[str, int]:
     return {plan_id: count for plan_id, count in rows}
 
 
+def _open_plan_row(session: Session, plan_id: str) -> GroupingPlan:
+    """The plan row alone, with the open-for-editing boundary enforced.
+
+    Deliberately not ``get_plan``: every mutation passes through here to read one
+    column, and ``get_plan`` eagerly loads every proposal and every proposal file
+    so that *serializing* a response is not N+1. Paying that to check ``status``
+    meant each edit loaded the whole plan twice — about a third of a second per
+    conversion on a 20,000-file library (owner-reported, 2026-08-13).
+    """
+    plan = session.get(GroupingPlan, plan_id)
+    if plan is None:
+        raise NotFoundError(f"grouping plan {plan_id!r} not found")
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be edited")
+    return plan
+
+
 # Resolve one editable proposal and enforce the open-plan boundary
 def _open_proposal(session: Session, plan_id: str, proposal_id: str) -> GroupingProposal:
     """Load a proposal only when it belongs to the requested open plan."""
-    plan = get_plan(session, plan_id)
-    if plan.status is not GroupingPlanStatus.OPEN:
-        raise ConflictError("only an open grouping plan can be edited")
-
+    plan = _open_plan_row(session, plan_id)
     proposal = session.get(GroupingProposal, proposal_id)
     if proposal is None or proposal.plan_id != plan.id:
         raise NotFoundError(f"grouping proposal {proposal_id!r} not found")
@@ -392,9 +406,14 @@ def reparent_proposal(
 
 def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingProposal]:
     """Every proposal below ``proposal``, deepest last (breadth-first order)."""
+    # With their files: ``_container_to_bundle`` reads ``row.files`` for every
+    # descendant, which was one query each. It only looked fast because
+    # ``_open_proposal`` happened to have loaded the whole plan first.
     all_in_plan = list(
         session.scalars(
-            select(GroupingProposal).where(GroupingProposal.plan_id == proposal.plan_id)
+            select(GroupingProposal)
+            .where(GroupingProposal.plan_id == proposal.plan_id)
+            .options(selectinload(GroupingProposal.files))
         )
     )
     by_parent: dict[str | None, list[GroupingProposal]] = {}
@@ -733,7 +752,17 @@ def set_directory_stem_level(
     session.expire(plan, ["proposals"])
 
     survivors = list(plan.proposals)
-    claimed = {pf.asset_file_id for p in survivors for pf in p.files}
+    # One query for every surviving row's files. ``plan.proposals`` was just
+    # expired, so it reloads without ``get_plan``'s eager option — and reading
+    # ``p.files`` per row was then one lazy query per proposal: 3,600 of them on a
+    # large plan, which is where ten of the thirteen seconds went.
+    claimed = set(
+        session.scalars(
+            select(GroupingProposalFile.asset_file_id)
+            .join(GroupingProposal, GroupingProposal.id == GroupingProposalFile.proposal_id)
+            .where(GroupingProposal.plan_id == plan.id)
+        )
+    )
     container_by_dir = {p.directory: p.id for p in survivors if p.kind is ProposalKind.CONTAINER}
 
     path_by_id = _relative_paths(session)
