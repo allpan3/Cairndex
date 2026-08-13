@@ -22,13 +22,28 @@ from cairndex.api.schemas.grouping import (
     ProposalRead,
     ProposalReparent,
     ProposalUpdate,
-    StemModeUpdate,
+    StemLevelRead,
+    StemLevelUpdate,
 )
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
 from cairndex.persistence.models import GroupingPlan
 
 router = APIRouter(prefix="/libraries/{library_id}/grouping", tags=["grouping"])
+
+
+def _plan_read(plan: GroupingPlan) -> PlanRead:
+    """Serialize a plan, including the stem dial for every folder it shows.
+
+    ``stem_levels`` is the one field the plan row cannot supply: it stores the
+    owner's overrides, while the review needs a level *and* a maximum for each
+    folder, and the maximum comes from that folder's filenames.
+    """
+    read = PlanRead.model_validate(plan)
+    read.stem_levels = {
+        directory: StemLevelRead(**dial) for directory, dial in plan_store.stem_levels(plan).items()
+    }
+    return read
 
 
 def _summary(plan: GroupingPlan, proposal_count: int) -> PlanSummary:
@@ -50,8 +65,8 @@ def generate_plan(db: LibrarySession, payload: PlanGenerateRequest | None = None
     Manual and scan-triggered generation share the same durable boundary:
     confirmed bundles stay settled regardless of collection membership, while
     still-unbundled files and new additions remain eligible."""
-    plan = plan_store.generate_plan(db, stem_modes=payload.stem_modes if payload else None)
-    return PlanRead.model_validate(plan)
+    plan = plan_store.generate_plan(db, stem_levels=payload.stem_levels if payload else None)
+    return _plan_read(plan)
 
 
 @router.get("/plans", response_model=list[PlanSummary])
@@ -71,7 +86,7 @@ def list_plans(db: LibrarySession) -> list[PlanSummary]:
 @router.get("/plans/{plan_id}", response_model=PlanRead)
 def get_plan(plan_id: str, db: LibrarySession) -> PlanRead:
     plan = plan_store.get_plan(db, plan_id)  # 404 if unknown
-    return PlanRead.model_validate(plan)
+    return _plan_read(plan)
 
 
 # Persist an inline bundle/collection title edit before grouping apply
@@ -141,17 +156,18 @@ def reparent_proposal(
     db.commit()
     db.expire_all()
     plan = plan_store.get_plan(db, plan_id)
-    return PlanRead.model_validate(plan)
+    return _plan_read(plan)
 
 
-# Adjust one directory's stem sensitivity without rebuilding the plan
-@router.put("/plans/{plan_id}/stem-modes", response_model=PlanRead)
-def set_stem_mode(plan_id: str, payload: StemModeUpdate, db: LibrarySession) -> PlanRead:
-    """Set one directory's stem sensitivity and re-suggest that directory in
-    place. Every proposal outside the directory — and therefore every owner
+# Move one directory along the stem dial without rebuilding the plan
+@router.put("/plans/{plan_id}/stem-levels", response_model=PlanRead)
+def set_stem_level(plan_id: str, payload: StemLevelUpdate, db: LibrarySession) -> PlanRead:
+    """Set how much of each filename has to match in one directory, and
+    re-suggest that directory in place. The level is clamped to the folder's own
+    maximum. Every proposal outside the directory — and therefore every owner
     edit elsewhere — keeps its identity; `POST /plans` remains the full reset."""
-    plan = plan_store.set_directory_stem_mode(db, plan_id, payload.directory, payload.mode)
-    return PlanRead.model_validate(plan)
+    plan = plan_store.set_directory_stem_level(db, plan_id, payload.directory, payload.level)
+    return _plan_read(plan)
 
 
 # Override whether a suggestion is one bundle or a collection of bundles
@@ -171,7 +187,7 @@ def convert_proposal_kind(
     db.commit()
     db.expire_all()
     plan = plan_store.get_plan(db, plan_id)
-    return PlanRead.model_validate(plan)
+    return _plan_read(plan)
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)

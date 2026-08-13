@@ -155,7 +155,10 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("grouping_proposals", "target_collection_id", "VARCHAR(26)"),
     # ...and being *context* is its own fact, not inferred from having a target
     ("grouping_proposals", "is_collection_context", "BOOLEAN NOT NULL DEFAULT 0"),
-    # Per-directory heuristic overrides retained by each durable grouping snapshot
+    # Per-directory heuristic overrides retained by each durable grouping
+    # snapshot. Named for the three-value StemMode it first held; it now holds
+    # integer stem levels, and the model maps ``stem_level_overrides`` onto it
+    # rather than renaming a column no migration chain could rename.
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
     # Recent view "Date Opened" ordering. NULL in an existing library means
     # "never opened here", which is the truth — opens were not recorded before.

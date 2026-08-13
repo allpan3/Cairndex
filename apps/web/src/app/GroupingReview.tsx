@@ -13,9 +13,9 @@ import type {
   GroupingApplyResult,
   GroupingPlan,
   GroupingProposal,
-  GroupingStemMode,
-  GroupingStemModes,
+  GroupingStemLevels,
 } from '../api/client'
+import { GROUPING_DEFAULT_STEM_LEVEL } from '../api/client'
 import {
   useApplyGroupingPlan,
   useCollections,
@@ -27,7 +27,7 @@ import {
   useReparentGroupingProposal,
   useSetGroupingProposalDestination,
   useSetGroupingProposalKind,
-  useSetGroupingStemMode,
+  useSetGroupingStemLevel,
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
 import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
@@ -113,12 +113,34 @@ interface DestinationControls {
   set: (proposal: GroupingProposal, createNewBundle: boolean) => void
 }
 
-/** Coordinate per-directory stem sensitivity regeneration. */
+/** Coordinate per-directory stem-level regeneration.
+ *
+ * ``levels`` carries a level *and* a maximum per folder: the top of the dial is
+ * the level at which every filename in that folder is compared on its first
+ * segment alone, which depends on the folder's own names, so the server reports
+ * it. Folders absent from the map sit at the default.
+ */
 interface StemControls {
   canEdit: boolean
   pending: boolean
-  modes: GroupingStemModes
-  set: (directory: string, mode: GroupingStemMode) => void
+  levels: GroupingStemLevels
+  set: (directory: string, level: number) => void
+}
+
+/** Drop the reported maxima: generating a plan takes levels alone. */
+function stemLevelInput(levels: GroupingStemLevels): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(levels)
+      .filter(([, dial]) => dial.level !== GROUPING_DEFAULT_STEM_LEVEL)
+      .map(([directory, dial]) => [directory, dial.level]),
+  )
+}
+
+/** One folder's place on the stem dial, defaulted for a folder not yet reported. */
+function stemDial(levels: GroupingStemLevels, directory: string) {
+  const dial = levels[directory]
+  const level = dial?.level ?? GROUPING_DEFAULT_STEM_LEVEL
+  return { level, max: Math.max(dial?.max ?? GROUPING_DEFAULT_STEM_LEVEL, level) }
 }
 
 /** Coordinate the bundle-versus-collection override on one suggestion. */
@@ -564,8 +586,6 @@ function kindActionLabel(proposal: GroupingProposal): string {
     : 'Make this one bundle instead'
 }
 
-const STEM_MODES: GroupingStemMode[] = ['narrow', 'balanced', 'wide']
-
 /** Show a compact file count for either destination of an addition proposal */
 function additionFileCount(proposal: GroupingProposal): string {
   const count = proposal.files.length
@@ -831,44 +851,32 @@ function rowActions({
   // filesystem directory and must not be able to re-suggest one (the guard the
   // kind action already had, and these items did not).
   if (stemDirectory !== undefined && !proposal.is_collection_context) {
-    const current = stem.modes[stemDirectory] ?? 'balanced'
-    const index = STEM_MODES.indexOf(current)
+    const { level, max } = stemDial(stem.levels, stemDirectory)
     const folder = stemDirectory || 'the library root'
     const blocked = !stem.canEdit || stem.pending
-    // -1 means the server sent a mode this build does not know. Neither endpoint
-    // guard catches it, and the arithmetic then indexes off the ends: "Merge"
-    // resolved to `narrow` and split the folder instead.
-    if (index === -1) return actions
-    // The mode is named in each label. It used to be printed beside the old
-    // `>< <>` glyph pair and nowhere else, so moving those into the menu left the
-    // three-state value inferable only from which end happened to be greyed
-    // out — the owner could not tell narrow from balanced from wide, or find the
-    // control at all (owner-reported, 2026-08-13).
+    // The level is named in each label, and the dial's length with it. Both used
+    // to be a single greyed-out glyph, leaving the value inferable only from
+    // which end happened to be spent (owner-reported, 2026-08-13).
     actions.push({
       key: 'narrow',
-      label: `Split ${folder} into more bundles (now: ${current})`,
-      disabled: blocked || index === 0,
-      reason: index === 0 ? `${folder} is already split as far as it goes` : undefined,
-      onSelect: () => stem.set(stemDirectory, STEM_MODES[index - 1]!),
+      label: `Narrow ${folder} (stem ${level} of ${max})`,
+      disabled: blocked || level <= 0,
+      reason: level <= 0 ? `${folder} already matches complete filenames` : undefined,
+      onSelect: () => stem.set(stemDirectory, level - 1),
     })
     actions.push({
       key: 'widen',
-      label: `Merge ${folder} into fewer bundles (now: ${current})`,
-      disabled: blocked || index === STEM_MODES.length - 1,
-      reason:
-        index === STEM_MODES.length - 1
-          ? `${folder} is already merged as far as it goes`
-          : undefined,
-      onSelect: () => stem.set(stemDirectory, STEM_MODES[index + 1]!),
+      label: `Widen ${folder} (stem ${level} of ${max})`,
+      disabled: blocked || level >= max,
+      reason: level >= max ? `${folder} is already matched as widely as it goes` : undefined,
+      onSelect: () => stem.set(stemDirectory, level + 1),
     })
-    // Balanced was a directly selectable state before; the pair alone could not
-    // return to it from either end.
-    if (current !== 'balanced') {
+    if (level !== GROUPING_DEFAULT_STEM_LEVEL) {
       actions.push({
-        key: 'balanced',
-        label: `Reset ${folder} to balanced matching`,
+        key: 'default',
+        label: `Reset ${folder} to the suggested stem`,
         disabled: blocked,
-        onSelect: () => stem.set(stemDirectory, 'balanced'),
+        onSelect: () => stem.set(stemDirectory, GROUPING_DEFAULT_STEM_LEVEL),
       })
     }
   }
@@ -1460,7 +1468,7 @@ export function GroupingReview({
   const reparentProposal = useReparentGroupingProposal(planId)
   const destination = useSetGroupingProposalDestination(planId)
   const proposalKindMutation = useSetGroupingProposalKind(planId)
-  const stemModeMutation = useSetGroupingStemMode(planId)
+  const stemLevelMutation = useSetGroupingStemLevel(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -1564,8 +1572,10 @@ export function GroupingReview({
     setNotice(message)
   }
 
+  // Carry the owner's per-folder levels into the fresh plan; the response's dial
+  // map reports a maximum too, which POST does not take.
   const onGenerate = () =>
-    generate.mutate(plan.data?.stem_modes ?? {}, {
+    generate.mutate(stemLevelInput(plan.data?.stem_levels ?? {}), {
       onSuccess: (p) => {
         finishGeneration(p, 'Suggestions generated from the current library state.')
       },
@@ -1573,12 +1583,16 @@ export function GroupingReview({
 
   // In-place: only the adjusted directory's rows are replaced, so every other
   // suggestion — and every owner edit and checkbox on it — survives untouched.
-  const setStemMode = (directory: string, mode: GroupingStemMode) =>
-    stemModeMutation.mutate(
-      { directory, mode },
+  const setStemLevel = (directory: string, level: number) =>
+    stemLevelMutation.mutate(
+      { directory, level },
       {
-        onSuccess: () =>
-          setNotice(`${directory || 'Library root'} now uses ${mode} stem matching.`),
+        onSuccess: (updated) => {
+          const dial = stemDial(updated.stem_levels ?? {}, directory)
+          setNotice(
+            `${directory || 'Library root'} now matches at stem ${dial.level} of ${dial.max}.`,
+          )
+        },
       },
     )
 
@@ -1786,7 +1800,7 @@ export function GroupingReview({
     moveProposalFile.isPending ||
     reparentProposal.isPending ||
     proposalKindMutation.isPending ||
-    stemModeMutation.isPending ||
+    stemLevelMutation.isPending ||
     apply.isPending
   const actionBlocked = busy || editing !== null
   const error = (generate.error ??
@@ -1794,7 +1808,7 @@ export function GroupingReview({
     moveProposalFile.error ??
     reparentProposal.error ??
     proposalKindMutation.error ??
-    stemModeMutation.error ??
+    stemLevelMutation.error ??
     apply.error) as Error | null
   const selectedCount = selectedIds.size
   // Additions fold files into a bundle that already exists; new bundles are new
@@ -1861,8 +1875,8 @@ export function GroupingReview({
   const stemControls: StemControls = {
     canEdit: status === 'open' && editing === null,
     pending: busy,
-    modes: plan.data?.stem_modes ?? {},
-    set: setStemMode,
+    levels: plan.data?.stem_levels ?? {},
+    set: setStemLevel,
   }
   const kindControls: KindControls = {
     canEdit: status === 'open' && editing === null,

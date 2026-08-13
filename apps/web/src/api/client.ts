@@ -832,12 +832,28 @@ export type GroupingPlan = components['schemas']['PlanRead']
 export type GroupingProposal = components['schemas']['ProposalRead']
 export type GroupingPlanSummary = components['schemas']['PlanSummary']
 export type GroupingApplyResult = components['schemas']['ApplyResultRead']
-export type GroupingStemMode = components['schemas']['StemMode']
-export type GroupingStemModes = GroupingPlan['stem_modes']
+/** Each folder's position on the stem dial, and how far that folder's dial goes.
+ *
+ * Keyed by library-relative folder. The maximum is folder-specific — it is the
+ * level at which every filename there is compared on its first segment alone —
+ * so the server reports it rather than the client deriving it.
+ */
+export type GroupingStemLevels = NonNullable<GroupingPlan['stem_levels']>
+/** The levels to *generate* with: just the number, per folder. */
+export type GroupingStemLevelInput = Record<string, number>
+
+/** The level a folder groups at unless the owner moved its dial.
+ *
+ * Mirrors the server's `DEFAULT_STEM_LEVEL`. The server stays authoritative — it
+ * clamps every level to the folder's maximum and drops an override equal to the
+ * default — so this is only used to label the reset action and to default a
+ * folder the open plan has not reported a dial for yet.
+ */
+export const GROUPING_DEFAULT_STEM_LEVEL = 1
 
 /** Suggest a grouping for the active library and store it as the open plan. */
-export const generateGroupingPlan = (stemModes: GroupingStemModes = {}) =>
-  send<GroupingPlan>(`${lib()}/grouping/plans`, 'POST', { stem_modes: stemModes })
+export const generateGroupingPlan = (stemLevels: GroupingStemLevelInput = {}) =>
+  send<GroupingPlan>(`${lib()}/grouping/plans`, 'POST', { stem_levels: stemLevels })
 
 export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSummary[]> =>
   getJson<GroupingPlanSummary[]>(`${lib()}/grouping/plans`, signal)
@@ -893,18 +909,19 @@ export const reparentGroupingProposal = (
     target_collection_id: targetCollectionId,
   })
 
-/** Set one directory's stem sensitivity and re-suggest that directory in place.
+/** Move one directory along the stem dial and re-suggest that directory in place.
  *
  * Unlike generating a plan, this edits the open plan: every proposal outside the
  * directory keeps its identity (and with it every owner edit), so the response
- * is the same plan with only that directory's rows replaced.
+ * is the same plan with only that directory's rows replaced. The server clamps
+ * the level to that folder's own maximum.
  */
-export const setGroupingDirectoryStemMode = (
+export const setGroupingDirectoryStemLevel = (
   planId: string,
   directory: string,
-  mode: GroupingStemMode,
+  level: number,
 ): Promise<GroupingPlan> =>
-  send<GroupingPlan>(`${lib()}/grouping/plans/${planId}/stem-modes`, 'PUT', { directory, mode })
+  send<GroupingPlan>(`${lib()}/grouping/plans/${planId}/stem-levels`, 'PUT', { directory, level })
 
 /** Turn a bundle suggestion into a collection of bundles, or back into one bundle.
  *

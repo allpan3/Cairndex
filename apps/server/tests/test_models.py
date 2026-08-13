@@ -276,8 +276,11 @@ def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engi
     assert restored_target == target_id
 
 
-# Existing libraries gain durable per-directory grouping sensitivity on open
-def test_ensure_content_indexes_adds_grouping_plan_stem_modes(engine: Engine) -> None:
+# Existing libraries gain the durable per-directory stem levels on open. The
+# column name predates the continuous dial and is deliberately unchanged: the
+# model maps ``stem_level_overrides`` onto it, because nothing here can rename a
+# column (there is no migration chain).
+def test_ensure_content_indexes_adds_grouping_plan_stem_levels(engine: Engine) -> None:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE grouping_plans DROP COLUMN stem_modes"))
 

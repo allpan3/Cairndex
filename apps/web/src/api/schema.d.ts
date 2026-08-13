@@ -1794,7 +1794,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-modes": {
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-levels": {
         parameters: {
             query?: never;
             header?: never;
@@ -1803,12 +1803,13 @@ export interface paths {
         };
         get?: never;
         /**
-         * Set Stem Mode
-         * @description Set one directory's stem sensitivity and re-suggest that directory in
-         *     place. Every proposal outside the directory — and therefore every owner
+         * Set Stem Level
+         * @description Set how much of each filename has to match in one directory, and
+         *     re-suggest that directory in place. The level is clamped to the folder's own
+         *     maximum. Every proposal outside the directory — and therefore every owner
          *     edit elsewhere — keeps its identity; `POST /plans` remains the full reset.
          */
-        put: operations["set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put"];
+        put: operations["set_stem_level_api_v1_libraries__library_id__grouping_plans__plan_id__stem_levels_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3734,9 +3735,9 @@ export interface components {
         };
         /** PlanGenerateRequest */
         PlanGenerateRequest: {
-            /** Stem Modes */
-            stem_modes?: {
-                [key: string]: components["schemas"]["StemMode"];
+            /** Stem Levels */
+            stem_levels?: {
+                [key: string]: number;
             };
         };
         /** PlanRead */
@@ -3757,9 +3758,9 @@ export interface components {
             /** Scan Job Id */
             scan_job_id: string | null;
             status: components["schemas"]["GroupingPlanStatus"];
-            /** Stem Modes */
-            stem_modes: {
-                [key: string]: components["schemas"]["StemMode"];
+            /** Stem Levels */
+            stem_levels?: {
+                [key: string]: components["schemas"]["StemLevelRead"];
             };
         };
         /** PlanSummary */
@@ -4067,17 +4068,19 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
-        /**
-         * StemMode
-         * @description Sensitivity used by grouping-plan stem matching.
-         * @enum {string}
-         */
-        StemMode: "narrow" | "balanced" | "wide";
-        /** StemModeUpdate */
-        StemModeUpdate: {
+        /** StemLevelRead */
+        StemLevelRead: {
+            /** Level */
+            level: number;
+            /** Max */
+            max: number;
+        };
+        /** StemLevelUpdate */
+        StemLevelUpdate: {
             /** Directory */
             directory: string;
-            mode: components["schemas"]["StemMode"];
+            /** Level */
+            level: number;
         };
         /** SubtitleTrackRead */
         SubtitleTrackRead: {
@@ -8004,7 +8007,7 @@ export interface operations {
             };
         };
     };
-    set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put: {
+    set_stem_level_api_v1_libraries__library_id__grouping_plans__plan_id__stem_levels_put: {
         parameters: {
             query?: never;
             header?: {
@@ -8020,7 +8023,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["StemModeUpdate"];
+                "application/json": components["schemas"]["StemLevelUpdate"];
             };
         };
         responses: {
