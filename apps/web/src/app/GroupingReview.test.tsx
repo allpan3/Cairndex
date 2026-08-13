@@ -814,13 +814,14 @@ test('widens one folder in place, one rung at a time', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  fireEvent.click(await findRowActionAsync(/^Widen SRCV-005/))
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
 
   await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
   // Mid-dial, so it can be reached again — the point of a dial over three stops.
-  expect(findRowAction(/^Widen SRCV-005/)).toBeEnabled()
-  expect(findRowAction(/^Widen SRCV-005/)).toHaveTextContent('stem 2 of 4')
+  expect(dialButton('Widen', 'SRCV-005')).toBeEnabled()
+  expect(screen.getByText('stem 2 of 4')).toBeInTheDocument()
   // One directory's level, sent to the in-place endpoint — no plan regeneration.
   const put = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/stem-levels') && init?.method === 'PUT',
@@ -861,11 +862,11 @@ test('places a folder stem control on the deepest matching container row', async
 
   await screen.findByRole('button', { name: 'Rename collection suggestion Western' })
 
-  // The folder's stem actions belong to the deepest row that speaks for it, and
-  // to that row only.
-  const folderAction = /^Widen Western\/Nora Vance/
-  expect(queryRowAction(folderAction, 'collection suggestion Western')).toBeNull()
-  expect(findRowAction(folderAction, 'collection suggestion Nora Vance')).toBeInTheDocument()
+  // The folder's dial belongs to the deepest row that speaks for it, and to that
+  // row only.
+  const folder = 'Western/Nora Vance'
+  expect(queryDialButton('Widen', folder, 'collection suggestion Western')).toBeNull()
+  expect(dialButton('Widen', folder, 'collection suggestion Nora Vance')).toBeInTheDocument()
 })
 
 test('Escape cancels a bundle suggestion rename', async () => {
@@ -1273,6 +1274,29 @@ function queryRowAction(name: string | RegExp, subject?: string): HTMLElement | 
   return null
 }
 
+/** A folder's stem dial is *visible on the row*, not in its overflow menu.
+ *
+ * The dial is folder-scoped and a menu cannot show a value, so these are plain
+ * buttons plus a text level. Scoped to one row, because more than one row can
+ * carry a dial and a global query would silently pick the first.
+ */
+function rowOf(subject: string): HTMLElement {
+  const trigger = screen.getByRole('button', { name: `Actions for ${subject}` })
+  const row = trigger.closest('.grp-row')
+  if (!row) throw new Error(`no row around the actions trigger for ${subject}`)
+  return row as HTMLElement
+}
+
+function dialButton(action: 'Narrow' | 'Widen' | 'Reset', folder: string, subject?: string) {
+  const scope = subject ? within(rowOf(subject)) : screen
+  return scope.getByRole('button', { name: `${action} the filename match in ${folder}` })
+}
+
+function queryDialButton(action: 'Narrow' | 'Widen' | 'Reset', folder: string, subject?: string) {
+  const scope = subject ? within(rowOf(subject)) : screen
+  return scope.queryByRole('button', { name: `${action} the filename match in ${folder}` })
+}
+
 /** Await the rows, then find the action — for the first lookup in a test. */
 async function findRowActionAsync(name: string | RegExp, subject?: string): Promise<HTMLElement> {
   await screen.findAllByRole('button', { name: /^Actions for / })
@@ -1469,47 +1493,63 @@ test('a read-only existing-collection row offers no folder actions', async () =>
   renderReview()
 
   // Narrow/Widen regenerate plan rows for a directory this row does not name.
-  await expectNoRowAction(/^(Narrow|Widen) /, 'collection suggestion Library')
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  expect(
+    within(rowOf('collection suggestion Library')).queryByRole('button', {
+      name: /^(Narrow|Widen) the filename match/,
+    }),
+  ).toBeNull()
 })
 
-test('the folder actions state the level, the dial length, and a way back', async () => {
+test('the top of the dial states the level and explains why it stops', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': STEM_DIAL_MAX }))
   renderReview()
 
   // The value was inferable only from which end was greyed out, and the default
   // was unreachable from either end.
-  const widen = await findRowActionAsync(/^Widen SRCV-005/)
-  expect(widen).toHaveTextContent(`stem ${STEM_DIAL_MAX} of ${STEM_DIAL_MAX}`)
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  expect(screen.getByText(`stem ${STEM_DIAL_MAX} of ${STEM_DIAL_MAX}`)).toBeInTheDocument()
+  const widen = dialButton('Widen', 'SRCV-005')
   expect(widen).toBeDisabled()
-  expect(widen).toHaveAttribute('title', 'SRCV-005 is already matched as widely as it goes')
-  expect(findRowAction(/^Narrow SRCV-005/)).toBeEnabled()
-  expect(findRowAction('Reset SRCV-005 to the suggested stem')).toBeEnabled()
+  expect(widen).toHaveAttribute(
+    'title',
+    'SRCV-005 is already matched on the first part of each filename — there is nothing left to widen',
+  )
+  expect(dialButton('Narrow', 'SRCV-005')).toBeEnabled()
+  expect(dialButton('Reset', 'SRCV-005')).toBeEnabled()
 })
 
 test('the bottom of the dial explains itself and offers no further step', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': 0 }))
   renderReview()
 
-  const narrow = await findRowActionAsync(/^Narrow SRCV-005/)
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  const narrow = dialButton('Narrow', 'SRCV-005')
   expect(narrow).toBeDisabled()
-  expect(narrow).toHaveAttribute('title', 'SRCV-005 already matches complete filenames')
-  expect(findRowAction(/^Widen SRCV-005/)).toBeEnabled()
-  // At the default there is nothing to reset to, so the item is absent there —
-  // but level 0 is not the default.
-  expect(findRowAction('Reset SRCV-005 to the suggested stem')).toBeEnabled()
+  expect(narrow).toHaveAttribute(
+    'title',
+    'SRCV-005 already matches complete filenames — there is nothing more to match',
+  )
+  expect(dialButton('Widen', 'SRCV-005')).toBeEnabled()
 })
 
-test('a folder with a one-segment dial offers Widen as spent rather than hiding it', async () => {
-  // `max` is per folder: a folder whose names are a single segment has nothing to
-  // widen, and saying so beats an action that would silently change nothing.
-  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}))
+test('each button says what it does to the stem, and to the bundles', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
   renderReview()
 
-  const widen = await findRowActionAsync(/^Widen SRCV-005/)
-  expect(widen).toHaveTextContent('stem 1 of 4')
-  expect(widen).toBeEnabled()
-  expect(findRowAction(/^Narrow SRCV-005/)).toBeEnabled()
-  expect(queryRowAction('Reset SRCV-005 to the suggested stem')).toBeNull()
+  // The tooltip is the whole explanation of a control whose two words could
+  // otherwise mean anything (owner-reported, 2026-08-13).
+  await screen.findAllByRole('button', { name: /^Actions for / })
+  expect(dialButton('Narrow', 'SRCV-005')).toHaveAttribute(
+    'title',
+    'Match more of each filename in SRCV-005, creating more, smaller bundles',
+  )
+  expect(dialButton('Widen', 'SRCV-005')).toHaveAttribute(
+    'title',
+    'Match a shorter part of each filename in SRCV-005, creating fewer, larger bundles',
+  )
+  // Nothing to go back to at the default, so no Reset.
+  expect(queryDialButton('Reset', 'SRCV-005')).toBeNull()
 })
 
 test('an expanded run can be folded back', async () => {
@@ -1826,7 +1866,7 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   expect(second).not.toBeChecked()
   await screen.findByText('1 bundle selected')
 
-  fireEvent.click(await findRowActionAsync(/^Widen SRCV-005/))
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
   await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
 
   // The adjusted directory's row returns as a fresh (checked) suggestion; the
@@ -1853,7 +1893,7 @@ test('a conversion elsewhere survives Widen', async () => {
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
 
-  fireEvent.click(findRowAction(/^Widen SRCV-005/))
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
   await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
 
   // Still a collection, child row intact, and the way back still offered.

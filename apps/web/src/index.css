@@ -2880,6 +2880,11 @@ code {
   border-radius: 5px;
   padding: 2px 4px;
 }
+/* The rows below a folder header are its contents. Faint on purpose: it has to
+   read as a heading over them without becoming the loudest thing on screen. */
+.grp-row--folder {
+  background: rgba(255, 255, 255, 0.035);
+}
 .grp-row--draggable {
   cursor: grab;
 }
@@ -3044,6 +3049,43 @@ code {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
   border-radius: 5px;
+}
+
+/* A folder's stem dial, on the row that speaks for that folder. Pinned to the
+   right edge beside the row menu so the folder-scoped controls form one column,
+   and quiet rather than hidden: it was in an overflow menu and the owner could
+   not find it, so hover-to-reveal is not an option here. */
+.grp-dial {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  align-self: center;
+}
+.grp-dial__level {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: help;
+}
+.grp-dial .btn {
+  font-size: 10px;
+  padding: 0 6px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+.grp-row:hover .grp-dial .btn:not(:disabled),
+.grp-dial .btn:hover:not(:disabled),
+.grp-dial .btn:focus-visible {
+  color: var(--text-strong);
+  border-color: var(--border-strong, var(--border));
+}
+/* One right-edge cluster: whichever of these comes first has already taken the
+   free space, so a second `margin-left: auto` would split them apart. */
+.grp-dial ~ .grp-actions,
+.grp-rollup__expand ~ .grp-dial {
+  margin-left: 0;
 }
 
 /* One trigger at a fixed right edge, so the eye can run down the column. The

@@ -530,17 +530,19 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
-  // The folder's stem actions moved into the row's named overflow menu.
-  await page.getByRole('button', { name: 'Actions for bundle suggestion Already bundled' }).click()
-  await expect(page.getByRole('menuitem', { name: /^Widen Settled/ })).toBeVisible()
-  await page.keyboard.press('Escape')
+  // The folder's dial is visible on the row that speaks for the folder, rather
+  // than hidden in its overflow menu.
+  await expect(
+    page.getByRole('button', { name: 'Widen the filename match in Settled' }),
+  ).toBeVisible()
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
 
   await expect(page.getByText('Still unbundled')).toBeVisible()
-  // The folder's stem actions moved into the row's named overflow menu.
-  await page.getByRole('button', { name: 'Actions for bundle suggestion Still unbundled' }).click()
-  await expect(page.getByRole('menuitem', { name: /^Widen Fresh/ })).toBeVisible()
-  await page.keyboard.press('Escape')
+  // The folder's dial is visible on the row that speaks for the folder, rather
+  // than hidden in its overflow menu.
+  await expect(
+    page.getByRole('button', { name: 'Widen the filename match in Fresh' }),
+  ).toBeVisible()
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
   ).toHaveCount(0)
