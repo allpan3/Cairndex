@@ -658,8 +658,42 @@ just web-remote nas.local:8000     # Vite on :5173, /api proxied to the NAS
 
 The dev server proxies, so the browser still sees one origin and needs no CORS.
 The UI under test is the one in your working tree; only the server and the files
-are elsewhere. The desktop shell can do the same through the server URL on its
-first-run screen.
+are elsewhere.
+
+### The desktop app is already built for this
+
+Connecting to a server it does not host is a first-class case for the shell, not a
+workaround, and it needs nothing added:
+
+- **Connections take any server URL**, validated in Rust
+  (`server_url::normalize_server_url`) — including a reverse-proxy path such as
+  `https://nas.example/cairndex`.
+- **A packaged build needs no CORS configuration.** `PACKAGED_DESKTOP_ORIGINS`
+  (`tauri://localhost`, `http(s)://tauri.localhost`) is trusted by every server.
+- **Auth is device pairing**, scoped per library (ADR-0015). A remote connection
+  carries a paired device token; the sidecar's whole-server token is never used
+  for one.
+- **Media is relayed**, so WKWebView gets range requests and a same-origin URL
+  from a remote library just as from a local one (`media_proxy.rs`). The relay
+  derives its scoping flag in Rust rather than accepting it from the webview,
+  precisely so a remote server cannot be handed the sidecar's server-wide token.
+- **The bundled sidecar only starts when asked** (`start_local_server`). Point the
+  app at the NAS and it never runs, so this machine never opens the library.
+
+So the shell is the better client for this arrangement than the browser: add a
+connection for the NAS, pair the device, and there is no proxy in the loop at all.
+
+One caveat, and it only affects development. `just desktop` runs the webview
+against Vite, whose origin is `http://127.0.0.1:5173` — a *development* origin,
+which servers deliberately do not trust by default. To point `tauri dev` at the
+NAS, that server needs it allowed explicitly:
+
+```bash
+CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173
+```
+
+`just server-desktop` does the same thing for a local server. A packaged build
+(`just release`, or the bundled app) needs none of it.
 
 Two things to get right on the server side:
 
