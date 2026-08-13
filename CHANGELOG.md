@@ -70,6 +70,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Suggesting a grouping no longer writes the plan one row at a time.** The plan
+  was persisted with a flush inside its loop, purely to learn the id it was about
+  to need for that row's files — but ids are ULIDs from a plain Python callable,
+  so they are known before the insert. And because each row's files were linked by
+  foreign key rather than through the relationship, serializing the response then
+  fetched every row's files back in its own query. Between them that was 10,400
+  SQL statements for a 3,600-suggestion plan; it is now four batched inserts and a
+  handful of reads, and the plan appears in 1.6s instead of 4.2s. The same
+  per-row flush is gone from the bundle↔collection conversion and the
+  Narrow/Widen splice.
 - **Editing a large grouping plan is no longer measured in seconds.** On a
   library of ~20,000 files a conversion took over ten seconds. Two independent
   causes. On the client, folding a collection or closing a file list *hid* the
