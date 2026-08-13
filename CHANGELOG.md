@@ -70,6 +70,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **`just web-remote <host>` points the dev frontend at a server elsewhere.** A
+  library's database lives inside the library, so opening one from a network share
+  runs every query over the network — measured at 35.9 ms against 0.021 ms for the
+  same database on local disk. The answer is to run the server where the files are
+  and develop against it; `docs/development.md` has the workflow and the two
+  things to get right on the server side.
 - **Accepting a selection keeps the review open on what is left.** Reviewing a long
   plan happens in batches, and every accept used to end the dialog, so carrying on
   meant reopening it. Accepting now confirms the chosen bundles and immediately

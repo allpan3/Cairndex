@@ -179,10 +179,16 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
-- Keeping `library.db` inside the library package is ADR-0008's deliberate choice
-  so the database travels with the library. On SMB that choice costs 36 ms a
-  query. Running the server *on* the NAS (the existing Docker path) is the real
-  answer; that is an architecture conversation, not a patch.
+- ~~Keeping `library.db` inside the library package costs 36 ms a query on SMB~~ —
+  **settled, and it is an operating change rather than a code one.** The owner's
+  choice: keep developing natively against a *local* library, and let the NAS's
+  own container serve the real one. `just web-remote <host>` runs the dev frontend
+  against a server elsewhere, so the UI under test is still the working tree's
+  while the server sits with the files. `docs/development.md` carries the
+  measurement, the two server-side prerequisites (`CAIRNDEX_BIND_ADDR`, private
+  network only — there is no auth yet), and the warning not to register the network
+  library on the development machine as well: that reintroduces the latency and
+  makes two machines contend for one ownership lease (ADR-0018).
 
 ## Completed on branch: making a large plan usable (2026-08-13)
 

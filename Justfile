@@ -32,6 +32,18 @@ server-desktop:
 web:
     cd {{web_dir}} && npm run dev
 
+# A library's database lives inside the library (ADR-0008), so opening a
+# NAS-hosted library from this Mac sends every query over SMB — measured at
+# 35.9 ms against 0.021 ms for the same database on local disk. Serving it from
+# the machine that holds the files removes that; this points the dev frontend at
+# that server, so the UI under test is still the one in your working tree.
+# Needs the server reachable (`CAIRNDEX_BIND_ADDR` in its `.env`) and, since there
+# is no authentication yet, a private network only.
+#
+# Frontend on :5173 against a server elsewhere: `just web-remote nas.local:8000`.
+web-remote host:
+    cd {{web_dir}} && VITE_API_PROXY_TARGET="http://{{host}}" npm run dev
+
 # Backend + frontend together; Ctrl-C stops both.
 dev:
     #!/usr/bin/env bash
