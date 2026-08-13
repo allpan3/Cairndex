@@ -3068,63 +3068,27 @@ code {
 .grp-actions__menu {
   display: flex;
   flex-direction: column;
+  /* `.picker__panel` sets a fixed 340px, which made min/max-width inert and the
+     menu always 340px regardless of its labels. */
+  width: auto;
   min-width: 220px;
-  max-width: 360px;
+  max-width: min(360px, 92vw);
   padding: 4px;
 }
-.grp-actions__item {
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  padding: 5px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.grp-actions__item:hover:not(:disabled),
+/* Metrics and hover come from `.context-menu__item`, which the row menu now
+   shares — three near-identical copies of this block had drifted to different
+   font sizes and hover colours, so menu rows here did not match menu rows
+   anywhere else in the app. */
 .grp-actions__item:focus-visible {
-  background: var(--surface-2);
-  color: var(--text-strong);
-}
-.grp-actions__item:disabled {
-  opacity: 0.45;
-  cursor: default;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
-.grp-filter {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.grp-filter__tab {
-  border: 0;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 12px;
-  padding: 3px 9px;
-  cursor: pointer;
-}
-.grp-filter__tab:last-child {
-  border-right: 0;
-}
-.grp-filter__tab--on {
-  background: var(--accent-soft);
-  color: var(--text-strong);
-}
-.grp-filter__tab:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 .grp-filter__count {
   margin-left: 5px;
   color: var(--text-muted);
 }
-.grp-filter__tab--on .grp-filter__count {
+.seg button.is-active .grp-filter__count {
   color: var(--accent);
 }
 .grp-placement {
@@ -3216,74 +3180,6 @@ code {
 .grp-placement-row > .pick-row__toggle .chevron {
   width: 8px;
   height: 12px;
-}
-.grp-stem {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  gap: 2px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border);
-}
-/* Anchor for a portalled tooltip: hugs the button so the wrapper adds no
-   layout, and carries the hover handlers so a *disabled* button still explains
-   itself (a disabled button fires no mouse events of its own). */
-.grp-tip-anchor {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-}
-/* Fixed and portalled to <body>, so the dialog's scrolling body cannot clip it. */
-.grp-tip {
-  position: fixed;
-  z-index: 200;
-  max-width: min(360px, calc(100vw - 24px));
-  padding: 4px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-strong);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.4;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
-}
-.grp-destination {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-  width: 20px;
-  height: 18px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.grp-destination .icon {
-  width: 14px;
-  height: 14px;
-}
-.grp-destination:hover:not(:disabled),
-.grp-destination:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text-strong);
-}
-.grp-destination.tip::after {
-  width: max-content;
-  max-width: min(320px, calc(100vw - 32px));
-  white-space: normal;
-  text-align: left;
-  line-height: 1.35;
-}
-.grp-destination:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .grp-files {
   min-height: 25px;

@@ -40,6 +40,38 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   minute — stops there instead of at the next checkpoint behind it.
 
 ### Fixed
+- **A popover left open no longer desynchronises a checkbox from what will be
+  applied.** Dismissing a picker stopped the click reaching React but not the
+  browser, so on a controlled input the DOM toggled while application state did
+  not: a grouping row could untick itself while staying selected, and Accept
+  then confirmed a bundle the owner had watched themselves skip. The dismissing
+  click is now fully swallowed, and a keyboard-activated one closes the popover
+  instead of being ignored — before, any popover opened by keyboard swallowed
+  every subsequent click in its dialog until Escape.
+- **The grouping review's Cmd/Ctrl+Enter now applies only when Accept would.**
+  It reproduced none of the button's conditions, so it applied a plan
+  mid-rename, with nothing selected, on an already-applied plan, and again on
+  key auto-repeat while the first apply was still in flight.
+- **Folder actions no longer appear on a read-only existing-collection row**, and
+  a stem mode this build does not recognise now offers no folder actions at all
+  rather than a "Merge" that splits.
+- **Narrowing the review to uncertain suggestions no longer changes what a
+  collection checkbox does.** It displayed whole-subtree state while toggling
+  only the visible rows, so it oscillated between checked and mixed, never
+  reached unchecked, and silently moved hidden rows' selection. The filter also
+  falls back to the whole plan once nothing is flagged, instead of leaving a
+  blank list under a tab that was both pressed and disabled.
+- **A rolled-up run keeps its folder's actions, can be folded back, and is a
+  drop target during a file drag.** It previously hid the Split/Merge pair for
+  exactly the over-fragmented folder that needed them, could be expanded but
+  never re-collapsed, and rendered no rows at all mid-drag. Its expansion also
+  survives an in-place re-suggestion now, because runs are keyed by content
+  rather than by ids that regeneration reissues.
+- **The grouping review's row menu is operable by keyboard**, with focus moving
+  into it on open, arrows between items, and focus returning to the trigger on
+  close; arrow navigation no longer stops when focus lands on a row control; and
+  Collapse all is disabled on a plan with no collections rather than enabled and
+  inert.
 
 - **Nested grouping suggestions now apply to the intended collection path.**
   Collection rows are tri-state bulk selectors rather than accepted work, so an

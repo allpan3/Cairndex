@@ -1,7 +1,30 @@
+import { type KeyboardEvent, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 import { IconMore } from './icons'
 import { usePopover } from './usePopover'
+
+/** Move focus among the menu's items, per the WAI-ARIA menu pattern.
+ *
+ * `role="menu"` promises this; without it the menu was reachable only by
+ * tabbing past the whole dialog, because the panel is portalled to
+ * `document.body` and so sits after the modal in document order.
+ */
+function moveItemFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  const panel = event.currentTarget.closest('.grp-actions__menu')
+  const items = [...(panel?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])]
+  if (items.length === 0) return
+  const current = Math.max(0, items.indexOf(event.currentTarget))
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : Math.max(0, Math.min(items.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))
+  event.preventDefault()
+  items[next]?.focus()
+}
 
 /** One named thing this row can do. */
 export interface RowAction {
@@ -9,6 +32,8 @@ export interface RowAction {
   label: string
   onSelect: () => void
   disabled?: boolean
+  /** Why this is unavailable, shown when `disabled`. */
+  reason?: string
 }
 
 /**
@@ -28,11 +53,28 @@ export interface RowAction {
  */
 export function GroupingRowActions({ label, actions }: { label: string; actions: RowAction[] }) {
   const { ref, panelRef, open, setOpen, pos } = usePopover()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
+
+  // Focus the first item on open, and put focus back on the trigger when the
+  // menu closes — otherwise a keyboard user opened a menu they could not reach
+  // and, on Escape, was left with focus nowhere.
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true
+      panelRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    } else if (wasOpen.current) {
+      wasOpen.current = false
+      triggerRef.current?.focus()
+    }
+  }, [open, panelRef])
+
   if (actions.length === 0) return null
 
   return (
     <span className="grp-actions" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         className="grp-actions__trigger"
         aria-label={label}
@@ -57,7 +99,16 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
             ref={panelRef}
             role="menu"
             aria-label={label}
-            style={{ top: pos.top, bottom: pos.bottom, right: pos.right }}
+            // maxHeight matters: `.picker__panel` is `overflow-y: auto` and its
+            // own comment says the bound is set inline from usePopover. Every
+            // other consumer passes it; without it a menu opened near the
+            // viewport edge is neither clamped nor scrollable.
+            style={{
+              top: pos.top,
+              bottom: pos.bottom,
+              right: pos.right,
+              maxHeight: pos.maxHeight,
+            }}
             onMouseDown={(event) => event.stopPropagation()}
           >
             {actions.map((action) => (
@@ -67,6 +118,11 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
                 className="grp-actions__item"
                 role="menuitem"
                 disabled={action.disabled}
+                // Named, because a disabled item otherwise says only that it is
+                // unavailable — the wrapper the deleted tooltip used existed
+                // precisely so an endpoint could explain itself.
+                title={action.reason ?? action.label}
+                onKeyDown={moveItemFocus}
                 onClick={() => {
                   setOpen(false)
                   action.onSelect()

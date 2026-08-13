@@ -51,16 +51,6 @@ export const IconPlus = () => (
   </Svg>
 )
 
-/** Circular arrows for switching between two reversible choices */
-export const IconRefreshCw = () => (
-  <Svg>
-    <path d="M21 12a9 9 0 0 0-15.6-6.1L3 8" />
-    <path d="M3 3v5h5" />
-    <path d="M3 12a9 9 0 0 0 15.6 6.1L21 16" />
-    <path d="M16 16h5v5" />
-  </Svg>
-)
-
 export const IconGrid = () => (
   <Svg>
     <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -301,24 +291,6 @@ export const IconTrash = () => (
   </Svg>
 )
 
-/** Chevrons pointing inward (Lucide "chevrons-right-left") — Narrow stem
- * matching: use more of each filename, splitting a folder into more bundles. */
-export const IconChevronsIn = () => (
-  <Svg>
-    <path d="m20 17-5-5 5-5" />
-    <path d="m4 17 5-5-5-5" />
-  </Svg>
-)
-
-/** Chevrons pointing outward (Lucide "chevrons-left-right") — Widen stem
- * matching: use a broader prefix, merging a folder into fewer bundles. */
-export const IconChevronsOut = () => (
-  <Svg>
-    <path d="m9 7-5 5 5 5" />
-    <path d="m15 7 5 5-5 5" />
-  </Svg>
-)
-
 /** Stacked sheets (Lucide "layers") — an asset bundle: several files that belong
  * together. Deliberately not a film clapper: a bundle is whatever its files are
  * — photos, audio, documents — and the clapper read as a claim that it is a video
@@ -331,33 +303,11 @@ export const IconLayers = () => (
   </Svg>
 )
 
-/** One block splitting into two (Lucide "ungroup") — the grouping review's
- * "make this bundle a collection of bundles" action. */
 /** Three dots (Lucide "more-horizontal") — a row's named overflow actions. */
 export const IconMore = () => (
   <Svg>
     <circle cx="12" cy="12" r="1" />
     <circle cx="19" cy="12" r="1" />
     <circle cx="5" cy="12" r="1" />
-  </Svg>
-)
-
-export const IconUngroup = () => (
-  <Svg>
-    <rect width="8" height="6" x="5" y="4" rx="1" />
-    <rect width="8" height="6" x="11" y="14" rx="1" />
-  </Svg>
-)
-
-/** Two blocks gathered into one frame (Lucide "group") — the reverse action,
- * "make this collection one bundle". */
-export const IconGroup = () => (
-  <Svg>
-    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-    <rect width="7" height="5" x="7" y="7" rx="1" />
-    <rect width="7" height="5" x="10" y="12" rx="1" />
   </Svg>
 )

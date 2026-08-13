@@ -118,6 +118,62 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: grouping review triage (2026-08-10)
+
+Branch `feat/grouping-review-triage` off `main` at `6523fec8`. **Not merged, no PR.**
+
+Nine of the ten UX items from the review of the Suggest-grouping dialog:
+uncertainty surfaced and filterable, file lists closed with a contents summary,
+compact placement on nested rows, row edits collected into one named menu at a
+fixed right edge, runs of identical siblings rolled up, keyboard navigation,
+folded intro, fixed dialog height, reserved status line, and an Accept button
+that names what it will do and what it will skip. The tenth — a two-pane
+destination/source layout — is deliberately not attempted here.
+
+A max-effort review of the branch (10 finder angles) found 15 defects, **all
+fixed** in the follow-up commit, each with a regression test that fails against
+the unfixed code. The two that mattered most:
+
+- `usePopover`'s outside-click handler stopped propagation without preventing
+  the default, so with any popover open a click on a *controlled* checkbox
+  unticked the DOM while React state kept the row selected — the visible ticks
+  and "N bundles selected" disagreed, and Accept confirmed a bundle the owner
+  had watched themselves skip. Shared hook; the fix reaches every picker.
+- The Cmd/Ctrl+Enter accelerator reproduced none of the Accept button's guards,
+  so it applied the plan mid-rename, with nothing selected, and on an
+  already-applied plan.
+
+Also fixed: stem actions leaking back onto read-only existing-collection rows
+(the regression the previous branch closed); an unrecognised stem mode making
+"Merge" split instead; a filtered collection checkbox that could never reach
+unchecked; a rolled-up run hiding its folder's actions and being unreachable as
+a drop target; the filter stranding a blank list; a run that could be expanded
+but never folded back; rollup/file state keyed by ids that in-place regeneration
+reissues; arrow navigation dying on any row control; Collapse all enabled but
+inert on a flat plan; and a test assertion that passed against an empty DOM.
+
+Cleanup in the same pass: the row menu now shares `.context-menu__item` and the
+filter shares `.seg` rather than being third and second copies; ~60 lines of CSS
+and five icon components orphaned by the branch are deleted; the two sibling
+render sites are one `ProposalRows` component; and `ProposalNode`'s ten
+forwarded props are one `SharedNodeProps` object.
+
+Known gaps, deliberately not addressed: the proposal tree is still not
+virtualized and folding hides rather than unmounts, so a multi-thousand-row plan
+is slow regardless of these changes; `LOW_CONFIDENCE = 0.75` still duplicates
+the server's `_bundle_reason` policy client-side with no test binding the two,
+and the reviewers' recommendation is a server-side `needs_review` flag on
+`ProposalRead`; `shapeKey` still compares the human-readable `reason` string;
+and `GroupingReview.tsx` remains large enough that its pure plan logic wants a
+sibling module.
+
+Tests run: backend 972; frontend 591 across 79 files; Playwright 111/112 with
+the one pre-existing `player.spec.ts` HLS failure that reproduces on `main`;
+lint, format, typecheck and build clean on both stacks.
+
+Next recommended task: owner testing of the dialog against a real library,
+then either the two-pane layout or the server-side `needs_review` field.
+
 ## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
 Branch `codex/fix-grouping-selection-placement` off `main` at `7acc7bc`, open as

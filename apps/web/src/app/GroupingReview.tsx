@@ -1,4 +1,12 @@
-import { type DragEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type DragEvent,
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import type {
   CollectionRead,
@@ -282,11 +290,28 @@ function shapeKey(node: TreeNode): string | null {
 /** One rendered entry: a single row, or a run of same-shape siblings. */
 type SiblingRun = { key: string; nodes: TreeNode[]; shape: string | null }
 
-/** Collapse each run of consecutive same-shape siblings into one entry. */
-function groupSiblings(nodes: TreeNode[]): SiblingRun[] {
+/** A run's identity, derived from its members rather than their ids.
+ *
+ * Narrow/Widen and kind conversion edit the open plan in place and reissue ids
+ * for the affected rows, so keying a run by its first node's id lost the
+ * owner's expansion on exactly the edits most likely to follow it — and a run
+ * that split in two came back collapsed under the pointer. `proposalKey` is the
+ * same content key selection already uses for the same reason.
+ */
+function runKey(nodes: TreeNode[]): string {
+  return `r:${nodes.map((node) => proposalKey(node.proposal)).join('~')}`
+}
+
+/** Collapse each run of consecutive same-shape siblings into one entry.
+ *
+ * ``rollUp`` is false while a file is being dragged: a collapsed run renders no
+ * rows at all, so its bundles were unreachable as drop targets — and a run of
+ * near-identical bundles is exactly where a stray file most plausibly belongs.
+ */
+function groupSiblings(nodes: TreeNode[], rollUp = true): SiblingRun[] {
   const runs: SiblingRun[] = []
   for (const node of nodes) {
-    const shape = shapeKey(node)
+    const shape = rollUp ? shapeKey(node) : null
     const last = runs[runs.length - 1]
     if (shape !== null && last && last.shape === shape) {
       last.nodes.push(node)
@@ -295,7 +320,9 @@ function groupSiblings(nodes: TreeNode[]): SiblingRun[] {
     runs.push({ key: node.proposal.id, nodes: [node], shape })
   }
   return runs.map((run) =>
-    run.shape !== null && run.nodes.length >= ROLLUP_THRESHOLD ? run : { ...run, shape: null },
+    run.shape !== null && run.nodes.length >= ROLLUP_THRESHOLD
+      ? { ...run, key: runKey(run.nodes) }
+      : { ...run, shape: null },
   )
 }
 
@@ -827,11 +854,18 @@ function rowActions({
       onSelect: () => kind.set(proposal),
     })
   }
-  if (stemDirectory !== undefined) {
+  // A context node describes a destination that already exists; it owns no
+  // filesystem directory and must not be able to re-suggest one (the guard the
+  // kind action already had, and these items did not).
+  if (stemDirectory !== undefined && !proposal.is_collection_context) {
     const current = stem.modes[stemDirectory] ?? 'balanced'
     const index = STEM_MODES.indexOf(current)
     const folder = stemDirectory || 'the library root'
     const blocked = !stem.canEdit || stem.pending
+    // -1 means the server sent a mode this build does not know. Neither endpoint
+    // guard catches it, and the arithmetic then indexes off the ends: "Merge"
+    // resolved to `narrow` and split the folder instead.
+    if (index === -1) return actions
     actions.push({
       key: 'narrow',
       label: `Split ${folder} into more bundles`,
@@ -859,11 +893,16 @@ function RollupRow({
   selection,
   onToggle,
   fold,
+  actions,
 }: {
   run: SiblingRun
   selection: Map<string, NodeSelection>
   onToggle: (nodes: TreeNode[], checked: boolean) => void
   fold: FoldControls
+  /** The folder-scoped edits of whichever member speaks for its directory.
+   *  Rolling a run up used to remove them, and a folder of identically shaped
+   *  clips is the canonical "this was over-fragmented, merge it" case. */
+  actions: RowAction[]
 }) {
   const totals = run.nodes.reduce(
     (sum, node) => {
@@ -905,8 +944,32 @@ function RollupRow({
           >
             Show all {count}
           </button>
+          <GroupingRowActions
+            label={`Actions for the ${count} suggestions from ${span}`}
+            actions={actions}
+          />
         </span>
       </div>
+    </li>
+  )
+}
+
+/** Offer the way back out of an expanded run.
+ *
+ * `setRollup` took a boolean from the start but only ever received `true`, so
+ * inspecting one row in a run re-inflated the list permanently — the only reset
+ * was regenerating the plan, which discards every edit.
+ */
+function RollupFoldBack({ run, fold }: { run: SiblingRun; fold: FoldControls }) {
+  return (
+    <li className="grp-node grp-rollup-back">
+      <button
+        type="button"
+        className="btn btn--compact"
+        onClick={() => fold.setRollup(run.key, false)}
+      >
+        Fold {run.nodes.length} back into one row
+      </button>
     </li>
   )
 }
@@ -918,21 +981,45 @@ function RollupRow({
  * controls rather than duplicating their logic, so a key press and a click take
  * exactly the same path.
  *
- * Only fires when the row container itself has focus. A press inside the rename
- * box, the placement search, or a button belongs to that control — hijacking
- * Space there would break typing.
+ * Arrows and Home/End act from anywhere inside a row, so navigation survives
+ * clicking a checkbox. Space is row-only, so a focused control keeps its own
+ * activation key, and any text-entry field is left entirely alone.
  */
-function handleTreeKey(event: React.KeyboardEvent<HTMLUListElement>, onAccept: () => void) {
-  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-    event.preventDefault()
-    onAccept()
-    return
-  }
+function handleTreeKey(
+  event: React.KeyboardEvent<HTMLUListElement>,
+  accept: { run: () => void; enabled: boolean },
+) {
   const tree = event.currentTarget
   const target = event.target as HTMLElement
   const onTree = target === tree
   const row = target.closest<HTMLElement>('.grp-row')
-  if (!onTree && (!row || target !== row)) return
+  // Typing beats every shortcut here. The rename box and the placement search
+  // are inside this subtree, and the portalled panels are React children of a
+  // row, so their key events bubble through too.
+  // Text entry only. A checkbox is an `<input>` too, and treating it as typing
+  // stranded arrow navigation on exactly the control the owner had just clicked.
+  const TEXT_INPUTS = ['text', 'search', 'email', 'password', 'number', 'url', 'tel']
+  const typing =
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable ||
+    (target instanceof HTMLInputElement && TEXT_INPUTS.includes(target.type))
+  if (typing) return
+
+  // Guarded exactly like the footer button. Without this it applied the plan
+  // with nothing selected, mid-rename, on an already-applied plan, and again on
+  // key auto-repeat while the first apply was still in flight.
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    if (!accept.enabled) return
+    event.preventDefault()
+    accept.run()
+    return
+  }
+  // Arrow and Home/End move the focus ring, so they act from anywhere inside a
+  // row — landing on a checkbox used to strand navigation until the owner found
+  // bare row whitespace to click. Space stays row-only, so a focused control
+  // keeps its own activation key.
+  const rowScoped = event.key === ' '
+  if (!onTree && (!row || (rowScoped && target !== row))) return
 
   // Folded rows live under a `hidden` list, which is the check that holds in
   // both a browser and jsdom — `offsetParent` is always null in the latter.
@@ -958,6 +1045,17 @@ function handleTreeKey(event: React.KeyboardEvent<HTMLUListElement>, onAccept: (
     case 'ArrowRight':
     case 'ArrowLeft': {
       if (!row) return
+      // A rollup has no disclosure — its affordance is "Show all N", which was
+      // otherwise reachable only by Tab, i.e. the one row type the arrow model
+      // could not open was the one whose whole purpose is hiding rows.
+      const expand = row.querySelector<HTMLButtonElement>('.grp-rollup__expand')
+      if (expand) {
+        if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          expand.click()
+        }
+        return
+      }
       const disclosure = row.querySelector<HTMLButtonElement>('.grp-disclosure')
       const expanded = disclosure?.getAttribute('aria-expanded') === 'true'
       if (disclosure && expanded !== (event.key === 'ArrowRight')) {
@@ -967,16 +1065,91 @@ function handleTreeKey(event: React.KeyboardEvent<HTMLUListElement>, onAccept: (
       return
     }
     case ' ': {
+      // Swallowed either way: falling through scrolled the fixed-height body
+      // and moved the row out from under the pointer.
+      event.preventDefault()
       const checkbox = row?.querySelector<HTMLInputElement>('.grp-check')
-      if (checkbox && !checkbox.disabled) {
-        event.preventDefault()
-        checkbox.click()
-      }
+      if (checkbox && !checkbox.disabled) checkbox.click()
       return
     }
     default:
       return
   }
+}
+
+/** Render one sibling list: rolled-up runs plus individual rows.
+ *
+ * Extracted because the nested and root call sites were 28 near-identical lines
+ * that had already drifted — one read `fold.rollupsOpen`, the other reached past
+ * it to the raw state hook.
+ */
+function ProposalRows({
+  nodes,
+  parent,
+  shared,
+}: {
+  nodes: TreeNode[]
+  parent?: GroupingProposal
+  shared: Omit<Parameters<typeof ProposalNode>[0], 'node' | 'parent'>
+}) {
+  const { fold, selection, onToggle, stem, stemOwners, destination, kind } = shared
+  return (
+    <>
+      {groupSiblings(nodes, !fold.forceFiles).map((run) => {
+        if (run.shape === null || fold.rollupsOpen.has(run.key)) {
+          const rows = run.nodes.map((node) => (
+            <ProposalNode key={node.proposal.id} node={node} parent={parent} {...shared} />
+          ))
+          return run.shape === null ? (
+            rows
+          ) : (
+            <Fragment key={run.key}>
+              {rows}
+              <RollupFoldBack run={run} fold={fold} />
+            </Fragment>
+          )
+        }
+        // The folder's own edits belong to whichever member speaks for it.
+        const owner = run.nodes.find((node) => stemOwners.has(node.proposal.id))
+        return (
+          <RollupRow
+            key={run.key}
+            run={run}
+            selection={selection}
+            onToggle={onToggle}
+            fold={fold}
+            actions={
+              owner
+                ? rowActions({
+                    proposal: owner.proposal,
+                    parent,
+                    hasItems: true,
+                    destination,
+                    kind,
+                    stem,
+                    stemDirectory: stemOwners.get(owner.proposal.id),
+                  }).filter((action) => action.key === 'narrow' || action.key === 'widen')
+                : []
+            }
+          />
+        )
+      })}
+    </>
+  )
+}
+
+/** Everything a row needs that is the same for every row in the tree. */
+interface SharedNodeProps {
+  selection: Map<string, NodeSelection>
+  onToggle: (nodes: TreeNode[], checked: boolean) => void
+  rename: RenameControls
+  drag: DragControls
+  placement: PlacementControls
+  destination: DestinationControls
+  stem: StemControls
+  stemOwners: Map<string, string>
+  kind: KindControls
+  fold: FoldControls
 }
 
 function ProposalNode({
@@ -994,20 +1167,24 @@ function ProposalNode({
   parent,
 }: {
   node: TreeNode
-  selection: Map<string, NodeSelection>
-  onToggle: (nodes: TreeNode[], checked: boolean) => void
-  rename: RenameControls
-  drag: DragControls
-  placement: PlacementControls
-  destination: DestinationControls
-  stem: StemControls
-  stemOwners: Map<string, string>
-  kind: KindControls
-  fold: FoldControls
   /** The enclosing suggestion, which decides whether a single-subject bundle is
    * offered the collection override (see ``canBecomeCollection``). */
   parent?: GroupingProposal
-}) {
+} & SharedNodeProps) {
+  // Rebuilt once here so the recursive render below passes one object rather
+  // than re-listing ten props at two call sites that had already drifted apart.
+  const shared: SharedNodeProps = {
+    selection,
+    onToggle,
+    rename,
+    drag,
+    placement,
+    destination,
+    stem,
+    stemOwners,
+    kind,
+    fold,
+  }
   const { proposal, children } = node
   const selectionState = selection.get(proposal.id) ?? { total: 0, selected: 0 }
   const checked = selectionState.total > 0 && selectionState.selected === selectionState.total
@@ -1087,35 +1264,7 @@ function ProposalNode({
         </div>
         {children.length > 0 && (
           <ul className="grp-children" hidden={collapsed}>
-            {groupSiblings(children).map((run) =>
-              run.shape !== null && !fold.rollupsOpen.has(run.key) ? (
-                <RollupRow
-                  key={run.key}
-                  run={run}
-                  selection={selection}
-                  onToggle={onToggle}
-                  fold={fold}
-                />
-              ) : (
-                run.nodes.map((c) => (
-                  <ProposalNode
-                    key={c.proposal.id}
-                    node={c}
-                    selection={selection}
-                    onToggle={onToggle}
-                    rename={rename}
-                    drag={drag}
-                    placement={placement}
-                    destination={destination}
-                    stem={stem}
-                    stemOwners={stemOwners}
-                    kind={kind}
-                    fold={fold}
-                    parent={proposal}
-                  />
-                ))
-              ),
-            )}
+            {<ProposalRows nodes={children} parent={proposal} shared={shared} />}
           </ul>
         )}
       </li>
@@ -1354,9 +1503,14 @@ export function GroupingReview({
   )
   // Selection, folding and stem ownership all read the *unfiltered* tree, so
   // narrowing the view never changes what Accept would do.
+  // Falls back to the whole plan the moment nothing is flagged. Resolving the
+  // last uncertain row — by dragging its files away, converting it, or
+  // re-suggesting its folder — used to leave a blank panel under a filter tab
+  // that was simultaneously pressed and disabled, with no text explaining it.
+  const filterActive = onlyNeedsALook && attentionCount > 0
   const tree = useMemo(
-    () => (onlyNeedsALook ? filterTree(fullTree, needsALook) : fullTree),
-    [fullTree, onlyNeedsALook],
+    () => (filterActive ? filterTree(fullTree, needsALook) : fullTree),
+    [fullTree, filterActive],
   )
   const stemOwners = useMemo(() => stemControlOwners(fullTree), [fullTree])
   const bundleProposalIds = useMemo(() => collectBundleIds(fullTree), [fullTree])
@@ -1383,9 +1537,26 @@ export function GroupingReview({
     () => selectionByNode(fullTree, selectedIds),
     [fullTree, selectedIds],
   )
+  // A row rendered from the filtered tree carries only its *visible* children,
+  // while its checkbox shows whole-subtree state. Toggling the filtered clone
+  // therefore acted on fewer bundles than it displayed: the box oscillated
+  // checked <-> mixed, never reached unchecked, and each click silently moved a
+  // hidden row's selection. Every toggle resolves through the full tree.
+  const fullNodeById = useMemo(() => {
+    const byId = new Map<string, TreeNode>()
+    const visit = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        byId.set(node.proposal.id, node)
+        visit(node.children)
+      }
+    }
+    visit(fullTree)
+    return byId
+  }, [fullTree])
 
   const toggleNode = (nodes: TreeNode[], checked: boolean) => {
-    const keys = collectBundleIds(nodes).map((id) => keyById.get(id) ?? id)
+    const whole = nodes.map((node) => fullNodeById.get(node.proposal.id) ?? node)
+    const keys = collectBundleIds(whole).map((id) => keyById.get(id) ?? id)
     setDeselectedKeys((prev) => {
       const next = new Set(prev)
       for (const key of keys) {
@@ -1744,6 +1915,18 @@ export function GroupingReview({
         return next
       }),
   }
+  const sharedNodeProps: SharedNodeProps = {
+    selection: nodeSelection,
+    onToggle: toggleNode,
+    rename: renameControls,
+    drag: dragControls,
+    placement: placementControls,
+    destination: destinationControls,
+    stem: stemControls,
+    stemOwners,
+    kind: kindControls,
+    fold: foldControls,
+  }
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -1807,19 +1990,19 @@ export function GroupingReview({
                       turns "read every row" into "read the few it is unsure
                       about". Filtering is view-only — selection and Accept still
                       read the whole plan. */}
-                  <span className="grp-filter" role="group" aria-label="Filter suggestions">
+                  <span className="seg" role="group" aria-label="Filter suggestions">
                     <button
                       type="button"
-                      className={`grp-filter__tab${onlyNeedsALook ? '' : ' grp-filter__tab--on'}`}
-                      aria-pressed={!onlyNeedsALook}
+                      className={filterActive ? '' : 'is-active'}
+                      aria-pressed={!filterActive}
                       onClick={() => setOnlyNeedsALook(false)}
                     >
                       All
                     </button>
                     <button
                       type="button"
-                      className={`grp-filter__tab${onlyNeedsALook ? ' grp-filter__tab--on' : ''}`}
-                      aria-pressed={onlyNeedsALook}
+                      className={filterActive ? 'is-active' : ''}
+                      aria-pressed={filterActive}
                       disabled={attentionCount === 0}
                       onClick={() => setOnlyNeedsALook(true)}
                     >
@@ -1853,7 +2036,7 @@ export function GroupingReview({
                   <button
                     type="button"
                     className="btn btn--compact"
-                    disabled={allFolded}
+                    disabled={foldKeys.length === 0 || allFolded}
                     onClick={() => setCollapsedKeys(new Set(foldKeys))}
                   >
                     Collapse all
@@ -1901,36 +2084,21 @@ export function GroupingReview({
                 className="grp-tree"
                 tabIndex={0}
                 aria-label="Grouping suggestions — use arrow keys to move, space to accept a row"
-                onKeyDown={(event) => handleTreeKey(event, onApply)}
+                onKeyDown={(event) =>
+                  handleTreeKey(event, {
+                    run: onApply,
+                    // The same predicate the footer button is disabled on, so
+                    // the shortcut cannot reach a state the click cannot.
+                    enabled:
+                      !actionBlocked &&
+                      Boolean(plan.data) &&
+                      selectedCount > 0 &&
+                      status === 'open' &&
+                      !applied,
+                  })
+                }
               >
-                {groupSiblings(tree).map((run) =>
-                  run.shape !== null && !openRollups.has(run.key) ? (
-                    <RollupRow
-                      key={run.key}
-                      run={run}
-                      selection={nodeSelection}
-                      onToggle={toggleNode}
-                      fold={foldControls}
-                    />
-                  ) : (
-                    run.nodes.map((node) => (
-                      <ProposalNode
-                        key={node.proposal.id}
-                        node={node}
-                        selection={nodeSelection}
-                        onToggle={toggleNode}
-                        rename={renameControls}
-                        drag={dragControls}
-                        placement={placementControls}
-                        destination={destinationControls}
-                        stem={stemControls}
-                        stemOwners={stemOwners}
-                        kind={kindControls}
-                        fold={foldControls}
-                      />
-                    ))
-                  ),
-                )}
+                {<ProposalRows nodes={tree} shared={sharedNodeProps} />}
               </ul>
             </>
           )}
