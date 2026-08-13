@@ -198,9 +198,10 @@ no folder header and must render outside the groups.
 Once headers land, the left-hand destination pane from the earlier mockup loses
 most of its justification; its remaining value is bulk placement across folders.
 
-## Open on branch: grouping review triage (2026-08-10)
+## Open on branch: grouping suggestion review (2026-08-10)
 
-Branch `feat/grouping-review-triage` off `main` at `6523fec8`. **Not merged, no PR.**
+Branch `feat/grouping-suggestion-review` off `main` at `6523fec8` (renamed from
+`feat/grouping-review-triage` once it grew past the triage slice). **Not merged, no PR.**
 
 Nine of the ten UX items from the review of the Suggest-grouping dialog:
 uncertainty surfaced and filterable, file lists closed with a contents summary,
