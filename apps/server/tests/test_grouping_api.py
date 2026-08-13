@@ -15,6 +15,7 @@ from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import suggest_grouping
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection
 from cairndex.persistence.models import GroupingPlan as GroupingPlanRow
+from cairndex.persistence.models import GroupingProposal as GroupingProposalRow
 from cairndex.scanning.scanner import scan_library
 
 # The level at which ``Duo``'s two files below meet. Their names differ only in
@@ -1116,6 +1117,44 @@ def test_image_only_bundle_divides_per_file(
     children = [p for p in divided.json()["proposals"] if p["parent_proposal_id"] == row["id"]]
     assert len(children) == 3
     assert all(len(c["files"]) == 1 for c in children)
+
+
+def test_merging_a_collection_reads_its_bundles_files_in_one_query(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """``_descendants`` must carry its files, not fetch them a row at a time.
+
+    ``_container_to_bundle`` reads ``row.files`` for every descendant. That was one
+    lazy query each, and it only looked cheap because ``_open_proposal`` used to
+    load the *whole plan* eagerly first — so removing that (every edit was reading
+    the plan twice to check one column) would have turned a hidden cost into a
+    visible one. Tested on the merge directly, in a deliberately cold session,
+    because through the endpoint the response's own eager load hides the
+    difference.
+    """
+    folder = library_root / "Season"
+    folder.mkdir()
+    for index in range(30):
+        (folder / f"Ep{index:02d}.mp4").write_text("v")
+        (folder / f"Ep{index:02d}.jpg").write_text("i")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    container = next(p for p in plan["proposals"] if p["kind"] == "container")
+    assert len([p for p in plan["proposals"] if p["parent_proposal_id"] == container["id"]]) >= 30
+
+    # Nothing warm: a request starts here, not after having read the whole plan.
+    session.expunge_all()
+    row = session.get(GroupingProposalRow, container["id"])
+    assert row is not None
+    statements, listener = _count_statements(session)
+    try:
+        plan_store._container_to_bundle(session, row)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", listener)
+
+    reads = [s for s in statements if s.lstrip().startswith("SELECT") and "proposal_files" in s]
+    assert len(reads) == 1, f"merging 30 bundles read their files in {len(reads)} queries"
 
 
 def _count_statements(session: Session) -> tuple[list[str], object]:

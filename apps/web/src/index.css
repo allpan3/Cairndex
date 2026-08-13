@@ -3051,6 +3051,42 @@ code {
   border-radius: 5px;
 }
 
+/* The row's kind glyph *is* the convert control — one click, in the place the
+   kind is already shown, rather than a second folder-ish icon on the same row or
+   an item two clicks into a `...` menu. */
+.grp-kind--convert {
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.grp-kind--convert:hover:not(:disabled),
+.grp-kind--convert:focus-visible {
+  color: var(--text-strong);
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+.grp-kind--convert:disabled {
+  cursor: default;
+}
+/* Named rather than a glyph: the two destinations are not opposites of one shape,
+   and an addition is rare enough that a word is faster than decoding a symbol. */
+.grp-dest {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.grp-row:hover .grp-dest,
+.grp-dest:hover:not(:disabled),
+.grp-dest:focus-visible {
+  opacity: 1;
+  color: var(--text-strong);
+}
+
 /* A folder's stem dial, on the row that speaks for that folder. Pinned to the
    right edge beside the row menu so the folder-scoped controls form one column,
    and quiet rather than hidden: it was in an overflow menu and the owner could
@@ -3081,78 +3117,11 @@ code {
   color: var(--text-strong);
   border-color: var(--border-strong, var(--border));
 }
-/* One right-edge cluster: whichever of these comes first has already taken the
-   free space, so a second `margin-left: auto` would split them apart. */
-.grp-dial ~ .grp-actions,
+/* The rollup row's expand button already took the free space. */
 .grp-rollup__expand ~ .grp-dial {
   margin-left: 0;
 }
 
-/* One trigger at a fixed right edge, so the eye can run down the column. The
-   glyph buttons this replaced sat after variable-length text and landed at a
-   different x on every row. */
-.grp-actions {
-  display: inline-flex;
-  margin-left: auto;
-  align-self: center;
-}
-.grp-actions__trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0.55;
-}
-.grp-row:hover .grp-actions__trigger,
-.grp-actions__trigger:hover,
-.grp-actions__trigger[aria-expanded='true'],
-.grp-actions__trigger:focus-visible {
-  opacity: 1;
-  color: var(--text-strong);
-}
-.grp-actions__trigger .icon {
-  width: 14px;
-  height: 14px;
-}
-.grp-actions__menu {
-  display: flex;
-  flex-direction: column;
-  /* `.picker__panel` sets a fixed 340px, which made min/max-width inert and the
-     menu always 340px regardless of its labels. */
-  width: auto;
-  min-width: 220px;
-  max-width: min(360px, 92vw);
-  padding: 4px;
-}
-/* Metrics and hover come from `.context-menu__item`, which the row menu now
-   shares — three near-identical copies of this block had drifted to different
-   font sizes and hover colours, so menu rows here did not match menu rows
-   anywhere else in the app. */
-.grp-actions__empty {
-  margin: 0;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.grp-actions__item:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.grp-filter__count {
-  margin-left: 5px;
-  color: var(--text-muted);
-}
-.seg button.is-active .grp-filter__count {
-  color: var(--accent);
-}
 .grp-placement {
   display: inline-flex;
   align-items: center;

@@ -118,6 +118,69 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Completed on branch: making a large plan usable (2026-08-13)
+
+Owner testing on a ~20,000-file library, commit `TBD`. Reported: a conversion
+took over ten seconds, creating a collection and moving it took seconds to
+render, the `...` menu was slower than the glyphs it replaced, its labels were
+sentence-long, and "matched" did not say what had matched.
+
+### What was actually slow, measured rather than guessed
+
+A synthetic library of the reported shape (folders of dated releases, each a
+video plus two sidecars), with the client's server mocked so the two halves could
+be separated:
+
+| at 8,400 suggestions | before | after |
+| --- | --- | --- |
+| open the dialog (client) | 2,214 ms | 747 ms |
+| DOM nodes | 222,000 | 33,600 |
+| one conversion (client) | 5,050 ms | 826 ms |
+
+| at 2,700 suggestions, fresh session (server) | before | after |
+| --- | --- | --- |
+| convert collection to bundle | 307 ms | 226 ms |
+| convert bundle to collection | 394 ms | 116 ms |
+| reparent a collection | 253 ms | 126 ms |
+| stem level change | 997 ms | 727 ms |
+
+The client dominated, and by an order of magnitude. Folding *hid* rows rather
+than unmounting them, so a folded subtree was still built, reconciled and laid
+out on every render — folding freed nothing, which was already recorded as a gap
+here and turns out to be the whole story. With file lists closed by default,
+every file in the plan was in the DOM unseen. Folding now unmounts, and a plan
+over 400 suggestions opens folded, which is how a plan that size is read anyway.
+
+On the server, `_open_proposal` checked one column via `get_plan`, whose eager
+load exists so that *serializing* a response is not N+1 — so every edit read the
+whole plan twice. Removing that exposed a second fault it had been masking:
+`_container_to_bundle` reads `row.files` per descendant, which was one query each
+and only looked cheap because the whole plan happened to be warm.
+
+**A correction worth keeping.** An earlier run of the same benchmark reported the
+stem-level change at 13.3s → 1.8s. That was an artefact: the harness reused one
+session across every operation, leaving ORM state a real request never has, which
+invented an N+1 in the splice. Re-measured with a session per operation — what a
+request actually gets — it is 997 ms → 727 ms. The lesson is that a benchmark
+sharing a session across operations does not measure the request path.
+
+Two regression tests, both shown to fail against the unfixed code: merging a
+collection reads its bundles' files in one query (asserted on the merge itself in
+a deliberately cold session, because through the endpoint the response's own
+eager load hides the difference), and a long plan opens folded. The
+whole-plan-read-twice fix has no honest unit test — the query *count* is
+unchanged, only the rows loaded — so it is recorded here as a measurement rather
+than asserted as a green test that proves nothing.
+
+### The controls
+
+The `...` menu is gone. The row's own kind glyph is the convert control, which is
+one click in the place the kind is already shown rather than two clicks and a
+read; the first attempt put a second folder-ish icon after the title, which
+collided with the placement picker's glyph on the same row. Labels are
+`Convert to collection` / `Convert to bundle`. Renaming stays a double-click.
+Confidence reads `confident` / `likely` / `guess`.
+
 ## Completed on branch: the stem dial (2026-08-13)
 
 Both halves of the task specified here on 2026-08-13, in commits `dc097d0c`
@@ -194,8 +257,8 @@ Branch `feat/grouping-suggestion-review` off `main` at `6523fec8` (renamed from
 
 Nine of the ten UX items from the review of the Suggest-grouping dialog:
 uncertainty surfaced and filterable, file lists closed with a contents summary,
-compact placement on nested rows, row edits collected into one named menu at a
-fixed right edge, runs of identical siblings rolled up, keyboard navigation,
+compact placement on nested rows, row edits named rather than glyphs, runs of
+identical siblings rolled up, keyboard navigation,
 folded intro, fixed dialog height, reserved status line, and an Accept button
 that names what it will do and what it will skip. The tenth — a two-pane
 destination/source layout — is deliberately not attempted here.
@@ -224,15 +287,17 @@ but never folded back; rollup/file state keyed by ids that in-place regeneration
 reissues; arrow navigation dying on any row control; Collapse all enabled but
 inert on a flat plan; and a test assertion that passed against an empty DOM.
 
-Cleanup in the same pass: the row menu now shares `.context-menu__item` and the
-filter shares `.seg` rather than being third and second copies; ~60 lines of CSS
-and five icon components orphaned by the branch are deleted; the two sibling
-render sites are one `ProposalRows` component; and `ProposalNode`'s ten
-forwarded props are one `SharedNodeProps` object.
+Cleanup in the same pass: the filter shares `.seg` rather than being a second
+copy; ~60 lines of CSS and five icon components orphaned by the branch are
+deleted; the two sibling render sites are one `ProposalRows` component; and
+`ProposalNode`'s ten forwarded props are one `SharedNodeProps` object. (The row
+overflow menu described here was itself removed later on the branch — see
+"making a large plan usable" above.)
 
 Known gaps, deliberately not addressed: the proposal tree is still not
-virtualized and folding hides rather than unmounts, so a multi-thousand-row plan
-is slow regardless of these changes; `LOW_CONFIDENCE = 0.75` still duplicates
+virtualized, so a plan whose folders are all expanded is slow regardless of these
+changes (folding now unmounts, which is what made that survivable — see above);
+`LOW_CONFIDENCE = 0.75` still duplicates
 the server's `_bundle_reason` policy client-side with no test binding the two,
 and the reviewers' recommendation is a server-side `needs_review` flag on
 `ProposalRead`; `shapeKey` still compares the human-readable `reason` string;
@@ -257,12 +322,17 @@ the failure is the `switches one addition row` flake described below, which
 passes in isolation and predates this branch's review fixes. Lint, format,
 typecheck and build clean on both stacks.
 
-Known flake, pre-existing: `library.spec.ts` "switches one addition row" fails
-roughly one full-spec run in four on a 30s timeout and passes in isolation. It
-was already flaky at `3337e62a`, before the review fixes, so it is not from them
-— but it is unexplained, not benign.
+Known flake, since resolved: `library.spec.ts` "switches one addition row" used
+to fail roughly one full-spec run in four. It asserted on a *hidden* file list;
+rewriting it for the unmounting fold made it deterministic, and the spec has since
+passed 35/35 four runs running. Whether the hidden list was the cause or only
+where the race surfaced is unproven.
 
-Next recommended task: owner testing of the stem dial against the real library.
+Next recommended task: owner testing against the real library again, now that a
+large plan is workable. If it is still slow with folders expanded, the remaining
+fix is virtualizing the tree, which needs flattening the nested `ul`/`li` render
+(drag targets, selection, fold keys, rollup and keyboard nav are all built on that
+nesting) and is its own branch.
 Then either the two-pane destination layout — whose remaining justification is
 bulk placement across folders, now that folder headers carry the dial — or the
 server-side `needs_review` field the reviewers recommended.
