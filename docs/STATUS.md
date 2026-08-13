@@ -118,6 +118,57 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Diagnosed: the owner's library is on SMB, so round trips are the only cost that matters (2026-08-13)
+
+Three rounds of "still slow" were spent optimizing against synthetic local-disk
+libraries. Measuring the owner's actual library settled it, and the finding
+reframes every performance decision in the grouping code.
+
+**The owner's library lives on an SMB share.** Measured against it, read-only,
+with a locally-copied control:
+
+| a trivial `SELECT` on `library.db` | time |
+| --- | --- |
+| on its own volume (SMB) | **35.9 ms** |
+| the identical database copied to local disk | **0.021 ms** |
+
+That is ~1,700x per query. A full directory walk of its 2,683 files takes 6.8 s
+(2.5 ms per `stat`), against 0.036 ms per file for a library on the internal disk.
+
+The library itself is **small** — 412 indexed files, 340 proposals, a 0.17 MB plan
+payload. Every grouping operation, run against a local copy of that exact
+database, is fast: generate 99 ms, convert 228 ms, Widen 42 ms. So none of the
+slowness was ever about plan size, row counts, or render work.
+
+**What it was: statement counts.** At 36 ms per round trip,
+
+- `persist_plan`'s per-row flush plus the response's per-proposal file load =
+  10,416 statements for a 3,600-suggestion plan. On SMB that is about **six
+  minutes** — exactly what the owner reported. Now ~15 statements.
+- a conversion read the whole plan twice and fetched each descendant's files
+  separately: hundreds of statements, so tens of seconds.
+- Narrow/Widen re-runs the suggester *and* spliced with a flush per fresh row.
+
+So the round-trip reductions committed above are the right fixes for this setup,
+and their real-world effect is roughly 400x larger than the local-disk numbers
+suggested. **The lesson for future work here: on this library, count statements,
+not milliseconds.** `get_plan`'s docstring already said as much about NAS latency;
+it should have been read as a constraint on the whole module, not one function.
+
+Still outstanding, in round-trip order:
+
+- **134 plans and 7,724 proposal rows for 412 files.** `supersede_open_plans` marks
+  old plans superseded and nothing ever deletes them, so the tables grow without
+  bound and every read touches more pages on a volume where a page costs 36 ms.
+  Pruning superseded plans is the next concrete win.
+- The suggester's sidecar matching was quadratic in files per folder (fixed
+  below). CPU-bound, so it did *not* affect this library — but it would have as it
+  grows, and it made Narrow/Widen quadratic too.
+- Keeping `library.db` inside the library package is ADR-0008's deliberate choice
+  so the database travels with the library. On SMB that choice costs 36 ms a
+  query. Running the server *on* the NAS (the existing Docker path) is the real
+  answer; that is an architecture conversation, not a patch.
+
 ## Completed on branch: making a large plan usable (2026-08-13)
 
 Owner testing on a ~20,000-file library, commit `9253dfdb`. Reported: a conversion
