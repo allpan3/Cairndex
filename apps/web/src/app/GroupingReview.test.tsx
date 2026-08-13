@@ -1501,6 +1501,24 @@ test('a read-only existing-collection row offers no folder actions', async () =>
   ).toBeNull()
 })
 
+test('every row offers rename, so the menu is never empty and the double-click is named', async () => {
+  // A single-file bundle cannot become a collection and is not an addition, so
+  // rename was its only row-scoped edit — and it was double-click only.
+  const lone: GroupingProposal = {
+    ...PROPOSALS[1]!,
+    id: 'lone',
+    title: 'Only One',
+    files: [PROPOSALS[1]!.files[0]!],
+  }
+  vi.stubGlobal('fetch', mockGroupingApi([lone]))
+  renderReview()
+
+  fireEvent.click(await findRowActionAsync('Rename this bundle'))
+  expect(await screen.findByRole('textbox', { name: 'Bundle suggestion title' })).toHaveValue(
+    'Only One',
+  )
+})
+
 test('the top of the dial states the level and explains why it stops', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': STEM_DIAL_MAX }))
   renderReview()

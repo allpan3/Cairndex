@@ -34,6 +34,12 @@ export interface RowAction {
   disabled?: boolean
   /** Why this is unavailable, shown when `disabled`. */
   reason?: string
+  /** This action puts focus somewhere itself — it opens an editor or a picker.
+   *
+   *  The menu must then *not* pull focus back to its trigger on close: the
+   *  rename editor focuses on mount and commits on blur, so restoring focus
+   *  committed the rename before a character could be typed. */
+  takesFocus?: boolean
 }
 
 /**
@@ -55,17 +61,20 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
   const { ref, panelRef, open, setOpen, pos } = usePopover()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const wasOpen = useRef(false)
+  const restoreFocus = useRef(true)
 
   // Focus the first item on open, and put focus back on the trigger when the
   // menu closes — otherwise a keyboard user opened a menu they could not reach
-  // and, on Escape, was left with focus nowhere.
+  // and, on Escape, was left with focus nowhere. Skipped when the selected
+  // action takes focus for itself (see `takesFocus`).
   useEffect(() => {
     if (open) {
       wasOpen.current = true
       panelRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
     } else if (wasOpen.current) {
       wasOpen.current = false
-      triggerRef.current?.focus()
+      if (restoreFocus.current) triggerRef.current?.focus()
+      restoreFocus.current = true
     }
   }, [open, panelRef])
 
@@ -130,6 +139,7 @@ export function GroupingRowActions({ label, actions }: { label: string; actions:
                 title={action.reason ?? action.label}
                 onKeyDown={moveItemFocus}
                 onClick={() => {
+                  restoreFocus.current = !action.takesFocus
                   setOpen(false)
                   action.onSelect()
                 }}
