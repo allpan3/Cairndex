@@ -68,21 +68,6 @@ server:
 web:
     cd {{web_dir}} && npm run dev
 
-# Needs a Cairndex server already running at that host — this starts only the
-# frontend. A library's database lives inside the library (ADR-0008), so opening a
-# NAS-hosted library from this Mac sends every query over SMB: measured at 35.9 ms
-# against 0.021 ms for the same database on local disk. Serving it from the machine
-# that holds the files removes that, and this points the dev frontend there so the
-# UI under test is still your working tree's. The server needs
-# `CAIRNDEX_BIND_ADDR` set to something reachable, on a private network only —
-# there is no authentication yet. The packaged desktop app needs none of this; see
-# docs/development.md.
-#
-# Frontend on :5173 against a server elsewhere: `just web-remote nas.local:8000`.
-[group('start')]
-web-remote host:
-    cd {{web_dir}} && VITE_API_PROXY_TARGET="http://{{host}}" npm run dev
-
 # Backend on :8000, trusting the `tauri dev` webview origin. Use with `just desktop`.
 [group('start')]
 server-desktop:

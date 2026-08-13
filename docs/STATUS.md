@@ -179,16 +179,17 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
-- ~~Keeping `library.db` inside the library package costs 36 ms a query on SMB~~ —
-  **settled, and it is an operating change rather than a code one.** The owner's
-  choice: keep developing natively against a *local* library, and let the NAS's
-  own container serve the real one. `just web-remote <host>` runs the dev frontend
-  against a server elsewhere, so the UI under test is still the working tree's
-  while the server sits with the files. `docs/development.md` carries the
-  measurement, the two server-side prerequisites (`CAIRNDEX_BIND_ADDR`, private
-  network only — there is no auth yet), and the warning not to register the network
-  library on the development machine as well: that reintroduces the latency and
-  makes two machines contend for one ownership lease (ADR-0018).
+- **Keeping `library.db` inside the library package costs 36 ms a query on SMB**,
+  which is ADR-0008's deliberate trade (the database travels with the library).
+  Running a server on the NAS instead is the structural answer, and it is **not
+  urgent**: after the fixes above the owner's operations are 8–21 statements, so
+  0.3–0.8 s over SMB on a 412-file library. The pain was never the share, it was
+  ten thousand round trips. Revisit when the library grows, or when an always-on
+  server is wanted for other devices — the scan's per-file `stat` (2.5 ms over
+  SMB, ~7 s for 2,683 files) is the one cost no code change improves. Docker is
+  the only supported way to run the server there: the sidecar packaging is
+  macOS-only and PyInstaller does not cross-compile. Development would not move
+  either way — it stays native on the Mac against a local library.
 
 ## Completed on branch: making a large plan usable (2026-08-13)
 
