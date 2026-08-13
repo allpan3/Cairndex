@@ -120,7 +120,7 @@
 
 ## Completed on branch: making a large plan usable (2026-08-13)
 
-Owner testing on a ~20,000-file library, commit `TBD`. Reported: a conversion
+Owner testing on a ~20,000-file library, commit `9253dfdb`. Reported: a conversion
 took over ten seconds, creating a collection and moving it took seconds to
 render, the `...` menu was slower than the glyphs it replaced, its labels were
 sentence-long, and "matched" did not say what had matched.
