@@ -5,6 +5,7 @@ nested containers, a multipart video, covers, subtitles, and an
 already-confirmed bundle that the suggester must leave alone.
 """
 
+import time
 from pathlib import Path
 
 from sqlalchemy import select
@@ -223,6 +224,47 @@ def test_rendition_suffix_matches_a_confirmed_bundle() -> None:
     assert len(bundles) == 1
     assert bundles[0].target_bundle_id == "private-show"
     assert bundles[0].target_bundle_title == title
+
+
+# Sidecar matching must not be quadratic in the size of a folder
+def test_a_large_flat_folder_groups_in_linear_time() -> None:
+    """A folder of thousands of releases must not cost the square of its size.
+
+    Sidecars were matched by scanning every group for every sidecar, with a nested
+    scan over each group's stems inside that — so a single folder of 1,600 subjects
+    spent 10.2 million ``startswith`` calls and 4.3 seconds, and a folder of
+    several thousand took minutes. Narrow and Widen re-run the whole suggester, so
+    the same cost landed on every click (owner-reported, 2026-08-13).
+
+    Asserted as a *ratio* rather than a duration: wall-clock bounds are flaky on a
+    shared machine, but quadratic growth shows up as a quadrupling per doubling
+    however slow the machine is.
+    """
+
+    def folder(subjects: int) -> list[FileObservation]:
+        files: list[FileObservation] = []
+        for index in range(subjects):
+            stem = f"Studio.24.{index % 12 + 1:02d}.{index:04d}.Release.Title"
+            files.append(_f(f"Flat/{stem}.mp4", MediaKind.VIDEO))
+            files.append(_f(f"Flat/{stem}.jpg", MediaKind.IMAGE))
+            files.append(_f(f"Flat/{stem}.en.srt", MediaKind.SUBTITLE))
+        return files
+
+    def elapsed(subjects: int) -> float:
+        files = folder(subjects)
+        start = time.perf_counter()
+        plan = suggest_grouping(files)
+        taken = time.perf_counter() - start
+        # Each subject is still its own bundle: this is about cost, not grouping.
+        assert len(_bundles(plan.proposals)) == subjects
+        return taken
+
+    small = elapsed(300)
+    large = elapsed(1200)
+
+    # Four times the work should cost about four times as much. Quadratic would be
+    # sixteen; the bound is loose enough for a noisy machine and nowhere near it.
+    assert large < small * 8, f"4x the folder cost {large / small:.1f}x the time"
 
 
 # The stem level is a dial: widening merges monotonically to a fixed endpoint

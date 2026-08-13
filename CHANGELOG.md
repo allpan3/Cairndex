@@ -70,6 +70,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A folder holding thousands of releases no longer groups in quadratic time.**
+  Sidecars were matched by scanning every candidate bundle for every sidecar, with
+  a nested scan over each bundle's stems inside that — so one folder of 1,600
+  subjects spent 10.2 million string comparisons and 4.3 seconds, and a folder of
+  several thousand took minutes. Every group is keyed by exactly one stem, so
+  matching is now a dictionary lookup per sidecar plus one per prefix of its own
+  name: 1,600 subjects in 73 ms instead of 1,671, and growth is linear. Narrow and
+  Widen re-run the whole suggester, so they carried the same cost per click.
+- **The grouping phase of a scan reports what it is doing.** It was a single
+  opaque call, so on a large library the progress bar animated for a long time
+  under one unchanging label, which reads as a hang. Matching filenames and
+  writing the suggestions are now separate steps, and the second counts its rows.
 - **Suggesting a grouping no longer writes the plan one row at a time.** The plan
   was persisted with a flush inside its loop, purely to learn the id it was about
   to need for that row's files — but ids are ULIDs from a plain Python callable,

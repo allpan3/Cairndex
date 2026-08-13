@@ -107,6 +107,32 @@ test('nothing is rendered when nothing is running', () => {
   expect(screen.queryByRole('progressbar')).toBeNull()
 })
 
+test('a step within a phase says which step it is on', () => {
+  // Grouping is one phase covering two steps, and on a large library the second
+  // one is where the time goes. The generic phase label used to win over the
+  // server's message, so the bar animated for tens of seconds saying only
+  // "Preparing grouping suggestions" — which reads as a hang
+  // (owner-reported, 2026-08-13).
+  renderSidebar([
+    job({
+      phase: 'grouping',
+      message: 'Writing grouping suggestions',
+      processed: 900,
+      total: 8105,
+    }),
+  ])
+
+  expect(screen.getByText('Writing grouping suggestions')).toBeInTheDocument()
+  expect(screen.queryByText('Preparing grouping suggestions')).toBeNull()
+  expect(screen.getByText('900/8105')).toBeInTheDocument()
+})
+
+test('a phase with no message of its own still names itself', () => {
+  renderSidebar([job({ phase: 'grouping', message: null, total: null, processed: 0 })])
+
+  expect(screen.getByText('Preparing grouping suggestions')).toBeInTheDocument()
+})
+
 test('a job with no total still reports its phase', () => {
   // Indeterminate is honest for a phase that has not counted its work yet;
   // silence is not.
