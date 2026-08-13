@@ -364,7 +364,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job-scan',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-06-25T00:01:00Z',
         applied_at: null,
         proposals: [proposal],
@@ -477,7 +477,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
           status: 'open',
           rule_version: 5,
           scan_job_id: null,
-          stem_modes: {},
+          stem_levels: {},
           generated_at: '2026-07-13T00:01:00Z',
           applied_at: null,
           proposals: [freshProposal],
@@ -504,7 +504,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals: [oldProposal],
@@ -518,7 +518,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals: [freshProposal],
@@ -532,18 +532,14 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await expect(page.getByText('Already bundled')).toBeVisible()
   // The folder's stem actions moved into the row's named overflow menu.
   await page.getByRole('button', { name: 'Actions for bundle suggestion Already bundled' }).click()
-  await expect(
-    page.getByRole('menuitem', { name: /^Merge Settled into fewer bundles/ }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /^Widen Settled/ })).toBeVisible()
   await page.keyboard.press('Escape')
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
 
   await expect(page.getByText('Still unbundled')).toBeVisible()
   // The folder's stem actions moved into the row's named overflow menu.
   await page.getByRole('button', { name: 'Actions for bundle suggestion Still unbundled' }).click()
-  await expect(
-    page.getByRole('menuitem', { name: /^Merge Fresh into fewer bundles/ }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /^Widen Fresh/ })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
@@ -994,7 +990,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-08-09T00:00:00Z',
         applied_at: null,
         proposals,
@@ -1049,7 +1045,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-08-09T00:00:00Z',
         applied_at: null,
         proposals,
@@ -1248,7 +1244,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
         status: 'open',
         rule_version: 2,
         scan_job_id: 'job1',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,

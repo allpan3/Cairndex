@@ -4,17 +4,23 @@ from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select
+from sqlalchemy import event, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.api.schemas.grouping import ProposalKindUpdate
 from cairndex.api.v1 import grouping as grouping_api
-from cairndex.domain.enums import GroupingState, ProposalKind
+from cairndex.domain.enums import DEFAULT_STEM_LEVEL, GroupingState, ProposalKind
 from cairndex.grouping import plan_store
 from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import suggest_grouping
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection
+from cairndex.persistence.models import GroupingPlan as GroupingPlanRow
 from cairndex.scanning.scanner import scan_library
+
+# The level at which ``Duo``'s two files below meet. Their names differ only in
+# their last segment and are five segments long, so comparing four segments
+# (``max - level + 1``, i.e. one rung above the default) merges them.
+_MERGES_DUO = 2
 
 
 def _seed(session: Session, root: Path) -> None:
@@ -117,20 +123,20 @@ def test_regenerate_plan_does_not_reopen_confirmed_bundles(
     assert {file.id for file in bundle.files} == original_file_ids
 
 
-# Stem sensitivity is a durable input to each generated review snapshot
-def test_generate_plan_persists_per_directory_stem_modes(
+# The stem level is a durable input to each generated review snapshot
+def test_generate_plan_persists_per_directory_stem_levels(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed(session, library_root)
     base = f"/api/v1/libraries/{library_id}/grouping"
 
-    created = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "wide"}})
+    created = client.post(f"{base}/plans", json={"stem_levels": {"Cosmos": 2}})
 
     assert created.status_code == 201
-    assert created.json()["stem_modes"] == {"Cosmos": "wide"}
+    assert created.json()["stem_levels"]["Cosmos"]["level"] == 2
     fetched = client.get(f"{base}/plans/{created.json()['id']}")
-    assert fetched.json()["stem_modes"] == {"Cosmos": "wide"}
-    invalid = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "widest"}})
+    assert fetched.json()["stem_levels"]["Cosmos"]["level"] == 2
+    invalid = client.post(f"{base}/plans", json={"stem_levels": {"Cosmos": -1}})
     assert invalid.status_code == 422
 
 
@@ -634,7 +640,7 @@ def _seed_three_folders(session: Session, root: Path) -> None:
     scan_library(session, root)
 
 
-def test_stem_mode_change_preserves_every_other_row_and_edit(
+def test_stem_level_change_preserves_every_other_row_and_edit(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """The reported bug, at the root: adjusting one folder must not rebuild the
@@ -659,17 +665,17 @@ def test_stem_mode_change_preserves_every_other_row_and_edit(
     duo_bundles_before = [
         p for p in before.values() if p["directory"] == "Duo" and p["kind"] == "bundle"
     ]
-    assert len(duo_bundles_before) == 2, "balanced mode should propose two Duo bundles"
+    assert len(duo_bundles_before) == 2, "the default level should propose two Duo bundles"
 
     adjusted = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": _MERGES_DUO}
     )
     assert adjusted.status_code == 200, adjusted.text
     after = adjusted.json()
 
     # Same plan, same rows everywhere except Duo.
     assert after["id"] == plan_id
-    assert after["stem_modes"] == {"Duo": "wide"}
+    assert after["stem_levels"]["Duo"]["level"] == _MERGES_DUO
     after_by_id = {p["id"]: p for p in after["proposals"]}
     assert kept_ids <= set(after_by_id), "rows outside Duo must keep their identity"
     assert after_by_id[trip["id"]]["kind"] == "container"
@@ -677,7 +683,7 @@ def test_stem_mode_change_preserves_every_other_row_and_edit(
     trip_children = [p for p in after["proposals"] if p["parent_proposal_id"] == trip["id"]]
     assert len(trip_children) == 3, "the conversion's children survive too"
 
-    # Duo itself genuinely regenerated: one wide bundle (no container needed
+    # Duo itself genuinely regenerated: one widened bundle (no container needed
     # around a single group), new ids.
     duo_after = [p for p in after["proposals"] if p["directory"] == "Duo"]
     assert [p["kind"] for p in duo_after] == ["bundle"]
@@ -685,29 +691,37 @@ def test_stem_mode_change_preserves_every_other_row_and_edit(
     assert not duo_ids & {p["id"] for p in duo_after}
 
 
-def test_stem_mode_back_to_balanced_clears_the_override(
+def test_stem_level_back_to_the_default_clears_the_override(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed_three_folders(session, library_root)
     base = f"/api/v1/libraries/{library_id}/grouping"
     plan_id = client.post(f"{base}/plans").json()["id"]
 
-    wide = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+    widened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": _MERGES_DUO}
     ).json()
-    assert wide["stem_modes"] == {"Duo": "wide"}
-    duo_wide = [p for p in wide["proposals"] if p["directory"] == "Duo"]
-    assert [p["kind"] for p in duo_wide] == ["bundle"]
+    assert widened["stem_levels"]["Duo"]["level"] == _MERGES_DUO
+    duo_widened = [p for p in widened["proposals"] if p["directory"] == "Duo"]
+    assert [p["kind"] for p in duo_widened] == ["bundle"]
 
-    balanced = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "balanced"}
+    restored = client.put(
+        f"{base}/plans/{plan_id}/stem-levels",
+        json={"directory": "Duo", "level": DEFAULT_STEM_LEVEL},
     ).json()
-    assert balanced["stem_modes"] == {}
-    duo_balanced = [p for p in balanced["proposals"] if p["directory"] == "Duo"]
-    assert sorted(p["kind"] for p in duo_balanced) == ["bundle", "bundle", "container"]
+    # Back at the default the override is gone, not stored as the default value:
+    # a plan carrying `{"Duo": 1}` would pin Duo if the default ever moved.
+    assert restored["stem_levels"]["Duo"]["level"] == DEFAULT_STEM_LEVEL
+    with Session(session.get_bind()) as fresh:
+        stored = fresh.scalar(
+            select(GroupingPlanRow.stem_level_overrides).where(GroupingPlanRow.id == plan_id)
+        )
+    assert stored == {}
+    duo_restored = [p for p in restored["proposals"] if p["directory"] == "Duo"]
+    assert sorted(p["kind"] for p in duo_restored) == ["bundle", "bundle", "container"]
 
 
-def test_stem_mode_change_requires_an_open_plan(
+def test_stem_level_change_requires_an_open_plan(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed(session, library_root)
@@ -715,12 +729,81 @@ def test_stem_mode_change_requires_an_open_plan(
     plan_id = client.post(f"{base}/plans").json()["id"]
     client.post(f"{base}/plans/{plan_id}/apply")
     resp = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Cosmos", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Cosmos", "level": 0}
     )
     assert resp.status_code == 409
 
 
-def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
+# Each folder's dial reports where it is and how far it goes, per folder
+def test_plan_reports_a_stem_dial_for_every_folder_it_shows(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The maximum is folder-specific, so the client has to be told it.
+
+    ``Duo``'s names are five segments long and ``Solo``'s is one, so their dials
+    are genuinely different lengths — a single shared "wide" end could not
+    describe both, and the client cannot work either out without reimplementing
+    the suggester's normalization.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    dials = client.post(f"{base}/plans").json()["stem_levels"]
+
+    assert dials["Duo"] == {"level": DEFAULT_STEM_LEVEL, "max": 5}
+    # Nothing to widen in a folder whose one name is a single segment: the dial
+    # ends where it starts, and the client renders Widen as spent rather than
+    # offering a step that would change nothing.
+    assert dials["Solo"] == {"level": DEFAULT_STEM_LEVEL, "max": DEFAULT_STEM_LEVEL}
+    # Every folder with files, not only the overridden ones.
+    assert set(dials) == {"Duo", "Solo", "Trip"}
+
+
+# A level past the end of a folder's dial lands on the end, not an error
+def test_stem_level_above_a_folder_maximum_is_clamped(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+
+    adjusted = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": 99}
+    )
+
+    assert adjusted.status_code == 200, adjusted.text
+    assert adjusted.json()["stem_levels"]["Duo"] == {"level": 5, "max": 5}
+
+
+# A plan open across the upgrade still carries the three names it used to store
+def test_a_stem_mode_stored_by_a_previous_release_reads_as_a_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """``wide`` meant "as wide as this folder goes", which is now the maximum.
+
+    The column is JSON, so the additive-column machinery that patches new columns
+    into an existing library does not apply here — nothing rewrites these values,
+    and a plan the owner left open across the upgrade would otherwise read as an
+    unknown mode.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+    session.execute(
+        update(GroupingPlanRow)
+        .where(GroupingPlanRow.id == plan_id)
+        .values(stem_level_overrides={"Duo": "wide", "Trip": "narrow", "Solo": "balanced"})
+    )
+    session.commit()
+
+    dials = client.get(f"{base}/plans/{plan_id}").json()["stem_levels"]
+
+    assert dials["Duo"] == {"level": 5, "max": 5}
+    assert dials["Trip"]["level"] == 0
+    assert dials["Solo"]["level"] == DEFAULT_STEM_LEVEL
+
+
+def test_stem_level_change_does_not_reclaim_a_dragged_out_file(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """A file the owner moved out of the directory must not come back in the
@@ -739,7 +822,7 @@ def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
     )
 
     after = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": 0}
     ).json()
 
     holders = [
@@ -750,7 +833,7 @@ def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
     assert holders == [solo["id"]], "the dragged file must stay only where the owner put it"
 
 
-def test_stem_mode_change_relinks_subdirectory_children(
+def test_stem_level_change_relinks_subdirectory_children(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """Replacing a directory's container must not orphan bundles from its
@@ -772,7 +855,7 @@ def test_stem_mode_change_relinks_subdirectory_children(
     assert len(child_ids) == 2
 
     after = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Show", "level": 0}
     ).json()
 
     fresh_container = next(
@@ -811,7 +894,7 @@ def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
     assert len(row["files"]) == 2
 
     refused = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Show", "level": 0}
     )
     assert refused.status_code == 422, refused.text
 

@@ -507,7 +507,16 @@ class GroupingPlan(Base):
         default=GroupingPlanStatus.OPEN,
     )
     rule_version: Mapped[int] = mapped_column(Integer, default=1)
-    stem_modes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
+    # Per-directory stem levels the owner set, keyed by library-relative folder;
+    # a folder absent here used ``DEFAULT_STEM_LEVEL``. The *column* is still
+    # called ``stem_modes`` because it shipped holding the old three-value enum
+    # and there is no migration chain to rename it (see
+    # ``engine._ADDITIVE_CONTENT_COLUMNS``); the attribute says what it now
+    # holds. ``plan_store`` coerces any legacy ``"narrow"``/``"balanced"``/
+    # ``"wide"`` string it finds to a level on read.
+    stem_level_overrides: Mapped[dict[str, int | str]] = mapped_column(
+        "stem_modes", JSON, default=dict, server_default="{}"
+    )
     generated_at: Mapped[CreatedAt]
     applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 

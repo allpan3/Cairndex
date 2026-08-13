@@ -13,19 +13,22 @@ from sqlalchemy.orm import Session, selectinload
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import (
+    DEFAULT_STEM_LEVEL,
+    STEM_LEVEL_CEILING,
     GroupingPlanStatus,
     GroupingState,
     ProposalKind,
-    StemMode,
     context_directory,
 )
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
     _addition_roles_in_order,
+    _dirname,
     _media_first,
     _new_bundle_title,
     _roles_in_order,
+    max_stem_level,
     split_for_collection,
 )
 from cairndex.grouping.suggester import (
@@ -564,8 +567,80 @@ def convert_proposal_kind(
     return get_plan(session, plan_id)
 
 
-def set_directory_stem_mode(
-    session: Session, plan_id: str, directory: str, mode: StemMode
+# --- per-directory stem levels ------------------------------------------------
+
+# What the three values this column used to hold mean on the dial. ``wide`` has
+# no fixed level: it meant "as wide as this folder goes", which is the folder's
+# own maximum, so it resolves per directory.
+_LEGACY_STEM_LEVELS: dict[str, int | None] = {
+    "narrow": 0,
+    "balanced": DEFAULT_STEM_LEVEL,
+    "wide": None,
+}
+
+
+def _plan_filenames_by_directory(plan: GroupingPlan) -> dict[str, list[str]]:
+    """Every file the plan holds, grouped by the folder it actually lives in.
+
+    Keyed off each file's own path, deliberately not its proposal's
+    ``directory``: the two agree for a suggested row but not after the owner
+    restructures, and the stem dial belongs to a folder rather than to a row.
+    """
+    names: dict[str, list[str]] = {}
+    for proposal in plan.proposals:
+        for file in proposal.files:
+            names.setdefault(_dirname(file.relative_path), []).append(file.relative_path)
+    return names
+
+
+def _stored_stem_levels(plan: GroupingPlan, maxima: dict[str, int]) -> dict[str, int]:
+    """The plan's overrides as levels, translating anything a prior release wrote.
+
+    The column held ``"narrow"``/``"balanced"``/``"wide"`` before the dial was
+    continuous, and a plan open across the upgrade still carries them. An
+    unrecognised value reads as the default rather than as level 0, so a stray
+    string cannot silently split every folder it names.
+    """
+    levels: dict[str, int] = {}
+    for directory, value in (plan.stem_level_overrides or {}).items():
+        if isinstance(value, str):
+            legacy = _LEGACY_STEM_LEVELS.get(value.strip().casefold(), DEFAULT_STEM_LEVEL)
+            level = maxima.get(directory, DEFAULT_STEM_LEVEL) if legacy is None else legacy
+        else:
+            level = int(value)
+        levels[directory] = max(0, min(level, STEM_LEVEL_CEILING))
+    return levels
+
+
+def stem_levels(plan: GroupingPlan) -> dict[str, dict[str, int]]:
+    """Each folder the plan represents, its stem level, and the top of its dial.
+
+    The maximum has to come from the server: it is the level at which every
+    filename in *that folder* is down to its first segment, so the client cannot
+    work it out without reimplementing the suggester's normalization.
+    """
+    maxima = {
+        directory: max_stem_level(paths)
+        for directory, paths in _plan_filenames_by_directory(plan).items()
+    }
+    stored = _stored_stem_levels(plan, maxima)
+    return {
+        directory: {
+            "level": stored.get(directory, DEFAULT_STEM_LEVEL),
+            # An override on a folder no row still holds files from keeps its own
+            # level as the top of the dial, so the reported maximum is never
+            # below the level actually in force.
+            "max": max(
+                maxima.get(directory, DEFAULT_STEM_LEVEL),
+                stored.get(directory, DEFAULT_STEM_LEVEL),
+            ),
+        }
+        for directory in sorted({*maxima, *stored})
+    }
+
+
+def set_directory_stem_level(
+    session: Session, plan_id: str, directory: str, level: int
 ) -> GroupingPlan:
     """Re-suggest ONE directory inside the open plan, leaving everything else be.
 
@@ -590,17 +665,25 @@ def set_directory_stem_mode(
     if plan.status is not GroupingPlanStatus.OPEN:
         raise ConflictError("only an open grouping plan can be adjusted")
 
-    modes: dict[str, str] = dict(plan.stem_modes or {})
-    if mode is StemMode.BALANCED:
-        modes.pop(directory, None)
+    maxima = {
+        folder: max_stem_level(paths)
+        for folder, paths in _plan_filenames_by_directory(plan).items()
+    }
+    levels = _stored_stem_levels(plan, maxima)
+    # Clamped rather than refused. The top of the dial depends on the folder's own
+    # filenames, so "one step wider" is a request the client makes against the
+    # maximum it was last told; clamping lands on the end it meant.
+    level = max(0, min(level, maxima.get(directory, DEFAULT_STEM_LEVEL)))
+    if level == DEFAULT_STEM_LEVEL:
+        levels.pop(directory, None)
     else:
-        modes[directory] = mode.value
-    # Same bound as PlanGenerateRequest.stem_modes, enforced here too because
+        levels[directory] = level
+    # Same bound as PlanGenerateRequest.stem_levels, enforced here too because
     # this path grows the stored map one directory at a time.
-    if len(modes) > 500:
+    if len(levels) > 500:
         raise ValidationError("too many per-directory stem overrides")
 
-    data = suggest_for_session(session, stem_modes={d: StemMode(m) for d, m in modes.items()})
+    data = suggest_for_session(session, stem_levels=levels)
     fresh = [p for p in data.proposals if p.directory == directory]
 
     existing = [p for p in plan.proposals if p.directory == directory]
@@ -753,7 +836,7 @@ def set_directory_stem_mode(
     # therefore suggester) order because ids are ULIDs.
     for position, row in enumerate(sorted(plan.proposals, key=lambda p: (p.sort_order, p.id))):
         row.sort_order = position
-    plan.stem_modes = modes
+    plan.stem_level_overrides = dict(levels)
     session.flush()
     session.expire(plan, ["proposals"])
     return plan
@@ -782,7 +865,7 @@ def persist_plan(
     plan = GroupingPlan(
         scan_job_id=scan_job_id,
         rule_version=data.rule_version,
-        stem_modes={directory: mode.value for directory, mode in data.stem_modes.items()},
+        stem_level_overrides=dict(data.stem_levels),
     )
     session.add(plan)
     session.flush()
@@ -837,10 +920,10 @@ def generate_plan(
     session: Session,
     *,
     scan_job_id: str | None = None,
-    stem_modes: dict[str, StemMode] | None = None,
+    stem_levels: dict[str, int] | None = None,
 ) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
-    data = suggest_for_session(session, stem_modes=stem_modes)
+    data = suggest_for_session(session, stem_levels=stem_levels)
     return persist_plan(session, data, scan_job_id=scan_job_id)
 
 
