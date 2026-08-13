@@ -153,6 +153,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
     # Existing collection context is identity-based, not inferred from its title
     ("grouping_proposals", "target_collection_id", "VARCHAR(26)"),
+    # ...and being *context* is its own fact, not inferred from having a target
+    ("grouping_proposals", "is_collection_context", "BOOLEAN NOT NULL DEFAULT 0"),
     # Per-directory heuristic overrides retained by each durable grouping snapshot
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
     # Recent view "Date Opened" ordering. NULL in an existing library means
