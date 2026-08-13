@@ -339,6 +339,22 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   with a count when the work has one.
 
 ### Changed
+- **Grouping review shows each suggestion's confidence instead of filtering by
+  it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
+  suggester was sure about and wrong about — was not merely unflagged but
+  actively hidden from the view that claimed to show what needed deciding, and
+  the rows that remained carried no signal at all. Every row now states its own
+  band (matched / likely / guessed), the guessed ones keep their warm edge and
+  reason, the toolbar counts them, and nothing is hidden.
+- **Bundle and collection can always be converted into each other.** The client
+  used to withhold the conversion from a single-subject bundle already inside a
+  collection for its own folder — which is exactly the row an owner reaches for
+  it on, a folder holding one release today that should be a collection. The
+  server's bound is now whether the conversion renames anything rather than
+  where the row sits, so a folder-named bundle becomes a folder-named collection
+  holding a release named after itself, and only the conversion that would
+  change no name is refused. A row whose edits are all unavailable now opens an
+  empty menu saying so, rather than rendering no menu button at all.
 
 - **Runs of identical suggestions collapse to one line, and the review can be
   driven from the keyboard.** A folder of numbered clips produced a row each,

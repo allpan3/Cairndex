@@ -822,16 +822,73 @@ def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
     assert len(kept[0]["files"]) == 2
 
 
+def test_folder_named_bundle_converts_to_a_named_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The owner-reported case: one release in a folder named for something else.
+
+    A folder holding a single release plus its cover is suggested as one bundle
+    named after the folder. The owner wants the folder to be a collection with the
+    release inside it under its own name. The old positional bound refused this
+    whenever the row already sat in a collection for its folder; the rename test
+    allows it, because the child is named by the files' shared stem rather than by
+    the folder (owner-reported, 2026-08-13).
+    """
+    folder = library_root / "Studio Beta"
+    folder.mkdir()
+    (folder / "n0203 - a long release name.mp4").write_text("v")
+    (folder / "n0203.jpg").write_text("i")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    bundle = next(
+        p for p in plan["proposals"] if p["kind"] == "bundle" and p["title"] == "Studio Beta"
+    )
+
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{bundle['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+
+    proposals = converted.json()["proposals"]
+    collection = next(p for p in proposals if p["id"] == bundle["id"])
+    assert collection["kind"] == "container"
+    assert collection["title"] == "Studio Beta"
+
+    # The release inside carries its own name rather than the folder's. A
+    # single-video bundle is named after that video (`_new_bundle_title`), so this
+    # is the video's stem, not the shorter prefix it shares with the cover.
+    children = [p for p in proposals if p["parent_proposal_id"] == bundle["id"]]
+    assert len(children) == 1
+    assert children[0]["title"] == "n0203 - a long release name"
+    assert children[0]["title"] != collection["title"]
+    assert len(children[0]["files"]) == 2
+
+    # And it is reversible.
+    back = client.put(
+        f"{base}/plans/{plan_id}/proposals/{bundle['id']}/kind", json={"kind": "bundle"}
+    )
+    assert back.status_code == 200, back.text
+
+
 def test_single_item_bundle_converts_once_then_stops(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
-    """A single subject may become a collection — the owner may be making a home
-    for siblings to drag in — but only once.
+    """A single subject may become a collection, until doing so renames nothing.
 
     What made this nest without limit was that the child of a conversion could be
     converted again, each click repeating the same name one level deeper
-    (owner-reported, 2026-07-30). The child always lands inside a collection for
-    its own folder, and that is exactly the position where another is refused.
+    (owner-reported, 2026-07-30). The bound used to be positional — refuse any row
+    already inside a collection for its own folder — but that also refused the
+    case the owner wants: a folder holding one release today becoming a collection
+    with the release named by its own stem inside it (owner-reported, 2026-08-13).
+
+    The bound is now whether the new layer changes a name. Here the folder and its
+    one file share the name "Solo", so the child would be called "Solo" inside a
+    collection called "Solo" — nothing gained, refused. `test_folder_named_bundle_
+    converts_to_a_named_collection` covers the case that is now allowed.
     """
     (library_root / "Solo").mkdir()
     (library_root / "Solo" / "Solo.mp4").write_text("v")
@@ -842,16 +899,10 @@ def test_single_item_bundle_converts_once_then_stops(
     plan_id = plan["id"]
     solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
 
-    converted = client.put(
-        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind", json={"kind": "container"}
-    )
-    assert converted.status_code == 200, converted.text
-    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == solo["id"]]
-    assert len(children) == 1
-
-    # The child sits in a collection for its own folder: no further layer.
+    # Folder "Solo" holding "Solo.mp4": the child would be called "Solo" too, so
+    # the collection adds no structure and is refused at the first attempt.
     again = client.put(
-        f"{base}/plans/{plan_id}/proposals/{children[0]['id']}/kind",
+        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind",
         json={"kind": "container"},
     )
     assert again.status_code == 422, again.text

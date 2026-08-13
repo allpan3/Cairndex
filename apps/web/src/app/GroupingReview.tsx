@@ -234,11 +234,25 @@ function proposalKey(proposal: GroupingProposal): string {
  */
 const LOW_CONFIDENCE = 0.75
 
-/** Whether this row is one the suggester is unsure about. */
+/** How sure the suggester is, in words, for every row that carries a score.
+ *
+ * This replaced a two-tab "All / Needs a look" filter. Hiding the confident rows
+ * behind a tab meant a *mis*-scored row — one the suggester was sure about and
+ * wrong about — was not merely unflagged but actively filtered out of the view
+ * that claimed to show what needed deciding, and the owner had no signal at all
+ * on the rows that remained (owner-reported, 2026-08-13). Every row states its
+ * own confidence instead, and the owner picks what to apply.
+ */
+function confidenceLabel(proposal: GroupingProposal): string | null {
+  if (proposal.files.length === 0) return null
+  if (proposal.confidence >= 0.85) return 'matched'
+  if (proposal.confidence >= LOW_CONFIDENCE) return 'likely'
+  return 'guessed'
+}
+
+/** Whether the suggester was really only going on the folder. */
 function needsALook(proposal: GroupingProposal): boolean {
-  return (
-    proposal.kind === 'bundle' && proposal.files.length > 0 && proposal.confidence < LOW_CONFIDENCE
-  )
+  return proposal.files.length > 0 && proposal.confidence < LOW_CONFIDENCE
 }
 
 /** Summarise a bundle's contents so its file list can stay closed.
@@ -324,20 +338,6 @@ function groupSiblings(nodes: TreeNode[], rollUp = true): SiblingRun[] {
       ? { ...run, key: runKey(run.nodes) }
       : { ...run, shape: null },
   )
-}
-
-/** Keep matching rows and every ancestor that leads to one.
- *
- * Ancestors are kept even when they do not match, because a bundle's placement
- * is the branch it sits in — showing it re-rooted would misreport where it
- * would be filed.
- */
-function filterTree(nodes: TreeNode[], keep: (p: GroupingProposal) => boolean): TreeNode[] {
-  return nodes.flatMap((node) => {
-    const children = filterTree(node.children, keep)
-    if (keep(node.proposal) || children.length > 0) return [{ ...node, children }]
-    return []
-  })
 }
 
 function collectKeys(nodes: TreeNode[]): Map<string, string> {
@@ -556,35 +556,6 @@ function destinationActionLabel(proposal: GroupingProposal): string {
  */
 function canConvertKind(proposal: GroupingProposal): boolean {
   return !(proposal.target_bundle_id !== null && !proposal.create_new_bundle)
-}
-
-/** Whether turning this bundle into a collection is offered.
- *
- * Mirrors `plan_store._bundle_to_container`, which is the authority (the server
- * refuses regardless). Duplicated here only to decide whether to *show* the
- * control.
- *
- * A bundle that would genuinely divide always may — two or more videos divide per
- * video with sidecars following their own, and a video-less bundle of several
- * files divides per file. A **single subject** may too: the owner may be making a
- * home for siblings they are about to drag in, and refusing that outright left
- * rows with no way to become a collection at all (owner-reported, 2026-07-30).
- *
- * What is refused is a single subject that already sits in a collection for its
- * *own folder*, where another layer would only repeat the name it is inside. That
- * is also what bounds the nesting the owner first reported: the child a conversion
- * creates always lands in exactly that position, so it cannot be converted again.
- */
-function canBecomeCollection(
-  proposal: GroupingProposal,
-  parent: GroupingProposal | undefined,
-): boolean {
-  const videos = proposal.files.filter(
-    (file) => ROLE_MEDIA_KIND[file.proposed_role] === 'video',
-  ).length
-  const divides = videos >= 2 || (videos === 0 && proposal.files.length >= 2)
-  if (divides) return true
-  return !(parent?.kind === 'container' && parent.directory === proposal.directory)
 }
 
 function kindActionLabel(proposal: GroupingProposal): string {
@@ -818,7 +789,6 @@ function ProposalDisclosure({
  */
 function rowActions({
   proposal,
-  parent,
   hasItems,
   destination,
   kind,
@@ -826,7 +796,6 @@ function rowActions({
   stemDirectory,
 }: {
   proposal: GroupingProposal
-  parent: GroupingProposal | undefined
   hasItems: boolean
   destination: DestinationControls
   kind: KindControls
@@ -842,10 +811,14 @@ function rowActions({
       onSelect: () => destination.set(proposal, !proposal.create_new_bundle),
     })
   }
+  // Always offered, both directions. The client used to withhold it whenever a
+  // single-subject bundle already sat in a collection for its own folder, which
+  // is exactly the case an owner reaches for it (owner-reported, 2026-08-13). The
+  // server still refuses the one conversion that renames nothing, and says so.
   const offersKind =
     proposal.kind === 'container'
       ? !proposal.is_collection_context
-      : canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent)
+      : canConvertKind(proposal) && hasItems
   if (offersKind) {
     actions.push({
       key: 'kind',
@@ -1083,22 +1056,14 @@ function handleTreeKey(
  * that had already drifted — one read `fold.rollupsOpen`, the other reached past
  * it to the raw state hook.
  */
-function ProposalRows({
-  nodes,
-  parent,
-  shared,
-}: {
-  nodes: TreeNode[]
-  parent?: GroupingProposal
-  shared: Omit<Parameters<typeof ProposalNode>[0], 'node' | 'parent'>
-}) {
+function ProposalRows({ nodes, shared }: { nodes: TreeNode[]; shared: SharedNodeProps }) {
   const { fold, selection, onToggle, stem, stemOwners, destination, kind } = shared
   return (
     <>
       {groupSiblings(nodes, !fold.forceFiles).map((run) => {
         if (run.shape === null || fold.rollupsOpen.has(run.key)) {
           const rows = run.nodes.map((node) => (
-            <ProposalNode key={node.proposal.id} node={node} parent={parent} {...shared} />
+            <ProposalNode key={node.proposal.id} node={node} {...shared} />
           ))
           return run.shape === null ? (
             rows
@@ -1122,7 +1087,6 @@ function ProposalRows({
               owner
                 ? rowActions({
                     proposal: owner.proposal,
-                    parent,
                     hasItems: true,
                     destination,
                     kind,
@@ -1164,12 +1128,8 @@ function ProposalNode({
   stemOwners,
   kind,
   fold,
-  parent,
 }: {
   node: TreeNode
-  /** The enclosing suggestion, which decides whether a single-subject bundle is
-   * offered the collection override (see ``canBecomeCollection``). */
-  parent?: GroupingProposal
 } & SharedNodeProps) {
   // Rebuilt once here so the recursive render below passes one object rather
   // than re-listing ten props at two call sites that had already drifted apart.
@@ -1252,7 +1212,6 @@ function ProposalNode({
               label={`Actions for collection suggestion ${proposal.title || baseName(proposal.directory) || 'Untitled'}`}
               actions={rowActions({
                 proposal,
-                parent,
                 hasItems,
                 destination,
                 kind,
@@ -1264,7 +1223,7 @@ function ProposalNode({
         </div>
         {children.length > 0 && (
           <ul className="grp-children" hidden={collapsed}>
-            {<ProposalRows nodes={children} parent={proposal} shared={shared} />}
+            {<ProposalRows nodes={children} shared={shared} />}
           </ul>
         )}
       </li>
@@ -1276,6 +1235,7 @@ function ProposalNode({
   const displayTitle = proposalDisplayTitle(proposal)
   const filesShown = fold.forceFiles || (fold.fileOverrides.get(proposal.id) ?? fold.filesDefault)
   const attention = needsALook(proposal)
+  const confidence = confidenceLabel(proposal)
   return (
     <li className="grp-node grp-node--bundle">
       <div
@@ -1330,11 +1290,19 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : fileSummary(proposal)}
           </span>
-          {attention && (
-            <span className="grp-attention" title={proposal.reason ?? undefined}>
-              {proposal.reason || 'grouped by folder only'}
+          {confidence && (
+            <span
+              className={`grp-conf${attention ? ' grp-conf--weak' : ''}`}
+              title={
+                attention
+                  ? 'The suggester grouped these by folder rather than by matching their names'
+                  : 'The suggester matched these by name'
+              }
+            >
+              {confidence}
             </span>
           )}
+          {attention && proposal.reason && <span className="grp-attention">{proposal.reason}</span>}
           {/* An addition has no placement of its own: its files join a bundle
               that already exists and already sits wherever it sits. Offering the
               picker here filed that *confirmed* bundle into a second collection
@@ -1347,7 +1315,6 @@ function ProposalNode({
             label={`Actions for bundle suggestion ${displayTitle}`}
             actions={rowActions({
               proposal,
-              parent,
               hasItems,
               destination,
               kind,
@@ -1485,7 +1452,6 @@ export function GroupingReview({
   const [fileOverrides, setFileOverrides] = useState<Map<string, boolean>>(new Map())
   const [openRollups, setOpenRollups] = useState<Set<string>>(new Set())
   const [showAllFiles, setShowAllFiles] = useState(false)
-  const [onlyNeedsALook, setOnlyNeedsALook] = useState(false)
   const [editing, setEditing] = useState<{
     id: string
     original: string
@@ -1503,15 +1469,8 @@ export function GroupingReview({
   )
   // Selection, folding and stem ownership all read the *unfiltered* tree, so
   // narrowing the view never changes what Accept would do.
-  // Falls back to the whole plan the moment nothing is flagged. Resolving the
-  // last uncertain row — by dragging its files away, converting it, or
-  // re-suggesting its folder — used to leave a blank panel under a filter tab
-  // that was simultaneously pressed and disabled, with no text explaining it.
-  const filterActive = onlyNeedsALook && attentionCount > 0
-  const tree = useMemo(
-    () => (filterActive ? filterTree(fullTree, needsALook) : fullTree),
-    [fullTree, filterActive],
-  )
+  // One list. Every row states its own confidence, so nothing is hidden.
+  const tree = fullTree
   const stemOwners = useMemo(() => stemControlOwners(fullTree), [fullTree])
   const bundleProposalIds = useMemo(() => collectBundleIds(fullTree), [fullTree])
   const keyById = useMemo(() => collectKeys(fullTree), [fullTree])
@@ -1582,7 +1541,6 @@ export function GroupingReview({
     setCollapsedKeys(new Set())
     setFileOverrides(new Map())
     setOpenRollups(new Set())
-    setOnlyNeedsALook(false)
     setNotice(message)
   }
 
@@ -1986,30 +1944,9 @@ export function GroupingReview({
             <>
               <div className="grp-selectbar">
                 <div className="grp-selectbar__group">
-                  {/* The suggester already scores its own certainty; surfacing it
-                      turns "read every row" into "read the few it is unsure
-                      about". Filtering is view-only — selection and Accept still
-                      read the whole plan. */}
-                  <span className="seg" role="group" aria-label="Filter suggestions">
-                    <button
-                      type="button"
-                      className={filterActive ? '' : 'is-active'}
-                      aria-pressed={!filterActive}
-                      onClick={() => setOnlyNeedsALook(false)}
-                    >
-                      All
-                    </button>
-                    <button
-                      type="button"
-                      className={filterActive ? 'is-active' : ''}
-                      aria-pressed={filterActive}
-                      disabled={attentionCount === 0}
-                      onClick={() => setOnlyNeedsALook(true)}
-                    >
-                      Needs a look
-                      <span className="grp-filter__count">{attentionCount}</span>
-                    </button>
-                  </span>
+                  {attentionCount > 0 && (
+                    <span className="grp-attention">{attentionCount} guessed from the folder</span>
+                  )}
                   <span>
                     {selectedCount} {selectedCount === 1 ? 'bundle' : 'bundles'} selected
                   </span>
