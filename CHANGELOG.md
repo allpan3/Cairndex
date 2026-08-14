@@ -108,6 +108,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Writing a grouping plan to a library on a network share went from over ten
+  minutes to under five seconds.** Two causes, both invisible on local disk:
+
+  SQLite's page cache defaults to 2 MiB, which is smaller than a modestly used
+  library database. `grouping_proposals.parent_proposal_id` references its own
+  table, so with foreign keys enforced SQLite seeks the primary-key index once per
+  inserted row — while the inserts themselves evict exactly those index pages. Each
+  re-read is then a network round trip. Raising the per-connection ceiling to
+  32 MiB (a ceiling, not an allocation — SQLite grows it lazily) took that insert
+  from over ten minutes to 5.2 s.
+
+  And none of the grouping foreign keys had an index on the child column, so every
+  `ON DELETE` cascade was a full table scan per deleted row. Indexing the three of
+  them took the insert to 236 ms and pruning four superseded plans from 6.4 s to
+  1.4 s. A test now binds every grouping foreign key to an index, so a later one
+  added without cannot pass unnoticed.
+
+  Both are general: they make every write to a network-hosted library faster, not
+  just plans.
 - **Update no longer rewrites a plan that would come out identical.** A plan is a
   snapshot of suggestions over the files not yet in a confirmed bundle; if nothing
   in the library has been touched since it was written, regenerating produces the
