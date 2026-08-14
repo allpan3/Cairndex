@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress, SubtitleTrack
+from cairndex.scanning import scanner
 from cairndex.scanning.repair import find_repair_candidate, repair_file
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
@@ -88,11 +89,10 @@ def test_unsigned_64bit_identity_is_stored_and_repairs_in_place(
     high_inode = 12_533_741_083_415_795_663
     stored_device = -1
     stored_inode = high_inode - (1 << 64)
-    real_stat = Path.stat
 
-    def stat_with_high_inode(path: Path, *, follow_symlinks: bool = True):
-        stat = real_stat(path, follow_symlinks=follow_symlinks)
-        if path.name != "movie.mp4":
+    def stat_with_high_inode(entry):
+        stat = entry.stat()
+        if entry.name != "movie.mp4":
             return stat
         return SimpleNamespace(
             st_size=stat.st_size,
@@ -105,7 +105,7 @@ def test_unsigned_64bit_identity_is_stored_and_repairs_in_place(
     source = library_root / "a" / "movie.mp4"
     source.parent.mkdir()
     source.write_text("network movie")
-    monkeypatch.setattr(Path, "stat", stat_with_high_inode)
+    monkeypatch.setattr(scanner, "_entry_stat", stat_with_high_inode)
 
     first = scan_library(session, library_root)
     row = _only_file(session)
@@ -240,11 +240,10 @@ def test_explicit_repair_collapses_a_renamed_network_duplicate(
 
     new_path = library_root / "movie-[2023.07.18].mp4"
     old_path.rename(new_path)
-    real_stat = Path.stat
 
-    def unstable_network_stat(path: Path, *, follow_symlinks: bool = True):
-        stat = real_stat(path, follow_symlinks=follow_symlinks)
-        if path.name != new_path.name:
+    def unstable_network_stat(entry):
+        stat = entry.stat()
+        if entry.name != new_path.name:
             return stat
         return SimpleNamespace(
             st_size=stat.st_size,
@@ -254,7 +253,7 @@ def test_explicit_repair_collapses_a_renamed_network_duplicate(
             st_ino=stat.st_ino + 1,
         )
 
-    monkeypatch.setattr(Path, "stat", unstable_network_stat)
+    monkeypatch.setattr(scanner, "_entry_stat", unstable_network_stat)
     missed = scan_library(session, library_root)
     assert missed.created == 1 and missed.repaired == 0 and missed.missing_total == 1
 
@@ -321,11 +320,10 @@ def test_repair_api_exposes_and_applies_the_unique_candidate(
     scan_library(session, library_root)
     missing = _only_file(session)
     old_path.rename(library_root / "new-name.mp4")
-    real_stat = Path.stat
 
-    def changed_inode(path: Path, *, follow_symlinks: bool = True):
-        stat = real_stat(path, follow_symlinks=follow_symlinks)
-        if path.name != "new-name.mp4":
+    def changed_inode(entry):
+        stat = entry.stat()
+        if entry.name != "new-name.mp4":
             return stat
         return SimpleNamespace(
             st_size=stat.st_size,
@@ -335,7 +333,7 @@ def test_repair_api_exposes_and_applies_the_unique_candidate(
             st_ino=stat.st_ino + 1,
         )
 
-    monkeypatch.setattr(Path, "stat", changed_inode)
+    monkeypatch.setattr(scanner, "_entry_stat", changed_inode)
     scan_library(session, library_root)
     base = f"/api/v1/libraries/{library_id}/bundles/{missing.bundle_id}/files/{missing.id}"
 
