@@ -52,10 +52,25 @@ server's own disk, attached to every library connection as schema `plans`.**
    vanishes. That was not hypothetical: it was the first version, and a test that
    reopened a library without the id caught it. One derivation everybody can
    compute beats a nicer one some callers cannot.
-4. It runs in WAL, unconditionally. ADR-0021 forbids WAL only where the
+4. Where `<data_dir>` is depends on how Cairndex is running, and in every case it
+   is the directory that already holds `registry.db` — so a plan is exactly as
+   durable as the list of registered libraries, and no more:
+
+   | | plans database |
+   | --- | --- |
+   | packaged desktop app (macOS) | `~/Library/Application Support/dev.cairndex.app/local-server/plans/` |
+   | Docker / NAS | `/data/plans/`, on the `cairndex-data` volume |
+   | local development | `apps/server/var/plans/` |
+
+   None of these is a temporary directory and nothing sweeps them. Deregistering a
+   library deletes its plans file, because that is the one moment the server knows
+   it will never be wanted again; without it a forgotten library would leak a few
+   megabytes forever, since the file is not in the library folder to be cleaned up
+   with it.
+5. It runs in WAL, unconditionally. ADR-0021 forbids WAL only where the
    filesystem cannot host it; this file is always on the server's own disk, and
    reviewing a plan is a long run of small writes.
-5. **A library upgrading hands its plans over once.** `ensure_content_indexes`
+6. **A library upgrading hands its plans over once.** `ensure_content_indexes`
    copies the rows into the local database and then drops the in-library tables,
    in that order and inside a savepoint, so an interruption leaves them where they
    were. It runs after the additive-column pass, so an old library's tables are

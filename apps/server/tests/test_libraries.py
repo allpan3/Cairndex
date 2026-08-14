@@ -333,6 +333,35 @@ def test_delete_releases_the_ownership_lease(client: TestClient, tmp_path: Path)
     assert record is not None and record.released_at is not None
 
 
+def test_delete_takes_the_librarys_plans_database_with_it(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """ADR-0022 put grouping plans in *this server's* data directory.
+
+    Deregistration is metadata-only about the *library* — the folder and every
+    byte in it are left alone. The plans file is not in the library, though: it is
+    server-runtime state next to the registry, like the ownership lease, and
+    nothing else would ever remove it. A forgotten library would leak it forever.
+    """
+    from cairndex.persistence.engine import plans_database_path
+
+    root = _make_root(tmp_path)
+    created = client.post(
+        "/api/v1/libraries/create",
+        json={"root_path": str(root), "display_name": "Movies"},
+    ).json()
+    # Opening the library is what creates the file, so read something from it.
+    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
+    plans_file = plans_database_path(pkg.db_path(root))
+    assert plans_file.is_file()
+
+    assert client.delete(f"/api/v1/libraries/{created['id']}").status_code == 204
+
+    assert not plans_file.exists()
+    # ...and the library itself is untouched, which is the rule that still holds.
+    assert pkg.db_path(root).is_file()
+
+
 def test_delete_unknown_library_404(client: TestClient) -> None:
     assert client.delete("/api/v1/libraries/01JZZZZZZZZZZZZZZZZZZZZZZZ").status_code == 404
 
