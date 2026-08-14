@@ -125,9 +125,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
   The file lives beside `registry.db` — `~/Library/Application Support/dev.cairndex.app/local-server/plans/`
   in the packaged desktop app, `/data/plans/` under Docker, `apps/server/var/plans/`
-  in development. No temporary directory, and nothing sweeps it; deregistering a
-  library deletes its plans, which is the one moment the server knows they will
-  never be wanted.
+  in development — never a temporary directory, because a plan holds review work
+  only the owner could do and a reboot must not take it. A file no registered
+  library claims, untouched for a fortnight, is swept by the existing maintenance
+  pass; a registered library keeps its plans however long it sits unopened.
 
   A library upgrading hands its plans over on first open — copied out, then the
   in-library tables dropped, in that order and inside a savepoint, so an

@@ -264,6 +264,28 @@ def test_probe_surfaces_a_broken_marker_rather_than_offering_to_create(
     assert resp.status_code == 422
 
 
+def _write_marker_plan(plans_file: Path) -> str:
+    """Insert one recognisable plan row directly into the plans database."""
+    import sqlite3
+
+    plan_id = "01K00000000000000000MARKER"
+    with sqlite3.connect(plans_file) as conn:
+        conn.execute(
+            "INSERT INTO grouping_plans (id, status, rule_version, stem_modes, generated_at,"
+            " created_at, updated_at, version) VALUES (?, 'OPEN', 1, '{}', datetime('now'),"
+            " datetime('now'), datetime('now'), 1)",
+            (plan_id,),
+        )
+    return plan_id
+
+
+def _marker_plans(plans_file: Path) -> list[str]:
+    import sqlite3
+
+    with sqlite3.connect(f"file:{plans_file}?mode=ro", uri=True) as conn:
+        return [row[0] for row in conn.execute("SELECT id FROM grouping_plans")]
+
+
 # --- deregistration (metadata-only) -------------------------------------------
 
 
@@ -333,15 +355,17 @@ def test_delete_releases_the_ownership_lease(client: TestClient, tmp_path: Path)
     assert record is not None and record.released_at is not None
 
 
-def test_delete_takes_the_librarys_plans_database_with_it(
+def test_delete_leaves_the_librarys_plans_where_they_are(
     client: TestClient, tmp_path: Path
 ) -> None:
-    """ADR-0022 put grouping plans in *this server's* data directory.
+    """Remove-and-re-add must not cost the owner a review in progress.
 
-    Deregistration is metadata-only about the *library* — the folder and every
-    byte in it are left alone. The plans file is not in the library, though: it is
-    server-runtime state next to the registry, like the ownership lease, and
-    nothing else would ever remove it. A forgotten library would leak it forever.
+    ADR-0022 put grouping plans in this server's data directory rather than the
+    library folder, and the first version of that deleted them here — which made a
+    gesture the test above documents as reversible quietly destructive. A plan holds
+    decisions only the owner could make: renames, destinations, files dragged between
+    suggestions, bundle/collection conversions. ``sweep_orphaned_plans`` collects the
+    file later, once nothing has claimed it for a fortnight.
     """
     from cairndex.persistence.engine import plans_database_path
 
@@ -350,16 +374,72 @@ def test_delete_takes_the_librarys_plans_database_with_it(
         "/api/v1/libraries/create",
         json={"root_path": str(root), "display_name": "Movies"},
     ).json()
-    # Opening the library is what creates the file, so read something from it.
+    # Reading from the library is what opens it, and opening is what creates the file.
     assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
     plans_file = plans_database_path(pkg.db_path(root))
     assert plans_file.is_file()
+    marker = _write_marker_plan(plans_file)
 
     assert client.delete(f"/api/v1/libraries/{created['id']}").status_code == 204
+    assert plans_file.is_file()
 
-    assert not plans_file.exists()
-    # ...and the library itself is untouched, which is the rule that still holds.
-    assert pkg.db_path(root).is_file()
+    re_added = client.post("/api/v1/libraries/register", json={"root_path": str(root)})
+    assert re_added.status_code == 201
+    reopened = client.get(f"/api/v1/libraries/{re_added.json()['id']}/grouping/plans")
+    assert reopened.status_code == 200
+    assert _marker_plans(plans_file) == [marker]
+
+
+def test_a_plans_database_nothing_claims_is_swept_after_the_grace_period(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """The leak the deregistration delete was trying to close, closed properly.
+
+    Deregistration was only one of the ways a plans file is orphaned: moving a
+    library gives it a new digest, and so does a symlinked mount that was offline
+    when the digest was last computed. A sweep keyed on "no registered library claims
+    this, and nothing has touched it lately" covers all three.
+    """
+    import os
+    import time
+    from datetime import timedelta
+
+    from cairndex.persistence.engine import plans_database_path, sweep_orphaned_plans
+
+    root = _make_root(tmp_path)
+    created = client.post(
+        "/api/v1/libraries/create",
+        json={"root_path": str(root), "display_name": "Movies"},
+    ).json()
+    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
+    claimed = plans_database_path(pkg.db_path(root))
+    orphan = claimed.with_name("0000000000000000.db")
+    orphan.write_bytes(b"")
+    old = time.time() - timedelta(days=30).total_seconds()
+    os.utime(orphan, (old, old))
+    os.utime(claimed, (old, old))  # a registered library's file is old but still claimed
+
+    # Asserted on these two files rather than on a count: the tests in this file
+    # share a data directory, so a directory-wide total is another test's business.
+    sweep_orphaned_plans({pkg.db_path(root)})
+
+    assert not orphan.exists()
+    assert claimed.is_file(), "a registered library keeps its plans however long it sits unopened"
+
+
+def test_a_recently_used_orphan_is_left_for_now(client: TestClient, tmp_path: Path) -> None:
+    """The grace period is the whole point, so it gets its own assertion."""
+    from cairndex.persistence.engine import plans_database_path, sweep_orphaned_plans
+
+    root = _make_root(tmp_path)
+    plans_dir = plans_database_path(pkg.db_path(root)).parent
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    fresh = plans_dir / "1111111111111111.db"
+    fresh.write_bytes(b"")
+
+    sweep_orphaned_plans(set())
+
+    assert fresh.is_file()
 
 
 def test_delete_unknown_library_404(client: TestClient) -> None:
