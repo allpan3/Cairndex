@@ -77,6 +77,26 @@ def plans_database_path(db_path: Path) -> Path:
     return get_settings().data_dir / "plans" / f"{digest}.db"
 
 
+def discard_plans_database(db_path: Path) -> None:
+    """Delete the plans database belonging to ``db_path``'s library (ADR-0022).
+
+    For when a library leaves this server: the file is server-runtime state in the
+    server's own data directory, like the ownership lease and the cached engine, and
+    nothing would otherwise ever remove it. Takes the WAL sidecars with it.
+
+    The caller must have disposed the library's engine first, or a connection still
+    holds the file. Forgiving about failure — a plans file that will not delete is a
+    few megabytes, and must not be what stops a library being removed from a list.
+    """
+    plans_file = plans_database_path(db_path)
+    sidecars = (plans_file.with_name(plans_file.name + suffix) for suffix in ("-wal", "-shm"))
+    for path in (plans_file, *sidecars):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("could not delete %s", path, exc_info=True)
+
+
 def _attach_plans_database(target: str) -> Callable[[object, object], None]:
     """Return a ``connect`` listener that attaches the plans database (ADR-0022).
 
