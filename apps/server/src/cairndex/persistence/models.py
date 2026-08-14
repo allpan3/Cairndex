@@ -49,7 +49,15 @@ from cairndex.domain.enums import (
     MediaKind,
     ProposalKind,
 )
-from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt, Version
+from cairndex.persistence.base import (
+    PLANS_SCHEMA,
+    Base,
+    CreatedAt,
+    UlidFk,
+    UlidPk,
+    UpdatedAt,
+    Version,
+)
 from cairndex.persistence.types import UtcDateTime
 
 # --- Association tables ------------------------------------------------------
@@ -495,9 +503,16 @@ class GroupingPlan(Base):
     A plan is a snapshot — not a live path-sync rule — so applying a stale plan
     detects conflicts (moved/vanished/already-regrouped files) per proposal
     rather than discarding the whole result.
+
+    Being a snapshot is also why this table and its two children are the only
+    library metadata that does **not** live in ``library.db``. They are
+    regenerable from the library at any moment, and writing them across a network
+    share cost seconds per keystroke, so they sit in a server-local file attached
+    as schema ``plans`` (ADR-0022).
     """
 
     __tablename__ = "grouping_plans"
+    __table_args__ = {"schema": PLANS_SCHEMA}
 
     id: Mapped[UlidPk]
     # The scan that produced this plan, if any (registry job id; no cross-DB FK).
@@ -556,12 +571,17 @@ class GroupingProposal(Base):
     __table_args__ = (
         Index("ix_grouping_proposals_plan_id", "plan_id"),
         Index("ix_grouping_proposals_parent_proposal_id", "parent_proposal_id"),
+        {"schema": PLANS_SCHEMA},
     )
 
     id: Mapped[UlidPk]
-    plan_id: Mapped[UlidFk] = mapped_column(ForeignKey("grouping_plans.id", ondelete="CASCADE"))
+    plan_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_plans.id", ondelete="CASCADE")
+    )
     parent_proposal_id: Mapped[str | None] = mapped_column(
-        String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
+        String(26),
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_proposals.id", ondelete="SET NULL"),
+        nullable=True,
     )
     # Set when this proposal adds its files to an existing confirmed bundle
     # by default (ADR-0009 phase 5). A plain id resolved at apply.
@@ -613,11 +633,14 @@ class GroupingProposalFile(Base):
     __tablename__ = "grouping_proposal_files"
     # Same reason as ``grouping_proposals``, plus this is the column every plan
     # read joins on.
-    __table_args__ = (Index("ix_grouping_proposal_files_proposal_id", "proposal_id"),)
+    __table_args__ = (
+        Index("ix_grouping_proposal_files_proposal_id", "proposal_id"),
+        {"schema": PLANS_SCHEMA},
+    )
 
     id: Mapped[UlidPk]
     proposal_id: Mapped[UlidFk] = mapped_column(
-        ForeignKey("grouping_proposals.id", ondelete="CASCADE")
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_proposals.id", ondelete="CASCADE")
     )
     asset_file_id: Mapped[str] = mapped_column(String(26))
     relative_path: Mapped[str] = mapped_column(Text, default="")

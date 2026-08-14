@@ -70,10 +70,15 @@ export function JobProgress({
     <div className="job-progress" role="status" aria-live="polite">
       <div className="job-progress__row">
         <span className="job-progress__label">{headline(job)}</span>
-        {hasTotal && (
+        {hasTotal ? (
           <span className="job-progress__count">
             {job.processed}/{job.total}
           </span>
+        ) : (
+          // No total is not no news. A library's first scan cannot know how many
+          // files it will find without walking it twice, so it reports the count
+          // alone — which still moves, and is the thing worth watching.
+          job.processed > 0 && <span className="job-progress__count">{job.processed}</span>
         )}
         {stoppable && (
           <button

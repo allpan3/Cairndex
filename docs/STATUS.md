@@ -179,6 +179,40 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
+### Plans moved local, and the scan walks once (2026-08-14)
+
+The page cache and the indexes took the plan write from >10 min to 4.6 s. The owner
+judged 4.6 s still wrong for pressing a button and directed the storage to move,
+which is ADR-0022: the three grouping tables now live in
+`<data_dir>/plans/<digest>.db`, attached to every library connection as schema
+`plans`. Writing a plan is 78 ms; a Narrow/Widen is 66 ms.
+
+`ATTACH` rather than a second session, because a plan is read alongside the library
+rows it describes and SQLite joins across attached databases natively — roughly
+twenty-five `plan_store` call sites are unchanged. The plans file is keyed by a
+digest of the library database's path and nothing else: the first version keyed it
+by library id where known and by path otherwise, and a test that reopened a library
+without the id found the two derivations disagreeing, which is a plan that silently
+vanishes.
+
+Two bugs the tests caught while this went in, both worth remembering:
+
+- The migration used `INSERT OR IGNORE`, which **skips** a row violating a
+  constraint rather than failing — and the next statement dropped the source table.
+  It is a plain `INSERT` now, with a row-count check before the drop.
+- `DirEntry.is_dir(follow_symlinks=False)` caches the *lstat*, not the stat, so
+  warming `entry.stat()` in the worker thread matters: without it every file was
+  still stat'ed one at a time, 2.3 s of a 3.6 s walk.
+
+Scan, same library over the same share: **7,063 ms to 2,628 ms**, walk 6,317 ms to
+1,290 ms. Three changes — one traversal instead of two (the second existed only to
+count files for the progress bar), sixteen concurrent directory listings, and no
+second full read of `asset_files` when nothing was dropped.
+
+Not done: the library database is not vacuumed after the tables are dropped, so it
+keeps the freed pages. With a 32 MiB cache and a 6 MB database they are never read,
+so this is deliberate rather than pending.
+
 ### Root cause found: a 2 MiB page cache and three missing indexes (2026-08-14)
 
 The owner pushed back on "no way around this", correctly. Bisected properly, and

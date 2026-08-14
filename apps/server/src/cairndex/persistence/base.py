@@ -20,6 +20,13 @@ NAMING_CONVENTION = {
 }
 
 
+# Schema name under which each library connection attaches the server's own
+# grouping-plan database (ADR-0022). A model declared with this schema lives in
+# that local file, not in ``library.db``. It is attached rather than opened as a
+# second engine so a query may still join a plan to the library rows it describes.
+PLANS_SCHEMA = "plans"
+
+
 class Base(DeclarativeBase):
     """Declarative base for all Cairndex ORM models."""
 
