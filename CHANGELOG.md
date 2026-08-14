@@ -127,6 +127,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   in-library tables dropped, in that order and inside a savepoint, so an
   interruption leaves them where they were. A plan no longer travels with its
   library: carry the library elsewhere and Update writes a fresh one.
+- **Superseded plans are actually pruned now.** Two bounds sized for the old cost
+  had between them stopped the backlog draining: pruning ran only when a scan wrote
+  a *new* plan — so the steady state, Update finding nothing changed and keeping the
+  open plan, never pruned at all — and it deleted at most four per run. The owner's
+  library had 135 plans holding 5.6 MB. Pruning now runs on every Update, and 135
+  became 20 (the rest are applied plans, kept deliberately) inside a 2.7 s Update.
 - **A scan walks the library once, in parallel, instead of twice in sequence.**
   Two things made discovery cost more than the whole rest of the scan on a library
   over a network share. It walked the entire tree a second time purely to count

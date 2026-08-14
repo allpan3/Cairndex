@@ -904,13 +904,15 @@ def supersede_open_plans(session: Session) -> None:
 # a 404.
 _KEEP_SUPERSEDED = 1
 
-# Plans deleted per call. Bounded because the delete cascades: each plan takes its
-# proposals and their file rows with it, and on a library whose database sits on a
-# network share those page writes are journaled one transaction at a time — a
-# hundred plans at once turns a single Update into minutes of deletes. A backlog
-# drains over the next few instead, and steady state is one plan per generation
-# anyway (owner-reported, 2026-08-13).
-_PRUNE_PER_RUN = 4
+# Plans deleted per call. Still bounded, because the delete cascades — each plan
+# takes its proposals and their file rows with it — but the bound used to be 4,
+# chosen when those page writes went to a library database on a network share and a
+# hundred plans at once turned an Update into minutes of deletes. ADR-0022 moved
+# plans to local disk and indexed the cascade, which took pruning four from 6.4 s to
+# 12 ms; the old bound then drained a backlog so slowly that it never caught up —
+# the owner's library had accumulated 135 plans holding 5.6 MB (2026-08-14). A
+# thousand is a runaway guard rather than a cost ceiling.
+_PRUNE_PER_RUN = 1000
 
 
 def grouping_input_digest(session: Session) -> str:
