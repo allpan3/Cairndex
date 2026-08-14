@@ -1,6 +1,5 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,25 +14,10 @@ from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.ownership import get_lease_manager
+from cairndex.persistence.engine import discard_all_plans
 from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
 from cairndex.registry.library_engine import close_library_engines
-
-
-def _registered_db_paths() -> set[Path]:
-    """Every library database this server has registered, for the plans sweep.
-
-    Read fresh each pass rather than captured, so a library registered while the
-    server runs is protected from the very next sweep. Path only — nothing here
-    touches the library, so an unplugged one still counts as registered.
-    """
-    from cairndex.registry import library_package as pkg
-    from cairndex.registry.models import RegisteredLibrary
-
-    with get_registry_sessionmaker()() as session:
-        return {
-            pkg.db_path(Path(root)) for (root,) in session.query(RegisteredLibrary.root_path).all()
-        }
 
 
 @asynccontextmanager
@@ -49,6 +33,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     a crash leaves a lease to age into staleness and require a confirmation.
     """
     settings = get_settings()
+    # Before anything can open a library: a grouping plan lasts as long as the server
+    # that made it (ADR-0022), so whatever the previous run left goes now.
+    discard_all_plans()
     worker: Worker | None = None
     if settings.worker_enabled:
         worker = Worker(get_registry_sessionmaker(), build_registry())
@@ -64,7 +51,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             interval=settings.sqlite_maintenance_interval,
             idle_after=settings.sqlite_idle_checkpoint_after,
             snapshot_interval=settings.sqlite_snapshot_interval,
-            registered_db_paths=_registered_db_paths,
         )
         maintenance.start()
     try:

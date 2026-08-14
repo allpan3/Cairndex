@@ -1,9 +1,7 @@
 import hashlib
 import logging
-import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -68,22 +66,16 @@ def plans_database_path(db_path: Path) -> Path:
     """Where one library's grouping plans live, on the server's own disk (ADR-0022).
 
     Keyed by a digest of the library database's own path, and deliberately by
-    nothing else. The library id would be the more meaningful name — plans would
-    then survive the library being moved — but it is not known at every place that
-    opens a library engine, and two openers disagreeing about which file holds the
-    plans is a plan that silently vanishes. One derivation everybody can compute
-    beats a nicer one that some callers cannot. A moved library regenerates its
-    plan, which is what a plan is for.
+    nothing else. The library id would read better, but it is not known at every
+    place that opens a library engine, and two openers disagreeing about which file
+    holds the plans is a plan that silently vanishes — which a test caught. One
+    derivation everybody can compute beats a nicer one some callers cannot.
+
+    Nothing here has to survive a restart (``discard_all_plans``), so the digest only
+    needs to be stable while the server runs, and a path is.
     """
     digest = hashlib.sha256(db_path.resolve().as_posix().encode("utf-8")).hexdigest()[:16]
     return get_settings().data_dir / "plans" / f"{digest}.db"
-
-
-# How long a plans database outlives the last library that claimed it. Long enough
-# that "remove it from the list and add it back" — a recovery gesture this codebase
-# documents and tests as non-destructive — cannot cost the owner a review in
-# progress, and long enough to cover a library that is simply unplugged for a while.
-_ORPHANED_PLANS_GRACE = timedelta(days=14)
 
 
 def _delete_plans_files(plans_file: Path) -> bool:
@@ -99,44 +91,29 @@ def _delete_plans_files(plans_file: Path) -> bool:
     return gone
 
 
-def sweep_orphaned_plans(
-    known_db_paths: Iterable[Path], *, grace: timedelta = _ORPHANED_PLANS_GRACE
-) -> int:
-    """Delete plans databases that belong to no library registered here (ADR-0022).
+def discard_all_plans() -> int:
+    """Delete every grouping-plan database. Called once, at server startup (ADR-0022).
 
-    Plans live in the server's data directory rather than the library folder, so
-    nothing removes them when a library goes away — it is deregistered, or moved
-    (the file is keyed on the library database's path), or reached through a
-    symlinked mount that was offline when its digest was last computed. Deleting at
-    deregistration time only covered the first of those, and it made *remove and
-    re-add* destroy a review in progress, which is precisely the gesture the
-    registry documents as reversible.
+    A plan lasts as long as the server that made it and no longer: restarting means
+    pressing Update again, which costs a couple of seconds. This is the owner's call
+    (2026-08-14) and it buys a great deal of simplicity — a plans file is orphaned by
+    more than deregistration (a moved library gets a new digest, and so does one
+    reached through a symlinked mount that was offline when the digest was computed),
+    and clearing the directory wholesale collects all of it without a sweep, a grace
+    period, or any notion of which libraries are still registered.
 
-    So: sweep instead, and only after a grace period. A registered library keeps its
-    plans indefinitely however long it sits unopened; an unclaimed file has to also
-    be untouched for ``grace`` before it goes. That covers every way a file is
-    orphaned, and the one thing it can cost — a review abandoned for a fortnight on
-    a library no longer in the list — regenerates on Update.
+    What it costs is a review in progress when the server restarts. Deliberate, and
+    the reason it happens at *startup* rather than shutdown: a crash must not be able
+    to leave a plan behind that outlives the rule.
 
     Returns how many databases were deleted.
     """
     directory = get_settings().data_dir / "plans"
     if not directory.is_dir():
         return 0
-    claimed = {plans_database_path(db_path).name for db_path in known_db_paths}
-    cutoff = time.time() - grace.total_seconds()
-    removed = 0
-    for path in sorted(directory.glob("*.db")):
-        if path.name in claimed:
-            continue
-        try:
-            if path.stat().st_mtime > cutoff:
-                continue  # unclaimed, but recently used — a library may be coming back
-        except OSError:
-            continue
-        if _delete_plans_files(path):
-            removed += 1
-            logger.info("swept a grouping-plan database belonging to no registered library")
+    removed = sum(1 for path in sorted(directory.glob("*.db")) if _delete_plans_files(path))
+    if removed:
+        logger.info("discarded %d grouping-plan database(s) left by the previous run", removed)
     return removed
 
 
