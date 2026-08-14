@@ -221,14 +221,21 @@ and that read still crosses the share. Caching the suggester's input per plan wo
 take it to tens of milliseconds; not done, and not obviously worth the invalidation
 surface.
 
-The plans file is deliberately durable, and orphans are swept rather than deleted
-when a library is deregistered. The first version deleted on deregistration; that
-made remove-and-re-add destructive (the registry documents it as reversible) and
-still missed the other two ways a path-keyed file is orphaned — a moved library, and
-a symlinked mount offline when its digest was computed. Measured: a plans path is
-stable for a plain mount point whether or not it is mounted, but **differs** when the
-mount point itself is a symlink, which is why cleanup cannot rely on recomputing the
-digest for an absent library.
+Plan lifetime went through three versions before settling, and the owner drove the
+last one. First: delete a library's plans when it is deregistered — wrong, because
+remove-and-re-add is documented as reversible and a plan holds edits only the owner
+could make. Second: keep plans durable and sweep unclaimed files after a fortnight —
+correct but elaborate. Third, and current: **a plan lasts as long as the server that
+made it**, cleared at startup. The owner judged that a restart requiring a fresh
+Update is fair, and it deletes the sweep, the grace period, and any need to know which
+libraries are still registered.
+
+Worth keeping from the second version's investigation: a plans path is stable for a
+plain mount point whether or not it is mounted, but **differs** when the mount point
+itself is a symlink. Any future cleanup that recomputes a digest for an absent library
+cannot rely on getting the same answer. And nothing depended on plans outliving a run
+— applied plans are never read back, and the review pane finds its plan by
+`status === 'open'`.
 
 Not done: the library database is not vacuumed after the tables are dropped, so it
 keeps the freed pages. With a 32 MiB cache and a 6 MB database they are never read,

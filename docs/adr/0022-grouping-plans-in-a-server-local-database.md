@@ -62,26 +62,31 @@ server's own disk, attached to every library connection as schema `plans`.**
    | Docker / NAS | `/data/plans/`, on the `cairndex-data` volume |
    | local development | `apps/server/var/plans/` |
 
-   None of these is a temporary directory, and that is deliberate. A plan is not
-   purely derived: the *suggestions* are, but the review on top of them is not —
-   renames, destinations, files dragged between suggestions, bundle/collection
-   conversions, all recorded as `owner_edited` / `membership_edited`, and the whole
-   reason `input_digest` exists is to stop a scan discarding them. A temporary
-   directory would lose a review in progress on the next reboot, which is a
-   regression against keeping plans in the library.
-5. **Orphans are swept on a grace period, not deleted when a library leaves.** The
-   file is keyed on a path, so it is orphaned by more than deregistration: moving a
-   library gives it a new digest, and so does a symlinked mount that was offline
-   when its digest was last computed. And deleting on deregistration made *remove
-   and re-add* — which `test_delete_then_re_register_restores_the_same_library`
-   documents as reversible — quietly destroy the owner's review.
+   Not a temporary directory: `/var/folders` on macOS is purged by age and on some
+   boots, so relying on it would mean losing a review at arbitrary moments instead of
+   at a boundary the owner can see coming.
+5. **A plan lasts as long as the server that made it.** `discard_all_plans` deletes
+   the whole directory at startup, before anything can open a library — owner's call
+   (2026-08-14), and it is what makes the rest of this simple.
 
-   So `sweep_orphaned_plans` runs in the existing SQLite maintenance pass: a file
-   no *registered* library claims, and that nothing has touched for a fortnight, is
-   deleted. Registered, not owned — a library this server is not currently serving
-   still has a right to the review left open on it — and a registered library keeps
-   its plans however long it sits unopened. The most this can cost is a review
-   abandoned for two weeks on a library no longer in the list.
+   The alternative was durability, and it was tried: because the file is keyed on a
+   path, it is orphaned by more than deregistration — a moved library gets a new
+   digest, and (measured) so does one reached through a *symlinked* mount that was
+   offline when the digest was computed, while a plain mount point is stable either
+   way. Collecting those needed a sweep over the plans directory, a grace period, and
+   a notion of which libraries are still registered. Clearing the directory wholesale
+   at startup collects all of it in four lines.
+
+   What it costs is a review in progress when the server restarts: the suggestions
+   regenerate in about two seconds, but the edits on them — renames, destinations,
+   files dragged between suggestions, conversions — do not. Accepted knowingly. At
+   *startup* rather than shutdown, so a crash cannot leave a plan that outlives the
+   rule. Deregistering a library still leaves its plans alone, so remove-and-re-add
+   stays reversible within a run, which is what the registry documents.
+
+   Nothing else depended on a plan outliving a run: applied plans are never read back
+   (`grouping_plan_id` in a scan result only pops the review pane open, in the same
+   session), and the pane finds its plan with `status === 'open'`.
 6. It runs in WAL, unconditionally. ADR-0021 forbids WAL only where the
    filesystem cannot host it; this file is always on the server's own disk, and
    reviewing a plan is a long run of small writes.

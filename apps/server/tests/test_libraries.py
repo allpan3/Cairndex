@@ -364,8 +364,8 @@ def test_delete_leaves_the_librarys_plans_where_they_are(
     library folder, and the first version of that deleted them here — which made a
     gesture the test above documents as reversible quietly destructive. A plan holds
     decisions only the owner could make: renames, destinations, files dragged between
-    suggestions, bundle/collection conversions. ``sweep_orphaned_plans`` collects the
-    file later, once nothing has claimed it for a fortnight.
+    suggestions, bundle/collection conversions. The file is collected at the next
+    server startup instead (see below), which is a boundary the owner can see coming.
     """
     from cairndex.persistence.engine import plans_database_path
 
@@ -390,21 +390,17 @@ def test_delete_leaves_the_librarys_plans_where_they_are(
     assert _marker_plans(plans_file) == [marker]
 
 
-def test_a_plans_database_nothing_claims_is_swept_after_the_grace_period(
-    client: TestClient, tmp_path: Path
-) -> None:
-    """The leak the deregistration delete was trying to close, closed properly.
+def test_a_new_server_run_starts_with_no_plans(client: TestClient, tmp_path: Path) -> None:
+    """A grouping plan lasts as long as the server that made it (ADR-0022).
 
-    Deregistration was only one of the ways a plans file is orphaned: moving a
-    library gives it a new digest, and so does a symlinked mount that was offline
-    when the digest was last computed. A sweep keyed on "no registered library claims
-    this, and nothing has touched it lately" covers all three.
+    Owner's call, and it is what removes any need to work out which plans files are
+    still claimed: a plans database is keyed on a path, so it is orphaned by a moved
+    library and by a symlinked mount that was offline when its digest was computed,
+    not only by deregistration. Clearing the directory at startup collects all of
+    them. At *startup* rather than shutdown, so a crash cannot leave a plan behind
+    that outlives the rule.
     """
-    import os
-    import time
-    from datetime import timedelta
-
-    from cairndex.persistence.engine import plans_database_path, sweep_orphaned_plans
+    from cairndex.persistence.engine import discard_all_plans, plans_database_path
 
     root = _make_root(tmp_path)
     created = client.post(
@@ -412,34 +408,17 @@ def test_a_plans_database_nothing_claims_is_swept_after_the_grace_period(
         json={"root_path": str(root), "display_name": "Movies"},
     ).json()
     assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
-    claimed = plans_database_path(pkg.db_path(root))
-    orphan = claimed.with_name("0000000000000000.db")
+    plans_file = plans_database_path(pkg.db_path(root))
+    _write_marker_plan(plans_file)
+    orphan = plans_file.with_name("0000000000000000.db")  # e.g. a library since moved
     orphan.write_bytes(b"")
-    old = time.time() - timedelta(days=30).total_seconds()
-    os.utime(orphan, (old, old))
-    os.utime(claimed, (old, old))  # a registered library's file is old but still claimed
 
-    # Asserted on these two files rather than on a count: the tests in this file
-    # share a data directory, so a directory-wide total is another test's business.
-    sweep_orphaned_plans({pkg.db_path(root)})
+    discard_all_plans()  # what the lifespan does before anything opens a library
 
+    assert not plans_file.exists()
     assert not orphan.exists()
-    assert claimed.is_file(), "a registered library keeps its plans however long it sits unopened"
-
-
-def test_a_recently_used_orphan_is_left_for_now(client: TestClient, tmp_path: Path) -> None:
-    """The grace period is the whole point, so it gets its own assertion."""
-    from cairndex.persistence.engine import plans_database_path, sweep_orphaned_plans
-
-    root = _make_root(tmp_path)
-    plans_dir = plans_database_path(pkg.db_path(root)).parent
-    plans_dir.mkdir(parents=True, exist_ok=True)
-    fresh = plans_dir / "1111111111111111.db"
-    fresh.write_bytes(b"")
-
-    sweep_orphaned_plans(set())
-
-    assert fresh.is_file()
+    # ...and the library reopens perfectly well, with a plans database made afresh.
+    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").json() == []
 
 
 def test_delete_unknown_library_404(client: TestClient) -> None:
