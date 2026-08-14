@@ -8,6 +8,7 @@ supersedes any earlier still-open plan so there is a single active plan.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 
 from sqlalchemy import delete, func, select, update
@@ -19,6 +20,7 @@ from cairndex.core.ids import new_id
 from cairndex.domain.enums import (
     DEFAULT_STEM_LEVEL,
     STEM_LEVEL_CEILING,
+    FileAvailability,
     GroupingPlanStatus,
     GroupingState,
     ProposalKind,
@@ -911,6 +913,38 @@ _KEEP_SUPERSEDED = 1
 _PRUNE_PER_RUN = 4
 
 
+def grouping_input_digest(session: Session) -> str:
+    """Digest of exactly what the suggester reads, and nothing else.
+
+    The suggester's answer depends on each file's path, its media kind, and
+    whether its bundle is *confirmed* — nothing more. So a plan is stale only when
+    one of those changes.
+
+    An earlier version of this compared ``max(updated_at)`` instead, which is
+    wrong in a way that made the whole optimisation a no-op for the owner:
+    probing writes ``tech_metadata``, and thumbnails, ratings, notes and
+    "last opened" all touch rows too. Any of them bumped the timestamp, every
+    scan concluded the plan was stale, and it regenerated regardless — which on a
+    network-hosted library is minutes (owner-reported, 2026-08-14).
+    """
+    rows = session.execute(
+        select(
+            AssetFile.id,
+            AssetFile.relative_path,
+            AssetFile.media_kind,
+            AssetFile.availability,
+            AssetFile.bundle_id,
+            AssetBundle.grouping_state,
+        )
+        .outerjoin(AssetBundle, AssetBundle.id == AssetFile.bundle_id)
+        .order_by(AssetFile.id)
+    ).all()
+    digest = hashlib.blake2b(digest_size=16)
+    for row in rows:
+        digest.update(repr(tuple(str(value) for value in row)).encode())
+    return digest.hexdigest()
+
+
 def reusable_open_plan(session: Session) -> GroupingPlan | None:
     """The open plan, when regenerating it could not produce anything different.
 
@@ -942,21 +976,43 @@ def reusable_open_plan(session: Session) -> GroupingPlan | None:
     )
     if plan is None or plan.rule_version != SUGGESTER_RULE_VERSION:
         return None
-    touched = [
-        session.scalar(select(func.max(AssetFile.updated_at))),
-        session.scalar(select(func.max(AssetBundle.updated_at))),
-    ]
-    generated = plan.generated_at
-    for stamp in touched:
-        if stamp is None:
-            continue
-        # Stored as UTC either way; compare on equal footing rather than trusting
-        # both to carry a tzinfo.
-        left = stamp.replace(tzinfo=None) if stamp.tzinfo else stamp
-        right = generated.replace(tzinfo=None) if generated.tzinfo else generated
-        if left > right:
+    digest = grouping_input_digest(session)
+    if plan.input_digest is None:
+        # Written before the digest column existed. Rather than regenerate once —
+        # minutes on a network-hosted library — check the one thing the digest is
+        # standing in for: does the plan still cover exactly the files that are
+        # there, under the same paths? If so, adopt it and record the digest.
+        if not _plan_covers_the_same_files(session, plan):
             return None
+        plan.input_digest = digest
+        session.flush()
+        return plan
+    if plan.input_digest != digest:
+        return None
     return plan
+
+
+def _plan_covers_the_same_files(session: Session, plan: GroupingPlan) -> bool:
+    """Whether every file the plan holds still exists at the path it recorded.
+
+    Exact for the changes that matter to a plan — a file added, removed, renamed,
+    or moved — because the plan stores each file's id *and* its path. Used only to
+    adopt a plan written before ``input_digest`` existed.
+    """
+    covered = {(pf.asset_file_id, pf.relative_path) for p in plan.proposals for pf in p.files}
+    if not covered:
+        return False
+    live = {
+        (file_id, path)
+        for file_id, path in session.execute(
+            select(AssetFile.id, AssetFile.relative_path).where(
+                AssetFile.availability != FileAvailability.TRASHED
+            )
+        ).all()
+    }
+    # The plan covers the unbundled files, a subset of what is on disk; every one
+    # of them still has to be present, unmoved.
+    return covered <= live
 
 
 def prune_obsolete_plans(session: Session) -> int:
@@ -1016,6 +1072,7 @@ def persist_plan(
         scan_job_id=scan_job_id,
         rule_version=data.rule_version,
         stem_level_overrides=dict(data.stem_levels),
+        input_digest=grouping_input_digest(session),
     )
     session.add(plan)
     session.flush()
