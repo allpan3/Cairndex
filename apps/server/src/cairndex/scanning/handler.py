@@ -50,8 +50,12 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
             scan_job_id=ctx.job_id,
             on_progress=lambda written, total: ctx.progress(written, total),
         )
-        # Bounded, and after the plan the caller is waiting for is already in.
-        plan_store.prune_obsolete_plans(ctx.session)
+    # Outside the branch above, and after the plan the caller is waiting for is
+    # already in. It used to run only when a new plan had been written, so the
+    # steady state — Update finding nothing changed and keeping the open plan —
+    # never pruned, and the backlog only ever grew (135 plans, 5.6 MB, owner's
+    # library 2026-08-14). Cheap enough to run every time now that plans are local.
+    plan_store.prune_obsolete_plans(ctx.session)
     ctx.set_phase(JobPhase.FINALIZING)
     return {
         "discovered": summary.discovered,

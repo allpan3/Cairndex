@@ -209,6 +209,18 @@ Scan, same library over the same share: **7,063 ms to 2,628 ms**, walk 6,317 ms 
 count files for the progress bar), sixteen concurrent directory listings, and no
 second full read of `asset_files` when nothing was dropped.
 
+Verified end to end through the real server on the real library, which is the bar
+the owner set. Update **1.6 s** warm (was minutes); opening the review pane 32 ms;
+loading a 340-proposal plan 21 ms; rename 8 ms; convert to collection 76 ms;
+reparent 26 ms; Narrow/Widen 217–242 ms. The one-time plan handover on first open
+cost 18 s, copying 5.6 MB of plan rows off the share.
+
+Narrow/Widen is the slowest thing left at ~230 ms, because `set_directory_stem_level`
+re-runs the whole suggester (a directory's grouping is not computable in isolation)
+and that read still crosses the share. Caching the suggester's input per plan would
+take it to tens of milliseconds; not done, and not obviously worth the invalidation
+surface.
+
 Not done: the library database is not vacuumed after the tables are dropped, so it
 keeps the freed pages. With a 32 MiB cache and a 6 MB database they are never read,
 so this is deliberate rather than pending.
