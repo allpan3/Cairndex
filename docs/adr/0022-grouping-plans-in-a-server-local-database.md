@@ -62,15 +62,30 @@ server's own disk, attached to every library connection as schema `plans`.**
    | Docker / NAS | `/data/plans/`, on the `cairndex-data` volume |
    | local development | `apps/server/var/plans/` |
 
-   None of these is a temporary directory and nothing sweeps them. Deregistering a
-   library deletes its plans file, because that is the one moment the server knows
-   it will never be wanted again; without it a forgotten library would leak a few
-   megabytes forever, since the file is not in the library folder to be cleaned up
-   with it.
-5. It runs in WAL, unconditionally. ADR-0021 forbids WAL only where the
+   None of these is a temporary directory, and that is deliberate. A plan is not
+   purely derived: the *suggestions* are, but the review on top of them is not —
+   renames, destinations, files dragged between suggestions, bundle/collection
+   conversions, all recorded as `owner_edited` / `membership_edited`, and the whole
+   reason `input_digest` exists is to stop a scan discarding them. A temporary
+   directory would lose a review in progress on the next reboot, which is a
+   regression against keeping plans in the library.
+5. **Orphans are swept on a grace period, not deleted when a library leaves.** The
+   file is keyed on a path, so it is orphaned by more than deregistration: moving a
+   library gives it a new digest, and so does a symlinked mount that was offline
+   when its digest was last computed. And deleting on deregistration made *remove
+   and re-add* — which `test_delete_then_re_register_restores_the_same_library`
+   documents as reversible — quietly destroy the owner's review.
+
+   So `sweep_orphaned_plans` runs in the existing SQLite maintenance pass: a file
+   no *registered* library claims, and that nothing has touched for a fortnight, is
+   deleted. Registered, not owned — a library this server is not currently serving
+   still has a right to the review left open on it — and a registered library keeps
+   its plans however long it sits unopened. The most this can cost is a review
+   abandoned for two weeks on a library no longer in the list.
+6. It runs in WAL, unconditionally. ADR-0021 forbids WAL only where the
    filesystem cannot host it; this file is always on the server's own disk, and
    reviewing a plan is a long run of small writes.
-6. **A library upgrading hands its plans over once.** `ensure_content_indexes`
+7. **A library upgrading hands its plans over once.** `ensure_content_indexes`
    copies the rows into the local database and then drops the in-library tables,
    in that order and inside a savepoint, so an interruption leaves them where they
    were. It runs after the additive-column pass, so an old library's tables are

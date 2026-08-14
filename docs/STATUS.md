@@ -221,6 +221,15 @@ and that read still crosses the share. Caching the suggester's input per plan wo
 take it to tens of milliseconds; not done, and not obviously worth the invalidation
 surface.
 
+The plans file is deliberately durable, and orphans are swept rather than deleted
+when a library is deregistered. The first version deleted on deregistration; that
+made remove-and-re-add destructive (the registry documents it as reversible) and
+still missed the other two ways a path-keyed file is orphaned — a moved library, and
+a symlinked mount offline when its digest was computed. Measured: a plans path is
+stable for a plain mount point whether or not it is mounted, but **differs** when the
+mount point itself is a symlink, which is why cleanup cannot rely on recomputing the
+digest for an absent library.
+
 Not done: the library database is not vacuumed after the tables are dropped, so it
 keeps the freed pages. With a 32 MiB cache and a 6 MB database they are never read,
 so this is deliberate rather than pending.

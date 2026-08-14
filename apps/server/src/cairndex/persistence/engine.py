@@ -1,7 +1,9 @@
 import hashlib
 import logging
-from collections.abc import Callable, Iterator
+import time
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -77,24 +79,65 @@ def plans_database_path(db_path: Path) -> Path:
     return get_settings().data_dir / "plans" / f"{digest}.db"
 
 
-def discard_plans_database(db_path: Path) -> None:
-    """Delete the plans database belonging to ``db_path``'s library (ADR-0022).
+# How long a plans database outlives the last library that claimed it. Long enough
+# that "remove it from the list and add it back" — a recovery gesture this codebase
+# documents and tests as non-destructive — cannot cost the owner a review in
+# progress, and long enough to cover a library that is simply unplugged for a while.
+_ORPHANED_PLANS_GRACE = timedelta(days=14)
 
-    For when a library leaves this server: the file is server-runtime state in the
-    server's own data directory, like the ownership lease and the cached engine, and
-    nothing would otherwise ever remove it. Takes the WAL sidecars with it.
 
-    The caller must have disposed the library's engine first, or a connection still
-    holds the file. Forgiving about failure — a plans file that will not delete is a
-    few megabytes, and must not be what stops a library being removed from a list.
-    """
-    plans_file = plans_database_path(db_path)
+def _delete_plans_files(plans_file: Path) -> bool:
+    """Delete a plans database and its WAL sidecars. True if the database went."""
+    gone = False
     sidecars = (plans_file.with_name(plans_file.name + suffix) for suffix in ("-wal", "-shm"))
     for path in (plans_file, *sidecars):
         try:
             path.unlink(missing_ok=True)
+            gone = gone or path == plans_file
         except OSError:
             logger.warning("could not delete %s", path, exc_info=True)
+    return gone
+
+
+def sweep_orphaned_plans(
+    known_db_paths: Iterable[Path], *, grace: timedelta = _ORPHANED_PLANS_GRACE
+) -> int:
+    """Delete plans databases that belong to no library registered here (ADR-0022).
+
+    Plans live in the server's data directory rather than the library folder, so
+    nothing removes them when a library goes away — it is deregistered, or moved
+    (the file is keyed on the library database's path), or reached through a
+    symlinked mount that was offline when its digest was last computed. Deleting at
+    deregistration time only covered the first of those, and it made *remove and
+    re-add* destroy a review in progress, which is precisely the gesture the
+    registry documents as reversible.
+
+    So: sweep instead, and only after a grace period. A registered library keeps its
+    plans indefinitely however long it sits unopened; an unclaimed file has to also
+    be untouched for ``grace`` before it goes. That covers every way a file is
+    orphaned, and the one thing it can cost — a review abandoned for a fortnight on
+    a library no longer in the list — regenerates on Update.
+
+    Returns how many databases were deleted.
+    """
+    directory = get_settings().data_dir / "plans"
+    if not directory.is_dir():
+        return 0
+    claimed = {plans_database_path(db_path).name for db_path in known_db_paths}
+    cutoff = time.time() - grace.total_seconds()
+    removed = 0
+    for path in sorted(directory.glob("*.db")):
+        if path.name in claimed:
+            continue
+        try:
+            if path.stat().st_mtime > cutoff:
+                continue  # unclaimed, but recently used — a library may be coming back
+        except OSError:
+            continue
+        if _delete_plans_files(path):
+            removed += 1
+            logger.info("swept a grouping-plan database belonging to no registered library")
+    return removed
 
 
 def _attach_plans_database(target: str) -> Callable[[object, object], None]:
