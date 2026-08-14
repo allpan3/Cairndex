@@ -276,6 +276,35 @@ def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engi
     assert restored_target == target_id
 
 
+# A cascade with no index on the child column is a full scan per deleted row
+def test_grouping_foreign_keys_are_indexed(engine: Engine) -> None:
+    """Every foreign key into the grouping tables needs an index on the child side.
+
+    SQLite enforces ``ON DELETE`` by looking for referencing rows, so without one
+    each cascade is a full table scan *per deleted row*. Deleting four superseded
+    plans from the owner's library took 6.4 s on a network share for that reason,
+    and 1.4 s with these indexes (measured 2026-08-14). The same index also serves
+    every plan read, which joins on ``proposal_id``.
+
+    Asserted against the *model* rather than a hand-written list, so a foreign key
+    added later without an index fails here and names itself.
+    """
+    from cairndex.persistence.base import Base
+
+    ensure_content_indexes(engine)
+    inspector = inspect(engine)
+    for table_name in ("grouping_plans", "grouping_proposals", "grouping_proposal_files"):
+        table = Base.metadata.tables[table_name]
+        indexed = {tuple(col["column_names"]) for col in inspector.get_indexes(table_name)} | {
+            (name,) for name in (col.name for col in table.primary_key.columns)
+        }
+        for fk in table.foreign_key_constraints:
+            child = tuple(col.name for col in fk.columns)
+            assert any(existing[: len(child)] == child for existing in indexed), (
+                f"{table_name}.{child} is a foreign key with no index on the child side"
+            )
+
+
 # Existing libraries gain the durable per-directory stem levels on open. The
 # column name predates the continuous dial and is deliberately unchanged: the
 # model maps ``stem_level_overrides`` onto it, because nothing here can rename a

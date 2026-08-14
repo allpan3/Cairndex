@@ -15,6 +15,24 @@ from cairndex.persistence import journal
 logger = logging.getLogger(__name__)
 
 
+# Page-cache ceiling per connection, in KiB. SQLite's default is 2 MiB, which is
+# smaller than a modestly used library database — so pages evicted during a write
+# have to be read back, and on a network-hosted library each of those reads costs a
+# round trip.
+#
+# Not a marginal effect. Writing a 340-row grouping plan into a 5.75 MB library on
+# an SMB share took **over ten minutes** at the 2 MiB default and **5.5 seconds** at
+# 16 MiB (owner-reported; measured 2026-08-14). Why it bites so hard there:
+# ``grouping_proposals.parent_proposal_id`` references its own table, so with
+# ``foreign_keys=ON`` SQLite seeks the primary-key index once per inserted row —
+# while the inserts are evicting exactly those index pages. On local disk the
+# re-reads are free, which is why it never showed up in development.
+#
+# A ceiling, not an allocation: SQLite grows the cache lazily, so a library small
+# enough never to need it pays nothing.
+_CACHE_KIB = 32 * 1024
+
+
 def _apply_connection_pragmas(dbapi_connection: object, _connection_record: object) -> None:
     """Set the genuinely connection-scoped SQLite pragmas (ADR-0002).
 
@@ -33,6 +51,7 @@ def _apply_connection_pragmas(dbapi_connection: object, _connection_record: obje
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute(f"PRAGMA cache_size=-{_CACHE_KIB}")
     finally:
         cursor.close()
 
