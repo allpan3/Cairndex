@@ -200,7 +200,10 @@ def deregister_library(session: Session, library_id: str) -> None:
       must not keep holding it, or the next machine to open the folder meets a
       takeover prompt for a library nobody is serving;
     - the cached content engine is disposed, which closes the last connection so
-      SQLite folds the WAL back into a single consistent file (ADR-0018 §6).
+      SQLite folds the WAL back into a single consistent file (ADR-0018 §6);
+    - the library's grouping plans are deleted, because ADR-0022 moved them into
+      *this server's* data directory, where nothing else would ever remove them.
+      A re-added folder regenerates its plan, which is what a plan is for.
 
     Queued jobs for the library go with the row through the ``ON DELETE
     CASCADE`` on ``job_queue``. A job already *running* stops at its next
@@ -210,6 +213,8 @@ def deregister_library(session: Session, library_id: str) -> None:
     # (ownership's manager reads the server identity *from* it at build time),
     # so a top-level import would be a cycle waiting to happen.
     from cairndex.ownership import get_lease_manager
+    from cairndex.persistence.engine import discard_plans_database
+    from cairndex.registry import library_package as pkg
     from cairndex.registry.library_engine import dispose_library_engine
 
     library = session.get(RegisteredLibrary, library_id)
@@ -224,6 +229,8 @@ def deregister_library(session: Session, library_id: str) -> None:
         # leave the user no way to clean up their own list.
         logger.warning("could not release the lease for library %s", library_id, exc_info=True)
     dispose_library_engine(library_id)
+    # After disposing the engine, so no connection still holds the file.
+    discard_plans_database(pkg.db_path(Path(library.root_path)))
 
     session.delete(library)
     session.flush()
