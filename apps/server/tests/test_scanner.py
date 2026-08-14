@@ -388,5 +388,12 @@ def test_progress_is_reported_for_a_library_smaller_than_one_batch(
     assert summary.discovered == 4
     # One call per file during the walk, plus the final report.
     assert [processed for processed, _ in seen] == [1, 2, 3, 4, 4]
-    # The total is known up front, so the bar is determinate from the first tick.
-    assert all(total == 4 for _, total in seen)
+    # A first scan has no idea how many files there are and does not pretend to:
+    # the exact total used to come from a second full walk, which on a library over
+    # a network share cost about as much again as the scan.
+    assert all(total is None for _, total in seen)
+
+    # A re-scan does know, because the rows it is about to revisit are the estimate.
+    again: list[tuple[int, int | None]] = []
+    scan_library(session, library_root, on_progress=lambda p, t: again.append((p, t)))
+    assert all(total == 4 for _, total in again)

@@ -18,8 +18,10 @@ Only a quick fingerprint (size + mtime) and the cheap filesystem identity
 Nothing on disk is ever modified.
 """
 
+import contextlib
 import os
 from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -100,28 +102,95 @@ def _sqlite_filesystem_identity(value: int) -> int:
     return value if value <= _SQLITE_INT64_MAX else value - _UINT64_MODULUS
 
 
-def _iter_media_files(root_path: Path) -> Iterator[Path]:
-    # followlinks=False avoids symlink cycles and escapes out of the root.
-    for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
-        dirnames[:] = [name for name in dirnames if not is_hidden_relative_path(name)]
-        for name in filenames:
-            rel = (Path(dirpath) / name).relative_to(root_path).as_posix()
-            if not is_hidden_relative_path(rel) and classify(name) is not None:
-                yield Path(dirpath) / name
+# How many directories to list at once. A library on a network share answers each
+# listing in a round trip, and those round trips are latency, not work — so
+# overlapping them is nearly free and collapses the walk. Listing the owner's
+# library cold took 4.2 s in sequence and 1.3 s across sixteen threads (measured
+# 2026-08-14). ``os.scandir`` and ``os.stat`` both release the GIL, so threads are
+# the right tool despite the name.
+_LISTING_THREADS = 16
 
 
-def _count_media_files(root_path: Path) -> int:
-    return sum(1 for _ in _iter_media_files(root_path))
+def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]]:
+    """One directory's visible subdirectories and its classifiable media entries.
+
+    Returns ``DirEntry`` objects rather than paths so their ``stat`` can be reused:
+    a fresh ``Path.stat()`` re-resolves every path component, which over SMB costs
+    a round trip per file. Same walk, 2.5 s of ``Path.stat()`` against 76 ms of
+    ``DirEntry.stat()`` on the owner's library (measured 2026-08-14).
+    """
+    subdirectories: list[Path] = []
+    entries: list[os.DirEntry[str]] = []
+    try:
+        listing = list(os.scandir(directory))
+    except OSError:
+        return subdirectories, entries  # vanished or unreadable; nothing to report
+    for entry in listing:
+        if is_hidden_relative_path(entry.name):
+            continue
+        try:
+            # follow_symlinks=False avoids symlink cycles and escapes out of the root.
+            if entry.is_dir(follow_symlinks=False):
+                subdirectories.append(Path(entry.path))
+            elif classify(entry.name) is not None:
+                # Read the stat here, in the worker, though nothing here needs it.
+                # ``DirEntry`` caches it, so ``_observe`` gets it for free on the
+                # main thread later. ``is_dir(follow_symlinks=False)`` above fills a
+                # *different* slot — the lstat — so without this every file was
+                # still stat'ed one at a time: 2.3 s of the owner's 3.6 s walk.
+                with contextlib.suppress(OSError):
+                    entry.stat()
+                entries.append(entry)
+        except OSError:
+            continue
+    return subdirectories, entries
 
 
-def _observe(path: Path, root_path: Path) -> _Observed | None:
-    classification = classify(path.name)
-    assert classification is not None  # _iter filters to classifiable files
+def _iter_media_entries(root_path: Path) -> Iterator[os.DirEntry[str]]:
+    """Walk the library once, listing directories a level at a time in parallel.
+
+    Breadth-first rather than depth-first purely so each level is a batch wide
+    enough to be worth handing to the pool.
+    """
+    pending = [root_path]
+    with ThreadPoolExecutor(max_workers=_LISTING_THREADS) as pool:
+        while pending:
+            level = list(pool.map(_list_directory, pending))
+            pending = []
+            for subdirectories, entries in level:
+                pending.extend(subdirectories)
+                yield from entries
+
+
+def iter_media_files(root_path: Path) -> Iterator[Path]:
+    """Every classifiable media file under ``root_path``, in one concurrent walk.
+
+    Public because linking a dropped-in folder needs the same traversal without
+    the scan's bookkeeping around it.
+    """
+    for entry in _iter_media_entries(root_path):
+        yield Path(entry.path)
+
+
+def _entry_stat(entry: os.DirEntry[str]) -> os.stat_result:
+    """The one place the scan reads a file's metadata.
+
+    A named seam, because ``os.DirEntry`` is a built-in that cannot be patched: a
+    test that needs to say what a network filesystem reports — an unsigned 64-bit
+    inode, or an inode that changes between scans — substitutes this instead.
+    """
+    return entry.stat()
+
+
+def _observe(entry: os.DirEntry[str], root_path: Path) -> _Observed | None:
+    classification = classify(entry.name)
+    assert classification is not None  # the walk filters to classifiable files
     kind, role = classification
     try:
-        stat = path.stat()
+        stat = _entry_stat(entry)
     except OSError:
         return None  # vanished between walk and stat; missing pass handles it
+    path = Path(entry.path)
     rel = normalize_relative_path(path.relative_to(root_path).as_posix())
     # A zero device/inode is treated as untrustworthy identity (some network
     # filesystems do this), so it never drives a repair on its own.
@@ -232,11 +301,14 @@ def scan_library(
     """Scan a library's root directory. ``root_path`` comes from the registry
     (ADR-0008); all ``AssetFile`` rows in ``session`` belong to this library."""
     existing_rows = list(session.scalars(select(AssetFile)))
-    _drop_ignored_scan_rows(session, existing_rows)
+    # Re-read only if something was actually dropped. This used to read every file
+    # row a second time unconditionally, and the common case drops nothing — a whole
+    # extra pass over the table, which on a network-hosted library is a third of the
+    # scan's remaining SQL cost for no new information.
+    if _drop_ignored_scan_rows(session, existing_rows):
+        existing_rows = list(session.scalars(select(AssetFile)))
     existing: dict[str, AssetFile] = {
-        f.relative_path: f
-        for f in session.scalars(select(AssetFile))
-        if not is_hidden_relative_path(f.relative_path)
+        f.relative_path: f for f in existing_rows if not is_hidden_relative_path(f.relative_path)
     }
 
     # Unreachable root: mark all files missing (availability is tracked in the
@@ -254,14 +326,21 @@ def scan_library(
 
     if on_phase is not None:
         on_phase("discovering")
-    total = _count_media_files(root_path)
+    # An estimate, not a count. It used to be exact, from a second full walk of the
+    # library done for no other purpose — which on a network share cost as much as
+    # the scan itself. The rows already here are what an incremental scan is about
+    # to find, so they are the honest guess, and finding more only ever raises it.
+    # A first scan has nothing to guess from and says so: ``None`` means the bar is
+    # indeterminate, which is truthful, where a total that equalled the count so far
+    # would have sat at a permanent 100%.
+    total = len(existing) or None
     seen: set[str] = set()
     new_obs: list[_Observed] = []  # bounded: one lightweight record per new path
     processed = updated = 0
 
     # Pass 1: update same-path rows in place; collect appeared paths for repair.
-    for path in _iter_media_files(root_path):
-        obs = _observe(path, root_path)
+    for entry in _iter_media_entries(root_path):
+        obs = _observe(entry, root_path)
         if obs is None:
             continue
         seen.add(obs.rel)
@@ -283,7 +362,7 @@ def scan_library(
         if processed % batch_size == 0:
             session.commit()
         if on_progress is not None:
-            on_progress(processed, total)
+            on_progress(processed, max(total, processed) if total else None)
 
     # Pass 2: repair moves before creating anything new.
     if on_phase is not None:
@@ -354,7 +433,7 @@ def scan_library(
 
     session.commit()
     if on_progress is not None:
-        on_progress(processed, total)
+        on_progress(processed, max(total, processed) if total else None)
 
     return ScanSummary(
         discovered=processed,

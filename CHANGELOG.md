@@ -108,6 +108,34 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Grouping plans moved out of the library, onto the server's own disk**
+  (ADR-0022). A plan is a snapshot of a suggestion run — regenerable from the
+  library at any moment, and by far its heaviest writer: ~1,100 rows rewritten
+  whenever the input changes, and touched again on every rename, reparent, convert,
+  Narrow and Widen. Sending that across a network share was the wrong shape of
+  problem to keep optimizing. The three tables are now a SQLite database under the
+  data directory, attached to every library connection as schema `plans`, so a
+  query can still join a plan to the library rows it describes.
+
+  | | before | after |
+  | --- | --- | --- |
+  | write a 340-proposal plan | 4,614 ms | **78 ms** |
+  | prune superseded plans | 1,431 ms | **12 ms** |
+  | one Narrow/Widen | ~1,000 ms | **66 ms** |
+
+  A library upgrading hands its plans over on first open — copied out, then the
+  in-library tables dropped, in that order and inside a savepoint, so an
+  interruption leaves them where they were. A plan no longer travels with its
+  library: carry the library elsewhere and Update writes a fresh one.
+- **A scan walks the library once, in parallel, instead of twice in sequence.**
+  Two things made discovery cost more than the whole rest of the scan on a library
+  over a network share. It walked the entire tree a second time purely to count
+  files for the progress bar — now the rows already present are the estimate, and a
+  first scan says "unknown" and reports its running count rather than inventing a
+  total. And each directory listing waited for the one before it, though those are
+  round trips rather than work: sixteen at a time, with each file's `stat` taken by
+  the worker that listed it, took the owner's scan from 7.1 s to 2.6 s and its walk
+  from 6.3 s to 1.3 s.
 - **Writing a grouping plan to a library on a network share went from over ten
   minutes to under five seconds.** Two causes, both invisible on local disk:
 

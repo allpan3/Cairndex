@@ -21,7 +21,7 @@ from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify
-from cairndex.scanning.scanner import _iter_media_files
+from cairndex.scanning.scanner import iter_media_files
 from cairndex.services.subtitles import auto_link_external_subtitles
 
 
@@ -52,7 +52,7 @@ def fast_add(
         except PathSafetyError as exc:
             raise ValidationError(str(exc)) from exc
         if resolved.is_dir():
-            for media in _iter_media_files(resolved):
+            for media in iter_media_files(resolved):
                 rel = normalize_relative_path(media.relative_to(root_path).as_posix())
                 candidates.setdefault(rel, media)
         elif resolved.is_file() and classify(resolved.name) is not None:
