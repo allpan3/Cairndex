@@ -547,6 +547,16 @@ class GroupingProposal(Base):
     """
 
     __tablename__ = "grouping_proposals"
+    # Both foreign keys, indexed. SQLite needs an index on the *child* column to
+    # enforce ON DELETE without scanning: deleting a plan cascades to its
+    # proposals, and each of those SET NULLs its children — so with no index the
+    # cascade is a full table scan per deleted row. Pruning four superseded plans
+    # from the owner's library took 6.4 s on a network share for that reason
+    # (measured 2026-08-14).
+    __table_args__ = (
+        Index("ix_grouping_proposals_plan_id", "plan_id"),
+        Index("ix_grouping_proposals_parent_proposal_id", "parent_proposal_id"),
+    )
 
     id: Mapped[UlidPk]
     plan_id: Mapped[UlidFk] = mapped_column(ForeignKey("grouping_plans.id", ondelete="CASCADE"))
@@ -601,6 +611,9 @@ class GroupingProposalFile(Base):
     """
 
     __tablename__ = "grouping_proposal_files"
+    # Same reason as ``grouping_proposals``, plus this is the column every plan
+    # read joins on.
+    __table_args__ = (Index("ix_grouping_proposal_files_proposal_id", "proposal_id"),)
 
     id: Mapped[UlidPk]
     proposal_id: Mapped[UlidFk] = mapped_column(

@@ -179,7 +179,44 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
-### Correction: writes over SMB are ~1,000x, not 36x
+### Root cause found: a 2 MiB page cache and three missing indexes (2026-08-14)
+
+The owner pushed back on "no way around this", correctly. Bisected properly, and
+the answer is small and general.
+
+Writing 340 proposals into their 5.75 MB library on the SMB share:
+
+| configuration | insert | whole `persist_plan` |
+| --- | --- | --- |
+| as shipped | **>600 s** | **>600 s** |
+| `cache_size=-32768` | 5,228 ms | 14,096 ms |
+| that plus indexes on the grouping foreign keys | **236 ms** | **4,614 ms** |
+
+How it was found, after several wrong turns:
+
+1. A phase-by-phase breakdown showed everything except the row write totals 1.7 s.
+2. `faulthandler.dump_traceback_later` proved it was blocked in
+   `sqlite3.Cursor.execute` inside SQLAlchemy's insertmanyvalues, at 0% CPU — I/O,
+   not computation.
+3. Hand-written SQL of the same shape ran in 342 ms, so the statement form was not
+   the problem. Capturing SQLAlchemy's *exact* statement and parameters and
+   replaying them through raw `sqlite3` was still slow — so not the ORM either.
+4. Bisecting the parameters: nulling `parent_proposal_id` → 394 ms; keeping it but
+   setting `foreign_keys=OFF` → 449 ms. So it was foreign-key verification of the
+   self-referential column, one index seek per row.
+5. Those seeks should hit cache. They did not, because the default cache is 2 MiB
+   against a 5.75 MB database and the inserts were evicting the very index pages
+   being sought. `cache_size` fixed it; the missing child-side indexes were then
+   the next cost, in the cascade delete.
+
+**Wrong turns worth not repeating.** I claimed "journaled page I/O, no way around
+it" — measured, and journal mode changes nothing here (delete/memory/off all within
+100 ms of each other). I claimed statement batching was the fix twice. And one
+"verified" run was against unmodified code: a `cd` failed, `&&` short-circuited the
+edit, and the gates passed on the old file. Check that the edit landed before
+believing the measurement.
+
+### Earlier, superseded: writes over SMB are ~1,000x, not 36x
 
 The 35.9 ms figure was a *read*. Measured separately on the same share, with a
 throwaway database:
