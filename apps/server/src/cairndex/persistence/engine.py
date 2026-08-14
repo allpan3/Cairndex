@@ -160,6 +160,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # integer stem levels, and the model maps ``stem_level_overrides`` onto it
     # rather than renaming a column no migration chain could rename.
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
+    # Lets a scan skip regenerating a plan that would come out identical
+    ("grouping_plans", "input_digest", "VARCHAR(64)"),
     # Recent view "Date Opened" ordering. NULL in an existing library means
     # "never opened here", which is the truth — opens were not recorded before.
     ("asset_bundles", "last_opened_at", "DATETIME"),

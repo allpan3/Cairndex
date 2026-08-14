@@ -517,6 +517,10 @@ class GroupingPlan(Base):
     stem_level_overrides: Mapped[dict[str, int | str]] = mapped_column(
         "stem_modes", JSON, default=dict, server_default="{}"
     )
+    # Digest of exactly the facts the suggester reads, so a later scan can tell
+    # whether regenerating could produce anything different. NULL on plans written
+    # before the column existed, which reads as "unknown" and regenerates.
+    input_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     generated_at: Mapped[CreatedAt]
     applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
