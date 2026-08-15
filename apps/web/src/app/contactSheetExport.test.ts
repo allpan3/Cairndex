@@ -1,10 +1,28 @@
 import { expect, test } from 'vitest'
 
-import { CONTACT_SHEET_WIDTHS, contactSheetRows } from './contactSheetExport'
+import {
+  CONTACT_SHEET_GRIDS,
+  CONTACT_SHEET_WIDTHS,
+  DEFAULT_CONTACT_SHEET_GRID,
+  DEFAULT_CONTACT_SHEET_WIDTH,
+  contactSheetRows,
+} from './contactSheetExport'
 import { CONTACT_SHEET_WATERMARK } from './viewer/contactSheet'
 
-test('offers the three higher-resolution contact-sheet widths', () => {
-  expect(CONTACT_SHEET_WIDTHS).toEqual([1600, 2048, 2560])
+// Both ladders grew when the dialog moved from segmented rows onto wheels
+// (owner, 2026-08-15) — a row had to fit every option side by side.
+test('offers a full ladder of sheet widths, inside the server bound', () => {
+  expect(CONTACT_SHEET_WIDTHS.length).toBeGreaterThan(3)
+  expect(Math.min(...CONTACT_SHEET_WIDTHS)).toBeGreaterThanOrEqual(800)
+  expect(Math.max(...CONTACT_SHEET_WIDTHS)).toBeLessThanOrEqual(6144)
+  expect(CONTACT_SHEET_WIDTHS).toContain(DEFAULT_CONTACT_SHEET_WIDTH)
+  // Ascending, so the wheel reads left to right as smaller to larger.
+  expect([...CONTACT_SHEET_WIDTHS]).toEqual([...CONTACT_SHEET_WIDTHS].sort((a, b) => a - b))
+})
+
+test('offers every square grid the server accepts', () => {
+  expect(CONTACT_SHEET_GRIDS).toEqual([2, 3, 4, 5, 6])
+  expect(CONTACT_SHEET_GRIDS).toContain(DEFAULT_CONTACT_SHEET_GRID)
 })
 
 test('builds all three contact-sheet header rows from available metadata', () => {
