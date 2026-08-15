@@ -2674,7 +2674,14 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
     const request = route.request()
     calls.push(request.method())
     if (request.method() === 'POST') {
-      expect(request.postDataJSON()).toMatchObject({ kind: 'gif', start_s: 20, end_s: 25 })
+      // The dialog's choices, not the server's defaults.
+      expect(request.postDataJSON()).toMatchObject({
+        kind: 'gif',
+        start_s: 20,
+        end_s: 25,
+        width: 320,
+        fps: 15,
+      })
       return route.fulfill({
         status: 202,
         contentType: 'application/json',
@@ -2712,8 +2719,20 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
   await page.keyboard.press('[')
   await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
 
-  const download = page.waitForEvent('download')
   await page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }).click()
+  // Size and rate are chosen in a dialog; the range is already decided.
+  const dialog = page.getByRole('dialog', { name: 'GIF options' })
+  await expect(dialog.getByRole('button', { name: '480px' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  // The 1920×1080 source scaled to the chosen width, height derived.
+  await expect(dialog).toContainText('480×270')
+  await dialog.getByRole('button', { name: '320px' }).click()
+  await dialog.getByRole('button', { name: '15 fps' }).click()
+
+  const download = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('.mv-export-notice')).toContainText('Building GIF')
   // Named from the title without doubling the source's extension.
   expect((await download).suggestedFilename()).toBe('movie.gif')

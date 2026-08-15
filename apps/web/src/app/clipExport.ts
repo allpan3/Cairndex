@@ -24,6 +24,63 @@ import { getHostPlatform, isDesktopHost } from '../platform'
  */
 export const MAX_CLIP_EXPORT_SECONDS = 30
 
+/** Output widths offered, all inside the server's 120–720 bound. */
+export const CLIP_WIDTHS = [240, 320, 480, 720] as const
+export const DEFAULT_CLIP_WIDTH = 480
+
+/**
+ * Frame rates offered, all inside the server's 5–15 bound.
+ *
+ * A GIF stores each frame's delay in *centiseconds*, so only rates dividing 100
+ * are exact: of these, 10 fps is, and the others land on the nearest whole
+ * centisecond — 12 plays back at 12.5, 15 at 16.7 (measured). That is inherent
+ * to the format rather than to this pipeline, and the frame *count* is always
+ * what was asked for; it is only the playback tempo that rounds.
+ */
+export const CLIP_FPS_CHOICES = [8, 10, 12, 15] as const
+export const DEFAULT_CLIP_FPS = 12
+
+const MIN_SERVER_WIDTH = 120
+
+/**
+ * The widths worth offering for one source.
+ *
+ * Presets above the source's own width are dropped: upscaling a GIF spends
+ * bytes on pixels the source never had. Mirrors `qualityOptions`, which filters
+ * the resolution menu the same way.
+ */
+export function clipWidthOptions(sourceWidth: number | null | undefined): number[] {
+  if (!sourceWidth || sourceWidth <= 0) return [...CLIP_WIDTHS]
+  const fitting = CLIP_WIDTHS.filter((width) => width <= sourceWidth)
+  if (fitting.length > 0) return fitting
+  // Narrower than every preset: offer the source's own width rather than an
+  // empty control, rounded even for `scale=W:-2` and held inside the bound the
+  // server enforces.
+  const own = Math.max(MIN_SERVER_WIDTH, Math.floor(sourceWidth / 2) * 2)
+  return [own]
+}
+
+/** The width to start on: the default when it is offered, else the largest. */
+export function defaultClipWidth(options: number[]): number {
+  return options.includes(DEFAULT_CLIP_WIDTH)
+    ? DEFAULT_CLIP_WIDTH
+    : (options[options.length - 1] ?? DEFAULT_CLIP_WIDTH)
+}
+
+/**
+ * The height the export will actually have, following ffmpeg's `scale=W:-2` —
+ * the aspect preserved and rounded to an even number of lines. Null when the
+ * source has not been probed, since there is then nothing to derive it from.
+ */
+export function outputHeight(
+  width: number,
+  sourceWidth: number | null | undefined,
+  sourceHeight: number | null | undefined,
+): number | null {
+  if (!sourceWidth || !sourceHeight || sourceWidth <= 0 || sourceHeight <= 0) return null
+  return Math.max(2, Math.round((width * sourceHeight) / sourceWidth / 2) * 2)
+}
+
 /** Poll cadence. A GIF takes seconds, not milliseconds. */
 const POLL_INTERVAL_MS = 400
 /**
@@ -35,6 +92,9 @@ const POLL_TIMEOUT_MS = 330_000
 export interface ClipExportTarget {
   fileId: string
   title: string
+  /** Probed source dimensions, for the offered widths and the output height. */
+  sourceWidth?: number | null
+  sourceHeight?: number | null
 }
 
 export interface ClipExportRange {
