@@ -4,17 +4,24 @@ from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select
+from sqlalchemy import event, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.api.schemas.grouping import ProposalKindUpdate
 from cairndex.api.v1 import grouping as grouping_api
-from cairndex.domain.enums import GroupingState, ProposalKind
+from cairndex.domain.enums import DEFAULT_STEM_LEVEL, GroupingState, ProposalKind
 from cairndex.grouping import plan_store
 from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import suggest_grouping
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection
+from cairndex.persistence.models import GroupingPlan as GroupingPlanRow
+from cairndex.persistence.models import GroupingProposal as GroupingProposalRow
 from cairndex.scanning.scanner import scan_library
+
+# The level at which ``Duo``'s two files below meet. Their names differ only in
+# their last segment and are five segments long, so comparing four segments
+# (``max - level + 1``, i.e. one rung above the default) merges them.
+_MERGES_DUO = 2
 
 
 def _seed(session: Session, root: Path) -> None:
@@ -117,20 +124,20 @@ def test_regenerate_plan_does_not_reopen_confirmed_bundles(
     assert {file.id for file in bundle.files} == original_file_ids
 
 
-# Stem sensitivity is a durable input to each generated review snapshot
-def test_generate_plan_persists_per_directory_stem_modes(
+# The stem level is a durable input to each generated review snapshot
+def test_generate_plan_persists_per_directory_stem_levels(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed(session, library_root)
     base = f"/api/v1/libraries/{library_id}/grouping"
 
-    created = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "wide"}})
+    created = client.post(f"{base}/plans", json={"stem_levels": {"Cosmos": 2}})
 
     assert created.status_code == 201
-    assert created.json()["stem_modes"] == {"Cosmos": "wide"}
+    assert created.json()["stem_levels"]["Cosmos"]["level"] == 2
     fetched = client.get(f"{base}/plans/{created.json()['id']}")
-    assert fetched.json()["stem_modes"] == {"Cosmos": "wide"}
-    invalid = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "widest"}})
+    assert fetched.json()["stem_levels"]["Cosmos"]["level"] == 2
+    invalid = client.post(f"{base}/plans", json={"stem_levels": {"Cosmos": -1}})
     assert invalid.status_code == 422
 
 
@@ -392,6 +399,26 @@ def test_apply_plan_accepts_selected_proposals(
     result = applied.json()
     assert result["bundles_confirmed"] == 1
     assert result["bundles_added_to_collections"] == 1
+    # Accepting a selection leaves the plan open on what is left, and the response
+    # says how much that is — the review carries on in the same plan rather than
+    # regenerating one, which is the client's only signal for when to stop.
+    #
+    # Asserted through the API, not just on the service result: the field was
+    # computed correctly and then not passed into the response model, so every
+    # accept looked like the last one (caught 2026-08-15).
+    assert result["proposals_remaining"] == 1
+    reread = client.get(f"{base}/plans/{plan['id']}").json()
+    assert reread["status"] == "open"
+    survivors = {p["id"] for p in reread["proposals"]}
+    assert survivors < {p["id"] for p in plan["proposals"]}, "accepted rows leave the plan"
+    assert survivors, "and the rest stay, with the ids the client's fold state is keyed on"
+
+    # Accepting the rest finishes it.
+    rest = client.post(
+        f"{base}/plans/{plan['id']}/apply", json={"proposal_ids": sorted(survivors)}
+    ).json()
+    assert rest["proposals_remaining"] == 0
+    assert client.get(f"{base}/plans/{plan['id']}").json()["status"] == "applied"
 
 
 def test_apply_plan_rejects_empty_selection(
@@ -634,7 +661,7 @@ def _seed_three_folders(session: Session, root: Path) -> None:
     scan_library(session, root)
 
 
-def test_stem_mode_change_preserves_every_other_row_and_edit(
+def test_stem_level_change_preserves_every_other_row_and_edit(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """The reported bug, at the root: adjusting one folder must not rebuild the
@@ -659,17 +686,17 @@ def test_stem_mode_change_preserves_every_other_row_and_edit(
     duo_bundles_before = [
         p for p in before.values() if p["directory"] == "Duo" and p["kind"] == "bundle"
     ]
-    assert len(duo_bundles_before) == 2, "balanced mode should propose two Duo bundles"
+    assert len(duo_bundles_before) == 2, "the default level should propose two Duo bundles"
 
     adjusted = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": _MERGES_DUO}
     )
     assert adjusted.status_code == 200, adjusted.text
     after = adjusted.json()
 
     # Same plan, same rows everywhere except Duo.
     assert after["id"] == plan_id
-    assert after["stem_modes"] == {"Duo": "wide"}
+    assert after["stem_levels"]["Duo"]["level"] == _MERGES_DUO
     after_by_id = {p["id"]: p for p in after["proposals"]}
     assert kept_ids <= set(after_by_id), "rows outside Duo must keep their identity"
     assert after_by_id[trip["id"]]["kind"] == "container"
@@ -677,37 +704,153 @@ def test_stem_mode_change_preserves_every_other_row_and_edit(
     trip_children = [p for p in after["proposals"] if p["parent_proposal_id"] == trip["id"]]
     assert len(trip_children) == 3, "the conversion's children survive too"
 
-    # Duo itself genuinely regenerated: one wide bundle (no container needed
-    # around a single group), new ids.
+    # Duo itself genuinely regenerated: its collection kept, holding the one bundle
+    # the widened stem matched, with new ids.
     duo_after = [p for p in after["proposals"] if p["directory"] == "Duo"]
-    assert [p["kind"] for p in duo_after] == ["bundle"]
-    assert len(duo_after[0]["files"]) == 2
+    assert [p["kind"] for p in duo_after] == ["container", "bundle"]
+    assert len(duo_after[1]["files"]) == 2
+    assert duo_after[1]["parent_proposal_id"] == duo_after[0]["id"]
     assert not duo_ids & {p["id"] for p in duo_after}
 
 
-def test_stem_mode_back_to_balanced_clears_the_override(
+def test_stem_level_back_to_the_default_clears_the_override(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed_three_folders(session, library_root)
     base = f"/api/v1/libraries/{library_id}/grouping"
     plan_id = client.post(f"{base}/plans").json()["id"]
 
-    wide = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+    widened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": _MERGES_DUO}
     ).json()
-    assert wide["stem_modes"] == {"Duo": "wide"}
-    duo_wide = [p for p in wide["proposals"] if p["directory"] == "Duo"]
-    assert [p["kind"] for p in duo_wide] == ["bundle"]
+    assert widened["stem_levels"]["Duo"]["level"] == _MERGES_DUO
+    duo_widened = [p for p in widened["proposals"] if p["directory"] == "Duo"]
+    # Widening groups the folder's files; it does not dissolve the folder. One
+    # bundle *inside* the collection, named by the stem that matched them — not the
+    # folder collapsed into a bundle named after itself, which duplicated the
+    # convert control and stranded the dial with no folder left to hold it
+    # (owner-reported, 2026-08-15).
+    assert [p["kind"] for p in duo_widened] == ["container", "bundle"]
+    assert duo_widened[0]["title"] == "Duo"
+    assert duo_widened[1]["title"] == "City Tour - Part One"
 
-    balanced = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "balanced"}
+    restored = client.put(
+        f"{base}/plans/{plan_id}/stem-levels",
+        json={"directory": "Duo", "level": DEFAULT_STEM_LEVEL},
     ).json()
-    assert balanced["stem_modes"] == {}
-    duo_balanced = [p for p in balanced["proposals"] if p["directory"] == "Duo"]
-    assert sorted(p["kind"] for p in duo_balanced) == ["bundle", "bundle", "container"]
+    # Back at the default the override is gone, not stored as the default value:
+    # a plan carrying `{"Duo": 1}` would pin Duo if the default ever moved.
+    assert restored["stem_levels"]["Duo"]["level"] == DEFAULT_STEM_LEVEL
+    with Session(session.get_bind()) as fresh:
+        stored = fresh.scalar(
+            select(GroupingPlanRow.stem_level_overrides).where(GroupingPlanRow.id == plan_id)
+        )
+    assert stored == {}
+    duo_restored = [p for p in restored["proposals"] if p["directory"] == "Duo"]
+    assert sorted(p["kind"] for p in duo_restored) == ["bundle", "bundle", "container"]
 
 
-def test_stem_mode_change_requires_an_open_plan(
+def test_widening_never_dissolves_a_folders_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The dial groups files. Only the convert control says what a folder *is*.
+
+    Widening used to collapse a folder into a single bundle the moment its files
+    all matched, which did three wrong things at once (owner-reported, 2026-08-15):
+    it dissolved a collection the owner wanted to keep, it duplicated the convert
+    control that dissolves one deliberately, and it named the result after the
+    folder rather than the stem that had just matched. It also left the dial at its
+    widest on a row that was no longer a folder, so converting back left the setting
+    stranded.
+
+    Asserted across every rung, because the collapse only appeared at whichever one
+    first merged the folder — the bug was invisible at the default.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    top = plan["stem_levels"]["Duo"]["max"]
+
+    for level in range(DEFAULT_STEM_LEVEL + 1, top + 1):
+        adjusted = client.put(
+            f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": level}
+        )
+        assert adjusted.status_code == 200, adjusted.text
+        rows = [p for p in adjusted.json()["proposals"] if p["directory"] == "Duo"]
+        container = next((p for p in rows if p["kind"] == "container"), None)
+        assert container is not None, f"Duo stopped being a collection at level {level}"
+        assert container["title"] == "Duo"
+        bundles = [p for p in rows if p["kind"] == "bundle"]
+        assert bundles, f"Duo holds no bundle at level {level}"
+        for bundle in bundles:
+            assert bundle["parent_proposal_id"] == container["id"]
+            # Named by what matched, never by the folder it sits in.
+            assert bundle["title"] != "Duo"
+
+    # Turning the folder into one bundle is still available — as the explicit
+    # action it always was, and now only as that.
+    merged = client.put(
+        f"{base}/plans/{plan_id}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    )
+    assert merged.status_code == 200, merged.text
+    duo_rows = [
+        p
+        for p in client.get(f"{base}/plans/{plan_id}").json()["proposals"]
+        if p["directory"] == "Duo"
+    ]
+    assert [p["kind"] for p in duo_rows] == ["bundle"]
+    assert duo_rows[0]["title"] == "Duo"
+
+
+def test_converting_a_bundle_to_a_collection_forgets_the_folders_stem_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A manual split replaces the dial's, so the dial must stop claiming otherwise.
+
+    ``_bundle_to_container`` splits per video subject, not by the stem key, which is
+    right — a dial wide enough to merge everything would otherwise make "convert to
+    collection" produce a collection of one. But the folder was left reading its
+    widest beside rows the widest would never have produced: two bundles under a
+    setting that says those two match (owner-reported, 2026-08-15).
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    top = plan["stem_levels"]["Duo"]["max"]
+
+    widened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": top}
+    ).json()
+    assert widened["stem_levels"]["Duo"]["level"] == top
+    duo = [p for p in widened["proposals"] if p["directory"] == "Duo"]
+    merged = next(p for p in duo if p["kind"] == "bundle")
+    assert len(merged["files"]) == 2, "the widened folder holds one bundle of both files"
+
+    split = client.put(
+        f"{base}/plans/{plan_id}/proposals/{merged['id']}/kind", json={"kind": "container"}
+    )
+    assert split.status_code == 200, split.text
+
+    after = split.json()
+    assert after["stem_levels"]["Duo"]["level"] == DEFAULT_STEM_LEVEL
+    # Gone from the plan row, not stored as the default value — same rule as
+    # dialling back to the default by hand.
+    with Session(session.get_bind()) as fresh:
+        stored = fresh.scalar(
+            select(GroupingPlanRow.stem_level_overrides).where(GroupingPlanRow.id == plan_id)
+        )
+    assert stored == {}
+    # And the dial still works from there, rather than being stuck at the default.
+    rewidened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": top}
+    )
+    assert rewidened.status_code == 200
+    assert rewidened.json()["stem_levels"]["Duo"]["level"] == top
+
+
+def test_stem_level_change_requires_an_open_plan(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed(session, library_root)
@@ -715,12 +858,98 @@ def test_stem_mode_change_requires_an_open_plan(
     plan_id = client.post(f"{base}/plans").json()["id"]
     client.post(f"{base}/plans/{plan_id}/apply")
     resp = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Cosmos", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Cosmos", "level": 0}
     )
     assert resp.status_code == 409
 
 
-def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
+# Each folder's dial reports where it is and how far it goes, per folder
+def test_plan_reports_a_stem_dial_for_every_folder_it_shows(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The maximum is folder-specific, so the client has to be told it.
+
+    ``Duo``'s names are five segments long and ``Solo``'s is one, so their dials
+    are genuinely different lengths — a single shared "wide" end could not
+    describe both, and the client cannot work either out without reimplementing
+    the suggester's normalization.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    dials = client.post(f"{base}/plans").json()["stem_levels"]
+
+    assert dials["Duo"] == {
+        "level": DEFAULT_STEM_LEVEL,
+        "max": 5,
+        # What the folder matches on, sliced out of a filename rather than rebuilt
+        # from the comparison key — so the separators are the ones on disk. The dial
+        # position on its own ("stem 1 of 5") told the owner nothing.
+        "stem": "City Tour - Part One - Evening",
+    }
+    # Nothing to widen in a folder whose one name is a single segment: the dial
+    # ends where it starts, and the client renders Widen as spent rather than
+    # offering a step that would change nothing.
+    assert dials["Solo"] == {
+        "level": DEFAULT_STEM_LEVEL,
+        "max": DEFAULT_STEM_LEVEL,
+        "stem": "Solo",
+    }
+    # Every folder with files, not only the overridden ones.
+    assert set(dials) == {"Duo", "Solo", "Trip"}
+
+
+# A level past the end of a folder's dial lands on the end, not an error
+def test_stem_level_above_a_folder_maximum_is_clamped(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+
+    adjusted = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": 99}
+    )
+
+    assert adjusted.status_code == 200, adjusted.text
+    assert adjusted.json()["stem_levels"]["Duo"] == {
+        "level": 5,
+        "max": 5,
+        # Widened to the top: both names are down to their first segment, which is
+        # why they now merge — and saying so is the point of reporting it.
+        "stem": "City",
+    }
+
+
+# A plan open across the upgrade still carries the three names it used to store
+def test_a_stem_mode_stored_by_a_previous_release_reads_as_a_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """``wide`` meant "as wide as this folder goes", which is now the maximum.
+
+    The column is JSON, so the additive-column machinery that patches new columns
+    into an existing library does not apply here — nothing rewrites these values,
+    and a plan the owner left open across the upgrade would otherwise read as an
+    unknown mode.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+    session.execute(
+        update(GroupingPlanRow)
+        .where(GroupingPlanRow.id == plan_id)
+        .values(stem_level_overrides={"Duo": "wide", "Trip": "narrow", "Solo": "balanced"})
+    )
+    session.commit()
+
+    dials = client.get(f"{base}/plans/{plan_id}").json()["stem_levels"]
+
+    assert dials["Duo"] == {"level": 5, "max": 5, "stem": "City"}
+    assert dials["Trip"]["level"] == 0
+    assert dials["Solo"]["level"] == DEFAULT_STEM_LEVEL
+
+
+def test_stem_level_change_does_not_reclaim_a_dragged_out_file(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """A file the owner moved out of the directory must not come back in the
@@ -739,7 +968,7 @@ def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
     )
 
     after = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": 0}
     ).json()
 
     holders = [
@@ -750,7 +979,7 @@ def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
     assert holders == [solo["id"]], "the dragged file must stay only where the owner put it"
 
 
-def test_stem_mode_change_relinks_subdirectory_children(
+def test_stem_level_change_relinks_subdirectory_children(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     """Replacing a directory's container must not orphan bundles from its
@@ -772,7 +1001,7 @@ def test_stem_mode_change_relinks_subdirectory_children(
     assert len(child_ids) == 2
 
     after = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Show", "level": 0}
     ).json()
 
     fresh_container = next(
@@ -811,7 +1040,7 @@ def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
     assert len(row["files"]) == 2
 
     refused = client.put(
-        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Show", "level": 0}
     )
     assert refused.status_code == 422, refused.text
 
@@ -822,16 +1051,73 @@ def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
     assert len(kept[0]["files"]) == 2
 
 
+def test_folder_named_bundle_converts_to_a_named_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The owner-reported case: one release in a folder named for something else.
+
+    A folder holding a single release plus its cover is suggested as one bundle
+    named after the folder. The owner wants the folder to be a collection with the
+    release inside it under its own name. The old positional bound refused this
+    whenever the row already sat in a collection for its folder; the rename test
+    allows it, because the child is named by the files' shared stem rather than by
+    the folder (owner-reported, 2026-08-13).
+    """
+    folder = library_root / "Studio Beta"
+    folder.mkdir()
+    (folder / "n0203 - a long release name.mp4").write_text("v")
+    (folder / "n0203.jpg").write_text("i")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    bundle = next(
+        p for p in plan["proposals"] if p["kind"] == "bundle" and p["title"] == "Studio Beta"
+    )
+
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{bundle['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+
+    proposals = converted.json()["proposals"]
+    collection = next(p for p in proposals if p["id"] == bundle["id"])
+    assert collection["kind"] == "container"
+    assert collection["title"] == "Studio Beta"
+
+    # The release inside is named by the shortest prefix its files share — the
+    # release's own identifier — rather than by the video's whole filename or the
+    # folder's name (owner-reported, 2026-08-13).
+    children = [p for p in proposals if p["parent_proposal_id"] == bundle["id"]]
+    assert len(children) == 1
+    assert children[0]["title"] == "n0203"
+    assert children[0]["title"] != collection["title"]
+    assert len(children[0]["files"]) == 2
+
+    # And it is reversible.
+    back = client.put(
+        f"{base}/plans/{plan_id}/proposals/{bundle['id']}/kind", json={"kind": "bundle"}
+    )
+    assert back.status_code == 200, back.text
+
+
 def test_single_item_bundle_converts_once_then_stops(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
-    """A single subject may become a collection — the owner may be making a home
-    for siblings to drag in — but only once.
+    """A single subject may become a collection, until doing so renames nothing.
 
     What made this nest without limit was that the child of a conversion could be
     converted again, each click repeating the same name one level deeper
-    (owner-reported, 2026-07-30). The child always lands inside a collection for
-    its own folder, and that is exactly the position where another is refused.
+    (owner-reported, 2026-07-30). The bound used to be positional — refuse any row
+    already inside a collection for its own folder — but that also refused the
+    case the owner wants: a folder holding one release today becoming a collection
+    with the release named by its own stem inside it (owner-reported, 2026-08-13).
+
+    The bound is now whether the new layer changes a name. Here the folder and its
+    one file share the name "Solo", so the child would be called "Solo" inside a
+    collection called "Solo" — nothing gained, refused. `test_folder_named_bundle_
+    converts_to_a_named_collection` covers the case that is now allowed.
     """
     (library_root / "Solo").mkdir()
     (library_root / "Solo" / "Solo.mp4").write_text("v")
@@ -842,16 +1128,10 @@ def test_single_item_bundle_converts_once_then_stops(
     plan_id = plan["id"]
     solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
 
-    converted = client.put(
-        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind", json={"kind": "container"}
-    )
-    assert converted.status_code == 200, converted.text
-    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == solo["id"]]
-    assert len(children) == 1
-
-    # The child sits in a collection for its own folder: no further layer.
+    # Folder "Solo" holding "Solo.mp4": the child would be called "Solo" too, so
+    # the collection adds no structure and is refused at the first attempt.
     again = client.put(
-        f"{base}/plans/{plan_id}/proposals/{children[0]['id']}/kind",
+        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind",
         json={"kind": "container"},
     )
     assert again.status_code == 422, again.text
@@ -982,6 +1262,122 @@ def test_image_only_bundle_divides_per_file(
     children = [p for p in divided.json()["proposals"] if p["parent_proposal_id"] == row["id"]]
     assert len(children) == 3
     assert all(len(c["files"]) == 1 for c in children)
+
+
+def test_regenerating_a_plan_prunes_the_ones_it_replaced(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Superseded plans were marked and never removed, so they piled up forever.
+
+    One per regeneration, each carrying a full set of proposal and file rows. The
+    owner's library had 116 of them holding 5,455 rows for 412 files, in a database
+    on an SMB share where a page read costs about 36 ms (2026-08-13).
+
+    Applied plans stay: they record what was applied, and a scan job's result
+    references its plan id.
+    """
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    applied = client.post(f"{base}/plans").json()
+    assert client.post(f"{base}/plans/{applied['id']}/apply").status_code == 200
+    # More than one run's worth, so the bound is visible: pruning is capped per
+    # call because the delete cascades, and on a network-hosted library an
+    # unbounded one turns a single Update into minutes of deletes.
+    ids = [client.post(f"{base}/plans").json()["id"] for _ in range(8)]
+
+    listed = client.get(f"{base}/plans").json()
+    kept = {plan["id"]: plan["status"] for plan in listed}
+    assert kept[ids[-1]] == "open"
+    assert kept[applied["id"]] == "applied"
+    # The backlog drains a few per generation rather than all at once, so some
+    # superseded plans remain — but the oldest are gone and the count is falling.
+    assert ids[0] not in kept
+    assert len(kept) < len(ids)
+
+    # Their rows went with them, through ON DELETE CASCADE.
+    remaining = set(session.scalars(select(GroupingProposalRow.plan_id)))
+    assert remaining <= set(kept)
+
+
+def test_generating_a_plan_writes_it_in_a_bounded_number_of_statements(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Suggesting a grouping must not cost a round trip per suggestion.
+
+    It did, twice over (owner-reported: the dialog took seconds to show anything,
+    2026-08-13). ``persist_plan`` flushed inside its loop purely to learn the id it
+    was about to need for the row's files — but ids are ULIDs from a plain Python
+    callable, so they are known before the insert. And because the files were
+    linked by foreign key rather than through the relationship, serializing the
+    response fetched every row's files back one row at a time.
+
+    Bound is on statements, loose on purpose: what matters is that it does not
+    grow with the number of suggestions.
+    """
+    for index in range(40):
+        folder = library_root / f"Set{index:02d}"
+        folder.mkdir()
+        for part in range(3):
+            stem = f"Set{index:02d}.24.{part:02d}.Release.Title"
+            (folder / f"{stem}.mp4").write_text("v")
+            (folder / f"{stem}.jpg").write_text("i")
+    scan_library(session, library_root)
+    session.commit()
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    statements, listener = _count_statements(session)
+    try:
+        created = client.post(f"{base}/plans")
+        assert created.status_code == 201, created.text
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", listener)
+
+    plan = created.json()
+    assert len(plan["proposals"]) >= 150
+    assert sum(len(p["files"]) for p in plan["proposals"]) >= 240
+    assert len(statements) <= 40, (
+        f"generating a plan of {len(plan['proposals'])} suggestions issued "
+        f"{len(statements)} statements"
+    )
+
+
+def test_merging_a_collection_reads_its_bundles_files_in_one_query(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """``_descendants`` must carry its files, not fetch them a row at a time.
+
+    ``_container_to_bundle`` reads ``row.files`` for every descendant. That was one
+    lazy query each, and it only looked cheap because ``_open_proposal`` used to
+    load the *whole plan* eagerly first — so removing that (every edit was reading
+    the plan twice to check one column) would have turned a hidden cost into a
+    visible one. Tested on the merge directly, in a deliberately cold session,
+    because through the endpoint the response's own eager load hides the
+    difference.
+    """
+    folder = library_root / "Season"
+    folder.mkdir()
+    for index in range(30):
+        (folder / f"Ep{index:02d}.mp4").write_text("v")
+        (folder / f"Ep{index:02d}.jpg").write_text("i")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    container = next(p for p in plan["proposals"] if p["kind"] == "container")
+    assert len([p for p in plan["proposals"] if p["parent_proposal_id"] == container["id"]]) >= 30
+
+    # Nothing warm: a request starts here, not after having read the whole plan.
+    session.expunge_all()
+    row = session.get(GroupingProposalRow, container["id"])
+    assert row is not None
+    statements, listener = _count_statements(session)
+    try:
+        plan_store._container_to_bundle(session, row)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", listener)
+
+    reads = [s for s in statements if s.lstrip().startswith("SELECT") and "proposal_files" in s]
+    assert len(reads) == 1, f"merging 30 bundles read their files in {len(reads)} queries"
 
 
 def _count_statements(session: Session) -> tuple[list[str], object]:

@@ -1,11 +1,21 @@
 """API schemas for grouping plans and apply results (ADR-0009 phase 3)."""
 
 from datetime import datetime
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind, StemMode
+from cairndex.domain.enums import (
+    STEM_LEVEL_CEILING,
+    FileRole,
+    GroupingPlanStatus,
+    ProposalKind,
+)
+
+# How much of each filename has to match, per directory (``DEFAULT_STEM_LEVEL``
+# when a directory is absent). Bounded only for hygiene: the server clamps every
+# level to the folder's own maximum, above which the grouping cannot change.
+StemLevel = Annotated[int, Field(ge=0, le=STEM_LEVEL_CEILING)]
 
 
 class ProposalFileRead(BaseModel):
@@ -87,15 +97,29 @@ class ProposalKindUpdate(BaseModel):
     kind: ProposalKind
 
 
-# Validate one directory's stem-sensitivity change (in-place re-suggestion)
-class StemModeUpdate(BaseModel):
+# Validate one directory's stem-level change (in-place re-suggestion)
+class StemLevelUpdate(BaseModel):
     directory: str = Field(max_length=4096)
-    mode: StemMode
+    level: StemLevel
 
 
-# Validate bounded per-directory stem sensitivity overrides
+# Validate bounded per-directory stem level overrides
 class PlanGenerateRequest(BaseModel):
-    stem_modes: dict[str, StemMode] = Field(default_factory=dict, max_length=500)
+    stem_levels: dict[str, StemLevel] = Field(default_factory=dict, max_length=500)
+
+
+# One folder's position on the stem dial, and how far the dial goes
+class StemLevelRead(BaseModel):
+    level: StemLevel
+    # The level at which every filename in this folder is down to its first
+    # segment. Folder-specific, so the client is told rather than deriving it.
+    max: StemLevel
+    # What the folder is matching on now, taken from one of its filenames and left
+    # exactly as written there. The level alone is an ordinal the owner cannot read
+    # anything off ("stem 2 of 3" — of what?), and the client cannot derive this
+    # without reimplementing the suggester's normalization. Empty for a folder the
+    # plan holds no files from.
+    stem: str = ""
 
 
 class PlanRead(BaseModel):
@@ -105,7 +129,11 @@ class PlanRead(BaseModel):
     status: GroupingPlanStatus
     rule_version: int
     scan_job_id: str | None
-    stem_modes: dict[str, StemMode]
+    # Every folder the plan's files come from, not only the overridden ones — the
+    # review needs a level and a maximum for each folder it shows a control on.
+    # Filled by the route from ``plan_store.stem_levels``; it cannot come from the
+    # plan row, which stores overrides alone.
+    stem_levels: dict[str, StemLevelRead] = Field(default_factory=dict)
     generated_at: datetime
     applied_at: datetime | None
     proposals: list[ProposalRead]
@@ -138,3 +166,6 @@ class ApplyResultRead(BaseModel):
     files_added_to_bundles: int
     subtitles_linked: int
     conflicts: list[ApplyConflictRead]
+    # How many suggestions the plan still holds. Zero means it is finished; anything
+    # else means the client can carry on reviewing the same plan.
+    proposals_remaining: int = 0

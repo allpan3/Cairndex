@@ -210,6 +210,8 @@ export function GroupingPlacementPicker({
   disabled,
   loading = false,
   error = false,
+  compact = false,
+  restated = false,
   onChange,
 }: {
   kind: 'bundle' | 'collection'
@@ -221,6 +223,17 @@ export function GroupingPlacementPicker({
   disabled: boolean
   loading?: boolean
   error?: boolean
+  /** Drop the printed destination, keeping only the affordance.
+   *
+   * A nested row's destination is the row it is drawn inside, so printing it
+   * again put a fixed-width pill on every line restating the indentation — the
+   * widest thing after the title, carrying nothing the tree did not already
+   * say. The control itself is still needed, and stays keyboard reachable with
+   * the same `aria-label`; only the redundant text goes. Root rows, which have
+   * no enclosing row to read, keep the full label. */
+  compact?: boolean
+  /** Something above already states this destination; fade out until wanted. */
+  restated?: boolean
   onChange: (id: string | null) => void
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
@@ -244,7 +257,12 @@ export function GroupingPlacementPicker({
     })
 
   return (
-    <div className="grp-placement-picker" ref={ref}>
+    <div
+      className={`grp-placement-picker${compact ? ' grp-placement-picker--compact' : ''}${
+        restated ? ' grp-placement-picker--restated' : ''
+      }`}
+      ref={ref}
+    >
       <button
         type="button"
         className="grp-placement"
@@ -262,8 +280,12 @@ export function GroupingPlacementPicker({
         }}
       >
         <IconFolder />
-        <span className="grp-placement__label">{label ?? 'Suggested hierarchy'}</span>
-        <IconChevron open={open} />
+        {!compact && (
+          <>
+            <span className="grp-placement__label">{label ?? 'Suggested hierarchy'}</span>
+            <IconChevron open={open} />
+          </>
+        )}
       </button>
       {open &&
         pos &&

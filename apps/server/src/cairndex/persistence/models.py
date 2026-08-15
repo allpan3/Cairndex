@@ -49,7 +49,15 @@ from cairndex.domain.enums import (
     MediaKind,
     ProposalKind,
 )
-from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt, Version
+from cairndex.persistence.base import (
+    PLANS_SCHEMA,
+    Base,
+    CreatedAt,
+    UlidFk,
+    UlidPk,
+    UpdatedAt,
+    Version,
+)
 from cairndex.persistence.types import UtcDateTime
 
 # --- Association tables ------------------------------------------------------
@@ -495,9 +503,16 @@ class GroupingPlan(Base):
     A plan is a snapshot — not a live path-sync rule — so applying a stale plan
     detects conflicts (moved/vanished/already-regrouped files) per proposal
     rather than discarding the whole result.
+
+    Being a snapshot is also why this table and its two children are the only
+    library metadata that does **not** live in ``library.db``. They are
+    regenerable from the library at any moment, and writing them across a network
+    share cost seconds per keystroke, so they sit in a server-local file attached
+    as schema ``plans`` (ADR-0022).
     """
 
     __tablename__ = "grouping_plans"
+    __table_args__ = {"schema": PLANS_SCHEMA}
 
     id: Mapped[UlidPk]
     # The scan that produced this plan, if any (registry job id; no cross-DB FK).
@@ -507,7 +522,20 @@ class GroupingPlan(Base):
         default=GroupingPlanStatus.OPEN,
     )
     rule_version: Mapped[int] = mapped_column(Integer, default=1)
-    stem_modes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
+    # Per-directory stem levels the owner set, keyed by library-relative folder;
+    # a folder absent here used ``DEFAULT_STEM_LEVEL``. The *column* is still
+    # called ``stem_modes`` because it shipped holding the old three-value enum
+    # and there is no migration chain to rename it (see
+    # ``engine._ADDITIVE_CONTENT_COLUMNS``); the attribute says what it now
+    # holds. ``plan_store`` coerces any legacy ``"narrow"``/``"balanced"``/
+    # ``"wide"`` string it finds to a level on read.
+    stem_level_overrides: Mapped[dict[str, int | str]] = mapped_column(
+        "stem_modes", JSON, default=dict, server_default="{}"
+    )
+    # Digest of exactly the facts the suggester reads, so a later scan can tell
+    # whether regenerating could produce anything different. NULL on plans written
+    # before the column existed, which reads as "unknown" and regenerates.
+    input_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     generated_at: Mapped[CreatedAt]
     applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
@@ -534,11 +562,26 @@ class GroupingProposal(Base):
     """
 
     __tablename__ = "grouping_proposals"
+    # Both foreign keys, indexed. SQLite needs an index on the *child* column to
+    # enforce ON DELETE without scanning: deleting a plan cascades to its
+    # proposals, and each of those SET NULLs its children — so with no index the
+    # cascade is a full table scan per deleted row. Pruning four superseded plans
+    # from the owner's library took 6.4 s on a network share for that reason
+    # (measured 2026-08-14).
+    __table_args__ = (
+        Index("ix_grouping_proposals_plan_id", "plan_id"),
+        Index("ix_grouping_proposals_parent_proposal_id", "parent_proposal_id"),
+        {"schema": PLANS_SCHEMA},
+    )
 
     id: Mapped[UlidPk]
-    plan_id: Mapped[UlidFk] = mapped_column(ForeignKey("grouping_plans.id", ondelete="CASCADE"))
+    plan_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_plans.id", ondelete="CASCADE")
+    )
     parent_proposal_id: Mapped[str | None] = mapped_column(
-        String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
+        String(26),
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_proposals.id", ondelete="SET NULL"),
+        nullable=True,
     )
     # Set when this proposal adds its files to an existing confirmed bundle
     # by default (ADR-0009 phase 5). A plain id resolved at apply.
@@ -588,10 +631,16 @@ class GroupingProposalFile(Base):
     """
 
     __tablename__ = "grouping_proposal_files"
+    # Same reason as ``grouping_proposals``, plus this is the column every plan
+    # read joins on.
+    __table_args__ = (
+        Index("ix_grouping_proposal_files_proposal_id", "proposal_id"),
+        {"schema": PLANS_SCHEMA},
+    )
 
     id: Mapped[UlidPk]
     proposal_id: Mapped[UlidFk] = mapped_column(
-        ForeignKey("grouping_proposals.id", ondelete="CASCADE")
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_proposals.id", ondelete="CASCADE")
     )
     asset_file_id: Mapped[str] = mapped_column(String(26))
     relative_path: Mapped[str] = mapped_column(Text, default="")

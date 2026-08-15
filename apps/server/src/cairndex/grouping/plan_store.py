@@ -8,25 +8,37 @@ supersedes any earlier still-open plan so there is a single active plan.
 
 from __future__ import annotations
 
-from sqlalchemy import func, select, update
+import hashlib
+from collections.abc import Callable
+from typing import TypedDict
+
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.core.ids import new_id
 from cairndex.domain.enums import (
+    DEFAULT_STEM_LEVEL,
+    STEM_LEVEL_CEILING,
+    FileAvailability,
     GroupingPlanStatus,
     GroupingState,
     ProposalKind,
-    StemMode,
     context_directory,
 )
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
+    SUGGESTER_RULE_VERSION,
     FileObservation,
     _addition_roles_in_order,
+    _dirname,
     _media_first,
     _new_bundle_title,
     _roles_in_order,
+    max_stem_level,
     split_for_collection,
+    stem_prefix_as_written,
 )
 from cairndex.grouping.suggester import (
     GroupingPlan as PlanData,
@@ -82,13 +94,27 @@ def proposal_counts(session: Session, plan_ids: list[str]) -> dict[str, int]:
     return {plan_id: count for plan_id, count in rows}
 
 
+def _open_plan_row(session: Session, plan_id: str) -> GroupingPlan:
+    """The plan row alone, with the open-for-editing boundary enforced.
+
+    Deliberately not ``get_plan``: every mutation passes through here to read one
+    column, and ``get_plan`` eagerly loads every proposal and every proposal file
+    so that *serializing* a response is not N+1. Paying that to check ``status``
+    meant each edit loaded the whole plan twice — about a third of a second per
+    conversion on a 20,000-file library (owner-reported, 2026-08-13).
+    """
+    plan = session.get(GroupingPlan, plan_id)
+    if plan is None:
+        raise NotFoundError(f"grouping plan {plan_id!r} not found")
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be edited")
+    return plan
+
+
 # Resolve one editable proposal and enforce the open-plan boundary
 def _open_proposal(session: Session, plan_id: str, proposal_id: str) -> GroupingProposal:
     """Load a proposal only when it belongs to the requested open plan."""
-    plan = get_plan(session, plan_id)
-    if plan.status is not GroupingPlanStatus.OPEN:
-        raise ConflictError("only an open grouping plan can be edited")
-
+    plan = _open_plan_row(session, plan_id)
     proposal = session.get(GroupingProposal, proposal_id)
     if proposal is None or proposal.plan_id != plan.id:
         raise NotFoundError(f"grouping proposal {proposal_id!r} not found")
@@ -389,9 +415,14 @@ def reparent_proposal(
 
 def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingProposal]:
     """Every proposal below ``proposal``, deepest last (breadth-first order)."""
+    # With their files: ``_container_to_bundle`` reads ``row.files`` for every
+    # descendant, which was one query each. It only looked fast because
+    # ``_open_proposal`` happened to have loaded the whole plan first.
     all_in_plan = list(
         session.scalars(
-            select(GroupingProposal).where(GroupingProposal.plan_id == proposal.plan_id)
+            select(GroupingProposal)
+            .where(GroupingProposal.plan_id == proposal.plan_id)
+            .options(selectinload(GroupingProposal.files))
         )
     )
     by_parent: dict[str | None, list[GroupingProposal]] = {}
@@ -414,18 +445,6 @@ def _is_addition(proposal: GroupingProposal) -> bool:
     return proposal.target_bundle_id is not None and not proposal.create_new_bundle
 
 
-def _sits_in_a_collection_for_its_own_folder(session: Session, proposal: GroupingProposal) -> bool:
-    """Whether this suggestion's parent is a collection for its own directory."""
-    if proposal.parent_proposal_id is None:
-        return False
-    parent = session.get(GroupingProposal, proposal.parent_proposal_id)
-    return (
-        parent is not None
-        and parent.kind is ProposalKind.CONTAINER
-        and parent.directory == proposal.directory
-    )
-
-
 def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """Turn one bundle suggestion into a collection holding its files' bundles.
 
@@ -436,22 +455,36 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """
     observations = _proposal_observations(session, list(proposal.files))
     groups = split_for_collection(observations)
-    if len(groups) < 2 and _sits_in_a_collection_for_its_own_folder(session, proposal):
-        # Converting a single subject is allowed — the owner may be making a home
-        # for siblings they are about to drag in — but not when it already sits in
-        # a collection for this very folder. There the new layer would just repeat
-        # the name it is already inside, and since the child it creates is in the
-        # same position it could be converted again without limit
-        # (owner-reported, 2026-07-30). This is also what bounds the recursion:
-        # the child of a conversion always lands in exactly that position.
-        raise ValidationError(
-            "this suggestion is already inside a collection for its own folder, so "
-            "another one would add no structure"
-        )
+    # Bounded by whether the conversion would *change* anything, not by where the
+    # row sits.
+    #
+    # The previous rule refused any single subject already inside a collection for
+    # its own folder, to stop unbounded re-conversion (the child lands in the same
+    # position, so it could be converted again forever). But that also refused the
+    # case the owner actually wants: a folder holding one release today, which
+    # should become a collection named for the folder with the release inside it
+    # named by its own shared stem (owner-reported, 2026-08-13).
+    #
+    # The recursion is bounded just as tightly by asking whether the new layer
+    # renames anything. A folder-named bundle converts to a folder-named
+    # collection holding a stem-named bundle — a real change. Convert *that* and
+    # the child's title equals its parent's, which adds nothing, and is refused.
+    if len(groups) == 1:
+        only = _media_first(groups[0])
+        child_title = _new_bundle_title(only, proposal.directory)
+        if child_title == (proposal.title or "").strip():
+            raise ValidationError(
+                "this suggestion holds one subject that already carries its own name, "
+                "so a collection around it would add no structure"
+            )
 
+    children: list[GroupingProposal | GroupingProposalFile] = []
     for order, group in enumerate(groups):
         ordered = _media_first(group)
+        # Id up front, so the child's files can be built without a flush to learn
+        # it. See ``persist_plan`` for why that mattered.
         child = GroupingProposal(
+            id=new_id(),
             plan_id=proposal.plan_id,
             kind=ProposalKind.BUNDLE,
             title=_new_bundle_title(ordered, proposal.directory),
@@ -466,21 +499,22 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
             # A split redistributes the parent's files across new rows.
             membership_edited=proposal.membership_edited,
         )
-        session.add(child)
-        session.flush()
+        children.append(child)
         # Indexed once per group rather than scanned per file, which was quadratic
         # in the size of the group being split.
         path_by_id = {o.asset_file_id: o.relative_path for o in ordered}
-        for proposed in _roles_in_order(ordered):
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=child.id,
-                    asset_file_id=proposed.asset_file_id,
-                    relative_path=path_by_id[proposed.asset_file_id],
-                    proposed_role=proposed.role,
-                    sequence=proposed.sequence,
-                )
+        children.extend(
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=child.id,
+                asset_file_id=proposed.asset_file_id,
+                relative_path=path_by_id[proposed.asset_file_id],
+                proposed_role=proposed.role,
+                sequence=proposed.sequence,
             )
+            for proposed in _roles_in_order(ordered)
+        )
+    session.add_all(children)
 
     # A container carries no files of its own; its members are its children.
     for proposal_file in list(proposal.files):
@@ -558,6 +592,7 @@ def convert_proposal_kind(
 
     if kind is ProposalKind.CONTAINER:
         _bundle_to_container(session, proposal)
+        _clear_stem_override(proposal.plan, proposal.directory)
     else:
         _container_to_bundle(session, proposal)
 
@@ -566,8 +601,122 @@ def convert_proposal_kind(
     return get_plan(session, plan_id)
 
 
-def set_directory_stem_mode(
-    session: Session, plan_id: str, directory: str, mode: StemMode
+def _clear_stem_override(plan: GroupingPlan, directory: str) -> None:
+    """Forget a folder's stem level, because a manual split just replaced it.
+
+    ``_bundle_to_container`` splits per video subject rather than by the dial's
+    stem key — deliberately, since a dial wide enough to merge everything would
+    otherwise make "convert to collection" produce a collection of one. But that
+    left the dial reading its widest beside rows the widest would never have
+    produced: the owner saw a folder split in two under a setting that says those
+    two match (owner-reported, 2026-08-15).
+
+    So the override goes. The dial reads the default, which is what the split it
+    now sits beside actually corresponds to, and Narrow/Widen still work from
+    there — at the cost of re-suggesting the folder, as they always have.
+
+    Reassigned rather than mutated: the column is plain ``JSON``, so an in-place
+    ``pop`` would not mark the row dirty and the change would never be written.
+    """
+    overrides = dict(plan.stem_level_overrides or {})
+    if overrides.pop(directory, None) is None:
+        return
+    plan.stem_level_overrides = overrides
+
+
+# --- per-directory stem levels ------------------------------------------------
+
+# What the three values this column used to hold mean on the dial. ``wide`` has
+# no fixed level: it meant "as wide as this folder goes", which is the folder's
+# own maximum, so it resolves per directory.
+_LEGACY_STEM_LEVELS: dict[str, int | None] = {
+    "narrow": 0,
+    "balanced": DEFAULT_STEM_LEVEL,
+    "wide": None,
+}
+
+
+def _plan_filenames_by_directory(plan: GroupingPlan) -> dict[str, list[str]]:
+    """Every file the plan holds, grouped by the folder it actually lives in.
+
+    Keyed off each file's own path, deliberately not its proposal's
+    ``directory``: the two agree for a suggested row but not after the owner
+    restructures, and the stem dial belongs to a folder rather than to a row.
+    """
+    names: dict[str, list[str]] = {}
+    for proposal in plan.proposals:
+        for file in proposal.files:
+            names.setdefault(_dirname(file.relative_path), []).append(file.relative_path)
+    return names
+
+
+def _stored_stem_levels(plan: GroupingPlan, maxima: dict[str, int]) -> dict[str, int]:
+    """The plan's overrides as levels, translating anything a prior release wrote.
+
+    The column held ``"narrow"``/``"balanced"``/``"wide"`` before the dial was
+    continuous, and a plan open across the upgrade still carries them. An
+    unrecognised value reads as the default rather than as level 0, so a stray
+    string cannot silently split every folder it names.
+    """
+    levels: dict[str, int] = {}
+    for directory, value in (plan.stem_level_overrides or {}).items():
+        if isinstance(value, str):
+            legacy = _LEGACY_STEM_LEVELS.get(value.strip().casefold(), DEFAULT_STEM_LEVEL)
+            level = maxima.get(directory, DEFAULT_STEM_LEVEL) if legacy is None else legacy
+        else:
+            level = int(value)
+        levels[directory] = max(0, min(level, STEM_LEVEL_CEILING))
+    return levels
+
+
+class StemDial(TypedDict):
+    """One folder's position on the stem dial, and what that position matches.
+
+    Declared rather than left as a loose dict so the route can hand it straight to
+    its response model: the three values are not the same type, and a bare
+    ``dict[str, int | str]`` makes every reader of any one of them ambiguous.
+    """
+
+    level: int
+    max: int
+    stem: str
+
+
+def stem_levels(plan: GroupingPlan) -> dict[str, StemDial]:
+    """Each folder the plan represents, its stem level, and the top of its dial.
+
+    All three come from the server for the same reason: they depend on the
+    suggester's normalization of that folder's own filenames, which the client
+    cannot reproduce without reimplementing it. The maximum is the level at which
+    every filename is down to its first segment. ``stem`` is what the folder is
+    matching on *now*, taken from one of its files and left exactly as written —
+    the review says that out loud, because "stem 2 of 3" told the owner nothing
+    (owner-reported, 2026-08-15).
+    """
+    names = _plan_filenames_by_directory(plan)
+    maxima = {directory: max_stem_level(paths) for directory, paths in names.items()}
+    stored = _stored_stem_levels(plan, maxima)
+    dials: dict[str, StemDial] = {}
+    for directory in sorted({*maxima, *stored}):
+        level = stored.get(directory, DEFAULT_STEM_LEVEL)
+        # An override on a folder no row still holds files from keeps its own
+        # level as the top of the dial, so the reported maximum is never below
+        # the level actually in force.
+        maximum = max(maxima.get(directory, DEFAULT_STEM_LEVEL), level)
+        # Sorted, so the folder shows the same example every time it is asked.
+        example = min(names.get(directory, []), default=None)
+        dials[directory] = StemDial(
+            level=level,
+            max=maximum,
+            stem=""
+            if example is None
+            else stem_prefix_as_written(example.rsplit("/", 1)[-1], level, maximum),
+        )
+    return dials
+
+
+def set_directory_stem_level(
+    session: Session, plan_id: str, directory: str, level: int
 ) -> GroupingPlan:
     """Re-suggest ONE directory inside the open plan, leaving everything else be.
 
@@ -592,17 +741,25 @@ def set_directory_stem_mode(
     if plan.status is not GroupingPlanStatus.OPEN:
         raise ConflictError("only an open grouping plan can be adjusted")
 
-    modes: dict[str, str] = dict(plan.stem_modes or {})
-    if mode is StemMode.BALANCED:
-        modes.pop(directory, None)
+    maxima = {
+        folder: max_stem_level(paths)
+        for folder, paths in _plan_filenames_by_directory(plan).items()
+    }
+    levels = _stored_stem_levels(plan, maxima)
+    # Clamped rather than refused. The top of the dial depends on the folder's own
+    # filenames, so "one step wider" is a request the client makes against the
+    # maximum it was last told; clamping lands on the end it meant.
+    level = max(0, min(level, maxima.get(directory, DEFAULT_STEM_LEVEL)))
+    if level == DEFAULT_STEM_LEVEL:
+        levels.pop(directory, None)
     else:
-        modes[directory] = mode.value
-    # Same bound as PlanGenerateRequest.stem_modes, enforced here too because
+        levels[directory] = level
+    # Same bound as PlanGenerateRequest.stem_levels, enforced here too because
     # this path grows the stored map one directory at a time.
-    if len(modes) > 500:
+    if len(levels) > 500:
         raise ValidationError("too many per-directory stem overrides")
 
-    data = suggest_for_session(session, stem_modes={d: StemMode(m) for d, m in modes.items()})
+    data = suggest_for_session(session, stem_levels=levels)
     fresh = [p for p in data.proposals if p.directory == directory]
 
     existing = [p for p in plan.proposals if p.directory == directory]
@@ -652,7 +809,17 @@ def set_directory_stem_mode(
     session.expire(plan, ["proposals"])
 
     survivors = list(plan.proposals)
-    claimed = {pf.asset_file_id for p in survivors for pf in p.files}
+    # One query for every surviving row's files. ``plan.proposals`` was just
+    # expired, so it reloads without ``get_plan``'s eager option — and reading
+    # ``p.files`` per row was then one lazy query per proposal: 3,600 of them on a
+    # large plan, which is where ten of the thirteen seconds went.
+    claimed = set(
+        session.scalars(
+            select(GroupingProposalFile.asset_file_id)
+            .join(GroupingProposal, GroupingProposal.id == GroupingProposalFile.proposal_id)
+            .where(GroupingProposal.plan_id == plan.id)
+        )
+    )
     container_by_dir = {p.directory: p.id for p in survivors if p.kind is ProposalKind.CONTAINER}
 
     path_by_id = _relative_paths(session)
@@ -663,6 +830,7 @@ def set_directory_stem_mode(
         if proposal.kind is ProposalKind.BUNDLE and not kept:
             continue  # every file here was dragged elsewhere by the owner
         row = GroupingProposal(
+            id=new_id(),
             plan_id=plan.id,
             kind=proposal.kind,
             title=proposal.title or None,
@@ -680,7 +848,6 @@ def set_directory_stem_mode(
             is_collection_context=proposal.is_collection_context,
         )
         session.add(row)
-        session.flush()
         if len(kept) != len(proposal.files):
             # Roles were derived for the full file set; recompute for what is left
             # (e.g. the group's video was dragged away, leaving sidecars).
@@ -701,19 +868,26 @@ def set_directory_stem_mode(
             )
         else:
             proposed = tuple(proposal.files)
-        for sequence, pf in enumerate(proposed):
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=row.id,
-                    asset_file_id=pf.asset_file_id,
-                    relative_path=path_by_id.get(pf.asset_file_id, ""),
-                    proposed_role=pf.role,
-                    sequence=sequence,
-                )
+        session.add_all(
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=row.id,
+                asset_file_id=pf.asset_file_id,
+                relative_path=path_by_id.get(pf.asset_file_id, ""),
+                proposed_role=pf.role,
+                sequence=sequence,
             )
+            for sequence, pf in enumerate(proposed)
+        )
         if proposal.kind is ProposalKind.CONTAINER:
             fresh_container_id = row.id
         inserted_parents.append((row, proposal.parent_directory))
+
+    # One flush for every fresh row, where there used to be one per row. It has to
+    # happen here rather than at the end: the parent links below — and the orphan
+    # re-parenting after them — reference these rows by id, and the foreign key is
+    # enforced immediately.
+    session.flush()
 
     # Link fresh rows to their parents: the directory's own fresh container, or
     # a surviving container for an ancestor directory.
@@ -755,7 +929,7 @@ def set_directory_stem_mode(
     # therefore suggester) order because ids are ULIDs.
     for position, row in enumerate(sorted(plan.proposals, key=lambda p: (p.sort_order, p.id))):
         row.sort_order = position
-    plan.stem_modes = modes
+    plan.stem_level_overrides = dict(levels)
     session.flush()
     session.expire(plan, ["proposals"])
     return plan
@@ -770,8 +944,168 @@ def supersede_open_plans(session: Session) -> None:
     )
 
 
+# One superseded plan is kept so a client that is still holding its id — the review
+# dialog open on it while a scan generates a new one — refetches a plan rather than
+# a 404.
+_KEEP_SUPERSEDED = 1
+
+# Plans deleted per call. Still bounded, because the delete cascades — each plan
+# takes its proposals and their file rows with it — but the bound used to be 4,
+# chosen when those page writes went to a library database on a network share and a
+# hundred plans at once turned an Update into minutes of deletes. ADR-0022 moved
+# plans to local disk and indexed the cascade, which took pruning four from 6.4 s to
+# 12 ms; the old bound then drained a backlog so slowly that it never caught up —
+# the owner's library had accumulated 135 plans holding 5.6 MB (2026-08-14). A
+# thousand is a runaway guard rather than a cost ceiling.
+_PRUNE_PER_RUN = 1000
+
+
+def grouping_input_digest(session: Session) -> str:
+    """Digest of exactly what the suggester reads, and nothing else.
+
+    The suggester's answer depends on each file's path, its media kind, and
+    whether its bundle is *confirmed* — nothing more. So a plan is stale only when
+    one of those changes.
+
+    An earlier version of this compared ``max(updated_at)`` instead, which is
+    wrong in a way that made the whole optimisation a no-op for the owner:
+    probing writes ``tech_metadata``, and thumbnails, ratings, notes and
+    "last opened" all touch rows too. Any of them bumped the timestamp, every
+    scan concluded the plan was stale, and it regenerated regardless — which on a
+    network-hosted library is minutes (owner-reported, 2026-08-14).
+    """
+    rows = session.execute(
+        select(
+            AssetFile.id,
+            AssetFile.relative_path,
+            AssetFile.media_kind,
+            AssetFile.availability,
+            AssetFile.bundle_id,
+            AssetBundle.grouping_state,
+        )
+        .outerjoin(AssetBundle, AssetBundle.id == AssetFile.bundle_id)
+        .order_by(AssetFile.id)
+    ).all()
+    digest = hashlib.blake2b(digest_size=16)
+    for row in rows:
+        digest.update(repr(tuple(str(value) for value in row)).encode())
+    return digest.hexdigest()
+
+
+def reusable_open_plan(session: Session) -> GroupingPlan | None:
+    """The open plan, when regenerating it could not produce anything different.
+
+    A plan is a snapshot of suggestions over the files not yet in a confirmed
+    bundle. If nothing in the library has been touched since it was written, that
+    set is unchanged and so is every suggestion over it — so regenerating writes a
+    few hundred rows of identical content and supersedes the plan the owner was
+    working through.
+
+    On local disk that waste is milliseconds. On a library whose database is on a
+    network share it was **seven minutes**, every press of Update, because the cost
+    is scattered journaled page writes rather than a few statements
+    (owner-reported, 2026-08-13).
+
+    The test is "has anything been modified since", not the scan's own summary:
+    ``ScanSummary.updated`` counts every *examined* row, changed or not, so it is
+    non-zero for any library with files in it. A timestamp comparison also covers
+    what a scan summary cannot — a bundle deleted or fast-added through the UI
+    between scans.
+
+    Returns ``None`` whenever the answer could differ: something was touched, there
+    is no open plan, or the plan predates the current suggester rules.
+    """
+    plan = session.scalar(
+        select(GroupingPlan)
+        .where(GroupingPlan.status == GroupingPlanStatus.OPEN)
+        .order_by(GroupingPlan.generated_at.desc())
+        .options(selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files))
+    )
+    if plan is None or plan.rule_version != SUGGESTER_RULE_VERSION:
+        return None
+    digest = grouping_input_digest(session)
+    if plan.input_digest is None:
+        # Written before the digest column existed. Rather than regenerate once —
+        # minutes on a network-hosted library — check the one thing the digest is
+        # standing in for: does the plan still cover exactly the files that are
+        # there, under the same paths? If so, adopt it and record the digest.
+        if not _plan_covers_the_same_files(session, plan):
+            return None
+        plan.input_digest = digest
+        session.flush()
+        return plan
+    if plan.input_digest != digest:
+        return None
+    return plan
+
+
+def _plan_covers_the_same_files(session: Session, plan: GroupingPlan) -> bool:
+    """Whether every file the plan holds still exists at the path it recorded.
+
+    Exact for the changes that matter to a plan — a file added, removed, renamed,
+    or moved — because the plan stores each file's id *and* its path. Used only to
+    adopt a plan written before ``input_digest`` existed.
+    """
+    covered = {(pf.asset_file_id, pf.relative_path) for p in plan.proposals for pf in p.files}
+    if not covered:
+        return False
+    live = {
+        (file_id, path)
+        for file_id, path in session.execute(
+            select(AssetFile.id, AssetFile.relative_path).where(
+                AssetFile.availability != FileAvailability.TRASHED
+            )
+        ).all()
+    }
+    # The plan covers the unbundled files, a subset of what is on disk; every one
+    # of them still has to be present, unmoved.
+    return covered <= live
+
+
+def prune_obsolete_plans(session: Session) -> int:
+    """Delete plans that can no longer be opened, applied, or otherwise used.
+
+    A superseded or cancelled plan is a snapshot that was replaced or abandoned
+    before it was applied (ADR-0009). Nothing can be done with one: every edit
+    path refuses a non-open plan, and so does apply. They were only ever marked,
+    never removed, so they accumulated one per regeneration — the owner's library
+    had **116 superseded plans holding 5,455 proposal rows** for 412 files, in a
+    5.75 MB database on an SMB share where every page read costs about 36 ms
+    (2026-08-13).
+
+    Applied plans are kept: they record what was actually applied, and a scan job's
+    result references its plan id. They accrue once per apply — a deliberate owner
+    action — rather than once per regeneration.
+
+    Returns how many plans were deleted. The proposal and file rows go with them
+    through ``ON DELETE CASCADE``, which is why this is a bulk statement and not a
+    loop over ORM instances.
+    """
+    obsolete = (
+        select(GroupingPlan.id)
+        .where(
+            GroupingPlan.status.in_((GroupingPlanStatus.SUPERSEDED, GroupingPlanStatus.CANCELLED))
+        )
+        .order_by(GroupingPlan.generated_at.desc())
+        .offset(_KEEP_SUPERSEDED)
+        .limit(_PRUNE_PER_RUN)
+    )
+    ids = list(session.scalars(obsolete))
+    if not ids:
+        return 0
+    # Expire first: instances of the rows about to vanish may be in the identity
+    # map, and a later flush would try to update what is no longer there.
+    session.expire_all()
+    session.execute(delete(GroupingPlan).where(GroupingPlan.id.in_(ids)))
+    return len(ids)
+
+
 def persist_plan(
-    session: Session, data: PlanData, *, scan_job_id: str | None = None
+    session: Session,
+    data: PlanData,
+    *,
+    scan_job_id: str | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> GroupingPlan:
     """Store a suggester plan as durable rows, superseding prior open plans.
 
@@ -784,17 +1118,30 @@ def persist_plan(
     plan = GroupingPlan(
         scan_job_id=scan_job_id,
         rule_version=data.rule_version,
-        stem_modes={directory: mode.value for directory, mode in data.stem_modes.items()},
+        stem_level_overrides=dict(data.stem_levels),
+        input_digest=grouping_input_digest(session),
     )
     session.add(plan)
     session.flush()
 
     path_by_id = _relative_paths(session)
+    total = len(data.proposals)
     container_proposal_by_dir: dict[str, str] = {}
     rows: list[tuple[GroupingProposal, str | None]] = []
+    pending: list[GroupingProposal | GroupingProposalFile] = []
+    loaded: list[tuple[GroupingProposal, list[GroupingProposalFile]]] = []
 
     for order, proposal in enumerate(data.proposals):
+        # The id is assigned here rather than left to the flush that would
+        # otherwise have to happen inside this loop just to learn it. Ids are
+        # ULIDs from a plain Python callable, so they are known before the insert
+        # and still ascend in creation order (which the stem splice's sort
+        # tiebreak relies on). Flushing per proposal meant one INSERT round trip
+        # per row: 10,400 statements and about two and a half seconds of the four
+        # a 3,600-suggestion plan took to appear (owner-reported, 2026-08-13).
+        # With every primary key known up front, SQLAlchemy batches the inserts.
         row = GroupingProposal(
+            id=new_id(),
             plan_id=plan.id,
             kind=proposal.kind,
             title=proposal.title or None,
@@ -809,29 +1156,49 @@ def persist_plan(
             target_collection_id=proposal.target_collection_id,
             is_collection_context=proposal.is_collection_context,
         )
-        session.add(row)
-        session.flush()
-        for pf in proposal.files:
-            session.add(
-                GroupingProposalFile(
-                    proposal_id=row.id,
-                    asset_file_id=pf.asset_file_id,
-                    relative_path=path_by_id.get(pf.asset_file_id, ""),
-                    proposed_role=pf.role,
-                    sequence=pf.sequence,
-                )
+        # Through the relationship rather than by ``proposal_id``, so the
+        # collection counts as loaded. Setting the foreign key alone left
+        # ``row.files`` unloaded, and serializing the response then fetched each
+        # row's files in its own SELECT — 3,600 of them, the largest single cost
+        # of generating a plan (owner-reported, 2026-08-13).
+        files = [
+            GroupingProposalFile(
+                id=new_id(),
+                proposal_id=row.id,
+                asset_file_id=pf.asset_file_id,
+                relative_path=path_by_id.get(pf.asset_file_id, ""),
+                proposed_role=pf.role,
+                sequence=pf.sequence,
             )
+            for pf in proposal.files
+        ]
+        pending.append(row)
+        pending.extend(files)
+        loaded.append((row, files))
+        if on_progress is not None:
+            on_progress(order + 1, total)
         if proposal.kind is ProposalKind.CONTAINER:
             container_proposal_by_dir[proposal.directory] = row.id
         rows.append((row, proposal.parent_directory))
 
-    # Second pass: link children to their container proposal now that all ids
-    # exist.
+    # Parent links before the insert, not after: the ids are already known, so
+    # this no longer needs a round of UPDATEs following the INSERTs.
     for row, parent_directory in rows:
         if parent_directory is not None:
             row.parent_proposal_id = container_proposal_by_dir.get(parent_directory)
 
+    session.add_all(pending)
     session.flush()
+    # Prime each row's ``files`` as already-loaded, *after* the flush: turning a
+    # pending instance persistent resets that bookkeeping, so doing it earlier has
+    # no effect. Without this, serializing the response fetched every row's files
+    # back in its own SELECT — 3,600 of them, the single largest cost of
+    # generating a plan (owner-reported, 2026-08-13). Assigning the relationship
+    # instead of the foreign key is not enough either: an *empty* collection stays
+    # unloaded, so every container still paid a query.
+    for row, files in loaded:
+        set_committed_value(row, "files", files)
+    set_committed_value(plan, "proposals", [row for row, _ in loaded])
     return plan
 
 
@@ -839,11 +1206,16 @@ def generate_plan(
     session: Session,
     *,
     scan_job_id: str | None = None,
-    stem_modes: dict[str, StemMode] | None = None,
+    stem_levels: dict[str, int] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
-    data = suggest_for_session(session, stem_modes=stem_modes)
-    return persist_plan(session, data, scan_job_id=scan_job_id)
+    data = suggest_for_session(session, stem_levels=stem_levels)
+    plan = persist_plan(session, data, scan_job_id=scan_job_id, on_progress=on_progress)
+    # After the new plan is in, so a slow delete never delays the thing the caller
+    # is waiting for, and a stale client id always resolves to something.
+    prune_obsolete_plans(session)
+    return plan
 
 
 def _relative_paths(session: Session) -> dict[str, str]:
