@@ -57,6 +57,15 @@ export interface ClipRangeController {
 
 interface UseClipRangeOptions {
   player: PlayerController
+  /**
+   * The playhead read from the media element, not from React state.
+   *
+   * `player.currentTime` lags the element by a render and an effect, because it
+   * is state fed by `timeupdate`. Marking an edge right after a seek would then
+   * record where the playhead *was* — and this feature exists to be exact about
+   * that number.
+   */
+  getCurrentTime: () => number
   duration: number
   fps: number | null | undefined
   /** Identifies the playing file; a change clears the selection. */
@@ -65,6 +74,7 @@ interface UseClipRangeOptions {
 
 export function useClipRange({
   player,
+  getCurrentTime,
   duration,
   fps,
   sourceKey,
@@ -80,6 +90,7 @@ export function useClipRange({
   // a ref keeps these callbacks stable — otherwise every consumer of this
   // controller re-renders four times a second.
   const playerRef = useRef(player)
+  const nowRef = useRef(getCurrentTime)
   const durationRef = useRef(duration)
   // Edge moves read the current span from here rather than from a `setRange`
   // updater: they also have to seek, and a side effect inside an updater runs
@@ -87,9 +98,10 @@ export function useClipRange({
   const rangeRef = useRef<ClipRange | null>(range)
   useEffect(() => {
     playerRef.current = player
+    nowRef.current = getCurrentTime
     durationRef.current = duration
     rangeRef.current = range
-  }, [duration, player, range])
+  }, [duration, getCurrentTime, player, range])
 
   // A selection belongs to the file it was marked on. Carrying it to the next
   // file in the playlist would silently point at unrelated footage.
@@ -137,13 +149,13 @@ export function useClipRange({
     // Only seed when nothing is marked. `[`/`]` can open the bar by marking an
     // edge first, and opening it again must not discard that.
     if (!rangeRef.current) {
-      commit(defaultRange(playerRef.current.currentTime, durationRef.current))
+      commit(defaultRange(nowRef.current(), durationRef.current))
     }
   }, [commit])
 
   const markAtPlayhead = useCallback(
     (edge: ClipEdge) => {
-      const at = playerRef.current.currentTime
+      const at = nowRef.current()
       const limit = durationRef.current
       setActive(true)
       // Marking an edge with nothing selected yet starts a span from the

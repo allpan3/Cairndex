@@ -46,7 +46,7 @@ function EdgeRow({
           aria-label={`Move ${edge} back one second`}
           title="−1 s"
         >
-          ⏪
+          ◀◀
         </button>
         <button
           className="mv-clip__step"
@@ -71,7 +71,7 @@ function EdgeRow({
           aria-label={`Move ${edge} forward one second`}
           title="+1 s"
         >
-          ⏩
+          ▶▶
         </button>
       </div>
       <button

@@ -237,6 +237,9 @@ export function ViewerShell({
   // survives into the next item of the playlist.
   const clip = useClipRange({
     player,
+    // The live element time, not the state copy: an edge marked right after a
+    // seek must be where the playhead *is*.
+    getCurrentTime,
     duration: player.duration || playable?.duration || 0,
     fps: current?.fps,
     sourceKey: currentKey,
