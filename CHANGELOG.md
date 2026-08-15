@@ -36,7 +36,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   it far better than 20 does. The GIF and
   snapshot wheels end at the source's own width, marked `native`, since scaling
   either up adds nothing. Contact-sheet widths now run 800–6144 px (they were
-  three fixed values), and grids 2×2 through 6×6.
+  three fixed values), and grids 4×4 through 8×8, defaulting to 5×5.
 - **Snapshots can be saved at a chosen size.** `S` and the camera button are
   unchanged — one press, at the source's own resolution — and a new **Save
   Snapshot As…** on the viewer's right-click menu asks for a width first.

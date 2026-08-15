@@ -36,13 +36,17 @@ from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
 
 # Bounded grid parameters: enough range for a dense sheet without letting a
-# request ask for arbitrary amounts of decode work.
-MIN_COLS, MAX_COLS = 2, 6
+# request ask for arbitrary amounts of decode work. Columns went 6 → 8 on
+# 2026-08-15 so the dialog can offer 7x7 and 8x8 (owner). That is 49 and 64
+# cells, but the cost is bounded by the seek-per-frame design described above
+# rather than by the grid: each cell is one keyframe seek, so a denser sheet
+# costs proportionally more seeks and nothing else.
+MIN_COLS, MAX_COLS = 2, 8
 MIN_ROWS, MAX_ROWS = 2, 10
 # Sheet pixel width bounds a client may ask for (the height follows the aspect).
 # Was a three-value enum; widened to a range on 2026-08-15 when the dialogs
 # moved to a scrolling wheel and could offer a real ladder. A sheet is one JPEG,
-# so the ceiling is generous — 6144 across a 6x6 grid is still only 1024px
+# so the ceiling is generous — 6144 across an 8x8 grid is still only 768px
 # cells, which is about where more pixels stop telling you anything new.
 MIN_SHEET_WIDTH = 800
 MAX_SHEET_WIDTH = 6144

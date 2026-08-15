@@ -20,14 +20,16 @@ import {
 import { getHostPlatform, isDesktopHost } from '../platform'
 
 /**
- * The grids offered. Square, and within the server's 2–6 column bound.
+ * The grids offered. Square, and within the server's 2–8 column bound.
  *
- * Wider than the old 4/5/6 now that the choice sits on a scrolling wheel
- * rather than a segmented row that had to fit every option at once.
+ * Starts at 4×4 and runs to 8×8 (owner, 2026-08-15). Below 4×4 a sheet stops
+ * being a sheet — nine frames of a feature tell you almost nothing — and the
+ * top end is cheap: one keyframe seek per cell, so 8×8 measured 3.6s against
+ * 4×4's 1.0s on a real file.
  */
-export const CONTACT_SHEET_GRIDS = [2, 3, 4, 5, 6] as const
+export const CONTACT_SHEET_GRIDS = [4, 5, 6, 7, 8] as const
 export type ContactSheetGrid = (typeof CONTACT_SHEET_GRIDS)[number]
-export const DEFAULT_CONTACT_SHEET_GRID = 4
+export const DEFAULT_CONTACT_SHEET_GRID = 5
 
 /** Sheet widths, inside `contact_sheets.MIN/MAX_SHEET_WIDTH` (800–6144). */
 export const CONTACT_SHEET_WIDTHS = [

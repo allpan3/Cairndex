@@ -288,7 +288,11 @@ arrow keys, so it is reachable without a pointer.
 
 The ladders grew accordingly: **15 GIF widths** (was 3), **10 sheet widths**
 (was 3, and the server's `SHEET_WIDTHS` enum became an 800–6144 range),
-**5 grids** (was 3), **6 frame rates** (was 4). The GIF and snapshot wheels end
+**6 frame rates** (was 4), and contact-sheet grids **4×4 through 8×8**
+defaulting to 5×5 (owner, 2026-08-15 — 2×2 and 3×3 dropped as too sparse to be
+a sheet, and `MAX_COLS` raised 6 → 8 for the top end). The grid's cost is one
+keyframe seek per cell and nothing else, so it stays linear: measured 1.0s for
+4×4 and 3.6s for 8×8 on a real file, against a 180s ffmpeg deadline. The GIF and snapshot wheels end
 at the source's own width, marked `native` — with no "Original" button, which
 the owner dropped as awkward once the ceiling was fixed at 1920; the native
 width simply joins the ladder as an ordinary rung, so an odd source like

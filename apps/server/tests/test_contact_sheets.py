@@ -144,6 +144,17 @@ def test_grid_bounds_are_enforced(session: Session, library_root: Path) -> None:
         )
 
 
+# Columns went 6 → 8 so the dialog can offer 7x7 and 8x8 (owner, 2026-08-15).
+# The cost is one keyframe seek per cell and nothing else, so it stays linear:
+# measured 1.0s for 4x4 and 3.6s for 8x8 on a real file.
+def test_the_grid_admits_up_to_eight_columns() -> None:
+    assert contact_sheets.MAX_COLS == 8
+    for n in (4, 7, 8):
+        assert contact_sheets._validated(n, n, 2048)[:2] == (n, n)
+    with pytest.raises(ValidationError):
+        contact_sheets._validated(9, 9, 2048)
+
+
 # The width was a three-value enum until the dialogs moved to a scrolling wheel
 # and could offer a real ladder (owner, 2026-08-15).
 def test_width_is_a_range_rather_than_a_fixed_set() -> None:
