@@ -179,6 +179,34 @@ Still outstanding:
 - The suggester's sidecar matching was quadratic in files per folder (fixed
   below). CPU-bound, so it did *not* affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
+### Measured: the stem dial's steps are uneven, and the owner is fine with that (2026-08-15)
+
+The owner asked whether the default stem matching starts too narrow, suggesting it
+begin "one step wider". Measured on their library, that changes almost nothing:
+
+| default | bundles | multi-file bundles |
+| --- | --- | --- |
+| level 1 (shipped) | 295 | 8 |
+| level 2 | 294 | 9 |
+| level 3 | 293 | 9 |
+| compare the first 2 segments | **276** | **26** |
+| compare the first 3 segments | 294 | 8 |
+
+The reason is the dial's definition: depth is `max - level + 1`, where `max` is the
+segment count of the folder's *longest* filename. One 22-segment name makes level 2
+mean "compare 21 of 22 segments", so several steps in a row change nothing and then
+one merges the whole folder — which is the overshoot the owner hit (they wanted
+`ID-number`, got `ID`). Only a fixed *depth* of 2 segments groups their naming
+convention, and that is too aggressive to make a global default: a library named
+like `The Matrix 1999` / `The Matrix Reloaded 2003` would merge them.
+
+Offered as three options — depth-2 default, re-basing the dial on depth so each
+click moves one segment, or both. **The owner chose to leave it as it is** (2026-08-15),
+judging a 2-segment default unsafe. Recorded because the finding stands: the dial's
+steps are unevenly spaced by design, worst in exactly the folders that need it most.
+If it is revisited, re-basing on depth is cheap now — plans are cleared at startup,
+so there are no stored overrides to migrate.
+
 ### Plans moved local, and the scan walks once (2026-08-14)
 
 The page cache and the indexes took the plan write from >10 min to 4.6 s. The owner
