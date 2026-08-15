@@ -92,6 +92,24 @@ def test_defaults_fill_in_width_and_fps() -> None:
     assert params.duration == pytest.approx(3.0)
 
 
+# A GIF holds each frame's delay in whole centiseconds, so a default that does
+# not divide 100 plays the clip back at the wrong speed — 12 fps becomes 12.5
+# and 15 becomes 16.7, both measured on real output.
+def test_the_default_frame_rate_is_one_a_gif_can_hold_exactly() -> None:
+    assert 100 % exports.DEFAULT_FPS == 0
+    assert exports.MIN_FPS <= exports.DEFAULT_FPS <= exports.MAX_FPS
+
+
+# Raised from 720 so the client's "Original" can mean it for a 1080p source,
+# but still bounded: a GIF is one indexed frame per frame, and 4K would run to
+# hundreds of megabytes for a thirty-second clip.
+def test_the_width_ceiling_admits_1080p_and_stops_there() -> None:
+    assert exports.MAX_WIDTH == 1920
+    exports.validated_gif_params(start_s=0.0, end_s=2.0, width=1920, fps=None, duration=60.0)
+    with pytest.raises(ValidationError, match="width"):
+        exports.validated_gif_params(start_s=0.0, end_s=2.0, width=3840, fps=None, duration=60.0)
+
+
 def test_rejects_a_range_that_is_inverted_empty_or_too_long() -> None:
     with pytest.raises(ValidationError, match="end must come after"):
         exports.validated_gif_params(start_s=5.0, end_s=2.0, width=None, fps=None, duration=60.0)

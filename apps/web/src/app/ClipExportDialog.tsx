@@ -5,6 +5,7 @@ import {
   DEFAULT_CLIP_FPS,
   clipWidthOptions,
   defaultClipWidth,
+  isWidthCapped,
   outputHeight,
   saveClipGif,
   type ClipExportRange,
@@ -37,9 +38,9 @@ export function ClipExportDialog({
   const height = outputHeight(width, target.sourceWidth, target.sourceHeight)
   const seconds = range.end - range.start
   const frames = Math.max(1, Math.round(seconds * fps))
-  // Only worth saying when a preset was withheld, so the absence is explained
-  // rather than looking like an arbitrary list.
-  const cappedBySource = target.sourceWidth ? widths[widths.length - 1] !== 720 : false
+  // Said only when the largest option is the server's ceiling rather than the
+  // source's own size, so the missing "Original" is explained.
+  const capped = isWidthCapped(target.sourceWidth)
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -59,12 +60,13 @@ export function ClipExportDialog({
         <div className="segmented" id="clip-width" role="group" aria-label="Output width">
           {widths.map((option) => (
             <button
-              key={option}
-              className={`seg${option === width ? ' is-active' : ''}`}
-              onClick={() => setWidth(option)}
-              aria-pressed={option === width}
+              key={option.value}
+              className={`seg${option.value === width ? ' is-active' : ''}`}
+              onClick={() => setWidth(option.value)}
+              aria-pressed={option.value === width}
+              title={`${option.value}px wide`}
             >
-              {option}px
+              {option.label}
             </button>
           ))}
         </div>
@@ -91,7 +93,7 @@ export function ClipExportDialog({
         <p className="modal__note">
           {height ? `${width}×${height}` : `${width}px wide`} · {seconds.toFixed(2)} s · {frames}{' '}
           frames
-          {cappedBySource ? ' · larger sizes would upscale this source' : ''}
+          {capped ? ' · larger than the maximum, so capped' : ''}
         </p>
 
         <div className="modal__actions">

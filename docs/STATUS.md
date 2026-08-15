@@ -194,13 +194,15 @@ state fed by `timeupdate`, so it lagged the element by a render and could record
 where the playhead *had been*. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
-Tests run: **993 server** (21 new, including a real-ffmpeg case asserting an
-animated GIF of the requested width), **643 web** (66 new), **42 player e2e**
+Tests run: **995 server** (23 new, including a real-ffmpeg case asserting an
+animated GIF of the requested width), **647 web** (70 new), **42 player e2e**
 (8 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
 build`/clippy/fmt all clean. Verified against a real backend on a scratch
 library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
-42-frame GIF, a 4 s one a 1.5 MB GIF, and the dialog's own round trip at
-320px/15fps a 320×180, 75-frame file — all with the artifact dropped after.
+42-frame GIF, a 4 s one a 1.5 MB GIF, the dialog's own round trip at
+320px/15fps a 320×180, 75-frame file, and Original at 10 fps a 960×540, 50-frame
+9 MB file measuring back at exactly `10/1` — all with the artifact dropped
+after.
 The out-of-bounds fix has a regression test confirmed to fail without it.
 
 **One pre-existing e2e failure, not from this branch:** `transparently
@@ -210,18 +212,30 @@ at `6523fec8` too (verified by stashing).
 **Size and frame-rate controls followed (2026-08-15).** An options dialog on
 Save GIF…, in the contact sheet's shape — a dialog rather than more controls in
 the clip bar, since choosing a width does not need the frame on screen and the
-bar had just been trimmed. Width presets are filtered against the probed source
-so nothing on offer would upscale, with the withheld ones explained rather than
-silently absent; a source narrower than every preset is offered its own width.
+bar had just been trimmed. Widths are the fixed sizes *below* the source (320,
+480, 720) followed by the source's own, so nothing on offer upscales and
+nothing appears twice — a 720p source shows 320, 480 and Original rather than
+Original beside a redundant 720.
+
+**"Original" required raising the server's width cap** from plan 1 §10's 720 to
+1920 (owner asked for the option, 2026-08-15). At 720 the label would have been
+a lie for every 1080p source, which is the common case here. Not unbounded: a
+GIF is one indexed frame per frame, and the measured 5 s 960×540 export is
+**9 MB** — a thirty-second 4K one would run to hundreds. Above the ceiling the
+top option takes its number rather than the word, because a 4K source at 1920
+is not its original size.
 The output's real pixel size is shown (`scale=W:-2`, so the height is derived
 and even). **No byte-size estimate**: measured output ranged 15–31 KB/frame at
 480px on the same settings, so any number would be wrong by 2× as often as not.
 
-Worth knowing about the format: a GIF stores frame delays in *centiseconds*, so
-only rates dividing 100 are exact. Of the presets, 10 fps is; 12 plays at 12.5
-and 15 at 16.7 (measured on real output). The frame *count* is always what was
-asked — only the tempo rounds. Recorded in `clipExport.ts` rather than worked
-around, since it is the format's, not the pipeline's.
+**The default rate is 10 fps, and the reason is the format.** A GIF stores
+frame delays in *centiseconds*, so only rates dividing 100 play back at the
+rate they were asked for. Of the presets 10 is; 12 becomes 12.5 and 15 becomes
+16.7 — both measured on real output, and 10 measured back as exactly `10/1`.
+The frame *count* is always what was asked; only the tempo rounds. For a
+feature built around frame-accurate in and out points, a default that plays the
+clip 11% fast was the wrong one. 20 and 25 fps would also be exact and smoother
+than 10, but both sit above the server's fps cap — a possible follow-up.
 
 **Known gaps / next:** persistent A-B loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
 been exercised on a packaged build — only the browser download has, since the
