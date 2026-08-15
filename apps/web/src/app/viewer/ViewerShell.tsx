@@ -33,7 +33,8 @@ import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
 import { useClipPlayback, useClipRange } from './player/useClipRange'
-import { MAX_CLIP_EXPORT_SECONDS, saveClipGif } from '../clipExport'
+import { MAX_CLIP_EXPORT_SECONDS, type ClipExportTarget } from '../clipExport'
+import { ClipExportDialog } from '../ClipExportDialog'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
@@ -148,6 +149,8 @@ export function ViewerShell({
   const [exportNotice, setExportNotice] = useState<string | null>(null)
   // The file whose contact-sheet options are open, if any.
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
+  // The file whose GIF options are open, if any.
+  const [clipTarget, setClipTarget] = useState<ClipExportTarget | null>(null)
 
   const hasError = Boolean(error)
   const current = items[index] ?? null
@@ -251,17 +254,18 @@ export function ViewerShell({
   // deliberately, and the mode would fight it.
   useClipPlayback(videoElement, clip.range, clip.adjusting ? 'off' : clip.playMode)
 
+  // Save GIF… opens the options dialog rather than exporting straight away.
+  // The range is already decided by then; what is left is size and rate, and
+  // neither needs the frame on screen the way placing an edge does.
   const exportClip = useCallback(() => {
     if (!fileId || !clip.range) return
-    void saveClipGif(
-      { fileId, title: current?.title ?? title },
-      clip.range,
-      // Size and rate stay at the server's defaults for now; the controls are
-      // the next slice, and the API already takes both (plan 1 §10).
-      {},
-      setExportNotice,
-    )
-  }, [clip.range, current?.title, fileId, title])
+    setClipTarget({
+      fileId,
+      title: current?.title ?? title,
+      sourceWidth: current?.width ?? null,
+      sourceHeight: current?.height ?? null,
+    })
+  }, [clip.range, current?.height, current?.title, current?.width, fileId, title])
   usePlaybackProgressReporter({
     bundleId,
     fileId,
@@ -830,6 +834,14 @@ export function ViewerShell({
         <ContactSheetDialog
           target={sheetTarget}
           onClose={() => setSheetTarget(null)}
+          onReport={setExportNotice}
+        />
+      )}
+      {clipTarget && clip.range && (
+        <ClipExportDialog
+          target={clipTarget}
+          range={clip.range}
+          onClose={() => setClipTarget(null)}
           onReport={setExportNotice}
         />
       )}
