@@ -2737,15 +2737,13 @@ test('refuses to export a range longer than the cap', async ({ page }) => {
   await page.keyboard.press(']')
 
   await expect(page.locator('.mv-clip__duration')).toHaveText('90.00 s')
-  await expect(page.locator('.mv-clip__warn')).toContainText('Longer than the 30 s limit')
+  await expect(page.locator('.mv-clip__warn')).toContainText('max 30 s')
   await expect(
     page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
   ).toBeDisabled()
 })
 
-test('setting the beginning past the end carries the clip and keeps its length', async ({
-  page,
-}) => {
+test('Set In past the out-point carries the clip and keeps its length', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
   await page.goto('/')
@@ -2761,7 +2759,7 @@ test('setting the beginning past the end carries the clip and keeps its length',
   await expect(page.locator('.mv-time')).toContainText('1:10')
   await page
     .locator('[data-testid="clip-bar"]')
-    .getByRole('button', { name: /Set beginning/ })
+    .getByRole('button', { name: /Set In/ })
     .click()
 
   await expect(clipRow(page, 'In')).toHaveText('1:10.000')

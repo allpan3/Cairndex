@@ -494,7 +494,7 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   selection plus a margin so a pointer movement spans frames. Ends are moved by
   `[`/`]`, by one-second and one-frame steppers, or by dragging either handle;
   every one of those scrubs the video to the end being moved. Timestamps are
-  read-only (owner: no editable field). **Set beginning / Set end** carry the
+  read-only (owner: no editable field). **Set In / Set Out** carry the
   whole span when the named instant lands past the other end, keeping the
   clip's length — clamping there collapsed the selection to its floor, which is
   never what "start it here" meant (owner, 2026-08-15). Playback has three
