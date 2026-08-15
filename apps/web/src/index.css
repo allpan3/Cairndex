@@ -3034,8 +3034,14 @@ code {
 .grp-row--rollup {
   gap: var(--grp-lead-gap);
 }
+/* Inline after the run's summary, deliberately not pushed right with
+   `margin-left: auto`. The row wraps, and an auto margin on a wrapped item pins it
+   to the right of an otherwise empty line — so after a row above it changed height
+   the button appeared to float unattached in the middle of the tree
+   (owner-reported, 2026-08-15). Flowing after the text, it stays with its row at
+   every width. */
 .grp-rollup__expand {
-  margin-left: auto;
+  flex: 0 0 auto;
 }
 .grp-node--rollup {
   --grp-disclosure: 14px;
@@ -3113,13 +3119,6 @@ code {
   margin-left: auto;
   align-self: center;
 }
-.grp-dial__level {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-  cursor: help;
-}
 .grp-dial .btn {
   font-size: 10px;
   padding: 0 6px;
@@ -3132,11 +3131,6 @@ code {
   color: var(--text-strong);
   border-color: var(--border-strong, var(--border));
 }
-/* The rollup row's expand button already took the free space. */
-.grp-rollup__expand ~ .grp-dial {
-  margin-left: 0;
-}
-
 .grp-placement {
   display: inline-flex;
   align-items: center;

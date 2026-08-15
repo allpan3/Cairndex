@@ -213,4 +213,5 @@ def apply_plan(
             ApplyConflictRead(proposal_id=c.proposal_id, title=c.title, reason=c.reason)
             for c in result.conflicts
         ],
+        proposals_remaining=result.proposals_remaining,
     )

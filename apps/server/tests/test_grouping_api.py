@@ -399,6 +399,26 @@ def test_apply_plan_accepts_selected_proposals(
     result = applied.json()
     assert result["bundles_confirmed"] == 1
     assert result["bundles_added_to_collections"] == 1
+    # Accepting a selection leaves the plan open on what is left, and the response
+    # says how much that is — the review carries on in the same plan rather than
+    # regenerating one, which is the client's only signal for when to stop.
+    #
+    # Asserted through the API, not just on the service result: the field was
+    # computed correctly and then not passed into the response model, so every
+    # accept looked like the last one (caught 2026-08-15).
+    assert result["proposals_remaining"] == 1
+    reread = client.get(f"{base}/plans/{plan['id']}").json()
+    assert reread["status"] == "open"
+    survivors = {p["id"] for p in reread["proposals"]}
+    assert survivors < {p["id"] for p in plan["proposals"]}, "accepted rows leave the plan"
+    assert survivors, "and the rest stay, with the ids the client's fold state is keyed on"
+
+    # Accepting the rest finishes it.
+    rest = client.post(
+        f"{base}/plans/{plan['id']}/apply", json={"proposal_ids": sorted(survivors)}
+    ).json()
+    assert rest["proposals_remaining"] == 0
+    assert client.get(f"{base}/plans/{plan['id']}").json()["status"] == "applied"
 
 
 def test_apply_plan_rejects_empty_selection(
