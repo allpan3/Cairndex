@@ -77,7 +77,7 @@ opens it on that file.
   range-picker). **The range picker shipped 2026-08-15** and loops the marked
   span while it is being picked; what remains is exposing that loop as a
   persistent playback mode, which is a settings-menu toggle over the existing
-  `useClipRange`/`useClipLoop` pair rather than new machinery. Video adjustments
+  `useClipRange`/`useClipPlayback` pair rather than new machinery. Video adjustments
   (2026-07-11: deferred, reframed as color/tone — see §11 future rows).
 - Resume: reopening a partially-watched file offers/starts at the saved
   position; progress saved throttled + on pause/close.
@@ -494,10 +494,16 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   selection plus a margin so a pointer movement spans frames. Ends are moved by
   `[`/`]`, by one-second and one-frame steppers, or by dragging either handle;
   every one of those scrubs the video to the end being moved. Timestamps are
-  read-only (owner: no editable field). `useClipRange` owns the span and
-  `useClipLoop` already consumes it for preview looping, so **A-B loop replay is
-  a second consumer of the same model**, not a second model. Size/fps controls
-  are deferred to the next slice; the API takes both already.
+  read-only (owner: no editable field). **Set beginning / Set end** carry the
+  whole span when the named instant lands past the other end, keeping the
+  clip's length — clamping there collapsed the selection to its floor, which is
+  never what "start it here" meant (owner, 2026-08-15). Playback has three
+  states: off, **range** (stop at the out-point) and **loop**, modelled as one
+  `ClipPlayMode` because "loop while ignoring the out-point" is not a state that
+  means anything. `useClipRange` owns the span and `useClipPlayback` consumes
+  it, so **A-B loop replay is a second entry point to the same model**, not a
+  second model. Size/fps controls are deferred to the next slice; the API takes
+  both already.
   **Generate contact sheet…** on video files' context menus and in the viewer.
 - Desktop (plan 3 D5): same UI plus a native save dialog and a completion
   notification through the platform seam; finished artifacts are drag-out-able.
@@ -570,7 +576,7 @@ there is one layout, not two.
 | M12 | ✅ Thumbnail hover video preview (Eagle-style, §13.2; merged, #12)                  | Dwell-to-play muted video at rest; storyboard sprites while the cursor moves; one video seek/resume after 250 ms rest; position bar, time, sound toggle, and storyboard-only fallback. Sequenced right after M9, before the desktop shell                                                                          |
 | M8  | Subtitle upgrade — **deferred to future**                                           | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice                                |
 | M10 | Video wall (web) — **deferred to future**                                           | §9                                                                                                                                                                                                                                                                                                                 |
-| M11 | ◐ Media exports — **contact sheet (#34) and GIF snippet shipped; size/fps UI left** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **GIF snippet shipped 2026-08-15**, also an owner request: an interactive create/poll/download export task (not a plain GET — a GIF decodes a contiguous span and can outlast the shell's 30s relay timeout), and the **range picker the A-B loop was moved here to become** (owner 2026-07-11). The picker is an inline clip bar with two granularities, and the span it owns is shared — `useClipLoop` consumes it for preview looping today, so **A-B loop replay is a follow-up consumer rather than new machinery**. The D5b export seam's JSON-number-array byte transport was replaced with a raw IPC body, as §10 required before a real export shipped. **Still open:** the size/fps controls (deferred by the owner to a next slice; the API takes both), and `kind: "webp"`/`"mp4"`. Plan 4 W2 (save exports into library) is a slice rather than a blocked item |
+| M11 | ◐ Media exports — **contact sheet (#34) and GIF snippet shipped; size/fps UI left** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **GIF snippet shipped 2026-08-15**, also an owner request: an interactive create/poll/download export task (not a plain GET — a GIF decodes a contiguous span and can outlast the shell's 30s relay timeout), and the **range picker the A-B loop was moved here to become** (owner 2026-07-11). The picker is an inline clip bar with two granularities, and the span it owns is shared — `useClipPlayback` already consumes it for the range and loop playback modes, so **A-B loop replay is a follow-up entry point rather than new machinery**. The D5b export seam's JSON-number-array byte transport was replaced with a raw IPC body, as §10 required before a real export shipped. **Still open:** the size/fps controls (deferred by the owner to a next slice; the API takes both), and `kind: "webp"`/`"mp4"`. Plan 4 W2 (save exports into library) is a slice rather than a blocked item |
 | —   | Video adjustments — **deferred to future**                                          | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred                                                                                                                                      |
 
 Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved

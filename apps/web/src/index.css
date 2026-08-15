@@ -4334,6 +4334,11 @@ code {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* "Set beginning" and "Set end" are different lengths; a shared width keeps the
+   In and Out rows on the same grid instead of ragged. */
+.mv-clip__here {
+  min-width: 104px;
+}
 /* Tabular figures keep the number from shifting as it counts, which otherwise
    moves the buttons either side of it under the pointer mid-nudge. */
 .mv-clip__time {

@@ -17,7 +17,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   movement spans frames instead of minutes. Each end has one-second and
   one-frame steppers, and every adjustment — stepper or handle drag — scrubs the
   video to the end being moved, because a frame you cannot see cannot be placed
-  accurately. A loop toggle repeats the marked span while you pick it. Save GIF…
+  accurately. **Set beginning** / **Set end** put an end at the playhead, and
+  when that would land past the other end the whole clip moves and keeps its
+  length rather than collapsing — the length is already decided, the click only
+  says where it sits. **Range** plays the marked span and stops at its end;
+  **Loop** repeats it instead, and turns Range on with it. Save GIF…
   encodes server-side (≤30 s, 480 px, 12 fps) and downloads, or saves through
   the native dialog in the desktop app. Output size and frame rate are on the
   API but not yet in the UI; that is the next slice.

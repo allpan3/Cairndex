@@ -126,13 +126,34 @@ loop was moved into M11 to become (owner, 2026-07-11).
 
 **Two owner decisions shaped it.** Both mechanisms for precision, not one — a
 seek-bar band with handles *and* a magnified track — but no editable timestamp
-field. And loop scope stops at previewing the marked span while picking it;
-persistent A-B loop replay is a follow-up.
+field. And loop scope stops at the picking session; persistent A-B loop replay
+is a follow-up.
+
+**A second owner pass (2026-08-15) changed four things**, all from using it:
+
+- Dragging the *seek bar's* handle carried an edge outside the magnified
+  window, which is frozen for the length of a gesture — so the zoomed handle
+  escaped the track entirely (measured ~3700 px past its end). Rendering is now
+  pinned to the track's ends and the window re-fits on release.
+- "Set here" reads as nothing in particular; the buttons say **Set beginning**
+  and **Set end**.
+- Setting a beginning past the current end clamped the clip to its 0.1 s floor.
+  It now **carries the whole span and keeps its length** — the length is
+  already decided, the click only says where it sits. The video running out is
+  the one exception, and then the named instant wins. The end does the mirror
+  of this; a *drag* still clamps, because there the other handle is the fixed
+  reference being measured against.
+- Playback gained a **range** mode that stops at the out-point, with **loop**
+  as a modifier that turns range on with it. Modelled as one `ClipPlayMode`
+  rather than two booleans, since "loop but ignore the out-point" is not a
+  state that means anything. Pressing play once range has parked the playhead
+  on the out-point restarts the span, or the press would do nothing visible.
 
 **The shared model is the point.** `clipRange.ts` (pure arithmetic) +
-`useClipRange` own the span; `useClipLoop` is already a second consumer of it.
-Loop replay lands as a settings-menu toggle over the same pair, not a second
-model. `useEdgeDrag` is shared by both tracks so their drag rules cannot drift.
+`useClipRange` own the span; `useClipPlayback` consumes it for the range/loop
+modes. Loop replay lands as a settings-menu toggle over the same pair, not a
+second model. `useEdgeDrag` is shared by both tracks so their drag rules cannot
+drift.
 
 One rule runs through the interaction: **moving an edge shows you that edge.**
 Every stepper press and handle drag scrubs the video there, which is also why
@@ -163,10 +184,12 @@ where the playhead *had been*. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
 Tests run: **993 server** (21 new, including a real-ffmpeg case asserting an
-animated GIF of the requested width), **617 web** (40 new), **39 player e2e**
-(5 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
+animated GIF of the requested width), **628 web** (51 new), **42 player e2e**
+(8 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
 build`/clippy/fmt all clean. Verified against a real backend on a scratch
-library: a 3.5 s export produced a 480×270, 12 fps, 42-frame GIF.
+library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
+42-frame GIF, and a 4 s one a 1.5 MB GIF, both with the artifact dropped after.
+The out-of-bounds fix has a regression test confirmed to fail without it.
 
 **One pre-existing e2e failure, not from this branch:** `transparently
 re-attaches a fresh session when HLS segments fail` fails on the unmodified tree

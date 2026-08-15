@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { DEFAULT_CLIP_SECONDS, MIN_CLIP_SECONDS, windowFor } from './clipRange'
-import { useClipRange } from './useClipRange'
+import { useClipPlayback, useClipRange } from './useClipRange'
 import type { PlayerController } from './usePlayer'
 
 function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController {
@@ -165,13 +165,13 @@ test('records the span a drag started from and releases it after', () => {
 test('clears the selection when the file changes', () => {
   const { result, rerender } = setup()
   act(() => result.current.open())
-  act(() => result.current.setLoop(true))
+  act(() => result.current.setPlayMode('loop'))
   expect(result.current.range).not.toBeNull()
 
   rerender({ key: 'file-2' })
   expect(result.current.active).toBe(false)
   expect(result.current.range).toBeNull()
-  expect(result.current.loop).toBe(false)
+  expect(result.current.playMode).toBe('off')
 })
 
 test('closing discards the selection', () => {
@@ -181,4 +181,115 @@ test('closing discards the selection', () => {
 
   expect(result.current.active).toBe(false)
   expect(result.current.range).toBeNull()
+})
+
+/**
+ * A stand-in for the media element: enough of the surface `useClipPlayback`
+ * touches, with a `frame()` that runs whatever rAF callback is pending.
+ */
+function fakeVideo() {
+  const listeners = new Map<string, Set<() => void>>()
+  return {
+    currentTime: 0,
+    paused: false,
+    seeking: false,
+    pause: vi.fn(function (this: { paused: boolean }) {
+      this.paused = true
+    }),
+    addEventListener(type: string, fn: () => void) {
+      if (!listeners.has(type)) listeners.set(type, new Set())
+      listeners.get(type)!.add(fn)
+    },
+    removeEventListener(type: string, fn: () => void) {
+      listeners.get(type)?.delete(fn)
+    },
+    emit(type: string) {
+      for (const fn of listeners.get(type) ?? []) fn()
+    },
+  }
+}
+
+function runPlayback(video: ReturnType<typeof fakeVideo>, mode: 'off' | 'range' | 'loop') {
+  const pending: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
+    pending.push(fn)
+    return pending.length
+  })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const view = renderHook(() =>
+    useClipPlayback(video as unknown as HTMLVideoElement, { start: 10, end: 20 }, mode),
+  )
+  // One rAF turn: the effect queued the first callback at mount.
+  const tick = () => pending.splice(0, pending.length).forEach((fn) => fn(0))
+  return { tick, unmount: view.unmount }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+test('range mode stops playback at the out-point', () => {
+  const video = fakeVideo()
+  video.currentTime = 19
+  const { tick } = runPlayback(video, 'range')
+
+  tick()
+  expect(video.pause).not.toHaveBeenCalled()
+
+  video.currentTime = 20.1
+  tick()
+  expect(video.pause).toHaveBeenCalled()
+  // Stopped, not rewound — the playhead stays where the clip ends.
+  expect(video.currentTime).toBeCloseTo(20.1)
+})
+
+test('loop mode returns to the in-point instead of stopping', () => {
+  const video = fakeVideo()
+  video.currentTime = 20.1
+  const { tick } = runPlayback(video, 'loop')
+
+  tick()
+  expect(video.pause).not.toHaveBeenCalled()
+  expect(video.currentTime).toBe(10)
+})
+
+// Without this, pressing play after `range` parked the playhead on the
+// out-point would stop again on the same frame and look like a dead button.
+test('replaying after range stopped starts the span over', () => {
+  const video = fakeVideo()
+  video.currentTime = 20.1
+  const { tick } = runPlayback(video, 'range')
+  tick()
+  expect(video.pause).toHaveBeenCalled()
+
+  video.paused = false
+  video.emit('play')
+  expect(video.currentTime).toBe(10)
+})
+
+test('off leaves playback alone entirely', () => {
+  const video = fakeVideo()
+  video.currentTime = 90
+  const { tick } = runPlayback(video, 'off')
+
+  tick()
+  expect(video.pause).not.toHaveBeenCalled()
+  expect(video.currentTime).toBe(90)
+})
+
+// A drag is deliberately scrubbing the playhead; enforcing the out-point mid
+// gesture would yank it back under the pointer. (The viewer passes 'off' while
+// adjusting; this covers the other two gates.)
+test('never acts on a paused or seeking element', () => {
+  const video = fakeVideo()
+  video.currentTime = 50
+  video.paused = true
+  const { tick } = runPlayback(video, 'loop')
+  tick()
+  expect(video.currentTime).toBe(50)
+
+  video.paused = false
+  video.seeking = true
+  tick()
+  expect(video.currentTime).toBe(50)
 })

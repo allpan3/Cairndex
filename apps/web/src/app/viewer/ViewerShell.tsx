@@ -32,7 +32,7 @@ import { VideoStage } from './VideoStage'
 import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
-import { useClipLoop, useClipRange } from './player/useClipRange'
+import { useClipPlayback, useClipRange } from './player/useClipRange'
 import { MAX_CLIP_EXPORT_SECONDS, saveClipGif } from '../clipExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
@@ -247,7 +247,9 @@ export function ViewerShell({
   // A clip only means something on a file the server can cut: an unindexed
   // File Browser path has no file id to export from.
   const clipAvailable = videoActive && fileId !== null
-  useClipLoop(videoElement, clip.range, clip.loop && !clip.adjusting)
+  // Suppressed mid-drag: a handle drag is already scrubbing the playhead
+  // deliberately, and the mode would fight it.
+  useClipPlayback(videoElement, clip.range, clip.adjusting ? 'off' : clip.playMode)
 
   const exportClip = useCallback(() => {
     if (!fileId || !clip.range) return

@@ -2626,6 +2626,45 @@ test('an edge stops short of the other, and the zoomed track magnifies the span'
   await expect(edges.nth(1)).toHaveText('0:35.500')
 })
 
+test('dragging the seek-bar handle keeps the zoomed handles inside their track', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 30, '0:30')
+  await page.keyboard.press('[')
+
+  // The zoom window is frozen for the length of a gesture, so dragging the
+  // *seek bar's* handle far to the right carries the out-point well outside it.
+  // The magnified handle must pin to the end of its track, not escape into the
+  // control bar (owner, 2026-08-15).
+  const track = page.locator('.mv-clip-zoom__track')
+  const seekHandle = page.locator('.mv-seek__handle--end')
+  const trackBox = (await track.boundingBox())!
+  const handleBox = (await seekHandle.boundingBox())!
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + 320, handleBox.y + handleBox.height / 2, { steps: 12 })
+
+  for (const edge of ['start', 'end']) {
+    const box = (await page.locator(`.mv-clip-zoom__handle--${edge}`).boundingBox())!
+    const centre = box.x + box.width / 2
+    expect(centre).toBeGreaterThanOrEqual(trackBox.x - 1)
+    expect(centre).toBeLessThanOrEqual(trackBox.x + trackBox.width + 1)
+  }
+  const band = (await page.locator('.mv-clip-zoom__band').boundingBox())!
+  expect(band.x + band.width).toBeLessThanOrEqual(trackBox.x + trackBox.width + 1)
+
+  await page.mouse.up()
+  // Released, the window re-fits the new selection and the handles come back in.
+  const settled = (await page.locator('.mv-clip-zoom__handle--end').boundingBox())!
+  expect(settled.x + settled.width / 2).toBeLessThan(trackBox.x + trackBox.width)
+})
+
 test('exports the marked range as a GIF and drops the artifact after', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
@@ -2702,6 +2741,63 @@ test('refuses to export a range longer than the cap', async ({ page }) => {
   await expect(
     page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
   ).toBeDisabled()
+})
+
+test('setting the beginning past the end carries the clip and keeps its length', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+
+  // Clamping here used to collapse the clip to 0.10 s. The length is the thing
+  // the owner has already decided; the click only says where it begins.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 70))
+  await expect(page.locator('.mv-time')).toContainText('1:10')
+  await page
+    .locator('[data-testid="clip-bar"]')
+    .getByRole('button', { name: /Set beginning/ })
+    .click()
+
+  await expect(clipRow(page, 'In')).toHaveText('1:10.000')
+  await expect(clipRow(page, 'Out')).toHaveText('1:15.000')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+})
+
+test('range mode stops at the out-point and loop implies it', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+
+  const bar = page.locator('[data-testid="clip-bar"]')
+  const rangeToggle = bar.getByRole('button', { name: /Range/ })
+  const loopToggle = bar.getByRole('button', { name: /Loop/ })
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+
+  // Loop is a modifier on Range, so asking for it turns Range on too.
+  await loopToggle.click()
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+
+  // Dropping Loop leaves Range standing — stop at the end rather than repeat.
+  await loopToggle.click()
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+
+  // Turning Range off turns everything off.
+  await rangeToggle.click()
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('the clip selection does not follow the viewer to the next file', async ({ page }) => {
