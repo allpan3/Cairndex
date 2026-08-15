@@ -10,6 +10,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **A span of a video can be marked in the player and saved as a GIF.** The
+  clip button (or `[` and `]`) marks the two ends at the playhead; the seek bar
+  carries the selection in the context of the whole file, and a magnified track
+  in the clip bar covers just the selection plus a margin, so the same pointer
+  movement spans frames instead of minutes. Each end has one-second and
+  one-frame steppers, and every adjustment — stepper or handle drag — scrubs the
+  video to the end being moved, because a frame you cannot see cannot be placed
+  accurately. A loop toggle repeats the marked span while you pick it. Save GIF…
+  encodes server-side (≤30 s, 480 px, 12 fps) and downloads, or saves through
+  the native dialog in the desktop app. Output size and frame rate are on the
+  API but not yet in the UI; that is the next slice.
 - **How much of a filename has to match is now a dial, not three named stops.**
   Grouping compares filename stems, and the sensitivity was `narrow` /
   `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
@@ -597,6 +608,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   change no name is refused. A row whose edits are all unavailable now opens an
   empty menu saying so, rather than rendering no menu button at all.
 
+- **Export artifacts now reach the desktop shell as raw bytes rather than as
+  JSON.** `save_export_file` took its bytes as a JSON number array, which turned
+  a few-megabyte artifact into tens of megabytes serialized on the main thread —
+  acceptable while the seam had no callers, not once a real export used it. The
+  bytes travel as Tauri's raw IPC body with the suggested name in a
+  percent-encoded header; the destination still comes only from the OS dialog.
+  Contact sheets and snapshots take the same path.
 - **Runs of identical suggestions collapse to one line, and the review can be
   driven from the keyboard.** A folder of numbered clips produced a row each,
   all treated identically by the suggester; three or more in a row now read as

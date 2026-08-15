@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -2529,4 +2529,192 @@ test('viewer chrome overlays the video and autohides when idle', async ({ page }
   await page.mouse.move(400, 300)
   await expect(topbar).toHaveCSS('opacity', '1')
   await expect(controls).toHaveCSS('opacity', '1')
+})
+
+/** Pause and put the playhead exactly on `at`, settled into the player's state. */
+async function parkPlayhead(page: Page, video: Locator, at: number, clock: string) {
+  await page.keyboard.press('Space')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+  await video.evaluate((el, seconds) => ((el as HTMLVideoElement).currentTime = seconds), at)
+  // The mark reads the player's state, not the element, so wait for the clock.
+  await expect(page.locator('.mv-time')).toContainText(clock)
+}
+
+const clipRow = (page: Page, label: 'In' | 'Out') =>
+  page
+    .locator('[data-testid="clip-bar"] .mv-clip__row')
+    .filter({ hasText: label })
+    .locator('output')
+
+test('marks a clip range with [ and ], then adjusts it a frame at a time', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await expect(page.locator('[data-testid="clip-bar"]')).toHaveCount(0)
+  await parkPlayhead(page, video, 40, '0:40')
+
+  // `[` opens the picker by marking the in-point at the playhead — the keys
+  // plan 1 §2 reserved for this.
+  await page.keyboard.press('[')
+  await expect(page.locator('[data-testid="clip-bar"]')).toBeVisible()
+  await expect(clipRow(page, 'In')).toHaveText('0:40.000')
+
+  // `]` moves only the out-point.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 46))
+  await page.keyboard.press(']')
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.000')
+  await expect(clipRow(page, 'In')).toHaveText('0:40.000')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('6.00 s')
+
+  // The band and both handles are drawn on the seek bar in file proportions:
+  // 40s and 46s of a two-minute video.
+  await expect(page.locator('.mv-seek__range')).toBeVisible()
+  const handlePct = (edge: string) =>
+    page.locator(`.mv-seek__handle--${edge}`).evaluate((el) => parseFloat(el.style.left))
+  expect(await handlePct('start')).toBeCloseTo(33.33, 1)
+  expect(await handlePct('end')).toBeCloseTo(38.33, 1)
+
+  // A frame nudge moves the edge by one frame *and* scrubs to it — the rule the
+  // whole picker rests on, since a frame you cannot see cannot be placed.
+  const bar = page.locator('[data-testid="clip-bar"]')
+  await bar.getByRole('button', { name: 'Move end by one frame forward' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.033')
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+    .toBeCloseTo(46.033, 2)
+
+  await bar.getByRole('button', { name: 'Move end by one frame back' }).click()
+  await bar.getByRole('button', { name: 'Move end by one frame back' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:45.967')
+
+  // …and a coarse step is a whole second on the same edge.
+  await bar.getByRole('button', { name: 'Move end forward one second' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.967')
+})
+
+test('an edge stops short of the other, and the zoomed track magnifies the span', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 30, '0:30')
+  await page.keyboard.press('[')
+
+  const bar = page.locator('[data-testid="clip-bar"]')
+  await expect(clipRow(page, 'In')).toHaveText('0:30.000')
+  await expect(clipRow(page, 'Out')).toHaveText('0:35.000')
+
+  // Walking the in-point forward stops a floor short of the out-point rather
+  // than pushing it along or inverting the range.
+  for (let i = 0; i < 8; i += 1) {
+    await bar.getByRole('button', { name: 'Move start forward one second' }).click()
+  }
+  await expect(clipRow(page, 'Out')).toHaveText('0:35.000')
+  await expect(clipRow(page, 'In')).toHaveText('0:34.900')
+
+  // The magnified track covers the selection plus a half-second margin either
+  // side — a hair over a second, against the file's two minutes. That ratio is
+  // what makes a pixel worth a frame here and a second on the seek bar.
+  const edges = page.locator('.mv-clip-zoom__edge')
+  await expect(edges).toHaveCount(2)
+  await expect(edges.nth(0)).toHaveText('0:34.400')
+  await expect(edges.nth(1)).toHaveText('0:35.500')
+})
+
+test('exports the marked range as a GIF and drops the artifact after', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+
+  const calls: string[] = []
+  await page.route('**/files/f0/exports**', async (route) => {
+    const request = route.request()
+    calls.push(request.method())
+    if (request.method() === 'POST') {
+      expect(request.postDataJSON()).toMatchObject({ kind: 'gif', start_s: 20, end_s: 25 })
+      return route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          export_id: 'e1',
+          kind: 'gif',
+          status: 'running',
+          progress: 0.5,
+          filename: 'movie.gif',
+          error: null,
+        }),
+      })
+    }
+    if (request.method() === 'DELETE') return route.fulfill({ status: 204 })
+    if (request.url().endsWith('/download')) {
+      return route.fulfill({ status: 200, contentType: 'image/gif', body: 'GIF89a-fake' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        export_id: 'e1',
+        kind: 'gif',
+        status: 'done',
+        progress: 1,
+        filename: 'movie.gif',
+        error: null,
+      }),
+    })
+  })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+
+  const download = page.waitForEvent('download')
+  await page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }).click()
+  await expect(page.locator('.mv-export-notice')).toContainText('Building GIF')
+  // Named from the title without doubling the source's extension.
+  expect((await download).suggestedFilename()).toBe('movie.gif')
+  await expect(page.locator('.mv-export-notice')).toContainText('GIF saved.')
+
+  // Created, polled, downloaded — and the server told to drop the artifact
+  // rather than leaving it to sit until the TTL sweeps it.
+  expect(calls).toContain('POST')
+  expect(calls).toContain('DELETE')
+})
+
+test('refuses to export a range longer than the cap', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 10, '0:10')
+  await page.keyboard.press('[')
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 100))
+  await page.keyboard.press(']')
+
+  await expect(page.locator('.mv-clip__duration')).toHaveText('90.00 s')
+  await expect(page.locator('.mv-clip__warn')).toContainText('Longer than the 30 s limit')
+  await expect(
+    page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
+  ).toBeDisabled()
+})
+
+test('the clip selection does not follow the viewer to the next file', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 15, '0:15')
+  await page.keyboard.press('[')
+  await expect(page.locator('[data-testid="clip-bar"]')).toBeVisible()
+
+  // A span marked on one file would point at unrelated footage in the next.
+  await page.getByRole('button', { name: /next file/i }).click()
+  await expect(page.locator('[data-testid="clip-bar"]')).toHaveCount(0)
 })

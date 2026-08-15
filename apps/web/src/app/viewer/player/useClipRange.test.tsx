@@ -40,7 +40,14 @@ function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController
 function setup(player = mockPlayer(), sourceKey = 'file-1') {
   return renderHook(
     ({ key }: { key: string }) =>
-      useClipRange({ player, duration: player.duration, fps: 25, sourceKey: key }),
+      useClipRange({
+        player,
+        // Stands in for the live media element the viewer reads.
+        getCurrentTime: () => player.currentTime,
+        duration: player.duration,
+        fps: 25,
+        sourceKey: key,
+      }),
     { initialProps: { key: sourceKey } },
   )
 }
@@ -66,6 +73,32 @@ test('marking an edge opens the picker and keeps the other edge', () => {
   const seededEnd = result.current.range?.end
   act(() => result.current.markAtPlayhead('start'))
   expect(result.current.range?.end).toBe(seededEnd)
+})
+
+// `player.currentTime` is state fed by `timeupdate`, so it trails the element
+// by a render. Marking off it recorded where the playhead *had been* — caught
+// by the e2e pressing `]` straight after a seek, which marked the previous
+// position and collapsed the range to its floor.
+test('marks where the playhead is, not where React last saw it', () => {
+  const player = mockPlayer({ currentTime: 10 })
+  let live = 10
+  const { result } = renderHook(() =>
+    useClipRange({
+      player,
+      getCurrentTime: () => live,
+      duration: player.duration,
+      fps: 25,
+      sourceKey: 'file-1',
+    }),
+  )
+
+  act(() => result.current.markAtPlayhead('start'))
+  expect(result.current.range?.start).toBe(10)
+
+  // The element moves; the state copy has not caught up yet.
+  live = 80
+  act(() => result.current.markAtPlayhead('end'))
+  expect(result.current.range?.end).toBe(80)
 })
 
 // The whole point of the picker: you cannot place an edge accurately unless

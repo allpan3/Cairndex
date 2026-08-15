@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { saveClipGif } from './clipExport'
+import { clipFileName, saveClipGif } from './clipExport'
 
 const created = vi.fn()
 const polled = vi.fn()
@@ -123,10 +123,21 @@ test('a cancelled native save clears the notice', async () => {
   expect(report).toHaveBeenLastCalledWith(null)
 })
 
-test('strips characters a filename cannot hold from the title', async () => {
+test('names the file from the title, without the source extension', () => {
+  expect(clipFileName('bouncing pattern.mp4')).toBe('bouncing pattern.gif')
+  expect(clipFileName('clip.mkv')).toBe('clip.gif')
+  // A dot that is not an extension is part of the name.
+  expect(clipFileName('Scene 2.5 rework')).toBe('Scene 2.5 rework.gif')
+  expect(clipFileName('no extension')).toBe('no extension.gif')
+  // What a filename cannot hold goes, and an empty result still names something.
+  expect(clipFileName('a/b:c*d?.mkv')).toBe('a b c d.gif')
+  expect(clipFileName('')).toBe('clip.gif')
+})
+
+test('saves under that name on desktop', async () => {
   isDesktop.mockReturnValue(true)
   await saveClipGif({ fileId: 'file-1', title: 'a/b:c*d?.mkv' }, RANGE, {}, vi.fn())
-  expect(saveExport.mock.calls[0]?.[0]).toBe('a b c d .mkv.gif')
+  expect(saveExport.mock.calls[0]?.[0]).toBe('a b c d.gif')
 })
 
 test('reports a failed download without throwing', async () => {
