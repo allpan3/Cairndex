@@ -45,12 +45,16 @@ export interface HostPlatform {
   locateLibrary(libraryId: string, libraryUuid: string): Promise<string | null>
   clearLibraryMapping(libraryId: string): Promise<void>
   /**
-   * Saves an export artifact through the native save dialog (M11 seam; no export
-   * UI exists yet). Resolves to the chosen path, or null when the user cancelled.
-   * The caller supplies bytes and a suggested file *name* — never a path, so the
+   * Saves an export artifact through the native save dialog (plan 1 §10 / M11).
+   * Resolves to the chosen path, or null when the user cancelled. The caller
+   * supplies bytes and a suggested file *name* — never a path, so the
    * destination can only come from the OS dialog.
+   *
+   * Takes a `Blob` so the bytes reach the host as a raw IPC body rather than as
+   * a JSON number array, which would inflate a few-megabyte GIF into tens of
+   * megabytes serialized on the main thread.
    */
-  saveExport(suggestedName: string, bytes: Uint8Array): Promise<string | null>
+  saveExport(suggestedName: string, bytes: Blob): Promise<string | null>
   /**
    * The configured default export folder (Settings → Exports), or null for
    * ask-every-time. Desktop only; the browser cannot write outside downloads.
