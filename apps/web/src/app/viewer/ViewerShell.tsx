@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { type PlayableVideo, type PlaybackManifest, updatePlaybackProgress } from '../../api/client'
 import { useViewerMenu } from '../../desktop/useViewerMenu'
-import { getHostPlatform, isDesktopHost } from '../../platform'
 import { contactSheetMenuItem, type ContactSheetTarget } from '../contactSheetExport'
 import { ContactSheetDialog } from '../ContactSheetDialog'
 import { ContextMenu } from '../ContextMenu'
@@ -32,6 +31,11 @@ import { VideoStage } from './VideoStage'
 import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
+import { useClipPlayback, useClipRange } from './player/useClipRange'
+import { MAX_CLIP_EXPORT_SECONDS, type ClipExportTarget } from '../clipExport'
+import { ClipExportDialog } from '../ClipExportDialog'
+import { SnapshotDialog } from '../SnapshotDialog'
+import { saveSnapshot } from '../snapshotExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
@@ -146,6 +150,10 @@ export function ViewerShell({
   const [exportNotice, setExportNotice] = useState<string | null>(null)
   // The file whose contact-sheet options are open, if any.
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
+  // The file whose GIF options are open, if any.
+  const [clipTarget, setClipTarget] = useState<ClipExportTarget | null>(null)
+  // Open while "Snapshot As…" is asking for a size.
+  const [snapshotOpen, setSnapshotOpen] = useState(false)
 
   const hasError = Boolean(error)
   const current = items[index] ?? null
@@ -229,6 +237,39 @@ export function ViewerShell({
   // A video plays once the decision produced a source (native or HLS); this,
   // not the manifest's direct-only `playable` flag, gates the video UI in M7.
   const videoActive = Boolean(isVideo && videoAvailable && source)
+
+  // The marked span, shared by the GIF export below and — once it lands — by
+  // A-B loop replay (plan 1 §10 / M11). Keyed on the file so a selection never
+  // survives into the next item of the playlist.
+  const clip = useClipRange({
+    player,
+    // The live element time, not the state copy: an edge marked right after a
+    // seek must be where the playhead *is*.
+    getCurrentTime,
+    duration: player.duration || playable?.duration || 0,
+    fps: current?.fps,
+    sourceKey: currentKey,
+  })
+  // A clip only means something on a file the server can cut: an unindexed
+  // File Browser path has no file id to export from.
+  const clipAvailable = videoActive && fileId !== null
+  // Suppressed mid-drag: a handle drag is already scrubbing the playhead
+  // deliberately, and the mode would fight it.
+  useClipPlayback(videoElement, clip.range, clip.adjusting ? 'off' : clip.playMode)
+
+  // Save GIF… opens the options dialog rather than exporting straight away.
+  // The range is already decided by then; what is left is size and rate, and
+  // neither needs the frame on screen the way placing an edge does.
+  const exportClip = useCallback(() => {
+    if (!fileId || !clip.range) return
+    setClipTarget({
+      fileId,
+      title: current?.title ?? title,
+      sourceWidth: current?.width ?? null,
+      sourceHeight: current?.height ?? null,
+      sourceFps: current?.fps ?? null,
+    })
+  }, [clip.range, current?.fps, current?.height, current?.title, current?.width, fileId, title])
   usePlaybackProgressReporter({
     bundleId,
     fileId,
@@ -454,50 +495,18 @@ export function ViewerShell({
     })
   }, [player.status])
 
+  // `S` and the camera button: one press, at the source's own resolution.
   const snapshot = useCallback(() => {
-    const video = videoElement
-    if (!video) return
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, video.videoWidth || 1280)
-    canvas.height = Math.max(1, video.videoHeight || 720)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    try {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    } catch {
-      ctx.fillStyle = '#050609'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-    }
-    canvas.toBlob((blob) => {
-      if (!blob) return
-      const name = `${safeName(current?.title ?? title)}.png`
-      // Desktop: through the shell, which saves into the configured export
-      // folder (Settings → Exports) or asks via the native dialog. A browser
-      // can only download, so it keeps the anchor.
-      if (isDesktopHost()) {
-        void blob.arrayBuffer().then((buffer) => {
-          void getHostPlatform()
-            .saveExport(name, new Uint8Array(buffer))
-            .catch(() => {
-              // Fall back to a plain download rather than losing the frame.
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = name
-              a.click()
-              URL.revokeObjectURL(url)
-            })
-        })
-        return
-      }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = name
-      a.click()
-      URL.revokeObjectURL(url)
-    }, 'image/png')
+    if (videoElement) saveSnapshot(videoElement, current?.title ?? title)
   }, [current?.title, title, videoElement])
+
+  // "Snapshot As…": the same capture, at a size chosen first.
+  const snapshotAt = useCallback(
+    (width: number) => {
+      if (videoElement) saveSnapshot(videoElement, current?.title ?? title, { width })
+    },
+    [current?.title, title, videoElement],
+  )
 
   const contactSheetTarget = useMemo(
     () =>
@@ -538,12 +547,23 @@ export function ViewerShell({
       snapshot,
       previous: () => step(-1),
       next: () => step(1),
+      markClipEdge: clipAvailable ? clip.markAtPlayhead : undefined,
       // `player` exists even for image bundles (only its use as a *controller* is
       // gated on videoActive), so fullscreen state stays correct for images too.
       isFullscreen: () => player.fullscreen,
       exitFullscreen: () => player.toggleFullscreen(),
     }),
-    [contextMenuOpen, closeContextMenu, onClose, toggleInfo, snapshot, step, player],
+    [
+      contextMenuOpen,
+      closeContextMenu,
+      onClose,
+      toggleInfo,
+      snapshot,
+      step,
+      player,
+      clipAvailable,
+      clip.markAtPlayhead,
+    ],
   )
 
   useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
@@ -615,6 +635,7 @@ export function ViewerShell({
       }
       entries.push(
         { label: 'Save Snapshot', onClick: snapshot },
+        { label: 'Save Snapshot As…', onClick: () => setSnapshotOpen(true) },
         // A bare path has no file row, and the grid is cut server-side from the
         // indexed file — so unindexed videos show the row disabled rather than
         // a submenu that cannot do anything.
@@ -756,6 +777,9 @@ export function ViewerShell({
           onDragChange={setScrubbing}
           fileLoop={fileLoop}
           onFileLoop={setFileLoop}
+          clip={clipAvailable ? clip : undefined}
+          onExportClip={exportClip}
+          maxExportSeconds={MAX_CLIP_EXPORT_SECONDS}
         />
       )}
 
@@ -785,6 +809,23 @@ export function ViewerShell({
         <ContactSheetDialog
           target={sheetTarget}
           onClose={() => setSheetTarget(null)}
+          onReport={setExportNotice}
+        />
+      )}
+      {snapshotOpen && videoElement && (
+        <SnapshotDialog
+          title={current?.title ?? title}
+          sourceWidth={Math.max(1, videoElement.videoWidth || 1280)}
+          sourceHeight={Math.max(1, videoElement.videoHeight || 720)}
+          onSave={snapshotAt}
+          onClose={() => setSnapshotOpen(false)}
+        />
+      )}
+      {clipTarget && clip.range && (
+        <ClipExportDialog
+          target={clipTarget}
+          range={clip.range}
+          onClose={() => setClipTarget(null)}
           onReport={setExportNotice}
         />
       )}
@@ -1168,14 +1209,4 @@ function mediaKindIcon(kind: ViewerItem['mediaKind']): ReactNode {
   if (kind === 'image') return <IconImage />
   if (kind === 'audio') return <IconMusic />
   return <IconFile />
-}
-
-/** Filesystem-safe-ish basename for downloaded PNG snapshots. */
-function safeName(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/[^\w.-]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'snapshot'
-  )
 }

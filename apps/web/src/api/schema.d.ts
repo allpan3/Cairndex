@@ -1368,6 +1368,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/files/{file_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Export
+         * @description Start encoding a GIF from a marked span. Returns immediately.
+         */
+        post: operations["create_export_api_v1_libraries__library_id__files__file_id__exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/exports/{export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Export
+         * @description Poll one export until it reports `done` or `failed`.
+         */
+        get: operations["get_export_api_v1_libraries__library_id__files__file_id__exports__export_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Export
+         * @description Drop an artifact once the client has it, ahead of the TTL.
+         */
+        delete: operations["delete_export_api_v1_libraries__library_id__files__file_id__exports__export_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Export
+         * @description Serve the finished artifact.
+         *
+         *     The export is *not* dropped here. A download can fail halfway, and deleting
+         *     on the way out would leave the caller with a truncated GIF and no way to ask
+         *     again; the TTL reaper collects it instead, and the client deletes explicitly
+         *     once it has the bytes.
+         */
+        get: operations["download_export_api_v1_libraries__library_id__files__file_id__exports__export_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-decision": {
         parameters: {
             query?: never;
@@ -2687,6 +2756,55 @@ export interface components {
             protocols?: string[];
             /** Video Codecs */
             video_codecs?: string[];
+        };
+        /**
+         * ClipExportCreate
+         * @description A GIF cut from a marked span of one video.
+         *
+         *     The bounds are declared here as well as in ``media/exports`` so they reach
+         *     the OpenAPI document — the client builds its own limits from the generated
+         *     types rather than repeating the numbers. ``media/exports`` stays the
+         *     enforcing copy; a request that slips past these still meets it there.
+         */
+        ClipExportCreate: {
+            /** End S */
+            end_s: number;
+            /** Fps */
+            fps?: number | null;
+            /**
+             * Kind
+             * @default gif
+             * @constant
+             */
+            kind: "gif";
+            /** Start S */
+            start_s: number;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * ClipExportRead
+         * @description An export's state, polled until it is `done` or `failed`.
+         */
+        ClipExportRead: {
+            /** Error */
+            error?: string | null;
+            /** Export Id */
+            export_id: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "gif";
+            /** Progress */
+            progress: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "done" | "failed";
         };
         /**
          * CollectionCleanup
@@ -7021,7 +7139,7 @@ export interface operations {
             query?: {
                 cols?: number;
                 rows?: number;
-                width?: 1600 | 2048 | 2560;
+                width?: number;
             };
             header?: {
                 authorization?: string | null;
@@ -7155,6 +7273,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_export_api_v1_libraries__library_id__files__file_id__exports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                file_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClipExportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClipExportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_export_api_v1_libraries__library_id__files__file_id__exports__export_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                file_id: string;
+                export_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClipExportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_export_api_v1_libraries__library_id__files__file_id__exports__export_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                file_id: string;
+                export_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_libraries__library_id__files__file_id__exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                file_id: string;
+                export_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

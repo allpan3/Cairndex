@@ -3,12 +3,27 @@ import { useState } from 'react'
 import {
   CONTACT_SHEET_GRIDS,
   CONTACT_SHEET_WIDTHS,
+  DEFAULT_CONTACT_SHEET_GRID,
+  DEFAULT_CONTACT_SHEET_WIDTH,
   type ContactSheetGrid,
   type ContactSheetTarget,
   type ContactSheetWidth,
   saveContactSheet,
 } from './contactSheetExport'
 import { formatDuration } from '../lib/format'
+import { WheelPicker } from './WheelPicker'
+
+const GRID_OPTIONS = CONTACT_SHEET_GRIDS.map((value) => ({
+  value: value as number,
+  label: `${value} × ${value}`,
+  note: value === DEFAULT_CONTACT_SHEET_GRID ? 'default' : undefined,
+}))
+
+const WIDTH_OPTIONS = CONTACT_SHEET_WIDTHS.map((value) => ({
+  value: value as number,
+  label: `${value}px`,
+  note: value === DEFAULT_CONTACT_SHEET_WIDTH ? 'default' : undefined,
+}))
 
 /**
  * Choose a contact sheet's shape before building it.
@@ -18,6 +33,9 @@ import { formatDuration } from '../lib/format'
  * 2026-07-27). A dialog also has room to say what the numbers mean: the cell
  * size follows from both, and that — not the sheet width — is what decides
  * whether a frame is legible.
+ *
+ * Both choices moved from segmented rows onto wheels on 2026-08-15, which is
+ * what let the ladders grow from three rungs each to five and ten.
  */
 export function ContactSheetDialog({
   target,
@@ -28,8 +46,8 @@ export function ContactSheetDialog({
   onClose: () => void
   onReport: (message: string | null) => void
 }) {
-  const [grid, setGrid] = useState<ContactSheetGrid>(4)
-  const [width, setWidth] = useState<ContactSheetWidth>(2048)
+  const [grid, setGrid] = useState<number>(DEFAULT_CONTACT_SHEET_GRID)
+  const [width, setWidth] = useState<number>(DEFAULT_CONTACT_SHEET_WIDTH)
 
   const cell = Math.round(width / grid)
   const frames = grid * grid
@@ -52,34 +70,24 @@ export function ContactSheetDialog({
         <label className="field-label" htmlFor="cs-grid">
           Grid
         </label>
-        <div className="segmented" id="cs-grid" role="group" aria-label="Grid size">
-          {CONTACT_SHEET_GRIDS.map((option) => (
-            <button
-              key={option}
-              className={`seg${option === grid ? ' is-active' : ''}`}
-              onClick={() => setGrid(option)}
-              aria-pressed={option === grid}
-            >
-              {option} × {option}
-            </button>
-          ))}
-        </div>
+        <WheelPicker
+          id="cs-grid"
+          label="Grid size"
+          options={GRID_OPTIONS}
+          value={grid}
+          onChange={setGrid}
+        />
 
         <label className="field-label" htmlFor="cs-width">
           Width
         </label>
-        <div className="segmented" id="cs-width" role="group" aria-label="Sheet width">
-          {CONTACT_SHEET_WIDTHS.map((option) => (
-            <button
-              key={option}
-              className={`seg${option === width ? ' is-active' : ''}`}
-              onClick={() => setWidth(option)}
-              aria-pressed={option === width}
-            >
-              {option}px
-            </button>
-          ))}
-        </div>
+        <WheelPicker
+          id="cs-width"
+          label="Sheet width"
+          options={WIDTH_OPTIONS}
+          value={width}
+          onChange={setWidth}
+        />
 
         {/* What the two choices actually produce, since neither number means
             much alone: a 6x6 at 1600 has smaller frames than a 4x4 at 1600. */}
@@ -96,7 +104,12 @@ export function ContactSheetDialog({
             className="btn btn--primary"
             onClick={() => {
               onClose()
-              void saveContactSheet(target, grid, width, onReport)
+              void saveContactSheet(
+                target,
+                grid as ContactSheetGrid,
+                width as ContactSheetWidth,
+                onReport,
+              )
             }}
           >
             Save

@@ -12,6 +12,7 @@ from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
+from cairndex.media.exports import shutdown_export_manager
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.ownership import get_lease_manager
 from cairndex.persistence.engine import discard_all_plans
@@ -65,6 +66,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if maintenance is not None:
             maintenance.stop()
         shutdown_session_manager()
+        # Export artifacts are throwaway state under the data dir, so they go
+        # with the process that made them rather than outliving it as orphans.
+        shutdown_export_manager()
         close_library_engines()
         if settings.lease_heartbeat_enabled:
             manager = get_lease_manager()
