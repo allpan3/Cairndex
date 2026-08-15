@@ -646,12 +646,22 @@ def collection_counts(session: Session) -> dict[str, int]:
     stmt = (
         select(
             subtree.c.ancestor_id,
-            func.count(func.distinct(asset_bundle_collections.c.bundle_id)),
+            func.count(func.distinct(AssetBundle.id)),
         )
         .select_from(subtree)
         .outerjoin(
             asset_bundle_collections,
             asset_bundle_collections.c.collection_id == subtree.c.descendant_id,
+        )
+        # Counting membership rows alone reported bundles the collection's own
+        # listing hides: an unbundled file belongs to the Unbundled view and
+        # nowhere else, so a collection it is filed into read one higher than
+        # what opening it showed. Restricting the *join* rather than filtering
+        # the result keeps the row for a collection holding nothing —
+        # COUNT(DISTINCT …) ignores the NULL an excluded bundle leaves behind.
+        .outerjoin(
+            AssetBundle,
+            (AssetBundle.id == asset_bundle_collections.c.bundle_id) & not_(_unbundled_predicate()),
         )
         .group_by(subtree.c.ancestor_id)
     )
@@ -660,7 +670,15 @@ def collection_counts(session: Session) -> dict[str, int]:
 
 def tag_counts(session: Session) -> dict[str, int]:
     """Bundle count per tag id (direct membership), for the tag picker."""
-    stmt = select(asset_bundle_tags.c.tag_id, func.count()).group_by(asset_bundle_tags.c.tag_id)
+    # Excludes unbundled files for the same reason as `collection_counts`. An
+    # inner join is enough here: every tag is backfilled to 0 below, so dropping
+    # a tag whose only bundles are unbundled still leaves it with a count.
+    stmt = (
+        select(asset_bundle_tags.c.tag_id, func.count())
+        .join(AssetBundle, AssetBundle.id == asset_bundle_tags.c.bundle_id)
+        .where(not_(_unbundled_predicate()))
+        .group_by(asset_bundle_tags.c.tag_id)
+    )
     rows = session.execute(stmt).all()
     counts = {tag_id: count for tag_id, count in rows}
     for (tag_id,) in session.execute(select(Tag.id)).all():
