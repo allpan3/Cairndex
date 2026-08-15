@@ -1401,6 +1401,72 @@ const MEMBERSHIP_AXES = {
 type MembershipAxis = keyof typeof MEMBERSHIP_AXES
 
 /**
+ * The one system view per axis whose *membership* decides what it lists, and so
+ * the only unscoped view a membership write can move a bundle in or out of. All,
+ * Recent, Missing, Unbundled and Random list the same bundles either way.
+ */
+const MEMBERSHIP_VIEWS: Record<MembershipAxis, string> = {
+  collections: 'uncategorized',
+  tags: 'untagged',
+}
+
+/**
+ * The outcome of projecting a membership write onto the cached browse listings:
+ * the rewrites to roll back if the write fails, and the keys of the listings the
+ * projection could *not* bring up to date.
+ *
+ * The second half is what keeps a drop honest. Invalidation alone is not enough:
+ * React Query serves a stale query's cached data the instant it is observed and
+ * refetches behind it, so a listing the projection quietly skipped is a listing
+ * the owner opens and sees the pre-drop contents of — while the count beside it
+ * moved immediately. Naming those listings lets the settle step drop them
+ * instead of hoping.
+ */
+interface ListingProjection {
+  snapshots: CacheSnapshot[]
+  unproven: QueryKey[]
+}
+
+/**
+ * Every cached browse listing a write on this axis could have changed the
+ * contents of: the collection-scoped grids, plus the axis's own system view.
+ * Browse has no tag scope — a tag is a filter, not a scope — so a tag write
+ * reaches only Untagged.
+ *
+ * Used as the projection's fallback: when it has nothing to work from, every one
+ * of these is unproven rather than none of them.
+ */
+function membershipDependentListings(qc: QueryClient, axis: MembershipAxis): QueryKey[] {
+  const keys: QueryKey[] = []
+  for (const [key, data] of qc.getQueriesData<InfiniteData<BundleBrowsePage>>({
+    queryKey: ['browse'],
+  })) {
+    if (!data) continue
+    const scope = key[1] as BrowseQuery | undefined
+    const scoped = axis === 'collections' && Boolean(scope?.collectionId)
+    if (scoped || scope?.view === MEMBERSHIP_VIEWS[axis]) keys.push(key)
+  }
+  return keys
+}
+
+/**
+ * Reconcile the listings a projection could not prove: drop the ones nobody is
+ * watching, refetch the one on screen.
+ *
+ * Dropping is the whole point — see `ListingProjection`. It costs a fetch the
+ * next time that view is opened, which after ADR-0022 is a local metadata query,
+ * and in exchange no listing can be shown disagreeing with its own count. An
+ * active listing is kept and refetched in place instead: blanking the grid the
+ * owner is looking at is worse than a beat of stale rows under a refetch.
+ */
+function reconcileUnprovenListings(qc: QueryClient, unproven: readonly QueryKey[] | undefined) {
+  for (const key of unproven ?? []) {
+    qc.removeQueries({ queryKey: key, exact: true, type: 'inactive' })
+    qc.invalidateQueries({ queryKey: key, exact: true })
+  }
+}
+
+/**
  * Each bundle's membership before the write, and the set it will hold after —
  * with the after-set written into the cache so the inspector's chips move at the
  * same moment as the counts (and so a second drag computes its delta from the
@@ -1471,28 +1537,48 @@ function cachedSummaries(
  * (owner, 2026-07-30). A collection opened for the first time was never
  * affected: with nothing cached there is nothing stale to show.
  *
- * Listings carrying a filter or a search are skipped rather than guessed at —
- * whether a bundle belongs in one is the server's judgement, not something
- * membership alone answers. Their invalidation still refetches them.
+ * A listing this cannot work out is not left alone to be served stale — its key
+ * goes into `unproven` for the settle step to drop. That covers a listing
+ * carrying a filter or a search (whether a bundle belongs in one is the server's
+ * judgement, not something membership alone answers), an arrival with no cached
+ * summary row to draw, and — via `changes` being null — a write whose
+ * memberships were never loaded.
  */
 function projectCollectionListings(
   qc: QueryClient,
   bundleIds: readonly string[],
-  changes: MembershipChange[],
-): CacheSnapshot[] {
+  changes: MembershipChange[] | null,
+): ListingProjection {
+  // An empty change set is not an unknown one: this axis did not move, so every
+  // listing is provably exactly as it was.
+  if (changes !== null && changes.length === 0) return { snapshots: [], unproven: [] }
   const collections = qc.getQueryData<CollectionRead[]>(['collections'])
-  // Without the tree, "does this listing show descendants' contents" is
-  // unanswerable, and a wrong guess would put a card in the wrong grid.
-  if (collections === undefined || changes.length === 0) return []
+  // Unknown memberships, or no collection tree to answer "does this listing show
+  // its descendants' contents" with — either way there is nothing to project
+  // from, and a wrong guess would put a card in the wrong grid.
+  if (changes === null || collections === undefined) {
+    return { snapshots: [], unproven: membershipDependentListings(qc, 'collections') }
+  }
   const summaries = cachedSummaries(qc, bundleIds)
   const snapshots: CacheSnapshot[] = []
+  const unproven: QueryKey[] = []
 
   for (const [key, data] of qc.getQueriesData<InfiniteData<BundleBrowsePage>>({
     queryKey: ['browse'],
   })) {
+    if (!data) continue
     const scope = key[1] as BrowseQuery | undefined
     const scopeId = scope?.collectionId
-    if (!data || !scopeId || scope.filter || scope.search?.trim()) continue
+    if (!scopeId) {
+      // Uncategorized lists exactly the bundles in no collection at all, which
+      // this write may have emptied or filled; no other unscoped view moves.
+      if (scope?.view === MEMBERSHIP_VIEWS.collections) unproven.push(key)
+      continue
+    }
+    if (scope.filter || scope.search?.trim()) {
+      unproven.push(key)
+      continue
+    }
 
     const held = (memberships: readonly string[]) =>
       listingHoldsBundle(collections, scopeId, scope.includeDescendants ?? false, memberships)
@@ -1507,6 +1593,10 @@ function projectCollectionListings(
       if (!before && after) {
         const summary = summaries.get(bundleId)
         if (summary) arriving.push(summary)
+        // No cached row to draw the arrival with. This is the silent failure the
+        // owner kept hitting: the listing would keep its pre-drop contents, the
+        // count beside it would move, and nothing would say the two disagreed.
+        else unproven.push(key)
       }
     })
     if (leaving.size === 0 && arriving.length === 0) continue
@@ -1534,7 +1624,7 @@ function projectCollectionListings(
       pages: pages.map((page) => ({ ...page, total: Math.max(0, page.total + delta) })),
     })
   }
-  return snapshots
+  return { snapshots, unproven }
 }
 
 /** Move the sidebar's per-collection counts, the open collection inspector's own
@@ -1697,19 +1787,22 @@ export function useSetBundleTags(id: string) {
         qc.cancelQueries({ queryKey: ['tag-counts'] }),
         qc.cancelQueries({ queryKey: ['view-counts'] }),
       ])
+      // Untagged lists exactly the bundles carrying no tag, and no projection
+      // writes it, so a tag change always leaves it for the settle step.
+      const unproven = membershipDependentListings(qc, 'tags')
       const previous = qc.getQueryData<{ bundle_id: string; tag_ids: string[] }>(key)
-      if (!previous) return { previous, snapshots: [] }
+      if (!previous) return { previous, snapshots: [], unproven }
       qc.setQueryData(key, { ...previous, tag_ids: ids })
       // The picker shows a count per tag; it moves with the chip, not after it.
       const snapshots = applyTagCounts(qc, [{ before: previous.tag_ids, after: ids }])
-      return { previous, snapshots }
+      return { previous, snapshots, unproven }
     },
     onError: (_error, _ids, context) => {
       // Put the old set back; the server rejected the change.
       if (context?.previous) qc.setQueryData(['bundle-tags', id], context.previous)
       restoreSnapshots(qc, context?.snapshots)
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _ids, context) => {
       qc.invalidateQueries({ queryKey: ['bundle-tags', id] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
@@ -1718,6 +1811,9 @@ export function useSetBundleTags(id: string) {
       // work nobody could see. Refetch it lazily instead of forcing it now:
       // an inactive query refetches when its view is next shown.
       qc.invalidateQueries({ queryKey: ['browse'], refetchType: 'none' })
+      // Untagged is the exception, and `refetchType: 'none'` would have left it
+      // to serve its pre-write rows the moment the view opened.
+      reconcileUnprovenListings(qc, context?.unproven)
     },
   })
 }
@@ -1736,27 +1832,34 @@ export function useSetBundleCollections(id: string) {
         qc.cancelQueries({ queryKey: ['view-counts'] }),
       ])
       const previous = qc.getQueryData<{ bundle_id: string; collection_ids: string[] }>(key)
-      if (!previous) return { previous, snapshots: [] }
+      // Unknown membership: nothing can be projected, so every listing this
+      // could have moved a bundle in or out of is left for the settle step.
+      if (!previous) {
+        return {
+          previous,
+          snapshots: [],
+          unproven: projectCollectionListings(qc, [id], null).unproven,
+        }
+      }
       qc.setQueryData(key, { ...previous, collection_ids: ids })
       // Same arithmetic as a drag — the picker's checkbox files a bundle just as
       // a drop does, and the sidebar should say so at the same moment.
       const change = { before: previous.collection_ids, after: ids }
-      const snapshots = [
-        ...applyCollectionCounts(qc, [change]),
-        // …and so should the grids, or opening the collection just ticked shows
-        // last time's contents until the refetch lands.
-        ...projectCollectionListings(qc, [id], [change]),
-      ]
-      return { previous, snapshots }
+      // …and so should the grids, or opening the collection just ticked shows
+      // last time's contents until the refetch lands.
+      const listings = projectCollectionListings(qc, [id], [change])
+      const snapshots = [...applyCollectionCounts(qc, [change]), ...listings.snapshots]
+      return { previous, snapshots, unproven: listings.unproven }
     },
     onError: (_error, _ids, context) => {
       if (context?.previous) qc.setQueryData(['bundle-collections', id], context.previous)
       restoreSnapshots(qc, context?.snapshots)
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _ids, context) => {
       qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
       invalidateCollectionCounts(qc)
       qc.invalidateQueries({ queryKey: ['view-counts'] })
+      reconcileUnprovenListings(qc, context?.unproven)
       // Membership *does* decide which bundles a collection view lists, so this
       // one still refetches — but only the collection-scoped grids, when shown.
       qc.invalidateQueries({ queryKey: ['browse'] })
@@ -2236,6 +2339,12 @@ export function useBatchUpdate() {
       // than showing a number that is neither the old one nor the new one.
       await Promise.all(
         [
+          // `browse` included so an in-flight listing fetch cannot land on top of
+          // the projection below and undo it. One started before the drop resolves
+          // after it, writes the pre-drop page back, and the settle invalidation
+          // is then deduplicated against that very request — leaving the grid
+          // showing the state the write already replaced.
+          'browse',
           'collection-counts',
           'collection-stats',
           'tag-counts',
@@ -2254,8 +2363,16 @@ export function useBatchUpdate() {
       )
       if (collections) {
         snapshots.push(...collections.snapshots, ...applyCollectionCounts(qc, collections.changes))
-        snapshots.push(...projectCollectionListings(qc, payload.bundle_ids, collections.changes))
       }
+      // Called with a null change set when the memberships were unknown, so the
+      // listings it could not project are named rather than silently left stale.
+      const listings = projectCollectionListings(
+        qc,
+        payload.bundle_ids,
+        collections?.changes ?? null,
+      )
+      snapshots.push(...listings.snapshots)
+      const unproven = [...listings.unproven]
       const tags = projectMemberships(
         qc,
         'tags',
@@ -2264,7 +2381,11 @@ export function useBatchUpdate() {
         payload.remove_tag_ids ?? [],
       )
       if (tags) snapshots.push(...tags.snapshots, ...applyTagCounts(qc, tags.changes))
-      return { snapshots }
+      // No projection writes Untagged, so any tag change leaves it unproven.
+      if (payload.add_tag_ids?.length || payload.remove_tag_ids?.length) {
+        unproven.push(...membershipDependentListings(qc, 'tags'))
+      }
+      return { snapshots, unproven }
     },
     onError: (_error, _payload, context) => {
       // The browse pruning above is not rolled back here: the invalidation below
@@ -2272,7 +2393,8 @@ export function useBatchUpdate() {
       // never removed from is worse than one that reappears when the list does.
       restoreSnapshots(qc, context?.snapshots)
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _payload, context) => {
+      reconcileUnprovenListings(qc, context?.unproven)
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       invalidateCollectionCounts(qc)
