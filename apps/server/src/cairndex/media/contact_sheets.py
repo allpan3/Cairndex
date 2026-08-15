@@ -36,11 +36,21 @@ from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
 
 # Bounded grid parameters: enough range for a dense sheet without letting a
-# request ask for arbitrary amounts of decode work.
-MIN_COLS, MAX_COLS = 2, 6
+# request ask for arbitrary amounts of decode work. Columns went 6 → 8 on
+# 2026-08-15 so the dialog can offer 7x7 and 8x8 (owner). That is 49 and 64
+# cells, but the cost is bounded by the seek-per-frame design described above
+# rather than by the grid: each cell is one keyframe seek, so a denser sheet
+# costs proportionally more seeks and nothing else.
+MIN_COLS, MAX_COLS = 2, 8
 MIN_ROWS, MAX_ROWS = 2, 10
-# Sheet pixel widths a client may ask for (the height follows the aspect).
-SHEET_WIDTHS = (1600, 2048, 2560)
+# Sheet pixel width bounds a client may ask for (the height follows the aspect).
+# Was a three-value enum; widened to a range on 2026-08-15 when the dialogs
+# moved to a scrolling wheel and could offer a real ladder. A sheet is one JPEG,
+# so the ceiling is generous — 6144 across an 8x8 grid is still only 768px
+# cells, which is about where more pixels stop telling you anything new.
+MIN_SHEET_WIDTH = 800
+MAX_SHEET_WIDTH = 6144
+DEFAULT_SHEET_WIDTH = 2048
 
 CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
 
@@ -74,9 +84,10 @@ def _validated(cols: int, rows: int, width: int) -> tuple[int, int, int]:
         raise ValidationError(
             f"grid must be {MIN_COLS}–{MAX_COLS} columns by {MIN_ROWS}–{MAX_ROWS} rows"
         )
-    if width not in SHEET_WIDTHS:
-        raise ValidationError(f"width must be one of {SHEET_WIDTHS}")
-    return cols, rows, width
+    if not (MIN_SHEET_WIDTH <= width <= MAX_SHEET_WIDTH):
+        raise ValidationError(f"width must be between {MIN_SHEET_WIDTH} and {MAX_SHEET_WIDTH}")
+    # Even, so `scale=cell:-2` derives an even height for every cell.
+    return cols, rows, width - (width % 2)
 
 
 def frame_times(duration: float, cols: int, rows: int) -> list[float]:
@@ -97,7 +108,12 @@ def frame_times(duration: float, cols: int, rows: int) -> list[float]:
 
 
 def sheet_for_file(
-    session: Session, file_id: str, *, cols: int = 4, rows: int = 4, width: int = 2048
+    session: Session,
+    file_id: str,
+    *,
+    cols: int = 4,
+    rows: int = 4,
+    width: int = DEFAULT_SHEET_WIDTH,
 ) -> tuple[Path, list[float]]:
     """The cached contact sheet for one video file, and each cell's timestamp."""
     cols, rows, width = _validated(cols, rows, width)

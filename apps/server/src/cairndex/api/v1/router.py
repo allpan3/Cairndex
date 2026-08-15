@@ -4,6 +4,7 @@ from cairndex.api.v1 import (
     auth,
     bundles,
     devices,
+    exports,
     file_ops,
     filters,
     grouping,
@@ -46,6 +47,9 @@ router.include_router(smart_collections.router)
 router.include_router(filters.router)
 router.include_router(playback.router)
 router.include_router(playback_sessions.router)
+# Interactive clip exports (plan 1 §10). Metadata-only: reads the source and
+# writes to the data dir, never into the library.
+router.include_router(exports.router)
 router.include_router(grouping.router)
 router.include_router(manual_bundling.router)
 # Guarded file operations (ADR-0013 W1+). Content-scoped and write-gated.

@@ -64,6 +64,8 @@ export type ContinueWatchingItem = components['schemas']['ContinueWatchingItem']
 export type ContinueWatchingPage = components['schemas']['ContinueWatchingPage']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
 export type AudioStreamRead = components['schemas']['AudioStreamRead']
+export type ClipExportCreate = components['schemas']['ClipExportCreate']
+export type ClipExportRead = components['schemas']['ClipExportRead']
 export type ClientCapabilities = components['schemas']['ClientCapabilities']
 export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionRequest']
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
@@ -407,6 +409,23 @@ export const requestPlaybackDecision = (
 /** Tear down an HLS session (player close, file switch, quality/audio switch). */
 export const deletePlaybackSession = (fileId: string, sessionId: string) =>
   send<void>(`${lib()}/files/${fileId}/playback-sessions/${sessionId}`, 'DELETE')
+
+/** Start encoding a GIF from a marked span; returns before it is finished. */
+export const createClipExport = (fileId: string, payload: ClipExportCreate) =>
+  send<ClipExportRead>(`${lib()}/files/${fileId}/exports`, 'POST', payload)
+
+/** Poll one export until it reports `done` or `failed`. */
+export const fetchClipExport = (fileId: string, exportId: string, signal?: AbortSignal) =>
+  getJson<ClipExportRead>(`${lib()}/files/${fileId}/exports/${exportId}`, signal)
+
+/** Where the finished artifact's bytes are. */
+export function clipExportDownloadUrl(fileId: string, exportId: string): string {
+  return resolveAssetUrl(`${lib()}/files/${fileId}/exports/${exportId}/download`)
+}
+
+/** Drop the artifact once the client has the bytes, ahead of the server's TTL. */
+export const deleteClipExport = (fileId: string, exportId: string) =>
+  send<void>(`${lib()}/files/${fileId}/exports/${exportId}`, 'DELETE')
 
 /**
  * Fire a best-effort `pagehide` POST via `navigator.sendBeacon`. A JSON `body`

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -1638,9 +1638,12 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
     'false',
   )
 
+  // `S` stays one press at the source's own resolution, and the PNG is named
+  // after the file without carrying its extension into the stem — this used to
+  // be `movie_mp4.png` (owner, 2026-08-15).
   const download = page.waitForEvent('download')
   await page.keyboard.press('S')
-  expect((await download).suggestedFilename()).toMatch(/movie_mp4\.png|movie\.mp4\.png/)
+  expect((await download).suggestedFilename()).toBe('movie.png')
 
   await page.waitForTimeout(2800)
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
@@ -1728,15 +1731,9 @@ test('every viewer notice shares one anchor and stacks', async ({ page }) => {
 
   await video.click({ button: 'right' })
   await page.getByText('Save Contact Sheet…').click()
-  await expect(page.getByRole('button', { name: '1600px' })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
-  await expect(page.getByRole('button', { name: '2048px' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: '2560px' })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
+  const sheetWidths = page.getByRole('radiogroup', { name: 'Sheet width' })
+  await expect(sheetWidths.getByRole('radio', { name: '2048px, default' })).toBeChecked()
+  await expect(sheetWidths.getByRole('radio', { name: '1600px' })).not.toBeChecked()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('.mv-export-notice')).toContainText('Building contact sheet')
   await expect.poll(() => sheetRequests[0]).toContain('width=2048')
@@ -2529,4 +2526,328 @@ test('viewer chrome overlays the video and autohides when idle', async ({ page }
   await page.mouse.move(400, 300)
   await expect(topbar).toHaveCSS('opacity', '1')
   await expect(controls).toHaveCSS('opacity', '1')
+})
+
+/** Pause and put the playhead exactly on `at`, settled into the player's state. */
+async function parkPlayhead(page: Page, video: Locator, at: number, clock: string) {
+  await page.keyboard.press('Space')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+  await video.evaluate((el, seconds) => ((el as HTMLVideoElement).currentTime = seconds), at)
+  // The mark reads the player's state, not the element, so wait for the clock.
+  await expect(page.locator('.mv-time')).toContainText(clock)
+}
+
+const clipRow = (page: Page, label: 'In' | 'Out') =>
+  page
+    .locator('[data-testid="clip-bar"] .mv-clip__row')
+    .filter({ hasText: label })
+    .locator('output')
+
+test('marks a clip range with [ and ], then adjusts it a frame at a time', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await expect(page.locator('[data-testid="clip-bar"]')).toHaveCount(0)
+  await parkPlayhead(page, video, 40, '0:40')
+
+  // `[` opens the picker by marking the in-point at the playhead — the keys
+  // plan 1 §2 reserved for this.
+  await page.keyboard.press('[')
+  await expect(page.locator('[data-testid="clip-bar"]')).toBeVisible()
+  await expect(clipRow(page, 'In')).toHaveText('0:40.000')
+
+  // `]` moves only the out-point.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 46))
+  await page.keyboard.press(']')
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.000')
+  await expect(clipRow(page, 'In')).toHaveText('0:40.000')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('6.00 s')
+
+  // The band and both handles are drawn on the seek bar in file proportions:
+  // 40s and 46s of a two-minute video.
+  await expect(page.locator('.mv-seek__range')).toBeVisible()
+  const handlePct = (edge: string) =>
+    page.locator(`.mv-seek__handle--${edge}`).evaluate((el) => parseFloat(el.style.left))
+  expect(await handlePct('start')).toBeCloseTo(33.33, 1)
+  expect(await handlePct('end')).toBeCloseTo(38.33, 1)
+
+  // A frame nudge moves the edge by one frame *and* scrubs to it — the rule the
+  // whole picker rests on, since a frame you cannot see cannot be placed.
+  const bar = page.locator('[data-testid="clip-bar"]')
+  await bar.getByRole('button', { name: 'Move end by one frame forward' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.033')
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+    .toBeCloseTo(46.033, 2)
+
+  await bar.getByRole('button', { name: 'Move end by one frame back' }).click()
+  await bar.getByRole('button', { name: 'Move end by one frame back' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:45.967')
+
+  // …and a coarse step is a whole second on the same edge.
+  await bar.getByRole('button', { name: 'Move end forward one second' }).click()
+  await expect(clipRow(page, 'Out')).toHaveText('0:46.967')
+})
+
+test('an edge stops short of the other, and the zoomed track magnifies the span', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 30, '0:30')
+  await page.keyboard.press('[')
+
+  const bar = page.locator('[data-testid="clip-bar"]')
+  await expect(clipRow(page, 'In')).toHaveText('0:30.000')
+  await expect(clipRow(page, 'Out')).toHaveText('0:35.000')
+
+  // Walking the in-point forward stops a floor short of the out-point rather
+  // than pushing it along or inverting the range.
+  for (let i = 0; i < 8; i += 1) {
+    await bar.getByRole('button', { name: 'Move start forward one second' }).click()
+  }
+  await expect(clipRow(page, 'Out')).toHaveText('0:35.000')
+  await expect(clipRow(page, 'In')).toHaveText('0:34.900')
+
+  // The magnified track covers the selection plus a half-second margin either
+  // side — a hair over a second, against the file's two minutes. That ratio is
+  // what makes a pixel worth a frame here and a second on the seek bar.
+  const edges = page.locator('.mv-clip-zoom__edge')
+  await expect(edges).toHaveCount(2)
+  await expect(edges.nth(0)).toHaveText('0:34.400')
+  await expect(edges.nth(1)).toHaveText('0:35.500')
+})
+
+test('dragging the seek-bar handle keeps the zoomed handles inside their track', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 30, '0:30')
+  await page.keyboard.press('[')
+
+  // The zoom window is frozen for the length of a gesture, so dragging the
+  // *seek bar's* handle far to the right carries the out-point well outside it.
+  // The magnified handle must pin to the end of its track, not escape into the
+  // control bar (owner, 2026-08-15).
+  const track = page.locator('.mv-clip-zoom__track')
+  const seekHandle = page.locator('.mv-seek__handle--end')
+  const trackBox = (await track.boundingBox())!
+  const handleBox = (await seekHandle.boundingBox())!
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + 320, handleBox.y + handleBox.height / 2, { steps: 12 })
+
+  for (const edge of ['start', 'end']) {
+    const box = (await page.locator(`.mv-clip-zoom__handle--${edge}`).boundingBox())!
+    const centre = box.x + box.width / 2
+    expect(centre).toBeGreaterThanOrEqual(trackBox.x - 1)
+    expect(centre).toBeLessThanOrEqual(trackBox.x + trackBox.width + 1)
+  }
+  const band = (await page.locator('.mv-clip-zoom__band').boundingBox())!
+  expect(band.x + band.width).toBeLessThanOrEqual(trackBox.x + trackBox.width + 1)
+
+  await page.mouse.up()
+  // Released, the window re-fits the new selection and the handles come back in.
+  const settled = (await page.locator('.mv-clip-zoom__handle--end').boundingBox())!
+  expect(settled.x + settled.width / 2).toBeLessThan(trackBox.x + trackBox.width)
+})
+
+test('exports the marked range as a GIF and drops the artifact after', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+
+  const calls: string[] = []
+  await page.route('**/files/f0/exports**', async (route) => {
+    const request = route.request()
+    calls.push(request.method())
+    if (request.method() === 'POST') {
+      // The dialog's choices, not the server's defaults.
+      expect(request.postDataJSON()).toMatchObject({
+        kind: 'gif',
+        start_s: 20,
+        end_s: 25,
+        width: 320,
+        fps: 25,
+      })
+      return route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          export_id: 'e1',
+          kind: 'gif',
+          status: 'running',
+          progress: 0.5,
+          filename: 'movie.gif',
+          error: null,
+        }),
+      })
+    }
+    if (request.method() === 'DELETE') return route.fulfill({ status: 204 })
+    if (request.url().endsWith('/download')) {
+      return route.fulfill({ status: 200, contentType: 'image/gif', body: 'GIF89a-fake' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        export_id: 'e1',
+        kind: 'gif',
+        status: 'done',
+        progress: 1,
+        filename: 'movie.gif',
+        error: null,
+      }),
+    })
+  })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+
+  await page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }).click()
+  // Size and rate are chosen in a dialog; the range is already decided. Both
+  // sit on scrolling wheels, so the ladder is longer than a row could hold.
+  const dialog = page.getByRole('dialog', { name: 'GIF options' })
+  const widths = dialog.getByRole('radiogroup', { name: 'Output width' })
+  const rates = dialog.getByRole('radiogroup', { name: 'Frame rate' })
+  await expect(widths.getByRole('radio', { name: '480px' })).toBeChecked()
+  expect(await widths.getByRole('radio').count()).toBeGreaterThan(8)
+  // The 1920×1080 source scaled to the chosen width, height derived.
+  await expect(dialog).toContainText('480×270')
+  await widths.getByRole('radio', { name: '320px' }).click()
+  // Only rates a GIF can hold exactly are offered, so 12 and 15 are absent.
+  await expect(rates.getByRole('radio', { name: '12 fps' })).toHaveCount(0)
+  await rates.getByRole('radio', { name: '25 fps' }).click()
+
+  const download = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('.mv-export-notice')).toContainText('Building GIF')
+  // Named from the title without doubling the source's extension.
+  expect((await download).suggestedFilename()).toBe('movie.gif')
+  await expect(page.locator('.mv-export-notice')).toContainText('GIF saved.')
+
+  // Created, polled, downloaded — and the server told to drop the artifact
+  // rather than leaving it to sit until the TTL sweeps it.
+  expect(calls).toContain('POST')
+  expect(calls).toContain('DELETE')
+})
+
+test('refuses to export a range longer than the cap', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 10, '0:10')
+  await page.keyboard.press('[')
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 100))
+  await page.keyboard.press(']')
+
+  await expect(page.locator('.mv-clip__duration')).toHaveText('90.00 s')
+  await expect(page.locator('.mv-clip__warn')).toContainText('max 30 s')
+  await expect(
+    page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
+  ).toBeDisabled()
+})
+
+test('Snapshot As… picks a size, while S stays a single press', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await video.click({ button: 'right' })
+  await page.getByText('Save Snapshot As…').click()
+
+  // The wheel ends at the source's own size, and defaults one rung below it.
+  const dialog = page.getByRole('dialog', { name: 'Snapshot options' })
+  const widths = dialog.getByRole('radiogroup', { name: 'Snapshot width' })
+  await expect(widths.getByRole('radio', { name: '320px, native' })).toBeVisible()
+  await expect(dialog).toContainText('320×180')
+
+  const download = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  expect((await download).suggestedFilename()).toBe('movie.png')
+})
+
+test('Set In past the out-point carries the clip and keeps its length', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+
+  // Clamping here used to collapse the clip to 0.10 s. The length is the thing
+  // the owner has already decided; the click only says where it begins.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 70))
+  await expect(page.locator('.mv-time')).toContainText('1:10')
+  await page
+    .locator('[data-testid="clip-bar"]')
+    .getByRole('button', { name: /Set In/ })
+    .click()
+
+  await expect(clipRow(page, 'In')).toHaveText('1:10.000')
+  await expect(clipRow(page, 'Out')).toHaveText('1:15.000')
+  await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
+})
+
+test('range mode stops at the out-point and loop implies it', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 20, '0:20')
+  await page.keyboard.press('[')
+
+  const bar = page.locator('[data-testid="clip-bar"]')
+  const rangeToggle = bar.getByRole('button', { name: /Range/ })
+  const loopToggle = bar.getByRole('button', { name: /Loop/ })
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+
+  // Loop is a modifier on Range, so asking for it turns Range on too.
+  await loopToggle.click()
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+
+  // Dropping Loop leaves Range standing — stop at the end rather than repeat.
+  await loopToggle.click()
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+
+  // Turning Range off turns everything off.
+  await rangeToggle.click()
+  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('the clip selection does not follow the viewer to the next file', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 15, '0:15')
+  await page.keyboard.press('[')
+  await expect(page.locator('[data-testid="clip-bar"]')).toBeVisible()
+
+  // A span marked on one file would point at unrelated footage in the next.
+  await page.getByRole('button', { name: /next file/i }).click()
+  await expect(page.locator('[data-testid="clip-bar"]')).toHaveCount(0)
 })

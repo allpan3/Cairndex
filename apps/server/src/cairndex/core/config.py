@@ -185,6 +185,15 @@ class Settings(BaseSettings):
     # on timeout/failure.
     transcode_keyframe_timeout: float = 60.0
 
+    # Maximum concurrent clip exports (plan 1 §10). Each runs one ffmpeg that
+    # decodes a contiguous span, so the bound is separate from — and as tight
+    # as — the playback-session one; starting one beyond this returns 429.
+    export_max_concurrent: int = 2
+
+    # Seconds a finished export artifact survives under ``{data_dir}/exports``
+    # if nobody downloads it. A successful download drops it immediately.
+    export_ttl_seconds: float = 3600.0
+
     # Explicit ffmpeg/ffprobe locations. Unset, they are resolved from PATH and
     # then from conventional install prefixes (``media/tool_paths.py``). The
     # desktop shell sets these when spawning its local-server sidecar, because a

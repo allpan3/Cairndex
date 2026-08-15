@@ -118,6 +118,213 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Merged: clip range picker and GIF export (2026-08-15)
+
+Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`, **merged**
+after an owner pass. Fourteen commits. This is plan 1 **§10 / M11**'s
+GIF-snippet half, plus the range picker the A-B loop was moved into M11 to
+become (owner, 2026-07-11).
+
+**One thing the owner should still check:** the desktop app was not exercised
+at all. The web behaviour is verified end to end, but `save_export_file` moved
+from a JSON number array to a raw Tauri IPC body, and *that hop* — the
+JavaScript `invoke(cmd, arrayBuffer, {headers})` reaching Rust as
+`InvokeBody::Raw` — can only run inside a real shell. Both sides are tested up
+to the boundary: 108 Rust tests including the body/header extraction and its
+refusal of a JSON body, and the web side asserts it hands over a `Blob`. If the
+hop itself is wrong, every desktop export fails at once and visibly (the
+browser download path is unaffected). Contact sheets and snapshots ride the
+same seam, so they are in the same position.
+
+**Two owner decisions shaped it.** Both mechanisms for precision, not one — a
+seek-bar band with handles *and* a magnified track — but no editable timestamp
+field. And loop scope stops at the picking session; persistent A-B loop replay
+is a follow-up.
+
+**A second owner pass (2026-08-15) changed four things**, all from using it:
+
+- Dragging the *seek bar's* handle carried an edge outside the magnified
+  window, which is frozen for the length of a gesture — so the zoomed handle
+  escaped the track entirely (measured ~3700 px past its end). Rendering is now
+  pinned to the track's ends and the window re-fits on release.
+- "Set here" reads as nothing in particular; the buttons say **Set In** and
+  **Set Out**.
+- Setting a beginning past the current end clamped the clip to its 0.1 s floor.
+  It now **carries the whole span and keeps its length** — the length is
+  already decided, the click only says where it sits. The video running out is
+  the one exception, and then the named instant wins. The end does the mirror
+  of this; a *drag* still clamps, because there the other handle is the fixed
+  reference being measured against.
+- Playback gained a **range** mode that stops at the out-point, with **loop**
+  as a modifier that turns range on with it. Modelled as one `ClipPlayMode`
+  rather than two booleans, since "loop but ignore the out-point" is not a
+  state that means anything. Pressing play once range has parked the playhead
+  on the out-point restarts the span, or the press would do nothing visible.
+
+**A third pass trimmed the overlay itself.** It spanned the window and stood
+four rows tall, which is more of the picture than a range picker needs to
+cover. Now capped at 720px and centred (at full width the controls end up
+metres apart on a large display), three rows instead of four — In and Out
+adjacent on the left, with the label and the actions taking the space beside
+them rather than a row of their own — and the panel is more transparent
+(0.66 alpha, no blur, since nothing else in the app uses `backdrop-filter`).
+Checked over real video rather than the black mock frame: legible on bright
+content, and on a narrow window the actions wrap to another line instead of
+running past the overlay's edge.
+
+**The shared model is the point.** `clipRange.ts` (pure arithmetic) +
+`useClipRange` own the span; `useClipPlayback` consumes it for the range/loop
+modes. Loop replay lands as a settings-menu toggle over the same pair, not a
+second model. `useEdgeDrag` is shared by both tracks so their drag rules cannot
+drift.
+
+One rule runs through the interaction: **moving an edge shows you that edge.**
+Every stepper press and handle drag scrubs the video there, which is also why
+the picker is inline chrome rather than a modal — a modal covers the frame being
+aimed at. Timestamps are read-only, `[`/`]` mark ends at the playhead (the keys
+plan 1 §2 reserved), and the frame step uses the probed rate with the same 30 fps
+fallback `frameStep` has always had.
+
+**Server: a task, not a request.** A contact sheet seeks to sixteen keyframes
+and costs the same at any length; a GIF decodes a *contiguous* span and scales
+with resolution and storage speed, so on 4K over a network mount it can outlast
+the desktop shell's 30-second relay read timeout — the same wall that broke long
+contact sheets before they were rewritten to seek. Hence create/poll/download,
+each returning at once. Artifacts live under `{data_dir}/exports/`, not the
+library cache: the parameter space is continuous, so caching them would
+accumulate megabytes per marked span with no prospect of a hit. Encoding is one
+ffmpeg run (`split` → `palettegen`/`paletteuse`), so the decode happens once.
+
+**A prerequisite the plan had recorded came due.** `save_export_file` passed
+bytes as a JSON number array — fine for a seam with no callers, not for a
+multi-megabyte GIF. Now a raw Tauri IPC body with the name in a percent-encoded
+header. Contact sheets and snapshots moved onto it too.
+
+**Found by running it:** the export was named `X.mp4.gif` (display titles carry
+the source extension), and marking an edge read `player.currentTime` — React
+state fed by `timeupdate`, so it lagged the element by a render and could record
+where the playhead *had been*. Both fixed, both with regression tests; the
+second is why `useClipRange` takes a live `getCurrentTime`.
+
+Tests run: **998 server** (26 new, including a real-ffmpeg case asserting an
+animated GIF of the requested width), **677 web** (100 new), **120 e2e**
+(9 new), **108 desktop Rust** (4 new). ruff/mypy/eslint/tsc/prettier/`npm run
+build`/clippy/fmt all clean. Verified against a real backend on a scratch
+library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
+42-frame GIF, a 4 s one a 1.5 MB GIF, the dialog's own round trip at
+320px/15fps a 320×180, 75-frame file, and Original at 10 fps a 960×540, 50-frame
+9 MB file measuring back at exactly `10/1` — all with the artifact dropped
+after.
+The out-of-bounds fix has a regression test confirmed to fail without it.
+
+**One pre-existing e2e failure, not from this branch:** `transparently
+re-attaches a fresh session when HLS segments fail` fails on the unmodified tree
+at `6523fec8` too (verified by stashing). Separately, `reports real MP4 progress
+and resumes on reopen` times out when the whole e2e suite runs at full worker
+count; it passes alone and at `--workers=4`, so it is contention rather than a
+regression — but it is a flake worth watching.
+
+**Size and frame-rate controls followed (2026-08-15).** An options dialog on
+Save GIF…, in the contact sheet's shape — a dialog rather than more controls in
+the clip bar, since choosing a width does not need the frame on screen and the
+bar had just been trimmed. Widths are the fixed sizes *below* the source (320,
+480, 720) followed by the source's own, so nothing on offer upscales and
+nothing appears twice — a 720p source shows 320, 480 and Original rather than
+Original beside a redundant 720.
+
+**"Original" required raising the server's width cap** from plan 1 §10's 720 to
+1920 (owner asked for the option, 2026-08-15). At 720 the label would have been
+a lie for every 1080p source, which is the common case here. Not unbounded: a
+GIF is one indexed frame per frame, and the measured 5 s 960×540 export is
+**9 MB** — a thirty-second 4K one would run to hundreds. Above the ceiling the
+top option takes its number rather than the word, because a 4K source at 1920
+is not its original size.
+The output's real pixel size is shown (`scale=W:-2`, so the height is derived
+and even). **No byte-size estimate**: measured output ranged 15–31 KB/frame at
+480px on the same settings, so any number would be wrong by 2× as often as not.
+
+**Frame rate is constrained by the format, and the ladder now says so.** A GIF
+stores each frame's delay as a whole number of centiseconds, so the only rates
+it can represent are `100/n`. Measured off the frame control blocks of real
+output rather than inferred: 5→exact, 8→7.69, 10→exact, 12→12.5, 15→**14.29**,
+20→exact, 24→25, 25→exact, 30→33.33, 50→exact, 60→50.
+
+Two corrections came out of that measurement. **15 fps plays at 14.29, not the
+16.7 recorded here earlier** — that figure came from ffprobe's
+`avg_frame_rate`, which is not the delay a viewer obeys. And **the fps ceiling
+of 15 was a sketch in plan 1 §10, not a finding**: 20 and 25 are exact *and*
+smoother, so `MAX_FPS` is now 50 (a 2cs delay; 1cs is the value historic
+viewers reinterpret as 10cs).
+
+The ladder is **5, 10, 15, 20, 25, 50** and the default is **15** — both the
+owner's call (2026-08-15), after a round trip worth recording. The rates were
+first cut to the exact ones only, which deleted 15; that was wrong, because 15
+is the rate people actually reach for in a GIF and a 4.7% drift is invisible.
+The default meanwhile went 10 → 20 → 10 → 15: 20 was an over-correction (the
+question that prompted it had been about the *ceiling*, and the default
+followed it up without cause), and 10 the conventional-and-exact compromise
+before the owner settled it.
+
+Rather than restore the "exact" badge whose meaning the owner had to ask about,
+**the wheel prints what an inexact rate really plays at** — `15 fps / ≈14.3` —
+and the summary reports the true output: `480×270 · 75 frames · 5.25 s (plays
+at 14.3 fps)`. A drifting rate stretches the clip as well as slowing it, which
+the old summary hid by printing the source's span.
+
+`gifPlaybackRate` computes that as `100/round(100/fps)`, checked against
+measured output at eleven rates rather than asserted.
+
+For scale, measured at 480px over five seconds of real footage: 10 fps is
+2.2 MB, 20 fps 3.9 MB (1.77x), 25 fps 4.6 MB (2.08x).
+Rates far above the source's own are withheld for the same reason widths are:
+measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, and a 30 fps
+source at 50 gained 67% duplicates for a fifth more bytes.
+
+**But the cut-off is 10% above the source, not at it** — because none of the
+exact rates lands on 24 fps, which is the commonest source rate there is. Cut
+off at the source, a 24 fps clip tops out at 20 and drops 17% of its motion;
+25 fps duplicates two frames in forty-eight (4%) and is otherwise one for one.
+Both measured. The tolerance lets 24 reach 25 and 48 reach 50 while still
+refusing 30→50. A rung is marked `native` only when it really is the source's
+rate, so a 24 or 30 fps source shows no mark — which is the honest way to say
+the format cannot match it.
+
+For the record, what the common sources get: **24 fps → 5/10/20/25**, **30 fps
+→ 5/10/20/25**, **60 fps → 5/10/20/25/50**, each defaulting to 20.
+
+**A fourth pass moved every size choice onto a wheel (2026-08-15).** A
+segmented row has to fit every option side by side, which capped the ladders at
+three or four rungs. `WheelPicker` is a horizontal scroll-snap strip — the
+value under the centre mark is the selected one, so dragging changes it and
+changing it scrolls. Snap points make "nearest to centre" exact at rest rather
+than approximate, and a `settling` flag keeps the component's own centring from
+being read back as a user choice. `radiogroup`/`radio` with roving focus and
+arrow keys, so it is reachable without a pointer.
+
+The ladders grew accordingly: **15 GIF widths** (was 3), **10 sheet widths**
+(was 3, and the server's `SHEET_WIDTHS` enum became an 800–6144 range),
+**6 frame rates** (was 4), and contact-sheet grids **4×4 through 8×8**
+defaulting to 5×5 (owner, 2026-08-15 — 2×2 and 3×3 dropped as too sparse to be
+a sheet, and `MAX_COLS` raised 6 → 8 for the top end). The grid's cost is one
+keyframe seek per cell and nothing else, so it stays linear: measured 1.0s for
+4×4 and 3.6s for 8×8 on a real file, against a 180s ffmpeg deadline. The GIF and snapshot wheels end
+at the source's own width, marked `native` — with no "Original" button, which
+the owner dropped as awkward once the ceiling was fixed at 1920; the native
+width simply joins the ladder as an ordinary rung, so an odd source like
+854×480 is still exportable at its own size.
+
+**Snapshot gained a size, without losing its speed.** `S` and the camera button
+stay one press at native resolution (owner: "for snapshot we can just use S for
+original"); a new "Save Snapshot As…" on the right-click menu asks first. The
+capture moved out of `ViewerShell` into `snapshotExport.ts`, and its filenames
+joined the GIF's naming — `clip.mp4` produced `clip_mp4.png` before and
+produces `clip.png` now, via a shared `exportFileName`.
+
+**Known gaps / next:** persistent A-B loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
+been exercised on a packaged build — only the browser download has, since the
+Tauri shell cannot be driven here. The contact sheet still names its output
+`X.mp4 — contact sheet.jpg`; left alone as pre-existing rather than widened into.
+
 ## Diagnosed: the owner's library is on SMB, so round trips are the only cost that matters (2026-08-13)
 
 Three rounds of "still slow" were spent optimizing against synthetic local-disk

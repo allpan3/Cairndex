@@ -4,6 +4,7 @@ import type { PlayableVideo, SubtitleTrackRead } from '../../../api/client'
 import {
   IconCamera,
   IconCaptions,
+  IconClipRange,
   IconFullscreen,
   IconPause,
   IconPictureInPicture,
@@ -12,8 +13,10 @@ import {
   IconVolumeOff,
 } from '../../icons'
 import { formatClock } from '../../../lib/format'
+import { ClipBar } from './ClipBar'
 import { SeekBar } from './SeekBar'
 import { SettingsMenu } from './SettingsMenu'
+import type { ClipRangeController } from './useClipRange'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
@@ -26,6 +29,10 @@ interface ControlBarProps {
   onDragChange: (dragging: boolean) => void
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
+  /** Absent for a source with no clip support (an unindexed path). */
+  clip?: ClipRangeController
+  onExportClip?: () => void
+  maxExportSeconds?: number
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
@@ -38,6 +45,9 @@ export function ControlBar({
   onDragChange,
   fileLoop,
   onFileLoop,
+  clip,
+  onExportClip,
+  maxExportSeconds,
 }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
@@ -76,6 +86,14 @@ export function ControlBar({
 
   return (
     <div className="mv-controls" data-testid="media-controls" ref={barRef}>
+      {clip && (
+        <ClipBar
+          clip={clip}
+          player={player}
+          onExport={onExportClip}
+          maxExportSeconds={maxExportSeconds}
+        />
+      )}
       <div className="mv-controls__row">
         <button
           className="mv-btn mv-btn--primary"
@@ -118,6 +136,17 @@ export function ControlBar({
         <button className="mv-btn" onClick={onSnapshot} aria-label="Snapshot" title="Snapshot">
           <IconCamera />
         </button>
+        {clip && (
+          <button
+            className={`mv-btn${clip.active ? ' is-active' : ''}`}
+            onClick={() => (clip.active ? clip.close() : clip.open())}
+            aria-label={clip.active ? 'Close clip range' : 'Mark clip range'}
+            aria-pressed={clip.active}
+            title="Clip range ([ and ] mark the ends)"
+          >
+            <IconClipRange />
+          </button>
+        )}
         <SettingsMenu
           hls={hls}
           subtitles={subtitles}
@@ -143,7 +172,7 @@ export function ControlBar({
           <IconFullscreen />
         </button>
       </div>
-      <SeekBar player={player} video={video} onDragChange={onDragChange} />
+      <SeekBar player={player} video={video} onDragChange={onDragChange} clip={clip} />
     </div>
   )
 }

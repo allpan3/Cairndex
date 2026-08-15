@@ -19,13 +19,24 @@ import {
 } from '../lib/format'
 import { getHostPlatform, isDesktopHost } from '../platform'
 
-/** The grids offered. Square, and within the server's bounds. */
-export const CONTACT_SHEET_GRIDS = [4, 5, 6] as const
+/**
+ * The grids offered. Square, and within the server's 2–8 column bound.
+ *
+ * Starts at 4×4 and runs to 8×8 (owner, 2026-08-15). Below 4×4 a sheet stops
+ * being a sheet — nine frames of a feature tell you almost nothing — and the
+ * top end is cheap: one keyframe seek per cell, so 8×8 measured 3.6s against
+ * 4×4's 1.0s on a real file.
+ */
+export const CONTACT_SHEET_GRIDS = [4, 5, 6, 7, 8] as const
 export type ContactSheetGrid = (typeof CONTACT_SHEET_GRIDS)[number]
+export const DEFAULT_CONTACT_SHEET_GRID = 5
 
-/** Sheet widths the server accepts (`contact_sheets.SHEET_WIDTHS`). */
-export const CONTACT_SHEET_WIDTHS = [1600, 2048, 2560] as const
+/** Sheet widths, inside `contact_sheets.MIN/MAX_SHEET_WIDTH` (800–6144). */
+export const CONTACT_SHEET_WIDTHS = [
+  800, 1024, 1280, 1600, 2048, 2560, 3200, 4096, 5120, 6144,
+] as const
 export type ContactSheetWidth = (typeof CONTACT_SHEET_WIDTHS)[number]
+export const DEFAULT_CONTACT_SHEET_WIDTH = 2048
 
 export interface ContactSheetTarget {
   fileId: string
@@ -108,8 +119,7 @@ export async function saveContactSheet(
     })
     const name = `${safeName(target.title)} — contact sheet.jpg`
     if (isDesktopHost()) {
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      const saved = await getHostPlatform().saveExport(name, bytes)
+      const saved = await getHostPlatform().saveExport(name, blob)
       report(saved ? 'Contact sheet saved.' : null)
       return
     }

@@ -20,5 +20,7 @@ test('exposes no export save capability in the browser', async () => {
   // M11's Export dialog reads this flag to decide between a native Save As… and
   // an ordinary browser download; the web build must never claim the former.
   expect(webPlatform.canSaveExports).toBe(false)
-  await expect(webPlatform.saveExport('clip.gif', new Uint8Array([1]))).resolves.toBeNull()
+  await expect(
+    webPlatform.saveExport('clip.gif', new Blob([new Uint8Array([1])])),
+  ).resolves.toBeNull()
 })

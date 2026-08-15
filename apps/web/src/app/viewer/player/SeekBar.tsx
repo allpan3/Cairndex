@@ -7,6 +7,9 @@ import {
   type LeadingTrailingThrottle,
 } from '../../../lib/leadingTrailingThrottle'
 import { StoryboardPreview } from './StoryboardPreview'
+import { formatClipTime } from './clipRange'
+import type { ClipRangeController } from './useClipRange'
+import { useEdgeDrag } from './useEdgeDrag'
 import type { PlayerController } from './usePlayer'
 
 type Chapter = PlayableVideo['chapters'][number]
@@ -34,10 +37,13 @@ export function SeekBar({
   player,
   video,
   onDragChange,
+  clip,
 }: {
   player: PlayerController
   video: PlayableVideo
   onDragChange?: (dragging: boolean) => void
+  /** Present while clip mode is on: draws the marked band and its handles. */
+  clip?: ClipRangeController
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
@@ -91,6 +97,8 @@ export function SeekBar({
     [chapters, player.duration],
   )
   const hoverChapter = hover ? chapterForTime(chapters, hover.time) : null
+  // Only draw the band once there is a duration to scale it against.
+  const clipRange = clip?.active && player.duration > 0 ? clip.range : null
 
   // The track's geometry, cached for the length of a gesture. Reading it back
   // per `pointermove` forces a synchronous layout of a document whose inline
@@ -107,6 +115,18 @@ export function SeekBar({
 
   const commitSeek = (time: number) => scrub.current?.flush(time)
   const throttledSeek = (time: number) => scrub.current?.schedule(time)
+
+  const onEdgePointerDown = useEdgeDrag({
+    clip,
+    timeFor,
+    onGestureStart: () => {
+      trackRect.current = ref.current?.getBoundingClientRect() ?? null
+    },
+    onGestureEnd: () => {
+      trackRect.current = null
+    },
+    onDragChange,
+  })
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -195,6 +215,43 @@ export function SeekBar({
           />
         ))}
         <div className="mv-seek__fill" style={{ width: `${displayPct}%` }} />
+        {clipRange && (
+          <>
+            <div
+              className="mv-seek__range"
+              style={{
+                left: `${pctFor(clipRange.start)}%`,
+                width: `${pctFor(clipRange.end) - pctFor(clipRange.start)}%`,
+              }}
+              aria-hidden="true"
+            />
+            {(['start', 'end'] as const).map((edge) => (
+              <div
+                key={edge}
+                className={`mv-seek__handle mv-seek__handle--${edge}`}
+                style={{ left: `${pctFor(clipRange[edge])}%` }}
+                role="slider"
+                tabIndex={0}
+                aria-label={edge === 'start' ? 'Clip start' : 'Clip end'}
+                aria-valuemin={0}
+                aria-valuemax={Math.round(player.duration)}
+                aria-valuenow={Math.round(clipRange[edge])}
+                aria-valuetext={formatClipTime(clipRange[edge])}
+                onPointerDown={onEdgePointerDown(edge)}
+                onKeyDown={(event) => {
+                  // A frame per press, a second with Shift — the same pair the
+                  // clip bar's nudge buttons offer, for keyboard-only use.
+                  const step = event.shiftKey ? 1 : (clip?.frame ?? 1 / 30)
+                  if (event.key === 'ArrowLeft') clip?.nudge(edge, -step)
+                  else if (event.key === 'ArrowRight') clip?.nudge(edge, step)
+                  else return
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+              />
+            ))}
+          </>
+        )}
         <div className="mv-seek__thumb" style={{ left: `${displayPct}%` }} />
       </div>
       {hover && (

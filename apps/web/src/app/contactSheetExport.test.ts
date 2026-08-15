@@ -1,10 +1,31 @@
 import { expect, test } from 'vitest'
 
-import { CONTACT_SHEET_WIDTHS, contactSheetRows } from './contactSheetExport'
+import {
+  CONTACT_SHEET_GRIDS,
+  CONTACT_SHEET_WIDTHS,
+  DEFAULT_CONTACT_SHEET_GRID,
+  DEFAULT_CONTACT_SHEET_WIDTH,
+  contactSheetRows,
+} from './contactSheetExport'
 import { CONTACT_SHEET_WATERMARK } from './viewer/contactSheet'
 
-test('offers the three higher-resolution contact-sheet widths', () => {
-  expect(CONTACT_SHEET_WIDTHS).toEqual([1600, 2048, 2560])
+// Both ladders grew when the dialog moved from segmented rows onto wheels
+// (owner, 2026-08-15) — a row had to fit every option side by side.
+test('offers a full ladder of sheet widths, inside the server bound', () => {
+  expect(CONTACT_SHEET_WIDTHS.length).toBeGreaterThan(3)
+  expect(Math.min(...CONTACT_SHEET_WIDTHS)).toBeGreaterThanOrEqual(800)
+  expect(Math.max(...CONTACT_SHEET_WIDTHS)).toBeLessThanOrEqual(6144)
+  expect(CONTACT_SHEET_WIDTHS).toContain(DEFAULT_CONTACT_SHEET_WIDTH)
+  // Ascending, so the wheel reads left to right as smaller to larger.
+  expect([...CONTACT_SHEET_WIDTHS]).toEqual([...CONTACT_SHEET_WIDTHS].sort((a, b) => a - b))
+})
+
+// 4×4 is the floor — below it a sheet stops being a sheet — and 8×8 the top,
+// which costs 3.6s against 4×4's 1.0s on a real file (owner, 2026-08-15).
+test('offers square grids from 4×4 to 8×8, defaulting to 5×5', () => {
+  expect(CONTACT_SHEET_GRIDS).toEqual([4, 5, 6, 7, 8])
+  expect(DEFAULT_CONTACT_SHEET_GRID).toBe(5)
+  expect(CONTACT_SHEET_GRIDS).toContain(DEFAULT_CONTACT_SHEET_GRID)
 })
 
 test('builds all three contact-sheet header rows from available metadata', () => {

@@ -9,6 +9,11 @@ export interface ShortcutActions {
   previous: () => void
   next: () => void
   /**
+   * Mark an end of the clip range at the playhead (`[` / `]`, reserved for
+   * this in plan 1 §2). Absent when the source cannot be clipped.
+   */
+  markClipEdge?: (edge: 'start' | 'end') => void
+  /**
    * Whether the viewer is currently fullscreen. Supplied by the viewer rather than
    * read from the player, because an image bundle has no `PlayerController` yet can
    * still be fullscreen via the View menu.
@@ -156,6 +161,10 @@ export function handleViewerShortcut(
   else if (key === ',' || key === '<') player.frameStep(-1)
   else if (key === '.' || key === '>') player.frameStep(1)
   else if (lower === 'z') player.setRate(1)
+  // `[`/`]` mark the clip range's ends at the playhead. Unhandled — and so
+  // left to the browser — on a source that cannot be clipped.
+  else if (key === '[' && actions.markClipEdge) actions.markClipEdge('start')
+  else if (key === ']' && actions.markClipEdge) actions.markClipEdge('end')
   else if (/^[0-9]$/.test(key)) player.seek((player.duration * Number(key)) / 10)
   else return false
 
