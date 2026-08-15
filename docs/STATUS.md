@@ -243,7 +243,13 @@ viewers reinterpret as 10cs).
 
 The wheel therefore offers **only exact rates** — 5, 10, 20, 25, 50 — because
 offering 12 or 30 is offering a clip that plays at a speed nobody asked for.
-The default is **20**: exact, visibly smoother than 10, half the frames of 50.
+
+The default is **10**. It briefly went to 20, which was an over-correction: the
+owner's question had been about the *ceiling*, and the default followed it up
+without cause. A GIF's conventional rate is 10–15, and 10 is the one in that
+range the format can hold exactly. It is also the cheap one — measured at 480px
+over five seconds of real footage, 20 fps costs **1.77x** the bytes and 25 fps
+**2.08x** (2.2 MB → 3.9 MB → 4.6 MB). Both stay one rung away.
 Rates far above the source's own are withheld for the same reason widths are:
 measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, and a 30 fps
 source at 50 gained 67% duplicates for a fifth more bytes.

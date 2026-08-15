@@ -54,8 +54,13 @@ export const DEFAULT_CLIP_WIDTH = 480
  * reinterpret as 10cs.
  */
 export const CLIP_FPS_CHOICES = [5, 10, 20, 25, 50] as const
-/** Exact, visibly smoother than 10, and half the frames of 50. */
-export const DEFAULT_CLIP_FPS = 20
+/**
+ * A GIF's conventional rate is 10–15, and 10 is the one in that range the
+ * format can hold exactly. It is also the cheap one: measured at the default
+ * 480px over five seconds of real footage, 20 fps costs 1.77x the bytes and
+ * 25 fps 2.08x. Both are one rung away for a clip that earns them.
+ */
+export const DEFAULT_CLIP_FPS = 10
 
 /**
  * How far above the source's own rate a rung may still sit.

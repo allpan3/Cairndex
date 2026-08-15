@@ -62,9 +62,13 @@ DEFAULT_WIDTH = 480
 # A GIF stores each frame's delay in whole centiseconds, so the only rates it
 # can represent are 100/n: 5, 10, 20, 25 and 50. Anything else has its delay
 # rounded and plays at the wrong speed — 12 fps becomes 12.5, 15 becomes 14.29,
-# 30 becomes 33.33 (all measured off the frame control blocks). 20 is exact,
-# visibly smoother than 10, and half the frames of 50.
-DEFAULT_FPS = 20
+# 30 becomes 33.33 (all measured off the frame control blocks).
+#
+# 10 of those, because a GIF's conventional rate is 10–15 and 10 is the one in
+# that range the format can hold exactly. It is also the cheap one: measured at
+# 480px over five seconds of real footage, 20 fps costs 1.77x the bytes and 25
+# fps 2.08x, for motion most clips do not need. Both remain one rung away.
+DEFAULT_FPS = 10
 
 # Longer than the caps should ever need, short enough that a wedged ffmpeg is
 # reported rather than held open forever.
