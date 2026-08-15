@@ -227,27 +227,61 @@ test('offers only rates a GIF can hold exactly', () => {
   expect(Math.max(...CLIP_FPS_CHOICES)).toBe(50)
 })
 
-// More frames a second than the source has produces duplicates, not smoother
-// motion — measured: a 25 fps source at 50 gained 50 frames and 1 KB.
-test('withholds rates the source cannot supply', () => {
-  const rates = (source: number | null) => clipFpsOptions(source).map((option) => option.value)
+// Substantially more frames a second than the source has produces duplicates,
+// not smoother motion — measured: a 25 fps source at 50 gained 50 frames and
+// 1 KB, and a 30 fps source at 50 gained 67% duplicates for a fifth more bytes.
+test('withholds rates the source cannot meaningfully supply', () => {
   expect(rates(25)).toEqual([5, 10, 20, 25])
   expect(rates(30)).toEqual([5, 10, 20, 25])
   expect(rates(60)).toEqual([5, 10, 20, 25, 50])
-  expect(rates(23.976)).toEqual([5, 10, 20])
   // Unprobed: nothing to filter against.
   expect(rates(null)).toEqual([5, 10, 20, 25, 50])
   // Slower than every rung, but a choice is still needed.
   expect(rates(2)).toEqual([5])
 })
 
+// No exact rate lands on 24 fps, the commonest source rate there is. Cutting
+// off at the source strands it at 20, which drops 17% of the motion, when 25
+// duplicates two frames in forty-eight and is otherwise one for one. Both
+// measured on real output.
+test('lets a 24 fps source reach 25, which fits it far better than 20', () => {
+  expect(rates(24)).toEqual([5, 10, 20, 25])
+  // NTSC film, the same case one decimal over.
+  expect(rates(23.976)).toEqual([5, 10, 20, 25])
+  // …and 48 reaches 50 for the same reason.
+  expect(rates(48)).toEqual([5, 10, 20, 25, 50])
+  // The overshoot is a hair's breadth, not a licence: 30 still cannot reach 50.
+  expect(rates(30)).not.toContain(50)
+  expect(rates(25)).not.toContain(50)
+})
+
+// Marked only when the format can actually match the source. For 24 and 30 fps
+// nothing can, and saying nothing is the honest version of that.
+test('marks a rate as native only when it really is the source’s', () => {
+  const noted = (source: number) =>
+    clipFpsOptions(source)
+      .filter((option) => option.note)
+      .map((option) => `${option.value}:${option.note}`)
+  expect(noted(25)).toEqual(['25:native'])
+  expect(noted(10)).toEqual(['10:native'])
+  expect(noted(24)).toEqual([])
+  expect(noted(30)).toEqual([])
+})
+
 test('starts on the default rate, or the fastest still offered', () => {
+  // 20 is reachable by every ordinary source, 24 and 30 included.
+  expect(defaultClipFps(clipFpsOptions(24))).toBe(DEFAULT_CLIP_FPS)
   expect(defaultClipFps(clipFpsOptions(30))).toBe(DEFAULT_CLIP_FPS)
   expect(defaultClipFps(clipFpsOptions(null))).toBe(DEFAULT_CLIP_FPS)
   // Below the default, the fastest the source can supply.
   expect(defaultClipFps(clipFpsOptions(12))).toBe(10)
   expect(defaultClipFps(clipFpsOptions(2))).toBe(5)
 })
+
+/** Compact view of the offered rates. */
+function rates(source: number | null): number[] {
+  return clipFpsOptions(source).map((option) => option.value)
+}
 
 // Mirrors ffmpeg's `scale=W:-2`: aspect preserved, height rounded even.
 test('derives the output height from the source aspect, always even', () => {

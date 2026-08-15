@@ -58,20 +58,41 @@ export const CLIP_FPS_CHOICES = [5, 10, 20, 25, 50] as const
 export const DEFAULT_CLIP_FPS = 20
 
 /**
+ * How far above the source's own rate a rung may still sit.
+ *
+ * Not zero, because none of the exact rates lands on 24 fps — the commonest
+ * source rate there is. Cut off at the source, a 24 fps clip tops out at 20 and
+ * loses 17% of its motion, while 25 fps duplicates two frames in forty-eight
+ * (4%) and is otherwise one for one. Both measured. Ten per cent lets 24 reach
+ * 25 and 48 reach 50, while still refusing 30→50 (+67% duplicates for nothing,
+ * and a fifth more bytes to store them).
+ */
+const FPS_OVERSHOOT = 0.1
+
+/**
  * The rates worth offering for one source.
  *
- * Asking for more frames a second than the source has produces duplicates, not
- * smoother motion — measured: a 25 fps source encoded at 50 gained 50 frames
- * and 1 KB, because a repeated frame costs almost nothing to store and shows
- * nothing new. Same rule as the widths, one axis over.
+ * Asking for substantially more frames a second than the source has produces
+ * duplicates, not smoother motion — measured: a 25 fps source encoded at 50
+ * gained 50 frames and 1 KB, because a repeated frame costs almost nothing to
+ * store and shows nothing new.
  */
 export function clipFpsOptions(sourceFps: number | null | undefined): WheelOption<number>[] {
-  const rates = CLIP_FPS_CHOICES.filter(
-    (value) => !sourceFps || sourceFps <= 0 || value <= Math.round(sourceFps),
-  )
+  if (!sourceFps || sourceFps <= 0) {
+    return CLIP_FPS_CHOICES.map((value) => ({ value, label: `${value} fps` }))
+  }
+  const ceiling = sourceFps * (1 + FPS_OVERSHOOT)
+  const rates = CLIP_FPS_CHOICES.filter((value) => value <= ceiling)
   // A source slower than every rung still needs one choice.
   const values = rates.length > 0 ? rates : [CLIP_FPS_CHOICES[0]]
-  return values.map((value) => ({ value, label: `${value} fps` }))
+  const native = Math.round(sourceFps)
+  return values.map((value) => ({
+    value,
+    label: `${value} fps`,
+    // Only when the format can actually match the source. For 24 and 30 fps
+    // nothing can, and saying nothing is the honest version of that.
+    note: value === native ? 'native' : undefined,
+  }))
 }
 
 /** The rate to start on: the default when offered, else the fastest that is. */

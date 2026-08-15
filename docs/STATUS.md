@@ -244,9 +244,21 @@ viewers reinterpret as 10cs).
 The wheel therefore offers **only exact rates** — 5, 10, 20, 25, 50 — because
 offering 12 or 30 is offering a clip that plays at a speed nobody asked for.
 The default is **20**: exact, visibly smoother than 10, half the frames of 50.
-Rates above the source's own are withheld for the same reason widths are:
-measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, because a
-duplicated frame stores as nearly nothing and shows nothing new.
+Rates far above the source's own are withheld for the same reason widths are:
+measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, and a 30 fps
+source at 50 gained 67% duplicates for a fifth more bytes.
+
+**But the cut-off is 10% above the source, not at it** — because none of the
+exact rates lands on 24 fps, which is the commonest source rate there is. Cut
+off at the source, a 24 fps clip tops out at 20 and drops 17% of its motion;
+25 fps duplicates two frames in forty-eight (4%) and is otherwise one for one.
+Both measured. The tolerance lets 24 reach 25 and 48 reach 50 while still
+refusing 30→50. A rung is marked `native` only when it really is the source's
+rate, so a 24 or 30 fps source shows no mark — which is the honest way to say
+the format cannot match it.
+
+For the record, what the common sources get: **24 fps → 5/10/20/25**, **30 fps
+→ 5/10/20/25**, **60 fps → 5/10/20/25/50**, each defaulting to 20.
 
 **A fourth pass moved every size choice onto a wheel (2026-08-15).** A
 segmented row has to fit every option side by side, which capped the ladders at
