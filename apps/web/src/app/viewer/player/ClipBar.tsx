@@ -36,7 +36,7 @@ function EdgeRow({
   const range = clip.range
   if (!range) return null
   const frameLabel = `${edge === 'start' ? 'start' : 'end'} by one frame`
-  const setLabel = edge === 'start' ? 'Set beginning' : 'Set end'
+  const setLabel = edge === 'start' ? 'Set In' : 'Set Out'
   return (
     <div className="mv-clip__row">
       <span className="mv-clip__label">{label}</span>
@@ -98,48 +98,66 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarPro
 
   return (
     <div className="mv-clip" data-testid="clip-bar">
-      <div className="mv-clip__head">
-        <span className="mv-clip__title">Clip</span>
-        <span className={`mv-clip__duration${tooLong ? ' is-over' : ''}`}>
-          {length.toFixed(2)} s
-        </span>
-        {tooLong && (
-          <span className="mv-clip__warn" role="status">
-            Longer than the {maxExportSeconds} s limit — shorten it to export.
-          </span>
-        )}
-        <div className="mv-clip__spacer" />
-        {/* Range is the mode; Loop is a modifier on it. Turning Loop on turns
-            Range on with it, because looping while ignoring the out-point is
-            not a state that means anything. */}
-        <button
-          className={`mv-clip__toggle${clip.playMode !== 'off' ? ' is-active' : ''}`}
-          onClick={() => clip.setPlayMode(clip.playMode === 'off' ? 'range' : 'off')}
-          aria-pressed={clip.playMode !== 'off'}
-          title="Play only the marked span, stopping at the end point"
-        >
-          ▶| Range
-        </button>
-        <button
-          className={`mv-clip__toggle${clip.playMode === 'loop' ? ' is-active' : ''}`}
-          onClick={() => clip.setPlayMode(clip.playMode === 'loop' ? 'range' : 'loop')}
-          aria-pressed={clip.playMode === 'loop'}
-          title="Repeat the marked span instead of stopping at its end"
-        >
-          ⟳ Loop
-        </button>
-        {onExport && (
-          <button className="mv-clip__export" onClick={onExport} disabled={tooLong}>
-            Save GIF…
-          </button>
-        )}
-        <button className="mv-clip__close" onClick={clip.close} aria-label="Close clip range">
-          ✕
-        </button>
+      {/* In and Out sit together on the left, so the two numbers being compared
+          are adjacent while adjusting. The label and the actions take the space
+          beside them rather than a fourth row of their own. */}
+      <div className="mv-clip__edges">
+        <EdgeRow clip={clip} edge="start" label="In" />
+        <EdgeRow clip={clip} edge="end" label="Out" />
       </div>
 
-      <EdgeRow clip={clip} edge="start" label="In" />
-      <EdgeRow clip={clip} edge="end" label="Out" />
+      <div className="mv-clip__side">
+        <div className="mv-clip__meta">
+          <span className="mv-clip__title">Clip</span>
+          <span className={`mv-clip__duration${tooLong ? ' is-over' : ''}`}>
+            {length.toFixed(2)} s
+          </span>
+          {tooLong && (
+            <span className="mv-clip__warn" role="status">
+              max {maxExportSeconds} s
+            </span>
+          )}
+        </div>
+        <div className="mv-clip__buttons">
+          {/* Range is the mode; Loop is a modifier on it. Turning Loop on turns
+              Range on with it, because looping while ignoring the out-point is
+              not a state that means anything. */}
+          <button
+            className={`mv-clip__toggle${clip.playMode !== 'off' ? ' is-active' : ''}`}
+            onClick={() => clip.setPlayMode(clip.playMode === 'off' ? 'range' : 'off')}
+            aria-pressed={clip.playMode !== 'off'}
+            title="Play only the marked span, stopping at the end point"
+          >
+            ▶| Range
+          </button>
+          <button
+            className={`mv-clip__toggle${clip.playMode === 'loop' ? ' is-active' : ''}`}
+            onClick={() => clip.setPlayMode(clip.playMode === 'loop' ? 'range' : 'loop')}
+            aria-pressed={clip.playMode === 'loop'}
+            title="Repeat the marked span instead of stopping at its end"
+          >
+            ⟳ Loop
+          </button>
+          {onExport && (
+            <button
+              className="mv-clip__export"
+              onClick={onExport}
+              disabled={tooLong}
+              title={
+                tooLong
+                  ? `A clip may be at most ${maxExportSeconds} seconds — shorten it to export.`
+                  : 'Encode the marked span as a GIF'
+              }
+            >
+              Save GIF…
+            </button>
+          )}
+          <button className="mv-clip__close" onClick={clip.close} aria-label="Close clip range">
+            ✕
+          </button>
+        </div>
+      </div>
+
       <ClipTimeline clip={clip} player={player} />
     </div>
   )

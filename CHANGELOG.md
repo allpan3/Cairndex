@@ -17,7 +17,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   movement spans frames instead of minutes. Each end has one-second and
   one-frame steppers, and every adjustment — stepper or handle drag — scrubs the
   video to the end being moved, because a frame you cannot see cannot be placed
-  accurately. **Set beginning** / **Set end** put an end at the playhead, and
+  accurately. **Set In** / **Set Out** put an end at the playhead, and
   when that would land past the other end the whole clip moves and keeps its
   length rather than collapsing — the length is already decided, the click only
   says where it sits. **Range** plays the marked span and stops at its end;

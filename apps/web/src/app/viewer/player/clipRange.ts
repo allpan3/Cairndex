@@ -91,8 +91,8 @@ export function nudgeEdge(
 }
 
 /**
- * Put one edge at the playhead — the "Set beginning" / "Set end" gesture and
- * the `[`/`]` keys.
+ * Put one edge at the playhead — the "Set In" / "Set Out" gesture and the
+ * `[`/`]` keys.
  *
  * Unlike a drag, this **carries the whole span** when the new edge would land
  * past the other one, keeping the clip's length. Clamping instead (what

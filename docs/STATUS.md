@@ -135,8 +135,8 @@ is a follow-up.
   window, which is frozen for the length of a gesture — so the zoomed handle
   escaped the track entirely (measured ~3700 px past its end). Rendering is now
   pinned to the track's ends and the window re-fits on release.
-- "Set here" reads as nothing in particular; the buttons say **Set beginning**
-  and **Set end**.
+- "Set here" reads as nothing in particular; the buttons say **Set In** and
+  **Set Out**.
 - Setting a beginning past the current end clamped the clip to its 0.1 s floor.
   It now **carries the whole span and keeps its length** — the length is
   already decided, the click only says where it sits. The video running out is
@@ -148,6 +148,17 @@ is a follow-up.
   rather than two booleans, since "loop but ignore the out-point" is not a
   state that means anything. Pressing play once range has parked the playhead
   on the out-point restarts the span, or the press would do nothing visible.
+
+**A third pass trimmed the overlay itself.** It spanned the window and stood
+four rows tall, which is more of the picture than a range picker needs to
+cover. Now capped at 720px and centred (at full width the controls end up
+metres apart on a large display), three rows instead of four — In and Out
+adjacent on the left, with the label and the actions taking the space beside
+them rather than a row of their own — and the panel is more transparent
+(0.66 alpha, no blur, since nothing else in the app uses `backdrop-filter`).
+Checked over real video rather than the black mock frame: legible on bright
+content, and on a narrow window the actions wrap to another line instead of
+running past the overlay's edge.
 
 **The shared model is the point.** `clipRange.ts` (pure arithmetic) +
 `useClipRange` own the span; `useClipPlayback` consumes it for the range/loop

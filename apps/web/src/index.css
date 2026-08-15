@@ -4247,20 +4247,46 @@ code {
 }
 /* Clip range picker (plan 1 §10 / M11) — docked above the seek bar so the
    frame an edge lands on stays on screen while it is being placed. */
+/* Three rows: the two edges side by side with the label and actions, then the
+   magnified track. Capped and centred rather than spanning the window — at
+   full width the controls end up metres apart on a large display, and the
+   overlay covers more of the picture than it needs to. */
 .mv-clip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 16px;
+  max-width: 720px;
+  margin: 0 auto 10px;
+  border: 1px solid rgba(255, 190, 74, 0.24);
+  border-radius: 8px;
+  background: rgba(18, 20, 27, 0.66);
+  padding: 8px 12px;
+}
+.mv-clip__edges {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 10px;
-  border: 1px solid rgba(255, 190, 74, 0.28);
-  border-radius: 8px;
-  background: rgba(18, 20, 27, 0.9);
-  padding: 10px 12px;
 }
-.mv-clip__head {
+/* The label above the actions, both hard right, so the two blocks line up with
+   the In and Out rows beside them. */
+.mv-clip__side {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* Wrapping rather than overflowing: on a narrow window the actions take an
+   extra line instead of running out past the overlay's edge. */
+.mv-clip__meta,
+.mv-clip__buttons {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 6px 8px;
 }
 .mv-clip__title {
   font-size: 12px;
@@ -4280,9 +4306,6 @@ code {
 .mv-clip__warn {
   font-size: 12px;
   color: #ff8f6b;
-}
-.mv-clip__spacer {
-  flex: 1;
 }
 .mv-clip__row {
   display: flex;
@@ -4334,10 +4357,10 @@ code {
   opacity: 0.45;
   cursor: not-allowed;
 }
-/* "Set beginning" and "Set end" are different lengths; a shared width keeps the
-   In and Out rows on the same grid instead of ragged. */
+/* "Set In" and "Set Out" are different lengths; a shared width keeps the In and
+   Out rows on the same grid instead of ragged. */
 .mv-clip__here {
-  min-width: 104px;
+  min-width: 68px;
 }
 /* Tabular figures keep the number from shifting as it counts, which otherwise
    moves the buttons either side of it under the pointer mid-nudge. */
@@ -4349,7 +4372,9 @@ code {
   color: #fff;
 }
 
+/* Spans the whole overlay, under both columns. */
 .mv-clip-zoom {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 8px;
