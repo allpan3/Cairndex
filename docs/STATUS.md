@@ -195,20 +195,35 @@ where the playhead *had been*. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
 Tests run: **993 server** (21 new, including a real-ffmpeg case asserting an
-animated GIF of the requested width), **628 web** (51 new), **42 player e2e**
+animated GIF of the requested width), **643 web** (66 new), **42 player e2e**
 (8 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
 build`/clippy/fmt all clean. Verified against a real backend on a scratch
 library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
-42-frame GIF, and a 4 s one a 1.5 MB GIF, both with the artifact dropped after.
+42-frame GIF, a 4 s one a 1.5 MB GIF, and the dialog's own round trip at
+320px/15fps a 320×180, 75-frame file — all with the artifact dropped after.
 The out-of-bounds fix has a regression test confirmed to fail without it.
 
 **One pre-existing e2e failure, not from this branch:** `transparently
 re-attaches a fresh session when HLS segments fail` fails on the unmodified tree
 at `6523fec8` too (verified by stashing).
 
-**Known gaps / next:** size and frame-rate controls (owner deferred them; the
-API already takes `width`/`fps`, so it is client-only work); persistent A-B loop
-replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
+**Size and frame-rate controls followed (2026-08-15).** An options dialog on
+Save GIF…, in the contact sheet's shape — a dialog rather than more controls in
+the clip bar, since choosing a width does not need the frame on screen and the
+bar had just been trimmed. Width presets are filtered against the probed source
+so nothing on offer would upscale, with the withheld ones explained rather than
+silently absent; a source narrower than every preset is offered its own width.
+The output's real pixel size is shown (`scale=W:-2`, so the height is derived
+and even). **No byte-size estimate**: measured output ranged 15–31 KB/frame at
+480px on the same settings, so any number would be wrong by 2× as often as not.
+
+Worth knowing about the format: a GIF stores frame delays in *centiseconds*, so
+only rates dividing 100 are exact. Of the presets, 10 fps is; 12 plays at 12.5
+and 15 at 16.7 (measured on real output). The frame *count* is always what was
+asked — only the tempo rounds. Recorded in `clipExport.ts` rather than worked
+around, since it is the format's, not the pipeline's.
+
+**Known gaps / next:** persistent A-B loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
 been exercised on a packaged build — only the browser download has, since the
 Tauri shell cannot be driven here. The contact sheet still names its output
 `X.mp4 — contact sheet.jpg`; left alone as pre-existing rather than widened into.

@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { clipFileName, saveClipGif } from './clipExport'
+import {
+  DEFAULT_CLIP_WIDTH,
+  clipFileName,
+  clipWidthOptions,
+  defaultClipWidth,
+  outputHeight,
+  saveClipGif,
+} from './clipExport'
 
 const created = vi.fn()
 const polled = vi.fn()
@@ -138,6 +145,51 @@ test('saves under that name on desktop', async () => {
   isDesktop.mockReturnValue(true)
   await saveClipGif({ fileId: 'file-1', title: 'a/b:c*d?.mkv' }, RANGE, {}, vi.fn())
   expect(saveExport.mock.calls[0]?.[0]).toBe('a b c d.gif')
+})
+
+test('offers every width for a source big enough for all of them', () => {
+  expect(clipWidthOptions(1920)).toEqual([240, 320, 480, 720])
+  expect(clipWidthOptions(720)).toEqual([240, 320, 480, 720])
+})
+
+// Upscaling a GIF spends bytes on pixels the source never had.
+test('withholds widths above the source', () => {
+  expect(clipWidthOptions(640)).toEqual([240, 320, 480])
+  expect(clipWidthOptions(400)).toEqual([240, 320])
+})
+
+test('offers the source’s own even width when it is narrower than every preset', () => {
+  expect(clipWidthOptions(200)).toEqual([200])
+  expect(clipWidthOptions(201)).toEqual([200])
+  // Never below the server's own floor, even for a tiny source.
+  expect(clipWidthOptions(64)).toEqual([120])
+})
+
+test('offers everything when the source has not been probed', () => {
+  expect(clipWidthOptions(null)).toEqual([240, 320, 480, 720])
+  expect(clipWidthOptions(0)).toEqual([240, 320, 480, 720])
+})
+
+test('starts on the default width, or the largest still offered', () => {
+  expect(defaultClipWidth([240, 320, 480, 720])).toBe(DEFAULT_CLIP_WIDTH)
+  expect(defaultClipWidth([240, 320])).toBe(320)
+  expect(defaultClipWidth([200])).toBe(200)
+})
+
+// Mirrors ffmpeg's `scale=W:-2`: aspect preserved, height rounded even.
+test('derives the output height from the source aspect, always even', () => {
+  expect(outputHeight(480, 1920, 1080)).toBe(270)
+  expect(outputHeight(320, 1920, 1080)).toBe(180)
+  // 4:3 at 240 is 180; an odd result rounds to even rather than failing in the
+  // filter graph.
+  expect(outputHeight(240, 640, 480)).toBe(180)
+  expect(outputHeight(320, 1080, 1920)).toBe(568)
+})
+
+test('has no height to report for an unprobed source', () => {
+  expect(outputHeight(480, null, null)).toBeNull()
+  expect(outputHeight(480, 1920, null)).toBeNull()
+  expect(outputHeight(480, 0, 0)).toBeNull()
 })
 
 test('reports a failed download without throwing', async () => {
