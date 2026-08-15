@@ -108,6 +108,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Converting a bundle into a collection forgets that folder's stem level.** The
+  split it performs is per video subject, not by the dial's stem key — deliberately,
+  since a dial wide enough to merge everything would otherwise make "convert to
+  collection" produce a collection of one. But the dial was left reading its widest
+  beside rows the widest would never have produced: a folder split in two under a
+  setting saying those two match. The override is dropped, so the dial reads the
+  default that the split actually corresponds to, and Narrow/Widen still work from
+  there.
 - **Widening a folder no longer dissolves its collection.** Once a folder's files
   all matched, the suggester collapsed the folder into a single bundle named after
   the folder. That did three wrong things at once: it destroyed a collection the
