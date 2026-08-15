@@ -33,6 +33,7 @@ import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
 import { useClipLoop, useClipRange } from './player/useClipRange'
+import { MAX_CLIP_EXPORT_SECONDS, saveClipGif } from '../clipExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
@@ -244,6 +245,18 @@ export function ViewerShell({
   // File Browser path has no file id to export from.
   const clipAvailable = videoActive && fileId !== null
   useClipLoop(videoElement, clip.range, clip.loop && !clip.adjusting)
+
+  const exportClip = useCallback(() => {
+    if (!fileId || !clip.range) return
+    void saveClipGif(
+      { fileId, title: current?.title ?? title },
+      clip.range,
+      // Size and rate stay at the server's defaults for now; the controls are
+      // the next slice, and the API already takes both (plan 1 §10).
+      {},
+      setExportNotice,
+    )
+  }, [clip.range, current?.title, fileId, title])
   usePlaybackProgressReporter({
     bundleId,
     fileId,
@@ -490,19 +503,17 @@ export function ViewerShell({
       // folder (Settings → Exports) or asks via the native dialog. A browser
       // can only download, so it keeps the anchor.
       if (isDesktopHost()) {
-        void blob.arrayBuffer().then((buffer) => {
-          void getHostPlatform()
-            .saveExport(name, new Uint8Array(buffer))
-            .catch(() => {
-              // Fall back to a plain download rather than losing the frame.
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = name
-              a.click()
-              URL.revokeObjectURL(url)
-            })
-        })
+        void getHostPlatform()
+          .saveExport(name, blob)
+          .catch(() => {
+            // Fall back to a plain download rather than losing the frame.
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = name
+            a.click()
+            URL.revokeObjectURL(url)
+          })
         return
       }
       const url = URL.createObjectURL(blob)
@@ -783,6 +794,8 @@ export function ViewerShell({
           fileLoop={fileLoop}
           onFileLoop={setFileLoop}
           clip={clipAvailable ? clip : undefined}
+          onExportClip={exportClip}
+          maxExportSeconds={MAX_CLIP_EXPORT_SECONDS}
         />
       )}
 

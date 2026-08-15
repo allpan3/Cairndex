@@ -108,8 +108,7 @@ export async function saveContactSheet(
     })
     const name = `${safeName(target.title)} — contact sheet.jpg`
     if (isDesktopHost()) {
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      const saved = await getHostPlatform().saveExport(name, bytes)
+      const saved = await getHostPlatform().saveExport(name, blob)
       report(saved ? 'Contact sheet saved.' : null)
       return
     }

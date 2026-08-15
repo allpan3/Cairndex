@@ -201,11 +201,17 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   locateLibrary: (libraryId: string, libraryUuid: string) =>
     invoke<string | null>('locate_library_mapping', { libraryId, libraryUuid }),
   clearLibraryMapping: (libraryId: string) => invoke('clear_library_mapping', { libraryId }),
-  // Tauri serializes a Uint8Array as a number array over IPC; the shell writes it
-  // to the path the OS dialog returned. Suitable for the small artifacts M11
-  // generates (a capped GIF or a single contact sheet), not for streaming media.
-  saveExport: (suggestedName: string, bytes: Uint8Array) =>
-    invoke<string | null>('save_export_file', { suggestedName, bytes: Array.from(bytes) }),
+  // The artifact travels as Tauri's *raw* IPC body, with the suggested name in
+  // a header — percent-encoded, since a header value is ASCII-only and a
+  // display title is not. The bytes used to go as a JSON number array, which
+  // plan 1 §10 recorded as fine for a seam with no callers and unacceptable for
+  // a real export: it inflates a few-megabyte GIF into tens of megabytes of
+  // JSON, serialized on the main thread. The shell writes the body to the path
+  // the OS dialog returned.
+  saveExport: async (suggestedName: string, bytes: Blob) =>
+    invoke<string | null>('save_export_file', await bytes.arrayBuffer(), {
+      headers: { 'x-suggested-name': encodeURIComponent(suggestedName) },
+    }),
   getExportDir: () => invoke<string | null>('get_export_dir'),
   pickExportDir: () => invoke<string | null>('pick_export_dir'),
   clearExportDir: () => invoke<void>('clear_export_dir'),
