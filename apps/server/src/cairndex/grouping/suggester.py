@@ -229,6 +229,31 @@ class _StemKey:
         return " ".join(_normalized_stem(name, fold_rendition=True).split()[: self.depth])
 
 
+def stem_prefix_as_written(name: str, level: int, maximum: int) -> str:
+    """The leading part of ``name`` that a folder at ``level`` compares, verbatim.
+
+    Same boundaries as :meth:`_StemKey.of`, but *sliced out of* the filename rather
+    than rebuilt from its parts — so what comes back is text the owner will
+    recognise on disk (``ABC-123``) instead of the comparison key it is folded into
+    (``abc 123``). Only for showing a person what a dial position means; never for
+    comparing two names, which goes through ``_StemKey`` and nothing else.
+    """
+    stem = _stem(name)
+    if level <= 0:
+        return stem  # level 0 compares the complete stem, rendition tag included
+    folded = _fold_rendition_suffix(stem)
+    depth = max(1, maximum - level + 1)
+    parts = [part for part in _SUBJECT_DELIMITER.split(folded) if part]
+    if len(parts) <= depth:
+        return folded
+    # Each part located from where the previous one ended, so a segment that also
+    # appears earlier in the name cannot cut the prefix short.
+    end = 0
+    for part in parts[:depth]:
+        end = folded.index(part, end) + len(part)
+    return folded[:end]
+
+
 def max_stem_level(names: Iterable[str]) -> int:
     """The top of the stem dial for a folder holding ``names``.
 

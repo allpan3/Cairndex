@@ -4074,6 +4074,11 @@ export interface components {
             level: number;
             /** Max */
             max: number;
+            /**
+             * Stem
+             * @default
+             */
+            stem: string;
         };
         /** StemLevelUpdate */
         StemLevelUpdate: {

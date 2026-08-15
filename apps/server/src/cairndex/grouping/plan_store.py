@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from typing import TypedDict
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
@@ -37,6 +38,7 @@ from cairndex.grouping.suggester import (
     _roles_in_order,
     max_stem_level,
     split_for_collection,
+    stem_prefix_as_written,
 )
 from cairndex.grouping.suggester import (
     GroupingPlan as PlanData,
@@ -643,31 +645,50 @@ def _stored_stem_levels(plan: GroupingPlan, maxima: dict[str, int]) -> dict[str,
     return levels
 
 
-def stem_levels(plan: GroupingPlan) -> dict[str, dict[str, int]]:
+class StemDial(TypedDict):
+    """One folder's position on the stem dial, and what that position matches.
+
+    Declared rather than left as a loose dict so the route can hand it straight to
+    its response model: the three values are not the same type, and a bare
+    ``dict[str, int | str]`` makes every reader of any one of them ambiguous.
+    """
+
+    level: int
+    max: int
+    stem: str
+
+
+def stem_levels(plan: GroupingPlan) -> dict[str, StemDial]:
     """Each folder the plan represents, its stem level, and the top of its dial.
 
-    The maximum has to come from the server: it is the level at which every
-    filename in *that folder* is down to its first segment, so the client cannot
-    work it out without reimplementing the suggester's normalization.
+    All three come from the server for the same reason: they depend on the
+    suggester's normalization of that folder's own filenames, which the client
+    cannot reproduce without reimplementing it. The maximum is the level at which
+    every filename is down to its first segment. ``stem`` is what the folder is
+    matching on *now*, taken from one of its files and left exactly as written —
+    the review says that out loud, because "stem 2 of 3" told the owner nothing
+    (owner-reported, 2026-08-15).
     """
-    maxima = {
-        directory: max_stem_level(paths)
-        for directory, paths in _plan_filenames_by_directory(plan).items()
-    }
+    names = _plan_filenames_by_directory(plan)
+    maxima = {directory: max_stem_level(paths) for directory, paths in names.items()}
     stored = _stored_stem_levels(plan, maxima)
-    return {
-        directory: {
-            "level": stored.get(directory, DEFAULT_STEM_LEVEL),
-            # An override on a folder no row still holds files from keeps its own
-            # level as the top of the dial, so the reported maximum is never
-            # below the level actually in force.
-            "max": max(
-                maxima.get(directory, DEFAULT_STEM_LEVEL),
-                stored.get(directory, DEFAULT_STEM_LEVEL),
-            ),
-        }
-        for directory in sorted({*maxima, *stored})
-    }
+    dials: dict[str, StemDial] = {}
+    for directory in sorted({*maxima, *stored}):
+        level = stored.get(directory, DEFAULT_STEM_LEVEL)
+        # An override on a folder no row still holds files from keeps its own
+        # level as the top of the dial, so the reported maximum is never below
+        # the level actually in force.
+        maximum = max(maxima.get(directory, DEFAULT_STEM_LEVEL), level)
+        # Sorted, so the folder shows the same example every time it is asked.
+        example = min(names.get(directory, []), default=None)
+        dials[directory] = StemDial(
+            level=level,
+            max=maximum,
+            stem=""
+            if example is None
+            else stem_prefix_as_written(example.rsplit("/", 1)[-1], level, maximum),
+        )
+    return dials
 
 
 def set_directory_stem_level(

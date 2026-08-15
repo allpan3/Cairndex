@@ -256,17 +256,49 @@ const CURRENT_COLLECTIONS: CollectionRead[] = [
  */
 const STEM_DIAL_MAX = 4
 
+/** What the review says after widening the fixture folder one rung.
+ *
+ * The stem, not the dial position: "now matches at stem 2 of 4" named a rung on a
+ * ladder whose length depends on the folder's own filenames, so it told the owner
+ * nothing about what their click did (owner-reported, 2026-08-15).
+ */
+const NOTICE_AFTER_WIDEN = 'SRCV-005 now matches on “SRCV-005” — 1 bundle.'
+
+/** What the server reports a folder is matching on, as written on its files.
+ *
+ * Mirrors `suggester.stem_prefix_as_written` closely enough to give the review
+ * realistic text: the first `max - level + 1` segments of a filename, sliced out
+ * rather than rebuilt, so separators stay as they are. The real one folds
+ * rendition tags too; a fixture does not need to.
+ */
+function stemPrefix(name: string, level: number, max: number): string {
+  const stem = name.replace(/\.[^.]*$/, '')
+  if (level <= 0) return stem
+  const parts = stem.split(/[-._\s]+/).filter(Boolean)
+  const depth = Math.max(1, max - level + 1)
+  if (parts.length <= depth) return stem
+  let end = 0
+  for (const part of parts.slice(0, depth)) end = stem.indexOf(part, end) + part.length
+  return stem.slice(0, end)
+}
+
 /** The dial map the server sends: one entry per folder the plan's files live in. */
 function stemDials(
   proposals: GroupingProposal[],
   levels: Record<string, number>,
-): Record<string, { level: number; max: number }> {
-  const dials: Record<string, { level: number; max: number }> = {}
+): Record<string, { level: number; max: number; stem: string }> {
+  const dials: Record<string, { level: number; max: number; stem: string }> = {}
+  const first: Record<string, string> = {}
   for (const proposal of proposals) {
     for (const file of proposal.files) {
-      const directory = file.relative_path.split('/').slice(0, -1).join('/')
+      const segments = file.relative_path.split('/')
+      const directory = segments.slice(0, -1).join('/')
+      const name = segments[segments.length - 1] ?? ''
       const level = levels[directory] ?? 1
-      dials[directory] = { level, max: Math.max(STEM_DIAL_MAX, level) }
+      const max = Math.max(STEM_DIAL_MAX, level)
+      // Sorted, like the server's, so a folder reports the same example each time.
+      if (first[directory] === undefined || name < first[directory]) first[directory] = name
+      dials[directory] = { level, max, stem: stemPrefix(first[directory], level, max) }
     }
   }
   return dials
@@ -1000,11 +1032,11 @@ test('widens one folder in place, one rung at a time', async () => {
   await screen.findAllByRole('checkbox')
   fireEvent.click(dialButton('Widen', 'SRCV-005'))
 
-  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
+  await screen.findByText(NOTICE_AFTER_WIDEN)
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
   // Mid-dial, so it can be reached again — the point of a dial over three stops.
   expect(dialButton('Widen', 'SRCV-005')).toBeEnabled()
-  expect(screen.getByText('stem 2 of 4')).toBeInTheDocument()
+  expect(dialButton('Narrow', 'SRCV-005')).toBeEnabled()
   // One directory's level, sent to the in-place endpoint — no plan regeneration.
   const put = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/stem-levels') && init?.method === 'PUT',
@@ -1650,14 +1682,19 @@ test('a read-only existing-collection row offers no folder actions', async () =>
   ).toBeNull()
 })
 
-test('the top of the dial states the level and explains why it stops', async () => {
+test('the top of the dial explains why it stops, without a label that moves', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': STEM_DIAL_MAX }))
   renderReview()
 
-  // The value was inferable only from which end was greyed out, and the default
-  // was unreachable from either end.
   await screen.findAllByRole('checkbox')
-  expect(screen.getByText(`stem ${STEM_DIAL_MAX} of ${STEM_DIAL_MAX}`)).toBeInTheDocument()
+  // Two buttons and nothing else. A "stem N of M" label changed width with its
+  // numbers and Reset appeared only away from the default, and the row is
+  // right-aligned — so both buttons slid sideways under a cursor about to click one
+  // (owner-reported, 2026-08-15). Fixed labels cannot move.
+  expect(screen.queryByText(/stem \d+ of \d+/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /^Reset the filename match/ }),
+  ).not.toBeInTheDocument()
   const widen = dialButton('Widen', 'SRCV-005')
   expect(widen).toBeDisabled()
   expect(widen).toHaveAttribute(
@@ -1665,7 +1702,6 @@ test('the top of the dial states the level and explains why it stops', async () 
     'SRCV-005 is already matched on the first part of each filename — there is nothing left to widen',
   )
   expect(dialButton('Narrow', 'SRCV-005')).toBeEnabled()
-  expect(dialButton('Reset', 'SRCV-005')).toBeEnabled()
 })
 
 test('the bottom of the dial explains itself and offers no further step', async () => {
@@ -2016,7 +2052,7 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   await screen.findByText('1 bundle selected')
 
   fireEvent.click(dialButton('Widen', 'SRCV-005'))
-  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
+  await screen.findByText(NOTICE_AFTER_WIDEN)
 
   // The adjusted directory's row returns as a fresh (checked) suggestion; the
   // deselection elsewhere survives.
@@ -2038,7 +2074,7 @@ test('a conversion elsewhere survives Widen', async () => {
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
 
   fireEvent.click(dialButton('Widen', 'SRCV-005'))
-  await screen.findByText('SRCV-005 now matches at stem 2 of 4.')
+  await screen.findByText(NOTICE_AFTER_WIDEN)
 
   // Still a collection, child row intact, and the way back still offered.
   expect(screen.getByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
