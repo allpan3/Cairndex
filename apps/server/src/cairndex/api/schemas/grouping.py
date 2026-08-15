@@ -166,3 +166,6 @@ class ApplyResultRead(BaseModel):
     files_added_to_bundles: int
     subtitles_linked: int
     conflicts: list[ApplyConflictRead]
+    # How many suggestions the plan still holds. Zero means it is finished; anything
+    # else means the client can carry on reviewing the same plan.
+    proposals_remaining: int = 0

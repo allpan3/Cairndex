@@ -1711,32 +1711,6 @@ export function GroupingReview({
     setNotice(message)
   }
 
-  /** Move on to the plan that follows an apply, keeping what the owner skipped.
-   *
-   * Deliberately not ``finishGeneration``: that clears the deselections, because
-   * "Suggest grouping" is an explicit fresh start. Here they are the whole point —
-   * the rows left over *are* the ones the owner chose not to accept, and
-   * re-checking them would put a second Accept one click away from confirming
-   * exactly what was just declined. ``deselectedKeys`` is keyed by content for
-   * this reason, so it survives the new plan's fresh ids.
-   */
-  const continueAfterApply = (fresh: GroupingPlan, r: GroupingApplyResult) => {
-    setChosenId(fresh.id)
-    setResult(null)
-    setEditing(null)
-    setRenameError(null)
-    setDragItem(null)
-    setDropSlot(null)
-    destination.reset()
-    setCollapsedKeys(null)
-    setFileOverrides(new Map())
-    setOpenRollups(new Set())
-    const left = fresh.proposals.filter((proposal) => proposal.files.length > 0).length
-    setNotice(
-      `${appliedSummary(r)} ${left} ${left === 1 ? 'suggestion' : 'suggestions'} left to review.`,
-    )
-  }
-
   // Carry the owner's per-folder levels into the fresh plan; the response's dial
   // map reports a maximum too, which POST does not take.
   const onGenerate = () =>
@@ -1853,23 +1827,32 @@ export function GroupingReview({
             setResult(r)
             return
           }
-          // Stay in the pane and pick up the remaining work. Applying confirms the
-          // accepted bundles, so they leave the plan; whatever was skipped is still
-          // unbundled and comes back in a fresh one. Closing on every accept meant
-          // reopening the dialog to carry on with a plan reviewed in batches
-          // (owner-requested, 2026-08-13).
-          generate.mutate(stemLevelInput(plan.data?.stem_levels ?? {}), {
-            onSuccess: (fresh) => {
-              if (fresh.proposals.length === 0) {
-                setResult(r)
-                return
-              }
-              continueAfterApply(fresh, r)
-            },
-            // If the fresh suggestion fails, fall back to the summary rather than
-            // leaving the owner on a plan that has already been applied.
-            onError: () => setResult(r),
-          })
+          // Nothing left: the plan is finished, so show what it did.
+          if (r.proposals_remaining === 0) {
+            setResult(r)
+            return
+          }
+          // Otherwise carry on in the *same* plan. Accepting a selection retires
+          // only the rows it confirmed and leaves the rest untouched, so there is
+          // nothing to fetch and nothing to rebuild: the surviving rows keep their
+          // ids, which is what lets the collapsed folders and open runs survive too.
+          //
+          // This used to generate a whole fresh plan, because a partial accept
+          // closed the one being reviewed. That was a second round trip after the
+          // apply — 851 ms on top of 942 ms — and it returned an entirely new set of
+          // proposal ids, so every fold reset and the tree jumped under the owner
+          // (owner-reported, 2026-08-15).
+          setEditing(null)
+          setRenameError(null)
+          setDragItem(null)
+          setDropSlot(null)
+          destination.reset()
+          setFileOverrides(new Map())
+          setNotice(
+            `${appliedSummary(r)} ${r.proposals_remaining} ${
+              r.proposals_remaining === 1 ? 'suggestion' : 'suggestions'
+            } left to review.`,
+          )
         },
       },
     )
