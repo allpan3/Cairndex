@@ -41,17 +41,44 @@ export const CLIP_WIDTHS = [
 export const DEFAULT_CLIP_WIDTH = 480
 
 /**
- * Frame rates offered, all inside the server's 5–15 bound.
+ * Frame rates offered — **only rates a GIF can actually hold**.
  *
- * A GIF stores each frame's delay in *centiseconds*, so only rates dividing 100
- * are exact: of these, 10 fps is, and the others land on the nearest whole
- * centisecond — 12 plays back at 12.5, 15 at 16.7 (measured). That is inherent
- * to the format rather than to this pipeline, and the frame *count* is always
- * what was asked for; it is only the playback tempo that rounds.
+ * The format stores each frame's delay as a whole number of centiseconds, so
+ * the only representable rates are `100/n`. Everything else has its delay
+ * rounded and plays at a speed nobody asked for: 12 fps becomes 12.5, 15
+ * becomes 14.29, 24 becomes 25, 30 becomes 33.33 — all measured off the frame
+ * control blocks of real output.
+ *
+ * Offering those anyway would be offering a lie, so the ladder is the exact
+ * ones. 50 is the top: its delay is 2cs, and 1cs is the value historic viewers
+ * reinterpret as 10cs.
  */
-export const CLIP_FPS_CHOICES = [5, 6, 8, 10, 12, 15] as const
-/** The one choice that plays back at exactly the rate it was asked for. */
-export const DEFAULT_CLIP_FPS = 10
+export const CLIP_FPS_CHOICES = [5, 10, 20, 25, 50] as const
+/** Exact, visibly smoother than 10, and half the frames of 50. */
+export const DEFAULT_CLIP_FPS = 20
+
+/**
+ * The rates worth offering for one source.
+ *
+ * Asking for more frames a second than the source has produces duplicates, not
+ * smoother motion — measured: a 25 fps source encoded at 50 gained 50 frames
+ * and 1 KB, because a repeated frame costs almost nothing to store and shows
+ * nothing new. Same rule as the widths, one axis over.
+ */
+export function clipFpsOptions(sourceFps: number | null | undefined): WheelOption<number>[] {
+  const rates = CLIP_FPS_CHOICES.filter(
+    (value) => !sourceFps || sourceFps <= 0 || value <= Math.round(sourceFps),
+  )
+  // A source slower than every rung still needs one choice.
+  const values = rates.length > 0 ? rates : [CLIP_FPS_CHOICES[0]]
+  return values.map((value) => ({ value, label: `${value} fps` }))
+}
+
+/** The rate to start on: the default when offered, else the fastest that is. */
+export function defaultClipFps(options: WheelOption<number>[]): number {
+  const preferred = options.find((option) => option.value === DEFAULT_CLIP_FPS)
+  return preferred?.value ?? options[options.length - 1]?.value ?? DEFAULT_CLIP_FPS
+}
 
 /** `media/exports.py` bounds, mirrored (see `MAX_CLIP_EXPORT_SECONDS`). */
 const MIN_SERVER_WIDTH = 120
@@ -128,6 +155,8 @@ export interface ClipExportTarget {
   /** Probed source dimensions, for the offered widths and the output height. */
   sourceWidth?: number | null
   sourceHeight?: number | null
+  /** Probed source frame rate, so no rate above it is offered. */
+  sourceFps?: number | null
 }
 
 export interface ClipExportRange {

@@ -5,7 +5,9 @@ import {
   DEFAULT_CLIP_FPS,
   DEFAULT_CLIP_WIDTH,
   clipFileName,
+  clipFpsOptions,
   clipWidthOptions,
+  defaultClipFps,
   defaultClipWidth,
   isWidthCapped,
   outputHeight,
@@ -212,13 +214,39 @@ test('starts on the default width, or the largest still offered', () => {
   expect(defaultClipWidth(clipWidthOptions(300))).toBe(300)
 })
 
-// A GIF's frame delay is stored in whole centiseconds, so only rates dividing
-// 100 play back at the rate they were asked for. 10 is the one preset that
-// does; 12 becomes 12.5 and 15 becomes 16.7, both measured on real output.
-test('defaults to the one frame rate a GIF can represent exactly', () => {
-  expect(DEFAULT_CLIP_FPS).toBe(10)
-  expect(100 % DEFAULT_CLIP_FPS).toBe(0)
+// A GIF's frame delay is stored in whole centiseconds, so the only rates it
+// can represent are 100/n. Every rung must be one of those, or the clip plays
+// at a speed nobody asked for: 12 becomes 12.5, 15 becomes 14.29, 30 becomes
+// 33.33 — all measured off real output's frame control blocks.
+test('offers only rates a GIF can hold exactly', () => {
+  for (const rate of CLIP_FPS_CHOICES) {
+    expect(100 % rate, `${rate} fps is not a whole number of centiseconds`).toBe(0)
+  }
   expect(CLIP_FPS_CHOICES).toContain(DEFAULT_CLIP_FPS)
+  // 50 fps is a 2cs delay; 1cs is the value historic viewers reinterpret.
+  expect(Math.max(...CLIP_FPS_CHOICES)).toBe(50)
+})
+
+// More frames a second than the source has produces duplicates, not smoother
+// motion — measured: a 25 fps source at 50 gained 50 frames and 1 KB.
+test('withholds rates the source cannot supply', () => {
+  const rates = (source: number | null) => clipFpsOptions(source).map((option) => option.value)
+  expect(rates(25)).toEqual([5, 10, 20, 25])
+  expect(rates(30)).toEqual([5, 10, 20, 25])
+  expect(rates(60)).toEqual([5, 10, 20, 25, 50])
+  expect(rates(23.976)).toEqual([5, 10, 20])
+  // Unprobed: nothing to filter against.
+  expect(rates(null)).toEqual([5, 10, 20, 25, 50])
+  // Slower than every rung, but a choice is still needed.
+  expect(rates(2)).toEqual([5])
+})
+
+test('starts on the default rate, or the fastest still offered', () => {
+  expect(defaultClipFps(clipFpsOptions(30))).toBe(DEFAULT_CLIP_FPS)
+  expect(defaultClipFps(clipFpsOptions(null))).toBe(DEFAULT_CLIP_FPS)
+  // Below the default, the fastest the source can supply.
+  expect(defaultClipFps(clipFpsOptions(12))).toBe(10)
+  expect(defaultClipFps(clipFpsOptions(2))).toBe(5)
 })
 
 // Mirrors ffmpeg's `scale=W:-2`: aspect preserved, height rounded even.
