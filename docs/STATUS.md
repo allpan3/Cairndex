@@ -118,11 +118,23 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: clip range picker and GIF export (2026-08-15)
+## Merged: clip range picker and GIF export (2026-08-15)
 
-Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`. Owner request;
-this is plan 1 **§10 / M11**'s GIF-snippet half, plus the range picker the A-B
-loop was moved into M11 to become (owner, 2026-07-11).
+Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`, **merged**
+after an owner pass. Fourteen commits. This is plan 1 **§10 / M11**'s
+GIF-snippet half, plus the range picker the A-B loop was moved into M11 to
+become (owner, 2026-07-11).
+
+**One thing the owner should still check:** the desktop app was not exercised
+at all. The web behaviour is verified end to end, but `save_export_file` moved
+from a JSON number array to a raw Tauri IPC body, and *that hop* — the
+JavaScript `invoke(cmd, arrayBuffer, {headers})` reaching Rust as
+`InvokeBody::Raw` — can only run inside a real shell. Both sides are tested up
+to the boundary: 108 Rust tests including the body/header extraction and its
+refusal of a JSON body, and the web side asserts it hands over a `Blob`. If the
+hop itself is wrong, every desktop export fails at once and visibly (the
+browser download path is unaffected). Contact sheets and snapshots ride the
+same seam, so they are in the same position.
 
 **Two owner decisions shaped it.** Both mechanisms for precision, not one — a
 seek-bar band with handles *and* a magnified track — but no editable timestamp
@@ -194,9 +206,9 @@ state fed by `timeupdate`, so it lagged the element by a render and could record
 where the playhead *had been*. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
-Tests run: **996 server** (24 new, including a real-ffmpeg case asserting an
-animated GIF of the requested width), **669 web** (92 new), **43 player e2e**
-(9 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
+Tests run: **998 server** (26 new, including a real-ffmpeg case asserting an
+animated GIF of the requested width), **677 web** (100 new), **120 e2e**
+(9 new), **108 desktop Rust** (4 new). ruff/mypy/eslint/tsc/prettier/`npm run
 build`/clippy/fmt all clean. Verified against a real backend on a scratch
 library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
 42-frame GIF, a 4 s one a 1.5 MB GIF, the dialog's own round trip at
@@ -207,7 +219,10 @@ The out-of-bounds fix has a regression test confirmed to fail without it.
 
 **One pre-existing e2e failure, not from this branch:** `transparently
 re-attaches a fresh session when HLS segments fail` fails on the unmodified tree
-at `6523fec8` too (verified by stashing).
+at `6523fec8` too (verified by stashing). Separately, `reports real MP4 progress
+and resumes on reopen` times out when the whole e2e suite runs at full worker
+count; it passes alone and at `--workers=4`, so it is contention rather than a
+regression — but it is a flake worth watching.
 
 **Size and frame-rate controls followed (2026-08-15).** An options dialog on
 Save GIF…, in the contact sheet's shape — a dialog rather than more controls in

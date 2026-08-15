@@ -111,15 +111,136 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   single ffmpeg call — one storyboard file over a network share is about half a
   minute — stops there instead of at the next checkpoint behind it.
 
+
 ### Changed
 
-- **`just` on its own now names the three commands you need** rather than dumping
-  thirty-two, and `just --list` groups the rest into start / check / docker /
-  build. Four recipes are gone: `just sidecar` folded into `build-desktop`, its
-  only caller; `just build-web` folded into `just check-web`, which type-checked
-  the project references without ever proving the bundle builds; `just test`
-  duplicated `just check`; and `just docker-prod-down` was a one-line wrapper now
-  named in `docker-prod`'s own help.
+- **Export artifacts now reach the desktop shell as raw bytes rather than as
+  JSON.** `save_export_file` took its bytes as a JSON number array, which turned
+  a few-megabyte artifact into tens of megabytes serialized on the main thread —
+  acceptable while the seam had no callers, not once a real export used it. The
+  bytes travel as Tauri's raw IPC body with the suggested name in a
+  percent-encoded header; the destination still comes only from the OS dialog.
+  Contact sheets and snapshots take the same path.
+- **A bundle is named by the shortest prefix its files share.** A release video
+  and its cover carry the release's own identifier, so a folder holding
+  `n0203 - a long title.mp4` and `n0203.jpg` is now "n0203" rather than the
+  video's whole filename. Sidecars join the comparison whenever there is at most
+  one video; with several videos they are still excluded, because a cover named
+  for the folder would drag the shared prefix shorter than the thing it names.
+  Files sharing no prefix are still named after the video.
+- **The folder's Split/Merge actions name the current matching mode and can
+  reset to balanced.** The mode used to sit beside the old icon pair and nowhere
+  else, so moving those into the row menu left it inferable only from which end
+  was greyed out — and balanced, previously a directly selectable state, was
+  unreachable from either end.
+- **Grouping review shows each suggestion's confidence instead of filtering by
+  it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
+  suggester was sure about and wrong about — was not merely unflagged but
+  actively hidden from the view that claimed to show what needed deciding, and
+  the rows that remained carried no signal at all. Every row now states its own
+  band (matched / likely / guessed), the guessed ones keep their warm edge and
+  reason, the toolbar counts them, and nothing is hidden.
+- **Bundle and collection can always be converted into each other.** The client
+  used to withhold the conversion from a single-subject bundle already inside a
+  collection for its own folder — which is exactly the row an owner reaches for
+  it on, a folder holding one release today that should be a collection. The
+  server's bound is now whether the conversion renames anything rather than
+  where the row sits, so a folder-named bundle becomes a folder-named collection
+  holding a release named after itself, and only the conversion that would
+  change no name is refused. A row whose edits are all unavailable now opens an
+  empty menu saying so, rather than rendering no menu button at all.
+
+- **Runs of identical suggestions collapse to one line, and the review can be
+  driven from the keyboard.** A folder of numbered clips produced a row each,
+  all treated identically by the suggester; three or more in a row now read as
+  "SET-025-01 … SET-025-04 · 4 bundles, same shape · each 2 files · video,
+  image", with one checkbox for the run and "Show all 4" when one needs a closer
+  look. Suggestions the suggester is unsure about are never folded away, and
+  they break a run rather than hiding inside it. The tree is also a single tab
+  stop now: arrows move between rows, left and right fold, space accepts or
+  skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
+  footer.
+- **A grouping row's controls are named rather than glyphs.** They were four
+  icon-only buttons — a refresh glyph, an ungroup glyph, and a `>< <>` pair —
+  rendered after variable-length text, so they landed at a different x on every
+  row and were discoverable only by hovering for a tooltip. Every one of them now
+  either says what it does or sits where its meaning is already shown; the
+  tooltip machinery that existed to caption them is gone with them. See the two
+  entries above for where each ended up.
+- **The grouping review's chrome stopped competing with its contents.** The
+  three-line preamble folds behind a one-line summary, the dialog holds a fixed
+  height so folding a row no longer slides the footer under the pointer,
+  notices occupy a reserved line rather than pushing the list down mid-click,
+  and Accept names what it will do — "Accept 3 bundles + 1 addition" — with the
+  skipped rows spelled out beside it rather than left unexplained.
+- **The grouping review now leads with what needs deciding.** The suggester
+  already scores its own certainty, so the toolbar counts the suggestions it is
+  unsure about and can filter to just those; a flagged row carries a warm left
+  edge and says why it was grouped. Filtering is view-only — selection and
+  Accept still cover the whole plan. Bundle rows state what they contain
+  ("3 files · video, subtitle, image") with the file list one click away rather
+  than open by default, and a nested row's placement control drops its printed
+  destination, which only ever repeated the row it is drawn inside. Root rows
+  keep the full label, every control keeps its accessible name, and a file drag
+  reveals every list so nothing becomes an invisible drop target.
+- **Grouping destinations now use a collection tree instead of a repeated-path
+  dropdown.** The proposal row shows only its direct destination, while the
+  bounded picker mirrors the collection hierarchy with indentation and
+  independently foldable branches. Search keeps pinyin matching and adds only
+  the direct parent needed to disambiguate a result; full paths remain available
+  to assistive technology and as tooltips without consuming every visible row.
+- **Job progress moved to the bottom of the sidebar, beside the file-transfer
+  indicator, and survives a page refresh.** It used to sit under the Update
+  button that started it and vanish on reload, which is misleading twice over:
+  these jobs outlive that button — a storyboard pass keeps running after Update
+  reports done — and the work continues whether or not the page that started it
+  is still open. **Every running job is now shown, not just the newest**, since
+  scan, probe, thumbnail and storyboard jobs overlap and a single slot hid
+  whichever lost.
+- **Release notes come from the changelog rather than the pull-request list.**
+  GitHub's generated notes describe a release only when every change arrived as
+  a PR; v0.1.1 was mostly merged directly onto `main` after the repository was
+  recreated, so they named one PR for a release carrying a feature, eleven fixes
+  and a breaking change, and the notes had to be rewritten by hand. The release
+  body is now the install/licensing preamble plus that version's own changelog
+  section, extracted by `infra/release_notes.py`. A missing section fails the
+  release job — the procedure already said to move `Unreleased` under the new
+  version before tagging, and this is what makes forgetting it visible while it
+  can still be fixed.
+
+- **Storyboard generation no longer decodes every frame of every video.** The
+  sampling filter it used (`fps=1/n`) forces ffmpeg to decode a video linearly
+  from start to finish, so generating trickplay sheets cost a full decode per
+  file and a full read of every video in the library — which is why an owner's
+  run over a library on a network share took as long as it did. Sampling now
+  decodes **only keyframes** (`-skip_frame nokey`). Measured on 5-minute 720p
+  fixtures: **2.9× faster** on an H.264 source keyed every 2s (producing the
+  identical 150 tiles), **6.2×** on one keyed every 10s, and **13.4×** on HEVC —
+  the harder the video is to decode, the more this saves, and it holds the whole
+  library's read down to one sequential pass per file. Seeking to each cue
+  instead was measured too and rejected: storyboard cues are spaced about as far
+  apart as a keyframe, so each seek re-reads a group its neighbours already read
+  and the whole run came out *3× slower* than the full decode it replaced.
+  (Contact sheets sample far more sparsely and correctly still seek.) **On a
+  library over a network share, expect the run to finish at the share's read
+  speed rather than in a fraction of the old time**: skipping the decode does
+  not skip the read — ffmpeg still streams each file once — so the transfer is
+  now the whole cost, where before it was hidden behind decoding.
+- **A storyboard cue now states the time of the frame it is actually showing.**
+  Tiles land on the keyframe at or before each sample point, so a cue can cover
+  an uneven slice of the timeline — the VTT says which slice rather than
+  claiming an exact grid it did not sample. Scrubbing is therefore only as fine
+  as the source's keyframes: a video keyed every 10s gets a tile every 10s where
+  it would previously have had one every 2s. Sheets get correspondingly smaller.
+  A video whose keyframes cannot describe it at all — a single-keyframe encode —
+  still gets one full decode rather than a one-tile storyboard. Set
+  `CAIRNDEX_STORYBOARD_SAMPLING=exact` to decode in full everywhere, which is
+  only worth it for a local library.
+- **Storyboard cache format v3.** Existing sheets stay in place but are ignored,
+  as with any format change; one Update/storyboards run regenerates them. The
+  sampling mode is part of the cache key too, so switching it retires cached
+  sheets rather than leaving a library holding a mix of two qualities.
+
 
 ### Fixed
 
@@ -614,133 +735,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   doing** — "Discovering files", "Reconciling moves", "Generating thumbnails" —
   with a count when the work has one.
 
-### Changed
-- **A bundle is named by the shortest prefix its files share.** A release video
-  and its cover carry the release's own identifier, so a folder holding
-  `n0203 - a long title.mp4` and `n0203.jpg` is now "n0203" rather than the
-  video's whole filename. Sidecars join the comparison whenever there is at most
-  one video; with several videos they are still excluded, because a cover named
-  for the folder would drag the shared prefix shorter than the thing it names.
-  Files sharing no prefix are still named after the video.
-- **The folder's Split/Merge actions name the current matching mode and can
-  reset to balanced.** The mode used to sit beside the old icon pair and nowhere
-  else, so moving those into the row menu left it inferable only from which end
-  was greyed out — and balanced, previously a directly selectable state, was
-  unreachable from either end.
-- **Grouping review shows each suggestion's confidence instead of filtering by
-  it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
-  suggester was sure about and wrong about — was not merely unflagged but
-  actively hidden from the view that claimed to show what needed deciding, and
-  the rows that remained carried no signal at all. Every row now states its own
-  band (matched / likely / guessed), the guessed ones keep their warm edge and
-  reason, the toolbar counts them, and nothing is hidden.
-- **Bundle and collection can always be converted into each other.** The client
-  used to withhold the conversion from a single-subject bundle already inside a
-  collection for its own folder — which is exactly the row an owner reaches for
-  it on, a folder holding one release today that should be a collection. The
-  server's bound is now whether the conversion renames anything rather than
-  where the row sits, so a folder-named bundle becomes a folder-named collection
-  holding a release named after itself, and only the conversion that would
-  change no name is refused. A row whose edits are all unavailable now opens an
-  empty menu saying so, rather than rendering no menu button at all.
-
-- **Export artifacts now reach the desktop shell as raw bytes rather than as
-  JSON.** `save_export_file` took its bytes as a JSON number array, which turned
-  a few-megabyte artifact into tens of megabytes serialized on the main thread —
-  acceptable while the seam had no callers, not once a real export used it. The
-  bytes travel as Tauri's raw IPC body with the suggested name in a
-  percent-encoded header; the destination still comes only from the OS dialog.
-  Contact sheets and snapshots take the same path.
-- **Runs of identical suggestions collapse to one line, and the review can be
-  driven from the keyboard.** A folder of numbered clips produced a row each,
-  all treated identically by the suggester; three or more in a row now read as
-  "SET-025-01 … SET-025-04 · 4 bundles, same shape · each 2 files · video,
-  image", with one checkbox for the run and "Show all 4" when one needs a closer
-  look. Suggestions the suggester is unsure about are never folded away, and
-  they break a run rather than hiding inside it. The tree is also a single tab
-  stop now: arrows move between rows, left and right fold, space accepts or
-  skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
-  footer.
-- **A grouping row's controls are named rather than glyphs.** They were four
-  icon-only buttons — a refresh glyph, an ungroup glyph, and a `>< <>` pair —
-  rendered after variable-length text, so they landed at a different x on every
-  row and were discoverable only by hovering for a tooltip. Every one of them now
-  either says what it does or sits where its meaning is already shown; the
-  tooltip machinery that existed to caption them is gone with them. See the two
-  entries above for where each ended up.
-- **The grouping review's chrome stopped competing with its contents.** The
-  three-line preamble folds behind a one-line summary, the dialog holds a fixed
-  height so folding a row no longer slides the footer under the pointer,
-  notices occupy a reserved line rather than pushing the list down mid-click,
-  and Accept names what it will do — "Accept 3 bundles + 1 addition" — with the
-  skipped rows spelled out beside it rather than left unexplained.
-- **The grouping review now leads with what needs deciding.** The suggester
-  already scores its own certainty, so the toolbar counts the suggestions it is
-  unsure about and can filter to just those; a flagged row carries a warm left
-  edge and says why it was grouped. Filtering is view-only — selection and
-  Accept still cover the whole plan. Bundle rows state what they contain
-  ("3 files · video, subtitle, image") with the file list one click away rather
-  than open by default, and a nested row's placement control drops its printed
-  destination, which only ever repeated the row it is drawn inside. Root rows
-  keep the full label, every control keeps its accessible name, and a file drag
-  reveals every list so nothing becomes an invisible drop target.
-- **Grouping destinations now use a collection tree instead of a repeated-path
-  dropdown.** The proposal row shows only its direct destination, while the
-  bounded picker mirrors the collection hierarchy with indentation and
-  independently foldable branches. Search keeps pinyin matching and adds only
-  the direct parent needed to disambiguate a result; full paths remain available
-  to assistive technology and as tooltips without consuming every visible row.
-- **Job progress moved to the bottom of the sidebar, beside the file-transfer
-  indicator, and survives a page refresh.** It used to sit under the Update
-  button that started it and vanish on reload, which is misleading twice over:
-  these jobs outlive that button — a storyboard pass keeps running after Update
-  reports done — and the work continues whether or not the page that started it
-  is still open. **Every running job is now shown, not just the newest**, since
-  scan, probe, thumbnail and storyboard jobs overlap and a single slot hid
-  whichever lost.
-- **Release notes come from the changelog rather than the pull-request list.**
-  GitHub's generated notes describe a release only when every change arrived as
-  a PR; v0.1.1 was mostly merged directly onto `main` after the repository was
-  recreated, so they named one PR for a release carrying a feature, eleven fixes
-  and a breaking change, and the notes had to be rewritten by hand. The release
-  body is now the install/licensing preamble plus that version's own changelog
-  section, extracted by `infra/release_notes.py`. A missing section fails the
-  release job — the procedure already said to move `Unreleased` under the new
-  version before tagging, and this is what makes forgetting it visible while it
-  can still be fixed.
-
-- **Storyboard generation no longer decodes every frame of every video.** The
-  sampling filter it used (`fps=1/n`) forces ffmpeg to decode a video linearly
-  from start to finish, so generating trickplay sheets cost a full decode per
-  file and a full read of every video in the library — which is why an owner's
-  run over a library on a network share took as long as it did. Sampling now
-  decodes **only keyframes** (`-skip_frame nokey`). Measured on 5-minute 720p
-  fixtures: **2.9× faster** on an H.264 source keyed every 2s (producing the
-  identical 150 tiles), **6.2×** on one keyed every 10s, and **13.4×** on HEVC —
-  the harder the video is to decode, the more this saves, and it holds the whole
-  library's read down to one sequential pass per file. Seeking to each cue
-  instead was measured too and rejected: storyboard cues are spaced about as far
-  apart as a keyframe, so each seek re-reads a group its neighbours already read
-  and the whole run came out *3× slower* than the full decode it replaced.
-  (Contact sheets sample far more sparsely and correctly still seek.) **On a
-  library over a network share, expect the run to finish at the share's read
-  speed rather than in a fraction of the old time**: skipping the decode does
-  not skip the read — ffmpeg still streams each file once — so the transfer is
-  now the whole cost, where before it was hidden behind decoding.
-- **A storyboard cue now states the time of the frame it is actually showing.**
-  Tiles land on the keyframe at or before each sample point, so a cue can cover
-  an uneven slice of the timeline — the VTT says which slice rather than
-  claiming an exact grid it did not sample. Scrubbing is therefore only as fine
-  as the source's keyframes: a video keyed every 10s gets a tile every 10s where
-  it would previously have had one every 2s. Sheets get correspondingly smaller.
-  A video whose keyframes cannot describe it at all — a single-keyframe encode —
-  still gets one full decode rather than a one-tile storyboard. Set
-  `CAIRNDEX_STORYBOARD_SAMPLING=exact` to decode in full everywhere, which is
-  only worth it for a local library.
-- **Storyboard cache format v3.** Existing sheets stay in place but are ignored,
-  as with any format change; one Update/storyboards run regenerates them. The
-  sampling mode is part of the cache key too, so switching it retires cached
-  sheets rather than leaving a library holding a mix of two qualities.
 
 ### Internal
 
@@ -754,6 +748,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   have pointed every cue past the first sheet at a copy of it. Generation pins
   the sync mode, and a test fails if a pass writes more sheets than its tiles
   fill.
+
 
 ## [0.1.1] — 2026-07-30
 
