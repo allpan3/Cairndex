@@ -41,26 +41,43 @@ export const CLIP_WIDTHS = [
 export const DEFAULT_CLIP_WIDTH = 480
 
 /**
- * Frame rates offered — **only rates a GIF can actually hold**.
+ * Frame rates offered.
  *
- * The format stores each frame's delay as a whole number of centiseconds, so
- * the only representable rates are `100/n`. Everything else has its delay
- * rounded and plays at a speed nobody asked for: 12 fps becomes 12.5, 15
- * becomes 14.29, 24 becomes 25, 30 becomes 33.33 — all measured off the frame
- * control blocks of real output.
+ * A GIF stores each frame's delay as a whole number of centiseconds, so the
+ * only rates it reproduces exactly are `100/n` — 5, 10, 20, 25, 50. **15 is
+ * here anyway** (owner, 2026-08-15): it is the rate people actually reach for
+ * in a GIF, and landing on 14.3 instead is a 4.7% drift nobody will see.
  *
- * Offering those anyway would be offering a lie, so the ladder is the exact
- * ones. 50 is the top: its delay is 2cs, and 1cs is the value historic viewers
- * reinterpret as 10cs.
+ * The wheel says which is which rather than hiding it, by printing what an
+ * inexact rate really plays at — see `gifPlaybackRate`. 50 is the top: its
+ * delay is 2cs, and 1cs is the value historic viewers reinterpret as 10cs.
  */
-export const CLIP_FPS_CHOICES = [5, 10, 20, 25, 50] as const
+export const CLIP_FPS_CHOICES = [5, 10, 15, 20, 25, 50] as const
+
 /**
- * A GIF's conventional rate is 10–15, and 10 is the one in that range the
- * format can hold exactly. It is also the cheap one: measured at the default
- * 480px over five seconds of real footage, 20 fps costs 1.77x the bytes and
- * 25 fps 2.08x. Both are one rung away for a clip that earns them.
+ * The rate a GIF asked for `fps` will actually play at.
+ *
+ * The delay is stored in whole centiseconds, so the requested rate is rounded
+ * to `100/round(100/fps)`. Checked against real output at eleven rates: 8→7.69,
+ * 12→12.5, 15→14.29, 24→25, 30→33.33, 60→50, and 5/10/20/25/50 unchanged.
  */
-export const DEFAULT_CLIP_FPS = 10
+export function gifPlaybackRate(fps: number): number {
+  return 100 / Math.max(1, Math.round(100 / fps))
+}
+
+/** Whether the format will alter the rate that was asked for. */
+export function isExactGifRate(fps: number): boolean {
+  return Math.abs(gifPlaybackRate(fps) - fps) < 0.01
+}
+/**
+ * 15 — the rate people actually reach for in a GIF (owner, 2026-08-15).
+ *
+ * It is not one the format holds exactly, so a clip plays at 14.3 and runs 4.7%
+ * long; imperceptible, and the wheel prints the real rate beside it either way.
+ * For scale, measured at the default 480px over five seconds of real footage:
+ * 10 fps is 2.2 MB, 20 fps 3.9 MB, 25 fps 4.6 MB.
+ */
+export const DEFAULT_CLIP_FPS = 15
 
 /**
  * How far above the source's own rate a rung may still sit.
@@ -84,20 +101,32 @@ const FPS_OVERSHOOT = 0.1
  */
 export function clipFpsOptions(sourceFps: number | null | undefined): WheelOption<number>[] {
   if (!sourceFps || sourceFps <= 0) {
-    return CLIP_FPS_CHOICES.map((value) => ({ value, label: `${value} fps` }))
+    // Still noted: whether a rate drifts is a fact about the format, not about
+    // the source, so an unprobed file must not lose the warning.
+    return CLIP_FPS_CHOICES.map((value) => ({
+      value,
+      label: `${value} fps`,
+      note: fpsNote(value, null),
+    }))
   }
   const ceiling = sourceFps * (1 + FPS_OVERSHOOT)
   const rates = CLIP_FPS_CHOICES.filter((value) => value <= ceiling)
   // A source slower than every rung still needs one choice.
   const values = rates.length > 0 ? rates : [CLIP_FPS_CHOICES[0]]
-  const native = Math.round(sourceFps)
-  return values.map((value) => ({
-    value,
-    label: `${value} fps`,
-    // Only when the format can actually match the source. For 24 and 30 fps
-    // nothing can, and saying nothing is the honest version of that.
-    note: value === native ? 'native' : undefined,
-  }))
+  return values.map((value) => ({ value, label: `${value} fps`, note: fpsNote(value, sourceFps) }))
+}
+
+/**
+ * The word under a rate on the wheel.
+ *
+ * The drift comes first when there is one: that a clip will play at 14.3 after
+ * being asked for 15 is the surprising fact, and the one the owner had to ask
+ * about when it was hidden behind an "exact" badge. Otherwise `native` marks a
+ * rate matching the source — which, for 24 and 30 fps sources, nothing does.
+ */
+function fpsNote(value: number, sourceFps: number | null | undefined): string | undefined {
+  if (!isExactGifRate(value)) return `≈${gifPlaybackRate(value).toFixed(1)}`
+  return sourceFps && value === Math.round(sourceFps) ? 'native' : undefined
 }
 
 /** The rate to start on: the default when offered, else the fastest that is. */

@@ -31,29 +31,43 @@ function open(target: ClipExportTarget = TARGET, onClose = vi.fn()) {
 const widths = () => within(screen.getByRole('radiogroup', { name: 'Output width' }))
 const rates = () => within(screen.getByRole('radiogroup', { name: 'Frame rate' }))
 
-test('defaults to 480px at 10 fps and says what that produces', () => {
+test('defaults to 480px at 15 fps and says what that produces', () => {
   open()
 
   expect(widths().getByRole('radio', { name: '480px' })).toBeChecked()
-  // 10 is the conventional GIF rate the format can also hold exactly.
-  expect(rates().getByRole('radio', { name: '10 fps' })).toBeChecked()
-  // 16:9 at 480 wide, six seconds at ten frames a second.
+  // The conventional GIF rate, drift and all.
+  expect(rates().getByRole('radio', { name: '15 fps, ≈14.3' })).toBeChecked()
   expect(screen.getByText(/480×270/)).toBeInTheDocument()
-  expect(screen.getByText(/60 frames/)).toBeInTheDocument()
+  // Six seconds of source at fifteen a second.
+  expect(screen.getByText(/90 frames/)).toBeInTheDocument()
 })
 
-// Every rung must be a rate a GIF can hold exactly, or the clip plays at a
-// speed nobody asked for.
-test('offers only rates the format can represent, capped by the source', () => {
+// A rate the format cannot hold exactly stretches the clip as well as slowing
+// it — 90 frames at a 7cs delay run 6.30s, not the 6.00s they came from. The
+// summary reports what the file will actually do.
+test('reports the real duration and rate when the format alters them', () => {
+  open()
+  expect(screen.getByText(/6\.30 s \(plays at 14\.3 fps\)/)).toBeInTheDocument()
+
+  fireEvent.click(rates().getByRole('radio', { name: '20 fps' }))
+  expect(screen.getByText(/120 frames · 6\.00 s/)).toBeInTheDocument()
+  expect(screen.queryByText(/plays at/)).not.toBeInTheDocument()
+})
+
+// 15 is offered though the format cannot hold it exactly, so the wheel prints
+// what it really plays at rather than leaving the difference to be discovered.
+test('offers rates the source can supply, marking the one that drifts', () => {
   open()
   // A 30 fps source cannot supply 50.
   expect(
     rates()
       .getAllByRole('radio')
-      .map((r) => r.textContent),
-  ).toEqual(['5 fps', '10 fps', '20 fps', '25 fps'])
-  expect(rates().queryByRole('radio', { name: '12 fps' })).not.toBeInTheDocument()
-  expect(rates().queryByRole('radio', { name: '15 fps' })).not.toBeInTheDocument()
+      .map((r) => r.getAttribute('aria-label')),
+  ).toEqual(['5 fps', '10 fps', '15 fps, ≈14.3', '20 fps', '25 fps'])
+  // 12 and 30 are not offered at all: they drift further and buy nothing that
+  // 10, 15 or 25 does not.
+  expect(rates().queryByRole('radio', { name: /^12 fps/ })).not.toBeInTheDocument()
+  expect(rates().queryByRole('radio', { name: /^30 fps/ })).not.toBeInTheDocument()
 })
 
 // The wheel is the point: a segmented row fit three or four sizes, this holds

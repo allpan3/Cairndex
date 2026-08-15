@@ -6,6 +6,8 @@ import {
   DEFAULT_CLIP_WIDTH,
   clipFileName,
   clipFpsOptions,
+  gifPlaybackRate,
+  isExactGifRate,
   clipWidthOptions,
   defaultClipFps,
   defaultClipWidth,
@@ -214,28 +216,54 @@ test('starts on the default width, or the largest still offered', () => {
   expect(defaultClipWidth(clipWidthOptions(300))).toBe(300)
 })
 
-// A GIF's frame delay is stored in whole centiseconds, so the only rates it
-// can represent are 100/n. Every rung must be one of those, or the clip plays
-// at a speed nobody asked for: 12 becomes 12.5, 15 becomes 14.29, 30 becomes
-// 33.33 — all measured off real output's frame control blocks.
-test('offers only rates a GIF can hold exactly', () => {
-  for (const rate of CLIP_FPS_CHOICES) {
-    expect(100 % rate, `${rate} fps is not a whole number of centiseconds`).toBe(0)
+// Checked against real output: every one of these was read back off the frame
+// control blocks of an encoded GIF, so the formula is not a guess.
+test('predicts what each rate really plays at', () => {
+  const measured: Array<[number, number]> = [
+    [5, 5],
+    [8, 100 / 13],
+    [10, 10],
+    [12, 12.5],
+    [15, 100 / 7],
+    [20, 20],
+    [24, 25],
+    [25, 25],
+    [30, 100 / 3],
+    [50, 50],
+    [60, 50],
+  ]
+  for (const [asked, plays] of measured) {
+    expect(gifPlaybackRate(asked), `${asked} fps`).toBeCloseTo(plays, 4)
   }
+})
+
+test('knows which rates the format alters', () => {
+  for (const rate of [5, 10, 20, 25, 50]) expect(isExactGifRate(rate)).toBe(true)
+  for (const rate of [8, 12, 15, 24, 30, 60]) expect(isExactGifRate(rate)).toBe(false)
+})
+
+// 15 is kept despite drifting to 14.29 — it is the rate people reach for in a
+// GIF, and 4.7% is not visible (owner, 2026-08-15). The wheel prints the real
+// rate rather than hiding the difference behind a badge.
+test('offers 15 alongside the exact rates, and labels the drift', () => {
+  expect(CLIP_FPS_CHOICES).toContain(15)
   expect(CLIP_FPS_CHOICES).toContain(DEFAULT_CLIP_FPS)
   // 50 fps is a 2cs delay; 1cs is the value historic viewers reinterpret.
   expect(Math.max(...CLIP_FPS_CHOICES)).toBe(50)
+
+  const noted = clipFpsOptions(null).map((option) => `${option.value}:${option.note ?? ''}`)
+  expect(noted).toEqual(['5:', '10:', '15:≈14.3', '20:', '25:', '50:'])
 })
 
 // Substantially more frames a second than the source has produces duplicates,
 // not smoother motion — measured: a 25 fps source at 50 gained 50 frames and
 // 1 KB, and a 30 fps source at 50 gained 67% duplicates for a fifth more bytes.
 test('withholds rates the source cannot meaningfully supply', () => {
-  expect(rates(25)).toEqual([5, 10, 20, 25])
-  expect(rates(30)).toEqual([5, 10, 20, 25])
-  expect(rates(60)).toEqual([5, 10, 20, 25, 50])
+  expect(rates(25)).toEqual([5, 10, 15, 20, 25])
+  expect(rates(30)).toEqual([5, 10, 15, 20, 25])
+  expect(rates(60)).toEqual([5, 10, 15, 20, 25, 50])
   // Unprobed: nothing to filter against.
-  expect(rates(null)).toEqual([5, 10, 20, 25, 50])
+  expect(rates(null)).toEqual([5, 10, 15, 20, 25, 50])
   // Slower than every rung, but a choice is still needed.
   expect(rates(2)).toEqual([5])
 })
@@ -245,11 +273,11 @@ test('withholds rates the source cannot meaningfully supply', () => {
 // duplicates two frames in forty-eight and is otherwise one for one. Both
 // measured on real output.
 test('lets a 24 fps source reach 25, which fits it far better than 20', () => {
-  expect(rates(24)).toEqual([5, 10, 20, 25])
+  expect(rates(24)).toEqual([5, 10, 15, 20, 25])
   // NTSC film, the same case one decimal over.
-  expect(rates(23.976)).toEqual([5, 10, 20, 25])
+  expect(rates(23.976)).toEqual([5, 10, 15, 20, 25])
   // …and 48 reaches 50 for the same reason.
-  expect(rates(48)).toEqual([5, 10, 20, 25, 50])
+  expect(rates(48)).toEqual([5, 10, 15, 20, 25, 50])
   // The overshoot is a hair's breadth, not a licence: 30 still cannot reach 50.
   expect(rates(30)).not.toContain(50)
   expect(rates(25)).not.toContain(50)
@@ -262,10 +290,12 @@ test('marks a rate as native only when it really is the source’s', () => {
     clipFpsOptions(source)
       .filter((option) => option.note)
       .map((option) => `${option.value}:${option.note}`)
-  expect(noted(25)).toEqual(['25:native'])
+  // The drift note is separate and always present on 15; `native` marks the
+  // exact rungs that match the source.
+  expect(noted(25)).toEqual(['15:≈14.3', '25:native'])
   expect(noted(10)).toEqual(['10:native'])
-  expect(noted(24)).toEqual([])
-  expect(noted(30)).toEqual([])
+  expect(noted(24)).toEqual(['15:≈14.3'])
+  expect(noted(30)).toEqual(['15:≈14.3'])
 })
 
 test('starts on the default rate, or the fastest still offered', () => {

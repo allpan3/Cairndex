@@ -241,15 +241,26 @@ of 15 was a sketch in plan 1 §10, not a finding**: 20 and 25 are exact *and*
 smoother, so `MAX_FPS` is now 50 (a 2cs delay; 1cs is the value historic
 viewers reinterpret as 10cs).
 
-The wheel therefore offers **only exact rates** — 5, 10, 20, 25, 50 — because
-offering 12 or 30 is offering a clip that plays at a speed nobody asked for.
+The ladder is **5, 10, 15, 20, 25, 50** and the default is **15** — both the
+owner's call (2026-08-15), after a round trip worth recording. The rates were
+first cut to the exact ones only, which deleted 15; that was wrong, because 15
+is the rate people actually reach for in a GIF and a 4.7% drift is invisible.
+The default meanwhile went 10 → 20 → 10 → 15: 20 was an over-correction (the
+question that prompted it had been about the *ceiling*, and the default
+followed it up without cause), and 10 the conventional-and-exact compromise
+before the owner settled it.
 
-The default is **10**. It briefly went to 20, which was an over-correction: the
-owner's question had been about the *ceiling*, and the default followed it up
-without cause. A GIF's conventional rate is 10–15, and 10 is the one in that
-range the format can hold exactly. It is also the cheap one — measured at 480px
-over five seconds of real footage, 20 fps costs **1.77x** the bytes and 25 fps
-**2.08x** (2.2 MB → 3.9 MB → 4.6 MB). Both stay one rung away.
+Rather than restore the "exact" badge whose meaning the owner had to ask about,
+**the wheel prints what an inexact rate really plays at** — `15 fps / ≈14.3` —
+and the summary reports the true output: `480×270 · 75 frames · 5.25 s (plays
+at 14.3 fps)`. A drifting rate stretches the clip as well as slowing it, which
+the old summary hid by printing the source's span.
+
+`gifPlaybackRate` computes that as `100/round(100/fps)`, checked against
+measured output at eleven rates rather than asserted.
+
+For scale, measured at 480px over five seconds of real footage: 10 fps is
+2.2 MB, 20 fps 3.9 MB (1.77x), 25 fps 4.6 MB (2.08x).
 Rates far above the source's own are withheld for the same reason widths are:
 measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, and a 30 fps
 source at 50 gained 67% duplicates for a fifth more bytes.
