@@ -140,7 +140,32 @@ function stemLevelInput(levels: GroupingStemLevels): Record<string, number> {
 function stemDial(levels: GroupingStemLevels, directory: string) {
   const dial = levels[directory]
   const level = dial?.level ?? GROUPING_DEFAULT_STEM_LEVEL
-  return { level, max: Math.max(dial?.max ?? GROUPING_DEFAULT_STEM_LEVEL, level) }
+  return {
+    level,
+    max: Math.max(dial?.max ?? GROUPING_DEFAULT_STEM_LEVEL, level),
+    stem: dial?.stem ?? '',
+  }
+}
+
+/**
+ * What a folder now matches on, in the folder's own words.
+ *
+ * The dial position used to be the whole message — "now matches at stem 2 of 3" —
+ * which names a rung on a ladder whose length depends on the folder's filenames,
+ * and so told the owner nothing about what changed (owner-reported, 2026-08-15).
+ * The server reports the matched prefix as it is written on disk; this says it,
+ * with the number of bundles it produced, which is the thing the click was for.
+ *
+ * "names like" rather than a bare quote when the folder has more than one bundle,
+ * because the stem shown is one folder's example and not the only one in play.
+ */
+function stemNotice(folder: string, stem: string, bundles: number): string {
+  const where = folder || 'Library root'
+  if (!stem) return `${where} regrouped.`
+  const made = bundles === 1 ? '1 bundle' : `${bundles} bundles`
+  return bundles === 1
+    ? `${where} now matches on “${stem}” — ${made}.`
+    : `${where} now matches on names like “${stem}” — ${made}.`
 }
 
 /**
@@ -149,13 +174,17 @@ function stemDial(levels: GroupingStemLevels, directory: string) {
  * Named `Narrow` and `Widen` — the domain's own words, which the owner already
  * had. This branch briefly renamed them to "Split/Merge into more/fewer bundles"
  * and hid them in the row's overflow menu, and the owner could not find the
- * control at all (owner-reported, 2026-08-13). A **folder**-level setting does
- * not belong in a row menu, and it does not belong behind two bare glyphs
- * either: the level is stated as text, so the value is readable rather than
- * inferable from which end happens to be spent.
+ * control at all (owner-reported, 2026-08-13).
  *
- * Two plain buttons rather than one segmented chip: a chip implies a small set of
- * named stops, which is exactly what the dial stopped being.
+ * Exactly two buttons, and deliberately nothing else. It carried a "stem 2 of 3"
+ * label and a Reset button that appeared only away from the default, and the row
+ * is right-aligned — so the label's width changed with the numbers and Reset
+ * appearing shifted both buttons sideways, under a cursor about to click one of
+ * them (owner-reported, 2026-08-15). Two fixed labels cannot move.
+ *
+ * The label is not merely relocated, either: it said nothing. "Of 3" is a maximum
+ * that depends on the folder's own filenames, so as an ordinal it was unreadable —
+ * the plan now reports the *stem* being matched, and the announcement says it.
  */
 function StemDial({ directory, stem }: { directory: string; stem: StemControls }) {
   const { level, max } = stemDial(stem.levels, directory)
@@ -165,12 +194,6 @@ function StemDial({ directory, stem }: { directory: string; stem: StemControls }
   const atTop = level >= max
   return (
     <span className="grp-dial" data-no-row-drag="">
-      <span
-        className="grp-dial__level"
-        title={`How much of each filename in ${folder} has to match: ${level} of ${max}. Narrow matches more of it, Widen less.`}
-      >
-        stem {level} of {max}
-      </span>
       <button
         type="button"
         className="btn btn--compact"
@@ -212,23 +235,6 @@ function StemDial({ directory, stem }: { directory: string; stem: StemControls }
       >
         Widen
       </button>
-      {level !== GROUPING_DEFAULT_STEM_LEVEL && (
-        <button
-          type="button"
-          className="btn btn--compact"
-          disabled={blocked}
-          title={`Put ${folder} back to the stem the suggester chose`}
-          aria-label={`Reset the filename match in ${folder}`}
-          draggable={false}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            stem.set(directory, GROUPING_DEFAULT_STEM_LEVEL)
-          }}
-        >
-          Reset
-        </button>
-      )}
     </span>
   )
 }
@@ -1748,9 +1754,13 @@ export function GroupingReview({
       {
         onSuccess: (updated) => {
           const dial = stemDial(updated.stem_levels ?? {}, directory)
-          setNotice(
-            `${directory || 'Library root'} now matches at stem ${dial.level} of ${dial.max}.`,
-          )
+          // Counted from the response rather than reported by the server: the rows
+          // for this folder are already in hand, and they are what the owner is
+          // looking at while reading the message.
+          const bundles = updated.proposals.filter(
+            (p) => p.directory === directory && p.kind === 'bundle',
+          ).length
+          setNotice(stemNotice(directory, dial.stem, bundles))
         },
       },
     )

@@ -108,6 +108,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **The stem dial says what it is matching on, and its buttons stop moving.**
+  `Narrow`/`Widen` sat beside a "stem 2 of 3" label and a `Reset` button that only
+  appeared away from the default; the row is right-aligned, so the label's width
+  changed with its numbers and `Reset` appearing slid both buttons sideways —
+  under a cursor about to click one of them. The label and `Reset` are gone, leaving
+  two fixed-width buttons that cannot move. `Narrow` walks back to the default.
+
+  The label also said nothing: the top of the dial depends on the folder's own
+  filenames — 2 to 15 across one real library — so "of 3" was an ordinal with no
+  readable meaning. A plan now reports, per folder, the **stem it is actually
+  matching on**, sliced out of one of that folder's filenames so the separators are
+  the ones on disk (`STUDIO-025`, not the comparison key's `studio 025`). Adjusting
+  a folder now says so: *"Genre/Studio now matches on names like “STUDIO-025” — 12
+  bundles."*
 - **Grouping plans moved out of the library, onto the server's own disk**
   (ADR-0022). A plan is a snapshot of a suggestion run — regenerable from the
   library at any moment, and by far its heaviest writer: ~1,100 rows rewritten
