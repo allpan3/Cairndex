@@ -32,6 +32,7 @@ import { VideoStage } from './VideoStage'
 import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
+import { useClipLoop, useClipRange } from './player/useClipRange'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
@@ -229,6 +230,20 @@ export function ViewerShell({
   // A video plays once the decision produced a source (native or HLS); this,
   // not the manifest's direct-only `playable` flag, gates the video UI in M7.
   const videoActive = Boolean(isVideo && videoAvailable && source)
+
+  // The marked span, shared by the GIF export below and — once it lands — by
+  // A-B loop replay (plan 1 §10 / M11). Keyed on the file so a selection never
+  // survives into the next item of the playlist.
+  const clip = useClipRange({
+    player,
+    duration: player.duration || playable?.duration || 0,
+    fps: current?.fps,
+    sourceKey: currentKey,
+  })
+  // A clip only means something on a file the server can cut: an unindexed
+  // File Browser path has no file id to export from.
+  const clipAvailable = videoActive && fileId !== null
+  useClipLoop(videoElement, clip.range, clip.loop && !clip.adjusting)
   usePlaybackProgressReporter({
     bundleId,
     fileId,
@@ -538,12 +553,23 @@ export function ViewerShell({
       snapshot,
       previous: () => step(-1),
       next: () => step(1),
+      markClipEdge: clipAvailable ? clip.markAtPlayhead : undefined,
       // `player` exists even for image bundles (only its use as a *controller* is
       // gated on videoActive), so fullscreen state stays correct for images too.
       isFullscreen: () => player.fullscreen,
       exitFullscreen: () => player.toggleFullscreen(),
     }),
-    [contextMenuOpen, closeContextMenu, onClose, toggleInfo, snapshot, step, player],
+    [
+      contextMenuOpen,
+      closeContextMenu,
+      onClose,
+      toggleInfo,
+      snapshot,
+      step,
+      player,
+      clipAvailable,
+      clip.markAtPlayhead,
+    ],
   )
 
   useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
@@ -756,6 +782,7 @@ export function ViewerShell({
           onDragChange={setScrubbing}
           fileLoop={fileLoop}
           onFileLoop={setFileLoop}
+          clip={clipAvailable ? clip : undefined}
         />
       )}
 

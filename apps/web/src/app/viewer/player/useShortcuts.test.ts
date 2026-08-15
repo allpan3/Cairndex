@@ -52,8 +52,40 @@ function mockActions() {
     next: vi.fn(),
     isFullscreen: vi.fn(() => false),
     exitFullscreen: vi.fn(),
+    markClipEdge: vi.fn(),
   }
 }
+
+// `[` / `]` were reserved for the clip range in plan 1 §2 and bound in M11.
+test('marks the clip range ends on [ and ]', () => {
+  const player = mockPlayer()
+  const actions = mockActions()
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: '[' }), player, actions)).toBe(
+    true,
+  )
+  expect(actions.markClipEdge).toHaveBeenLastCalledWith('start')
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: ']' }), player, actions)).toBe(
+    true,
+  )
+  expect(actions.markClipEdge).toHaveBeenLastCalledWith('end')
+})
+
+// A source with no file id cannot be exported, so the viewer withholds the
+// action — and the keys must then fall through to the browser rather than be
+// swallowed as handled-but-inert.
+test('leaves [ and ] unhandled when the source cannot be clipped', () => {
+  const player = mockPlayer()
+  const actions = { ...mockActions(), markClipEdge: undefined }
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: '[' }), player, actions)).toBe(
+    false,
+  )
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: ']' }), player, actions)).toBe(
+    false,
+  )
+})
 
 test('maps playback and configurable seek shortcuts', () => {
   const player = mockPlayer({ seekStep: 30 })

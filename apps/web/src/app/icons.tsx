@@ -254,6 +254,19 @@ export const IconCamera = () => (
   </Svg>
 )
 
+/** Marking a span of a video — the clip range picker (plan 1 §10). */
+export const IconClipRange = () => (
+  <Svg>
+    <path d="M7 4v16" />
+    <path d="M17 4v16" />
+    <path d="M7 12h10" />
+    <path d="M4 8h3" />
+    <path d="M17 8h3" />
+    <path d="M4 16h3" />
+    <path d="M17 16h3" />
+  </Svg>
+)
+
 export const IconPictureInPicture = () => (
   <Svg>
     <rect x="3" y="5" width="18" height="14" rx="2" />
