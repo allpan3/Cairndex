@@ -26,7 +26,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from cairndex.domain.enums import FileRole, MediaKind, ProposalKind, StemMode
+from cairndex.domain.enums import DEFAULT_STEM_LEVEL, FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
@@ -40,7 +40,6 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
 _SUBJECT_DELIMITER = re.compile(r"[._\-\s]+")
-_SEMANTIC_DELIMITER = re.compile(r"\s+(?:-|–|—)\s+")
 _RENDITION_SEGMENT = re.compile(
     r"[._\-\s]+(?:360p|480p|576p|720p|1080p|1440p|2160p|[248]k|uhd|fhd|hd)"
     r"(?=(?:[._\-\s]+\[[^\]]+\])*$)",
@@ -122,7 +121,9 @@ class GroupingProposal:
 class GroupingPlan:
     rule_version: int
     proposals: tuple[GroupingProposal, ...]
-    stem_modes: dict[str, StemMode] = field(default_factory=dict)
+    # Per-directory stem levels that differ from ``DEFAULT_STEM_LEVEL``; a
+    # directory absent here was grouped at the default.
+    stem_levels: dict[str, int] = field(default_factory=dict)
 
 
 # --- internal directory tree -------------------------------------------------
@@ -169,6 +170,11 @@ def _normalize_text(value: str) -> str:
     return " ".join(part for part in _SUBJECT_DELIMITER.split(value.casefold()) if part)
 
 
+def _folded_stem(name: str) -> str:
+    """``name``'s stem, case-folded, with a trailing rendition tag removed."""
+    return _fold_rendition_suffix(_stem(name).casefold())
+
+
 # Normalize separators while retaining the complete filename subject
 def _normalized_stem(name: str, *, fold_rendition: bool = False) -> str:
     """Return a comparable full stem across spaces, dots, dashes, and underscores."""
@@ -178,36 +184,108 @@ def _normalized_stem(name: str, *, fold_rendition: bool = False) -> str:
     return _normalize_text(stem)
 
 
-# Select the literal or rendition-folded stem for the requested sensitivity
-def _comparison_stem(name: str, mode: StemMode) -> str:
-    """Return the filename stem used by one grouping sensitivity."""
-    return _normalized_stem(name, fold_rendition=mode is not StemMode.NARROW)
+@dataclass(frozen=True)
+class _StemKey:
+    """The part of a filename that one folder's stem level compares.
+
+    The dial's only definition — every caller asking "do these two names match?"
+    goes through here, so widening cannot mean one thing for videos and another
+    for their sidecars. That is how the three-mode version drifted: ``wide``
+    grouped by a separate semantic-chunk key that ``_owner_match_score`` never
+    used, so addition matching silently stayed at the balanced key.
+
+    Built **per folder**, because the dial is absolute: at level ``L`` every name
+    in the folder is compared on its first ``max - L + 1`` segments, where ``max``
+    is :func:`max_stem_level` for that folder. So level 1 compares whole stems,
+    level ``max`` compares first segments only, and ``depth`` and ``level`` move
+    in opposite directions through the same range.
+
+    Level 0 is the one rung outside that scheme: the complete stem with its
+    rendition tag intact. Folding ``4K [tag]`` versus ``720p`` is not expressible
+    as a segment count, which is why it is its own rung at the bottom rather than
+    part of the ladder — and why the default (level 1, folded whole stems) is what
+    every existing library already groups by.
+
+    A *relative* dial — "drop ``L - 1`` trailing segments from each name" — is the
+    obvious first design and is quietly broken. Two names with different segment
+    counts then yield keys of different lengths, which can never be equal, so
+    nothing merges at all until the top rung clamps every name to one segment and
+    the whole folder merges at once.
+    """
+
+    level: int
+    # Leading segments compared. Meaningless at level 0, which compares the lot.
+    depth: int
+
+    @classmethod
+    def for_names(cls, names: Iterable[str], level: int) -> _StemKey:
+        level = max(0, level)
+        return cls(level, max(1, max_stem_level(names) - level + 1))
+
+    def of(self, name: str) -> str:
+        """The comparable key for one filename at this folder's level."""
+        if self.level <= 0:
+            return _normalized_stem(name)
+        return " ".join(_normalized_stem(name, fold_rendition=True).split()[: self.depth])
 
 
-# Split a filename into owner-meaningful chunks for the wider grouping mode
-def _semantic_segments(name: str) -> tuple[str, ...]:
-    """Return spaced-dash title chunks, falling back to normalized tokens."""
-    stem = _fold_rendition_suffix(_stem(name).casefold())
-    chunks = [
-        _normalize_text(chunk)
-        for chunk in _SEMANTIC_DELIMITER.split(stem)
-        if _normalize_text(chunk)
-    ]
-    if len(chunks) > 1:
-        return tuple(chunks)
-    return tuple(_normalize_text(stem).split())
+def stem_prefix_as_written(name: str, level: int, maximum: int) -> str:
+    """The leading part of ``name`` that a folder at ``level`` compares, verbatim.
+
+    Same boundaries as :meth:`_StemKey.of`, but *sliced out of* the filename rather
+    than rebuilt from its parts — so what comes back is text the owner will
+    recognise on disk (``ABC-123``) instead of the comparison key it is folded into
+    (``abc 123``). Only for showing a person what a dial position means; never for
+    comparing two names, which goes through ``_StemKey`` and nothing else.
+    """
+    stem = _stem(name)
+    if level <= 0:
+        return stem  # level 0 compares the complete stem, rendition tag included
+    folded = _fold_rendition_suffix(stem)
+    depth = max(1, maximum - level + 1)
+    parts = [part for part in _SUBJECT_DELIMITER.split(folded) if part]
+    if len(parts) <= depth:
+        return folded
+    # Each part located from where the previous one ended, so a segment that also
+    # appears earlier in the name cannot cut the prefix short.
+    end = 0
+    for part in parts[:depth]:
+        end = folded.index(part, end) + len(part)
+    return folded[:end]
 
 
-# Derive wider keys that retain a subject and its source/series qualifier
-def _wide_stem_keys(files: list[FileObservation]) -> tuple[dict[str, str], int]:
-    """Return stable semantic-prefix keys and the shared key depth."""
-    segments = [_semantic_segments(file.relative_path) for file in files]
-    depth = min(2, max((len(value) for value in segments), default=1))
-    keys = {
-        file.asset_file_id: " | ".join(value[:depth])
-        for file, value in zip(files, segments, strict=True)
-    }
-    return keys, depth
+def max_stem_level(names: Iterable[str]) -> int:
+    """The top of the stem dial for a folder holding ``names``.
+
+    The level at which every name is compared on its first segment alone, so
+    widening further cannot change any grouping — the longest name's segment
+    count. Reported to the client because it depends on the folder's own
+    filenames: a folder of one-word names has nothing to widen at all (the
+    maximum is ``DEFAULT_STEM_LEVEL``), while a folder of long dotted release
+    names has many rungs left.
+    """
+    # Counted rather than normalized: this runs over every file in a plan on
+    # every plan response, and the joined string ``_normalized_stem`` builds is
+    # thrown away here.
+    longest = max(
+        (sum(1 for part in _SUBJECT_DELIMITER.split(_folded_stem(name)) if part) for name in names),
+        default=1,
+    )
+    return max(DEFAULT_STEM_LEVEL, longest)
+
+
+def _space_prefixes(stem: str) -> list[str]:
+    """Every proper prefix of ``stem`` that ends on a token boundary.
+
+    ``"a b c"`` gives ``["a b", "a"]``. Lets a sidecar find the video stems it
+    extends without being compared against every one of them.
+    """
+    prefixes: list[str] = []
+    cut = stem.rfind(" ")
+    while cut > 0:
+        prefixes.append(stem[:cut])
+        cut = stem.rfind(" ", 0, cut)
+    return prefixes
 
 
 def _natural_key(name: str) -> list[object]:
@@ -268,7 +346,7 @@ def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
 
 # Split a mixed direct-media directory into video-centered bundle candidates
 def _bundle_groups(
-    media: list[FileObservation], mode: StemMode = StemMode.BALANCED
+    media: list[FileObservation], level: int = DEFAULT_STEM_LEVEL
 ) -> list[list[FileObservation]]:
     """Group direct media into proposed bundle file sets.
 
@@ -285,18 +363,15 @@ def _bundle_groups(
         return [media]
     if not videos:
         return [[f] for f in sorted(media, key=_obs_sort_key)]
-    if len(videos) == 1 and mode is not StemMode.NARROW:
+    if len(videos) == 1 and level >= DEFAULT_STEM_LEVEL:
         return [media]
 
-    wide_keys, wide_depth = _wide_stem_keys(videos)
+    # One key for the whole folder, so a sidecar is compared on exactly as much
+    # of its name as the videos were.
+    keys = _StemKey.for_names([f.relative_path for f in media], level)
     groups_by_key: dict[str, list[FileObservation]] = {}
     for video in videos:
-        key = (
-            wide_keys[video.asset_file_id]
-            if mode is StemMode.WIDE
-            else _comparison_stem(video.relative_path, mode)
-        )
-        groups_by_key.setdefault(key, []).append(video)
+        groups_by_key.setdefault(keys.of(video.relative_path), []).append(video)
     groups = list(groups_by_key.values())
 
     prefix_counts: dict[str, int] = {}
@@ -308,34 +383,36 @@ def _bundle_groups(
         for group in groups
         if prefix_counts[_subject_prefix(group[0].relative_path)] == 1
     }
-    stems_by_group = [
-        {_comparison_stem(video.relative_path, mode) for video in group} for group in groups
-    ]
-    group_by_wide_key = {key: group for key, group in groups_by_key.items()}
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
-        stem = _comparison_stem(f.relative_path, mode)
-        exact_matches = [
-            group
-            for video_stems, group in zip(stems_by_group, groups, strict=True)
-            if stem in video_stems
+        stem = keys.of(f.relative_path)
+        # Every group is keyed by exactly one stem (that is how it was formed), so
+        # "the group whose stem this sidecar equals" is a dict lookup, and "the
+        # groups whose stem this sidecar *extends*" is one lookup per
+        # space-delimited prefix of the sidecar's own stem.
+        #
+        # This used to scan every group for every sidecar, with a nested scan over
+        # each group's stems inside it — quadratic in the size of the folder. One
+        # folder of 1,600 subjects spent 10.2 million `startswith` calls here and
+        # 4.3 seconds; a folder of several thousand took minutes, and Narrow or
+        # Widen re-runs the whole suggester (owner-reported, 2026-08-13).
+        exact_match = groups_by_key.get(stem)
+        extended = [
+            found
+            for prefix in _space_prefixes(stem)
+            if (found := groups_by_key.get(prefix)) is not None
         ]
-        suffix_matches = [
-            group
-            for video_stems, group in zip(stems_by_group, groups, strict=True)
-            if any(stem.startswith(f"{video_stem} ") for video_stem in video_stems)
-        ]
-        wide_key = " | ".join(_semantic_segments(f.relative_path)[:wide_depth])
+        # Last resort for a sidecar that matches no video stem at all: the leading
+        # filename token, when exactly one group owns it. Withheld at level 0,
+        # where the owner has asked for the complete filename to be what matches.
         matched_group = (
-            exact_matches[0]
-            if len(exact_matches) == 1
+            exact_match
+            if exact_match is not None
             else (
-                suffix_matches[0]
-                if not exact_matches and len(suffix_matches) == 1
-                else group_by_wide_key.get(wide_key)
-                if mode is StemMode.WIDE
+                extended[0]
+                if len(extended) == 1
                 else group_by_prefix.get(_subject_prefix(f.relative_path))
-                if mode is StemMode.BALANCED
+                if level >= DEFAULT_STEM_LEVEL
                 else None
             )
         )
@@ -352,7 +429,7 @@ def split_for_collection(media: list[FileObservation]) -> list[list[FileObservat
 
     Used when the owner overrides the suggester and says a folder is a
     *collection* rather than one bundle. Deliberately **not**
-    ``_bundle_groups(..., NARROW)``: that returns the whole folder as a single
+    ``_bundle_groups(..., 0)``: that returns the whole folder as a single
     group whenever the videos look like parts of one title
     (``_is_multipart`` short-circuits ahead of the mode check), and a folder of
     parts is precisely the shape this override exists to reject. Asking it to
@@ -382,10 +459,13 @@ def split_for_collection(media: list[FileObservation]) -> list[list[FileObservat
         return [[f] for f in sorted(media, key=_obs_sort_key)]
 
     groups = [[video] for video in videos]
-    stems = [_comparison_stem(video.relative_path, StemMode.NARROW) for video in videos]
+    # The complete stem — level 0 of the dial. Dividing a folder the owner has
+    # just called a collection is the one place that wants the strictest possible
+    # matching, whatever that folder's stem level happens to be set to.
+    stems = [_normalized_stem(video.relative_path) for video in videos]
     unassigned: list[FileObservation] = []
     for f in others:
-        stem = _comparison_stem(f.relative_path, StemMode.NARROW)
+        stem = _normalized_stem(f.relative_path)
         exact = [i for i, video_stem in enumerate(stems) if stem == video_stem]
         prefix = [i for i, video_stem in enumerate(stems) if stem.startswith(f"{video_stem} ")]
         matched = exact[0] if len(exact) == 1 else prefix[0] if len(prefix) == 1 else None
@@ -493,6 +573,14 @@ def _shared_stem_title(files: list[FileObservation]) -> str | None:
         shared = shared[:index]
         if not shared:
             return None
+    # Nothing to trim when every stem *is* the shared part: the prefix is not
+    # partial, it is the whole name. Reachable only since sidecars joined the
+    # comparison (a video and its cover often share their filename exactly), and
+    # without this guard an identical pair lost everything after its last
+    # delimiter — "A - B - 4K" became "A - B".
+    if all(stem == shared for stem in stems):
+        return shared or None
+
     # Drop a trailing partial token, and the delimiter run before it.
     boundaries = list(_SUBJECT_DELIMITER.finditer(shared))
     if boundaries and boundaries[-1].end() == len(shared):
@@ -508,16 +596,28 @@ def _bundle_proposal(
     parent: str | None,
     *,
     owns_directory: bool,
-    stem_mode: StemMode = StemMode.BALANCED,
+    stem_level: int = DEFAULT_STEM_LEVEL,
 ) -> GroupingProposal:
     confidence, reason = _bundle_reason(files)
     videos = [file for file in files if file.media_kind is MediaKind.VIDEO]
-    if stem_mode is StemMode.WIDE and len(videos) > 1 and not _is_multipart(videos):
-        confidence, reason = 0.55, f"{len(files)} files matched by a wider stem prefix"
+    # Only *above* the default: a widened folder groups by less of each filename
+    # than the suggester would choose, so say so and rank it below a bundle that
+    # matched on its own. At the default level the row is an ordinary suggestion.
+    if stem_level > DEFAULT_STEM_LEVEL and len(videos) > 1 and not _is_multipart(videos):
+        confidence, reason = 0.55, f"{len(files)} files matched by a widened stem"
     # A bundle that fills its whole folder takes the folder's name. Otherwise:
     # several files grouped together are titled by the part they share, and a
     # single subject by its own filename.
-    subjects = videos if len(videos) > 1 else ([] if videos else files)
+    #
+    # With two or more videos the sidecars are excluded, because a cover named
+    # for the folder rather than for a video would drag the shared prefix shorter
+    # than the thing it is naming. With one video the sidecars are exactly what
+    # gives the useful name: a release video and its cover share the release's
+    # own identifier, so `n0203 - long title.mp4` + `n0203.jpg` is "n0203" rather
+    # than the video's whole filename (owner-reported, 2026-08-13). When they
+    # share no prefix at all — `cosmos.mp4` + `poster.jpg` — `_shared_stem_title`
+    # returns None and the fallback below still names it after the video.
+    subjects = videos if len(videos) > 1 else files
     title = (
         _basename(directory)
         if owns_directory and directory
@@ -570,7 +670,7 @@ def _container_proposal(
 def _classify(
     node: _Dir,
     parent: str | None,
-    stem_modes: Mapping[str, StemMode],
+    stem_levels: Mapping[str, int],
 ) -> list[GroupingProposal]:
     """Recursively turn a directory subtree into proposals.
 
@@ -584,22 +684,25 @@ def _classify(
     child_parent = None if is_root else node.path
     child_proposals: list[GroupingProposal] = []
     for name in sorted(node.children):
-        child_proposals.extend(_classify(node.children[name], child_parent, stem_modes))
+        child_proposals.extend(_classify(node.children[name], child_parent, stem_levels))
 
     has_subbundles = bool(child_proposals)
     media = node.files
-    stem_mode = stem_modes.get(node.path, StemMode.BALANCED)
+    stem_level = stem_levels.get(node.path, DEFAULT_STEM_LEVEL)
     proposals: list[GroupingProposal] = []
+    # Once per folder, for every branch below. Grouping sorts the folder and
+    # builds a stem key per file, so doing it twice was pure repetition.
+    groups = _bundle_groups(media, stem_level) if media else []
 
     if has_subbundles and not is_root:
         # This folder is a CONTAINER for the bundles found beneath it.
-        direct_count = len(_bundle_groups(media, stem_mode)) + len(
+        direct_count = len(groups) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
         )
         proposals.append(_container_proposal(node.path, parent, child_count=direct_count))
         proposals.extend(
             _direct_media_proposals(
-                media, node.path, parent_for_children=node.path, stem_mode=stem_mode
+                groups, node.path, parent_for_children=node.path, stem_level=stem_level
             )
         )
         proposals.extend(child_proposals)
@@ -607,7 +710,7 @@ def _classify(
 
     if has_subbundles and is_root:
         proposals.extend(
-            _direct_media_proposals(media, "", parent_for_children=None, stem_mode=stem_mode)
+            _direct_media_proposals(groups, "", parent_for_children=None, stem_level=stem_level)
         )
         proposals.extend(child_proposals)
         return proposals
@@ -615,44 +718,64 @@ def _classify(
     # Leaf folder (no sub-bundles).
     if not media:
         return []
-    groups = _bundle_groups(media, stem_mode)
-    if len(groups) == 1:
+    # One group is the folder itself — no collection wrapper around a single
+    # bundle — but only when the *suggester* found one group. One group the owner
+    # produced by widening is a different statement: "group these files
+    # together", not "this folder is a bundle". Collapsing it dissolved the
+    # collection as a side effect, duplicating the convert control that does
+    # exactly that on purpose, renaming the result after the folder instead of
+    # the stem it just matched on, and stranding the dial at its widest with no
+    # folder left to hold it (owner-reported, 2026-08-15). Widened, the folder
+    # stays a container and the group becomes one bundle inside it, named by the
+    # stem — which is what the owner asked the dial for.
+    if len(groups) == 1 and stem_level <= DEFAULT_STEM_LEVEL:
         proposals.append(
-            _bundle_proposal(groups[0], node.path, parent, owns_directory=True, stem_mode=stem_mode)
+            _bundle_proposal(
+                groups[0], node.path, parent, owns_directory=True, stem_level=stem_level
+            )
         )
         return proposals
     if is_root:
         # Unrelated loose files at the root: bundle by subject where possible, no root container
         proposals.extend(
-            _direct_media_proposals(media, "", parent_for_children=None, stem_mode=stem_mode)
+            _direct_media_proposals(groups, "", parent_for_children=None, stem_level=stem_level)
         )
         return proposals
     # A container of unrelated items: one child bundle per subject or file
     proposals.append(_container_proposal(node.path, parent, child_count=len(groups)))
     proposals.extend(
         _direct_media_proposals(
-            media, node.path, parent_for_children=node.path, stem_mode=stem_mode
+            groups, node.path, parent_for_children=node.path, stem_level=stem_level
         )
     )
     return proposals
 
 
 def _direct_media_proposals(
-    media: list[FileObservation],
+    groups: list[list[FileObservation]],
     directory: str,
     *,
     parent_for_children: str | None,
-    stem_mode: StemMode,
+    stem_level: int,
 ) -> list[GroupingProposal]:
-    """Proposals for a container's own direct media (those not in a subfolder)."""
-    groups = _bundle_groups(media, stem_mode)
+    """Proposals for a container's own direct media (those not in a subfolder).
+
+    Takes the grouping rather than the files: every caller has already grouped
+    this folder to decide *whether* to make a container of it, and grouping is the
+    expensive part — it sorts the folder naturally and builds a stem key per file.
+    Recomputing it here ran the whole thing twice per folder, a third of the time
+    it took a plan to appear (owner-reported, 2026-08-13).
+    """
     return [
         _bundle_proposal(
             group,
             directory,
             parent_for_children,
-            owns_directory=len(groups) == 1,
-            stem_mode=stem_mode,
+            # Same rule as the leaf branch in ``_classify``: a bundle takes the
+            # folder's name only when the suggester grouped the folder into one on
+            # its own. A widened group is named after the stem that formed it.
+            owns_directory=len(groups) == 1 and stem_level <= DEFAULT_STEM_LEVEL,
+            stem_level=stem_level,
         )
         for group in groups
     ]
@@ -684,14 +807,20 @@ def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, list[_Owner
 
 
 # Score one fresh bundle candidate against one settled bundle in the same directory
-def _owner_match_score(owner: _Owner, files: list[FileObservation], mode: StemMode) -> int:
-    """Rank exact/rendition/suffix stem matches without using directory alone."""
+def _owner_match_score(owner: _Owner, files: list[FileObservation], keys: _StemKey) -> int:
+    """Rank exact and prefix stem matches without using directory alone.
+
+    A widened folder needs no special case here any more: the level shortens both
+    sides' stems before they are compared, so the same two tiers cover the whole
+    dial. The three-mode version had a third tier that only ``wide`` used, and it
+    compared a *different* notion of similarity from the one ``wide`` grouped by.
+    """
     owner_anchors = [file for file in owner.files if file.media_kind is MediaKind.VIDEO]
     fresh_anchors = [file for file in files if file.media_kind is MediaKind.VIDEO]
     owner_anchors = owner_anchors or list(owner.files)
     fresh_anchors = fresh_anchors or files
-    owner_stems = {_comparison_stem(file.relative_path, mode) for file in owner_anchors}
-    fresh_stems = {_comparison_stem(file.relative_path, mode) for file in fresh_anchors}
+    owner_stems = {keys.of(file.relative_path) for file in owner_anchors}
+    fresh_stems = {keys.of(file.relative_path) for file in fresh_anchors}
     if owner_stems & fresh_stems:
         return 3
     if any(
@@ -700,19 +829,6 @@ def _owner_match_score(owner: _Owner, files: list[FileObservation], mode: StemMo
         for fresh in fresh_stems
     ):
         return 2
-    if mode is StemMode.WIDE:
-        common = max(
-            (
-                int(
-                    _semantic_segments(owner.relative_path)[:2]
-                    == _semantic_segments(fresh.relative_path)[:2]
-                )
-                for owner in owner_anchors
-                for fresh in fresh_anchors
-            ),
-            default=0,
-        )
-        return 1 if common > 0 else 0
     return 0
 
 
@@ -720,13 +836,13 @@ def _owner_match_score(owner: _Owner, files: list[FileObservation], mode: StemMo
 def _match_owner(
     owners: list[_Owner],
     files: list[FileObservation],
-    mode: StemMode,
+    keys: _StemKey,
     *,
     group_count: int,
     allow_directory_fallback: bool,
 ) -> _Owner | None:
     """Return one unambiguous confirmed target for a fresh file group."""
-    scored = [(owner, _owner_match_score(owner, files, mode)) for owner in owners]
+    scored = [(owner, _owner_match_score(owner, files, keys)) for owner in owners]
     best = max((score for _, score in scored), default=0)
     matches = [owner for owner, score in scored if score == best and score > 0]
     if len(matches) == 1:
@@ -802,7 +918,7 @@ def _addition_proposal(
 
 def suggest_grouping(
     files: Iterable[FileObservation],
-    stem_modes: Mapping[str, StemMode] | None = None,
+    stem_levels: Mapping[str, int] | None = None,
 ) -> GroupingPlan:
     """Propose a grouping for ``files``.
 
@@ -812,7 +928,7 @@ def suggest_grouping(
     never disturbs a confirmed grouping, it only suggests folding new files in.
     """
     files = list(files)
-    stem_modes = dict(stem_modes or {})
+    stem_levels = dict(stem_levels or {})
     confirmed = [f for f in files if f.grouping_confirmed]
     owners = _confirmed_owners(confirmed)
 
@@ -824,15 +940,18 @@ def suggest_grouping(
             unconfirmed_by_dir.setdefault(_dirname(file.relative_path), []).append(file)
     for directory in sorted(unconfirmed_by_dir):
         candidates = unconfirmed_by_dir[directory]
-        mode = stem_modes.get(directory, StemMode.BALANCED)
-        groups = _bundle_groups(candidates, mode)
+        level = stem_levels.get(directory, DEFAULT_STEM_LEVEL)
+        groups = _bundle_groups(candidates, level)
+        # Built from the same names ``_bundle_groups`` just used, so a settled
+        # bundle is matched on exactly as much of its filename as the grouping was.
+        keys = _StemKey.for_names([f.relative_path for f in candidates], level)
         directory_owners = owners.get(directory, [])
         only_sidecars = all(file.media_kind is not MediaKind.VIDEO for file in candidates)
         for group in groups:
             owner = _match_owner(
                 directory_owners,
                 group,
-                mode,
+                keys,
                 group_count=len(groups),
                 allow_directory_fallback=only_sidecars,
             )
@@ -843,7 +962,7 @@ def suggest_grouping(
 
     # Classify first: an addition's parent is one of the collections this produces,
     # so the set of proposed collection folders has to exist before they are built.
-    proposals = _classify(_build_tree(fresh), parent=None, stem_modes=stem_modes)
+    proposals = _classify(_build_tree(fresh), parent=None, stem_levels=stem_levels)
     container_directories = {p.directory for p in proposals if p.kind is ProposalKind.CONTAINER}
     addition_proposals = [
         _addition_proposal(owner, group, container_directories)
@@ -852,5 +971,5 @@ def suggest_grouping(
     return GroupingPlan(
         rule_version=SUGGESTER_RULE_VERSION,
         proposals=(*addition_proposals, *proposals),
-        stem_modes=stem_modes,
+        stem_levels=stem_levels,
     )

@@ -64,10 +64,25 @@ export function usePopover() {
     // The click and mouseup that follow that mousedown belong to it too — the
     // marquee finishes its gesture on mouseup, and React's onClick handlers
     // would otherwise still fire.
+    // Two things this must also do, both found by review (2026-08-10):
+    //
+    // `preventDefault`, because stopping propagation hides the click from
+    // React's root listener but not from the browser. On a *controlled* input
+    // the DOM still toggled — a checkbox unticked itself while React state kept
+    // the row selected, so the visible ticks and "N bundles selected"
+    // disagreed and Accept confirmed a bundle the owner had watched themselves
+    // skip.
+    //
+    // `setOpen(false)`, because only `onDown` closed the popover. A keyboard
+    // activation dispatches a bare `click` with no preceding `mousedown`, so
+    // the popover stayed open and swallowed every subsequent click in the
+    // dialog until Escape.
     const onAway = (e: MouseEvent) => {
       const t = e.target as Node
       if (ref.current?.contains(t) || panelRef.current?.contains(t)) return
+      setOpen(false)
       e.stopPropagation()
+      e.preventDefault()
     }
     // Escape dismisses the picker, and stops there — the viewer and the shell
     // both close on Escape, and dismissing a picker should not also put away

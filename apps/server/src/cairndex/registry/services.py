@@ -202,6 +202,15 @@ def deregister_library(session: Session, library_id: str) -> None:
     - the cached content engine is disposed, which closes the last connection so
       SQLite folds the WAL back into a single consistent file (ADR-0018 §6).
 
+    The library's grouping plans are deliberately **not** deleted, though ADR-0022
+    put them in this server's own data directory. Removing a library and adding it
+    back is a documented, reversible gesture — there is a test of exactly that — and
+    a plan holds decisions only the owner could make: renames, destinations, files
+    dragged between suggestions, bundle/collection conversions. They are collected
+    later by ``sweep_orphaned_plans``, once nothing has claimed the file for a
+    fortnight, which also catches the orphans deleting here never could: a library
+    that was *moved*, or one reached through a symlinked mount that was offline.
+
     Queued jobs for the library go with the row through the ``ON DELETE
     CASCADE`` on ``job_queue``. A job already *running* stops at its next
     checkpoint, because the released lease makes its ownership check fail.

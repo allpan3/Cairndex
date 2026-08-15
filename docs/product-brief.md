@@ -399,16 +399,27 @@ Current workflow details:
   they are still unconfirmed. The picker shows one persisted collection name per
   indented row, supports folding its branches, and uses full paths only for
   disambiguation and accessibility instead of repeating every ancestor visibly.
-  New suggestions remain renameable/reclassifiable; an existing collection
-  context is labeled and read-only;
-- grouping review opens fully expanded, but collection rows can fold their
-  descendant proposals and bundle rows can fold their file lists. Collapse all
-  and Expand all shorten or restore the complete tree without changing
-  selection, placement, drag-and-drop, or which proposal ids apply;
-- a re-scan addition recommends its existing confirmed bundle by default, with
-  a compact, tooltip-described destination icon converting that same proposal
-  in place to a new bundle; the owner can switch back without losing selection,
-  file order, collection parent, or an edited new-bundle title;
+  New suggestions remain renameable/reclassifiable, with each row's
+  lower-frequency edits collected behind one named actions menu at a fixed right
+  edge; an existing collection context is labeled and read-only, and offers no
+  actions at all;
+- grouping review leads with what needs deciding. The suggester's own certainty
+  is surfaced: uncertain rows are counted, filterable, marked, and never folded
+  away. A bundle row states what it contains and keeps its file list closed
+  until asked, with a Show files default and a per-row override; a file drag
+  reveals every list. Runs of three or more identically shaped siblings collapse
+  to one summary row that can be expanded and folded back. Collection rows fold
+  their descendants, and Collapse all / Expand all govern collections only.
+  Nothing here changes selection, placement, drag-and-drop, or which proposal
+  ids apply — narrowing the view never changes what Accept would do;
+- the review is keyboard-drivable: arrows move between rows, left and right
+  fold, space accepts or skips the focused row, and Cmd/Ctrl+Enter applies under
+  the same conditions that enable the Accept button;
+- a re-scan addition recommends its existing confirmed bundle by default, and a
+  named item in the row's actions menu converts that same proposal in place to a
+  new bundle; the owner can switch back without losing selection, file order,
+  collection parent, or an edited new-bundle title. An addition has no placement
+  of its own, because its target bundle already sits wherever it sits;
 - suggested file order is video first, then audio, then image, then every other
   file, preserving natural path order within each group; review can override the
   sequence, which becomes the bundle playlist order on apply;
@@ -420,12 +431,14 @@ Current workflow details:
   rendition labels such as `720p` are folded by default, and fresh stem groups
   are matched independently against confirmed bundles instead of assigning a
   whole directory to one owner;
-- grouping review shows one Narrow/Balanced/Widen control per represented
-  filesystem directory. Narrow retains rendition labels in each complete
-  normalized stem to create more bundles, Balanced is the rendition-folded
-  default, and Widen uses a broader subject/source prefix to create fewer
-  bundles. The per-directory choices are persisted on the regenerated plan
-  snapshot;
+- grouping review offers one pair of named folder actions per represented
+  filesystem directory, in the actions menu of whichever row speaks for it:
+  "Split <folder> into more bundles" retains rendition labels in each complete
+  normalized stem, and "Merge <folder> into fewer bundles" uses a broader
+  subject/source prefix. Balanced is the rendition-folded default and the
+  resting state between them; a read-only existing-collection row offers
+  neither, because it names no directory. The per-directory choices are
+  persisted on the regenerated plan snapshot;
 - suggestions reflect the latest reconciled scan state: rows marked missing are
   retained for repair and metadata continuity but excluded from grouping; run
   Update or Scan new files after filesystem changes before regenerating;

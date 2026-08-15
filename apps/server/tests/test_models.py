@@ -10,8 +10,8 @@ from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
-from cairndex.persistence.engine import ensure_content_indexes
+from cairndex.domain.enums import FileRole, GroupingPlanStatus, MediaKind
+from cairndex.persistence.engine import _ADDITIVE_CONTENT_COLUMNS, ensure_content_indexes
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -124,6 +124,169 @@ def test_tag_adjacency_parent_child(session: Session) -> None:
     assert child.parent.name == "genre"
 
 
+# The columns ``grouping_proposals`` shipped with. Everything the model has
+# beyond this set was added later, so it must also appear in
+# ``engine._ADDITIVE_CONTENT_COLUMNS`` or an existing library never gains it.
+_GROUPING_PROPOSAL_BASE_COLUMNS = frozenset(
+    {
+        "id",
+        "plan_id",
+        "parent_proposal_id",
+        "target_bundle_id",
+        "kind",
+        "title",
+        "directory",
+        "confidence",
+        "reason",
+        "sort_order",
+        "created_at",
+        "updated_at",
+    }
+)
+
+
+def test_the_additive_grouping_columns_name_real_model_columns() -> None:
+    """The additive list's ``grouping_*`` entries exist for one job now.
+
+    They bring a pre-ADR-0022 library's in-library grouping tables up to the
+    current shape so ``_relocate_legacy_grouping_tables`` can copy every column out
+    of them. Once that copy has happened the tables are dropped and the entries
+    match nothing, which is why a *new* grouping column no longer has to be listed
+    here — a plans database is always created at the current shape.
+
+    What can still rot is the other direction: an entry naming a column the model
+    no longer has would quietly patch a column nothing reads.
+    """
+    from cairndex.persistence.base import PLANS_SCHEMA, Base
+
+    for table in ("grouping_plans", "grouping_proposals"):
+        model_columns = {c.name for c in Base.metadata.tables[f"{PLANS_SCHEMA}.{table}"].columns}
+        listed = {c for name, c, _ in _ADDITIVE_CONTENT_COLUMNS if name == table}
+        assert listed <= model_columns, (
+            f"{sorted(listed - model_columns)} are in _ADDITIVE_CONTENT_COLUMNS for "
+            f"{table} but not on the model"
+        )
+
+
+def _make_legacy_grouping_tables(engine: Engine, *, omit: tuple[str, ...] = ()) -> None:
+    """Recreate the pre-ADR-0022 layout: grouping tables inside ``library.db``.
+
+    Built from the model's own DDL with the schema prefix stripped, so a column
+    renamed on the model cannot leave this silently testing an obsolete shape.
+    ``omit`` drops columns afterwards, which is how "a library created before
+    column X existed" is spelled.
+    """
+    from sqlalchemy.schema import CreateTable
+
+    from cairndex.persistence.base import PLANS_SCHEMA, Base
+
+    with engine.begin() as conn:
+        for name in ("grouping_plans", "grouping_proposals", "grouping_proposal_files"):
+            table = Base.metadata.tables[f"{PLANS_SCHEMA}.{name}"]
+            conn.execute(
+                text(str(CreateTable(table).compile(engine)).replace(f"{PLANS_SCHEMA}.", ""))
+            )
+        for column in omit:
+            conn.execute(text(f"ALTER TABLE grouping_proposals DROP COLUMN {column}"))
+
+
+def test_an_old_library_hands_its_plans_over_on_open(engine: Engine) -> None:
+    """A library that predates ADR-0022 keeps the plan it was reviewing.
+
+    The rows move into the server-local plans database and the in-library tables
+    go away, so this runs once. The column omitted here is the one whose absence
+    the owner hit as "table grouping_proposals has no column named
+    is_collection_context" (reported 2026-08-13): it has to be patched back in
+    before the copy, or the copy would drop it.
+    """
+    from cairndex.persistence.base import PLANS_SCHEMA
+
+    target_id = "01K00000000000000000000000"
+    _make_legacy_grouping_tables(engine, omit=("is_collection_context", "target_collection_id"))
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO grouping_plans (id, status, rule_version, stem_modes, "
+                "generated_at, created_at, updated_at, version) "
+                "VALUES ('01K00000000000000000PLAN01', 'OPEN', 1, '{}', "
+                "datetime('now'), datetime('now'), datetime('now'), 1)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO grouping_proposals (id, plan_id, kind, directory, confidence, "
+                "sort_order, created_at, updated_at, owner_edited, membership_edited, "
+                "create_new_bundle) VALUES ('01K0000000000000000PROP01', "
+                "'01K00000000000000000PLAN01', 'CONTAINER', :directory, 0.5, 0, "
+                "datetime('now'), datetime('now'), 0, 0, 0)"
+            ),
+            {"directory": f"@existing-collection/{target_id}"},
+        )
+
+    ensure_content_indexes(engine)
+
+    inspector = inspect(engine)
+    assert "grouping_plans" not in inspector.get_table_names()
+    assert "grouping_proposals" not in inspector.get_table_names()
+    assert "grouping_proposal_files" not in inspector.get_table_names()
+    with Session(engine) as db:
+        moved = db.scalars(select(GroupingProposal)).one()
+        assert moved.plan_id == "01K00000000000000000PLAN01"
+        # The backfill that recovers collection identity from the directory marker
+        # has to run on the *source* shape, before the copy — not after.
+        assert moved.target_collection_id == target_id
+        assert moved.is_collection_context is True
+        assert db.scalars(select(GroupingPlan)).one().status is GroupingPlanStatus.OPEN
+    assert PLANS_SCHEMA in {schema for schema in inspect(engine).get_schema_names()}
+
+
+def test_a_library_whose_plans_will_not_move_still_opens(engine: Engine) -> None:
+    """The move is forgiving, because what it can lose is regenerable.
+
+    A shape it cannot copy (here a legacy table missing a NOT NULL column that no
+    additive entry restores) must not stop the library opening. The rows stay put
+    rather than being half-moved, and pressing Update writes a fresh plan.
+    """
+    _make_legacy_grouping_tables(engine, omit=("kind",))
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO grouping_plans (id, status, rule_version, stem_modes, "
+                "generated_at, created_at, updated_at, version) "
+                "VALUES ('01K00000000000000000PLAN01', 'OPEN', 1, '{}', "
+                "datetime('now'), datetime('now'), datetime('now'), 1)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO grouping_proposals (id, plan_id, directory, confidence, "
+                "sort_order, created_at, updated_at, owner_edited, membership_edited, "
+                "create_new_bundle, is_collection_context) "
+                "VALUES ('01K0000000000000000PROP01', '01K00000000000000000PLAN01', '', 0.5, "
+                "0, datetime('now'), datetime('now'), 0, 0, 0, 0)"
+            )
+        )
+
+    ensure_content_indexes(engine)  # must not raise
+
+    assert "grouping_proposals" in inspect(engine).get_table_names()
+    with Session(engine) as db:
+        assert db.scalars(select(GroupingPlan)).all() == []
+
+
+def test_a_new_library_keeps_no_grouping_tables_of_its_own(engine: Engine) -> None:
+    """Grouping plans are the one metadata that does not live in the library."""
+    from cairndex.persistence.base import PLANS_SCHEMA
+
+    inspector = inspect(engine)
+    assert not {"grouping_plans", "grouping_proposals", "grouping_proposal_files"} & set(
+        inspector.get_table_names()
+    )
+    assert {"grouping_plans", "grouping_proposals", "grouping_proposal_files"} <= set(
+        inspector.get_table_names(schema=PLANS_SCHEMA)
+    )
+
+
 def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> None:
     # Simulate a library created before the manual-ordering columns existed by
     # dropping them, then prove the additive bootstrap patches them back in
@@ -155,54 +318,48 @@ def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine
     assert columns["cover_time"]["nullable"] is True
 
 
-# Existing libraries gain grouping-review edit metadata on open
-def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engine) -> None:
-    target_id = "01K00000000000000000000000"
-    with Session(engine) as db:
-        plan = GroupingPlan()
-        proposal = GroupingProposal(
-            plan=plan,
-            kind=ProposalKind.CONTAINER,
-            directory=f"@existing-collection/{target_id}",
-        )
-        db.add(proposal)
-        db.commit()
-        proposal_id = proposal.id
+# A cascade with no index on the child column is a full scan per deleted row
+def test_grouping_foreign_keys_are_indexed(engine: Engine) -> None:
+    """Every foreign key into the grouping tables needs an index on the child side.
 
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN base_bundle_id"))
-        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN owner_edited"))
-        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_bundle_title"))
-        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN create_new_bundle"))
-        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_collection_id"))
+    SQLite enforces ``ON DELETE`` by looking for referencing rows, so without one
+    each cascade is a full table scan *per deleted row*. Deleting four superseded
+    plans from the owner's library took 6.4 s on a network share for that reason,
+    and 1.4 s with these indexes (measured 2026-08-14). The same index also serves
+    every plan read, which joins on ``proposal_id``.
+
+    Asserted against the *model* rather than a hand-written list, so a foreign key
+    added later without an index fails here and names itself.
+    """
+    from cairndex.persistence.base import PLANS_SCHEMA, Base
 
     ensure_content_indexes(engine)
-
-    columns = {c["name"] for c in inspect(engine).get_columns("grouping_proposals")}
-    assert {
-        "base_bundle_id",
-        "owner_edited",
-        "target_bundle_title",
-        "create_new_bundle",
-        "target_collection_id",
-    } <= columns
-    with engine.connect() as conn:
-        restored_target = conn.scalar(
-            text("SELECT target_collection_id FROM grouping_proposals WHERE id = :proposal_id"),
-            {"proposal_id": proposal_id},
-        )
-    assert restored_target == target_id
+    inspector = inspect(engine)
+    for table_name in ("grouping_plans", "grouping_proposals", "grouping_proposal_files"):
+        table = Base.metadata.tables[f"{PLANS_SCHEMA}.{table_name}"]
+        indexed = {
+            tuple(col["column_names"])
+            for col in inspector.get_indexes(table_name, schema=PLANS_SCHEMA)
+        } | {(name,) for name in (col.name for col in table.primary_key.columns)}
+        for fk in table.foreign_key_constraints:
+            child = tuple(col.name for col in fk.columns)
+            assert any(existing[: len(child)] == child for existing in indexed), (
+                f"{table_name}.{child} is a foreign key with no index on the child side"
+            )
 
 
-# Existing libraries gain durable per-directory grouping sensitivity on open
-def test_ensure_content_indexes_adds_grouping_plan_stem_modes(engine: Engine) -> None:
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE grouping_plans DROP COLUMN stem_modes"))
+# The column name predates the continuous dial and is deliberately unchanged: the
+# model maps ``stem_level_overrides`` onto it, because nothing here can rename a
+# column (there is no migration chain, and a plans database carried over from a
+# library still holds the old name).
+def test_grouping_plan_stem_levels_keep_their_shipped_column_name(engine: Engine) -> None:
+    from cairndex.persistence.base import PLANS_SCHEMA
 
-    ensure_content_indexes(engine)
-
-    columns = {c["name"] for c in inspect(engine).get_columns("grouping_plans")}
+    columns = {
+        c["name"] for c in inspect(engine).get_columns("grouping_plans", schema=PLANS_SCHEMA)
+    }
     assert "stem_modes" in columns
+    assert "stem_level_overrides" not in columns
 
 
 # Existing libraries gain the additive bundle cursor table on open
