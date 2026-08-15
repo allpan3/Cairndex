@@ -44,12 +44,21 @@ ExportStatus = Literal["pending", "running", "done", "failed"]
 # a few seconds of work rather than an unbounded ask.
 MAX_CLIP_SECONDS = 30.0
 MIN_CLIP_SECONDS = 0.1
-MAX_WIDTH = 720
+# Raised from plan 1 §10's 720 so an "Original" size can mean it (owner,
+# 2026-08-15): a 1080p source is the common case here, and capping it at 720
+# would make that label a lie. 1920 rather than unbounded because a GIF is one
+# indexed frame per frame — at 4K a thirty-second clip runs to hundreds of
+# megabytes, which is not an export anyone wants by accident. Duration remains
+# the tighter bound on how much work one request can ask for.
+MAX_WIDTH = 1920
 MIN_WIDTH = 120
 MAX_FPS = 15
 MIN_FPS = 5
 DEFAULT_WIDTH = 480
-DEFAULT_FPS = 12
+# 10 rather than 12: a GIF stores each frame's delay in whole centiseconds, so
+# only rates dividing 100 play back at the rate they were asked for. 12 fps
+# becomes 12.5 and 15 becomes 16.7 (both measured); 10 is exact.
+DEFAULT_FPS = 10
 
 # Longer than the caps should ever need, short enough that a wedged ffmpeg is
 # reported rather than held open forever.

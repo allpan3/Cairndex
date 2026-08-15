@@ -1252,7 +1252,7 @@
           "width": {
             "anyOf": [
               {
-                "maximum": 720.0,
+                "maximum": 1920.0,
                 "minimum": 120.0,
                 "type": "integer"
               },

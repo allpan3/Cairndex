@@ -445,7 +445,8 @@ than registry jobs — a running scan must not queue-block a ten-second export:
 
 - `POST /libraries/{lib}/files/{id}/exports` with
   `{kind: "gif", start_s, end_s, width?, fps?}` (caps: duration ≤ 30 s,
-  width ≤ 720, fps ≤ 15; defaults 480 px / 12 fps) or
+  width ≤ 1920 — raised from 720 on 2026-08-15 so an "Original" size can mean
+  it for a 1080p source — fps ≤ 15; defaults 480 px / 10 fps) or
   `{kind: "contact_sheet", grid?, width?}` (default 4×4, 2048 px sheet)
   → `{export_id}`. Video files only; range validated against duration.
 - `GET .../exports/{id}` → `{status, progress}`;
@@ -504,10 +505,15 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   it, so **A-B loop replay is a second entry point to the same model**, not a
   second model. **Size and rate shipped 2026-08-15** as the dialog this section
   originally sketched — but asking only for format options, since the range is
-  already settled by the time it opens. Widths above the source are withheld
-  (upscaling a GIF buys nothing), the output's real pixel size is shown, and
-  byte-size estimates deliberately are not: a GIF's size swings several-fold
-  with how much of the picture moves.
+  already settled by the time it opens. Fixed widths at or above the
+  source are withheld (upscaling a GIF buys nothing) and the source's own size
+  is offered last as **Original**, named that only when it really is — above
+  the ceiling it takes its number instead. The output's real pixel size is
+  shown; byte-size estimates deliberately are not, since a GIF's size swings
+  several-fold with how much of the picture moves. The default rate is **10
+  fps**: a GIF holds frame delays in whole centiseconds, so only rates dividing
+  100 play back at the rate they were asked for (12 becomes 12.5 and 15 becomes
+  16.7, both measured).
   **Generate contact sheet…** on video files' context menus and in the viewer.
 - Desktop (plan 3 D5): same UI plus a native save dialog and a completion
   notification through the platform seam; finished artifacts are drag-out-able.

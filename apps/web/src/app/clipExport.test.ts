@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import {
+  CLIP_FPS_CHOICES,
+  DEFAULT_CLIP_FPS,
   DEFAULT_CLIP_WIDTH,
   clipFileName,
   clipWidthOptions,
   defaultClipWidth,
+  isWidthCapped,
   outputHeight,
   saveClipGif,
 } from './clipExport'
@@ -147,33 +150,59 @@ test('saves under that name on desktop', async () => {
   expect(saveExport.mock.calls[0]?.[0]).toBe('a b c d.gif')
 })
 
-test('offers every width for a source big enough for all of them', () => {
-  expect(clipWidthOptions(1920)).toEqual([240, 320, 480, 720])
-  expect(clipWidthOptions(720)).toEqual([240, 320, 480, 720])
+/** Compact view of the offered widths, for readable assertions. */
+const widths = (source: number | null | undefined) =>
+  clipWidthOptions(source).map((option) => `${option.label}:${option.value}`)
+
+test('offers the fixed sizes below the source, then the source itself', () => {
+  expect(widths(1920)).toEqual(['320px:320', '480px:480', '720px:720', 'Original:1920'])
+  expect(widths(960)).toEqual(['320px:320', '480px:480', '720px:720', 'Original:960'])
 })
 
-// Upscaling a GIF spends bytes on pixels the source never had.
-test('withholds widths above the source', () => {
-  expect(clipWidthOptions(640)).toEqual([240, 320, 480])
-  expect(clipWidthOptions(400)).toEqual([240, 320])
+// Nothing on offer should upscale, and nothing should appear twice — a 720p
+// source must not show Original beside a redundant 720.
+test('drops fixed sizes at or above the source', () => {
+  expect(widths(720)).toEqual(['320px:320', '480px:480', 'Original:720'])
+  expect(widths(640)).toEqual(['320px:320', '480px:480', 'Original:640'])
+  expect(widths(400)).toEqual(['320px:320', 'Original:400'])
 })
 
-test('offers the source’s own even width when it is narrower than every preset', () => {
-  expect(clipWidthOptions(200)).toEqual([200])
-  expect(clipWidthOptions(201)).toEqual([200])
-  // Never below the server's own floor, even for a tiny source.
-  expect(clipWidthOptions(64)).toEqual([120])
+test('a source narrower than every fixed size still offers its own width', () => {
+  expect(widths(300)).toEqual(['Original:300'])
+  expect(widths(301)).toEqual(['Original:300'])
+  // Never below the server's floor, even for a pathologically small source.
+  expect(widths(64)).toEqual(['Original:120'])
 })
 
-test('offers everything when the source has not been probed', () => {
-  expect(clipWidthOptions(null)).toEqual([240, 320, 480, 720])
-  expect(clipWidthOptions(0)).toEqual([240, 320, 480, 720])
+// A 4K source exported at 1920 is not its original size, so it is not called
+// that — the number is the honest label.
+test('labels the top option by number when the source exceeds the maximum', () => {
+  expect(widths(3840)).toEqual(['320px:320', '480px:480', '720px:720', '1920px:1920'])
+  expect(isWidthCapped(3840)).toBe(true)
+  expect(isWidthCapped(1920)).toBe(false)
+  expect(isWidthCapped(null)).toBe(false)
+})
+
+test('offers the fixed sizes alone when the source has not been probed', () => {
+  expect(widths(null)).toEqual(['320px:320', '480px:480', '720px:720'])
+  expect(widths(0)).toEqual(['320px:320', '480px:480', '720px:720'])
 })
 
 test('starts on the default width, or the largest still offered', () => {
-  expect(defaultClipWidth([240, 320, 480, 720])).toBe(DEFAULT_CLIP_WIDTH)
-  expect(defaultClipWidth([240, 320])).toBe(320)
-  expect(defaultClipWidth([200])).toBe(200)
+  expect(defaultClipWidth(clipWidthOptions(1920))).toBe(DEFAULT_CLIP_WIDTH)
+  expect(defaultClipWidth(clipWidthOptions(640))).toBe(DEFAULT_CLIP_WIDTH)
+  // Below the default, the source's own width is all that is left.
+  expect(defaultClipWidth(clipWidthOptions(400))).toBe(400)
+  expect(defaultClipWidth(clipWidthOptions(300))).toBe(300)
+})
+
+// A GIF's frame delay is stored in whole centiseconds, so only rates dividing
+// 100 play back at the rate they were asked for. 10 is the one preset that
+// does; 12 becomes 12.5 and 15 becomes 16.7, both measured on real output.
+test('defaults to the one frame rate a GIF can represent exactly', () => {
+  expect(DEFAULT_CLIP_FPS).toBe(10)
+  expect(100 % DEFAULT_CLIP_FPS).toBe(0)
+  expect(CLIP_FPS_CHOICES).toContain(DEFAULT_CLIP_FPS)
 })
 
 // Mirrors ffmpeg's `scale=W:-2`: aspect preserved, height rounded even.

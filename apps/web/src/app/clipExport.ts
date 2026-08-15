@@ -24,8 +24,8 @@ import { getHostPlatform, isDesktopHost } from '../platform'
  */
 export const MAX_CLIP_EXPORT_SECONDS = 30
 
-/** Output widths offered, all inside the server's 120–720 bound. */
-export const CLIP_WIDTHS = [240, 320, 480, 720] as const
+/** Fixed output widths offered, below whatever the source itself gives. */
+export const CLIP_WIDTHS = [320, 480, 720] as const
 export const DEFAULT_CLIP_WIDTH = 480
 
 /**
@@ -38,33 +38,55 @@ export const DEFAULT_CLIP_WIDTH = 480
  * what was asked for; it is only the playback tempo that rounds.
  */
 export const CLIP_FPS_CHOICES = [8, 10, 12, 15] as const
-export const DEFAULT_CLIP_FPS = 12
+/** The one preset that plays back at exactly the rate it was asked for. */
+export const DEFAULT_CLIP_FPS = 10
 
+/** `media/exports.py` bounds, mirrored (see `MAX_CLIP_EXPORT_SECONDS`). */
 const MIN_SERVER_WIDTH = 120
+const MAX_SERVER_WIDTH = 1920
+
+export interface ClipWidthOption {
+  value: number
+  label: string
+}
 
 /**
- * The widths worth offering for one source.
+ * The widths worth offering for one source: the fixed presets below the
+ * source's own width, then the source's own width last.
  *
- * Presets above the source's own width are dropped: upscaling a GIF spends
- * bytes on pixels the source never had. Mirrors `qualityOptions`, which filters
- * the resolution menu the same way.
+ * Nothing on offer upscales — a GIF gains nothing from pixels the source never
+ * had — and nothing is offered twice, so a 720p source shows 320, 480 and
+ * Original rather than Original beside a redundant 720.
+ *
+ * The last entry is only called **Original** when it really is the source's
+ * width. Above the server's ceiling it is labelled with its number instead,
+ * because a 4K source exported at 1920 is not its original size and a label
+ * saying otherwise would be wrong.
  */
-export function clipWidthOptions(sourceWidth: number | null | undefined): number[] {
-  if (!sourceWidth || sourceWidth <= 0) return [...CLIP_WIDTHS]
-  const fitting = CLIP_WIDTHS.filter((width) => width <= sourceWidth)
-  if (fitting.length > 0) return fitting
-  // Narrower than every preset: offer the source's own width rather than an
-  // empty control, rounded even for `scale=W:-2` and held inside the bound the
-  // server enforces.
-  const own = Math.max(MIN_SERVER_WIDTH, Math.floor(sourceWidth / 2) * 2)
-  return [own]
+export function clipWidthOptions(sourceWidth: number | null | undefined): ClipWidthOption[] {
+  const fixed = CLIP_WIDTHS.map((value) => ({ value, label: `${value}px` }))
+  // Unprobed: there is no source width to resolve "Original" against, so offer
+  // the fixed sizes alone rather than guessing one.
+  if (!sourceWidth || sourceWidth <= 0) return fixed
+
+  // Even, for ffmpeg's `scale=W:-2`, and inside the bounds the server enforces.
+  const native = Math.max(MIN_SERVER_WIDTH, Math.floor(sourceWidth / 2) * 2)
+  const top = Math.min(native, MAX_SERVER_WIDTH)
+  return [
+    ...fixed.filter((option) => option.value < top),
+    { value: top, label: native <= MAX_SERVER_WIDTH ? 'Original' : `${top}px` },
+  ]
+}
+
+/** Whether the top option had to be capped rather than being the source's own. */
+export function isWidthCapped(sourceWidth: number | null | undefined): boolean {
+  return Boolean(sourceWidth && sourceWidth > MAX_SERVER_WIDTH)
 }
 
 /** The width to start on: the default when it is offered, else the largest. */
-export function defaultClipWidth(options: number[]): number {
-  return options.includes(DEFAULT_CLIP_WIDTH)
-    ? DEFAULT_CLIP_WIDTH
-    : (options[options.length - 1] ?? DEFAULT_CLIP_WIDTH)
+export function defaultClipWidth(options: ClipWidthOption[]): number {
+  const preferred = options.find((option) => option.value === DEFAULT_CLIP_WIDTH)
+  return preferred?.value ?? options[options.length - 1]?.value ?? DEFAULT_CLIP_WIDTH
 }
 
 /**

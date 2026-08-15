@@ -22,6 +22,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   length rather than collapsing — the length is already decided, the click only
   says where it sits. **Range** plays the marked span and stops at its end;
   **Loop** repeats it instead, and turns Range on with it. Save GIF… asks for
+  the output width — 320, 480, 720 or **Original**, with anything at or above
+  the source's own size left off since upscaling a GIF buys nothing — and the
+  frame rate, showing the pixel size and frame count it will actually produce.
+  It then encodes server-side (≤30 s, ≤1920 px) and downloads, or saves through
+  the native dialog in the desktop app.
   the output width and frame rate — showing the pixel size it will actually
   produce, and withholding presets that would upscale the source — then encodes
   server-side (≤30 s) and downloads, or saves through the native dialog in the
