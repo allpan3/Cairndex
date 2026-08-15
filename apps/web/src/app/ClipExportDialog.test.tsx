@@ -31,14 +31,15 @@ function open(target: ClipExportTarget = TARGET, onClose = vi.fn()) {
 const widths = () => within(screen.getByRole('radiogroup', { name: 'Output width' }))
 const rates = () => within(screen.getByRole('radiogroup', { name: 'Frame rate' }))
 
-test('defaults to 480px at 20 fps and says what that produces', () => {
+test('defaults to 480px at 10 fps and says what that produces', () => {
   open()
 
   expect(widths().getByRole('radio', { name: '480px' })).toBeChecked()
-  expect(rates().getByRole('radio', { name: '20 fps' })).toBeChecked()
-  // 16:9 at 480 wide, six seconds at twenty frames a second.
+  // 10 is the conventional GIF rate the format can also hold exactly.
+  expect(rates().getByRole('radio', { name: '10 fps' })).toBeChecked()
+  // 16:9 at 480 wide, six seconds at ten frames a second.
   expect(screen.getByText(/480×270/)).toBeInTheDocument()
-  expect(screen.getByText(/120 frames/)).toBeInTheDocument()
+  expect(screen.getByText(/60 frames/)).toBeInTheDocument()
 })
 
 // Every rung must be a rate a GIF can hold exactly, or the clip plays at a
