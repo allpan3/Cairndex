@@ -10,6 +10,7 @@ import {
   moveEdge,
   nudgeEdge,
   rangeDuration,
+  setEdgeAtPlayhead,
 } from './clipRange'
 
 describe('frameSeconds', () => {
@@ -94,6 +95,59 @@ describe('nudgeEdge', () => {
   it('obeys the same floor as a direct move', () => {
     const nudged = nudgeEdge({ start: 2, end: 8 }, 'end', -100, 60)
     expect(nudged.end).toBeCloseTo(2 + MIN_CLIP_SECONDS)
+  })
+})
+
+describe('setEdgeAtPlayhead', () => {
+  it('behaves like a plain move while the edge stays on its own side', () => {
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'start', 12, 120)).toEqual({
+      start: 12,
+      end: 20,
+    })
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'end', 25, 120)).toEqual({
+      start: 10,
+      end: 25,
+    })
+  })
+
+  // Clamping here collapsed the clip to its floor, which is never what "start
+  // it here" meant — the owner has a length and is choosing where it begins.
+  it('carries the whole span forward when the start lands past the end', () => {
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'start', 50, 120)).toEqual({
+      start: 50,
+      end: 60,
+    })
+  })
+
+  it('carries the span backwards when the end lands before the start', () => {
+    expect(setEdgeAtPlayhead({ start: 40, end: 50 }, 'end', 20, 120)).toEqual({
+      start: 10,
+      end: 20,
+    })
+  })
+
+  // "…unless the remainder of the video is not long enough": the instant the
+  // owner named wins, and the clip is whatever fits after it.
+  it('keeps the named instant and shortens when the video runs out', () => {
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'start', 115, 120)).toEqual({
+      start: 115,
+      end: 120,
+    })
+    expect(setEdgeAtPlayhead({ start: 60, end: 90 }, 'end', 10, 120)).toEqual({
+      start: 0,
+      end: 10,
+    })
+  })
+
+  it('still leaves a usable span at the very end of the video', () => {
+    const shifted = setEdgeAtPlayhead({ start: 10, end: 20 }, 'start', 120, 120)
+    expect(shifted.end).toBe(120)
+    expect(rangeDuration(shifted)).toBeCloseTo(MIN_CLIP_SECONDS)
+  })
+
+  it('clamps a target outside the media', () => {
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'start', -5, 120).start).toBe(0)
+    expect(setEdgeAtPlayhead({ start: 10, end: 20 }, 'end', 999, 120).end).toBe(120)
   })
 })
 

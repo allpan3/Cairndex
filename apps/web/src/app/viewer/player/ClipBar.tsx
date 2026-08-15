@@ -36,6 +36,7 @@ function EdgeRow({
   const range = clip.range
   if (!range) return null
   const frameLabel = `${edge === 'start' ? 'start' : 'end'} by one frame`
+  const setLabel = edge === 'start' ? 'Set beginning' : 'Set end'
   return (
     <div className="mv-clip__row">
       <span className="mv-clip__label">{label}</span>
@@ -77,10 +78,12 @@ function EdgeRow({
       <button
         className="mv-clip__here"
         onClick={() => clip.markAtPlayhead(edge)}
-        aria-label={`Set clip ${edge} to the playhead`}
-        title={`Set ${edge} here (${edge === 'start' ? '[' : ']'})`}
+        // The visible text is inside the accessible name, so speech control
+        // ("click set beginning") reaches the same button a pointer does.
+        aria-label={`${setLabel} at the playhead`}
+        title={`${setLabel} at the playhead (${edge === 'start' ? '[' : ']'}). Past the other end, the whole clip moves and keeps its length.`}
       >
-        Set here
+        {setLabel}
       </button>
     </div>
   )
@@ -106,11 +109,22 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarPro
           </span>
         )}
         <div className="mv-clip__spacer" />
+        {/* Range is the mode; Loop is a modifier on it. Turning Loop on turns
+            Range on with it, because looping while ignoring the out-point is
+            not a state that means anything. */}
         <button
-          className={`mv-clip__toggle${clip.loop ? ' is-active' : ''}`}
-          onClick={() => clip.setLoop(!clip.loop)}
-          aria-pressed={clip.loop}
-          title="Repeat the marked span while picking it"
+          className={`mv-clip__toggle${clip.playMode !== 'off' ? ' is-active' : ''}`}
+          onClick={() => clip.setPlayMode(clip.playMode === 'off' ? 'range' : 'off')}
+          aria-pressed={clip.playMode !== 'off'}
+          title="Play only the marked span, stopping at the end point"
+        >
+          ▶| Range
+        </button>
+        <button
+          className={`mv-clip__toggle${clip.playMode === 'loop' ? ' is-active' : ''}`}
+          onClick={() => clip.setPlayMode(clip.playMode === 'loop' ? 'range' : 'loop')}
+          aria-pressed={clip.playMode === 'loop'}
+          title="Repeat the marked span instead of stopping at its end"
         >
           ⟳ Loop
         </button>
