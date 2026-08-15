@@ -52,13 +52,19 @@ MIN_CLIP_SECONDS = 0.1
 # the tighter bound on how much work one request can ask for.
 MAX_WIDTH = 1920
 MIN_WIDTH = 120
-MAX_FPS = 15
+# Raised from plan 1 §10's sketched 15 on 2026-08-15, after measuring what a
+# GIF can actually represent. 50 fps is a 2-centisecond delay; below that a
+# delay of 1cs is the value historic viewers reinterpret as 10cs, so 50 is the
+# last rate that plays as written.
+MAX_FPS = 50
 MIN_FPS = 5
 DEFAULT_WIDTH = 480
-# 10 rather than 12: a GIF stores each frame's delay in whole centiseconds, so
-# only rates dividing 100 play back at the rate they were asked for. 12 fps
-# becomes 12.5 and 15 becomes 16.7 (both measured); 10 is exact.
-DEFAULT_FPS = 10
+# A GIF stores each frame's delay in whole centiseconds, so the only rates it
+# can represent are 100/n: 5, 10, 20, 25 and 50. Anything else has its delay
+# rounded and plays at the wrong speed — 12 fps becomes 12.5, 15 becomes 14.29,
+# 30 becomes 33.33 (all measured off the frame control blocks). 20 is exact,
+# visibly smoother than 10, and half the frames of 50.
+DEFAULT_FPS = 20
 
 # Longer than the caps should ever need, short enough that a wedged ffmpeg is
 # reported rather than held open forever.

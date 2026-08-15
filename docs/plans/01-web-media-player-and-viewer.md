@@ -446,7 +446,8 @@ than registry jobs — a running scan must not queue-block a ten-second export:
 - `POST /libraries/{lib}/files/{id}/exports` with
   `{kind: "gif", start_s, end_s, width?, fps?}` (caps: duration ≤ 30 s,
   width ≤ 1920 — raised from 720 on 2026-08-15 so an "Original" size can mean
-  it for a 1080p source — fps ≤ 15; defaults 480 px / 10 fps) or
+  it for a 1080p source — fps ≤ 50 — also raised on 2026-08-15, after measuring that 20 and 25 are both
+  exact and smoother than 15 — defaults 480 px / 20 fps) or
   `{kind: "contact_sheet", grid?, width?}` (default 4×4, 2048 px sheet)
   → `{export_id}`. Video files only; range validated against duration.
 - `GET .../exports/{id}` → `{status, progress}`;
@@ -514,10 +515,13 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   is offered last as **Original**, named that only when it really is — above
   the ceiling it takes its number instead. The output's real pixel size is
   shown; byte-size estimates deliberately are not, since a GIF's size swings
-  several-fold with how much of the picture moves. The default rate is **10
-  fps**: a GIF holds frame delays in whole centiseconds, so only rates dividing
-  100 play back at the rate they were asked for (12 becomes 12.5 and 15 becomes
-  16.7, both measured).
+  several-fold with how much of the picture moves. The rate ladder is **only what a
+  GIF can represent** — 5, 10, 20, 25, 50 — since the format holds delays in
+  whole centiseconds and anything else plays at the wrong speed (12 becomes
+  12.5, 15 becomes 14.29, 30 becomes 33.33; all measured off real output's
+  frame control blocks). Default 20. `fps ≤ 15` in the spec above was a sketch;
+  the cap is now 50, the last rate whose delay is not in the range historic
+  viewers reinterpret.
   **Generate contact sheet…** on video files' context menus and in the viewer.
 - Desktop (plan 3 D5): same UI plus a native save dialog and a completion
   notification through the platform seam; finished artifacts are drag-out-able.

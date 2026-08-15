@@ -228,14 +228,25 @@ The output's real pixel size is shown (`scale=W:-2`, so the height is derived
 and even). **No byte-size estimate**: measured output ranged 15–31 KB/frame at
 480px on the same settings, so any number would be wrong by 2× as often as not.
 
-**The default rate is 10 fps, and the reason is the format.** A GIF stores
-frame delays in *centiseconds*, so only rates dividing 100 play back at the
-rate they were asked for. Of the presets 10 is; 12 becomes 12.5 and 15 becomes
-16.7 — both measured on real output, and 10 measured back as exactly `10/1`.
-The frame *count* is always what was asked; only the tempo rounds. For a
-feature built around frame-accurate in and out points, a default that plays the
-clip 11% fast was the wrong one. 20 and 25 fps would also be exact and smoother
-than 10, but both sit above the server's fps cap — a possible follow-up.
+**Frame rate is constrained by the format, and the ladder now says so.** A GIF
+stores each frame's delay as a whole number of centiseconds, so the only rates
+it can represent are `100/n`. Measured off the frame control blocks of real
+output rather than inferred: 5→exact, 8→7.69, 10→exact, 12→12.5, 15→**14.29**,
+20→exact, 24→25, 25→exact, 30→33.33, 50→exact, 60→50.
+
+Two corrections came out of that measurement. **15 fps plays at 14.29, not the
+16.7 recorded here earlier** — that figure came from ffprobe's
+`avg_frame_rate`, which is not the delay a viewer obeys. And **the fps ceiling
+of 15 was a sketch in plan 1 §10, not a finding**: 20 and 25 are exact *and*
+smoother, so `MAX_FPS` is now 50 (a 2cs delay; 1cs is the value historic
+viewers reinterpret as 10cs).
+
+The wheel therefore offers **only exact rates** — 5, 10, 20, 25, 50 — because
+offering 12 or 30 is offering a clip that plays at a speed nobody asked for.
+The default is **20**: exact, visibly smoother than 10, half the frames of 50.
+Rates above the source's own are withheld for the same reason widths are:
+measured, a 25 fps source encoded at 50 gained 50 frames and 1 KB, because a
+duplicated frame stores as nearly nothing and shows nothing new.
 
 **A fourth pass moved every size choice onto a wheel (2026-08-15).** A
 segmented row has to fit every option side by side, which capped the ladders at

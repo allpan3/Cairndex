@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 
 import {
-  CLIP_FPS_CHOICES,
-  DEFAULT_CLIP_FPS,
+  clipFpsOptions,
+  defaultClipFps,
   clipWidthOptions,
   defaultClipWidth,
   isWidthCapped,
@@ -12,13 +12,6 @@ import {
   type ClipExportTarget,
 } from './clipExport'
 import { WheelPicker } from './WheelPicker'
-
-/** Frame rates, with the one a GIF can hold exactly marked. */
-const FPS_OPTIONS = CLIP_FPS_CHOICES.map((value) => ({
-  value: value as number,
-  label: `${value} fps`,
-  note: value === DEFAULT_CLIP_FPS ? 'exact' : undefined,
-}))
 
 /**
  * Output size and frame rate for one GIF, asked after the range is picked.
@@ -40,8 +33,9 @@ export function ClipExportDialog({
   onReport: (message: string | null) => void
 }) {
   const widths = useMemo(() => clipWidthOptions(target.sourceWidth), [target.sourceWidth])
+  const rates = useMemo(() => clipFpsOptions(target.sourceFps), [target.sourceFps])
   const [width, setWidth] = useState(() => defaultClipWidth(widths))
-  const [fps, setFps] = useState<number>(DEFAULT_CLIP_FPS)
+  const [fps, setFps] = useState(() => defaultClipFps(rates))
 
   const height = outputHeight(width, target.sourceWidth, target.sourceHeight)
   const seconds = range.end - range.start
@@ -79,7 +73,7 @@ export function ClipExportDialog({
         <WheelPicker
           id="clip-fps"
           label="Frame rate"
-          options={FPS_OPTIONS}
+          options={rates}
           value={fps}
           onChange={setFps}
         />

@@ -2677,7 +2677,7 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
         start_s: 20,
         end_s: 25,
         width: 320,
-        fps: 15,
+        fps: 25,
       })
       return route.fulfill({
         status: 202,
@@ -2727,7 +2727,9 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
   // The 1920×1080 source scaled to the chosen width, height derived.
   await expect(dialog).toContainText('480×270')
   await widths.getByRole('radio', { name: '320px' }).click()
-  await rates.getByRole('radio', { name: '15 fps' }).click()
+  // Only rates a GIF can hold exactly are offered, so 12 and 15 are absent.
+  await expect(rates.getByRole('radio', { name: '12 fps' })).toHaveCount(0)
+  await rates.getByRole('radio', { name: '25 fps' }).click()
 
   const download = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()
