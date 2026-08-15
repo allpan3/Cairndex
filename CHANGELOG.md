@@ -31,7 +31,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   GIF widths, ten sheet widths, and five grids. GIF frame rates now offer only
   the rates the format can actually hold (5, 10, 20, 25, 50, up from a ceiling
   of 15), since a GIF stores delays in whole centiseconds and anything else
-  plays at a speed nobody asked for. The GIF and
+  plays at a speed nobody asked for. Rates the source cannot meaningfully
+  supply are left off — though a 24 fps source can still reach 25, which fits
+  it far better than 20 does. The GIF and
   snapshot wheels end at the source's own width, marked `native`, since scaling
   either up adds nothing. Contact-sheet widths now run 800–6144 px (they were
   three fixed values), and grids 2×2 through 6×6.
