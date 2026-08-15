@@ -114,6 +114,12 @@ class StemLevelRead(BaseModel):
     # The level at which every filename in this folder is down to its first
     # segment. Folder-specific, so the client is told rather than deriving it.
     max: StemLevel
+    # What the folder is matching on now, taken from one of its filenames and left
+    # exactly as written there. The level alone is an ordinal the owner cannot read
+    # anything off ("stem 2 of 3" — of what?), and the client cannot derive this
+    # without reimplementing the suggester's normalization. Empty for a folder the
+    # plan holds no files from.
+    stem: str = ""
 
 
 class PlanRead(BaseModel):

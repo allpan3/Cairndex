@@ -751,11 +751,22 @@ def test_plan_reports_a_stem_dial_for_every_folder_it_shows(
 
     dials = client.post(f"{base}/plans").json()["stem_levels"]
 
-    assert dials["Duo"] == {"level": DEFAULT_STEM_LEVEL, "max": 5}
+    assert dials["Duo"] == {
+        "level": DEFAULT_STEM_LEVEL,
+        "max": 5,
+        # What the folder matches on, sliced out of a filename rather than rebuilt
+        # from the comparison key — so the separators are the ones on disk. The dial
+        # position on its own ("stem 1 of 5") told the owner nothing.
+        "stem": "City Tour - Part One - Evening",
+    }
     # Nothing to widen in a folder whose one name is a single segment: the dial
     # ends where it starts, and the client renders Widen as spent rather than
     # offering a step that would change nothing.
-    assert dials["Solo"] == {"level": DEFAULT_STEM_LEVEL, "max": DEFAULT_STEM_LEVEL}
+    assert dials["Solo"] == {
+        "level": DEFAULT_STEM_LEVEL,
+        "max": DEFAULT_STEM_LEVEL,
+        "stem": "Solo",
+    }
     # Every folder with files, not only the overridden ones.
     assert set(dials) == {"Duo", "Solo", "Trip"}
 
@@ -773,7 +784,13 @@ def test_stem_level_above_a_folder_maximum_is_clamped(
     )
 
     assert adjusted.status_code == 200, adjusted.text
-    assert adjusted.json()["stem_levels"]["Duo"] == {"level": 5, "max": 5}
+    assert adjusted.json()["stem_levels"]["Duo"] == {
+        "level": 5,
+        "max": 5,
+        # Widened to the top: both names are down to their first segment, which is
+        # why they now merge — and saying so is the point of reporting it.
+        "stem": "City",
+    }
 
 
 # A plan open across the upgrade still carries the three names it used to store
@@ -799,7 +816,7 @@ def test_a_stem_mode_stored_by_a_previous_release_reads_as_a_level(
 
     dials = client.get(f"{base}/plans/{plan_id}").json()["stem_levels"]
 
-    assert dials["Duo"] == {"level": 5, "max": 5}
+    assert dials["Duo"] == {"level": 5, "max": 5, "stem": "City"}
     assert dials["Trip"]["level"] == 0
     assert dials["Solo"]["level"] == DEFAULT_STEM_LEVEL
 
