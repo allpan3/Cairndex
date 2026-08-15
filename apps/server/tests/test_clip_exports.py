@@ -93,11 +93,25 @@ def test_defaults_fill_in_width_and_fps() -> None:
 
 
 # A GIF holds each frame's delay in whole centiseconds, so a default that does
-# not divide 100 plays the clip back at the wrong speed — 12 fps becomes 12.5
-# and 15 becomes 16.7, both measured on real output.
+# not divide 100 plays the clip back at the wrong speed — measured off real
+# output: 12 fps becomes 12.5, 15 becomes 14.29, 30 becomes 33.33.
 def test_the_default_frame_rate_is_one_a_gif_can_hold_exactly() -> None:
     assert 100 % exports.DEFAULT_FPS == 0
     assert exports.MIN_FPS <= exports.DEFAULT_FPS <= exports.MAX_FPS
+
+
+# Raised from plan 1 §10's sketched 15 once the format was measured rather than
+# guessed at: 20 and 25 are both exact and smoother, and 50 is the last rate
+# whose delay (2cs) is not in the range historic viewers reinterpret.
+def test_the_rate_ceiling_admits_the_exact_rates_above_fifteen() -> None:
+    assert exports.MAX_FPS == 50
+    for rate in (20, 25, 50):
+        params = exports.validated_gif_params(
+            start_s=0.0, end_s=2.0, width=None, fps=rate, duration=60.0
+        )
+        assert params.fps == rate
+    with pytest.raises(ValidationError, match="fps"):
+        exports.validated_gif_params(start_s=0.0, end_s=2.0, width=None, fps=60, duration=60.0)
 
 
 # Raised from 720 so the client's "Original" can mean it for a 1080p source,

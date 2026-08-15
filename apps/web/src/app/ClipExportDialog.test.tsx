@@ -15,6 +15,7 @@ const TARGET: ClipExportTarget = {
   title: 'A Clip.mp4',
   sourceWidth: 1920,
   sourceHeight: 1080,
+  sourceFps: 30,
 }
 const RANGE = { start: 4, end: 10 }
 
@@ -30,15 +31,28 @@ function open(target: ClipExportTarget = TARGET, onClose = vi.fn()) {
 const widths = () => within(screen.getByRole('radiogroup', { name: 'Output width' }))
 const rates = () => within(screen.getByRole('radiogroup', { name: 'Frame rate' }))
 
-test('defaults to 480px at 10 fps and says what that produces', () => {
+test('defaults to 480px at 20 fps and says what that produces', () => {
   open()
 
   expect(widths().getByRole('radio', { name: '480px' })).toBeChecked()
-  // 10 fps is the one choice a GIF's centisecond delays can hold exactly.
-  expect(rates().getByRole('radio', { name: '10 fps, exact' })).toBeChecked()
-  // 16:9 at 480 wide, six seconds at ten frames a second.
+  expect(rates().getByRole('radio', { name: '20 fps' })).toBeChecked()
+  // 16:9 at 480 wide, six seconds at twenty frames a second.
   expect(screen.getByText(/480×270/)).toBeInTheDocument()
-  expect(screen.getByText(/60 frames/)).toBeInTheDocument()
+  expect(screen.getByText(/120 frames/)).toBeInTheDocument()
+})
+
+// Every rung must be a rate a GIF can hold exactly, or the clip plays at a
+// speed nobody asked for.
+test('offers only rates the format can represent, capped by the source', () => {
+  open()
+  // A 30 fps source cannot supply 50.
+  expect(
+    rates()
+      .getAllByRole('radio')
+      .map((r) => r.textContent),
+  ).toEqual(['5 fps', '10 fps', '20 fps', '25 fps'])
+  expect(rates().queryByRole('radio', { name: '12 fps' })).not.toBeInTheDocument()
+  expect(rates().queryByRole('radio', { name: '15 fps' })).not.toBeInTheDocument()
 })
 
 // The wheel is the point: a segmented row fit three or four sizes, this holds
@@ -69,8 +83,8 @@ test('the frame count follows the chosen rate', () => {
   fireEvent.click(rates().getByRole('radio', { name: '5 fps' }))
   expect(screen.getByText(/30 frames/)).toBeInTheDocument()
 
-  fireEvent.click(rates().getByRole('radio', { name: '15 fps' }))
-  expect(screen.getByText(/90 frames/)).toBeInTheDocument()
+  fireEvent.click(rates().getByRole('radio', { name: '25 fps' }))
+  expect(screen.getByText(/150 frames/)).toBeInTheDocument()
 })
 
 // Upscaling a GIF spends bytes on pixels the source never had.
@@ -117,14 +131,14 @@ test('saving passes the chosen size and rate through, and closes', () => {
   const { onClose } = open()
 
   fireEvent.click(widths().getByRole('radio', { name: '320px' }))
-  fireEvent.click(rates().getByRole('radio', { name: '15 fps' }))
+  fireEvent.click(rates().getByRole('radio', { name: '25 fps' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
   expect(onClose).toHaveBeenCalled()
   expect(saveClipGif).toHaveBeenCalledWith(
     TARGET,
     RANGE,
-    { width: 320, fps: 15 },
+    { width: 320, fps: 25 },
     expect.any(Function),
   )
 })

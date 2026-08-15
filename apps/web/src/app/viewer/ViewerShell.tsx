@@ -267,8 +267,9 @@ export function ViewerShell({
       title: current?.title ?? title,
       sourceWidth: current?.width ?? null,
       sourceHeight: current?.height ?? null,
+      sourceFps: current?.fps ?? null,
     })
-  }, [clip.range, current?.height, current?.title, current?.width, fileId, title])
+  }, [clip.range, current?.fps, current?.height, current?.title, current?.width, fileId, title])
   usePlaybackProgressReporter({
     bundleId,
     fileId,

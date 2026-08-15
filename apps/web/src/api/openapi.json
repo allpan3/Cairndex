@@ -1228,7 +1228,7 @@
           "fps": {
             "anyOf": [
               {
-                "maximum": 15.0,
+                "maximum": 50.0,
                 "minimum": 5.0,
                 "type": "integer"
               },
