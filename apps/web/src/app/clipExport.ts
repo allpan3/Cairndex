@@ -65,9 +65,19 @@ async function awaitArtifact(fileId: string, exportId: string): Promise<ClipExpo
   }
 }
 
-/** Strip what a filename cannot hold, keeping the title readable. */
-function safeName(value: string): string {
-  return value.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
+/**
+ * A `.gif` filename from a display title.
+ *
+ * The title usually still carries the source's extension, so appending
+ * naively yields `clip.mp4.gif`. Drop a short trailing suffix — bounded at
+ * five characters so a title that merely contains a dot ("Scene 2.5 rework")
+ * survives intact. Mirrors `_safe_stem` in `api/v1/exports.py`, which names
+ * the same artifact for the Content-Disposition header.
+ */
+export function clipFileName(title: string): string {
+  const withoutExtension = title.replace(/\.[A-Za-z0-9]{1,5}$/, '')
+  const cleaned = (withoutExtension || title).replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  return `${cleaned || 'clip'}.gif`
 }
 
 function downloadInBrowser(blob: Blob, name: string): void {
@@ -107,7 +117,7 @@ export async function saveClipGif(
     const response = await fetch(clipExportDownloadUrl(target.fileId, exportId))
     if (!response.ok) throw new Error(`The GIF could not be fetched (HTTP ${response.status}).`)
     const blob = await response.blob()
-    const name = `${safeName(target.title)}.gif`
+    const name = clipFileName(target.title)
 
     if (isDesktopHost()) {
       const saved = await getHostPlatform().saveExport(name, blob)

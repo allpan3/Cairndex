@@ -168,6 +168,22 @@ def test_command_carries_the_requested_size_and_rate() -> None:
     assert "scale=320:-2" in joined
 
 
+# --- naming -----------------------------------------------------------------
+
+
+# A display title still carries the source's extension, so the naive stem names
+# the artifact `clip.mp4.gif`.
+def test_the_stem_drops_the_source_extension() -> None:
+    assert exports_api._safe_stem("clip.mp4") == "clip"
+    assert exports_api._safe_stem("a movie.mkv") == "a movie"
+    # A dot that is not an extension belongs to the name.
+    assert exports_api._safe_stem("Scene 2.5 rework") == "Scene 2.5 rework"
+    assert exports_api._safe_stem("no extension") == "no extension"
+    # What a filename cannot hold goes, and nothing left still names something.
+    assert exports_api._safe_stem("a/b:c*d?.mkv") == "a b c d"
+    assert exports_api._safe_stem("") == "clip"
+
+
 # --- the manager ------------------------------------------------------------
 
 

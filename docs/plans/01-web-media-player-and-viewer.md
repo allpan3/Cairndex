@@ -62,7 +62,8 @@ opens it on that file.
   info panel, `C` cycle subtitles, `<`/`>` frame step back/forward while
   paused, `,`/`.` speed down/up (owner 2026-07-11: swapped from the original
   map — M2 shipped frame step on `,`/`.` and speed on `<`/`>`; M9 rebinds),
-  `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set A-B loop points (M11),
+  `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set the clip range's ends
+  (shipped M11 2026-08-15; the same span A-B loop replay will use),
   `Esc` close. Same map reused by the desktop shell.
 - Subtitle experience (Movist-inspired): external + embedded text tracks,
   on/off + track pick, styling settings (size, color, background/edge,
@@ -73,8 +74,11 @@ opens it on that file.
 - Snapshot capture: save/copy the current frame via a canvas grab (streams
   are same-origin, so the canvas stays untainted).
 - A-B loop between two marked points (2026-07-11: moved to M11 as the GIF
-  range-picker); video adjustments (2026-07-11: deferred, reframed as
-  color/tone — see §11 future rows).
+  range-picker). **The range picker shipped 2026-08-15** and loops the marked
+  span while it is being picked; what remains is exposing that loop as a
+  persistent playback mode, which is a settings-menu toggle over the existing
+  `useClipRange`/`useClipLoop` pair rather than new machinery. Video adjustments
+  (2026-07-11: deferred, reframed as color/tone — see §11 future rows).
 - Resume: reopening a partially-watched file offers/starts at the saved
   position; progress saved throttled + on pause/close.
 - Playlist behavior inside a bundle: auto-advance toggle, next/previous.
@@ -434,9 +438,10 @@ excluded.
 
 ### Server: interactive export tasks
 
-New `media/exports.py` + `api/v1/exports.py`, following the HLS-session
-pattern (interactive, in-process, bounded) rather than registry jobs — a
-running scan must not queue-block a ten-second export:
+**Shipped 2026-08-15** for `kind: "gif"`, as specced below with two deviations
+recorded at the end of this section. `media/exports.py` + `api/v1/exports.py`,
+following the HLS-session pattern (interactive, in-process, bounded) rather
+than registry jobs — a running scan must not queue-block a ten-second export:
 
 - `POST /libraries/{lib}/files/{id}/exports` with
   `{kind: "gif", start_s, end_s, width?, fps?}` (caps: duration ≤ 30 s,
@@ -465,21 +470,45 @@ running scan must not queue-block a ten-second export:
   W2, ADR-0013) — and the Export dialog gains "Save into library…" once
   that lands.
 
+**Deviations from the spec above, as built:**
+
+- **One ffmpeg run, not two.** `split` feeds the same decoded frames to
+  `palettegen` and `paletteuse`, so the source is decoded once. Two separate
+  passes would double the expensive half — the decode — to save nothing.
+- **A `DELETE` route was added.** The plan had artifacts removed "after
+  successful download", but deleting inside the download response would leave a
+  half-transferred GIF unrecoverable. The client deletes explicitly once it has
+  the bytes (and after a failure); the TTL reaper is the backstop.
+- The in-point uses an **accurate** input seek — the contact sheet's
+  `-noaccurate_seek` is wrong here, since a clip starts on the frame the owner
+  placed to the millisecond rather than on a representative one.
+
 ### Client integration
 
-- Web: an **Export…** dialog in the player settings menu — range pre-filled
-  from the A-B loop points (M9) or typed, format/size, progress, browser
-  download. **Generate contact sheet…** on video files' context menus and in
-  the viewer.
+- Web: **shipped 2026-08-15** as an inline **clip bar** rather than the dialog
+  sketched here. The range is picked in the player chrome, not in a modal:
+  placing an in-point accurately means watching the frame you land on, and a
+  modal over the viewer covers the one thing being aimed at. Two granularities,
+  at the owner's ask — the seek bar carries the band and its handles in
+  whole-file proportions, and a magnified track under the clip bar covers the
+  selection plus a margin so a pointer movement spans frames. Ends are moved by
+  `[`/`]`, by one-second and one-frame steppers, or by dragging either handle;
+  every one of those scrubs the video to the end being moved. Timestamps are
+  read-only (owner: no editable field). `useClipRange` owns the span and
+  `useClipLoop` already consumes it for preview looping, so **A-B loop replay is
+  a second consumer of the same model**, not a second model. Size/fps controls
+  are deferred to the next slice; the API takes both already.
+  **Generate contact sheet…** on video files' context menus and in the viewer.
 - Desktop (plan 3 D5): same UI plus a native save dialog and a completion
   notification through the platform seam; finished artifacts are drag-out-able.
   The save seam landed in **D5b** (`save_export_file` + `HostPlatform.canSaveExports`)
-  with no caller. **Before M11 ships a real export flow, change how the bytes
-  travel:** the seam currently passes them as a JSON number array
-  (`Array.from(bytes)`), which turns a few-megabyte GIF into tens of megabytes of
-  JSON serialized on the main thread. Move it to Tauri's raw request body
-  (`tauri::ipc::Request`) — acceptable for a seam with no callers, not for a
-  shipping export.
+  with no caller. **Done 2026-08-15, with the GIF export that needed it:** the
+  bytes were a JSON number array (`Array.from(bytes)`), which turns a
+  few-megabyte GIF into tens of megabytes of JSON serialized on the main thread.
+  They now travel as Tauri's raw request body (`tauri::ipc::Request`), with the
+  suggested name in a percent-encoded header — an HTTP header value is
+  ASCII-only and a display title is not. The seam takes a `Blob`; contact sheets
+  and snapshots moved onto the same path.
 - TV: not exposed.
 
 ## 10.1 Viewer chrome and fit — owner feedback 2026-07-20 (**done**)
@@ -541,7 +570,7 @@ there is one layout, not two.
 | M12 | ✅ Thumbnail hover video preview (Eagle-style, §13.2; merged, #12)                  | Dwell-to-play muted video at rest; storyboard sprites while the cursor moves; one video seek/resume after 250 ms rest; position bar, time, sound toggle, and storyboard-only fallback. Sequenced right after M9, before the desktop shell                                                                          |
 | M8  | Subtitle upgrade — **deferred to future**                                           | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice                                |
 | M10 | Video wall (web) — **deferred to future**                                           | §9                                                                                                                                                                                                                                                                                                                 |
-| M11 | ◐ Media exports — **contact sheet shipped (#34), rest deferred**                     | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **Still deferred:** the GIF-snippet export and the **A-B loop moved here from M9** (owner 2026-07-11: its real use is picking a GIF range, so it lands as the export range-picker UI). Plan 4 W2 (save exports into library) waited on this and is now *partly* unblocked — the export seam and one real export exist, so W2 is a slice rather than a blocked item |
+| M11 | ◐ Media exports — **contact sheet (#34) and GIF snippet shipped; size/fps UI left** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **GIF snippet shipped 2026-08-15**, also an owner request: an interactive create/poll/download export task (not a plain GET — a GIF decodes a contiguous span and can outlast the shell's 30s relay timeout), and the **range picker the A-B loop was moved here to become** (owner 2026-07-11). The picker is an inline clip bar with two granularities, and the span it owns is shared — `useClipLoop` consumes it for preview looping today, so **A-B loop replay is a follow-up consumer rather than new machinery**. The D5b export seam's JSON-number-array byte transport was replaced with a raw IPC body, as §10 required before a real export shipped. **Still open:** the size/fps controls (deferred by the owner to a next slice; the API takes both), and `kind: "webp"`/`"mp4"`. Plan 4 W2 (save exports into library) is a slice rather than a blocked item |
 | —   | Video adjustments — **deferred to future**                                          | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred                                                                                                                                      |
 
 Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved

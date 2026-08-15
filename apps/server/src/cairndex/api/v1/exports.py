@@ -55,9 +55,17 @@ def _read(export: ClipExport) -> ClipExportRead:
 def _safe_stem(title: str) -> str:
     """A filename stem from a display title, with what a name cannot hold gone.
 
+    A display title usually still carries the source's extension, so the naive
+    stem yields ``clip.mp4.gif``. Drop a short trailing suffix — bounded at five
+    characters so a title that merely contains a dot ("Scene 2.5 rework") keeps
+    all of it.
+
     The desktop shell sanitizes again on its side (`sanitize_file_name`); this
     is for the browser download and the Content-Disposition header.
     """
+    stem, dot, suffix = title.rpartition(".")
+    if dot and stem and 1 <= len(suffix) <= 5 and suffix.isalnum():
+        title = stem
     cleaned = "".join(" " if ch in '\\/:*?"<>|' else ch for ch in title).strip()
     return cleaned or "clip"
 

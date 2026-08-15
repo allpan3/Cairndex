@@ -118,6 +118,67 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: clip range picker and GIF export (2026-08-15)
+
+Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`. Owner request;
+this is plan 1 **§10 / M11**'s GIF-snippet half, plus the range picker the A-B
+loop was moved into M11 to become (owner, 2026-07-11).
+
+**Two owner decisions shaped it.** Both mechanisms for precision, not one — a
+seek-bar band with handles *and* a magnified track — but no editable timestamp
+field. And loop scope stops at previewing the marked span while picking it;
+persistent A-B loop replay is a follow-up.
+
+**The shared model is the point.** `clipRange.ts` (pure arithmetic) +
+`useClipRange` own the span; `useClipLoop` is already a second consumer of it.
+Loop replay lands as a settings-menu toggle over the same pair, not a second
+model. `useEdgeDrag` is shared by both tracks so their drag rules cannot drift.
+
+One rule runs through the interaction: **moving an edge shows you that edge.**
+Every stepper press and handle drag scrubs the video there, which is also why
+the picker is inline chrome rather than a modal — a modal covers the frame being
+aimed at. Timestamps are read-only, `[`/`]` mark ends at the playhead (the keys
+plan 1 §2 reserved), and the frame step uses the probed rate with the same 30 fps
+fallback `frameStep` has always had.
+
+**Server: a task, not a request.** A contact sheet seeks to sixteen keyframes
+and costs the same at any length; a GIF decodes a *contiguous* span and scales
+with resolution and storage speed, so on 4K over a network mount it can outlast
+the desktop shell's 30-second relay read timeout — the same wall that broke long
+contact sheets before they were rewritten to seek. Hence create/poll/download,
+each returning at once. Artifacts live under `{data_dir}/exports/`, not the
+library cache: the parameter space is continuous, so caching them would
+accumulate megabytes per marked span with no prospect of a hit. Encoding is one
+ffmpeg run (`split` → `palettegen`/`paletteuse`), so the decode happens once.
+
+**A prerequisite the plan had recorded came due.** `save_export_file` passed
+bytes as a JSON number array — fine for a seam with no callers, not for a
+multi-megabyte GIF. Now a raw Tauri IPC body with the name in a percent-encoded
+header. Contact sheets and snapshots moved onto it too.
+
+**Found by running it:** the export was named `X.mp4.gif` (display titles carry
+the source extension), and marking an edge read `player.currentTime` — React
+state fed by `timeupdate`, so it lagged the element by a render and could record
+where the playhead *had been*. Both fixed, both with regression tests; the
+second is why `useClipRange` takes a live `getCurrentTime`.
+
+Tests run: **993 server** (21 new, including a real-ffmpeg case asserting an
+animated GIF of the requested width), **617 web** (40 new), **39 player e2e**
+(5 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
+build`/clippy/fmt all clean. Verified against a real backend on a scratch
+library: a 3.5 s export produced a 480×270, 12 fps, 42-frame GIF.
+
+**One pre-existing e2e failure, not from this branch:** `transparently
+re-attaches a fresh session when HLS segments fail` fails on the unmodified tree
+at `6523fec8` too (verified by stashing).
+
+**Known gaps / next:** size and frame-rate controls (owner deferred them; the
+API already takes `width`/`fps`, so it is client-only work); persistent A-B loop
+replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
+been exercised on a packaged build — only the browser download has, since the
+Tauri shell cannot be driven here. The contact sheet still names its output
+`X.mp4 — contact sheet.jpg`; left alone as pre-existing rather than widened into.
+
 ## Diagnosed: the owner's library is on SMB, so round trips are the only cost that matters (2026-08-13)
 
 Three rounds of "still slow" were spent optimizing against synthetic local-disk
