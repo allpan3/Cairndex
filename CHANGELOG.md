@@ -247,6 +247,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.
+- **A collection opened after a drop shows what is in it, not what was.** Dropping
+  bundles on a collection rewrote the cached listings it could work out and marked
+  the rest stale — but a stale listing is still served the instant its view opens,
+  refetching behind it, so any listing the rewrite quietly skipped showed its
+  pre-drop contents while the count beside it had already moved. Listings the
+  rewrite cannot prove — one carrying a filter or a search, an arrival with no
+  cached card to draw, a drag whose memberships had not loaded yet, and
+  Uncategorized or Untagged — are now dropped instead, so the next open fetches
+  them. The grid on screen still refetches in place rather than blanking. A browse
+  fetch already in flight when the drop lands is also cancelled: it used to answer
+  afterwards with the pre-drop page, overwrite the rewrite, and take the reconciling
+  refetch down with it as a duplicate request.
 - **A sidebar count no longer includes bundles the listing beside it hides.** Both
   the per-collection and per-tag counts totted up membership rows without asking
   what was on the other end, so an unbundled file — which belongs to the Unbundled
