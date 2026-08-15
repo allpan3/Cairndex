@@ -2400,6 +2400,82 @@ code {
   color: var(--text-muted);
   font-size: 12px;
 }
+/* Horizontal wheel of values, snapping to the one under the centre mark. Used
+   by the export dialogs where a segmented row would cap out at three or four
+   choices (owner, 2026-08-15). */
+.wheel {
+  --wheel-item: 84px;
+  position: relative;
+}
+.wheel__track {
+  /* Above the centre mark, which is painted first. */
+  position: relative;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* Half a track either side, so the first and last values can reach the
+     centre like any other. */
+  padding: 2px calc(50% - var(--wheel-item) / 2);
+  /* Fade the ends rather than cutting them, so it reads as a strip that
+     continues rather than a list that stops. */
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  scrollbar-width: none;
+}
+.wheel__track::-webkit-scrollbar {
+  display: none;
+}
+.wheel__item {
+  flex: 0 0 var(--wheel-item);
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 0.12s,
+    transform 0.12s;
+}
+.wheel__item.is-active {
+  color: var(--text-strong);
+  font-weight: 600;
+  transform: scale(1.06);
+}
+.wheel__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.wheel__note {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+/* The centre mark sits behind the strip, so the chosen value reads as being
+   held in place rather than merely highlighted. Painted before the track in
+   DOM order rather than pushed back with a negative z-index, which would drop
+   it behind the modal itself. */
+.wheel__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--wheel-item);
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  pointer-events: none;
+}
+
 .segmented {
   display: flex;
   gap: 6px;
@@ -4185,6 +4261,37 @@ code {
   transform: translateX(-50%);
   box-shadow: 0 0 0 3px rgba(53, 118, 255, 0.24);
 }
+
+/* The clip range's overview band, drawn on the seek bar so the selection stays
+   visible in the context of the whole file while the zoomed track below is
+   used to place its ends. */
+.mv-seek__range {
+  position: absolute;
+  z-index: 1;
+  top: 3px;
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(255, 190, 74, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 190, 74, 0.6);
+  pointer-events: none;
+}
+.mv-seek__handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  width: 9px;
+  height: 13px;
+  margin-left: -4px;
+  border-radius: 2px;
+  background: #ffbe4a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.mv-seek__handle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
 .mv-seek__tip {
   position: fixed;
   bottom: 74px;
@@ -4214,6 +4321,186 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Clip range picker (plan 1 §10 / M11) — docked above the seek bar so the
+   frame an edge lands on stays on screen while it is being placed. */
+/* Three rows: the two edges side by side with the label and actions, then the
+   magnified track. Capped and centred rather than spanning the window — at
+   full width the controls end up metres apart on a large display, and the
+   overlay covers more of the picture than it needs to. */
+.mv-clip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 16px;
+  max-width: 720px;
+  margin: 0 auto 10px;
+  border: 1px solid rgba(255, 190, 74, 0.24);
+  border-radius: 8px;
+  background: rgba(18, 20, 27, 0.66);
+  padding: 8px 12px;
+}
+.mv-clip__edges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* The label above the actions, both hard right, so the two blocks line up with
+   the In and Out rows beside them. */
+.mv-clip__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* Wrapping rather than overflowing: on a narrow window the actions take an
+   extra line instead of running out past the overlay's edge. */
+.mv-clip__meta,
+.mv-clip__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+}
+.mv-clip__title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #ffbe4a;
+}
+.mv-clip__duration {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.86);
+}
+.mv-clip__duration.is-over {
+  color: #ff8f6b;
+}
+.mv-clip__warn {
+  font-size: 12px;
+  color: #ff8f6b;
+}
+.mv-clip__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mv-clip__label {
+  width: 26px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mv-clip__nudge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.mv-clip__step,
+.mv-clip__here,
+.mv-clip__toggle,
+.mv-clip__export,
+.mv-clip__close {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.mv-clip__step:hover,
+.mv-clip__here:hover,
+.mv-clip__toggle:hover,
+.mv-clip__export:hover:not(:disabled),
+.mv-clip__close:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.mv-clip__toggle.is-active {
+  border-color: rgba(255, 190, 74, 0.6);
+  background: rgba(255, 190, 74, 0.18);
+  color: #ffd591;
+}
+.mv-clip__export {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.mv-clip__export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* "Set In" and "Set Out" are different lengths; a shared width keeps the In and
+   Out rows on the same grid instead of ragged. */
+.mv-clip__here {
+  min-width: 68px;
+}
+/* Tabular figures keep the number from shifting as it counts, which otherwise
+   moves the buttons either side of it under the pointer mid-nudge. */
+.mv-clip__time {
+  min-width: 78px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+/* Spans the whole overlay, under both columns. */
+.mv-clip-zoom {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mv-clip-zoom__edge {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+}
+.mv-clip-zoom__track {
+  position: relative;
+  flex: 1;
+  height: 26px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+.mv-clip-zoom__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 190, 74, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 190, 74, 0.5);
+}
+.mv-clip-zoom__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  pointer-events: none;
+}
+.mv-clip-zoom__handle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 11px;
+  margin-left: -5px;
+  border-radius: 3px;
+  background: #ffbe4a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.mv-clip-zoom__handle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
 .mv-storyboard-preview {
   overflow: hidden;
   max-width: min(320px, calc(100vw - 36px));
