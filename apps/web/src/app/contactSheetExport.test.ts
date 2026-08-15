@@ -20,8 +20,11 @@ test('offers a full ladder of sheet widths, inside the server bound', () => {
   expect([...CONTACT_SHEET_WIDTHS]).toEqual([...CONTACT_SHEET_WIDTHS].sort((a, b) => a - b))
 })
 
-test('offers every square grid the server accepts', () => {
-  expect(CONTACT_SHEET_GRIDS).toEqual([2, 3, 4, 5, 6])
+// 4×4 is the floor — below it a sheet stops being a sheet — and 8×8 the top,
+// which costs 3.6s against 4×4's 1.0s on a real file (owner, 2026-08-15).
+test('offers square grids from 4×4 to 8×8, defaulting to 5×5', () => {
+  expect(CONTACT_SHEET_GRIDS).toEqual([4, 5, 6, 7, 8])
+  expect(DEFAULT_CONTACT_SHEET_GRID).toBe(5)
   expect(CONTACT_SHEET_GRIDS).toContain(DEFAULT_CONTACT_SHEET_GRID)
 })
 
