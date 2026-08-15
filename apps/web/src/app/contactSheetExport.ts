@@ -19,13 +19,22 @@ import {
 } from '../lib/format'
 import { getHostPlatform, isDesktopHost } from '../platform'
 
-/** The grids offered. Square, and within the server's bounds. */
-export const CONTACT_SHEET_GRIDS = [4, 5, 6] as const
+/**
+ * The grids offered. Square, and within the server's 2–6 column bound.
+ *
+ * Wider than the old 4/5/6 now that the choice sits on a scrolling wheel
+ * rather than a segmented row that had to fit every option at once.
+ */
+export const CONTACT_SHEET_GRIDS = [2, 3, 4, 5, 6] as const
 export type ContactSheetGrid = (typeof CONTACT_SHEET_GRIDS)[number]
+export const DEFAULT_CONTACT_SHEET_GRID = 4
 
-/** Sheet widths the server accepts (`contact_sheets.SHEET_WIDTHS`). */
-export const CONTACT_SHEET_WIDTHS = [1600, 2048, 2560] as const
+/** Sheet widths, inside `contact_sheets.MIN/MAX_SHEET_WIDTH` (800–6144). */
+export const CONTACT_SHEET_WIDTHS = [
+  800, 1024, 1280, 1600, 2048, 2560, 3200, 4096, 5120, 6144,
+] as const
 export type ContactSheetWidth = (typeof CONTACT_SHEET_WIDTHS)[number]
+export const DEFAULT_CONTACT_SHEET_WIDTH = 2048
 
 export interface ContactSheetTarget {
   fileId: string

@@ -11,6 +11,14 @@ import {
   type ClipExportRange,
   type ClipExportTarget,
 } from './clipExport'
+import { WheelPicker } from './WheelPicker'
+
+/** Frame rates, with the one a GIF can hold exactly marked. */
+const FPS_OPTIONS = CLIP_FPS_CHOICES.map((value) => ({
+  value: value as number,
+  label: `${value} fps`,
+  note: value === DEFAULT_CLIP_FPS ? 'exact' : undefined,
+}))
 
 /**
  * Output size and frame rate for one GIF, asked after the range is picked.
@@ -57,35 +65,24 @@ export function ClipExportDialog({
         <label className="field-label" htmlFor="clip-width">
           Width
         </label>
-        <div className="segmented" id="clip-width" role="group" aria-label="Output width">
-          {widths.map((option) => (
-            <button
-              key={option.value}
-              className={`seg${option.value === width ? ' is-active' : ''}`}
-              onClick={() => setWidth(option.value)}
-              aria-pressed={option.value === width}
-              title={`${option.value}px wide`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <WheelPicker
+          id="clip-width"
+          label="Output width"
+          options={widths}
+          value={width}
+          onChange={setWidth}
+        />
 
         <label className="field-label" htmlFor="clip-fps">
           Frame rate
         </label>
-        <div className="segmented" id="clip-fps" role="group" aria-label="Frame rate">
-          {CLIP_FPS_CHOICES.map((option) => (
-            <button
-              key={option}
-              className={`seg${option === fps ? ' is-active' : ''}`}
-              onClick={() => setFps(option)}
-              aria-pressed={option === fps}
-            >
-              {option} fps
-            </button>
-          ))}
-        </div>
+        <WheelPicker
+          id="clip-fps"
+          label="Frame rate"
+          options={FPS_OPTIONS}
+          value={fps}
+          onChange={setFps}
+        />
 
         {/* What the two choices produce. A GIF's byte size swings several-fold
             with how much of the picture moves, so frames and dimensions are

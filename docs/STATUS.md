@@ -194,9 +194,9 @@ state fed by `timeupdate`, so it lagged the element by a render and could record
 where the playhead *had been*. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
-Tests run: **995 server** (23 new, including a real-ffmpeg case asserting an
-animated GIF of the requested width), **647 web** (70 new), **42 player e2e**
-(8 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
+Tests run: **996 server** (24 new, including a real-ffmpeg case asserting an
+animated GIF of the requested width), **669 web** (92 new), **43 player e2e**
+(9 new), **105 desktop Rust** (1 new). ruff/mypy/eslint/tsc/prettier/`npm run
 build`/clippy/fmt all clean. Verified against a real backend on a scratch
 library of generated videos: a 3.5 s export produced a 480×270, 12 fps,
 42-frame GIF, a 4 s one a 1.5 MB GIF, the dialog's own round trip at
@@ -236,6 +236,30 @@ The frame *count* is always what was asked; only the tempo rounds. For a
 feature built around frame-accurate in and out points, a default that plays the
 clip 11% fast was the wrong one. 20 and 25 fps would also be exact and smoother
 than 10, but both sit above the server's fps cap — a possible follow-up.
+
+**A fourth pass moved every size choice onto a wheel (2026-08-15).** A
+segmented row has to fit every option side by side, which capped the ladders at
+three or four rungs. `WheelPicker` is a horizontal scroll-snap strip — the
+value under the centre mark is the selected one, so dragging changes it and
+changing it scrolls. Snap points make "nearest to centre" exact at rest rather
+than approximate, and a `settling` flag keeps the component's own centring from
+being read back as a user choice. `radiogroup`/`radio` with roving focus and
+arrow keys, so it is reachable without a pointer.
+
+The ladders grew accordingly: **15 GIF widths** (was 3), **10 sheet widths**
+(was 3, and the server's `SHEET_WIDTHS` enum became an 800–6144 range),
+**5 grids** (was 3), **6 frame rates** (was 4). The GIF and snapshot wheels end
+at the source's own width, marked `native` — with no "Original" button, which
+the owner dropped as awkward once the ceiling was fixed at 1920; the native
+width simply joins the ladder as an ordinary rung, so an odd source like
+854×480 is still exportable at its own size.
+
+**Snapshot gained a size, without losing its speed.** `S` and the camera button
+stay one press at native resolution (owner: "for snapshot we can just use S for
+original"); a new "Save Snapshot As…" on the right-click menu asks first. The
+capture moved out of `ViewerShell` into `snapshotExport.ts`, and its filenames
+joined the GIF's naming — `clip.mp4` produced `clip_mp4.png` before and
+produces `clip.png` now, via a shared `exportFileName`.
 
 **Known gaps / next:** persistent A-B loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
 been exercised on a packaged build — only the browser download has, since the

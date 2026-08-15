@@ -22,6 +22,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   length rather than collapsing — the length is already decided, the click only
   says where it sits. **Range** plays the marked span and stops at its end;
   **Loop** repeats it instead, and turns Range on with it. Save GIF… asks for
+  the output width and frame rate, showing the pixel size and frame count it
+  will actually produce, then encodes server-side (≤30 s, ≤1920 px) and
+  downloads, or saves through the native dialog in the desktop app.
+- **Export sizes are chosen on a scrolling wheel rather than a row of
+  buttons.** A row had to fit every choice side by side, so it held three or
+  four; a wheel scrolls, so the ladders are as long as they should be — fifteen
+  GIF widths, ten sheet widths, five grids, and six frame rates. The GIF and
+  snapshot wheels end at the source's own width, marked `native`, since scaling
+  either up adds nothing. Contact-sheet widths now run 800–6144 px (they were
+  three fixed values), and grids 2×2 through 6×6.
+- **Snapshots can be saved at a chosen size.** `S` and the camera button are
+  unchanged — one press, at the source's own resolution — and a new **Save
+  Snapshot As…** on the viewer's right-click menu asks for a width first.
   the output width — 320, 480, 720 or **Original**, with anything at or above
   the source's own size left off since upscaling a GIF buys nothing — and the
   frame rate, showing the pixel size and frame count it will actually produce.
@@ -104,6 +117,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   named in `docker-prod`'s own help.
 
 ### Fixed
+
+- **A snapshot's filename no longer mangles the source's extension into its
+  stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
+  matching how GIF exports are named.
 
 - **Accepting a selection keeps the review open on what is left.** Reviewing a long
   plan happens in batches, and every accept used to end the dialog, so carrying on

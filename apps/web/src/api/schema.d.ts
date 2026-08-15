@@ -7139,7 +7139,7 @@ export interface operations {
             query?: {
                 cols?: number;
                 rows?: number;
-                width?: 1600 | 2048 | 2560;
+                width?: number;
             };
             header?: {
                 authorization?: string | null;
