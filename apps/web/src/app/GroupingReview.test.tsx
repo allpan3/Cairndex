@@ -311,7 +311,9 @@ function mockGroupingApi(
   // Lets a test start a folder partway along its dial, including at either end.
   initialStemLevels: Record<string, number> = {},
   // What accepting produces, and what the plan holds afterwards — the review stays
-  // open on the remainder now, so both matter.
+  // open on the remainder now, so both matter. Accepting a selection retires the
+  // rows it confirmed *in the same plan*, so the mock does that too rather than
+  // serving a regenerated one.
   afterApply: { conflicts?: unknown[]; proposals?: GroupingProposal[] } = {},
 ) {
   let proposals = structuredClone(initialProposals)
@@ -544,6 +546,9 @@ function mockGroupingApi(
       }
     } else if (url.endsWith(`/grouping/plans/${planId}/apply`) && init?.method === 'POST') {
       applied = true
+      // The confirmed rows leave the plan being reviewed; whatever the test says is
+      // left stays, keeping its ids.
+      if (afterApply.proposals !== undefined) proposals = structuredClone(afterApply.proposals)
       body = {
         bundles_confirmed: 2,
         bundles_removed: 0,
@@ -552,6 +557,7 @@ function mockGroupingApi(
         files_added_to_bundles: 0,
         subtitles_linked: 0,
         conflicts: afterApply.conflicts ?? [],
+        proposals_remaining: proposals.filter((p) => p.files.length > 0).length,
       }
     } else {
       body = {}

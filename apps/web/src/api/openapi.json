@@ -193,6 +193,11 @@
             "title": "Files Added To Bundles",
             "type": "integer"
           },
+          "proposals_remaining": {
+            "default": 0,
+            "title": "Proposals Remaining",
+            "type": "integer"
+          },
           "subtitles_linked": {
             "title": "Subtitles Linked",
             "type": "integer"

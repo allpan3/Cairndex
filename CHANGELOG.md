@@ -108,6 +108,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Accepting a selection no longer throws the plan away and builds a new one.**
+  A partial accept used to close the plan, so carrying on meant generating a fresh
+  one: two sequential round trips per accept — 942 ms then 851 ms on the owner's
+  library — returning an entirely new set of proposal ids. Fold state is keyed on
+  those ids, so every collapsed folder reset and the tree jumped under the cursor.
+
+  A plan now closes when it has nothing left to review rather than when part of it
+  was accepted. Accepting retires the rows it confirmed, plus any collection left
+  holding nothing, and leaves the rest exactly where they were. One request instead
+  of two (**1,793 ms → ~750 ms**), the surviving rows keep their ids, and nothing
+  re-folds. Applying the *whole* plan is unchanged, including its documented
+  idempotency.
+- **A collapsed run's "Show all N" no longer floats off on its own.** It was pushed
+  right with `margin-left: auto` in a row that wraps, and an auto margin on a
+  wrapped flex item pins it to the right of an otherwise empty line — so once a row
+  above it changed height the button appeared detached from every row. It now flows
+  after the run's summary text and stays with its row at any width.
 - **Converting a bundle into a collection forgets that folder's stem level.** The
   split it performs is per video subject, not by the dial's stem key — deliberately,
   since a dial wide enough to merge everything would otherwise make "convert to

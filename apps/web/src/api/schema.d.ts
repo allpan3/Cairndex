@@ -2366,6 +2366,11 @@ export interface components {
             conflicts: components["schemas"]["ApplyConflictRead"][];
             /** Files Added To Bundles */
             files_added_to_bundles: number;
+            /**
+             * Proposals Remaining
+             * @default 0
+             */
+            proposals_remaining: number;
             /** Subtitles Linked */
             subtitles_linked: number;
         };
