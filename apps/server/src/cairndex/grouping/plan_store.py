@@ -592,12 +592,36 @@ def convert_proposal_kind(
 
     if kind is ProposalKind.CONTAINER:
         _bundle_to_container(session, proposal)
+        _clear_stem_override(proposal.plan, proposal.directory)
     else:
         _container_to_bundle(session, proposal)
 
     proposal.owner_edited = True
     session.flush()
     return get_plan(session, plan_id)
+
+
+def _clear_stem_override(plan: GroupingPlan, directory: str) -> None:
+    """Forget a folder's stem level, because a manual split just replaced it.
+
+    ``_bundle_to_container`` splits per video subject rather than by the dial's
+    stem key — deliberately, since a dial wide enough to merge everything would
+    otherwise make "convert to collection" produce a collection of one. But that
+    left the dial reading its widest beside rows the widest would never have
+    produced: the owner saw a folder split in two under a setting that says those
+    two match (owner-reported, 2026-08-15).
+
+    So the override goes. The dial reads the default, which is what the split it
+    now sits beside actually corresponds to, and Narrow/Widen still work from
+    there — at the cost of re-suggesting the folder, as they always have.
+
+    Reassigned rather than mutated: the column is plain ``JSON``, so an in-place
+    ``pop`` would not mark the row dirty and the change would never be written.
+    """
+    overrides = dict(plan.stem_level_overrides or {})
+    if overrides.pop(directory, None) is None:
+        return
+    plan.stem_level_overrides = overrides
 
 
 # --- per-directory stem levels ------------------------------------------------

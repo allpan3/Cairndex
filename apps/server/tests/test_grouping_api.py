@@ -783,6 +783,53 @@ def test_widening_never_dissolves_a_folders_collection(
     assert duo_rows[0]["title"] == "Duo"
 
 
+def test_converting_a_bundle_to_a_collection_forgets_the_folders_stem_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A manual split replaces the dial's, so the dial must stop claiming otherwise.
+
+    ``_bundle_to_container`` splits per video subject, not by the stem key, which is
+    right — a dial wide enough to merge everything would otherwise make "convert to
+    collection" produce a collection of one. But the folder was left reading its
+    widest beside rows the widest would never have produced: two bundles under a
+    setting that says those two match (owner-reported, 2026-08-15).
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    top = plan["stem_levels"]["Duo"]["max"]
+
+    widened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": top}
+    ).json()
+    assert widened["stem_levels"]["Duo"]["level"] == top
+    duo = [p for p in widened["proposals"] if p["directory"] == "Duo"]
+    merged = next(p for p in duo if p["kind"] == "bundle")
+    assert len(merged["files"]) == 2, "the widened folder holds one bundle of both files"
+
+    split = client.put(
+        f"{base}/plans/{plan_id}/proposals/{merged['id']}/kind", json={"kind": "container"}
+    )
+    assert split.status_code == 200, split.text
+
+    after = split.json()
+    assert after["stem_levels"]["Duo"]["level"] == DEFAULT_STEM_LEVEL
+    # Gone from the plan row, not stored as the default value — same rule as
+    # dialling back to the default by hand.
+    with Session(session.get_bind()) as fresh:
+        stored = fresh.scalar(
+            select(GroupingPlanRow.stem_level_overrides).where(GroupingPlanRow.id == plan_id)
+        )
+    assert stored == {}
+    # And the dial still works from there, rather than being stuck at the default.
+    rewidened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": top}
+    )
+    assert rewidened.status_code == 200
+    assert rewidened.json()["stem_levels"]["Duo"]["level"] == top
+
+
 def test_stem_level_change_requires_an_open_plan(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
