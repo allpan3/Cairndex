@@ -15,6 +15,8 @@ import {
   type ClipExportRead,
 } from '../api/client'
 import { getHostPlatform, isDesktopHost } from '../platform'
+import { exportFileName } from './exportNaming'
+import type { WheelOption } from './WheelPicker'
 
 /**
  * The caps the server enforces (`media/exports.py`). Mirrored rather than
@@ -24,8 +26,18 @@ import { getHostPlatform, isDesktopHost } from '../platform'
  */
 export const MAX_CLIP_EXPORT_SECONDS = 30
 
-/** Fixed output widths offered, below whatever the source itself gives. */
-export const CLIP_WIDTHS = [320, 480, 720] as const
+/**
+ * Output widths offered on the wheel.
+ *
+ * A long ladder is the point of the wheel: a segmented row could hold three or
+ * four, so the choice was coarse. Nothing here upscales — the list is filtered
+ * against the source — and the source's own width joins it when it is not
+ * already a rung, which is how a clip is exported at native size now that
+ * there is no separate "Original" button (owner, 2026-08-15).
+ */
+export const CLIP_WIDTHS = [
+  160, 240, 320, 400, 480, 560, 640, 720, 854, 960, 1080, 1280, 1440, 1600, 1920,
+] as const
 export const DEFAULT_CLIP_WIDTH = 480
 
 /**
@@ -37,54 +49,53 @@ export const DEFAULT_CLIP_WIDTH = 480
  * to the format rather than to this pipeline, and the frame *count* is always
  * what was asked for; it is only the playback tempo that rounds.
  */
-export const CLIP_FPS_CHOICES = [8, 10, 12, 15] as const
-/** The one preset that plays back at exactly the rate it was asked for. */
+export const CLIP_FPS_CHOICES = [5, 6, 8, 10, 12, 15] as const
+/** The one choice that plays back at exactly the rate it was asked for. */
 export const DEFAULT_CLIP_FPS = 10
 
 /** `media/exports.py` bounds, mirrored (see `MAX_CLIP_EXPORT_SECONDS`). */
 const MIN_SERVER_WIDTH = 120
 const MAX_SERVER_WIDTH = 1920
 
-export interface ClipWidthOption {
-  value: number
-  label: string
-}
-
 /**
- * The widths worth offering for one source: the fixed presets below the
- * source's own width, then the source's own width last.
+ * The widths worth offering for one source: every rung the source can fill,
+ * plus the source's own width when it falls between rungs.
  *
- * Nothing on offer upscales — a GIF gains nothing from pixels the source never
- * had — and nothing is offered twice, so a 720p source shows 320, 480 and
- * Original rather than Original beside a redundant 720.
- *
- * The last entry is only called **Original** when it really is the source's
- * width. Above the server's ceiling it is labelled with its number instead,
- * because a 4K source exported at 1920 is not its original size and a label
- * saying otherwise would be wrong.
+ * Nothing upscales, and the native width is included rather than rounded away
+ * — that is how a clip is exported at its own size now that there is no
+ * separate "Original" button. An odd source like 854×480 gets an 854 rung of
+ * its own rather than having to settle for 720.
  */
-export function clipWidthOptions(sourceWidth: number | null | undefined): ClipWidthOption[] {
-  const fixed = CLIP_WIDTHS.map((value) => ({ value, label: `${value}px` }))
-  // Unprobed: there is no source width to resolve "Original" against, so offer
-  // the fixed sizes alone rather than guessing one.
-  if (!sourceWidth || sourceWidth <= 0) return fixed
+export function clipWidthOptions(sourceWidth: number | null | undefined): WheelOption<number>[] {
+  // Unprobed: nothing to filter against and no native width to add.
+  if (!sourceWidth || sourceWidth <= 0) {
+    return CLIP_WIDTHS.map((value) => ({ value, label: `${value}px` }))
+  }
 
   // Even, for ffmpeg's `scale=W:-2`, and inside the bounds the server enforces.
-  const native = Math.max(MIN_SERVER_WIDTH, Math.floor(sourceWidth / 2) * 2)
-  const top = Math.min(native, MAX_SERVER_WIDTH)
-  return [
-    ...fixed.filter((option) => option.value < top),
-    { value: top, label: native <= MAX_SERVER_WIDTH ? 'Original' : `${top}px` },
-  ]
+  const native = Math.min(
+    MAX_SERVER_WIDTH,
+    Math.max(MIN_SERVER_WIDTH, Math.floor(sourceWidth / 2) * 2),
+  )
+  const values: number[] = CLIP_WIDTHS.filter((value) => value <= native)
+  if (!values.includes(native)) values.push(native)
+  return values
+    .sort((a, b) => a - b)
+    .map((value) => ({
+      value,
+      label: `${value}px`,
+      // Worth marking: the one choice that resamples nothing.
+      note: value === native ? 'native' : undefined,
+    }))
 }
 
-/** Whether the top option had to be capped rather than being the source's own. */
+/** Whether the source is larger than anything the exporter will produce. */
 export function isWidthCapped(sourceWidth: number | null | undefined): boolean {
   return Boolean(sourceWidth && sourceWidth > MAX_SERVER_WIDTH)
 }
 
 /** The width to start on: the default when it is offered, else the largest. */
-export function defaultClipWidth(options: ClipWidthOption[]): number {
+export function defaultClipWidth(options: WheelOption<number>[]): number {
   const preferred = options.find((option) => option.value === DEFAULT_CLIP_WIDTH)
   return preferred?.value ?? options[options.length - 1]?.value ?? DEFAULT_CLIP_WIDTH
 }
@@ -148,18 +159,11 @@ async function awaitArtifact(fileId: string, exportId: string): Promise<ClipExpo
 }
 
 /**
- * A `.gif` filename from a display title.
- *
- * The title usually still carries the source's extension, so appending
- * naively yields `clip.mp4.gif`. Drop a short trailing suffix — bounded at
- * five characters so a title that merely contains a dot ("Scene 2.5 rework")
- * survives intact. Mirrors `_safe_stem` in `api/v1/exports.py`, which names
- * the same artifact for the Content-Disposition header.
+ * A `.gif` filename from a display title. Mirrors `_safe_stem` in
+ * `api/v1/exports.py`, which names the same artifact for Content-Disposition.
  */
 export function clipFileName(title: string): string {
-  const withoutExtension = title.replace(/\.[A-Za-z0-9]{1,5}$/, '')
-  const cleaned = (withoutExtension || title).replace(/[\\/:*?"<>|]+/g, ' ').trim()
-  return `${cleaned || 'clip'}.gif`
+  return exportFileName(title, 'gif', 'clip')
 }
 
 function downloadInBrowser(blob: Blob, name: string): void {

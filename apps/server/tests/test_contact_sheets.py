@@ -135,7 +135,24 @@ def test_grid_bounds_are_enforced(session: Session, library_root: Path) -> None:
     with pytest.raises(ValidationError):
         contact_sheets.sheet_for_file(session, asset_file.id, cols=1, rows=4)
     with pytest.raises(ValidationError):
-        contact_sheets.sheet_for_file(session, asset_file.id, width=999)
+        contact_sheets.sheet_for_file(
+            session, asset_file.id, width=contact_sheets.MIN_SHEET_WIDTH - 1
+        )
+    with pytest.raises(ValidationError):
+        contact_sheets.sheet_for_file(
+            session, asset_file.id, width=contact_sheets.MAX_SHEET_WIDTH + 1
+        )
+
+
+# The width was a three-value enum until the dialogs moved to a scrolling wheel
+# and could offer a real ladder (owner, 2026-08-15).
+def test_width_is_a_range_rather_than_a_fixed_set() -> None:
+    for width in (contact_sheets.MIN_SHEET_WIDTH, 1234, contact_sheets.MAX_SHEET_WIDTH):
+        cols, rows, resolved = contact_sheets._validated(4, 4, width)
+        assert (cols, rows) == (4, 4)
+        # Even, so every cell's `scale=cell:-2` derives an even height.
+        assert resolved == width - (width % 2)
+    assert contact_sheets._validated(4, 4, 1235)[2] == 1234
 
 
 @requires_ffmpeg

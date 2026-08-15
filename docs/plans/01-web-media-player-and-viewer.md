@@ -504,7 +504,11 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   means anything. `useClipRange` owns the span and `useClipPlayback` consumes
   it, so **A-B loop replay is a second entry point to the same model**, not a
   second model. **Size and rate shipped 2026-08-15** as the dialog this section
-  originally sketched — but asking only for format options, since the range is
+  originally sketched, with every choice on a scrolling **wheel**
+  (`WheelPicker`) rather than a segmented row — a row caps out at three or four
+  options, and the size ladders wanted fifteen. The contact sheet and the
+  snapshot moved onto the same control, which is what let the sheet's width
+  become a range (800–6144) rather than three fixed values — but asking only for format options, since the range is
   already settled by the time it opens. Fixed widths at or above the
   source are withheld (upscaling a GIF buys nothing) and the source's own size
   is offered last as **Original**, named that only when it really is — above

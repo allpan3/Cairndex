@@ -1638,9 +1638,12 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
     'false',
   )
 
+  // `S` stays one press at the source's own resolution, and the PNG is named
+  // after the file without carrying its extension into the stem — this used to
+  // be `movie_mp4.png` (owner, 2026-08-15).
   const download = page.waitForEvent('download')
   await page.keyboard.press('S')
-  expect((await download).suggestedFilename()).toMatch(/movie_mp4\.png|movie\.mp4\.png/)
+  expect((await download).suggestedFilename()).toBe('movie.png')
 
   await page.waitForTimeout(2800)
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
@@ -1728,15 +1731,9 @@ test('every viewer notice shares one anchor and stacks', async ({ page }) => {
 
   await video.click({ button: 'right' })
   await page.getByText('Save Contact Sheet…').click()
-  await expect(page.getByRole('button', { name: '1600px' })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
-  await expect(page.getByRole('button', { name: '2048px' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: '2560px' })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
+  const sheetWidths = page.getByRole('radiogroup', { name: 'Sheet width' })
+  await expect(sheetWidths.getByRole('radio', { name: '2048px, default' })).toBeChecked()
+  await expect(sheetWidths.getByRole('radio', { name: '1600px' })).not.toBeChecked()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('.mv-export-notice')).toContainText('Building contact sheet')
   await expect.poll(() => sheetRequests[0]).toContain('width=2048')
@@ -2720,16 +2717,17 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
   await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
 
   await page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }).click()
-  // Size and rate are chosen in a dialog; the range is already decided.
+  // Size and rate are chosen in a dialog; the range is already decided. Both
+  // sit on scrolling wheels, so the ladder is longer than a row could hold.
   const dialog = page.getByRole('dialog', { name: 'GIF options' })
-  await expect(dialog.getByRole('button', { name: '480px' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
+  const widths = dialog.getByRole('radiogroup', { name: 'Output width' })
+  const rates = dialog.getByRole('radiogroup', { name: 'Frame rate' })
+  await expect(widths.getByRole('radio', { name: '480px' })).toBeChecked()
+  expect(await widths.getByRole('radio').count()).toBeGreaterThan(8)
   // The 1920×1080 source scaled to the chosen width, height derived.
   await expect(dialog).toContainText('480×270')
-  await dialog.getByRole('button', { name: '320px' }).click()
-  await dialog.getByRole('button', { name: '15 fps' }).click()
+  await widths.getByRole('radio', { name: '320px' }).click()
+  await rates.getByRole('radio', { name: '15 fps' }).click()
 
   const download = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()
@@ -2760,6 +2758,26 @@ test('refuses to export a range longer than the cap', async ({ page }) => {
   await expect(
     page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
   ).toBeDisabled()
+})
+
+test('Snapshot As… picks a size, while S stays a single press', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await video.click({ button: 'right' })
+  await page.getByText('Save Snapshot As…').click()
+
+  // The wheel ends at the source's own size, and defaults one rung below it.
+  const dialog = page.getByRole('dialog', { name: 'Snapshot options' })
+  const widths = dialog.getByRole('radiogroup', { name: 'Snapshot width' })
+  await expect(widths.getByRole('radio', { name: '320px, native' })).toBeVisible()
+  await expect(dialog).toContainText('320×180')
+
+  const download = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  expect((await download).suggestedFilename()).toBe('movie.png')
 })
 
 test('Set In past the out-point carries the clip and keeps its length', async ({ page }) => {

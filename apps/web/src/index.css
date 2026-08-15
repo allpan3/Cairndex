@@ -2400,6 +2400,82 @@ code {
   color: var(--text-muted);
   font-size: 12px;
 }
+/* Horizontal wheel of values, snapping to the one under the centre mark. Used
+   by the export dialogs where a segmented row would cap out at three or four
+   choices (owner, 2026-08-15). */
+.wheel {
+  --wheel-item: 84px;
+  position: relative;
+}
+.wheel__track {
+  /* Above the centre mark, which is painted first. */
+  position: relative;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* Half a track either side, so the first and last values can reach the
+     centre like any other. */
+  padding: 2px calc(50% - var(--wheel-item) / 2);
+  /* Fade the ends rather than cutting them, so it reads as a strip that
+     continues rather than a list that stops. */
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  scrollbar-width: none;
+}
+.wheel__track::-webkit-scrollbar {
+  display: none;
+}
+.wheel__item {
+  flex: 0 0 var(--wheel-item);
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 0.12s,
+    transform 0.12s;
+}
+.wheel__item.is-active {
+  color: var(--text-strong);
+  font-weight: 600;
+  transform: scale(1.06);
+}
+.wheel__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.wheel__note {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+/* The centre mark sits behind the strip, so the chosen value reads as being
+   held in place rather than merely highlighted. Painted before the track in
+   DOM order rather than pushed back with a negative z-index, which would drop
+   it behind the modal itself. */
+.wheel__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--wheel-item);
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  pointer-events: none;
+}
+
 .segmented {
   display: flex;
   gap: 6px;

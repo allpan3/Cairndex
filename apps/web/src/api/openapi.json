@@ -12017,11 +12017,8 @@
             "required": false,
             "schema": {
               "default": 2048,
-              "enum": [
-                1600,
-                2048,
-                2560
-              ],
+              "maximum": 6144,
+              "minimum": 800,
               "title": "Width",
               "type": "integer"
             }

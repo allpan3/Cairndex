@@ -154,38 +154,54 @@ test('saves under that name on desktop', async () => {
 const widths = (source: number | null | undefined) =>
   clipWidthOptions(source).map((option) => `${option.label}:${option.value}`)
 
-test('offers the fixed sizes below the source, then the source itself', () => {
-  expect(widths(1920)).toEqual(['320px:320', '480px:480', '720px:720', 'Original:1920'])
-  expect(widths(960)).toEqual(['320px:320', '480px:480', '720px:720', 'Original:960'])
+test('offers every rung the source can fill, ending at its own width', () => {
+  const options = clipWidthOptions(1920)
+  // A segmented row fit three or four; the wheel is what allows a real ladder.
+  expect(options.length).toBeGreaterThan(8)
+  expect(options.at(-1)).toEqual({ value: 1920, label: '1920px', note: 'native' })
+  // Ascending, so the wheel reads left to right as smaller to larger.
+  const values = options.map((option) => option.value)
+  expect(values).toEqual([...values].sort((a, b) => a - b))
 })
 
-// Nothing on offer should upscale, and nothing should appear twice — a 720p
-// source must not show Original beside a redundant 720.
-test('drops fixed sizes at or above the source', () => {
-  expect(widths(720)).toEqual(['320px:320', '480px:480', 'Original:720'])
-  expect(widths(640)).toEqual(['320px:320', '480px:480', 'Original:640'])
-  expect(widths(400)).toEqual(['320px:320', 'Original:400'])
+// Nothing on offer should upscale.
+test('drops rungs at or above the source', () => {
+  expect(widths(720).at(-1)).toBe('720px:720')
+  expect(widths(720)).not.toContain('854px:854')
+  expect(widths(400).at(-1)).toBe('400px:400')
+  expect(widths(400)).not.toContain('480px:480')
 })
 
-test('a source narrower than every fixed size still offers its own width', () => {
-  expect(widths(300)).toEqual(['Original:300'])
-  expect(widths(301)).toEqual(['Original:300'])
-  // Never below the server's floor, even for a pathologically small source.
-  expect(widths(64)).toEqual(['Original:120'])
+// The native width joins the ladder rather than being rounded away — this is
+// how a clip is exported at its own size now there is no "Original" button.
+test('adds the source’s own width when it falls between rungs', () => {
+  expect(widths(1100).at(-1)).toBe('1100px:1100')
+  // Already a rung: marked native, not added a second time.
+  expect(widths(960).filter((entry) => entry === '960px:960')).toHaveLength(1)
+  expect(clipWidthOptions(960).at(-1)?.note).toBe('native')
 })
 
-// A 4K source exported at 1920 is not its original size, so it is not called
-// that — the number is the honest label.
-test('labels the top option by number when the source exceeds the maximum', () => {
-  expect(widths(3840)).toEqual(['320px:320', '480px:480', '720px:720', '1920px:1920'])
+test('a small source keeps the rungs it can fill, plus its own width', () => {
+  expect(widths(300)).toEqual(['160px:160', '240px:240', '300px:300'])
+  // Odd widths round down to even, for ffmpeg's `scale=W:-2`.
+  expect(widths(301)).toEqual(['160px:160', '240px:240', '300px:300'])
+  // Below every rung *and* below the server's floor: only the floor is left.
+  expect(widths(64)).toEqual(['120px:120'])
+})
+
+test('stops at the exporter ceiling for a source above it', () => {
+  expect(widths(3840).at(-1)).toBe('1920px:1920')
   expect(isWidthCapped(3840)).toBe(true)
   expect(isWidthCapped(1920)).toBe(false)
   expect(isWidthCapped(null)).toBe(false)
 })
 
-test('offers the fixed sizes alone when the source has not been probed', () => {
-  expect(widths(null)).toEqual(['320px:320', '480px:480', '720px:720'])
-  expect(widths(0)).toEqual(['320px:320', '480px:480', '720px:720'])
+// Nothing to filter against and no native width to mark.
+test('offers the whole ladder, unmarked, when the source has not been probed', () => {
+  const options = clipWidthOptions(null)
+  expect(options.length).toBeGreaterThan(8)
+  expect(options.every((option) => option.note === undefined)).toBe(true)
+  expect(clipWidthOptions(0)).toEqual(options)
 })
 
 test('starts on the default width, or the largest still offered', () => {
