@@ -61,8 +61,14 @@ export function ClipTimeline({
   if (!range || !view || span <= 0) return null
 
   const pctFor = (time: number) => ((time - view.start) / span) * 100
-  const startPct = pctFor(range.start)
-  const endPct = pctFor(range.end)
+  // The window is frozen for the length of a gesture (see `adjustBase`), so
+  // dragging the *seek bar's* handle can carry an edge outside it. Pin the
+  // rendering to the track's ends rather than letting a handle escape into the
+  // control bar: the edge is off-screen in this view, and the honest way to say
+  // so is that it is somewhere past this end. The window re-fits on release.
+  const clampPct = (pct: number) => Math.max(0, Math.min(100, pct))
+  const startPct = clampPct(pctFor(range.start))
+  const endPct = clampPct(pctFor(range.end))
   const playheadPct = pctFor(player.currentTime)
 
   return (
@@ -96,7 +102,7 @@ export function ClipTimeline({
           <div
             key={edge}
             className={`mv-clip-zoom__handle mv-clip-zoom__handle--${edge}`}
-            style={{ left: `${pctFor(range[edge])}%` }}
+            style={{ left: `${edge === 'start' ? startPct : endPct}%` }}
             role="slider"
             tabIndex={0}
             aria-label={edge === 'start' ? 'Clip start (fine)' : 'Clip end (fine)'}

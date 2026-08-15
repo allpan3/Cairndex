@@ -91,6 +91,45 @@ export function nudgeEdge(
 }
 
 /**
+ * Put one edge at the playhead — the "Set beginning" / "Set end" gesture and
+ * the `[`/`]` keys.
+ *
+ * Unlike a drag, this **carries the whole span** when the new edge would land
+ * past the other one, keeping the clip's length. Clamping instead (what
+ * `moveEdge` does) collapses the selection to its floor, which is never what
+ * "start it here" meant: the owner has a length they want and is choosing where
+ * it begins.
+ *
+ * A drag keeps the clamping behaviour, because there the other handle is the
+ * fixed reference being measured against. Here there is no such reference —
+ * the gesture names one instant and nothing else.
+ *
+ * The length survives unless the video runs out, in which case the *named*
+ * instant wins and the span is whatever fits after it.
+ */
+export function setEdgeAtPlayhead(
+  range: ClipRange,
+  edge: ClipEdge,
+  at: number,
+  duration: number,
+): ClipRange {
+  const target = clampTime(at, duration)
+  const length = rangeDuration(range)
+  const limit = Number.isFinite(duration) && duration > 0 ? duration : target + length
+
+  if (edge === 'start') {
+    // Still before the out-point: an ordinary move, clamped as a drag would be.
+    if (target < range.end) return moveEdge(range, 'start', target, duration)
+    const start = Math.min(target, Math.max(0, limit - MIN_CLIP_SECONDS))
+    return { start, end: Math.min(limit, start + length) }
+  }
+
+  if (target > range.start) return moveEdge(range, 'end', target, duration)
+  const end = Math.max(target, MIN_CLIP_SECONDS)
+  return { start: Math.max(0, end - length), end }
+}
+
+/**
  * The span a newly opened selection starts as: `DEFAULT_CLIP_SECONDS` from the
  * playhead forward, backed off the end only when there is not that much left.
  * Forward from the playhead rather than centred on it, because "clip from

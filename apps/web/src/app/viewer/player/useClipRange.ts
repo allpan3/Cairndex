@@ -6,6 +6,7 @@ import {
   frameSeconds,
   moveEdge,
   nudgeEdge,
+  setEdgeAtPlayhead,
   type ClipEdge,
   type ClipRange,
 } from './clipRange'
@@ -19,12 +20,21 @@ import type { PlayerController } from './usePlayer'
  * so a nudge or a handle drag scrubs the video to the edge being moved. That
  * is why this lives next to the player rather than inside a dialog.
  */
+/**
+ * What playback does with the marked span.
+ *
+ * `loop` is `range` plus a rewind, which is why they are one setting rather
+ * than two booleans: "loop but do not honour the out-point" has no meaning, and
+ * as separate flags it would be representable.
+ */
+export type ClipPlayMode = 'off' | 'range' | 'loop'
+
 export interface ClipRangeController {
   /** Whether the clip bar and the seek-bar band are showing. */
   active: boolean
   range: ClipRange | null
-  /** Whether playback repeats the marked span while picking it. */
-  loop: boolean
+  /** Off, stop at the out-point, or return to the in-point and keep going. */
+  playMode: ClipPlayMode
   /** One frame in seconds, for the frame-sized nudge buttons. */
   frame: number
   /** True while a handle is being dragged — suspends the preview loop. */
@@ -51,7 +61,7 @@ export interface ClipRangeController {
    * throttled — the same split the scrub path has always used.
    */
   moveTo: (edge: ClipEdge, seconds: number, options?: { scrub?: boolean }) => void
-  setLoop: (on: boolean) => void
+  setPlayMode: (mode: ClipPlayMode) => void
   setAdjusting: (on: boolean) => void
 }
 
@@ -81,7 +91,7 @@ export function useClipRange({
 }: UseClipRangeOptions): ClipRangeController {
   const [active, setActive] = useState(false)
   const [range, setRange] = useState<ClipRange | null>(null)
-  const [loop, setLoop] = useState(false)
+  const [playMode, setPlayMode] = useState<ClipPlayMode>('off')
   // One piece of state for both facts: a drag is in progress, and this is the
   // span it started from.
   const [adjustBase, setAdjustBase] = useState<ClipRange | null>(null)
@@ -110,7 +120,7 @@ export function useClipRange({
     /* eslint-disable react-hooks/set-state-in-effect */
     setActive(false)
     setRange(null)
-    setLoop(false)
+    setPlayMode('off')
     setAdjustBase(null)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [sourceKey])
@@ -121,7 +131,7 @@ export function useClipRange({
     rangeRef.current = null
     setActive(false)
     setRange(null)
-    setLoop(false)
+    setPlayMode('off')
     setAdjustBase(null)
   }, [])
 
@@ -163,7 +173,9 @@ export function useClipRange({
       // it here", not nothing.
       const previous = rangeRef.current
       commit(
-        previous ? moveEdge(previous, edge, at, limit) : clampRange(defaultRange(at, limit), limit),
+        previous
+          ? setEdgeAtPlayhead(previous, edge, at, limit)
+          : clampRange(defaultRange(at, limit), limit),
       )
     },
     [commit],
@@ -198,7 +210,7 @@ export function useClipRange({
     () => ({
       active,
       range,
-      loop,
+      playMode,
       frame,
       adjusting: adjustBase !== null,
       adjustBase,
@@ -207,7 +219,7 @@ export function useClipRange({
       markAtPlayhead,
       nudge,
       moveTo,
-      setLoop,
+      setPlayMode,
       setAdjusting,
     }),
     [
@@ -215,7 +227,7 @@ export function useClipRange({
       adjustBase,
       close,
       frame,
-      loop,
+      playMode,
       markAtPlayhead,
       moveTo,
       nudge,
@@ -227,23 +239,24 @@ export function useClipRange({
 }
 
 /**
- * Repeat the marked span while it is being picked.
+ * Confine playback to the marked span: stop at the out-point (`range`), or
+ * return to the in-point and keep going (`loop`).
  *
  * Driven off `requestAnimationFrame` rather than `timeupdate`, which fires as
- * seldom as four times a second — a loop built on it overshoots the out-point
- * by up to 250 ms, which is exactly the precision this whole feature exists to
- * give. The frame callback only runs while the loop is on.
+ * seldom as four times a second — an out-point enforced on it overshoots by up
+ * to 250 ms, which is exactly the precision this whole feature exists to give.
+ * The frame callback only runs while a mode is on.
  *
- * This is also the seam A-B loop replay lands on: the same span, enabled from
- * playback settings instead of the clip bar.
+ * This is also the seam A-B loop replay lands on: the same span and the same
+ * modes, driven from playback settings instead of the clip bar.
  */
-export function useClipLoop(
+export function useClipPlayback(
   video: HTMLVideoElement | null,
   range: ClipRange | null,
-  enabled: boolean,
+  mode: ClipPlayMode,
 ) {
   useEffect(() => {
-    if (!video || !range || !enabled) return
+    if (!video || !range || mode === 'off') return
     let frame = 0
     const tick = () => {
       frame = requestAnimationFrame(tick)
@@ -251,9 +264,22 @@ export function useClipLoop(
       // deliberately, and re-entering a seek that has not landed yet thrashes
       // the byte range the same way unthrottled scrubbing does.
       if (video.paused || video.seeking) return
+      if (video.currentTime < range.end) return
+      if (mode === 'loop') video.currentTime = range.start
+      else video.pause()
+    }
+    // Pressing play once `range` has stopped at the out-point would otherwise
+    // stop again on the same frame, with nothing to show for the press. Start
+    // the span over instead — which is also what "play only the marked range"
+    // should do from anywhere past it.
+    const onPlay = () => {
       if (video.currentTime >= range.end) video.currentTime = range.start
     }
+    video.addEventListener('play', onPlay)
     frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [enabled, range, video])
+    return () => {
+      cancelAnimationFrame(frame)
+      video.removeEventListener('play', onPlay)
+    }
+  }, [mode, range, video])
 }
