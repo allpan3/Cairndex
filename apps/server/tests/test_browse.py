@@ -15,12 +15,15 @@ from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
+from cairndex.services import tags as tag_service
 from cairndex.services.browse import (
     BundleSort,
     SystemView,
     browse_bundles,
     cleanup_bundle_order,
+    collection_counts,
     reorder_bundles,
+    tag_counts,
     view_counts,
 )
 
@@ -389,6 +392,35 @@ def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None
 
     counts = client.get(f"{base}/collections/counts").json()["counts"]
     assert counts == {root: 3, child: 2, leaf: 2, empty: 0}
+
+
+def test_collection_counts_ignore_unbundled_files(session: Session) -> None:
+    """A count has to agree with the listing beside it. An unbundled file belongs
+    to the Unbundled view and no other, so a collection holding one must not
+    report it — the sidebar used to say 2 where opening the collection showed 1."""
+    coll = collection_service.create_collection(session, name="C")
+    confirmed = _confirmed(session, "confirmed")
+    staged = _unbundled(session, "m/staged.mp4")
+    for bundle in (confirmed, staged):
+        bundle_service.set_bundle_collections(session, bundle.id, [coll.id])
+    session.flush()
+
+    assert _browse_ids(session, collection_id=coll.id) == [confirmed.id]
+    assert collection_counts(session)[coll.id] == 1
+
+
+def test_tag_counts_ignore_unbundled_files(session: Session) -> None:
+    """The same inconsistency on the tag axis. A tag carried only by unbundled
+    files still reports a count, rather than dropping out of the picker."""
+    kept = tag_service.create_tag(session, name="kept")
+    staged_only = tag_service.create_tag(session, name="staged-only")
+    confirmed = _confirmed(session, "confirmed")
+    staged = _unbundled(session, "m/staged.mp4")
+    bundle_service.set_bundle_tags(session, confirmed.id, [kept.id])
+    bundle_service.set_bundle_tags(session, staged.id, [kept.id, staged_only.id])
+    session.flush()
+
+    assert tag_counts(session) == {kept.id: 1, staged_only.id: 0}
 
 
 def test_date_opened_sort_puts_never_opened_last(session: Session) -> None:

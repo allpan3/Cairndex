@@ -247,7 +247,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.
-
+- **A sidebar count no longer includes bundles the listing beside it hides.** Both
+  the per-collection and per-tag counts totted up membership rows without asking
+  what was on the other end, so an unbundled file — which belongs to the Unbundled
+  view and no other — was counted against every collection and tag it was filed
+  into. Opening that collection showed one fewer than its own badge claimed. A tag
+  carried only by unbundled files now reports 0 rather than dropping out of the
+  picker.
 - **Accepting a selection keeps the review open on what is left.** Reviewing a long
   plan happens in batches, and every accept used to end the dialog, so carrying on
   meant reopening it. Accepting now confirms the chosen bundles and immediately
