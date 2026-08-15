@@ -33,8 +33,7 @@ import {
   type GroupingPlan,
   type GroupingPlanSummary,
   type GroupingProposal,
-  type GroupingStemMode,
-  type GroupingStemModes,
+  type GroupingStemLevelInput,
   type JobRead,
   type LibraryCreate,
   type LibraryRead,
@@ -113,7 +112,7 @@ import {
   repairFile,
   revokeDevice,
   renameGroupingProposal,
-  setGroupingDirectoryStemMode,
+  setGroupingDirectoryStemLevel,
   setGroupingProposalDestination,
   setGroupingProposalKind,
   moveGroupingProposalFile,
@@ -905,7 +904,7 @@ export function useGroupingPlan(id: string | null) {
 export function useGenerateGroupingPlan() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (stemModes?: GroupingStemModes) => generateGroupingPlan(stemModes),
+    mutationFn: (stemLevels?: GroupingStemLevelInput) => generateGroupingPlan(stemLevels),
     onSuccess: (generated) => {
       qc.setQueryData<GroupingPlan>(['grouping-plan', generated.id], generated)
       qc.setQueryData<GroupingPlanSummary[]>(['grouping-plans'], (current) => [
@@ -1017,12 +1016,12 @@ export function useReparentGroupingProposal(planId: string | null) {
   })
 }
 
-export function useSetGroupingStemMode(planId: string | null) {
+export function useSetGroupingStemLevel(planId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ directory, mode }: { directory: string; mode: GroupingStemMode }) => {
+    mutationFn: ({ directory, level }: { directory: string; level: number }) => {
       if (!planId) throw new Error('no grouping plan selected')
-      return setGroupingDirectoryStemMode(planId, directory, mode)
+      return setGroupingDirectoryStemLevel(planId, directory, level)
     },
     // The plan id is unchanged and only one directory's rows were replaced, so
     // the response is the new truth for the whole plan cache entry.

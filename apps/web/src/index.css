@@ -2682,6 +2682,33 @@ code {
      2026-07-30). Still capped by viewport width. */
   width: min(1100px, 96vw);
 }
+/* Fixed, not max: the list is the thing being scanned, and letting the dialog
+   grow and shrink with its contents moved the footer under the pointer every
+   time a row folded or a filter narrowed the view. */
+.grp-modal {
+  height: min(88vh, 900px);
+}
+.grp-intro-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.grp-intro-details > summary::-webkit-details-marker {
+  display: none;
+}
+.grp-intro-details > summary::after {
+  content: ' ⓘ';
+  color: var(--text-muted);
+}
+/* Reserved so a notice never pushes the list down mid-click. */
+.grp-status {
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.grp-foot__note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .grp-body {
   overflow: auto;
   display: flex;
@@ -2853,6 +2880,11 @@ code {
   border-radius: 5px;
   padding: 2px 4px;
 }
+/* The rows below a folder header are its contents. Faint on purpose: it has to
+   read as a heading over them without becoming the loudest thing on screen. */
+.grp-row--folder {
+  background: rgba(255, 255, 255, 0.035);
+}
 .grp-row--draggable {
   cursor: grab;
 }
@@ -2954,6 +2986,151 @@ code {
   max-width: 100%;
   min-width: 0;
 }
+
+/* A nested row's destination is the row it is drawn inside, so the compact
+   affordance keeps the control without reprinting the indentation. */
+.grp-placement-picker--compact {
+  width: auto;
+}
+.grp-placement-picker--compact .grp-placement {
+  padding: 0 4px;
+  opacity: 0.55;
+}
+.grp-row:hover .grp-placement-picker--compact .grp-placement,
+.grp-placement-picker--compact .grp-placement:hover:not(:disabled),
+.grp-placement-picker--compact .grp-placement:focus-visible {
+  opacity: 1;
+}
+
+/* Suggester-flagged rows. A warm left edge is enough to find them while
+   scanning; the reason text beside the title says why. */
+.grp-row--attention {
+  border-left: 2px solid var(--warn, #fbbf24);
+  border-radius: 0 5px 5px 0;
+  padding-left: 4px;
+  margin-left: -6px;
+}
+.grp-conf {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.grp-conf--weak {
+  border-color: rgba(251, 191, 36, 0.5);
+  color: var(--warn, #fbbf24);
+}
+.grp-attention {
+  font-size: 11px;
+  color: var(--warn, #fbbf24);
+  white-space: nowrap;
+}
+
+/* A run of identical-shape suggestions, standing in for its rows until asked. */
+.grp-row--rollup {
+  gap: var(--grp-lead-gap);
+}
+/* Inline after the run's summary, deliberately not pushed right with
+   `margin-left: auto`. The row wraps, and an auto margin on a wrapped item pins it
+   to the right of an otherwise empty line — so after a row above it changed height
+   the button appeared to float unattached in the middle of the tree
+   (owner-reported, 2026-08-15). Flowing after the text, it stays with its row at
+   every width. */
+.grp-rollup__expand {
+  flex: 0 0 auto;
+}
+.grp-node--rollup {
+  --grp-disclosure: 14px;
+  --grp-check: 14px;
+  --grp-icon: 16px;
+  --grp-lead-gap: 3px;
+}
+/* The tree is one tab stop; the focused row is what moves. */
+.grp-tree:focus-visible,
+.grp-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 5px;
+}
+
+/* A row inside a folder: the header above already states where it goes, so its own
+   picker fades out at rest. Faded rather than removed — it is the keyboard path
+   for moving one row out of its folder, and removing it left only drag-and-drop.
+   Space is still reserved, so revealing it does not shift the row. */
+.grp-placement-picker--restated {
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.grp-row:hover .grp-placement-picker--restated,
+.grp-row:focus-within .grp-placement-picker--restated,
+.grp-placement-picker--restated:focus-within,
+.grp-placement-picker--restated:hover {
+  opacity: 1;
+}
+
+/* The row's kind glyph *is* the convert control — one click, in the place the
+   kind is already shown, rather than a second folder-ish icon on the same row or
+   an item two clicks into a `...` menu. */
+.grp-kind--convert {
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.grp-kind--convert:hover:not(:disabled),
+.grp-kind--convert:focus-visible {
+  color: var(--text-strong);
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+.grp-kind--convert:disabled {
+  cursor: default;
+}
+/* Named rather than a glyph: the two destinations are not opposites of one shape,
+   and an addition is rare enough that a word is faster than decoding a symbol. */
+.grp-dest {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.grp-row:hover .grp-dest,
+.grp-dest:hover:not(:disabled),
+.grp-dest:focus-visible {
+  opacity: 1;
+  color: var(--text-strong);
+}
+
+/* A folder's stem dial, on the row that speaks for that folder. Pinned to the
+   right edge beside the row menu so the folder-scoped controls form one column,
+   and quiet rather than hidden: it was in an overflow menu and the owner could
+   not find it, so hover-to-reveal is not an option here. */
+.grp-dial {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  align-self: center;
+}
+.grp-dial .btn {
+  font-size: 10px;
+  padding: 0 6px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+.grp-row:hover .grp-dial .btn:not(:disabled),
+.grp-dial .btn:hover:not(:disabled),
+.grp-dial .btn:focus-visible {
+  color: var(--text-strong);
+  border-color: var(--border-strong, var(--border));
+}
 .grp-placement {
   display: inline-flex;
   align-items: center;
@@ -3043,74 +3220,6 @@ code {
 .grp-placement-row > .pick-row__toggle .chevron {
   width: 8px;
   height: 12px;
-}
-.grp-stem {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  gap: 2px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border);
-}
-/* Anchor for a portalled tooltip: hugs the button so the wrapper adds no
-   layout, and carries the hover handlers so a *disabled* button still explains
-   itself (a disabled button fires no mouse events of its own). */
-.grp-tip-anchor {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-}
-/* Fixed and portalled to <body>, so the dialog's scrolling body cannot clip it. */
-.grp-tip {
-  position: fixed;
-  z-index: 200;
-  max-width: min(360px, calc(100vw - 24px));
-  padding: 4px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-strong);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.4;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
-}
-.grp-destination {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-  width: 20px;
-  height: 18px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.grp-destination .icon {
-  width: 14px;
-  height: 14px;
-}
-.grp-destination:hover:not(:disabled),
-.grp-destination:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text-strong);
-}
-.grp-destination.tip::after {
-  width: max-content;
-  max-width: min(320px, calc(100vw - 32px));
-  white-space: normal;
-  text-align: left;
-  line-height: 1.35;
-}
-.grp-destination:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .grp-files {
   min-height: 25px;

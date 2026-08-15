@@ -193,6 +193,11 @@
             "title": "Files Added To Bundles",
             "type": "integer"
           },
+          "proposals_remaining": {
+            "default": 0,
+            "title": "Proposals Remaining",
+            "type": "integer"
+          },
           "subtitles_linked": {
             "title": "Subtitles Linked",
             "type": "integer"
@@ -4157,12 +4162,14 @@
       },
       "PlanGenerateRequest": {
         "properties": {
-          "stem_modes": {
+          "stem_levels": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/StemMode"
+              "maximum": 1024.0,
+              "minimum": 0.0,
+              "type": "integer"
             },
             "maxProperties": 500,
-            "title": "Stem Modes",
+            "title": "Stem Levels",
             "type": "object"
           }
         },
@@ -4217,11 +4224,11 @@
           "status": {
             "$ref": "#/components/schemas/GroupingPlanStatus"
           },
-          "stem_modes": {
+          "stem_levels": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/StemMode"
+              "$ref": "#/components/schemas/StemLevelRead"
             },
-            "title": "Stem Modes",
+            "title": "Stem Levels",
             "type": "object"
           }
         },
@@ -4230,7 +4237,6 @@
           "status",
           "rule_version",
           "scan_job_id",
-          "stem_modes",
           "generated_at",
           "applied_at",
           "proposals"
@@ -5264,32 +5270,52 @@
         "title": "SmartCollectionUpdate",
         "type": "object"
       },
-      "StemMode": {
-        "description": "Sensitivity used by grouping-plan stem matching.",
-        "enum": [
-          "narrow",
-          "balanced",
-          "wide"
+      "StemLevelRead": {
+        "properties": {
+          "level": {
+            "maximum": 1024.0,
+            "minimum": 0.0,
+            "title": "Level",
+            "type": "integer"
+          },
+          "max": {
+            "maximum": 1024.0,
+            "minimum": 0.0,
+            "title": "Max",
+            "type": "integer"
+          },
+          "stem": {
+            "default": "",
+            "title": "Stem",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "max"
         ],
-        "title": "StemMode",
-        "type": "string"
+        "title": "StemLevelRead",
+        "type": "object"
       },
-      "StemModeUpdate": {
+      "StemLevelUpdate": {
         "properties": {
           "directory": {
             "maxLength": 4096,
             "title": "Directory",
             "type": "string"
           },
-          "mode": {
-            "$ref": "#/components/schemas/StemMode"
+          "level": {
+            "maximum": 1024.0,
+            "minimum": 0.0,
+            "title": "Level",
+            "type": "integer"
           }
         },
         "required": [
           "directory",
-          "mode"
+          "level"
         ],
-        "title": "StemModeUpdate",
+        "title": "StemLevelUpdate",
         "type": "object"
       },
       "SubtitleTrackRead": {
@@ -14257,10 +14283,10 @@
         ]
       }
     },
-    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-modes": {
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-levels": {
       "put": {
-        "description": "Set one directory's stem sensitivity and re-suggest that directory in\nplace. Every proposal outside the directory \u2014 and therefore every owner\nedit elsewhere \u2014 keeps its identity; `POST /plans` remains the full reset.",
-        "operationId": "set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put",
+        "description": "Set how much of each filename has to match in one directory, and\nre-suggest that directory in place. The level is clamped to the folder's own\nmaximum. Every proposal outside the directory \u2014 and therefore every owner\nedit elsewhere \u2014 keeps its identity; `POST /plans` remains the full reset.",
+        "operationId": "set_stem_level_api_v1_libraries__library_id__grouping_plans__plan_id__stem_levels_put",
         "parameters": [
           {
             "in": "path",
@@ -14317,7 +14343,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StemModeUpdate"
+                "$ref": "#/components/schemas/StemLevelUpdate"
               }
             }
           },
@@ -14345,7 +14371,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Set Stem Mode",
+        "summary": "Set Stem Level",
         "tags": [
           "grouping"
         ]

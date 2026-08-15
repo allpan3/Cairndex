@@ -332,9 +332,11 @@ Durable, reviewable snapshots of the grouping suggester output.
 
 - `grouping_plans`: `id`, `scan_job_id` (nullable; registry job id, no cross-DB
   FK), `status` (`open` | `applied` | `superseded` | `cancelled`),
-  `rule_version`, `stem_modes` (JSON map from library-relative directory to
-  `narrow` | `balanced` | `wide`), `generated_at`, `applied_at`, `version`,
-  timestamps. Generating a new plan supersedes the prior open one. Scan jobs
+  `rule_version`, `stem_modes` (JSON map from library-relative directory to an
+  integer stem level; the column keeps its original name from when it held the
+  three-value `StemMode`, and the model maps `stem_level_overrides` onto it
+  rather than renaming a column no migration chain could rename),
+  `generated_at`, `applied_at`, `version`, timestamps. Generating a new plan supersedes the prior open one. Scan jobs
   generate an open plan and return its id/proposal count without applying it.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (self
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
@@ -393,12 +395,19 @@ unused context paths, commits newly materialized context before responding, and
 returns the refreshed whole plan. These owner edits are marked explicitly so
 apply can preserve `base_bundle_id` across reviewed provisional membership
 changes. Confirmed bundles remain outside regenerated plans.
-`POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
-that snapshot; omitting a directory selects the balanced default.
+`POST /grouping/plans` accepts the bounded `stem_levels` map used to regenerate
+that snapshot; omitting a directory selects the default level.
 
-`PUT /grouping/plans/{id}/stem-modes` (body `{directory, mode}`) is how the
-review UI's Narrow/Widen works: it sets **one** directory's sensitivity and
-re-suggests only that directory **inside the open plan**. The suggester still
+`PlanRead.stem_levels` reports `{level, max}` for **every** folder the plan's
+files come from, not only the overridden ones. `max` is the level at which every
+filename in that folder is compared on its first segment alone, so it depends on
+that folder's names and cannot be derived client-side without reimplementing the
+suggester's normalization.
+
+`PUT /grouping/plans/{id}/stem-levels` (body `{directory, level}`, clamped to
+that folder's `[0, max]`) is how the review UI's Narrow/Widen works: it sets
+**one** directory's level and re-suggests only that directory **inside the open
+plan**. The suggester still
 runs over the whole library (a directory's grouping is not computable in
 isolation), but only its output for that directory is spliced in — every other
 proposal row keeps its id, so every owner edit elsewhere (renames, destination
@@ -438,7 +447,7 @@ so reparenting one is refused rather than quietly filing that confirmed bundle
 into a second collection.
 
 A conversion lives in the open plan like every other owner edit, and like them
-it survives a Narrow/Widen on *other* directories (see `stem-modes` above).
+it survives a Narrow/Widen on *other* directories (see `stem-levels` above).
 Re-suggesting the converted directory itself replaces it, and a full
 `POST /grouping/plans` resets everything.
 

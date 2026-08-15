@@ -57,6 +57,10 @@ class ApplyResult:
     files_added_to_bundles: int = 0
     subtitles_linked: int = 0
     conflicts: list[ProposalConflict] = field(default_factory=list)
+    # Suggestions still awaiting review once the accepted ones have left. Zero means
+    # the plan is finished and closed; anything else means it is still open and the
+    # client can carry on in it without regenerating (see ``apply_plan``).
+    proposals_remaining: int = 0
 
 
 @dataclass
@@ -162,18 +166,67 @@ def apply_plan(
         if _add_bundle_to_collection(session, bundle_id, collection_id):
             result.bundles_added_to_collections += 1
 
-    # Only a plan that actually confirmed something is closed. A plan whose every
-    # selected bundle was blocked (a stale collection path, a vanished file) has
-    # confirmed nothing, and closing it would strand every rename, destination
-    # switch, and placement the owner made in it: an applied plan can never be
-    # reopened or re-selected, so the only way forward would be to regenerate and
-    # lose the lot. Partial success still closes the plan, which is the settled
-    # behaviour the selected-accept and missing-file tests pin.
-    if target_bundle_by_proposal:
+    # Accepting a *selection* is a batch inside a review that carries on, so it
+    # retires the rows it confirmed and leaves the rest exactly where they were, ids
+    # and all; the plan closes only once nothing is left. Applying the whole plan
+    # finishes the review, and keeps its long-settled behaviour unchanged: the rows
+    # stay, so a retried request is still the documented no-op.
+    #
+    # It used to close on any partial success, which forced the client to throw the
+    # plan away and generate a fresh one to carry on: two sequential round trips
+    # per accept (942 ms + 851 ms on the owner's library, measured 2026-08-15), a
+    # whole new set of proposal ids, and with them the loss of every collapsed
+    # folder, since fold state is keyed on those ids. Reviewing in batches is the
+    # documented workflow (owner-requested, 2026-08-13), so the plan has to survive
+    # a batch.
+    #
+    # Still only a plan that *confirmed* something retires anything: a plan whose
+    # every selected bundle was blocked (a stale collection path, a vanished file)
+    # keeps all of it, or the owner would lose renames and placements to a failure.
+    accepted_a_selection = proposal_ids is not None
+    if target_bundle_by_proposal and accepted_a_selection:
+        _retire_applied_proposals(session, plan, set(target_bundle_by_proposal))
+        session.flush()
+        session.expire(plan, ["proposals"])
+    result.proposals_remaining = (
+        sum(1 for p in plan.proposals if p.files) if accepted_a_selection else 0
+    )
+    if target_bundle_by_proposal and result.proposals_remaining == 0:
         plan.status = GroupingPlanStatus.APPLIED
         plan.applied_at = utcnow()
     session.flush()
     return result
+
+
+def _retire_applied_proposals(session: Session, plan: GroupingPlan, applied_ids: set[str]) -> None:
+    """Delete the proposals just confirmed, and any collection left holding nothing.
+
+    A collection suggestion exists to hold the bundles beneath it; once they have
+    all been accepted it describes nothing, and leaving it behind would show the
+    owner an empty folder row they cannot act on. Deleted deepest-first so a
+    container emptied by its children going is itself seen as empty.
+    """
+    by_parent: dict[str | None, list[GroupingProposal]] = {}
+    for proposal in plan.proposals:
+        by_parent.setdefault(proposal.parent_proposal_id, []).append(proposal)
+
+    doomed = set(applied_ids)
+
+    def survives(proposal: GroupingProposal) -> bool:
+        """True if this row still has something to review under or in it."""
+        if proposal.id in doomed:
+            return False
+        if proposal.kind is not ProposalKind.CONTAINER:
+            return True
+        children = by_parent.get(proposal.id, [])
+        return any(survives(child) for child in children)
+
+    for proposal in plan.proposals:
+        if proposal.kind is ProposalKind.CONTAINER and not survives(proposal):
+            doomed.add(proposal.id)
+    for proposal in list(plan.proposals):
+        if proposal.id in doomed:
+            session.delete(proposal)
 
 
 # Resolve every structural collection ancestor of the selected bundle work

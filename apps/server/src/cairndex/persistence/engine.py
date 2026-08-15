@@ -1,18 +1,38 @@
+import hashlib
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event, inspect, text
+from sqlalchemy import Connection, Engine, Table, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import LibraryDatabaseOpenError
 from cairndex.domain.enums import CONTEXT_DIRECTORY_PREFIX as _CONTEXT_DIRECTORY_PREFIX
 from cairndex.persistence import journal
+from cairndex.persistence.base import PLANS_SCHEMA
 
 logger = logging.getLogger(__name__)
+
+
+# Page-cache ceiling per connection, in KiB. SQLite's default is 2 MiB, which is
+# smaller than a modestly used library database — so pages evicted during a write
+# have to be read back, and on a network-hosted library each of those reads costs a
+# round trip.
+#
+# Not a marginal effect. Writing a 340-row grouping plan into a 5.75 MB library on
+# an SMB share took **over ten minutes** at the 2 MiB default and **5.5 seconds** at
+# 16 MiB (owner-reported; measured 2026-08-14). Why it bites so hard there:
+# ``grouping_proposals.parent_proposal_id`` references its own table, so with
+# ``foreign_keys=ON`` SQLite seeks the primary-key index once per inserted row —
+# while the inserts are evicting exactly those index pages. On local disk the
+# re-reads are free, which is why it never showed up in development.
+#
+# A ceiling, not an allocation: SQLite grows the cache lazily, so a library small
+# enough never to need it pays nothing.
+_CACHE_KIB = 32 * 1024
 
 
 def _apply_connection_pragmas(dbapi_connection: object, _connection_record: object) -> None:
@@ -33,8 +53,109 @@ def _apply_connection_pragmas(dbapi_connection: object, _connection_record: obje
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute(f"PRAGMA cache_size=-{_CACHE_KIB}")
     finally:
         cursor.close()
+
+
+# Attach target for a library database that has no file of its own to sit beside.
+_MEMORY_PLANS = ":memory:"
+
+
+def plans_database_path(db_path: Path) -> Path:
+    """Where one library's grouping plans live, on the server's own disk (ADR-0022).
+
+    Keyed by a digest of the library database's own path, and deliberately by
+    nothing else. The library id would read better, but it is not known at every
+    place that opens a library engine, and two openers disagreeing about which file
+    holds the plans is a plan that silently vanishes — which a test caught. One
+    derivation everybody can compute beats a nicer one some callers cannot.
+
+    Nothing here has to survive a restart (``discard_all_plans``), so the digest only
+    needs to be stable while the server runs, and a path is.
+    """
+    digest = hashlib.sha256(db_path.resolve().as_posix().encode("utf-8")).hexdigest()[:16]
+    return get_settings().data_dir / "plans" / f"{digest}.db"
+
+
+def _delete_plans_files(plans_file: Path) -> bool:
+    """Delete a plans database and its WAL sidecars. True if the database went."""
+    gone = False
+    sidecars = (plans_file.with_name(plans_file.name + suffix) for suffix in ("-wal", "-shm"))
+    for path in (plans_file, *sidecars):
+        try:
+            path.unlink(missing_ok=True)
+            gone = gone or path == plans_file
+        except OSError:
+            logger.warning("could not delete %s", path, exc_info=True)
+    return gone
+
+
+def discard_all_plans() -> int:
+    """Delete every grouping-plan database. Called once, at server startup (ADR-0022).
+
+    A plan lasts as long as the server that made it and no longer: restarting means
+    pressing Update again, which costs a couple of seconds. This is the owner's call
+    (2026-08-14) and it buys a great deal of simplicity — a plans file is orphaned by
+    more than deregistration (a moved library gets a new digest, and so does one
+    reached through a symlinked mount that was offline when the digest was computed),
+    and clearing the directory wholesale collects all of it without a sweep, a grace
+    period, or any notion of which libraries are still registered.
+
+    What it costs is a review in progress when the server restarts. Deliberate, and
+    the reason it happens at *startup* rather than shutdown: a crash must not be able
+    to leave a plan behind that outlives the rule.
+
+    Returns how many databases were deleted.
+    """
+    directory = get_settings().data_dir / "plans"
+    if not directory.is_dir():
+        return 0
+    removed = sum(1 for path in sorted(directory.glob("*.db")) if _delete_plans_files(path))
+    if removed:
+        logger.info("discarded %d grouping-plan database(s) left by the previous run", removed)
+    return removed
+
+
+def _attach_plans_database(target: str) -> Callable[[object, object], None]:
+    """Return a ``connect`` listener that attaches the plans database (ADR-0022).
+
+    Per connection, because ``ATTACH`` is connection state — the same reason the
+    pragmas above are set here and not once at startup.
+    """
+
+    def listener(dbapi_connection: object, _connection_record: object) -> None:
+        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+        try:
+            cursor.execute(f"ATTACH DATABASE ? AS {PLANS_SCHEMA}", (target,))
+            if target != _MEMORY_PLANS:
+                # This file is always on the server's own disk, so ADR-0021's
+                # "no WAL on a filesystem that cannot host it" does not reach it,
+                # and reviewing a plan is a long run of small writes.
+                cursor.execute(f"PRAGMA {PLANS_SCHEMA}.journal_mode=WAL")
+        finally:
+            cursor.close()
+
+    return listener
+
+
+def _plans_tables() -> list[Table]:
+    from cairndex.persistence import models  # noqa: F401 — populate the metadata
+    from cairndex.persistence.base import Base
+
+    return [table for table in Base.metadata.sorted_tables if table.schema == PLANS_SCHEMA]
+
+
+def ensure_plans_schema(engine: Engine) -> None:
+    """Create the attached plans database's tables if they are not there yet.
+
+    Cheap and local, and it runs for every library rather than only new ones:
+    the plans file is created on first open, so there is no "bootstrapped once"
+    moment to hang this off.
+    """
+    from cairndex.persistence.base import Base
+
+    Base.metadata.create_all(engine, tables=_plans_tables(), checkfirst=True)
 
 
 def _apply_registry_pragmas(dbapi_connection: object, connection_record: object) -> None:
@@ -72,6 +193,10 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     that cannot host it. That first connection is also where a library whose
     file is unopenable announces itself, so the failure arrives as a domain
     error naming the cause and its recovery command rather than as a traceback.
+
+    Every connection also attaches the server-local grouping-plan database
+    (ADR-0022) as schema ``plans``, so a query can still join a plan to the library
+    rows it describes.
     """
     settings = get_settings()
     url = database_url or settings.resolved_database_url()
@@ -80,12 +205,21 @@ def create_app_engine(database_url: str | None = None) -> Engine:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
 
     engine = create_engine(url, future=True)
+    db_path = _sqlite_file_path(url)
     # Pragmas apply to file and in-memory SQLite alike (FK enforcement matters
     # for the in-memory test database too).
     if engine.dialect.name == "sqlite":
         event.listen(engine, "connect", _apply_connection_pragmas)
+        if db_path is None:
+            # An in-memory library gets an in-memory place to keep plans, so the
+            # schema resolves without leaving a file behind for a throwaway DB.
+            plans_target = _MEMORY_PLANS
+        else:
+            plans_file = plans_database_path(db_path)
+            plans_file.parent.mkdir(parents=True, exist_ok=True)
+            plans_target = plans_file.as_posix()
+        event.listen(engine, "connect", _attach_plans_database(plans_target))
 
-    db_path = _sqlite_file_path(url)
     if db_path is not None:
         try:
             journal.apply_library_journal_mode(engine, db_path)
@@ -99,6 +233,8 @@ def create_app_engine(database_url: str | None = None) -> Engine:
                     details={"reason": failure.reason, "filesystem": failure.filesystem},
                 ) from error
             raise
+    if engine.dialect.name == "sqlite":
+        ensure_plans_schema(engine)
     return engine
 
 
@@ -143,6 +279,12 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
     ("asset_files", "directory_path", "TEXT NOT NULL DEFAULT ''"),
     ("asset_files", "cover_time", "REAL"),
+    # The ``grouping_*`` entries below apply only until a library has handed its
+    # plans to the local plans database (ADR-0022): they exist to bring an old
+    # library's tables to the current shape so the rows can be copied, and once
+    # ``_relocate_legacy_grouping_tables`` has dropped them the entries match no
+    # table and are skipped. New grouping columns therefore no longer need adding
+    # here — the plans database is always created at the current shape.
     # Owner-edited grouping plans may explicitly override confirmed membership
     ("grouping_proposals", "base_bundle_id", "VARCHAR(26)"),
     ("grouping_proposals", "owner_edited", "BOOLEAN NOT NULL DEFAULT 0"),
@@ -153,12 +295,82 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
     # Existing collection context is identity-based, not inferred from its title
     ("grouping_proposals", "target_collection_id", "VARCHAR(26)"),
-    # Per-directory heuristic overrides retained by each durable grouping snapshot
+    # ...and being *context* is its own fact, not inferred from having a target
+    ("grouping_proposals", "is_collection_context", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Per-directory heuristic overrides retained by each durable grouping
+    # snapshot. Named for the three-value StemMode it first held; it now holds
+    # integer stem levels, and the model maps ``stem_level_overrides`` onto it
+    # rather than renaming a column no migration chain could rename.
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
+    # Lets a scan skip regenerating a plan that would come out identical
+    ("grouping_plans", "input_digest", "VARCHAR(64)"),
     # Recent view "Date Opened" ordering. NULL in an existing library means
     # "never opened here", which is the truth — opens were not recorded before.
     ("asset_bundles", "last_opened_at", "DATETIME"),
 )
+
+# The grouping tables, parents first, as they were named inside ``library.db``
+# before ADR-0022 moved them out. Only used to hand a pre-ADR-0022 library's plans
+# over to the local plans database once, and then drop them.
+_RELOCATED_PLAN_TABLES: tuple[str, ...] = (
+    "grouping_plans",
+    "grouping_proposals",
+    "grouping_proposal_files",
+)
+
+
+def _relocate_legacy_grouping_tables(conn: Connection, existing: set[str]) -> None:
+    """Hand a pre-ADR-0022 library's grouping plans to the local plans database.
+
+    Copy first, then drop, so an interruption leaves the rows where they were and
+    the next open tries again. After the drop the tables are gone from
+    ``library.db``, so this finds nothing to do on every later open — and the
+    additive column list above stops applying to them for the same reason.
+
+    Wrapped in a savepoint and deliberately forgiving: a library that will not
+    hand over its old plans must still open. What is lost is one regenerable
+    snapshot, and pressing Update rebuilds it.
+
+    Copying only the columns both sides have keeps a library that predates a
+    column from failing here, which is the whole point of the additive pass that
+    runs before this — by now the shapes should already agree.
+    """
+    from cairndex.persistence.base import Base
+
+    present = [name for name in _RELOCATED_PLAN_TABLES if name in existing]
+    if not present:
+        return
+    try:
+        with conn.begin_nested():
+            moved: dict[str, int] = {}
+            for name in present:
+                target = Base.metadata.tables[f"{PLANS_SCHEMA}.{name}"]
+                source = {column["name"] for column in inspect(conn).get_columns(name)}
+                shared = ", ".join(c.name for c in target.columns if c.name in source)
+                # A plain INSERT on purpose. ``OR IGNORE`` would skip a row that
+                # violates a constraint — a NOT NULL column the copy could not
+                # supply, say — and then the DROP below would delete the original.
+                # Failing loudly inside the savepoint is what keeps the rows.
+                result = conn.execute(
+                    text(
+                        f"INSERT INTO {PLANS_SCHEMA}.{name} ({shared}) "
+                        f"SELECT {shared} FROM main.{name}"
+                    )
+                )
+                source_rows = conn.scalar(text(f"SELECT count(*) FROM main.{name}")) or 0
+                if result.rowcount != source_rows:
+                    raise RuntimeError(
+                        f"{name}: copied {result.rowcount} of {source_rows} rows; "
+                        "leaving them in the library database"
+                    )
+                moved[name] = result.rowcount
+            for name in reversed(present):  # children before parents
+                conn.execute(text(f"DROP TABLE main.{name}"))
+                existing.discard(name)
+        logger.info("moved grouping plans out of the library database: %s", moved)
+    except Exception:
+        logger.exception("could not move grouping plans out of the library database")
+
 
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
     "playback_progress",
@@ -227,6 +439,10 @@ def ensure_content_indexes(engine: Engine) -> None:
                 ),
                 {"pattern": f"{_CONTEXT_DIRECTORY_PREFIX}%"},
             )
+        # After the additive pass, so an old library's plans are at the current
+        # shape before they are copied; before the index pass, so no index is
+        # built on a table that is about to be dropped.
+        _relocate_legacy_grouping_tables(conn, existing)
         if "asset_files" in existing:
             # rtrim stops at the final slash; the second rtrim removes that slash
             conn.execute(

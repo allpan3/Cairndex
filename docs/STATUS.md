@@ -118,6 +118,493 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Diagnosed: the owner's library is on SMB, so round trips are the only cost that matters (2026-08-13)
+
+Three rounds of "still slow" were spent optimizing against synthetic local-disk
+libraries. Measuring the owner's actual library settled it, and the finding
+reframes every performance decision in the grouping code.
+
+**The owner's library lives on an SMB share.** Measured against it, read-only,
+with a locally-copied control:
+
+| a trivial `SELECT` on `library.db` | time |
+| --- | --- |
+| on its own volume (SMB) | **35.9 ms** |
+| the identical database copied to local disk | **0.021 ms** |
+
+That is ~1,700x per query. A full directory walk of its 2,683 files takes 6.8 s
+(2.5 ms per `stat`), against 0.036 ms per file for a library on the internal disk.
+
+The library itself is **small** — 412 indexed files, 340 proposals, a 0.17 MB plan
+payload. Every grouping operation, run against a local copy of that exact
+database, is fast: generate 99 ms, convert 228 ms, Widen 42 ms. So none of the
+slowness was ever about plan size, row counts, or render work.
+
+**What it was: statement counts.** At 36 ms per round trip,
+
+- `persist_plan`'s per-row flush plus the response's per-proposal file load =
+  10,416 statements for a 3,600-suggestion plan. On SMB that is about **six
+  minutes** — exactly what the owner reported. Now ~15 statements.
+- a conversion read the whole plan twice and fetched each descendant's files
+  separately: hundreds of statements, so tens of seconds.
+- Narrow/Widen re-runs the suggester *and* spliced with a flush per fresh row.
+
+So the round-trip reductions committed above are the right fixes for this setup,
+and their real-world effect is roughly 400x larger than the local-disk numbers
+suggested. **The lesson for future work here: on this library, count statements,
+not milliseconds.** `get_plan`'s docstring already said as much about NAS latency;
+it should have been read as a constraint on the whole module, not one function.
+
+Per-operation statement counts on the owner's library, after the fixes — the
+number that matters, at ~36 ms each:
+
+| operation | statements | ~SMB |
+| --- | --- | --- |
+| Suggest grouping | 8 | 0.3 s |
+| GET one plan | 3 | 0.1 s |
+| Convert | 11 | 0.4 s |
+| Narrow/Widen | 21 | 0.8 s |
+
+**This is why the delta-response idea was dropped.** Returning only the changed
+rows instead of the whole plan would save the response's own re-read: about three
+statements, ~0.1 s per edit. That is not worth a contract change in the area where
+a bug means a file lost from the plan or claimed by two bundles. The whole-plan
+response is cheap now that the reads behind it are; it was never the payload.
+
+Still outstanding:
+
+- ~~134 plans and 7,724 proposal rows for 412 files~~ — **done**: superseded and
+  cancelled plans are deleted when a new one is generated, keeping one so a client
+  still holding a stale id resolves rather than 404s. Applied plans stay.
+- The suggester's sidecar matching was quadratic in files per folder (fixed
+  below). CPU-bound, so it did *not* affect this library — but it would have as it
+  grows, and it made Narrow/Widen quadratic too.
+### Measured: the stem dial's steps are uneven, and the owner is fine with that (2026-08-15)
+
+The owner asked whether the default stem matching starts too narrow, suggesting it
+begin "one step wider". Measured on their library, that changes almost nothing:
+
+| default | bundles | multi-file bundles |
+| --- | --- | --- |
+| level 1 (shipped) | 295 | 8 |
+| level 2 | 294 | 9 |
+| level 3 | 293 | 9 |
+| compare the first 2 segments | **276** | **26** |
+| compare the first 3 segments | 294 | 8 |
+
+The reason is the dial's definition: depth is `max - level + 1`, where `max` is the
+segment count of the folder's *longest* filename. One 22-segment name makes level 2
+mean "compare 21 of 22 segments", so several steps in a row change nothing and then
+one merges the whole folder — which is the overshoot the owner hit (they wanted
+`ID-number`, got `ID`). Only a fixed *depth* of 2 segments groups their naming
+convention, and that is too aggressive to make a global default: a library named
+like `The Matrix 1999` / `The Matrix Reloaded 2003` would merge them.
+
+Offered as three options — depth-2 default, re-basing the dial on depth so each
+click moves one segment, or both. **The owner chose to leave it as it is** (2026-08-15),
+judging a 2-segment default unsafe. Recorded because the finding stands: the dial's
+steps are unevenly spaced by design, worst in exactly the folders that need it most.
+If it is revisited, re-basing on depth is cheap now — plans are cleared at startup,
+so there are no stored overrides to migrate.
+
+### Plans moved local, and the scan walks once (2026-08-14)
+
+The page cache and the indexes took the plan write from >10 min to 4.6 s. The owner
+judged 4.6 s still wrong for pressing a button and directed the storage to move,
+which is ADR-0022: the three grouping tables now live in
+`<data_dir>/plans/<digest>.db`, attached to every library connection as schema
+`plans`. Writing a plan is 78 ms; a Narrow/Widen is 66 ms.
+
+`ATTACH` rather than a second session, because a plan is read alongside the library
+rows it describes and SQLite joins across attached databases natively — roughly
+twenty-five `plan_store` call sites are unchanged. The plans file is keyed by a
+digest of the library database's path and nothing else: the first version keyed it
+by library id where known and by path otherwise, and a test that reopened a library
+without the id found the two derivations disagreeing, which is a plan that silently
+vanishes.
+
+Two bugs the tests caught while this went in, both worth remembering:
+
+- The migration used `INSERT OR IGNORE`, which **skips** a row violating a
+  constraint rather than failing — and the next statement dropped the source table.
+  It is a plain `INSERT` now, with a row-count check before the drop.
+- `DirEntry.is_dir(follow_symlinks=False)` caches the *lstat*, not the stat, so
+  warming `entry.stat()` in the worker thread matters: without it every file was
+  still stat'ed one at a time, 2.3 s of a 3.6 s walk.
+
+Scan, same library over the same share: **7,063 ms to 2,628 ms**, walk 6,317 ms to
+1,290 ms. Three changes — one traversal instead of two (the second existed only to
+count files for the progress bar), sixteen concurrent directory listings, and no
+second full read of `asset_files` when nothing was dropped.
+
+Verified end to end through the real server on the real library, which is the bar
+the owner set. Update **1.6 s** warm (was minutes); opening the review pane 32 ms;
+loading a 340-proposal plan 21 ms; rename 8 ms; convert to collection 76 ms;
+reparent 26 ms; Narrow/Widen 217–242 ms. The one-time plan handover on first open
+cost 18 s, copying 5.6 MB of plan rows off the share.
+
+Narrow/Widen is the slowest thing left at ~230 ms, because `set_directory_stem_level`
+re-runs the whole suggester (a directory's grouping is not computable in isolation)
+and that read still crosses the share. Caching the suggester's input per plan would
+take it to tens of milliseconds; not done, and not obviously worth the invalidation
+surface.
+
+Plan lifetime went through three versions before settling, and the owner drove the
+last one. First: delete a library's plans when it is deregistered — wrong, because
+remove-and-re-add is documented as reversible and a plan holds edits only the owner
+could make. Second: keep plans durable and sweep unclaimed files after a fortnight —
+correct but elaborate. Third, and current: **a plan lasts as long as the server that
+made it**, cleared at startup. The owner judged that a restart requiring a fresh
+Update is fair, and it deletes the sweep, the grace period, and any need to know which
+libraries are still registered.
+
+Worth keeping from the second version's investigation: a plans path is stable for a
+plain mount point whether or not it is mounted, but **differs** when the mount point
+itself is a symlink. Any future cleanup that recomputes a digest for an absent library
+cannot rely on getting the same answer. And nothing depended on plans outliving a run
+— applied plans are never read back, and the review pane finds its plan by
+`status === 'open'`.
+
+Not done: the library database is not vacuumed after the tables are dropped, so it
+keeps the freed pages. With a 32 MiB cache and a 6 MB database they are never read,
+so this is deliberate rather than pending.
+
+### Root cause found: a 2 MiB page cache and three missing indexes (2026-08-14)
+
+The owner pushed back on "no way around this", correctly. Bisected properly, and
+the answer is small and general.
+
+Writing 340 proposals into their 5.75 MB library on the SMB share:
+
+| configuration | insert | whole `persist_plan` |
+| --- | --- | --- |
+| as shipped | **>600 s** | **>600 s** |
+| `cache_size=-32768` | 5,228 ms | 14,096 ms |
+| that plus indexes on the grouping foreign keys | **236 ms** | **4,614 ms** |
+
+How it was found, after several wrong turns:
+
+1. A phase-by-phase breakdown showed everything except the row write totals 1.7 s.
+2. `faulthandler.dump_traceback_later` proved it was blocked in
+   `sqlite3.Cursor.execute` inside SQLAlchemy's insertmanyvalues, at 0% CPU — I/O,
+   not computation.
+3. Hand-written SQL of the same shape ran in 342 ms, so the statement form was not
+   the problem. Capturing SQLAlchemy's *exact* statement and parameters and
+   replaying them through raw `sqlite3` was still slow — so not the ORM either.
+4. Bisecting the parameters: nulling `parent_proposal_id` → 394 ms; keeping it but
+   setting `foreign_keys=OFF` → 449 ms. So it was foreign-key verification of the
+   self-referential column, one index seek per row.
+5. Those seeks should hit cache. They did not, because the default cache is 2 MiB
+   against a 5.75 MB database and the inserts were evicting the very index pages
+   being sought. `cache_size` fixed it; the missing child-side indexes were then
+   the next cost, in the cascade delete.
+
+**Wrong turns worth not repeating.** I claimed "journaled page I/O, no way around
+it" — measured, and journal mode changes nothing here (delete/memory/off all within
+100 ms of each other). I claimed statement batching was the fix twice. And one
+"verified" run was against unmodified code: a `cd` failed, `&&` short-circuited the
+edit, and the gates passed on the old file. Check that the edit landed before
+believing the measurement.
+
+### Earlier, superseded: writes over SMB are ~1,000x, not 36x
+
+The 35.9 ms figure was a *read*. Measured separately on the same share, with a
+throwaway database:
+
+| on the share | local |
+| --- | --- |
+| 750-row `executemany` — 100 ms | 0.6 ms |
+| its commit — **450 ms** | 0.4 ms |
+| eight small write+commit cycles — **2,220 ms** | 0.3 ms |
+
+SQLite cannot host WAL on SMB (ADR-0021 detects this and heals the file back to a
+rollback journal), so every transaction journals the original pages, writes, and
+fsyncs. Bulk row writes are therefore hopeless there, and no amount of statement
+batching changes it: running `persist_plan` against a copy of the owner's library
+**placed on the share** took **420 seconds** for 340 proposals — with 8 statements.
+Local: 85 ms.
+
+That is what "Writing grouping suggestions" was stuck on. The fix is not to make
+the write faster but to stop doing it: an Update that changed nothing now keeps the
+open plan (420 s -> 5.8 s, the remainder being the eager read of 340 proposals).
+Pruning is bounded per run for the same reason — its delete cascades, and clearing
+a hundred plans at once is minutes of writes.
+
+**So the earlier "you probably don't need a NAS server" was wrong**, and it was
+wrong because it was reasoned from read latency alone. Any operation that writes a
+few hundred rows is minutes on that share. The reuse path avoids the common case;
+the first Update after a real change still pays it.
+
+- **Keeping `library.db` inside the library package costs 36 ms a *read* on SMB and
+  ~300 ms a *write*,**
+  which is ADR-0008's deliberate trade (the database travels with the library).
+  Running a server on the NAS instead is the structural answer, and it is **not
+  urgent**: after the fixes above the owner's operations are 8–21 statements, so
+  0.3–0.8 s over SMB on a 412-file library. The pain was never the share, it was
+  ten thousand round trips. Revisit when the library grows, or when an always-on
+  server is wanted for other devices — the scan's per-file `stat` (2.5 ms over
+  SMB, ~7 s for 2,683 files) is the one cost no code change improves. Docker is
+  the only supported way to run the server there: the sidecar packaging is
+  macOS-only and PyInstaller does not cross-compile. Development would not move
+  either way — it stays native on the Mac against a local library.
+
+## Completed on branch: making a large plan usable (2026-08-13)
+
+Owner testing on a ~20,000-file library, commit `9253dfdb`. Reported: a conversion
+took over ten seconds, creating a collection and moving it took seconds to
+render, the `...` menu was slower than the glyphs it replaced, its labels were
+sentence-long, and "matched" did not say what had matched.
+
+### What was actually slow, measured rather than guessed
+
+A synthetic library of the reported shape (folders of dated releases, each a
+video plus two sidecars), with the client's server mocked so the two halves could
+be separated:
+
+| at 8,400 suggestions | before | after |
+| --- | --- | --- |
+| open the dialog (client) | 2,214 ms | 747 ms |
+| DOM nodes | 222,000 | 33,600 |
+| one conversion (client) | 5,050 ms | 826 ms |
+
+| at 2,700 suggestions, fresh session (server) | before | after |
+| --- | --- | --- |
+| convert collection to bundle | 307 ms | 226 ms |
+| convert bundle to collection | 394 ms | 116 ms |
+| reparent a collection | 253 ms | 126 ms |
+| stem level change | 997 ms | 727 ms |
+
+The client dominated, and by an order of magnitude. Folding *hid* rows rather
+than unmounting them, so a folded subtree was still built, reconciled and laid
+out on every render — folding freed nothing, which was already recorded as a gap
+here and turns out to be the whole story. With file lists closed by default,
+every file in the plan was in the DOM unseen. Folding now unmounts, and a plan
+over 400 suggestions opens folded, which is how a plan that size is read anyway.
+
+On the server, `_open_proposal` checked one column via `get_plan`, whose eager
+load exists so that *serializing* a response is not N+1 — so every edit read the
+whole plan twice. Removing that exposed a second fault it had been masking:
+`_container_to_bundle` reads `row.files` per descendant, which was one query each
+and only looked cheap because the whole plan happened to be warm.
+
+**A correction worth keeping.** An earlier run of the same benchmark reported the
+stem-level change at 13.3s → 1.8s. That was an artefact: the harness reused one
+session across every operation, leaving ORM state a real request never has, which
+invented an N+1 in the splice. Re-measured with a session per operation — what a
+request actually gets — it is 997 ms → 727 ms. The lesson is that a benchmark
+sharing a session across operations does not measure the request path.
+
+Two regression tests, both shown to fail against the unfixed code: merging a
+collection reads its bundles' files in one query (asserted on the merge itself in
+a deliberately cold session, because through the endpoint the response's own
+eager load hides the difference), and a long plan opens folded. The
+whole-plan-read-twice fix has no honest unit test — the query *count* is
+unchanged, only the rows loaded — so it is recorded here as a measurement rather
+than asserted as a green test that proves nothing.
+
+### Round two: the plan was written a row at a time
+
+Owner tested again: generating took "quite long" to show anything, and conversion
+was still not instant. Profiling `POST /plans` found the real cost was never the
+heuristic — it was **10,416 SQL statements** for a 3,605-suggestion plan, from two
+independent faults in `persist_plan`:
+
+* it flushed inside its loop, solely to learn the id it was about to need for the
+  row's files. `UlidPk` defaults to a plain Python callable, so assigning `id`
+  explicitly makes every primary key known before the insert and lets SQLAlchemy
+  batch them (the self-referential parent FK is why it otherwise inserts one row
+  at a time).
+* the files were linked by `proposal_id` rather than through `row.files`, so
+  serializing the response lazy-loaded each row's files: one SELECT per proposal.
+
+Priming the collection needs `set_committed_value` **after** the flush — turning a
+pending instance persistent resets that bookkeeping, so doing it earlier silently
+does nothing, and plain assignment leaves an *empty* collection unloaded so every
+container still paid a query. `extend` is worse than either: it loads before
+appending.
+
+`POST /plans` at 3,605 suggestions: **4,173 ms → 1,560 ms**, 10,416 statements →
+4 batched inserts plus a handful of reads. The suggester itself is ~0.7s of that
+and was never the problem. The same per-row flush is gone from
+`_bundle_to_container` and the stem splice; the splice keeps one flush before its
+parent-link pass, because the foreign key is enforced immediately.
+
+Server-side per edit at 3,605 suggestions is now: convert 145–317 ms, reparent
+114 ms, stem level 829 ms, plus ~130 ms to serialize the response.
+
+**Still not instant, and why.** Every edit returns the *whole* plan — 3 MB at
+3,605 suggestions — because a conversion changes the tree's shape. The client then
+re-parses it and rebuilds ten O(plan) memos. That is the remaining cost and it is
+structural: the next step is a delta response (`{removed_proposal_ids, proposals}`)
+that the client patches into its cache, across the four mutating endpoints. Not
+attempted here — it is a contract change to the area where a bug means a lost or
+duplicated file, and it wants its own slice.
+
+### The controls
+
+The `...` menu is gone. The row's own kind glyph is the convert control, which is
+one click in the place the kind is already shown rather than two clicks and a
+read; the first attempt put a second folder-ish icon after the title, which
+collided with the placement picker's glyph on the same row. Labels are
+`Convert to collection` / `Convert to bundle`. Renaming stays a double-click.
+Confidence reads `confident` / `likely` / `guess`.
+
+## Completed on branch: the stem dial (2026-08-13)
+
+Both halves of the task specified here on 2026-08-13, in commits `dc097d0c`
+(backend) and `022c19e8` (frontend). Kept for the reasoning; the outcome is in
+`CHANGELOG.md`, `docs/data-model.md`, and ADR-0009.
+
+### The level
+
+`StemMode` had only ever had three values (`narrow` / `balanced` / `wide`, one
+commit). The owner's model was the better one — a dial you keep turning until
+there is nothing left to turn — and the three stops were not points on one scale
+anyway: `balanced` folded a rendition tag while `wide` switched to a separate
+semantic-chunk key, so "one step wider" meant two unrelated things.
+
+At level `L` a folder compares the first `max - L + 1` segments of every name it
+holds, where `max` is the longest name there. Level 1 compares whole
+rendition-folded stems and is the default — byte-identical to the old
+`balanced`, so nothing regroups on upgrade — and level `max` compares first
+segments alone. Level 0 is the one rung outside the scheme (the complete stem,
+rendition tag included), because folding `4K [tag]` versus `720p` is not
+expressible as a segment count.
+
+**The mistake worth not repeating.** The first implementation read the level
+*relatively*: drop `L - 1` trailing segments from each name. It is the obvious
+design and it is broken. Two names with different segment counts then produce
+keys of different lengths, which can never be equal, so nothing merges until the
+top rung clamps every name to one segment and the whole folder merges at once.
+The 12-and-9-segment pair in the suggester test reached "two bundles" by pairing
+the *wrong* two files, and the test passed. `_StemKey` is per folder for exactly
+this reason, and the regression test asserts which files meet, not just how many
+bundles result.
+
+`_StemKey` is also now the only definition of "do these two names match?" —
+`wide` used to group by a key `_owner_match_score` never saw, so addition
+matching silently stayed at the balanced key. `_wide_stem_keys`,
+`_semantic_segments` and the `wide`-only scoring tier are gone with it.
+
+`max` depends on a folder's filenames, so `PlanRead.stem_levels` reports
+`{level, max}` for every folder the plan's files come from — the client cannot
+derive it without reimplementing the normalization. `PUT .../stem-levels` clamps
+rather than refuses, since the client asks against the maximum it was last told.
+`grouping_plans.stem_modes` keeps its column name (no migration chain can rename
+a column) with `stem_level_overrides` mapped onto it, and stored legacy strings
+are coerced on read with `wide` resolving to that folder's maximum.
+
+### The controls
+
+Narrow/Widen are visible on the row that speaks for the folder, with the level as
+text and tooltips that say what each does to the *stem* before what it does to
+the bundles. The owner's own words are back; this branch's "Split/Merge into
+more/fewer bundles" was churn.
+
+**What the folder-header spec got wrong.** It called for re-grouping the rendered
+rows by source directory, and named as "the hard part" that the tree nests by
+`parent_proposal_id` instead. That framing was backwards. A collection suggestion
+for a folder *already is* that folder's header — same name, same scope, its rows
+nested beneath it — so the tree already groups by folder wherever a folder has a
+collection row. Re-parenting the render would have duplicated that for no gain
+while breaking drop targets, tri-state selection, fold keys, sibling rollup, and
+keyboard navigation, all of which are structured around the proposal tree. What
+was actually wrong was only that the folder's controls were hidden in a row menu.
+So the dial goes on the header row that exists, a leaf folder that is one bundle
+carries its own, and `stemControlOwners` — which already answered "which row
+speaks for this folder?" — needed no change.
+
+Not done, deliberately: the destination is still per row. Two bundles from one
+folder can be filed into different collections, and moving the picker onto the
+header would remove that to fix repetition that is only cosmetic.
+
+## Open on branch: grouping suggestion review (2026-08-10)
+
+Branch `feat/grouping-suggestion-review` off `main` at `6523fec8` (renamed from
+`feat/grouping-review-triage` once it grew past the triage slice). **Not merged, no PR.**
+
+Nine of the ten UX items from the review of the Suggest-grouping dialog:
+uncertainty surfaced and filterable, file lists closed with a contents summary,
+compact placement on nested rows, row edits named rather than glyphs, runs of
+identical siblings rolled up, keyboard navigation,
+folded intro, fixed dialog height, reserved status line, and an Accept button
+that names what it will do and what it will skip. The tenth — a two-pane
+destination/source layout — is deliberately not attempted here.
+
+A max-effort review of the branch (10 finder angles) found 15 defects, **all
+fixed** in the follow-up commit, each with a regression test that fails against
+the unfixed code. The two that mattered most:
+
+- `usePopover`'s outside-click handler stopped propagation without preventing
+  the default, so with any popover open a click on a *controlled* checkbox
+  unticked the DOM while React state kept the row selected — the visible ticks
+  and "N bundles selected" disagreed, and Accept confirmed a bundle the owner
+  had watched themselves skip. Shared hook; the fix reaches every picker.
+- The Cmd/Ctrl+Enter accelerator reproduced none of the Accept button's guards,
+  so it applied the plan mid-rename, with nothing selected, and on an
+  already-applied plan.
+
+Also fixed: stem actions leaking back onto read-only existing-collection rows
+(the regression the previous branch closed); an unrecognised stem mode making
+"Merge" split instead (moot since the dial replaced the enum, and the guard is
+now structural — there is no unrecognised level); a filtered collection checkbox
+that could never reach
+unchecked; a rolled-up run hiding its folder's actions and being unreachable as
+a drop target; the filter stranding a blank list; a run that could be expanded
+but never folded back; rollup/file state keyed by ids that in-place regeneration
+reissues; arrow navigation dying on any row control; Collapse all enabled but
+inert on a flat plan; and a test assertion that passed against an empty DOM.
+
+Cleanup in the same pass: the filter shares `.seg` rather than being a second
+copy; ~60 lines of CSS and five icon components orphaned by the branch are
+deleted; the two sibling render sites are one `ProposalRows` component; and
+`ProposalNode`'s ten forwarded props are one `SharedNodeProps` object. (The row
+overflow menu described here was itself removed later on the branch — see
+"making a large plan usable" above.)
+
+Known gaps, deliberately not addressed: the proposal tree is still not
+virtualized, so a plan whose folders are all expanded is slow regardless of these
+changes (folding now unmounts, which is what made that survivable — see above);
+`LOW_CONFIDENCE = 0.75` still duplicates
+the server's `_bundle_reason` policy client-side with no test binding the two,
+and the reviewers' recommendation is a server-side `needs_review` flag on
+`ProposalRead`; `shapeKey` still compares the human-readable `reason` string;
+and `GroupingReview.tsx` remains large enough that its pure plan logic wants a
+sibling module.
+
+Then, after owner testing against the real library: the confidence tabs replaced
+by a per-row confidence label (a two-tab filter can *hide* the mislabeled row
+from the view that claims to show what needs deciding), bundle↔collection
+conversion restored as always-available, the shortest shared prefix as the
+default bundle title, and the migration repair below. The stem dial that closed
+this round is written up in its own section above.
+
+Also fixed, live: `OperationalError: table grouping_proposals has no column named
+is_collection_context`. The column reached the model and the backfill gate but
+not `_ADDITIVE_CONTENT_COLUMNS`, so an existing library could not insert a
+proposal at all. Two tests now bind the model to that list, and one names any
+future unlisted column.
+
+Tests run: backend 979; frontend 591 across 79 files; `library.spec.ts` 34/35 —
+the failure is the `switches one addition row` flake described below, which
+passes in isolation and predates this branch's review fixes. Lint, format,
+typecheck and build clean on both stacks.
+
+Known flake, since resolved: `library.spec.ts` "switches one addition row" used
+to fail roughly one full-spec run in four. It asserted on a *hidden* file list;
+rewriting it for the unmounting fold made it deterministic, and the spec has since
+passed 35/35 four runs running. Whether the hidden list was the cause or only
+where the race surfaced is unproven.
+
+Next recommended task: the delta response described above — it is the one
+remaining lever on "instant" for an edit. Then owner testing again. If it is still slow with folders expanded, the remaining
+fix is virtualizing the tree, which needs flattening the nested `ul`/`li` render
+(drag targets, selection, fold keys, rollup and keyboard nav are all built on that
+nesting) and is its own branch.
+Then either the two-pane destination layout — whose remaining justification is
+bulk placement across folders, now that folder headers carry the dial — or the
+server-side `needs_review` field the reviewers recommended.
+
 ## Completed on branch: grouping selection, placement, and folding (2026-08-09)
 
 Branch `codex/fix-grouping-selection-placement` off `main` at `7acc7bc`, open as

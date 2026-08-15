@@ -14,6 +14,7 @@ from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.ownership import get_lease_manager
+from cairndex.persistence.engine import discard_all_plans
 from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
 from cairndex.registry.library_engine import close_library_engines
@@ -32,6 +33,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     a crash leaves a lease to age into staleness and require a confirmation.
     """
     settings = get_settings()
+    # Before anything can open a library: a grouping plan lasts as long as the server
+    # that made it (ADR-0022), so whatever the previous run left goes now.
+    discard_all_plans()
     worker: Worker | None = None
     if settings.worker_enabled:
         worker = Worker(get_registry_sessionmaker(), build_registry())

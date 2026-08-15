@@ -248,31 +248,97 @@ const CURRENT_COLLECTIONS: CollectionRead[] = [
   },
 ]
 
+/** How far a fixture folder's stem dial goes.
+ *
+ * A fixture rather than a computation: the real maximum comes from the
+ * suggester's filename normalization, which is why the server reports it per
+ * folder instead of the client deriving it (`plan_store.stem_levels`).
+ */
+const STEM_DIAL_MAX = 4
+
+/** What the review says after widening the fixture folder one rung.
+ *
+ * The stem, not the dial position: "now matches at stem 2 of 4" named a rung on a
+ * ladder whose length depends on the folder's own filenames, so it told the owner
+ * nothing about what their click did (owner-reported, 2026-08-15).
+ */
+const NOTICE_AFTER_WIDEN = 'SRCV-005 now matches on “SRCV-005” — 1 bundle.'
+
+/** What the server reports a folder is matching on, as written on its files.
+ *
+ * Mirrors `suggester.stem_prefix_as_written` closely enough to give the review
+ * realistic text: the first `max - level + 1` segments of a filename, sliced out
+ * rather than rebuilt, so separators stay as they are. The real one folds
+ * rendition tags too; a fixture does not need to.
+ */
+function stemPrefix(name: string, level: number, max: number): string {
+  const stem = name.replace(/\.[^.]*$/, '')
+  if (level <= 0) return stem
+  const parts = stem.split(/[-._\s]+/).filter(Boolean)
+  const depth = Math.max(1, max - level + 1)
+  if (parts.length <= depth) return stem
+  let end = 0
+  for (const part of parts.slice(0, depth)) end = stem.indexOf(part, end) + part.length
+  return stem.slice(0, end)
+}
+
+/** The dial map the server sends: one entry per folder the plan's files live in. */
+function stemDials(
+  proposals: GroupingProposal[],
+  levels: Record<string, number>,
+): Record<string, { level: number; max: number; stem: string }> {
+  const dials: Record<string, { level: number; max: number; stem: string }> = {}
+  const first: Record<string, string> = {}
+  for (const proposal of proposals) {
+    for (const file of proposal.files) {
+      const segments = file.relative_path.split('/')
+      const directory = segments.slice(0, -1).join('/')
+      const name = segments[segments.length - 1] ?? ''
+      const level = levels[directory] ?? 1
+      const max = Math.max(STEM_DIAL_MAX, level)
+      // Sorted, like the server's, so a folder reports the same example each time.
+      if (first[directory] === undefined || name < first[directory]) first[directory] = name
+      dials[directory] = { level, max, stem: stemPrefix(first[directory], level, max) }
+    }
+  }
+  return dials
+}
+
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi(
   initialProposals: GroupingProposal[] = PROPOSALS,
   collections: CollectionRead[] = CURRENT_COLLECTIONS,
+  // Lets a test start a folder partway along its dial, including at either end.
+  initialStemLevels: Record<string, number> = {},
+  // What accepting produces, and what the plan holds afterwards — the review stays
+  // open on the remainder now, so both matter. Accepting a selection retires the
+  // rows it confirmed *in the same plan*, so the mock does that too rather than
+  // serving a regenerated one.
+  afterApply: { conflicts?: unknown[]; proposals?: GroupingProposal[] } = {},
 ) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
-  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  let applied = false
+  let stemLevels: Record<string, number> = { ...initialStemLevels }
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.includes('/collections?')) {
       body = { items: collections, next_cursor: null }
     } else if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       planId = 'plan2'
-      stemModes = (
-        JSON.parse(init.body as string) as {
-          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
-        }
-      ).stem_modes
+      stemLevels = (JSON.parse(init.body as string) as { stem_levels: Record<string, number> })
+        .stem_levels
+      // What is left after an accept, as the server produces: the confirmed
+      // bundles have gone, the skipped ones come back.
+      if (applied && afterApply.proposals !== undefined) {
+        proposals = structuredClone(afterApply.proposals)
+      }
       body = {
         id: planId,
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals,
@@ -294,7 +360,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -365,13 +431,16 @@ function mockGroupingApi(
         (proposal) => updated.find((item) => item.id === proposal.id) ?? proposal,
       )
       body = updated
-    } else if (url.match(/\/stem-modes$/) && init?.method === 'PUT') {
-      const { directory, mode } = JSON.parse(init.body as string) as {
+    } else if (url.match(/\/stem-levels$/) && init?.method === 'PUT') {
+      const { directory, level } = JSON.parse(init.body as string) as {
         directory: string
-        mode: 'narrow' | 'balanced' | 'wide'
+        level: number
       }
-      if (mode === 'balanced') delete stemModes[directory]
-      else stemModes[directory] = mode
+      // Clamped and defaulted exactly as the server does, so a test cannot pass
+      // against a level the real endpoint would never store.
+      const clamped = Math.max(0, Math.min(level, STEM_DIAL_MAX))
+      if (clamped === 1) delete stemLevels[directory]
+      else stemLevels[directory] = clamped
       // In place: only the adjusted directory's rows are replaced (new ids).
       proposals = proposals.map((proposal) =>
         proposal.directory === directory ? { ...proposal, id: `${proposal.id}-regen` } : proposal,
@@ -381,7 +450,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -416,7 +485,7 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -470,12 +539,16 @@ function mockGroupingApi(
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposals, stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
       }
     } else if (url.endsWith(`/grouping/plans/${planId}/apply`) && init?.method === 'POST') {
+      applied = true
+      // The confirmed rows leave the plan being reviewed; whatever the test says is
+      // left stays, keeping its ids.
+      if (afterApply.proposals !== undefined) proposals = structuredClone(afterApply.proposals)
       body = {
         bundles_confirmed: 2,
         bundles_removed: 0,
@@ -483,7 +556,8 @@ function mockGroupingApi(
         bundles_added_to_collections: 2,
         files_added_to_bundles: 0,
         subtitles_linked: 0,
-        conflicts: [],
+        conflicts: afterApply.conflicts ?? [],
+        proposals_remaining: proposals.filter((p) => p.files.length > 0).length,
       }
     } else {
       body = {}
@@ -514,23 +588,23 @@ test('folds and restores descendant proposals under a collection', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
   renderReview()
 
-  const innerTitle = await screen.findByRole('button', {
-    name: 'Rename collection suggestion Series',
-  })
+  const inner = { name: 'Rename collection suggestion Series' }
+  await screen.findByRole('button', inner)
   const collapse = screen.getByRole('button', {
     name: 'Collapse collection suggestion Library',
   })
   expect(collapse).toHaveAttribute('aria-expanded', 'true')
-  expect(innerTitle).toBeVisible()
 
   fireEvent.click(collapse)
 
-  expect(innerTitle).not.toBeVisible()
+  // Unmounted, not hidden: a folded subtree that is still in the document is
+  // still reconciled on every render, which is the cost folding exists to avoid.
+  expect(screen.queryByRole('button', inner)).toBeNull()
   expect(screen.getByText('3 bundles selected')).toBeInTheDocument()
   const expand = screen.getByRole('button', { name: 'Expand collection suggestion Library' })
   expect(expand).toHaveAttribute('aria-expanded', 'false')
   fireEvent.click(expand)
-  expect(innerTitle).toBeVisible()
+  expect(screen.getByRole('button', inner)).toBeVisible()
 })
 
 // Fold state is per row, not per content. Two file-less bundles hash to the same
@@ -545,59 +619,232 @@ test('two suggestions with identical content fold independently', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(emptied))
   renderReview()
 
-  const first = await screen.findByRole('button', { name: 'Collapse bundle suggestion Emptied A' })
-  const second = screen.getByRole('button', { name: 'Collapse bundle suggestion Emptied B' })
-  expect(first).toHaveAttribute('aria-expanded', 'true')
-  expect(second).toHaveAttribute('aria-expanded', 'true')
+  const first = await screen.findByRole('button', {
+    name: 'Expand files in bundle suggestion Emptied A',
+  })
+  const second = screen.getByRole('button', {
+    name: 'Expand files in bundle suggestion Emptied B',
+  })
+  expect(first).toHaveAttribute('aria-expanded', 'false')
+  expect(second).toHaveAttribute('aria-expanded', 'false')
 
   fireEvent.click(first)
 
   expect(
-    screen.getByRole('button', { name: 'Expand bundle suggestion Emptied A' }),
-  ).toHaveAttribute('aria-expanded', 'false')
-  expect(
-    screen.getByRole('button', { name: 'Collapse bundle suggestion Emptied B' }),
+    screen.getByRole('button', { name: 'Collapse files in bundle suggestion Emptied A' }),
   ).toHaveAttribute('aria-expanded', 'true')
+  expect(
+    screen.getByRole('button', { name: 'Expand files in bundle suggestion Emptied B' }),
+  ).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('folds and restores the file list under a bundle', async () => {
   vi.stubGlobal('fetch', mockGroupingApi())
   const review = renderReview()
 
-  const files = await screen.findByRole('list', { name: 'Files in SRCV-005 - cut' })
-  const collapse = screen.getByRole('button', {
-    name: 'Collapse bundle suggestion SRCV-005 - cut',
-  })
-  fireEvent.dragStart(collapse, { dataTransfer: dragData() })
-  expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
-
-  fireEvent.click(collapse)
-
-  expect(files).not.toBeVisible()
-  const expand = screen.getByRole('button', {
-    name: 'Expand bundle suggestion SRCV-005 - cut',
+  // Closed by default: the row's summary carries the shape, and the list is one
+  // click away when it does not.
+  const expand = await screen.findByRole('button', {
+    name: 'Expand files in bundle suggestion SRCV-005 - cut',
   })
   expect(expand).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.dragStart(expand, { dataTransfer: dragData() })
+  expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
+
   fireEvent.click(expand)
+
+  const files = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   expect(files).toBeVisible()
+  const collapse = screen.getByRole('button', {
+    name: 'Collapse files in bundle suggestion SRCV-005 - cut',
+  })
+  expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(collapse)
+  expect(screen.queryByRole('list', { name: 'Files in SRCV-005 - cut' })).toBeNull()
+})
+
+test('a folder states its destination once, without taking it off its rows', async () => {
+  // The picker repeated the same answer as many times as the folder had
+  // suggestions (owner-requested, 2026-08-13). Faded at rest rather than removed:
+  // it is the keyboard path for moving a single row out of its folder, and taking
+  // it away left only drag-and-drop — which the placement e2e caught.
+  const folder: GroupingProposal = {
+    ...PROPOSALS[0]!,
+    id: 'studio',
+    title: 'Studio',
+    directory: 'Genre/Studio',
+    parent_proposal_id: null,
+    files: [],
+  }
+  const inFolder = [1, 2].map((n) => ({
+    ...PROPOSALS[1]!,
+    id: `rel-${n}`,
+    title: `Release ${n}`,
+    directory: 'Genre/Studio',
+    parent_proposal_id: 'studio',
+    files: [
+      {
+        asset_file_id: `v${n}`,
+        relative_path: `Genre/Studio/Release ${n}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi([folder, ...inFolder]))
+  renderReview()
+
+  await screen.findByRole('button', { name: 'Rename collection suggestion Studio' })
+
+  // The folder's own destination is stated plainly on its header.
+  const header = within(rowOf('Studio')).getByRole('button', { name: /^Placement for / })
+  expect(header.closest('.grp-placement-picker--restated')).toBeNull()
+
+  // Its rows still carry theirs — reachable, but not restating the header at rest.
+  for (const title of ['Release 1', 'Release 2']) {
+    const row = within(rowOf(title)).getByRole('button', { name: /^Placement for / })
+    expect(row.closest('.grp-placement-picker--restated')).not.toBeNull()
+  }
+})
+
+test('accepting keeps the review open on what is left', async () => {
+  // Reviewing a long plan happens in batches, and closing on every accept meant
+  // reopening the dialog to carry on (owner-requested, 2026-08-13).
+  // The same suggestion the owner skipped, with the fresh id a regeneration
+  // issues. Its *content* is unchanged, which is what `proposalKey` matches on and
+  // therefore what carries the deselection across.
+  const skipped = PROPOSALS.find((proposal) => proposal.title === 'Second bundle')!
+  const leftover: GroupingProposal = { ...skipped, id: 'left-1' }
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}, { proposals: [leftover] }))
+  renderReview()
+
+  // Skip one row, accept the rest.
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  fireEvent.click(second)
+  await screen.findByText('1 bundle selected')
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  // Still reviewing, with what was accepted stated and the remainder counted.
+  await screen.findByText(/Accepted 2 bundles, 1 collection\. 1 suggestion left to review\./)
+  expect(screen.getByRole('button', { name: /^Accept / })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
+
+  // And the row the owner skipped is still skipped: a second accept must not be
+  // one click away from confirming exactly what they just declined.
+  const remaining = screen.getByRole('checkbox', { name: 'Accept Second bundle' })
+  expect(remaining).not.toBeChecked()
+})
+
+test('accepting the last suggestion closes the review with a summary', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, {}, { proposals: [] }))
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  expect(await screen.findByRole('button', { name: 'Done' })).toBeInTheDocument()
+  expect(screen.getByText(/Accepted/)).toBeInTheDocument()
+})
+
+test('a conflict ends the review rather than scrolling past unread', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi(
+      undefined,
+      undefined,
+      {},
+      {
+        conflicts: [{ proposal_id: 'p', title: 'Second bundle', reason: 'a file went missing' }],
+        proposals: [PROPOSALS[1]!],
+      },
+    ),
+  )
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
+
+  // Carrying on would leave the conflict behind unread.
+  expect(await screen.findByText(/need attention/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
+})
+
+test('a long plan opens folded, and Expand all still opens it', async () => {
+  // Two reasons that agree: nobody reads thousands of rows top to bottom, and
+  // folding now unmounts — so opening expanded made the first render and every
+  // edit after it build rows nobody had looked at (owner-reported: conversion
+  // took over ten seconds, 2026-08-13).
+  const many: GroupingProposal[] = []
+  for (let folder = 0; folder < 60; folder++) {
+    many.push({
+      ...PROPOSALS[0]!,
+      id: `c${folder}`,
+      title: `Studio ${folder}`,
+      directory: `Genre/Studio ${folder}`,
+      parent_proposal_id: null,
+      files: [],
+    })
+    for (let index = 0; index < 8; index++) {
+      many.push({
+        ...PROPOSALS[1]!,
+        id: `b${folder}-${index}`,
+        title: `Release ${folder}-${index}`,
+        directory: `Genre/Studio ${folder}`,
+        parent_proposal_id: `c${folder}`,
+        reason: `one video with ${index % 3} sidecar file(s)`,
+        files: [
+          {
+            asset_file_id: `v${folder}-${index}`,
+            relative_path: `Genre/Studio ${folder}/Release ${folder}-${index}.mp4`,
+            proposed_role: 'primary_video' as const,
+            sequence: 0,
+          },
+        ],
+      })
+    }
+  }
+  vi.stubGlobal('fetch', mockGroupingApi(many))
+  renderReview()
+
+  await screen.findByText('Studio 0')
+  // The folders are there; their contents are not built yet.
+  expect(screen.queryByText('Release 0-0')).toBeNull()
+  expect(
+    screen.getByRole('button', { name: 'Expand collection suggestion Studio 0' }),
+  ).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+
+  expect(screen.getByText('Release 0-0')).toBeVisible()
+  // Selection is computed from the plan, not from what is on screen, so Accept
+  // covers the folded rows either way.
+  expect(screen.getByText(`${60 * 8} bundles selected`)).toBeInTheDocument()
 })
 
 test('collapses and expands every collection and bundle', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
   renderReview()
 
-  const files = await screen.findByRole('list', { name: 'Files in Episode One' })
+  // Re-queried rather than held: a folded list is unmounted, so the node from
+  // before the fold is not the node after it.
+  const files = { name: 'Files in Episode One' } as const
+  fireEvent.click(await screen.findByRole('button', { name: 'Show files' }))
+  screen.getByRole('list', files)
+  fireEvent.click(screen.getByRole('button', { name: 'Hide files' }))
   fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
 
-  expect(files).not.toBeVisible()
+  expect(screen.queryByRole('list', files)).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Expand collection suggestion Library' }))
   fireEvent.click(screen.getByRole('button', { name: 'Expand collection suggestion Series' }))
-  expect(screen.getByRole('button', { name: 'Expand bundle suggestion Episode One' })).toBeVisible()
-  expect(files).not.toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Expand files in bundle suggestion Episode One' }),
+  ).toBeVisible()
+  // Collapse/Expand all governs collections; file lists have their own toggle.
+  expect(screen.queryByRole('list', files)).toBeNull()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Show files' }))
 
-  expect(files).toBeVisible()
+  expect(screen.getByRole('list', files)).toBeVisible()
   expect(
     screen.getByRole('button', { name: 'Collapse collection suggestion Library' }),
   ).toBeVisible()
@@ -647,9 +894,13 @@ test('keeps suggestion reasons without rendering numeric confidence badges', asy
   const review = renderReview()
 
   expect(await screen.findByText('holds related bundles')).toBeInTheDocument()
-  expect(screen.getByText('same filename stem')).toBeInTheDocument()
-  expect(screen.getByText('same folder')).toBeInTheDocument()
-  expect(review.container.querySelectorAll('.grp-conf')).toHaveLength(0)
+  // A bundle row states what it contains rather than why it was grouped; the
+  // reason only earns a line when the suggester is unsure (see the filter test).
+  expect(screen.getByText('3 files · video, image')).toBeInTheDocument()
+  expect(screen.queryByText('same filename stem')).not.toBeInTheDocument()
+  // A worded band, never a raw score — the percentages were rejected as noise.
+  expect(review.container.querySelectorAll('.grp-conf')).not.toHaveLength(0)
+  expect(review.container.textContent).not.toMatch(/\d+(\.\d+)?%/)
   expect(screen.queryByText('90%')).not.toBeInTheDocument()
   expect(screen.queryByText('95%')).not.toBeInTheDocument()
 })
@@ -667,23 +918,16 @@ test('switches one addition proposal to a renameable new bundle and back', async
   expect(screen.queryByText('➕')).not.toBeInTheDocument()
   expect(screen.getByText('3 new files')).toBeInTheDocument()
   expect(screen.queryByText('Create new bundle instead')).not.toBeInTheDocument()
-  const createNew = screen.getByRole('button', {
-    name: 'Create a new bundle from these files',
-  })
-  expect(createNew).toHaveAttribute('aria-pressed', 'false')
-  expect(createNew).not.toHaveClass('is-active')
-  expect(createNew).toHaveAttribute('data-tip', 'Create a new bundle from these files')
-  fireEvent.click(createNew)
+  // The menu item names the change it makes, so its label *is* the state.
+  fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
 
-  const addToExisting = await screen.findByRole('button', {
+  await waitFor(() => expect(screen.getByText('3 files')).toBeInTheDocument())
+  const addToExisting = screen.getByRole('button', {
     name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
   })
-  expect(addToExisting).toHaveAttribute('aria-pressed', 'true')
-  expect(addToExisting).not.toHaveClass('is-active')
-  expect(addToExisting).toHaveAttribute(
-    'data-tip',
-    'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
-  )
+  // The button's accessible name spells out the change; its visible text is the
+  // destination it would switch to, which is what fits beside a title.
+  expect(addToExisting).toHaveTextContent('Add to bundle')
   expect(screen.getByText('3 files')).toBeInTheDocument()
   expect(screen.queryByText('manual')).not.toBeInTheDocument()
   expect(screen.queryByText('create 3 files as a new bundle')).not.toBeInTheDocument()
@@ -700,9 +944,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
   expect(addToExisting).toBeEnabled()
 
   fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
-    }),
+    screen.getByRole('button', { name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead' }),
   )
   await screen.findByText('Add to Sky, Sand, Sea & Salt - 4K')
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
@@ -725,10 +967,9 @@ test('uses the legacy proposal title when the target snapshot title is absent', 
 
   expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
+  await waitFor(() => expect(screen.queryByText('Add to Legacy Target')).toBeNull())
   expect(
-    await screen.findByRole('button', {
-      name: 'Add these files to “Legacy Target” instead',
-    }),
+    screen.getByRole('button', { name: 'Add these files to “Legacy Target” instead' }),
   ).toBeInTheDocument()
 })
 
@@ -751,15 +992,21 @@ test('disables destination actions while saving and surfaces a switch error', as
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  const switchButton = await screen.findByRole('button', {
-    name: 'Create a new bundle from these files',
-  })
-  fireEvent.click(switchButton)
-  await waitFor(() => expect(switchButton).toBeDisabled())
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Create a new bundle from these files' }),
+  )
+  // Everything that edits the plan is gated on the same in-flight flag, so
+  // Accept is the stable signal that the switch is saving — and re-opening a
+  // menu inside a retry callback would fire clicks on every poll.
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept / })).toBeDisabled())
+  expect(
+    screen.getByRole('button', { name: 'Create a new bundle from these files' }),
+  ).toBeDisabled()
   finishDestination?.()
 
   await screen.findByText('Existing bundle disappeared')
-  expect(switchButton).toBeEnabled()
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept / })).toBeEnabled())
+  expect(screen.getByRole('button', { name: 'Create a new bundle from these files' })).toBeEnabled()
   expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
 })
 
@@ -783,25 +1030,25 @@ test('regenerating suggestions keeps returned candidates visible immediately', a
   ).toBe(true)
 })
 
-test('widens one folder in place and keeps the mode', async () => {
+test('widens one folder in place, one rung at a time', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  const widen = await screen.findByRole('button', {
-    name: 'Widen stem matching in SRCV-005',
-  })
-  fireEvent.click(widen)
+  await screen.findAllByRole('checkbox')
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
 
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  await screen.findByText(NOTICE_AFTER_WIDEN)
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Widen stem matching in SRCV-005' })).toBeDisabled()
-  // One directory's mode, sent to the in-place endpoint — no plan regeneration.
+  // Mid-dial, so it can be reached again — the point of a dial over three stops.
+  expect(dialButton('Widen', 'SRCV-005')).toBeEnabled()
+  expect(dialButton('Narrow', 'SRCV-005')).toBeEnabled()
+  // One directory's level, sent to the in-place endpoint — no plan regeneration.
   const put = fetchMock.mock.calls.find(
-    ([url, init]) => url.endsWith('/stem-modes') && init?.method === 'PUT',
+    ([url, init]) => url.endsWith('/stem-levels') && init?.method === 'PUT',
   )
   expect(put?.[1]).toMatchObject({
-    body: JSON.stringify({ directory: 'SRCV-005', mode: 'wide' }),
+    body: JSON.stringify({ directory: 'SRCV-005', level: 2 }),
   })
   expect(
     fetchMock.mock.calls.some(
@@ -834,17 +1081,13 @@ test('places a folder stem control on the deepest matching container row', async
   vi.stubGlobal('fetch', mockGroupingApi([outer, inner, bundle]))
   renderReview()
 
-  const outerRow = (
-    await screen.findByRole('button', { name: 'Rename collection suggestion Western' })
-  ).closest('.grp-row') as HTMLElement
-  const innerRow = screen
-    .getByRole('button', { name: 'Rename collection suggestion Nora Vance' })
-    .closest('.grp-row') as HTMLElement
+  await screen.findByRole('button', { name: 'Rename collection suggestion Western' })
 
-  expect(
-    within(outerRow).queryByLabelText('Stem matching for Western/Nora Vance'),
-  ).not.toBeInTheDocument()
-  expect(within(innerRow).getByLabelText('Stem matching for Western/Nora Vance')).toBeVisible()
+  // The folder's dial belongs to the deepest row that speaks for it, and to that
+  // row only.
+  const folder = 'Western/Nora Vance'
+  expect(queryDialButton('Widen', folder, 'Western')).toBeNull()
+  expect(dialButton('Widen', folder, 'Nora Vance')).toBeInTheDocument()
 })
 
 test('Escape cancels a bundle suggestion rename', async () => {
@@ -913,7 +1156,9 @@ test('drags proposal files to reorder within a bundle', async () => {
   const review = renderReview()
   const dataTransfer = dragData()
 
-  await screen.findByText('SRCV-005.mp4')
+  // File lists are closed by default and now unmounted rather than hidden, so a
+  // drag has to start from a list the owner has actually opened.
+  fireEvent.click(await screen.findByRole('button', { name: 'Show files' }))
   fireEvent.dragStart(fileRow('SRCV-005.mp4'), { dataTransfer })
   const fileList = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(fileList, { dataTransfer })
@@ -938,7 +1183,8 @@ test('drags a file row onto another bundle suggestion heading', async () => {
   renderReview()
   const dataTransfer = dragData()
 
-  const source = (await screen.findByText('cover.jpg')).closest('.grp-file')
+  fireEvent.click(await screen.findByRole('button', { name: 'Show files' }))
+  const source = screen.getByText('cover.jpg').closest('.grp-file')
   const target = screen
     .getByRole('button', { name: 'Rename bundle suggestion Second bundle' })
     .closest('.grp-row--bundle')
@@ -969,6 +1215,7 @@ test('auto-deselects a bundle after its last file is dragged away', async () => 
 
   const sourceCheckbox = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
   expect(sourceCheckbox).toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'Show files' }))
   fireEvent.dragStart(fileRow('second.mp4'), { dataTransfer })
   const target = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(target, { dataTransfer })
@@ -1069,7 +1316,7 @@ test('selecting one nested bundle leaves its collection ancestors indeterminate'
   expect(first).not.toBeVisible()
   expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(
@@ -1135,9 +1382,8 @@ test('existing collection context is labeled and cannot be edited or moved', asy
       name: 'Placement for collection suggestion Series',
     }),
   ).toBeNull()
-  expect(
-    within(row as HTMLElement).queryByRole('button', { name: 'Make this one bundle instead' }),
-  ).toBeNull()
+  await screen.findAllByRole('checkbox')
+  expect(queryConvert('bundle', 'Library')).toBeNull()
 })
 
 // A folder suggestion may resolve to a collection that already exists, so apply
@@ -1208,6 +1454,428 @@ test('a proposed collection placement control moves between parent and top level
   ])
 })
 
+/** The row whose visible text contains `text` — the scope for that row's controls.
+ *
+ * Rows carry their own controls inline now (a `Convert to …` button, the folder's
+ * stem dial) rather than behind one `...` trigger, so a test scopes by row rather
+ * than by opening a menu.
+ */
+function rowOf(text: string): HTMLElement {
+  const rows = [...document.querySelectorAll<HTMLElement>('.grp-row')]
+  const row = rows.find((candidate) => candidate.textContent?.includes(text))
+  if (!row) throw new Error(`no row containing ${text}`)
+  return row
+}
+
+/** The convert-kind button on the row for `title`, or null when not offered. */
+function queryConvert(direction: 'collection' | 'bundle', title: string): HTMLElement | null {
+  return screen.queryByRole('button', { name: `Convert to ${direction}: ${title}` })
+}
+
+function convert(direction: 'collection' | 'bundle', title: string): HTMLElement {
+  const button = queryConvert(direction, title)
+  if (!button) throw new Error(`no Convert to ${direction} on ${title}`)
+  return button
+}
+
+async function convertAsync(
+  direction: 'collection' | 'bundle',
+  title: string,
+): Promise<HTMLElement> {
+  return screen.findByRole('button', { name: `Convert to ${direction}: ${title}` })
+}
+
+/** A folder's stem dial: visible on the row that speaks for the folder. */
+function dialButton(action: 'Narrow' | 'Widen' | 'Reset', folder: string, rowText?: string) {
+  const scope = rowText ? within(rowOf(rowText)) : screen
+  return scope.getByRole('button', { name: `${action} the filename match in ${folder}` })
+}
+
+function queryDialButton(action: 'Narrow' | 'Widen' | 'Reset', folder: string, rowText?: string) {
+  const scope = rowText ? within(rowOf(rowText)) : screen
+  return scope.queryByRole('button', { name: `${action} the filename match in ${folder}` })
+}
+
+test('a run of identical-shape suggestions folds into one row', async () => {
+  // Four numbered clips the suggester treated identically: same file count,
+  // same kinds, same reason. They are the rows an owner scrolls past.
+  const clips = [1, 2, 3, 4].map((i) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `SET-025-0${i}`,
+    reason: 'numbered sequence',
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/SET-025-0${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+      {
+        asset_file_id: `c${i}`,
+        relative_path: `d/SET-025-0${i}.webp`,
+        proposed_role: 'cover' as const,
+        sequence: 1,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi(clips))
+  renderReview()
+
+  const rollup = await screen.findByText('SET-025-01 … SET-025-04')
+  expect(screen.getByText('4 bundles, same shape · each 2 files · video, image')).toBeVisible()
+  // The individual rows are not rendered until asked for.
+  expect(screen.queryByRole('checkbox', { name: 'Accept SET-025-02' })).toBeNull()
+  // ...but they are all still selected, and Accept still counts them.
+  expect(screen.getByRole('button', { name: 'Accept 4 bundles' })).toBeEnabled()
+
+  // One checkbox skips the whole run.
+  const combined = screen.getByRole('checkbox', {
+    name: 'Accept 4 suggestions from SET-025-01 … SET-025-04',
+  })
+  expect(combined).toBeChecked()
+  fireEvent.click(combined)
+  expect(screen.getByText('0 bundles selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show all 4' }))
+
+  expect(screen.getByRole('checkbox', { name: 'Accept SET-025-02' })).toBeInTheDocument()
+  expect(rollup).not.toBeInTheDocument()
+})
+
+test('a run stops at a suggestion worth looking at', async () => {
+  // The low-confidence row is never folded away, and it breaks the run.
+  const shape = (i: number, confidence: number) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `Clip 0${i}`,
+    reason: 'numbered sequence',
+    confidence,
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/c${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  })
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi([shape(1, 0.9), shape(2, 0.5), shape(3, 0.9), shape(4, 0.9), shape(5, 0.9)]),
+  )
+  renderReview()
+
+  // The uncertain row keeps its own line…
+  expect(await screen.findByRole('checkbox', { name: 'Accept Clip 02' })).toBeInTheDocument()
+  // …the three after it are a run…
+  expect(screen.getByText('Clip 03 … Clip 05')).toBeVisible()
+  // …and the single row before it is too short to fold.
+  expect(screen.getByRole('checkbox', { name: 'Accept Clip 01' })).toBeInTheDocument()
+})
+
+test('the review can be driven from the keyboard', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  await screen.findByRole('button', { name: 'Rename collection suggestion Library' })
+  const tree = screen.getByRole('list', { name: /^Grouping suggestions/ })
+  const rowOf = (name: string) =>
+    screen.getByRole('button', { name }).closest('.grp-row') as HTMLElement
+
+  // The tree is one tab stop; the first arrow lands on the first row.
+  tree.focus()
+  fireEvent.keyDown(tree, { key: 'ArrowDown' })
+  const library = rowOf('Rename collection suggestion Library')
+  expect(library).toHaveFocus()
+
+  // Left folds, right unfolds — via the row's own disclosure.
+  fireEvent.keyDown(library, { key: 'ArrowLeft' })
+  expect(
+    screen.getByRole('button', { name: 'Expand collection suggestion Library' }),
+  ).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.keyDown(library, { key: 'ArrowRight' })
+  expect(
+    screen.getByRole('button', { name: 'Collapse collection suggestion Library' }),
+  ).toHaveAttribute('aria-expanded', 'true')
+
+  // Down reaches the nested rows, and space toggles the row's checkbox.
+  fireEvent.keyDown(library, { key: 'ArrowDown' })
+  const series = rowOf('Rename collection suggestion Series')
+  expect(series).toHaveFocus()
+  fireEvent.keyDown(series, { key: 'ArrowDown' })
+  const episode = rowOf('Rename bundle suggestion Episode One')
+  expect(episode).toHaveFocus()
+
+  const accept = screen.getByRole('checkbox', { name: 'Accept Episode One' })
+  expect(accept).toBeChecked()
+  fireEvent.keyDown(episode, { key: ' ' })
+  expect(accept).not.toBeChecked()
+
+  // Cmd+Enter applies without reaching for the footer.
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  await waitFor(() =>
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/apply'))).toBe(true),
+  )
+})
+
+test('a key press inside a row control is left to that control', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  const title = await screen.findByRole('button', {
+    name: 'Rename bundle suggestion SRCV-005 - cut',
+  })
+  fireEvent.doubleClick(title)
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  const checkbox = screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  const checkedBefore = (checkbox as HTMLInputElement).checked
+
+  // Space in the rename box is a space, not an accept toggle.
+  fireEvent.keyDown(input, { key: ' ' })
+  expect((checkbox as HTMLInputElement).checked).toBe(checkedBefore)
+  expect(input).toBeInTheDocument()
+})
+
+// --- Review fixes (2026-08-10) -----------------------------------------------
+
+test('Cmd+Enter obeys the same guards as the Accept button', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const tree = await screen.findByRole('list', { name: /^Grouping suggestions/ })
+  const applied = () => fetchMock.mock.calls.some(([url]) => url.endsWith('/apply'))
+
+  // Nothing selected: the button is disabled, so the shortcut must be too.
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept/ })).toBeDisabled())
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  expect(applied()).toBe(false)
+
+  // Mid-rename: likewise blocked, and the keystroke belongs to the text box.
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+  fireEvent.doubleClick(
+    screen.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
+  )
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
+  expect(applied()).toBe(false)
+
+  // Escape out of the rename, and then it works.
+  fireEvent.keyDown(input, { key: 'Escape' })
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Accept/ })).toBeEnabled())
+  fireEvent.keyDown(tree, { key: 'Enter', metaKey: true })
+  await waitFor(() => expect(applied()).toBe(true))
+})
+
+test('a read-only existing-collection row offers no folder actions', async () => {
+  const context = {
+    ...NESTED_PROPOSALS[0]!,
+    target_collection_id: 'live',
+    is_collection_context: true,
+  }
+  vi.stubGlobal('fetch', mockGroupingApi([context, ...NESTED_PROPOSALS.slice(1)]))
+  renderReview()
+
+  // Narrow/Widen regenerate plan rows for a directory this row does not name.
+  await screen.findAllByRole('checkbox')
+  expect(
+    within(rowOf('Library')).queryByRole('button', {
+      name: /^(Narrow|Widen) the filename match/,
+    }),
+  ).toBeNull()
+})
+
+test('the top of the dial explains why it stops, without a label that moves', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': STEM_DIAL_MAX }))
+  renderReview()
+
+  await screen.findAllByRole('checkbox')
+  // Two buttons and nothing else. A "stem N of M" label changed width with its
+  // numbers and Reset appeared only away from the default, and the row is
+  // right-aligned — so both buttons slid sideways under a cursor about to click one
+  // (owner-reported, 2026-08-15). Fixed labels cannot move.
+  expect(screen.queryByText(/stem \d+ of \d+/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /^Reset the filename match/ }),
+  ).not.toBeInTheDocument()
+  const widen = dialButton('Widen', 'SRCV-005')
+  expect(widen).toBeDisabled()
+  expect(widen).toHaveAttribute(
+    'title',
+    'SRCV-005 is already matched on the first part of each filename — there is nothing left to widen',
+  )
+  expect(dialButton('Narrow', 'SRCV-005')).toBeEnabled()
+})
+
+test('the bottom of the dial explains itself and offers no further step', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(undefined, undefined, { 'SRCV-005': 0 }))
+  renderReview()
+
+  await screen.findAllByRole('checkbox')
+  const narrow = dialButton('Narrow', 'SRCV-005')
+  expect(narrow).toBeDisabled()
+  expect(narrow).toHaveAttribute(
+    'title',
+    'SRCV-005 already matches complete filenames — there is nothing more to match',
+  )
+  expect(dialButton('Widen', 'SRCV-005')).toBeEnabled()
+})
+
+test('each button says what it does to the stem, and to the bundles', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  // The tooltip is the whole explanation of a control whose two words could
+  // otherwise mean anything (owner-reported, 2026-08-13).
+  await screen.findAllByRole('checkbox')
+  expect(dialButton('Narrow', 'SRCV-005')).toHaveAttribute(
+    'title',
+    'Match more of each filename in SRCV-005, creating more, smaller bundles',
+  )
+  expect(dialButton('Widen', 'SRCV-005')).toHaveAttribute(
+    'title',
+    'Match a shorter part of each filename in SRCV-005, creating fewer, larger bundles',
+  )
+  // Nothing to go back to at the default, so no Reset.
+  expect(queryDialButton('Reset', 'SRCV-005')).toBeNull()
+})
+
+test('an expanded run can be folded back', async () => {
+  const clips = [1, 2, 3].map((i) => ({
+    ...PROPOSALS[1]!,
+    id: `clip-${i}`,
+    title: `Clip 0${i}`,
+    reason: 'numbered sequence',
+    files: [
+      {
+        asset_file_id: `v${i}`,
+        relative_path: `d/c${i}.mp4`,
+        proposed_role: 'primary_video' as const,
+        sequence: 0,
+      },
+    ],
+  }))
+  vi.stubGlobal('fetch', mockGroupingApi(clips))
+  renderReview()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Show all 3' }))
+  expect(screen.getByRole('checkbox', { name: 'Accept Clip 02' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Fold 3 back into one row' }))
+
+  expect(screen.queryByRole('checkbox', { name: 'Accept Clip 02' })).toBeNull()
+  expect(screen.getByText('Clip 01 … Clip 03')).toBeVisible()
+})
+
+test('Collapse all is disabled when there is nothing to collapse', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi([PROPOSALS[1]!]))
+  renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept SRCV-005 - cut' })
+  // A flat plan has no collections; the button used to be enabled and inert.
+  expect(screen.getByRole('button', { name: 'Collapse all' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Expand all' })).toBeDisabled()
+})
+
+test('arrow keys keep working after focus lands on a row control', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
+  renderReview()
+
+  const first = await screen.findByRole('checkbox', { name: 'Select bundles in Library' })
+  first.focus()
+  expect(first).toHaveFocus()
+
+  // Navigation used to die here until the owner clicked bare row whitespace.
+  fireEvent.keyDown(first, { key: 'ArrowDown' })
+  expect(
+    screen.getByRole('button', { name: 'Rename collection suggestion Series' }).closest('.grp-row'),
+  ).toHaveFocus()
+})
+
+// --- Triage: confidence filter, contents summary, compact placement ----------
+
+test('every row states its confidence, and the guessed ones are counted', async () => {
+  // Replaced a two-tab filter: hiding the confident rows meant a *mis*-scored row
+  // was filtered out of the view claiming to show what needed deciding.
+  const unsure = { ...PROPOSALS[1]!, id: 'weak', title: 'Loose Clip', confidence: 0.5 }
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, unsure]))
+  renderReview()
+
+  // Nothing is hidden: both rows are present, each carrying its own label.
+  await screen.findByRole('checkbox', { name: 'Accept Loose Clip' })
+  expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeInTheDocument()
+  expect(screen.getByText('1 guessed from the folder')).toBeInTheDocument()
+
+  const weakRow = screen
+    .getByRole('button', { name: 'Rename bundle suggestion Loose Clip' })
+    .closest('.grp-row') as HTMLElement
+  expect(within(weakRow).getByText('guess')).toBeInTheDocument()
+
+  const strongRow = screen
+    .getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' })
+    .closest('.grp-row') as HTMLElement
+  expect(within(strongRow).getByText('confident')).toBeInTheDocument()
+
+  // No filter tabs to hide anything behind.
+  expect(screen.queryByRole('button', { name: /Needs a look/ })).toBeNull()
+})
+
+test('a flagged row carries its reason; a confident one carries its contents', async () => {
+  const unsure = {
+    ...PROPOSALS[1]!,
+    id: 'weak',
+    title: 'Loose Clip',
+    confidence: 0.5,
+    reason: 'grouped by folder',
+  }
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, unsure]))
+  const review = renderReview()
+
+  await screen.findByRole('checkbox', { name: 'Accept Loose Clip' })
+  const flagged = screen
+    .getByRole('button', { name: 'Rename bundle suggestion Loose Clip' })
+    .closest('.grp-row')
+  expect(flagged).toHaveClass('grp-row--attention')
+  expect(within(flagged as HTMLElement).getByText('grouped by folder')).toBeInTheDocument()
+
+  const confident = screen
+    .getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' })
+    .closest('.grp-row')
+  expect(confident).not.toHaveClass('grp-row--attention')
+  expect(review.container.querySelectorAll('.grp-row--attention')).toHaveLength(1)
+})
+
+test('the footer names what Accept does and what it leaves behind', async () => {
+  const addition = { ...ADDITION, id: 'add-1' }
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, addition]))
+  renderReview()
+
+  // Two new bundles plus one addition, all selected to begin with.
+  expect(await screen.findByRole('button', { name: 'Accept 2 bundles + 1 addition' })).toBeEnabled()
+  expect(screen.queryByText(/skipped/)).toBeNull()
+
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' }))
+
+  expect(screen.getByRole('button', { name: 'Accept 1 bundle + 1 addition' })).toBeEnabled()
+  expect(
+    screen.getByText('1 skipped stays unbundled and is suggested again next scan'),
+  ).toBeInTheDocument()
+})
+
+test('a root row keeps its printed destination', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  const anchor = await screen.findByRole('button', {
+    name: 'Placement for bundle suggestion SRCV-005 - cut',
+  })
+  expect(anchor.closest('.grp-placement-picker')).not.toHaveClass('grp-placement-picker--compact')
+  expect(within(anchor).getByText('Top level')).toBeInTheDocument()
+})
+
 test('placement picker excludes draft collections when the library has none', async () => {
   vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS, []))
   renderReview()
@@ -1215,7 +1883,11 @@ test('placement picker excludes draft collections when the library has none', as
   const anchor = await screen.findByRole('button', {
     name: 'Placement for bundle suggestion Episode One',
   })
-  expect(within(anchor).getByText('Suggested: Series')).toBeInTheDocument()
+  // Nested, so the destination is the row it is drawn inside: the affordance
+  // stays (and keeps its accessible name) but stops reprinting the indentation.
+  expect(anchor.closest('.grp-placement-picker')).toHaveClass('grp-placement-picker--compact')
+  expect(within(anchor).queryByText('Suggested: Series')).toBeNull()
+  expect(anchor).toHaveAttribute('title', 'Current placement: Suggested: Library / Series')
   fireEvent.click(anchor)
 
   const list = screen.getByRole('listbox', { name: 'Collection destinations' })
@@ -1308,7 +1980,7 @@ test('drags a proposed collection to the top level', async () => {
  */
 function mockRegeneratingApi() {
   let generation = 0
-  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  let stemLevels: Record<string, number> = {}
   const proposalsFor = (gen: number): GroupingProposal[] =>
     structuredClone(PROPOSALS).map((p) => ({ ...p, id: `${p.id}-gen${gen}` }))
 
@@ -1317,17 +1989,14 @@ function mockRegeneratingApi() {
     let body: unknown
     if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       generation += 1
-      stemModes = (
-        JSON.parse(init.body as string) as {
-          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
-        }
-      ).stem_modes
+      stemLevels = (JSON.parse(init.body as string) as { stem_levels: Record<string, number> })
+        .stem_levels
       body = {
         id: `plan-gen${generation}`,
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposalsFor(generation), stemLevels),
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals: proposalsFor(generation),
@@ -1350,7 +2019,7 @@ function mockRegeneratingApi() {
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: stemModes,
+        stem_levels: stemDials(proposalsFor(gen), stemLevels),
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals: proposalsFor(gen),
@@ -1388,8 +2057,8 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   expect(second).not.toBeChecked()
   await screen.findByText('1 bundle selected')
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
+  await screen.findByText(NOTICE_AFTER_WIDEN)
 
   // The adjusted directory's row returns as a fresh (checked) suggestion; the
   // deselection elsewhere survives.
@@ -1406,26 +2075,16 @@ test('a conversion elsewhere survives Widen', async () => {
   vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, DIVISIBLE]))
   renderReview()
 
-  const secondRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
-  fireEvent.click(
-    within(secondRow as HTMLElement).getByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  )
+  fireEvent.click(await convertAsync('collection', 'Two Subjects'))
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
-  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  fireEvent.click(dialButton('Widen', 'SRCV-005'))
+  await screen.findByText(NOTICE_AFTER_WIDEN)
 
   // Still a collection, child row intact, and the way back still offered.
   expect(screen.getByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
-  const converted = screen
-    .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
-    .closest('.grp-row')!
-  expect(
-    within(converted as HTMLElement).getByRole('button', { name: 'Make this one bundle instead' }),
-  ).toBeInTheDocument()
+  expect(convert('bundle', 'Two Subjects')).toBeInTheDocument()
 })
 
 test('an explicit Suggest grouping starts from a clean selection', async () => {
@@ -1433,8 +2092,14 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
   renderReviewAt('plan-gen0')
 
   const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Expand files in bundle suggestion Second bundle' }),
+  )
   const secondFiles = screen.getByRole('list', { name: 'Files in Second bundle' })
-  fireEvent.click(screen.getByRole('button', { name: 'Collapse bundle suggestion Second bundle' }))
+  expect(secondFiles).toBeVisible()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Collapse files in bundle suggestion Second bundle' }),
+  )
   expect(secondFiles).not.toBeVisible()
   fireEvent.click(second)
   await screen.findByText('1 bundle selected')
@@ -1447,10 +2112,11 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
   await waitFor(() =>
     expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).toBeChecked(),
   )
+  // A fresh start resets view state too: the file list the owner had opened is
+  // closed again, like the checkboxes are re-checked.
   expect(
-    screen.getByRole('button', { name: 'Collapse bundle suggestion Second bundle' }),
-  ).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByRole('list', { name: 'Files in Second bundle' })).toBeVisible()
+    screen.getByRole('button', { name: 'Expand files in bundle suggestion Second bundle' }),
+  ).toHaveAttribute('aria-expanded', 'false')
   expect(screen.getByText('2 bundles selected')).toBeInTheDocument()
 })
 
@@ -1460,12 +2126,7 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  const bundleRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
-  fireEvent.click(
-    within(bundleRow as HTMLElement).getByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  )
+  fireEvent.click(await convertAsync('collection', 'Two Subjects'))
 
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
   const put = fetchMock.mock.calls.find(
@@ -1477,14 +2138,7 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
   expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
   expect(screen.getByRole('checkbox', { name: 'Accept beta.mp4' })).toBeInTheDocument()
   // And the row offers the way back, so the override is not a one-way door.
-  const converted = screen
-    .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
-    .closest('.grp-row')!
-  expect(
-    within(converted as HTMLElement).getByRole('button', {
-      name: 'Make this one bundle instead',
-    }),
-  ).toBeInTheDocument()
+  expect(convert('bundle', 'Two Subjects')).toBeInTheDocument()
 })
 
 test('accepts only file-backed child bundles returned by a conversion', async () => {
@@ -1492,15 +2146,10 @@ test('accepts only file-backed child bundles returned by a conversion', async ()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  const bundleRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
-  fireEvent.click(
-    within(bundleRow as HTMLElement).getByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  )
+  fireEvent.click(await convertAsync('collection', 'Two Subjects'))
   await screen.findByText('“Two Subjects” is now a collection of bundles.')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }))
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(
@@ -1521,17 +2170,15 @@ test('a single-subject bundle may still become a collection', async () => {
   vi.stubGlobal('fetch', mockGroupingApi())
   renderReview()
 
-  const soloRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
-  expect(
-    within(soloRow as HTMLElement).getByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  ).toBeInTheDocument()
+  expect(await convertAsync('collection', 'SRCV-005 - cut')).toBeInTheDocument()
 })
 
-test('a single-subject bundle already inside its own folder collection is not', async () => {
-  // Another layer would just repeat the name it is already inside — and since the
-  // child of a conversion always lands here, this is what bounds the nesting.
+test('a single-subject bundle inside its own folder collection can still convert', async () => {
+  // The client used to withhold the conversion here, on the grounds that another
+  // layer would repeat the name it is inside. That is exactly the row an owner
+  // reaches for it on — a folder holding one release that should be a collection
+  // (owner-reported, 2026-08-13). The server still refuses the one conversion
+  // that would rename nothing, and says so.
   const collection: GroupingProposal = {
     ...PROPOSALS[0]!,
     id: 'own-folder',
@@ -1542,12 +2189,7 @@ test('a single-subject bundle already inside its own folder collection is not', 
   vi.stubGlobal('fetch', mockGroupingApi([collection, child]))
   renderReview()
 
-  const childRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
-  expect(
-    within(childRow as HTMLElement).queryByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  ).toBeNull()
+  expect(await convertAsync('collection', child.title!)).toBeInTheDocument()
 })
 
 test('an addition suggestion offers no collection override', async () => {
@@ -1556,67 +2198,8 @@ test('an addition suggestion offers no collection override', async () => {
 
   // An addition puts its files into a bundle that already exists, which is not
   // going to become a collection.
-  const additionRow = (await screen.findByText(/Add to/)).closest('.grp-row')!
-  expect(
-    within(additionRow as HTMLElement).queryByRole('button', {
-      name: 'Make this a collection of bundles instead',
-    }),
-  ).toBeNull()
+  await screen.findByText(/Add to/)
+  expect(queryConvert('collection', 'Add to Sky, Sand, Sea & Salt - 4K')).toBeNull()
 })
 
 // --- Tooltips do not outlive the control they belong to ----------------------
-
-/** Hover a control the way React sees it: `onMouseEnter` is synthesised from
- * `mouseover`, so a native `mouseenter` never reaches the handler. */
-function hover(element: HTMLElement) {
-  fireEvent.mouseOver(element, { relatedTarget: document.body })
-}
-
-test('a tooltip is dismissed when its control is clicked', async () => {
-  // Clicking is what moves the row out from under the pointer, and nothing makes
-  // the pointer *leave* the button — so without an explicit dismiss the tooltip
-  // hung around at its old coordinates, showing the new label.
-  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
-  renderReview()
-
-  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
-  const convert = within(row as HTMLElement).getByRole('button', {
-    name: 'Make this a collection of bundles instead',
-  })
-  hover(convert.closest('.grp-tip-anchor') as HTMLElement)
-  expect(
-    screen.getByText('Make this a collection of bundles instead', { selector: '.grp-tip' }),
-  ).toBeInTheDocument()
-
-  fireEvent.click(convert)
-  await waitFor(() => expect(document.querySelector('.grp-tip')).toBeNull())
-
-  // And the conversion still went through.
-  await screen.findByText('“Two Subjects” is now a collection of bundles.')
-})
-
-test('a tooltip is dismissed when its label changes underneath it', async () => {
-  // Belt and braces for the same shape: a control whose action is applied
-  // elsewhere still flips its own label, and a stale tooltip would contradict it.
-  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
-  renderReview()
-
-  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
-  const convert = within(row as HTMLElement).getByRole('button', {
-    name: 'Make this a collection of bundles instead',
-  })
-  fireEvent.click(convert)
-  await screen.findByText('“Two Subjects” is now a collection of bundles.')
-
-  // Re-hover the same control, now labelled the other way, and confirm the
-  // tooltip that appears is the current one rather than a leftover.
-  const flipped = within(
-    screen
-      .getByRole('button', { name: 'Rename collection suggestion Two Subjects' })
-      .closest('.grp-row') as HTMLElement,
-  ).getByRole('button', { name: 'Make this one bundle instead' })
-  hover(flipped.closest('.grp-tip-anchor') as HTMLElement)
-  const tips = document.querySelectorAll('.grp-tip')
-  expect(tips).toHaveLength(1)
-  expect(tips[0]!.textContent).toBe('Make this one bundle instead')
-})

@@ -32,9 +32,13 @@ function headline(job: JobRead): string {
   // came to look exactly like running.
   if (job.cancel_requested) return `Stopping ${jobLabel(job).toLowerCase()}…`
   if (job.status === 'queued') return `${jobLabel(job)} — waiting`
+  // A message beats the phase label when the server sent one: it is more
+  // specific by construction, and a phase can cover several steps (grouping
+  // matches filenames, then writes the suggestions). `set_phase` clears the
+  // message when it is not given, so this can never show a stale one.
+  if (job.message) return job.message
   const phaseLabel = job.phase ? PHASE_LABELS[job.phase] : undefined
   if (phaseLabel) return phaseLabel
-  if (job.message) return job.message
   return JOB_LABELS[job.job_type] ?? 'Working'
 }
 
@@ -66,10 +70,15 @@ export function JobProgress({
     <div className="job-progress" role="status" aria-live="polite">
       <div className="job-progress__row">
         <span className="job-progress__label">{headline(job)}</span>
-        {hasTotal && (
+        {hasTotal ? (
           <span className="job-progress__count">
             {job.processed}/{job.total}
           </span>
+        ) : (
+          // No total is not no news. A library's first scan cannot know how many
+          // files it will find without walking it twice, so it reports the count
+          // alone — which still moves, and is the thing worth watching.
+          job.processed > 0 && <span className="job-progress__count">{job.processed}</span>
         )}
         {stoppable && (
           <button

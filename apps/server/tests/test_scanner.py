@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.domain.enums import (
@@ -15,6 +15,8 @@ from cairndex.domain.enums import (
     JobType,
     MediaKind,
 )
+from cairndex.grouping import plan_store
+from cairndex.grouping.service import suggest_for_session
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import execute_job
 from cairndex.persistence.engine import create_app_engine
@@ -234,6 +236,132 @@ def test_scan_job_generates_grouping_plan_without_applying(
         eng.dispose()
 
 
+def test_a_second_scan_keeps_the_plan_it_already_wrote(
+    registry_session_factory: sessionmaker[Session],
+    library_id: str,
+    library_root: Path,
+) -> None:
+    """Update must not rewrite an identical plan, or discard the review with it.
+
+    A plan is a snapshot of suggestions over the files not yet in a confirmed
+    bundle. If a scan finds nothing new, moved, or missing, that set is unchanged
+    and so is every suggestion over it — so regenerating writes a few hundred rows
+    of identical content and supersedes the plan the owner was working through.
+
+    On local disk that is milliseconds. On a library whose database is on a network
+    share it was **seven minutes**, every press of Update, because the cost is
+    scattered journaled page writes rather than a few statements
+    (owner-reported, 2026-08-13).
+    """
+    for index in range(4):
+        folder = library_root / f"Set{index}"
+        folder.mkdir()
+        (folder / f"clip{index}.mp4").write_text("v")
+        (folder / f"clip{index}.jpg").write_text("i")
+
+    def update() -> dict[str, object]:
+        with registry_session_factory() as reg:
+            job = job_service.create_job(reg, library_id=library_id, job_type=JobType.SCAN)
+            reg.commit()
+            job_id = job.id
+        assert (
+            execute_job(registry_session_factory, job_id, build_registry()) == JobStatus.SUCCEEDED
+        )
+        with registry_session_factory() as reg:
+            result = job_service.get_job(reg, job_id).result
+        assert result is not None
+        return result
+
+    first = update()
+    second = update()
+
+    # The same plan, not a fresh one holding the same suggestions.
+    assert second["grouping_plan_id"] == first["grouping_plan_id"]
+    assert second["grouping_proposal_count"] == first["grouping_proposal_count"]
+
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
+    try:
+        with sessionmaker(eng)() as db:
+            plans = list(db.scalars(select(GroupingPlan)))
+            assert len(plans) == 1, "a second scan wrote a second plan"
+            assert plans[0].status is GroupingPlanStatus.OPEN
+    finally:
+        eng.dispose()
+
+    # A real change still regenerates.
+    (library_root / "Set0" / "extra.mp4").write_text("v")
+    third = update()
+    assert third["grouping_plan_id"] != first["grouping_plan_id"]
+
+
+def test_a_first_scan_inserts_in_a_bounded_number_of_statements(
+    session: Session, library_root: Path
+) -> None:
+    """A scan of new files must not cost a round trip per file.
+
+    It cost two: `session.add(bundle); session.flush()` inside the loop, purely so
+    the file could learn its bundle's id — which `UlidPk` makes known before the
+    insert, since it defaults to a plain Python callable. On a library whose
+    database sits on a network share, where one statement costs about 36 ms, that
+    was a minute per thousand new files, and it is what made **Update** take
+    minutes (owner-reported, 2026-08-13). `persist_plan` had the same shape.
+
+    Bound is on statements, loose on purpose: what matters is that it does not grow
+    with the number of files.
+    """
+    for index in range(60):
+        folder = library_root / f"Set{index:02d}"
+        folder.mkdir()
+        for part in range(4):
+            (folder / f"Set{index:02d}.{part}.mp4").write_text("v")
+            (folder / f"Set{index:02d}.{part}.jpg").write_text("i")
+
+    statements: list[str] = []
+    bind = session.get_bind()
+
+    def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", record)
+    try:
+        summary = scan_library(session, library_root)
+        session.commit()
+    finally:
+        event.remove(bind, "before_cursor_execute", record)
+
+    assert summary.created == 480
+    assert len(statements) <= 30, (
+        f"a first scan of {summary.created} files issued {len(statements)} statements"
+    )
+
+
+def test_writing_grouping_suggestions_reports_its_own_progress(
+    session: Session, library_root: Path
+) -> None:
+    """The grouping phase must count its work, not just animate.
+
+    It was one opaque call, so on a large library the bar ran indeterminate for
+    tens of seconds under a label that never changed — which reads as a hang
+    (owner-reported, 2026-08-13). Suggesting recurses a directory tree and has no
+    count to offer, so it says what it is doing; writing the rows does have one.
+    """
+    for index in range(6):
+        folder = library_root / f"Set{index}"
+        folder.mkdir()
+        (folder / f"clip{index}.mp4").write_text("v")
+    scan_library(session, library_root)
+    data = suggest_for_session(session)
+    seen: list[tuple[int, int]] = []
+
+    plan_store.persist_plan(
+        session, data, on_progress=lambda done, total: seen.append((done, total))
+    )
+
+    assert len(seen) == len(data.proposals) >= 6
+    assert seen[0] == (1, len(data.proposals))
+    assert seen[-1] == (len(data.proposals), len(data.proposals))
+
+
 def test_progress_is_reported_for_a_library_smaller_than_one_batch(
     session: Session, library_root: Path
 ) -> None:
@@ -260,5 +388,12 @@ def test_progress_is_reported_for_a_library_smaller_than_one_batch(
     assert summary.discovered == 4
     # One call per file during the walk, plus the final report.
     assert [processed for processed, _ in seen] == [1, 2, 3, 4, 4]
-    # The total is known up front, so the bar is determinate from the first tick.
-    assert all(total == 4 for _, total in seen)
+    # A first scan has no idea how many files there are and does not pretend to:
+    # the exact total used to come from a second full walk, which on a library over
+    # a network share cost about as much again as the scan.
+    assert all(total is None for _, total in seen)
+
+    # A re-scan does know, because the rows it is about to revisit are the estimate.
+    again: list[tuple[int, int | None]] = []
+    scan_library(session, library_root, on_progress=lambda p, t: again.append((p, t)))
+    assert all(total == 4 for _, total in again)

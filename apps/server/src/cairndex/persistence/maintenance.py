@@ -10,6 +10,7 @@ The set of libraries to maintain is supplied by a callable rather than imported,
 so persistence stays unaware of the ownership layer. In practice it is "the
 libraries whose lease we hold" — maintaining one we do not own would mean
 writing into another server's library.
+
 """
 
 import logging

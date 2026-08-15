@@ -10,6 +10,7 @@ from typing import Any
 
 from cairndex.domain.enums import JobPhase
 from cairndex.grouping import plan_store
+from cairndex.grouping.service import suggest_for_session
 from cairndex.jobs.worker import JobContext
 from cairndex.scanning.scanner import scan_library
 
@@ -28,8 +29,33 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         on_phase=lambda name: ctx.set_phase(JobPhase(name)),
         batch_size=batch_size,
     )
-    ctx.set_phase(JobPhase.GROUPING, "Generating grouping suggestions")
-    plan = plan_store.generate_plan(ctx.session, scan_job_id=ctx.job_id)
+    # Two steps with their own messages, because grouping is the one phase that
+    # used to be a single opaque call: on a large library the bar sat animating
+    # with nothing to say for it, which reads as a hang (owner-reported,
+    # 2026-08-13). Suggesting has no count to offer — it recurses a directory
+    # tree — so it says what it is doing; writing counts its rows.
+    # Nothing new, moved, or missing means every suggestion over the unbundled
+    # files is the one already on the open plan — so keep it, rather than writing a
+    # few hundred identical rows and discarding the owner's selections with the
+    # plan they were made on. On a network-hosted library that rewrite was seven
+    # minutes per Update (owner-reported, 2026-08-13).
+    plan = plan_store.reusable_open_plan(ctx.session)
+    if plan is None:
+        ctx.set_phase(JobPhase.GROUPING, "Matching filenames")
+        data = suggest_for_session(ctx.session)
+        ctx.set_phase(JobPhase.GROUPING, "Writing grouping suggestions")
+        plan = plan_store.persist_plan(
+            ctx.session,
+            data,
+            scan_job_id=ctx.job_id,
+            on_progress=lambda written, total: ctx.progress(written, total),
+        )
+    # Outside the branch above, and after the plan the caller is waiting for is
+    # already in. It used to run only when a new plan had been written, so the
+    # steady state — Update finding nothing changed and keeping the open plan —
+    # never pruned, and the backlog only ever grew (135 plans, 5.6 MB, owner's
+    # library 2026-08-14). Cheap enough to run every time now that plans are local.
+    plan_store.prune_obsolete_plans(ctx.session)
     ctx.set_phase(JobPhase.FINALIZING)
     return {
         "discovered": summary.discovered,

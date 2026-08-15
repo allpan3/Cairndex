@@ -255,13 +255,29 @@ rendition markers such as `720p`, `1080p`, or `4K`, so a new rendition can still
 target the otherwise-identical confirmed bundle and retain the reversible
 existing/new destination choice.
 
-Grouping plans also carry a bounded per-directory `stem_modes` map. Review may
-regenerate a directory at three sensitivities: **narrow** uses complete,
-rendition-sensitive normalized stems and tends toward more bundles;
-**balanced** is the rendition-folded default; **wide** uses the first two
-spaced-dash semantic segments (subject plus source/series) and tends toward fewer
-bundles. Changing sensitivity creates a new plan snapshot under the normal
-supersession rules; it never mutates files or confirmed bundles.
+Grouping plans also carry a bounded per-directory map of **stem levels**: how
+much of each filename has to match for two files to join one bundle, as a dial
+rather than named stops. At level `L` every name in a folder is compared on its
+first `max - L + 1` segments, where `max` is the longest name there — so level 1
+compares whole (rendition-folded) stems and is the default, and level `max`
+compares first segments alone. Level 0 is the one rung outside that scheme: the
+complete stem with its rendition tag intact, since folding `4K [tag]` versus
+`720p` is not expressible as a segment count.
+
+The dial is deliberately absolute rather than "drop `L - 1` segments from each
+name": under a relative reading, two names of different segment counts produce
+keys of different lengths, which can never be equal, so nothing merges at all
+until the top rung collapses the whole folder at once.
+
+Narrow and Widen re-suggest one directory inside the open plan (see
+`data-model.md`); a full regeneration creates a new plan snapshot under the
+normal supersession rules. Neither ever mutates files or confirmed bundles.
+
+This replaced a three-value `narrow` / `balanced` / `wide` enum whose stops were
+not points on one scale — `balanced` folded a rendition tag while `wide` switched
+to an entirely different key, so "one step wider" meant two unrelated things and
+could split as easily as merge. Level 1 reproduces the old `balanced` exactly, so
+an existing library regroups nothing on upgrade.
 
 Nested folders recurse: a CONTAINER's children are classified independently, so
 `Movies/` (container) can hold `Cosmos/` and `Waves/` (bundles).

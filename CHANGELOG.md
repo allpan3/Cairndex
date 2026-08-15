@@ -10,6 +10,35 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **How much of a filename has to match is now a dial, not three named stops.**
+  Grouping compares filename stems, and the sensitivity was `narrow` /
+  `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
+  folded a trailing rendition tag while `wide` switched to an unrelated key, so
+  "one step wider" meant two different things and could split as readily as
+  merge. A folder now sits at a level, and each step compares one segment less
+  of every name in it, up to a maximum that folder's own filenames decide. The
+  default reproduces the old `balanced` exactly, so an existing library regroups
+  nothing; a plan left open across the upgrade has its stored mode translated,
+  with `wide` landing on that folder's maximum.
+- **The review's row controls are one click, not two.** A `...` menu per row
+  collected the bundle↔collection conversion and the addition's destination
+  switch; both are now beside the name they act on. The row's own kind glyph
+  *is* the convert control — one click, in the place the kind is already shown,
+  labelled `Convert to collection` / `Convert to bundle` rather than the
+  sentence-long menu items it replaced. Renaming stays a double-click on the
+  title, which is what it always was. Each row also says how sure the suggester
+  is in words that mean something — `confident` / `likely` / `guess`, where the
+  first of those used to read `matched`, which did not say what had matched.
+- **Narrow and Widen are visible again, on the folder they belong to.** They had
+  moved into a row's overflow menu, where a folder-level control does not belong
+  and where a folder-level *value* cannot be shown at all — the level was
+  inferable only from which end was greyed out. Each folder's row now states it
+  as text ("stem 2 of 6") beside plain `Narrow` and `Widen` buttons, with
+  `Reset` when there is something to reset to. Every tooltip says what the
+  button does to the filename match and then what that does to the bundles, and
+  each end of the dial explains why it stops. A collection suggestion for a
+  folder is that folder's header, so it carries the dial and is set off from the
+  rows beneath it; a leaf folder that is one bundle carries its own.
 - **Long grouping plans can now be folded without changing the plan.** Each
   collection can hide its descendant proposals and each bundle can hide its
   file list, with Collapse all / Expand all controls beside selection. Reviews
@@ -39,7 +68,246 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   single ffmpeg call — one storyboard file over a network share is about half a
   minute — stops there instead of at the next checkpoint behind it.
 
+### Changed
+
+- **`just` on its own now names the three commands you need** rather than dumping
+  thirty-two, and `just --list` groups the rest into start / check / docker /
+  build. Four recipes are gone: `just sidecar` folded into `build-desktop`, its
+  only caller; `just build-web` folded into `just check-web`, which type-checked
+  the project references without ever proving the bundle builds; `just test`
+  duplicated `just check`; and `just docker-prod-down` was a one-line wrapper now
+  named in `docker-prod`'s own help.
+
 ### Fixed
+
+- **Accepting a selection keeps the review open on what is left.** Reviewing a long
+  plan happens in batches, and every accept used to end the dialog, so carrying on
+  meant reopening it. Accepting now confirms the chosen bundles and immediately
+  suggests again for whatever is still unbundled, saying what it accepted and how
+  much is left. The rows the owner skipped stay skipped — a second accept must not
+  be one click away from confirming exactly what was just declined. A conflict, or
+  nothing left to suggest, still ends the review with its summary.
+- **A folder states its destination once instead of on every row beneath it.** The
+  placement pill repeated the same answer as many times as the folder had
+  suggestions. Rows inside a folder now fade theirs out at rest and show it on
+  hover or focus — faded rather than dropped, because it is the keyboard path for
+  moving a single row out of its folder.
+- **Superseded grouping plans are deleted rather than kept forever.** They were
+  marked and never removed, accumulating one per regeneration with a full set of
+  proposal and file rows each — 116 of them holding 5,455 rows for a 412-file
+  library. Applied plans stay, since they record what was applied.
+- **A folder holding thousands of releases no longer groups in quadratic time.**
+  Sidecars were matched by scanning every candidate bundle for every sidecar, with
+  a nested scan over each bundle's stems inside that — so one folder of 1,600
+  subjects spent 10.2 million string comparisons and 4.3 seconds, and a folder of
+  several thousand took minutes. Every group is keyed by exactly one stem, so
+  matching is now a dictionary lookup per sidecar plus one per prefix of its own
+  name: 1,600 subjects in 73 ms instead of 1,671, and growth is linear. Narrow and
+  Widen re-run the whole suggester, so they carried the same cost per click.
+- **The grouping phase of a scan reports what it is doing.** It was a single
+  opaque call, so on a large library the progress bar animated for a long time
+  under one unchanging label, which reads as a hang. Matching filenames and
+  writing the suggestions are now separate steps, and the second counts its rows.
+- **Accepting a selection no longer throws the plan away and builds a new one.**
+  A partial accept used to close the plan, so carrying on meant generating a fresh
+  one: two sequential round trips per accept — 942 ms then 851 ms on the owner's
+  library — returning an entirely new set of proposal ids. Fold state is keyed on
+  those ids, so every collapsed folder reset and the tree jumped under the cursor.
+
+  A plan now closes when it has nothing left to review rather than when part of it
+  was accepted. Accepting retires the rows it confirmed, plus any collection left
+  holding nothing, and leaves the rest exactly where they were. One request instead
+  of two (**1,793 ms → ~750 ms**), the surviving rows keep their ids, and nothing
+  re-folds. Applying the *whole* plan is unchanged, including its documented
+  idempotency.
+- **A collapsed run's "Show all N" no longer floats off on its own.** It was pushed
+  right with `margin-left: auto` in a row that wraps, and an auto margin on a
+  wrapped flex item pins it to the right of an otherwise empty line — so once a row
+  above it changed height the button appeared detached from every row. It now flows
+  after the run's summary text and stays with its row at any width.
+- **Converting a bundle into a collection forgets that folder's stem level.** The
+  split it performs is per video subject, not by the dial's stem key — deliberately,
+  since a dial wide enough to merge everything would otherwise make "convert to
+  collection" produce a collection of one. But the dial was left reading its widest
+  beside rows the widest would never have produced: a folder split in two under a
+  setting saying those two match. The override is dropped, so the dial reads the
+  default that the split actually corresponds to, and Narrow/Widen still work from
+  there.
+- **Widening a folder no longer dissolves its collection.** Once a folder's files
+  all matched, the suggester collapsed the folder into a single bundle named after
+  the folder. That did three wrong things at once: it destroyed a collection the
+  owner wanted to keep, it duplicated the convert control that dissolves one
+  deliberately, and it left the dial at its widest on a row that was no longer a
+  folder — so converting back stranded the setting. Widening now keeps the folder
+  as a collection and puts the matched files in one bundle *inside* it, named by the
+  stem that matched them. Collapsing a folder into a bundle remains available as
+  what it always was: the explicit convert control.
+
+  The collapse is still right when the *suggester* finds a single group — no
+  collection wrapper around one bundle — so the rule is now "a bundle takes its
+  folder's name only if the owner did not widen it there".
+- **The stem dial says what it is matching on, and its buttons stop moving.**
+  `Narrow`/`Widen` sat beside a "stem 2 of 3" label and a `Reset` button that only
+  appeared away from the default; the row is right-aligned, so the label's width
+  changed with its numbers and `Reset` appearing slid both buttons sideways —
+  under a cursor about to click one of them. The label and `Reset` are gone, leaving
+  two fixed-width buttons that cannot move. `Narrow` walks back to the default.
+
+  The label also said nothing: the top of the dial depends on the folder's own
+  filenames — 2 to 15 across one real library — so "of 3" was an ordinal with no
+  readable meaning. A plan now reports, per folder, the **stem it is actually
+  matching on**, sliced out of one of that folder's filenames so the separators are
+  the ones on disk (`STUDIO-025`, not the comparison key's `studio 025`). Adjusting
+  a folder now says so: *"Genre/Studio now matches on names like “STUDIO-025” — 12
+  bundles."*
+- **Grouping plans moved out of the library, onto the server's own disk**
+  (ADR-0022). A plan is a snapshot of a suggestion run — regenerable from the
+  library at any moment, and by far its heaviest writer: ~1,100 rows rewritten
+  whenever the input changes, and touched again on every rename, reparent, convert,
+  Narrow and Widen. Sending that across a network share was the wrong shape of
+  problem to keep optimizing. The three tables are now a SQLite database under the
+  data directory, attached to every library connection as schema `plans`, so a
+  query can still join a plan to the library rows it describes.
+
+  | | before | after |
+  | --- | --- | --- |
+  | write a 340-proposal plan | 4,614 ms | **78 ms** |
+  | prune superseded plans | 1,431 ms | **12 ms** |
+  | one Narrow/Widen | ~1,000 ms | **66 ms** |
+
+  The file lives beside `registry.db` — `~/Library/Application Support/dev.cairndex.app/local-server/plans/`
+  in the packaged desktop app, `/data/plans/` under Docker, `apps/server/var/plans/`
+  in development. **A plan lasts as long as the server that made it:** the directory
+  is cleared at startup, so restarting means pressing Update again. That is a
+  deliberate trade for simplicity — the file is keyed on a path, so it is orphaned by
+  a moved library and by a symlinked mount that was offline when its digest was
+  computed, not only by deregistration, and clearing wholesale collects all of it
+  without a sweep or a grace period. What it costs is a review in progress across a
+  restart. Deregistering a library still leaves its plans alone, so remove-and-re-add
+  stays reversible within a run.
+
+  A library upgrading hands its plans over on first open — copied out, then the
+  in-library tables dropped, in that order and inside a savepoint, so an
+  interruption leaves them where they were. A plan no longer travels with its
+  library: carry the library elsewhere and Update writes a fresh one.
+- **Superseded plans are actually pruned now.** Two bounds sized for the old cost
+  had between them stopped the backlog draining: pruning ran only when a scan wrote
+  a *new* plan — so the steady state, Update finding nothing changed and keeping the
+  open plan, never pruned at all — and it deleted at most four per run. The owner's
+  library had 135 plans holding 5.6 MB. Pruning now runs on every Update, and 135
+  became 20 (the rest are applied plans, kept deliberately) inside a 2.7 s Update.
+- **A scan walks the library once, in parallel, instead of twice in sequence.**
+  Two things made discovery cost more than the whole rest of the scan on a library
+  over a network share. It walked the entire tree a second time purely to count
+  files for the progress bar — now the rows already present are the estimate, and a
+  first scan says "unknown" and reports its running count rather than inventing a
+  total. And each directory listing waited for the one before it, though those are
+  round trips rather than work: sixteen at a time, with each file's `stat` taken by
+  the worker that listed it, took the owner's scan from 7.1 s to 2.6 s and its walk
+  from 6.3 s to 1.3 s.
+- **Writing a grouping plan to a library on a network share went from over ten
+  minutes to under five seconds.** Two causes, both invisible on local disk:
+
+  SQLite's page cache defaults to 2 MiB, which is smaller than a modestly used
+  library database. `grouping_proposals.parent_proposal_id` references its own
+  table, so with foreign keys enforced SQLite seeks the primary-key index once per
+  inserted row — while the inserts themselves evict exactly those index pages. Each
+  re-read is then a network round trip. Raising the per-connection ceiling to
+  32 MiB (a ceiling, not an allocation — SQLite grows it lazily) took that insert
+  from over ten minutes to 5.2 s.
+
+  And none of the grouping foreign keys had an index on the child column, so every
+  `ON DELETE` cascade was a full table scan per deleted row. Indexing the three of
+  them took the insert to 236 ms and pruning four superseded plans from 6.4 s to
+  1.4 s. A test now binds every grouping foreign key to an index, so a later one
+  added without cannot pass unnoticed.
+
+  Both are general: they make every write to a network-hosted library faster, not
+  just plans.
+- **Update no longer rewrites a plan that would come out identical.** A plan is a
+  snapshot of suggestions over the files not yet in a confirmed bundle; if nothing
+  in the library has been touched since it was written, regenerating produces the
+  same few hundred rows and supersedes the plan the owner was working through. On a
+  library whose database sits on a network share that rewrite measured **seven
+  minutes, every press of Update** — the cost is journaled page writes, not
+  statement count. Now the open plan is kept, which also means selections and edits
+  survive an Update. The test is "was anything modified since", not the scan's own
+  summary: `ScanSummary.updated` counts every row *examined*, so it is non-zero for
+  any library with files in it, and a timestamp also catches a bundle deleted or
+  fast-added through the UI between scans.
+- **A first scan no longer inserts one row at a time.** Every new file cost two
+  INSERT round trips — `session.add(bundle); session.flush()` inside the loop, just
+  so the file could learn its bundle's id, which is knowable before the insert.
+  1,803 statements for 900 files became 5.
+- **Superseded plans are pruned a few per run rather than all at once.** The delete
+  cascades through proposals and their file rows, so clearing a long backlog in one
+  go is itself minutes of writes on a network share. The backlog drains over the
+  next few generations instead.
+- **Suggesting a grouping no longer writes the plan one row at a time.** The plan
+  was persisted with a flush inside its loop, purely to learn the id it was about
+  to need for that row's files — but ids are ULIDs from a plain Python callable,
+  so they are known before the insert. And because each row's files were linked by
+  foreign key rather than through the relationship, serializing the response then
+  fetched every row's files back in its own query. Between them that was 10,400
+  SQL statements for a 3,600-suggestion plan; it is now four batched inserts and a
+  handful of reads, and the plan appears in 1.6s instead of 4.2s. The same
+  per-row flush is gone from the bundle↔collection conversion and the
+  Narrow/Widen splice.
+- **Editing a large grouping plan is no longer measured in seconds.** On a
+  library of ~20,000 files a conversion took over ten seconds. Two independent
+  causes. On the client, folding a collection or closing a file list *hid* the
+  rows rather than unmounting them, so every render of the plan still built and
+  reconciled them — with file lists closed by default that was every file in the
+  plan, a third of ~94,000 DOM nodes at 2,800 suggestions; folding now unmounts,
+  and a plan longer than 400 suggestions opens folded, which is how one is read
+  anyway. On the server, every mutation read the whole plan twice because the
+  open-plan check went through the eager loader that exists for serializing a
+  response, and merging a collection then fetched each descendant's files in its
+  own query. Measured on a synthetic 2,700-suggestion plan: opening 2.2s → 0.75s,
+  a conversion 5.0s → 0.8s on the client, and 0.4s → 0.1s on the server.
+- **An identically named video and cover no longer lose their name's last
+  segment.** `_shared_stem_title` trimmed at the last delimiter even when every
+  filename *was* the shared part, so a pair like `A - B - 4K.mp4` / `A - B - 4K.jpg`
+  would have been titled "A - B". Latent until sidecars joined the comparison.
+- **A library created before the latest grouping columns opens again.**
+  `grouping_proposals.is_collection_context` reached the model and the startup
+  backfill but never the additive-column list, so an existing library never
+  gained it and the first proposal insert after a scan failed with
+  "table grouping_proposals has no column named is_collection_context". A new
+  test binds the model to that list and fails for any future column added to one
+  and not the other.
+- **A popover left open no longer desynchronises a checkbox from what will be
+  applied.** Dismissing a picker stopped the click reaching React but not the
+  browser, so on a controlled input the DOM toggled while application state did
+  not: a grouping row could untick itself while staying selected, and Accept
+  then confirmed a bundle the owner had watched themselves skip. The dismissing
+  click is now fully swallowed, and a keyboard-activated one closes the popover
+  instead of being ignored — before, any popover opened by keyboard swallowed
+  every subsequent click in its dialog until Escape.
+- **The grouping review's Cmd/Ctrl+Enter now applies only when Accept would.**
+  It reproduced none of the button's conditions, so it applied a plan
+  mid-rename, with nothing selected, on an already-applied plan, and again on
+  key auto-repeat while the first apply was still in flight.
+- **Folder actions no longer appear on a read-only existing-collection row**, and
+  a stem mode this build does not recognise now offers no folder actions at all
+  rather than a "Merge" that splits.
+- **Narrowing the review to uncertain suggestions no longer changes what a
+  collection checkbox does.** It displayed whole-subtree state while toggling
+  only the visible rows, so it oscillated between checked and mixed, never
+  reached unchecked, and silently moved hidden rows' selection. The filter also
+  falls back to the whole plan once nothing is flagged, instead of leaving a
+  blank list under a tab that was both pressed and disabled.
+- **A rolled-up run keeps its folder's actions, can be folded back, and is a
+  drop target during a file drag.** It previously hid the Split/Merge pair for
+  exactly the over-fragmented folder that needed them, could be expanded but
+  never re-collapsed, and rendered no rows at all mid-drag. Its expansion also
+  survives an in-place re-suggestion now, because runs are keyed by content
+  rather than by ids that regeneration reissues.
+- **The grouping review's row menu is operable by keyboard**, with focus moving
+  into it on open, arrows between items, and focus returning to the trigger on
+  close; arrow navigation no longer stops when focus lands on a row control; and
+  Collapse all is disabled on a plan with no collections rather than enabled and
+  inert.
 
 - **Nested grouping suggestions now apply to the intended collection path.**
   Collection rows are tri-state bulk selectors rather than accepted work, so an
@@ -300,7 +568,68 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   with a count when the work has one.
 
 ### Changed
+- **A bundle is named by the shortest prefix its files share.** A release video
+  and its cover carry the release's own identifier, so a folder holding
+  `n0203 - a long title.mp4` and `n0203.jpg` is now "n0203" rather than the
+  video's whole filename. Sidecars join the comparison whenever there is at most
+  one video; with several videos they are still excluded, because a cover named
+  for the folder would drag the shared prefix shorter than the thing it names.
+  Files sharing no prefix are still named after the video.
+- **The folder's Split/Merge actions name the current matching mode and can
+  reset to balanced.** The mode used to sit beside the old icon pair and nowhere
+  else, so moving those into the row menu left it inferable only from which end
+  was greyed out — and balanced, previously a directly selectable state, was
+  unreachable from either end.
+- **Grouping review shows each suggestion's confidence instead of filtering by
+  it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
+  suggester was sure about and wrong about — was not merely unflagged but
+  actively hidden from the view that claimed to show what needed deciding, and
+  the rows that remained carried no signal at all. Every row now states its own
+  band (matched / likely / guessed), the guessed ones keep their warm edge and
+  reason, the toolbar counts them, and nothing is hidden.
+- **Bundle and collection can always be converted into each other.** The client
+  used to withhold the conversion from a single-subject bundle already inside a
+  collection for its own folder — which is exactly the row an owner reaches for
+  it on, a folder holding one release today that should be a collection. The
+  server's bound is now whether the conversion renames anything rather than
+  where the row sits, so a folder-named bundle becomes a folder-named collection
+  holding a release named after itself, and only the conversion that would
+  change no name is refused. A row whose edits are all unavailable now opens an
+  empty menu saying so, rather than rendering no menu button at all.
 
+- **Runs of identical suggestions collapse to one line, and the review can be
+  driven from the keyboard.** A folder of numbered clips produced a row each,
+  all treated identically by the suggester; three or more in a row now read as
+  "SET-025-01 … SET-025-04 · 4 bundles, same shape · each 2 files · video,
+  image", with one checkbox for the run and "Show all 4" when one needs a closer
+  look. Suggestions the suggester is unsure about are never folded away, and
+  they break a run rather than hiding inside it. The tree is also a single tab
+  stop now: arrows move between rows, left and right fold, space accepts or
+  skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
+  footer.
+- **A grouping row's controls are named rather than glyphs.** They were four
+  icon-only buttons — a refresh glyph, an ungroup glyph, and a `>< <>` pair —
+  rendered after variable-length text, so they landed at a different x on every
+  row and were discoverable only by hovering for a tooltip. Every one of them now
+  either says what it does or sits where its meaning is already shown; the
+  tooltip machinery that existed to caption them is gone with them. See the two
+  entries above for where each ended up.
+- **The grouping review's chrome stopped competing with its contents.** The
+  three-line preamble folds behind a one-line summary, the dialog holds a fixed
+  height so folding a row no longer slides the footer under the pointer,
+  notices occupy a reserved line rather than pushing the list down mid-click,
+  and Accept names what it will do — "Accept 3 bundles + 1 addition" — with the
+  skipped rows spelled out beside it rather than left unexplained.
+- **The grouping review now leads with what needs deciding.** The suggester
+  already scores its own certainty, so the toolbar counts the suggestions it is
+  unsure about and can filter to just those; a flagged row carries a warm left
+  edge and says why it was grouped. Filtering is view-only — selection and
+  Accept still cover the whole plan. Bundle rows state what they contain
+  ("3 files · video, subtitle, image") with the file list one click away rather
+  than open by default, and a nested row's placement control drops its printed
+  destination, which only ever repeated the row it is drawn inside. Root rows
+  keep the full label, every control keeps its accessible name, and a file drag
+  reveals every list so nothing becomes an invisible drop target.
 - **Grouping destinations now use a collection tree instead of a repeated-path
   dropdown.** The proposal row shows only its direct destination, while the
   bounded picker mirrors the collection hierarchy with indentation and

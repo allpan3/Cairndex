@@ -107,6 +107,32 @@ test('nothing is rendered when nothing is running', () => {
   expect(screen.queryByRole('progressbar')).toBeNull()
 })
 
+test('a step within a phase says which step it is on', () => {
+  // Grouping is one phase covering two steps, and on a large library the second
+  // one is where the time goes. The generic phase label used to win over the
+  // server's message, so the bar animated for tens of seconds saying only
+  // "Preparing grouping suggestions" — which reads as a hang
+  // (owner-reported, 2026-08-13).
+  renderSidebar([
+    job({
+      phase: 'grouping',
+      message: 'Writing grouping suggestions',
+      processed: 900,
+      total: 8105,
+    }),
+  ])
+
+  expect(screen.getByText('Writing grouping suggestions')).toBeInTheDocument()
+  expect(screen.queryByText('Preparing grouping suggestions')).toBeNull()
+  expect(screen.getByText('900/8105')).toBeInTheDocument()
+})
+
+test('a phase with no message of its own still names itself', () => {
+  renderSidebar([job({ phase: 'grouping', message: null, total: null, processed: 0 })])
+
+  expect(screen.getByText('Preparing grouping suggestions')).toBeInTheDocument()
+})
+
 test('a job with no total still reports its phase', () => {
   // Indeterminate is honest for a phase that has not counted its work yet;
   // silence is not.
@@ -114,6 +140,22 @@ test('a job with no total still reports its phase', () => {
 
   expect(screen.getByText('Generating thumbnails')).toBeInTheDocument()
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull()
+})
+
+test('a first scan reports how far it has got even without a total', () => {
+  // A library's first scan cannot know how many files it will find without
+  // walking it twice, which on a network share costs as much again as the scan.
+  // The count alone still moves, and is the thing worth watching.
+  renderSidebar([job({ total: null, processed: 137, phase: 'discovering' })])
+
+  expect(screen.getByText('137')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull()
+})
+
+test('a job that has counted nothing yet shows no count rather than a zero', () => {
+  renderSidebar([job({ total: null, processed: 0, phase: 'discovering' })])
+
+  expect(screen.queryByText('0')).not.toBeInTheDocument()
 })
 
 test('a waiting job says so instead of looking like it is working', () => {

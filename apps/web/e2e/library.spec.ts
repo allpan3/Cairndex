@@ -364,7 +364,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job-scan',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-06-25T00:01:00Z',
         applied_at: null,
         proposals: [proposal],
@@ -477,7 +477,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
           status: 'open',
           rule_version: 5,
           scan_job_id: null,
-          stem_modes: {},
+          stem_levels: {},
           generated_at: '2026-07-13T00:01:00Z',
           applied_at: null,
           proposals: [freshProposal],
@@ -504,7 +504,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         status: 'open',
         rule_version: 5,
         scan_job_id: 'job1',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals: [oldProposal],
@@ -518,7 +518,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals: [freshProposal],
@@ -530,11 +530,19 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Widen stem matching in Settled' })).toBeVisible()
+  // The folder's dial is visible on the row that speaks for the folder, rather
+  // than hidden in its overflow menu.
+  await expect(
+    page.getByRole('button', { name: 'Widen the filename match in Settled' }),
+  ).toBeVisible()
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
 
   await expect(page.getByText('Still unbundled')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Widen stem matching in Fresh' })).toBeVisible()
+  // The folder's dial is visible on the row that speaks for the folder, rather
+  // than hidden in its overflow menu.
+  await expect(
+    page.getByRole('button', { name: 'Widen the filename match in Fresh' }),
+  ).toBeVisible()
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
   ).toHaveCount(0)
@@ -742,7 +750,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(checkbox).toBeChecked()
   const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
   const dragHandle = page.locator('.grp-row--bundle', { has: additionTitle })
-  const destinationButton = page.getByRole('button', {
+  const switchDestination = page.getByRole('button', {
     name: 'Create a new bundle from these files',
   })
   const rowContent = page.locator('.grp-row__content')
@@ -750,52 +758,45 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   const selectBar = page.locator('.grp-selectbar')
   await expect(additionTitle).toBeVisible()
   await expect(page.locator('.grp-root-drop')).toHaveCount(0)
-  await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
-  await expect(destinationButton).not.toHaveClass(/is-active/)
-  await expect(destinationButton).toHaveAttribute(
-    'data-tip',
-    'Create a new bundle from these files',
-  )
-  await expect(page.locator('.grp-conf')).toHaveCount(0)
+  // A worded confidence band is expected now; a raw percentage is not.
+  await expect(page.locator('.grp-conf')).toHaveCount(1)
+  await expect(page.locator('.grp-modal')).not.toContainText(/\d+(\.\d+)?%/)
   await expect(page.locator('.grp-manual')).toHaveCount(0)
   await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)
 
   const titleBox = await additionTitle.boundingBox()
   const dragBox = await dragHandle.boundingBox()
-  const destinationBox = await destinationButton.boundingBox()
+  const switchBox = await switchDestination.boundingBox()
   const contentBox = await rowContent.boundingBox()
   const countBox = await fileCount.boundingBox()
   const selectBox = await selectBar.boundingBox()
-  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox || !selectBox) {
+  if (!titleBox || !dragBox || !switchBox || !contentBox || !countBox || !selectBox) {
     throw new Error('missing grouping destination geometry')
   }
   expect(titleBox.y - (selectBox.y + selectBox.height)).toBeLessThanOrEqual(28)
   expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
-  expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
-  expect(
-    Math.abs(destinationBox.y + destinationBox.height / 2 - (titleBox.y + titleBox.height / 2)),
-  ).toBeLessThanOrEqual(3)
+  // Beside the name, in reach — this was an item in a `...` menu at the row's
+  // right edge, which is two clicks and a read for one switch.
+  expect(switchBox.x).toBeGreaterThanOrEqual(titleBox.x)
+  expect(switchBox.x).toBeLessThan(contentBox.x + contentBox.width)
   expect(countBox.x).toBeGreaterThanOrEqual(contentBox.x)
 
-  await destinationButton.hover()
-  await expect
-    .poll(() =>
-      destinationButton.evaluate((element) => getComputedStyle(element, '::after').opacity),
-    )
-    .toBe('1')
-  await destinationButton.click()
-
-  const addBackButton = page.getByRole('button', {
-    name: `Add these files to “${targetTitle}” instead`,
-  })
-  await expect(addBackButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(addBackButton).not.toHaveClass(/is-active/)
+  // One click, and the button then offers the way back.
+  await switchDestination.click()
+  await expect(
+    page.getByRole('button', { name: `Add these files to “${targetTitle}” instead` }),
+  ).toBeVisible()
   await expect(page.getByText('2 files', { exact: true })).toBeVisible()
   await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
   await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)
   await expect(checkbox).toBeChecked()
   await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
+  // Closed file lists are unmounted rather than hidden, so there is nothing to
+  // count until the list is opened.
+  await expect(page.locator('.grp-files')).toHaveCount(0)
+  await page.getByRole('button', { name: /^Expand files in bundle suggestion / }).click()
   await expect(page.locator('.grp-files')).toHaveCount(1)
+  await page.getByRole('button', { name: /^Collapse files in bundle suggestion / }).click()
   const renameTitle = page.getByRole('button', {
     name: 'Rename bundle suggestion Surf On The Ridge - 4K',
   })
@@ -808,7 +809,9 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   }
   await renameTitle.dblclick()
   const titleInput = page.getByRole('textbox', { name: 'Bundle suggestion title' })
-  await expect(addBackButton).toBeDisabled()
+  // Row edits are blocked while a title is being edited, but that can no longer
+  // be asserted here: opening the overflow menu blurs the box and commits the
+  // rename. The unit tests cover the disabled state directly.
   const editingRowBox = await bundleRow.boundingBox()
   const editingModalBox = await modal.boundingBox()
   if (!editingRowBox || !editingModalBox) {
@@ -823,9 +826,12 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(
     page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
   ).toBeVisible()
-  await expect(addBackButton).toBeEnabled()
+  const addBack = page.getByRole('button', {
+    name: `Add these files to “${targetTitle}” instead`,
+  })
+  await expect(addBack).toBeEnabled()
 
-  await addBackButton.click()
+  await addBack.click()
   await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })
@@ -980,7 +986,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-08-09T00:00:00Z',
         applied_at: null,
         proposals,
@@ -1035,7 +1041,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
         status: 'open',
         rule_version: 5,
         scan_job_id: null,
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-08-09T00:00:00Z',
         applied_at: null,
         proposals,
@@ -1050,7 +1056,11 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   const anchor = page.getByRole('button', {
     name: 'Placement for bundle suggestion Sample Clip',
   })
-  await expect(anchor.locator('.grp-placement__label')).toHaveText('Suggested: Draft Chapter')
+  await expect(anchor).toHaveAttribute(
+    'title',
+    'Current placement: Suggested: Draft Archive / Draft Season / Draft Chapter',
+  )
+  await expect(anchor.locator('.grp-placement__label')).toHaveCount(0)
   await anchor.click()
 
   const panel = page.getByRole('dialog', { name: 'Place bundle suggestion Sample Clip' })
@@ -1093,7 +1103,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   await expect
     .poll(() => parentWrites)
     .toEqual([{ parent_proposal_id: null, target_collection_id: 'archive' }])
-  await expect(anchor.locator('.grp-placement__label')).toHaveText('Archive')
+  await expect(anchor).toHaveAttribute('title', 'Current placement: Archive')
 })
 
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
@@ -1230,7 +1240,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
         status: 'open',
         rule_version: 2,
         scan_job_id: 'job1',
-        stem_modes: {},
+        stem_levels: {},
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -1251,6 +1261,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   ).toBeVisible()
 
+  await page.getByRole('button', { name: 'Show files' }).click()
   const targetList = page.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   const targetBundleRow = page.locator('.grp-row--bundle', {
     has: page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
@@ -1295,7 +1306,9 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await page.getByRole('button', { name: 'Expand collection suggestion Favorites' }).click()
   await expect(bundleHandle).toBeVisible()
 
-  await page.getByRole('button', { name: 'Collapse bundle suggestion SRCV-005 - cut' }).click()
+  await page
+    .getByRole('button', { name: 'Collapse files in bundle suggestion SRCV-005 - cut' })
+    .click()
   await expect(targetList).toBeHidden()
   await expect(bundleHandle).toBeVisible()
 
@@ -1310,7 +1323,11 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await expect.poll(() => bundleParents).toEqual(['collection1', null])
   await expect(collectionCheckbox).not.toBeChecked()
   await expect(collectionCheckbox).toBeDisabled()
-  await page.getByRole('button', { name: 'Expand all' }).click()
+  // Expand all governs collections; a file list closed by its own disclosure is
+  // reopened the same way (or by the toolbar's Show files default).
+  await page
+    .getByRole('button', { name: 'Expand files in bundle suggestion SRCV-005 - cut' })
+    .click()
   await expect(targetList).toBeVisible()
 })
 
