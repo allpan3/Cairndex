@@ -108,6 +108,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   opaque call, so on a large library the progress bar animated for a long time
   under one unchanging label, which reads as a hang. Matching filenames and
   writing the suggestions are now separate steps, and the second counts its rows.
+- **Widening a folder no longer dissolves its collection.** Once a folder's files
+  all matched, the suggester collapsed the folder into a single bundle named after
+  the folder. That did three wrong things at once: it destroyed a collection the
+  owner wanted to keep, it duplicated the convert control that dissolves one
+  deliberately, and it left the dial at its widest on a row that was no longer a
+  folder — so converting back stranded the setting. Widening now keeps the folder
+  as a collection and puts the matched files in one bundle *inside* it, named by the
+  stem that matched them. Collapsing a folder into a bundle remains available as
+  what it always was: the explicit convert control.
+
+  The collapse is still right when the *suggester* finds a single group — no
+  collection wrapper around one bundle — so the rule is now "a bundle takes its
+  folder's name only if the owner did not widen it there".
 - **The stem dial says what it is matching on, and its buttons stop moving.**
   `Narrow`/`Widen` sat beside a "stem 2 of 3" label and a `Reset` button that only
   appeared away from the default; the row is right-aligned, so the label's width

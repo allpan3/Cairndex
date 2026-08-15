@@ -684,11 +684,12 @@ def test_stem_level_change_preserves_every_other_row_and_edit(
     trip_children = [p for p in after["proposals"] if p["parent_proposal_id"] == trip["id"]]
     assert len(trip_children) == 3, "the conversion's children survive too"
 
-    # Duo itself genuinely regenerated: one widened bundle (no container needed
-    # around a single group), new ids.
+    # Duo itself genuinely regenerated: its collection kept, holding the one bundle
+    # the widened stem matched, with new ids.
     duo_after = [p for p in after["proposals"] if p["directory"] == "Duo"]
-    assert [p["kind"] for p in duo_after] == ["bundle"]
-    assert len(duo_after[0]["files"]) == 2
+    assert [p["kind"] for p in duo_after] == ["container", "bundle"]
+    assert len(duo_after[1]["files"]) == 2
+    assert duo_after[1]["parent_proposal_id"] == duo_after[0]["id"]
     assert not duo_ids & {p["id"] for p in duo_after}
 
 
@@ -704,7 +705,14 @@ def test_stem_level_back_to_the_default_clears_the_override(
     ).json()
     assert widened["stem_levels"]["Duo"]["level"] == _MERGES_DUO
     duo_widened = [p for p in widened["proposals"] if p["directory"] == "Duo"]
-    assert [p["kind"] for p in duo_widened] == ["bundle"]
+    # Widening groups the folder's files; it does not dissolve the folder. One
+    # bundle *inside* the collection, named by the stem that matched them — not the
+    # folder collapsed into a bundle named after itself, which duplicated the
+    # convert control and stranded the dial with no folder left to hold it
+    # (owner-reported, 2026-08-15).
+    assert [p["kind"] for p in duo_widened] == ["container", "bundle"]
+    assert duo_widened[0]["title"] == "Duo"
+    assert duo_widened[1]["title"] == "City Tour - Part One"
 
     restored = client.put(
         f"{base}/plans/{plan_id}/stem-levels",
@@ -720,6 +728,59 @@ def test_stem_level_back_to_the_default_clears_the_override(
     assert stored == {}
     duo_restored = [p for p in restored["proposals"] if p["directory"] == "Duo"]
     assert sorted(p["kind"] for p in duo_restored) == ["bundle", "bundle", "container"]
+
+
+def test_widening_never_dissolves_a_folders_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The dial groups files. Only the convert control says what a folder *is*.
+
+    Widening used to collapse a folder into a single bundle the moment its files
+    all matched, which did three wrong things at once (owner-reported, 2026-08-15):
+    it dissolved a collection the owner wanted to keep, it duplicated the convert
+    control that dissolves one deliberately, and it named the result after the
+    folder rather than the stem that had just matched. It also left the dial at its
+    widest on a row that was no longer a folder, so converting back left the setting
+    stranded.
+
+    Asserted across every rung, because the collapse only appeared at whichever one
+    first merged the folder — the bug was invisible at the default.
+    """
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    top = plan["stem_levels"]["Duo"]["max"]
+
+    for level in range(DEFAULT_STEM_LEVEL + 1, top + 1):
+        adjusted = client.put(
+            f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Duo", "level": level}
+        )
+        assert adjusted.status_code == 200, adjusted.text
+        rows = [p for p in adjusted.json()["proposals"] if p["directory"] == "Duo"]
+        container = next((p for p in rows if p["kind"] == "container"), None)
+        assert container is not None, f"Duo stopped being a collection at level {level}"
+        assert container["title"] == "Duo"
+        bundles = [p for p in rows if p["kind"] == "bundle"]
+        assert bundles, f"Duo holds no bundle at level {level}"
+        for bundle in bundles:
+            assert bundle["parent_proposal_id"] == container["id"]
+            # Named by what matched, never by the folder it sits in.
+            assert bundle["title"] != "Duo"
+
+    # Turning the folder into one bundle is still available — as the explicit
+    # action it always was, and now only as that.
+    merged = client.put(
+        f"{base}/plans/{plan_id}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    )
+    assert merged.status_code == 200, merged.text
+    duo_rows = [
+        p
+        for p in client.get(f"{base}/plans/{plan_id}").json()["proposals"]
+        if p["directory"] == "Duo"
+    ]
+    assert [p["kind"] for p in duo_rows] == ["bundle"]
+    assert duo_rows[0]["title"] == "Duo"
 
 
 def test_stem_level_change_requires_an_open_plan(

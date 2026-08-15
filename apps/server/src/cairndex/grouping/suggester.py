@@ -718,7 +718,17 @@ def _classify(
     # Leaf folder (no sub-bundles).
     if not media:
         return []
-    if len(groups) == 1:
+    # One group is the folder itself — no collection wrapper around a single
+    # bundle — but only when the *suggester* found one group. One group the owner
+    # produced by widening is a different statement: "group these files
+    # together", not "this folder is a bundle". Collapsing it dissolved the
+    # collection as a side effect, duplicating the convert control that does
+    # exactly that on purpose, renaming the result after the folder instead of
+    # the stem it just matched on, and stranding the dial at its widest with no
+    # folder left to hold it (owner-reported, 2026-08-15). Widened, the folder
+    # stays a container and the group becomes one bundle inside it, named by the
+    # stem — which is what the owner asked the dial for.
+    if len(groups) == 1 and stem_level <= DEFAULT_STEM_LEVEL:
         proposals.append(
             _bundle_proposal(
                 groups[0], node.path, parent, owns_directory=True, stem_level=stem_level
@@ -761,7 +771,10 @@ def _direct_media_proposals(
             group,
             directory,
             parent_for_children,
-            owns_directory=len(groups) == 1,
+            # Same rule as the leaf branch in ``_classify``: a bundle takes the
+            # folder's name only when the suggester grouped the folder into one on
+            # its own. A widened group is named after the stem that formed it.
+            owns_directory=len(groups) == 1 and stem_level <= DEFAULT_STEM_LEVEL,
             stem_level=stem_level,
         )
         for group in groups
