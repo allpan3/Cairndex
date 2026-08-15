@@ -5,6 +5,8 @@ import {
   defaultClipFps,
   clipWidthOptions,
   defaultClipWidth,
+  gifPlaybackRate,
+  isExactGifRate,
   isWidthCapped,
   outputHeight,
   saveClipGif,
@@ -40,6 +42,12 @@ export function ClipExportDialog({
   const height = outputHeight(width, target.sourceWidth, target.sourceHeight)
   const seconds = range.end - range.start
   const frames = Math.max(1, Math.round(seconds * fps))
+  // A rate the format cannot hold exactly stretches the clip as well as slowing
+  // it: 90 frames asked for at 15 fps are stored at 7cs each and run 6.30s, not
+  // the 6.00s of source they came from. Report what the file will do.
+  const playbackRate = gifPlaybackRate(fps)
+  const playbackSeconds = frames / playbackRate
+  const drifts = !isExactGifRate(fps)
   // Said only when the largest option is the server's ceiling rather than the
   // source's own size, so the missing "Original" is explained.
   const capped = isWidthCapped(target.sourceWidth)
@@ -82,8 +90,8 @@ export function ClipExportDialog({
             with how much of the picture moves, so frames and dimensions are
             what can be said honestly; a megabyte estimate could not. */}
         <p className="modal__note">
-          {height ? `${width}×${height}` : `${width}px wide`} · {seconds.toFixed(2)} s · {frames}{' '}
-          frames
+          {height ? `${width}×${height}` : `${width}px wide`} · {frames} frames ·{' '}
+          {playbackSeconds.toFixed(2)} s{drifts ? ` (plays at ${playbackRate.toFixed(1)} fps)` : ''}
           {capped ? ' · larger than the maximum, so capped' : ''}
         </p>
 

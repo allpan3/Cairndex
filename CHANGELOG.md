@@ -28,10 +28,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Export sizes are chosen on a scrolling wheel rather than a row of
   buttons.** A row had to fit every choice side by side, so it held three or
   four; a wheel scrolls, so the ladders are as long as they should be — fifteen
-  GIF widths, ten sheet widths, and five grids. GIF frame rates now offer only
-  the rates the format can actually hold (5, 10, 20, 25, 50, up from a ceiling
-  of 15), since a GIF stores delays in whole centiseconds and anything else
-  plays at a speed nobody asked for. Rates the source cannot meaningfully
+  GIF widths, ten sheet widths, and five grids. GIF frame rates run 5–50 (the
+  ceiling was 15), and each says what it will really play at: a GIF stores
+  frame delays in whole centiseconds, so 15 fps plays at 14.3 and the wheel
+  says so rather than leaving it to be discovered. Rates the source cannot meaningfully
   supply are left off — though a 24 fps source can still reach 25, which fits
   it far better than 20 does. The GIF and
   snapshot wheels end at the source's own width, marked `native`, since scaling
