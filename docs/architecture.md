@@ -254,6 +254,22 @@ probe continues in the shared background-job area; storyboard generation is
 chained for the same library after successful probe because eligibility and
 sampling need duration.
 
+**Scan new files is discovery on its own.** The grouping pass is a separate item
+in the same menu, so the scan job takes `suggest_grouping`
+(`POST …/jobs/scan?suggest_grouping=false`) and reports a null
+`grouping_plan_id` when it is off — the client opens grouping review off that
+key, so a scan-only run cannot open a dialog nobody asked for. Update sends the
+default and is unchanged.
+
+**Creating a library indexes it.** A folder that has only become a library holds
+no rows, so every surface is empty and the playback decision has no metadata to
+work from. `useIndexNewLibrary` enqueues discovery (without the grouping pass)
+then metadata, scoped to the new library id rather than the active one, and
+nudges the active-jobs query so the sidebar reports it like any other job.
+Storyboards stay deliberate. *Registering* an existing library does not trigger
+this: it arrives with its own database, and re-reading a large tree unasked is
+what Update is for.
+
 ## 4. Library package and registry
 
 A Cairndex library is a directory with this package:
@@ -692,12 +708,39 @@ Clients declare a capability profile (containers, video/audio codecs,
   `tech_metadata` versus the caps — container+codecs in caps → `direct`; codecs
   in caps but container not → `remux`; otherwise → `transcode`. A non-default
   audio track or an unsupported audio codec forces at least remux; a burn-in
-  subtitle or a source taller than the height cap forces transcode. Legacy rows
-  missing M1 keys degrade safely (unknown codec is optimistic; it never 500s).
+  subtitle, a source taller than the height cap, **a colour depth the client did
+  not confirm, or Dolby Vision** forces transcode. Legacy rows missing M1 keys
+  degrade safely (unknown codec is optimistic; it never 500s).
   The response also carries duration, audio streams, subtitles, chapters,
   `storyboard_url`, and resume `progress`. For `direct` it returns a
   `stream_url`; for remux/transcode it **starts an HLS session** and returns
   `{session {id, playlist_url}}`.
+- **Depth is asked for separately from the codec family**, because the family is
+  not the whole answer: every capability string a browser can be probed with
+  (`avc1.640028`, `hvc1.1.6.L93.B0`) names an 8-bit profile, so a 10-bit source
+  clears the family test and is then refused by the engine. Clients advertise
+  `h26410`/`hevc10`/`vp910`/`av110` alongside the family names for the depths
+  they separately confirmed (`viewer/player/caps.ts`), and a source deeper than
+  8 bits needs the matching token. Same shape as the `hvc1`/`hev1` codec tags
+  beside it, and equally optimistic when the row carries no depth.
+- **The row is topped up on the way to the decision.** An unprobed row has no
+  codec, depth or duration, and the matrix is optimistic about all three — so
+  playback would answer `direct` for everything in a library whose metadata job
+  has not run. `probe_service.ensure_probed` probes that one file's header
+  (bounded by `ON_ACCESS_PROBE_TIMEOUT_S`, under the client's 15 s decision
+  deadline), writes it back, and stays silent on failure. The library-wide probe
+  job is still what fills a library in bulk.
+- **A File Browser path need not be indexed at all.**
+  `POST /api/v1/libraries/{library_id}/file-browser/playback-decision` takes a
+  library-relative `path` instead of a file id and reaches the same matrix and
+  the same sessions, with `probe_service.probe_path` (a small identity-keyed
+  in-process cache) standing in for stored metadata. Its sessions live under
+  `…/file-browser/playback-sessions/{session_id}/…` and share the manager,
+  concurrency bound, and reaper with the per-file ones; internally they are
+  keyed for reuse by `path:{relative_path}`, which never leaves the server. What
+  needs a row is absent rather than faked: subtitles, storyboards, resume, and
+  cover frames. Path safety is the File Browser's own — relative only, no
+  traversal, no symlink escape — and non-video paths are refused.
 - Sessions are interactive in-process runtime state, **not** background jobs
   (`media/hls.SessionManager` — a dict guarded by locks, not the `job_queue`).
   `POST .../playback-sessions` starts one explicitly (e.g. a mid-play

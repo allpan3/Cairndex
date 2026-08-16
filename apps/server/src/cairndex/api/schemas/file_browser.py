@@ -35,6 +35,15 @@ class FileBrowserEntryRead(BaseModel):
     audio_bitrate: int | None = None
     audio_sample_rate: int | None = None
     duration: float | None
+    # Dimensions and frame rate, for exports started from this surface: a
+    # contact sheet built from a File Browser row printed "— / —" where the
+    # Bundle Browser's printed the real numbers (owner-reported, 2026-08-15).
+    width: int | None = None
+    height: int | None = None
+    fps: float | None = None
+    # Colour depth, so the client's direct-play gate matches the server's
+    # playback decision, which refuses >8-bit sources the browser cannot decode.
+    bit_depth: int | None = None
     resume_position: float | None
     # True when linked into a scan-staged provisional bundle (not yet confirmed).
     unbundled: bool

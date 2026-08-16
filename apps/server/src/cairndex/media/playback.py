@@ -69,6 +69,15 @@ def assess_playability(asset_file: AssetFile) -> Playability:
     vcodec = (meta.get("video_codec") or "").lower()
     if vcodec and vcodec not in _PLAYABLE_VCODECS:
         return Playability(False, f"{vcodec.upper()} video codec isn't widely supported", mime)
+    # This flag is the client's *native fallback* when a decision cannot be made
+    # or fails, so claiming it for a source no browser decodes sends playback
+    # back to the same refusal. Depth and Dolby Vision are exactly that case:
+    # the container and codec name both look ordinary (see `decide_playback`).
+    if (meta.get("hdr") or "").lower() == "dv":
+        return Playability(False, "Dolby Vision needs conversion to play in a browser", mime)
+    depth = meta.get("bit_depth")
+    if isinstance(depth, int) and depth > 8:
+        return Playability(False, f"{depth}-bit video isn't widely supported", mime)
     return Playability(True, "", mime)
 
 
@@ -134,6 +143,23 @@ _TAG_SENSITIVE_CODECS: dict[str, frozenset[str]] = {
 }
 _ALL_DISCRIMINATING_TAGS: frozenset[str] = frozenset().union(*_TAG_SENSITIVE_CODECS.values())
 
+# Codec support is not depth-independent, and the codec name does not say which
+# depth a source uses. A browser answering "probably" to `avc1.640028` or
+# `hvc1.1.6.L93.B0` has answered about **8-bit** — those are High and Main
+# profile strings — so a 10-bit source of the same codec family passes the
+# family test and is then refused by the engine. High 10 H.264 is the worst
+# case: no browser decodes it at all, and it is common in real libraries
+# (owner-reported "this video can't be played here" on a probed MP4,
+# 2026-08-15). The client advertises these extra tokens for the depths it
+# separately confirmed; a source deeper than 8 bits needs the matching one.
+_HIGH_DEPTH_TOKEN_BY_CODEC: dict[str, str] = {
+    "h264": "h26410",
+    "hevc": "hevc10",
+    "vp9": "vp910",
+    "av1": "av110",
+}
+_ALL_HIGH_DEPTH_TOKENS: frozenset[str] = frozenset(_HIGH_DEPTH_TOKEN_BY_CODEC.values())
+
 
 def normalize_codec_tag(value: str | None) -> str | None:
     """Canonical four-character codec tag, or ``None`` when absent/meaningless."""
@@ -185,6 +211,11 @@ class CapabilityProfile:
     # normalization deliberately folds ``hvc1``/``hev1`` into ``hevc``, which is
     # right for the family test and fatal for the tag test.
     video_codec_tags: frozenset[str] = field(default_factory=frozenset)
+    # Depth tokens (``hevc10``, ``h26410``, …) the client confirmed, parsed out
+    # of the same wire list. Separate from the family set for the same reason
+    # the tags are: a client that plays 8-bit HEVC and one that also plays
+    # 10-bit both advertise ``hevc``.
+    video_high_depth: frozenset[str] = field(default_factory=frozenset)
     audio_codecs: frozenset[str] = field(default_factory=frozenset)
     max_height: int | None = None
     native_hls: bool = False
@@ -212,6 +243,11 @@ class CapabilityProfile:
                 t
                 for c in (video_codecs or [])
                 if (t := normalize_codec_tag(c)) is not None and t in _ALL_DISCRIMINATING_TAGS
+            ),
+            video_high_depth=frozenset(
+                t
+                for c in (video_codecs or [])
+                if (t := (c or "").strip().lower()) in _ALL_HIGH_DEPTH_TOKENS
             ),
             audio_codecs=frozenset(
                 t for c in (audio_codecs or []) if (t := normalize_audio_codec(c)) is not None
@@ -270,6 +306,8 @@ def decide_playback(
     audio_codec: str | None,
     video_codec_tag: str | None = None,
     source_height: int | None = None,
+    bit_depth: int | None = None,
+    hdr: str | None = None,
     audio_stream_index: int | None = None,
     default_audio_index: int | None = None,
     burn_subtitle: bool = False,
@@ -281,12 +319,13 @@ def decide_playback(
     - codecs in caps but container not (the MKV-with-H.264 class) → ``remux``;
     - otherwise → ``transcode``.
 
-    Burn-in subtitles and downscaling force ``transcode`` (they re-encode video);
-    a non-default audio track, an unsupported audio codec, or a codec *tag* the
-    client did not confirm force at least ``remux`` (progressive streams can't
-    switch/replace tracks, and a tag is fixed by copying, not re-encoding).
-    Missing probe metadata degrades toward the more permissive choice rather
-    than erroring.
+    Burn-in subtitles, downscaling, a colour depth the client did not confirm,
+    and Dolby Vision force ``transcode`` — each needs the video re-encoded, not
+    just rewrapped. A non-default audio track, an unsupported audio codec, or a
+    codec *tag* the client did not confirm force at least ``remux`` (progressive
+    streams can't switch/replace tracks, and a tag is fixed by copying, not
+    re-encoding). Missing probe metadata degrades toward the more permissive
+    choice rather than erroring.
     """
     container = normalize_container(ext)
     vcodec = normalize_video_codec(video_codec)
@@ -308,11 +347,30 @@ def decide_playback(
     tag = normalize_codec_tag(video_codec_tag)
     discriminating = _TAG_SENSITIVE_CODECS.get(vcodec or "", frozenset())
     tag_ok = tag is None or tag not in discriminating or tag in caps.video_codec_tags
+    # An unprobed row has no depth, and an unknown codec has no token to ask
+    # for: both stay optimistic, like every other missing-metadata case here.
+    depth_token = _HIGH_DEPTH_TOKEN_BY_CODEC.get(vcodec or "")
+    depth_ok = (
+        bit_depth is None
+        or bit_depth <= 8
+        or depth_token is None
+        or depth_token in caps.video_high_depth
+    )
+    # Dolby Vision's base layer is HEVC, so the family and tag tests both pass
+    # while the enhancement-layer signalling makes a non-DV engine refuse the
+    # source outright. Nothing about that is fixable by rewrapping.
+    dolby_vision = (hdr or "").strip().lower() == "dv" or tag in {"dvh1", "dvhe"}
 
     if burn_subtitle:
         return PlaybackDecision("transcode", "Subtitle burn-in requires transcoding")
     if not video_ok:
         return PlaybackDecision("transcode", f"{vcodec} video codec is not in client capabilities")
+    if dolby_vision:
+        return PlaybackDecision("transcode", "Dolby Vision is not playable without transcoding")
+    if not depth_ok:
+        return PlaybackDecision(
+            "transcode", f"{bit_depth}-bit {vcodec} is not in client capabilities"
+        )
     if too_tall:
         return PlaybackDecision(
             "transcode", f"Source height {source_height} exceeds the client height cap"

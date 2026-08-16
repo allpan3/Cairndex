@@ -206,6 +206,10 @@ def test_linked_video_carries_hover_preview_metadata(session: Session, library_r
         "audio_bitrate": 192_000,
         "audio_sample_rate": 48_000,
         "duration": 3.5,
+        "width": 3840,
+        "height": 2160,
+        "fps": 23.976,
+        "bit_depth": 10,
     }
     progress_service.upsert_progress(session, file.id, position_s=1.0, duration_s=3.5)
     session.commit()
@@ -220,6 +224,25 @@ def test_linked_video_carries_hover_preview_metadata(session: Session, library_r
     assert top.audio_sample_rate == 48_000
     assert top.duration == 3.5
     assert top.resume_position == 1.0
+    # Dimensions and frame rate are what an export started from this surface
+    # prints; without them a contact sheet read "— / —" (owner, 2026-08-15).
+    assert (top.width, top.height) == (3840, 2160)
+    assert top.fps == 23.976
+    assert top.bit_depth == 10
+
+
+def test_unbundled_rows_carry_the_same_export_metadata(
+    session: Session, library_root: Path
+) -> None:
+    """The unbundled queue renders the same file row, so it must say the same."""
+    _make_media(library_root)
+    file = _stage_unbundled(session, "top.mp4")
+    file.tech_metadata = {"duration": 3.5, "width": 1920, "height": 1080, "fps": 25.0}
+    session.commit()
+
+    page = service.list_unbundled_files(session)
+    row = {entry.name: entry for entry in page.items}["top.mp4"]
+    assert (row.width, row.height, row.fps) == (1920, 1080, 25.0)
 
 
 def test_list_unbundled_files_flat(session: Session, library_root: Path) -> None:

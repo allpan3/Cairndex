@@ -799,20 +799,63 @@ function watchPostScanJobs(
   })
 }
 
-/** Enqueue scan-only discovery/repair and grouping suggestion preparation */
+/** Enqueue discovery/repair on its own — no grouping pass, no review dialog.
+ *
+ * "Scan new files" sits in the same menu as "Suggest grouping", so it must not
+ * do that item's work: the owner asked for a scan and got the grouping review
+ * dialog on top of it (2026-08-15). `notifyGroupingPlan` is deliberately absent
+ * here; a scan-only job reports no plan for it to open.
+ */
 export function useScan(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      const scanJob = await waitForJob(
+        await enqueueScan({ suggestGrouping: false }),
+        options.onProgress,
+      )
       options.onScanComplete?.(scanMissingTotal(scanJob))
       return scanJob
     },
-    onSuccess: (job) => {
-      invalidateLibraryContent(qc)
-      notifyGroupingPlan(job, options.onGroupingPlan)
-    },
+    onSuccess: () => invalidateLibraryContent(qc),
     onSettled: () => options.onProgress?.(null),
+  })
+}
+
+/** Index a library that has just been created, without being asked twice.
+ *
+ * A folder that has only now become a library has no rows at all, so every
+ * surface is empty and playback has no metadata to decide from — and the cure
+ * was two menu items the owner had to know to find (owner-reported,
+ * 2026-08-15). Discovery then metadata, both scoped to the new library rather
+ * than the active one, because the switch may not have settled yet.
+ *
+ * Deliberately *not* the full Update: no grouping pass, so the review dialog
+ * does not open over a library the owner has only just added, and no
+ * storyboards, which are the expensive one and remain a deliberate action.
+ */
+export function useIndexNewLibrary() {
+  const qc = useQueryClient()
+  // Progress is not threaded through a callback here as it is for the sidebar's
+  // own maintenance actions: this runs from the library dialog, which is a
+  // level above the sidebar and does not own its job indicator. Nudging the
+  // active-jobs query instead lets the sidebar find the work server-side and
+  // report it exactly as it reports a scan the owner started.
+  const showInSidebar = () => qc.invalidateQueries({ queryKey: ['active-jobs'] })
+  return useMutation({
+    mutationFn: async (libraryId: string) => {
+      const scan = await enqueueScan({ suggestGrouping: false, libraryId })
+      void showInSidebar()
+      await waitForJob(scan)
+      invalidateLibraryContent(qc)
+      const probe = await enqueueProbe(libraryId)
+      void showInSidebar()
+      await waitForJob(probe)
+      invalidateProbeContent(qc)
+    },
+    // A failure here is reported by the job row itself, and must not take the
+    // add flow down with it — the library is registered either way.
+    onSettled: showInSidebar,
   })
 }
 

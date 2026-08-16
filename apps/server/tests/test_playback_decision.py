@@ -9,12 +9,16 @@ covered in ``test_hls_sessions.py`` with a fake ffmpeg.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.media.ffprobe import PROBE_VERSION, ffprobe_available
 from cairndex.media.playback import (
     CapabilityProfile,
     PlaybackDecision,
@@ -24,6 +28,7 @@ from cairndex.media.playback import (
     normalize_container,
     normalize_video_codec,
 )
+from cairndex.persistence.models import AssetFile
 from cairndex.services import bundles as bundle_service
 
 # A representative modern web client: MP4/WebM progressive + common codecs.
@@ -47,6 +52,8 @@ def _method(
     burn_subtitle: bool = False,
     requested_max_height: int | None = None,
     video_codec_tag: str | None = None,
+    bit_depth: int | None = None,
+    hdr: str | None = None,
     caps: CapabilityProfile = _CAPS,
 ) -> str:
     return decide_playback(
@@ -56,6 +63,8 @@ def _method(
         audio_codec=audio_codec,
         video_codec_tag=video_codec_tag,
         source_height=source_height,
+        bit_depth=bit_depth,
+        hdr=hdr,
         audio_stream_index=audio_stream_index,
         default_audio_index=default_audio_index,
         burn_subtitle=burn_subtitle,
@@ -145,6 +154,91 @@ def test_non_discriminating_tags_are_ignored() -> None:
     # avc1 is the only tag H.264 uses in MP4; testing it against caps would
     # refuse every ordinary file, so only the HEVC pair is discriminating.
     assert _method(ext="mp4", video_codec="h264", video_codec_tag="avc1") == "direct"
+
+
+# --- colour depth and Dolby Vision -------------------------------------------
+# The codec name does not say which depth a source uses, and every capability
+# probe string is an 8-bit profile. A 10-bit source therefore passed the family
+# test and was handed to an engine that refuses it — the owner's "this video
+# can't be played here" on an ordinary probed MP4 (2026-08-15).
+
+
+def test_ten_bit_h264_transcodes_rather_than_failing_in_the_browser() -> None:
+    # High 10 H.264: no browser decodes it, so no client can ever advertise the
+    # token, and there is nothing to copy our way out of. Re-encode.
+    assert _method(ext="mp4", video_codec="h264", bit_depth=10) == "transcode"
+
+
+def test_eight_bit_and_unprobed_depth_are_unaffected() -> None:
+    assert _method(ext="mp4", video_codec="h264", bit_depth=8) == "direct"
+    # A row probed before bit depth was read stays optimistic, like every other
+    # missing-metadata case in this matrix.
+    assert _method(ext="mp4", video_codec="h264", bit_depth=None) == "direct"
+
+
+def test_ten_bit_plays_directly_when_the_client_confirms_that_depth() -> None:
+    caps = CapabilityProfile.build(
+        containers=["mp4"],
+        video_codecs=["h264", "hevc", "hvc1", "hevc10"],
+        audio_codecs=["aac"],
+    )
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag="hvc1", bit_depth=10, caps=caps)
+        == "direct"
+    )
+
+
+def test_a_confirmed_depth_still_remuxes_for_the_container() -> None:
+    # Depth is settled, so the container is the only thing left to fix — and a
+    # rewrap is far cheaper than the re-encode a depth failure would force.
+    caps = CapabilityProfile.build(
+        containers=["mp4"],
+        video_codecs=["h264", "hevc", "hevc10"],
+        audio_codecs=["aac"],
+    )
+    assert _method(ext="mkv", video_codec="hevc", bit_depth=10, caps=caps) == "remux"
+
+
+def test_an_unknown_codec_at_ten_bits_stays_optimistic() -> None:
+    # No token exists to ask for, so this degrades like the rest of the matrix.
+    assert _method(ext="mp4", video_codec=None, bit_depth=10) == "direct"
+
+
+def test_dolby_vision_transcodes_however_it_is_signalled() -> None:
+    # The base layer is ordinary HEVC, so family and tag both pass while the
+    # engine refuses the source. Caught from the probed HDR class...
+    caps = CapabilityProfile.build(
+        containers=["mp4"],
+        video_codecs=["h264", "hevc", "hvc1", "hevc10"],
+        audio_codecs=["aac"],
+    )
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag="hvc1", hdr="dv", caps=caps)
+        == "transcode"
+    )
+    # ...and from the container tag, for rows probed before HDR was recorded.
+    assert _method(ext="mp4", video_codec="hevc", video_codec_tag="dvhe", caps=caps) == "transcode"
+
+
+def test_hdr10_is_a_depth_question_not_a_dolby_vision_one() -> None:
+    # HDR10 is 10-bit HEVC and nothing more exotic, so a client that confirmed
+    # the depth plays it directly rather than paying for a transcode.
+    caps = CapabilityProfile.build(
+        containers=["mp4"],
+        video_codecs=["hevc", "hvc1", "hevc10"],
+        audio_codecs=["aac"],
+    )
+    assert (
+        _method(
+            ext="mp4",
+            video_codec="hevc",
+            video_codec_tag="hvc1",
+            bit_depth=10,
+            hdr="hdr10",
+            caps=caps,
+        )
+        == "direct"
+    )
 
 
 def test_remux_when_codecs_supported_but_container_not() -> None:
@@ -307,3 +401,96 @@ def test_playback_decision_requires_a_video_file(
         json={"caps": {"containers": ["mp4"]}},
     )
     assert resp.status_code == 422
+
+
+# --- HTTP: metadata is filled in on the way to the decision ------------------
+_FFMPEG = shutil.which("ffmpeg")
+requires_ffmpeg = pytest.mark.skipif(
+    _FFMPEG is None or not ffprobe_available(), reason="ffmpeg/ffprobe not installed"
+)
+
+
+def _encode(path: Path, *, pix_fmt: str, profile: str | None = None) -> None:
+    assert _FFMPEG is not None
+    args = [_FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:d=1"]
+    if profile is not None:
+        args += ["-profile:v", profile]
+    subprocess.run([*args, "-pix_fmt", pix_fmt, str(path)], check=True, capture_output=True)
+
+
+def _add_video(session: Session, name: str) -> str:
+    bundle = bundle_service.create_bundle(session, title=name)
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path=name,
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+    return video.id
+
+
+@requires_ffmpeg
+def test_decision_probes_a_scanned_but_unprobed_file(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    """A newly scanned library must be playable before any metadata job runs.
+
+    Without the probed row this matrix has nothing to test and answers "direct"
+    for everything, so a source the browser cannot decode failed on arrival and
+    the only cure was finding the Collect metadata menu item (owner-reported,
+    2026-08-15).
+    """
+    _encode(library_root / "clip.mp4", pix_fmt="yuv420p")
+    file_id = _add_video(session, "clip.mp4")
+
+    body = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+        json={"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}},
+    ).json()
+
+    assert body["method"] == "direct"
+    # Probed on the way through: an unprobed row could not have reported this.
+    assert body["duration"] is not None and body["duration"] > 0
+
+    session.expire_all()
+    stored = session.get(AssetFile, file_id)
+    assert stored is not None and stored.tech_metadata is not None
+    assert stored.tech_metadata["probe_version"] == PROBE_VERSION
+
+
+@requires_ffmpeg
+def test_a_ten_bit_file_is_not_offered_to_a_browser_that_cannot_decode_it(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    """The screenshot case, end to end: probed on access, then routed away from direct.
+
+    High 10 H.264 is an ordinary-looking MP4 whose codec name is `h264`, so the
+    family test passes and the engine refuses the bytes anyway.
+    """
+    _encode(library_root / "hi10.mp4", pix_fmt="yuv420p10le", profile="high10")
+    file_id = _add_video(session, "hi10.mp4")
+
+    body = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+        json={"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}},
+    ).json()
+
+    assert body["method"] == "transcode"
+    assert "10-bit" in body["reason"]
+
+
+def test_an_unprobeable_file_still_gets_a_decision(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    """A file ffprobe cannot read keeps the optimistic answer, not a 500."""
+    (library_root / "broken.mp4").write_bytes(b"not a video")
+    file_id = _add_video(session, "broken.mp4")
+
+    resp = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+        json={"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["method"] == "direct"

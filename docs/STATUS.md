@@ -118,6 +118,89 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: library setup and the videos that would not play (2026-08-16)
+
+Branch `claude/library-setup-scan-issues-db7786`, off `main` at `a8e077a4`.
+Three owner reports from using the app on a newly created library, plus one
+related export gap raised mid-session.
+
+**What was reported.** (1) "Scan new files" also ran other steps and popped the
+grouping suggestion pane. (2) A new library could not play anything until both
+**Scan new files** and **Collect metadata** had been run by hand — and the owner
+wants file-browser-only use to work at all. (3) A video still failed with "This
+video can't be played here." (4) A contact sheet cut from the File Browser
+printed `Details: … · — / —`.
+
+**What was actually wrong.** All of (2) and (3) are one defect with two halves.
+The decision matrix (`media/playback.decide_playback`) tested container and
+codec *family* and nothing else, and was deliberately optimistic about anything
+it did not know:
+
+- **Nothing probed → `direct` for everything.** An unprobed row has no codec, so
+  `video_ok` is true by default. A fresh library therefore handed every file
+  straight to the browser, and anything the browser could not decode failed with
+  the format card. Verified against the real code, not inferred.
+- **Probed, and still wrong for 10-bit.** Every capability string a browser can
+  be probed with is an 8-bit profile — `avc1.640028` is High, `hvc1.1.6.L93.B0`
+  is Main — so a 10-bit source passes the family test and is refused by the
+  engine anyway. `bit_depth` was already recorded by the probe (v5) and simply
+  never consulted. Measured with ffmpeg-built fixtures: High 10 H.264 and
+  Main 10 HEVC both decided `direct` before, both correct after. **High 10 H.264
+  is decoded by no browser at all**, which makes it the most likely explanation
+  for the screenshot (an hour-long MP4 whose codec name is just `h264`).
+- **Dolby Vision has the same shape** — an ordinary HEVC base layer, so family
+  and tag both pass — and is now transcoded.
+
+**What landed.**
+
+1. `suggest_grouping` on the scan job; "Scan new files" sends `false`, Update
+   keeps the default, and a scan-only run reports a null `grouping_plan_id` so
+   the client has nothing to open.
+2. Depth and Dolby Vision in the decision matrix; `h26410`/`hevc10`/`vp910`/
+   `av110` capability tokens; `assess_playability` stops claiming a 10-bit or DV
+   source is natively playable (it is the client's fallback when a decision
+   fails, so claiming it sent playback back to the same refusal).
+3. `probe_service.ensure_probed` — one bounded ffprobe of one file's header on
+   the way to the decision, written back, silent on failure.
+4. Path-scoped playback: `POST …/file-browser/playback-decision` plus its own
+   session/teardown routes, backed by `probe_service.probe_path`. Sessions are
+   keyed for reuse by `path:{relative_path}` and share the manager, bound, and
+   reaper with the per-file ones. `useHlsSession` takes `fileId` **and**
+   `browserPath` as primitives (an object target re-decided on every render).
+5. `useIndexNewLibrary` — creating a library enqueues discovery then metadata.
+   Registering an existing one does not.
+6. `width`/`height`/`fps` (and `bit_depth`) on `FileBrowserEntryRead`, through
+   `viewerItemFromEntry` and the File Browser's contact-sheet target.
+
+**Verified.** Full gates green: backend ruff/format/mypy and **1039 pytest**;
+frontend lint/format/typecheck, **737 vitest**, and build. Note that
+`tsc --noEmit -p tsconfig.json` checks *nothing* in this repo — the root config
+is a solution file with `files: []`. Use `npm run typecheck` (`tsc -b`).
+
+Also verified by hand against a synthetic three-file library (8-bit MP4, High 10
+MP4, H.264-in-MKV) on a scratch `CAIRNDEX_DATA_DIR`: unindexed paths decided
+direct/transcode/remux correctly with **no scan at all**; a transcoded segment
+pulled from the session ffprobes as 8-bit High H.264; a scan-only job left zero
+grouping plans; the decision filled in metadata with no probe job ever run; and
+in the browser both the 10-bit MP4 and the MKV played (`readyState` 4, no
+fallback card) where the 10-bit one previously showed the owner's screenshot.
+
+**Found, not fixed (out of scope, chip raised).** `PUT …/files/{id}/progress`
+500s when two progress writes for the same file race:
+`services/playback_progress.upsert_progress` is read-then-insert, so both see no
+row and the second hits `UNIQUE constraint failed: playback_progress.file_id`.
+Pre-existing and untouched by this branch — it only became visible because the
+video now plays. Wants an `ON CONFLICT DO UPDATE`.
+
+**Not done.** HDR tone mapping: a 10-bit HDR10 source now transcodes to 8-bit
+`yuv420p` with no tone map, so colour will look flat for a client that cannot
+decode 10-bit. That is strictly better than the black error card it replaced,
+but it is a real gap — `zscale`/`libplacebo` availability varies by ffmpeg
+build, so it needs its own decision rather than a half-implementation.
+
+**Next.** Owner pass on a real library: confirm the previously-failing files now
+play, and confirm "Scan new files" no longer opens the grouping pane.
+
 ## Open on branch: drag-and-drop between collections (2026-08-15)
 
 Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the

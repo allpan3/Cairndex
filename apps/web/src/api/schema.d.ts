@@ -1916,7 +1916,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Enqueue Scan */
+        /**
+         * Enqueue Scan
+         * @description Enqueue library discovery, optionally with the grouping-suggestion pass.
+         *
+         *     ``suggest_grouping=false`` is discovery on its own — what "Scan new files"
+         *     asks for. Grouping is a separate, reviewable step the owner opens
+         *     deliberately, and running it unasked both costs a directory-tree walk and
+         *     puts the review dialog on screen at the end of a scan (owner-reported,
+         *     2026-08-15). The combined Update keeps the default.
+         */
         post: operations["enqueue_scan_api_v1_libraries__library_id__jobs_scan_post"];
         delete?: never;
         options?: never;
@@ -3150,6 +3159,8 @@ export interface components {
             audio_codec: string | null;
             /** Audio Sample Rate */
             audio_sample_rate?: number | null;
+            /** Bit Depth */
+            bit_depth?: number | null;
             /** Bundle Id */
             bundle_id: string | null;
             /** Container */
@@ -3162,6 +3173,10 @@ export interface components {
             extension: string | null;
             /** File Id */
             file_id: string | null;
+            /** Fps */
+            fps?: number | null;
+            /** Height */
+            height?: number | null;
             /** Kind */
             kind: string;
             /** Linked */
@@ -3190,6 +3205,8 @@ export interface components {
             video_codec: string | null;
             /** Video Codec Tag */
             video_codec_tag: string | null;
+            /** Width */
+            width?: number | null;
         };
         /** FileBrowserListingRead */
         FileBrowserListingRead: {
@@ -8377,7 +8394,9 @@ export interface operations {
     };
     enqueue_scan_api_v1_libraries__library_id__jobs_scan_post: {
         parameters: {
-            query?: never;
+            query?: {
+                suggest_grouping?: boolean;
+            };
             header?: never;
             path: {
                 library_id: string;
