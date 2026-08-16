@@ -35,11 +35,19 @@ import { hostOperationErrorMessage, isDesktopHost } from '../platform'
 export function LibraryManager({
   onClose,
   onSelect,
+  onCreated,
   onRemoved,
 }: {
   onClose: () => void
   /** Make one library active — after adding it, or after selecting an existing one. */
   onSelect?: (libraryId: string) => void
+  /**
+   * A folder has just *become* a library, so it holds nothing yet and wants
+   * indexing. Not fired for registering a library that already exists: that one
+   * arrives with its own database, and re-reading a multi-terabyte tree
+   * unasked is exactly what the ⟳ Update button is for.
+   */
+  onCreated?: (libraryId: string) => void
   /** A library left the registry, so its cached content must not outlive it. */
   onRemoved?: (libraryId: string) => void
 }) {
@@ -191,9 +199,13 @@ export function LibraryManager({
       // The shell holds the folder against this token; it never crossed into
       // this layer, and a token a later pick superseded is refused.
       const adopt = getActiveConnection()?.kind === 'remote'
+      const becomingALibrary = !confirming.isLibrary
       setHostBusy(true)
       try {
-        await confirmPickedLibrary(confirming.token, chosen, { adopt })
+        const { opened } = await confirmPickedLibrary(confirming.token, chosen, { adopt })
+        // A picked *folder* is new to Cairndex and holds nothing; a picked
+        // library arrives with its own database and is left alone.
+        if (becomingALibrary && opened?.libraryId) onCreated?.(opened.libraryId)
       } catch (failure) {
         setError(hostOperationErrorMessage(failure))
         return
@@ -217,6 +229,7 @@ export function LibraryManager({
         create_if_missing: confirming.createFolder,
       })
       onSelect?.(added.id)
+      onCreated?.(added.id)
       onClose()
     } catch (failure) {
       setError(messageOf(failure))

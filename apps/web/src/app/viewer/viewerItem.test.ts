@@ -147,3 +147,24 @@ test('a file with no usable extension falls back to its media kind', () => {
   )
   expect(item.typeLabel).toBe('image')
 })
+
+test('a linked path carries the dimensions and frame rate an export prints', () => {
+  // The listing used to stop at codecs and duration, so a contact sheet cut
+  // from the File Browser read "Details: … · — / —" while the same file cut
+  // from the Bundle Browser read the real numbers (owner-reported, 2026-08-15).
+  const item = viewerItemFromEntry(
+    entry({ linked: true, file_id: 'f9', bundle_id: 'b9', width: 3840, height: 2160, fps: 23.976 }),
+  )
+
+  expect(item.width).toBe(3840)
+  expect(item.height).toBe(2160)
+  expect(item.fps).toBe(23.976)
+})
+
+test('an unindexed path still has no dimensions to report', () => {
+  const item = viewerItemFromEntry(entry())
+
+  expect(item.width).toBeNull()
+  expect(item.height).toBeNull()
+  expect(item.fps).toBeNull()
+})

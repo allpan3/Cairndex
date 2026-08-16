@@ -36,8 +36,24 @@ export interface DirectVideoSource {
   videoCodec?: string | null
   /** Container codec tag (`hvc1`/`hev1`); absent on rows probed before v3. */
   videoCodecTag?: string | null
+  /** Colour depth; absent on rows probed before it was recorded. */
+  bitDepth?: number | null
   audioCodec?: string | null
 }
+
+// Wire tokens for confirmed >8-bit decoding, keyed by normalized codec family.
+// Mirrors `_HIGH_DEPTH_TOKEN_BY_CODEC` in the server's media/playback.py — the
+// two must agree, or a source this gate waves through is one the server would
+// refuse to hand over directly.
+const DEPTH_TOKEN_BY_CODEC: Record<string, string> = {
+  h264: 'h26410',
+  hevc: 'hevc10',
+  vp9: 'vp910',
+  av1: 'av110',
+}
+
+// Dolby Vision's base layer is ordinary HEVC, so only the container tag says so.
+const DOLBY_VISION_TAGS = new Set(['dvh1', 'dvhe'])
 
 // Candidate MIME/codec strings per normalized codec/container name. The names
 // on the left match the server's normalized vocabulary (media/playback.py); the
@@ -49,6 +65,28 @@ const VIDEO_CODEC_PROBES: Record<string, string[]> = {
   vp9: ['video/mp4; codecs="vp09.00.10.08"', 'video/webm; codecs="vp9"'],
   av1: ['video/mp4; codecs="av01.0.05M.08"', 'video/webm; codecs="av01.0.05M.08"'],
   vp8: ['video/webm; codecs="vp8"'],
+}
+
+// Depth tokens, probed with 10-bit codec strings. The family probes above are
+// all 8-bit profiles — `avc1.640028` is High, `hvc1.1.6.L93.B0` is Main — so a
+// browser answering "probably" to them has said nothing about 10-bit content,
+// and a 10-bit source passing the family test alone is refused by the engine.
+// High 10 H.264 is the extreme: no browser decodes it, and `avc1.6E01E0` duly
+// probes as unsupported everywhere, which is exactly the answer we want to
+// send. Advertised alongside the family names; the server asks for the token
+// matching the source's probed depth and transcodes when it is absent.
+//
+// Unlike the tags below these are OR-probed, like the families. A tag needs the
+// narrower `canPlayType` because it asks about *container labelling*, which the
+// progressive demuxer and MSE genuinely answer differently. Depth asks about the
+// decoder, and no browser ships one decoder for `<video src>` and another for
+// MSE — so OR-ing keeps a 10-bit source in the wrong container on the cheap
+// remux path instead of needlessly re-encoding it.
+const VIDEO_DEPTH_PROBES: Record<string, string[]> = {
+  h26410: ['video/mp4; codecs="avc1.6E01E0"'],
+  hevc10: ['video/mp4; codecs="hvc1.2.4.L120.B0"', 'video/mp4; codecs="hev1.2.4.L120.B0"'],
+  vp910: ['video/mp4; codecs="vp09.02.10.10"', 'video/webm; codecs="vp09.02.10.10"'],
+  av110: ['video/mp4; codecs="av01.0.05M.10"', 'video/webm; codecs="av01.0.05M.10"'],
 }
 
 // Four-character container tags that decide direct playability on their own.
@@ -170,6 +208,20 @@ export function canDirectPlayVideo(
   if (tag && tag in VIDEO_TAG_PROBES && !(capabilities.video_codecs ?? []).includes(tag)) {
     return false
   }
+  if (tag && DOLBY_VISION_TAGS.has(tag)) return false
+  // Depth for the same reason as the tag, and the same optimism when unprobed:
+  // the family probes are 8-bit profile strings, so a 10-bit source clears them
+  // and is then refused by the engine.
+  const depthToken = videoCodec ? DEPTH_TOKEN_BY_CODEC[videoCodec] : undefined
+  const bitDepth = source.bitDepth
+  if (
+    typeof bitDepth === 'number' &&
+    bitDepth > 8 &&
+    depthToken &&
+    !(capabilities.video_codecs ?? []).includes(depthToken)
+  ) {
+    return false
+  }
   const rawAudioCodec = source.audioCodec?.trim().toLowerCase()
   const audioCodec = rawAudioCodec ? (AUDIO_CODEC_ALIASES[rawAudioCodec] ?? rawAudioCodec) : null
   return !audioCodec || (capabilities.audio_codecs ?? []).includes(audioCodec)
@@ -184,7 +236,11 @@ export function computeCapabilities(probe: CapabilityProbe): ClientCapabilities 
   return {
     protocols,
     containers: names(probe, CONTAINER_PROBES),
-    video_codecs: [...names(probe, VIDEO_CODEC_PROBES), ...directNames(probe, VIDEO_TAG_PROBES)],
+    video_codecs: [
+      ...names(probe, VIDEO_CODEC_PROBES),
+      ...names(probe, VIDEO_DEPTH_PROBES),
+      ...directNames(probe, VIDEO_TAG_PROBES),
+    ],
     audio_codecs: names(probe, AUDIO_CODEC_PROBES),
     // No browser API reports a maximum decode height, and capping optimistically
     // would force needless transcodes of content the browser can decode. Leave

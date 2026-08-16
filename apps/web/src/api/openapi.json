@@ -2315,6 +2315,17 @@
             ],
             "title": "Audio Sample Rate"
           },
+          "bit_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bit Depth"
+          },
           "bundle_id": {
             "anyOf": [
               {
@@ -2381,6 +2392,28 @@
               }
             ],
             "title": "File Id"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
           },
           "kind": {
             "title": "Kind",
@@ -2494,6 +2527,17 @@
               }
             ],
             "title": "Video Codec Tag"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
           }
         },
         "required": [
@@ -14911,6 +14955,7 @@
     },
     "/api/v1/libraries/{library_id}/jobs/scan": {
       "post": {
+        "description": "Enqueue library discovery, optionally with the grouping-suggestion pass.\n\n``suggest_grouping=false`` is discovery on its own \u2014 what \"Scan new files\"\nasks for. Grouping is a separate, reviewable step the owner opens\ndeliberately, and running it unasked both costs a directory-tree walk and\nputs the review dialog on screen at the end of a scan (owner-reported,\n2026-08-15). The combined Update keeps the default.",
         "operationId": "enqueue_scan_api_v1_libraries__library_id__jobs_scan_post",
         "parameters": [
           {
@@ -14920,6 +14965,16 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "suggest_grouping",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Suggest Grouping",
+              "type": "boolean"
             }
           }
         ],

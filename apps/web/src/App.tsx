@@ -41,6 +41,7 @@ import {
   useLibraryOwnership,
   useStartTakeover,
   useLibraryLock,
+  useIndexNewLibrary,
   useProbe,
   resetLibraryContentQueries,
   useRenameCollection,
@@ -364,6 +365,10 @@ export default function App() {
   const deviceHasAccess = mountableLibraryId ? hasHostDeviceAccess(mountableLibraryId) : false
   useDesktopMenuAvailability(mountableLibraryId !== null && auth.isSuccess && !locked)
 
+  // A folder that has just become a library indexes itself, so the owner is not
+  // left with empty views and two menu items to discover.
+  const indexNewLibrary = useIndexNewLibrary()
+
   // The one surface for adding, opening, and removing libraries. Rendered in
   // every state the menu item is enabled in — including the ones that replace
   // the workspace, which are exactly the states (a lease refusal, a locked
@@ -372,6 +377,7 @@ export default function App() {
     <LibraryManager
       onClose={() => setManaging(false)}
       onSelect={changeLibrary}
+      onCreated={(id) => indexNewLibrary.mutate(id)}
       onRemoved={forgetRemovedLibrary}
     />
   )
@@ -1180,14 +1186,8 @@ function Workspace({
       setReviewingGrouping(true)
     },
   })
-  const scanFiles = useScan({
-    onProgress: setActiveJob,
-    onScanComplete: reportScanComplete,
-    onGroupingPlan: (planId) => {
-      setReviewPlanId(planId)
-      setReviewingGrouping(true)
-    },
-  })
+  // No onGroupingPlan: a scan-only job never reports one (see useScan).
+  const scanFiles = useScan({ onProgress: setActiveJob, onScanComplete: reportScanComplete })
   const probe = useProbe({ onProgress: setActiveJob })
   const storyboards = useStoryboards({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   beaconTeardownSession,
@@ -7,6 +7,7 @@ import {
   requestPlaybackDecision,
   type AudioStreamRead,
   type ClientCapabilities,
+  type PlaybackTarget,
 } from '../../../api/client'
 import { registerDesktopExitTask } from '../../../desktop/exitTasks'
 import { isDesktopHost } from '../../../platform'
@@ -52,16 +53,22 @@ const DEFAULT_PARAMS: SwitchParams = {
 }
 
 export interface UseHlsSessionOptions {
-  /**
-   * Current file id when it is an available, indexed video.
-   *
-   * Null means there is no `AssetFile` row to decide on. With `enabled` set and
-   * a `directStreamUrl` given, playback degrades to a native progressive read of
-   * that URL — the File Browser case for a path that was never indexed, which
-   * can be played but cannot be remuxed/transcoded server-side. Null with no
-   * `directStreamUrl` disables the hook entirely.
-   */
+  /** Current file id when it is an available, indexed video; else null. */
   fileId: string | null
+  /**
+   * Library-relative path when this is a File Browser source; else null.
+   *
+   * Used only when there is no `fileId`. A path reaches the same decision
+   * matrix and the same HLS sessions through the path-scoped routes, with an
+   * on-demand probe standing in for stored metadata — which is what lets an
+   * unscanned library play a source the browser cannot decode. With neither,
+   * playback falls back to `directStreamUrl` if there is one.
+   *
+   * Both are primitives rather than one target object on purpose: the decision
+   * effect keys off them, and a caller passing a fresh object every render
+   * would re-decide on every render.
+   */
+  browserPath: string | null
   /** The current file is an available video with a manifest entry. */
   enabled: boolean
   /** Manifest says the source is directly playable (a fast native fallback). */
@@ -108,6 +115,7 @@ export interface HlsSessionState {
  */
 export function useHlsSession({
   fileId,
+  browserPath,
   enabled,
   directPlayable,
   directStreamUrl,
@@ -115,6 +123,13 @@ export function useHlsSession({
   caps,
   getCurrentTime,
 }: UseHlsSessionOptions): HlsSessionState {
+  // A row wins over a path: an indexed File Browser entry should reach the same
+  // subtitles, storyboards and resume the Bundle Browser gives it.
+  const target = useMemo<PlaybackTarget | null>(
+    () =>
+      fileId ? { kind: 'file', fileId } : browserPath ? { kind: 'path', path: browserPath } : null,
+    [fileId, browserPath],
+  )
   const [source, setSource] = useState<PlaybackSource | null>(null)
   // Start in 'deciding' so the very first frame of a playable file shows the
   // loading state, never a flash of the "can't be previewed" fallback card.
@@ -123,12 +138,14 @@ export function useHlsSession({
   const [audioStreams, setAudioStreams] = useState<AudioStreamRead[]>([])
   const [params, setParams] = useState<SwitchParams>(DEFAULT_PARAMS)
   // Bumped by a quality/audio/burn-in switch or a re-attach to force a fresh
-  // decision for the same file without changing fileId.
+  // decision for the same source without changing the target.
   const [epoch, setEpoch] = useState(0)
 
   const paramsRef = useRef<SwitchParams>(DEFAULT_PARAMS)
   const startAtRef = useRef(0)
-  const liveSessionRef = useRef<{ fileId: string; sessionId: string } | null>(null)
+  // The target is kept with the session id: teardown has to address the route
+  // the session came from, and by then the current target may have moved on.
+  const liveSessionRef = useRef<{ target: PlaybackTarget; sessionId: string } | null>(null)
   const reattachCountRef = useRef(0)
   const reattachAtRef = useRef(Number.NEGATIVE_INFINITY)
   const reattachingRef = useRef(false)
@@ -143,17 +160,17 @@ export function useHlsSession({
     const live = liveSessionRef.current
     if (live) {
       liveSessionRef.current = null
-      await deletePlaybackSession(live.fileId, live.sessionId).catch(() => {})
+      await deletePlaybackSession(live.target, live.sessionId).catch(() => {})
     }
   }, [])
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- reset/decision status are
        synchronized to the current file, not derived render state */
-    // Unindexed paths all have a null fileId, so identity falls back to the
-    // stream URL — otherwise stepping between two of them would look like the
-    // same file and carry the previous one's playhead into the next.
-    const sourceKey = fileId ?? directStreamUrl
+    // A target with no id or path (there is none) falls back to the stream URL —
+    // otherwise stepping between two of them would look like the same file and
+    // carry the previous one's playhead into the next.
+    const sourceKey = (target?.kind === 'file' ? target.fileId : target?.path) ?? directStreamUrl
     const freshFile = lastSourceRef.current !== sourceKey
     if (freshFile) {
       lastSourceRef.current = sourceKey
@@ -177,12 +194,10 @@ export function useHlsSession({
       return
     }
 
-    // No file row to decide on — an unindexed File Browser path. There is no
-    // server-side remux/transcode option for it, so skip the decision round-trip
-    // and play the bytes natively. Whether the browser can actually decode this
-    // container/codec is then the media element's answer, surfaced through the
-    // stage's error path exactly like a failed direct decision.
-    if (!fileId) {
+    // Nothing to decide about — neither a file row nor a path the server can
+    // resolve. Play whatever bytes we were handed and let the media element
+    // return the verdict, surfaced through the stage's error path.
+    if (!target) {
       if (!directStreamUrl) {
         void teardownLive()
         setStatus('idle')
@@ -228,13 +243,13 @@ export function useHlsSession({
         max_height: active.maxHeight,
       }
       try {
-        return await requestPlaybackDecision(fileId, payload, controller.signal)
+        return await requestPlaybackDecision(target, payload, controller.signal)
       } catch (err) {
         // The superseded session's teardown may still be freeing a slot; give a
         // capacity rejection one retry before treating it as a hard failure.
         if (!controller.signal.aborted && err instanceof HttpError && err.status === 429) {
           await new Promise((resolve) => setTimeout(resolve, CAPACITY_RETRY_MS))
-          return requestPlaybackDecision(fileId, payload, controller.signal)
+          return requestPlaybackDecision(target, payload, controller.signal)
         }
         throw err
       }
@@ -247,7 +262,7 @@ export function useHlsSession({
           // server may have already started a session — reap it so it does not
           // orphan until the idle reaper runs.
           if (decision.session) {
-            void deletePlaybackSession(fileId, decision.session.id).catch(() => {})
+            void deletePlaybackSession(target, decision.session.id).catch(() => {})
           }
           return
         }
@@ -265,7 +280,7 @@ export function useHlsSession({
             setStatus('error')
           }
         } else if (decision.session) {
-          liveSessionRef.current = { fileId, sessionId: decision.session.id }
+          liveSessionRef.current = { target, sessionId: decision.session.id }
           setSource({
             src: decision.session.playlist_url,
             mimeType: HLS_MIME,
@@ -286,7 +301,7 @@ export function useHlsSession({
         }
         // Tear down the session this decision replaced (a switch/re-attach).
         if (replaced && replaced.sessionId !== liveSessionRef.current?.sessionId) {
-          void deletePlaybackSession(replaced.fileId, replaced.sessionId).catch(() => {})
+          void deletePlaybackSession(replaced.target, replaced.sessionId).catch(() => {})
         }
       })
       .catch((err: unknown) => {
@@ -321,7 +336,7 @@ export function useHlsSession({
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [fileId, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
+  }, [target, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
 
   // Awaits ordinary authenticated teardown before the desktop host exits
   useEffect(() => {
@@ -334,7 +349,7 @@ export function useHlsSession({
     const onPageHide = () => {
       if (isDesktopHost()) return
       const live = liveSessionRef.current
-      if (live) beaconTeardownSession(live.fileId, live.sessionId)
+      if (live) beaconTeardownSession(live.target, live.sessionId)
     }
     window.addEventListener('pagehide', onPageHide)
     return () => {

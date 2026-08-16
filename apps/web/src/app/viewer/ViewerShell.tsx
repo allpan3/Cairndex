@@ -182,6 +182,10 @@ export function ViewerShell({
   const nativeRecoveringRef = useRef(false)
   const hls = useHlsSession({
     fileId: isVideo && videoAvailable ? fileId : null,
+    // An unindexed File Browser path has no row to decide about, but it still
+    // gets a real decision — addressed by path — which is what lets a
+    // never-scanned library play what the browser cannot decode.
+    browserPath: isVideo && videoAvailable ? (current?.pathTarget ?? null) : null,
     enabled: Boolean(isVideo && videoAvailable && playable),
     directPlayable: playable?.playable ?? false,
     directStreamUrl: playable?.stream_url ?? null,
