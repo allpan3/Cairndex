@@ -115,3 +115,13 @@ test('leaves the header height to the metadata rows', async () => {
   expect(without.canvas.height).toBeGreaterThan(without.grid.height + 70)
   expect(without.canvas.height).toBeLessThan(without.grid.height + 120)
 })
+
+// The header has a padding its metadata rows observe. The mark used to derive
+// a larger inset from its own size and so began lower than the text beside it,
+// which the owner saw as the mark sitting too low (2026-08-16).
+test('starts the mark level with the first metadata row, not below it', async () => {
+  const { drawn } = await compose({ watermark: { kind: 'text', text: 'STUDIO ALPHA' } })
+  const [mark, firstRow] = drawn
+  // Both are drawn from the header's own padding, so they share a top edge.
+  expect(mark?.y).toBeLessThanOrEqual(firstRow?.y ?? 0)
+})
