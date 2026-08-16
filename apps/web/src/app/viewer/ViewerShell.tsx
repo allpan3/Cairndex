@@ -3,10 +3,17 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { type PlayableVideo, type PlaybackManifest, updatePlaybackProgress } from '../../api/client'
 import { useViewerMenu } from '../../desktop/useViewerMenu'
+import { getHostLabels } from '../../platform'
 import { contactSheetMenuItem, type ContactSheetTarget } from '../contactSheetExport'
 import { ContactSheetDialog } from '../ContactSheetDialog'
 import { ContextMenu } from '../ContextMenu'
 import { IconAlert, IconFile, IconFilm, IconImage, IconMusic, IconSidebar } from '../icons'
+import { FileInspector } from '../FileInspector'
+// The shell cannot work out which pane applies: only the surface that opened
+// it knows whether a `bundle_id` names a real bundle or the provisional one a
+// scan stages every new file into. So it is told (see `fileFacts.ts`).
+import type { ViewerInspectorTarget } from '../fileFacts'
+export type { ViewerInspectorTarget }
 import { Inspector } from '../Inspector'
 import {
   BundleInspectorActionsContext,
@@ -96,6 +103,8 @@ interface ViewerShellProps {
   /** Replaces the stage when there is nothing to show at all. */
   emptyMessage?: string | null
   cover?: ShellCoverActions | null
+  /** What the docked inspector describes for the current item, if anything. */
+  inspectorTarget?: ViewerInspectorTarget | null
 }
 
 /**
@@ -123,6 +132,7 @@ export function ViewerShell({
   errorHeading = 'Couldn’t load this media.',
   emptyMessage = null,
   cover = null,
+  inspectorTarget = null,
 }: ViewerShellProps) {
   const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -130,6 +140,9 @@ export function ViewerShell({
   // "hide" survive stepping files and reopening the viewer.
   const infoOpen = playerPrefs.infoOpen
   const inspectorOpen = playerPrefs.inspectorOpen
+  // The toggle names the pane it will actually open. It used to say "Bundle
+  // Inspector" unconditionally, which was the same false claim as showing one.
+  const inspectorLabel = inspectorTarget?.kind === 'file' ? 'File Inspector' : 'Bundle Inspector'
   // Which file failed, and how. The kind decides the card: a decode/format
   // rejection is deterministic — the engine has already refused these bytes, so
   // a retry replays the same refusal — while a network or aborted read is worth
@@ -652,9 +665,10 @@ export function ViewerShell({
     entries.push(
       { label: infoOpen ? 'Hide Info' : 'Show Info', onClick: toggleInfo },
       {
-        label: inspectorOpen ? 'Hide Bundle Inspector' : 'Show Bundle Inspector',
-        // An unindexed File Browser path has no bundle to inspect.
-        disabled: !current?.bundleId,
+        // The one pane, named for what it will actually show: an unbundled file
+        // gets its own details rather than a bundle's.
+        label: `${inspectorOpen ? 'Hide' : 'Show'} ${inspectorLabel}`,
+        disabled: inspectorTarget === null,
         onClick: toggleInspector,
       },
       {
@@ -674,7 +688,7 @@ export function ViewerShell({
         dismissedMenuRef.current = contextMenu.state !== null
       }}
       className={`media-viewer${chromeIdle ? ' media-viewer--idle' : ''}${
-        inspectorOpen && current?.bundleId ? ' media-viewer--railed' : ''
+        inspectorOpen && inspectorTarget ? ' media-viewer--railed' : ''
       }`}
       ref={rootRef}
       role="dialog"
@@ -687,7 +701,8 @@ export function ViewerShell({
         subtitle={current ? `${current.title} · ${index + 1} / ${items.length}` : 'Media'}
         infoOpen={infoOpen}
         inspectorOpen={inspectorOpen}
-        canInspect={Boolean(current?.bundleId)}
+        canInspect={inspectorTarget !== null}
+        inspectorLabel={inspectorLabel}
         onToggleInspector={toggleInspector}
         onToggleInfo={toggleInfo}
         onClose={onClose}
@@ -802,10 +817,17 @@ export function ViewerShell({
           so resizing one is resizing both (owner, 2026-07-30). It is placed
           straight into the viewer's grid rather than wrapped in a rail element
           of its own; the wrapper was the second, divergent style contract. */}
-      {inspectorOpen && current?.bundleId && (
+      {inspectorOpen && inspectorTarget?.kind === 'bundle' && (
         <BundleInspectorActionsContext value={mergedInspectorActions}>
-          <Inspector bundleId={current.bundleId} />
+          <Inspector bundleId={inspectorTarget.bundleId} />
         </BundleInspectorActionsContext>
+      )}
+      {/* A file with no bundle worth naming — unbundled, or not indexed at all
+          — gets the pane that describes a file. The bundle actions context is
+          deliberately absent: none of them apply to something that is not in a
+          bundle. */}
+      {inspectorOpen && inspectorTarget?.kind === 'file' && (
+        <FileInspector entry={inspectorTarget.facts} hostLabels={getHostLabels()} />
       )}
 
       <ContextMenu state={contextMenu.state} onClose={contextMenu.close} />
@@ -1009,6 +1031,7 @@ const Topbar = memo(function Topbar({
   onToggleInfo,
   inspectorOpen,
   canInspect,
+  inspectorLabel,
   onToggleInspector,
   onClose,
 }: {
@@ -1018,6 +1041,8 @@ const Topbar = memo(function Topbar({
   onToggleInfo: () => void
   inspectorOpen: boolean
   canInspect: boolean
+  /** What the toggle is named for — "Bundle Inspector" or "File Inspector". */
+  inspectorLabel: string
   onToggleInspector: () => void
   onClose: () => void
 }) {
@@ -1043,9 +1068,9 @@ const Topbar = memo(function Topbar({
         <button
           className={`mv-icon${inspectorOpen ? ' is-active' : ''}`}
           onClick={onToggleInspector}
-          aria-label={inspectorOpen ? 'Hide bundle inspector' : 'Show bundle inspector'}
+          aria-label={`${inspectorOpen ? 'Hide' : 'Show'} ${inspectorLabel.toLowerCase()}`}
           aria-pressed={inspectorOpen}
-          title="Bundle inspector"
+          title={inspectorLabel}
           disabled={!canInspect}
         >
           <IconSidebar />
