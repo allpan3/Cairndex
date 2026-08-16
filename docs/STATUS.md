@@ -118,6 +118,190 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: drag-and-drop between collections (2026-08-15)
+
+Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the
+clip-range/GIF-export merge). Seven commits, ending in ADR-0023 and the native
+modifier read. This replaces the root-level `NEXT-SESSION-drag-and-drop.md`
+handoff, now deleted.
+
+**Owner-confirmed on the packaged shell (2026-08-15):** moving a bundle between
+collections, ⌥ mid-drag copying, a parent's count dropping when a bundle goes into
+its child, and repeated fast drags keeping every number right. Nothing on this
+branch is outstanding; it has not been opened as a PR, which is the owner's call.
+
+Owner-reported, two symptoms from one gesture: **(1)** dragging a bundle into a
+collection often does not show — it stays in the collection it left or never
+appears in the one it joined, reloading always shows the correct state, and the
+sidebar count sometimes moves when the listing does not; **(2)** **⌥-drag should
+copy and mostly moves.** Owner's framing, which is the right one: *"This seems to
+be a lasting issue. Even if the files are on SMB, I had no issue with Eagle."*
+Not the network — client-side cache behaviour, plus one server inconsistency.
+
+### Fixed: a count that disagreed with its own listing
+
+`collection_counts` and `tag_counts` counted membership rows without joining
+`asset_bundles`, so a scan-staged provisional bundle — which belongs to the
+Unbundled view and nowhere else — was counted against every collection and tag it
+was filed into. Unrelated to the drag, and a real inconsistency on its own. The
+collection query restricts the *join* rather than filtering the result so a
+collection holding nothing keeps its zero; tags can use an inner join because
+every tag is already backfilled to 0. Both new tests fail against the old
+queries.
+
+### Fixed: invalidation is not enough for a listing the projection skipped
+
+`useBatchUpdate` optimistically rewrites the cached browse listings on every drop
+and reconciles with `invalidateQueries`. The rewrite is best-effort and used to
+fail **silently**, and invalidation does not cover for it: React Query serves a
+stale query's data the instant it is observed and refetches behind it, so a
+listing the rewrite skipped shows its pre-drop contents on open — while the count
+beside it moved immediately. That is symptom 1, and it explains why a reload
+always looked right.
+
+Four ways the rewrite could skip a listing, all now recorded rather than ignored:
+a filter or a search (whether a bundle belongs in one is the server's judgement);
+an arrival whose summary row is in no cached page, so there is nothing to draw;
+Uncategorized and Untagged, which no projection writes; and a bundle whose
+membership was never loaded, which kills the whole projection — the case a fast
+drag hits before `prefetchBundleMemberships` lands. `projectCollectionListings`
+now returns those keys and settling **removes** the queries nobody is watching
+while refetching the one that is, so the grid on screen never blanks.
+
+Also cancels in-flight `browse` fetches in `onMutate`. One started before the drop
+resolves after it, writes the pre-drop page over the projection, and the settle
+invalidation is then deduplicated against that same request. It is a genuine
+clobber and it survived every other attempt at this bug.
+
+Weighed and rejected: dropping the listing rewrite entirely and making the server
+authoritative. Removing *all* inactive browse listings on settle is the blunt
+version — it broke four existing tests, and those tests are the specification of
+the instant-feel behaviour. Keeping the rewrite for what it can prove and
+evicting only what it cannot leaves all four passing untouched, and only the
+fifth changed: it asserted that a filtered listing keeps its stale rows, which is
+exactly the behaviour being removed.
+
+### Fixed: ⌥ to copy, read from the OS in the shell (ADR-0023)
+
+Four attempts each bet on one web channel and lost. The owner's pass on the
+packaged shell settled why, and their objection — *"I use many apps and none of
+them have this restriction"* — settled what to do about it.
+
+What was always true: `update_bundles` honours ⌥ correctly (with
+`remove_collection_ids` empty the change is a pure add) and the flag reaches it
+intact. The break was only ever in *reading* the modifier.
+
+Measured, not assumed:
+
+- **Chrome delivers modifier flags on drag events.** Verified against real
+  `DragEvent`/`DataTransfer` objects; the verdict flips to copy when ⌥ arrives and
+  back when it is released before the drop.
+- **The shell's WKWebView delivers neither channel.** ⌥ pressed mid-drag changed
+  nothing while ⌥ held *before* the drag worked, which only the `dragstart`
+  reading explains. `dropEffect` never varied either, sampled from a capture-phase
+  listener on both `dragover` and `dragenter` (the latter is written by no
+  handler, so it cannot be the app's own value returning).
+- **Tauri was not the cause.** `dragDropEnabled` is already `false`.
+- **Keyboard events are impossible.** The window server owns the keyboard during a
+  native drag; no `keydown` reaches the page.
+
+This is a limit on what WKWebView passes to web content, **not** a macOS one.
+Native apps read the system's own event state, which stays current throughout a
+drag. So the shell does too: `alt_key_held` in
+`apps/desktop/src-tauri/src/modifiers.rs`, over
+`CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState)` — a
+thread-safe C function needing no main thread and, unlike a `CGEventTap`, no
+Input Monitoring permission. One `#[cfg(target_os)]` module, `false` off macOS so
+the Ubuntu Rust-only gate keeps building, and no new dependency: `core-graphics`
+does not bind that call, so the module declares it and its two constants.
+
+`isCopyDrag()` in `apps/web/src/app/dnd.ts` polls the host every 40ms between
+`dragstart` and `dragend` and ranks the channels: either *real* modifier reading
+(host, or drag-event flags where an engine delivers them) settles it, and either
+saying "down" is enough since neither can invent a copy; `dropEffect` is consulted
+only when it has been seen to change, which is what stops the
+stuck-at-`copy`-with-nothing-held default from copying every time; and the
+`dragstart` reading is the last fallback, so ⌥ held before a drag begins works
+with no host at all. Default is move — a wrong move is one undo, a wrong copy
+silently duplicates membership.
+
+**Confirmed by the owner on the packaged shell (2026-08-15):** ⌥ pressed *mid-drag*
+copies. That was the one link no test here could reach — the Rust read is
+unit-tested and the channel ranking has sixteen unit tests against a fake host,
+but only a real ⌥ during a real drag in the shell exercises the join. The
+temporary `DragModifierProbe` that informed this work has been deleted along with
+its test, as its header always said it would be.
+
+### Fixed: a drop that outran React did nothing at all
+
+Reproduced in Chrome against a synthetic library: a drop delivered in the same
+tick as its `dragstart` sent no write — no card moved, no count changed, and
+nothing corrected it later because nothing had happened.
+`moveBundlesToCollection` re-read the reactive `dragItem` for the ids, while every
+caller had already resolved the drag from the synchronous store to decide it was
+holding bundles at all. `dnd.ts` says in as many words why commit paths must read
+the store; this was the last one that did not.
+
+### Fixed: the badge counted a subtree while the grid listed one collection
+
+Also reproduced before changing anything: a parent read `1` beside an empty grid
+whenever its only bundle sat in a child, and moving a bundle from a parent into
+its own child left the parent's number motionless while the grid lost a card.
+Both numbers were correct; they were answering different questions with the same
+visual weight.
+
+The owner chose "match the grid". `/collections/counts` now returns
+`direct_counts` alongside `counts`, and the badge follows whichever the grid is
+listing — the collection's own bundles, or the subtree total when *Show
+subcollection contents* is on. Both arrive in one request, so the toggle costs no
+round trip. They cannot be derived from one another on the client: summing direct
+counts over a subtree double-counts a bundle filed in both a parent and its child,
+which the server's `DISTINCT` avoids. `CountsResponse` stays shared with tags,
+which have no subtree; collections got their own schema. The optimistic path
+already computed both delta sets for the inspector and now applies the direct one
+to the sidebar too.
+
+Verified in Chrome: badge `1` beside "1 items", badge `3` beside "3 items" with
+the toggle on.
+
+### Ruled out, with tests to keep it ruled out
+
+`hooks.countRace.test.tsx` reproduces the three count races that looked like
+suspects — the server's answer landing over the optimistic guess, a second drop
+cancelling the first one's reconciling refetch, and a refetch already in flight
+answering with pre-drop numbers. All three already settle on the server's
+figures, so none of them was the reported fault.
+
+Two behaviours that are *by design* and worth remembering, because both look like
+a count that will not update: dragging from All/Recent/search removes the bundle
+from nothing (there is no collection in view to remove it from), and with *Show
+subcollection contents* on, dropping a bundle whose membership is in a child
+targets the parent for removal, which it is not a member of.
+
+### Tests
+
+Backend `just check-server`: 1020 passed, with ruff, ruff format and mypy clean.
+Frontend `just check-web`: lint, format, typecheck, 727 tests and build all green.
+Desktop: `cargo fmt --check`, `cargo clippy --locked --all-targets -D warnings`,
+`cargo test --locked` (109 passed) and a full `tauri build --no-bundle` all green.
+Playwright was **not** run.
+
+`isCopyDrag()` has eleven unit tests in `dndCopyDrag.test.ts`, each playing one
+engine's *behaviour* — flags that arrive, flags that never do, a `dropEffect` that
+tracks the modifier, a `dropEffect` stuck at its `effectAllowed` default — rather
+than asserting one platform's answer.
+
+Verified in Chrome against real `DragEvent`/`DataTransfer` objects (jsdom has no
+`DragEvent`, so the unit tests necessarily use a stand-in): the modifier reaches a
+real drag event as both `altKey` and `getModifierState('Alt')`, the verdict flips
+to `COPY` when it arrives and back to `move` when it is released before the drop.
+Only the gesture was synthetic. **Chrome delivering the flag means the owner's
+symptom is most likely specific to the shell's WKWebView**, which is what remains
+to be confirmed — the desktop shell cannot be driven from here.
+
+A throwaway library in the scratchpad was registered to render the shell for that
+check and deregistered afterwards; both preview servers were stopped.
+
 ## Merged: clip range picker and GIF export (2026-08-15)
 
 Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`, **merged**

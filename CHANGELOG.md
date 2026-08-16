@@ -262,6 +262,21 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   other part of the drop path already used it. When the two disagreed the write was
   never sent at all: no card moved, no count changed, and nothing later corrected it
   because nothing had happened.
+- **Holding ⌥ while dropping bundles on a collection copies them instead of
+  moving them.** It was meant to already, and mostly moved. The app read the
+  modifier off the drop event's `altKey`, which a native macOS drag does not
+  reliably deliver: the window server owns the keyboard for the duration, and
+  whether the flag reaches the page depends on the browser engine — Chrome passes
+  it through, the desktop shell's WKWebView does not. That is a limit on web
+  content, not on macOS; every native app tracks ⌥ mid-drag by reading the
+  system's own event state. So the desktop shell now reads it the same way and the
+  app asks the shell for the duration of each drag (ADR-0023), which is what makes
+  ⌥ work mid-drag there at all. The browser build keeps using the drag events'
+  own flags, and both fall back to the modifier state at `dragstart` — read before
+  the drag takes the keyboard — so holding ⌥ *before* starting a drag works with
+  no host at all. The default is move: a wrong move is one undo, while a wrong
+  copy quietly duplicates membership. The cursor's copy badge follows the same
+  answer, so it can no longer promise a copy the drop won't perform.
 - **A collection opened after a drop shows what is in it, not what was.** Dropping
   bundles on a collection rewrote the cached listings it could work out and marked
   the rest stale — but a stale listing is still served the instant its view opens,

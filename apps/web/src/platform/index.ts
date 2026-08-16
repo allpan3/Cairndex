@@ -176,6 +176,16 @@ interface PlatformRuntime {
   setViewerMenuAvailable(viewer: boolean, video: boolean): Promise<void>
   toggleWindowFullscreen(): Promise<boolean>
   isWindowFullscreen(): Promise<boolean>
+  /**
+   * Whether ⌥ is down right now, read from the OS, or null where no host can say.
+   *
+   * The one modifier reading the web layer cannot make for itself: a native macOS
+   * drag hands the keyboard to the window server, and WKWebView passes neither
+   * modifier flags nor a modifier-tracking `dropEffect` into JavaScript for the
+   * duration (ADR-0023). Null in the browser, where the drag events' own flags do
+   * arrive and are used instead.
+   */
+  altKeyHeld(): Promise<boolean | null>
   listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
   listenDeepLink(handler: (target: DeepLinkTarget) => void): Promise<() => void>
   takePendingDeepLink(): Promise<DeepLinkTarget | null>
@@ -276,6 +286,9 @@ const webRuntime: PlatformRuntime = {
   // HTML Fullscreen API there (see usePlayer.toggleFullscreen).
   toggleWindowFullscreen: async () => false,
   isWindowFullscreen: async () => false,
+  // The browser has no host to ask, and does not need one: Chrome delivers the
+  // modifier on the drag events themselves.
+  altKeyHeld: async () => null,
   listenFullscreen: async () => () => undefined,
   listenDeepLink: async () => () => undefined,
   takePendingDeepLink: async () => null,
@@ -450,6 +463,8 @@ export const setHostViewerMenuAvailable = (viewer: boolean, video: boolean): Pro
 export const toggleHostWindowFullscreen = (): Promise<boolean> => runtime.toggleWindowFullscreen()
 
 export const isHostWindowFullscreen = (): Promise<boolean> => runtime.isWindowFullscreen()
+/** See `PlatformRuntime.altKeyHeld`. Null means "no host could say". */
+export const hostAltKeyHeld = (): Promise<boolean | null> => runtime.altKeyHeld()
 
 // Subscribes to cairndex:// deep links delivered while the app is running
 export const listenHostDeepLink = (

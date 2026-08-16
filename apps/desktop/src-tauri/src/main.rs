@@ -16,6 +16,8 @@ mod lifecycle;
 mod mappings;
 // Streams server media through the shell-owned bearer transport
 mod media_proxy;
+// Reads OS keyboard-modifier state, which a native drag hides from the webview
+mod modifiers;
 // Owns validation for the persisted Cairndex server URL
 mod server_url;
 // Spawns and supervises the bundled local-server sidecar
@@ -100,6 +102,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            modifiers::alt_key_held,
             app_menu::renderer_ready,
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,
