@@ -185,6 +185,21 @@ grouping plans; the decision filled in metadata with no probe job ever run; and
 in the browser both the 10-bit MP4 and the MKV played (`readyState` 4, no
 fallback card) where the 10-bit one previously showed the owner's screenshot.
 
+**Also fixed (owner-reported while testing).** The viewer's docked pane showed
+the Bundle Inspector for an unbundled video, stating it was in a bundle. The
+trap is that "has a `bundle_id`" is not "is in a bundle": a scan stages every
+new file into a provisional one-file bundle, so every unbundled file has one.
+`inspectorTargetForEntry` / `inspectorTargetForBundleFile` in
+`app/fileFacts.ts` now decide, and `ViewerShell` is told rather than guessing —
+the shell cannot know, because only the opening surface has the `unbundled` flag
+(File Browser) or the bundle's `grouping_state` (Bundle Browser). Note the
+Bundle Browser needs it too: its views exclude provisional bundles, but **Missing
+Files does not**, so a scan-staged bundle can be opened there. An unindexed path
+now gets the file pane as well, where it previously got nothing and a disabled
+toggle. `factsFromEntry` also picks up the width/height/fps the listing gained
+above — the File Browser's own inspector was showing "—" for numbers the server
+already had.
+
 **Also fixed (found while verifying, owner asked for it).** `PUT
 …/files/{id}/progress` 500'd when two progress writes for the same file raced —
 `upsert_progress` was read-then-insert, so both saw no row and the second hit

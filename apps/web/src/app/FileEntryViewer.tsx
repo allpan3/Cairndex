@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { type FileBrowserEntry, type PlayableVideo } from '../api/client'
 import { usePlaybackManifest } from '../api/hooks'
 import type { PlayerPrefs } from './types'
+import { inspectorTargetForEntry } from './fileFacts'
 import { ViewerShell } from './viewer/ViewerShell'
 import { type ViewerItem, viewerItemFromEntry } from './viewer/viewerItem'
 
@@ -47,6 +48,10 @@ export function FileEntryViewer({
   const current = items[index] ?? null
   const isVideo = current?.mediaKind === 'video'
 
+  // Only this surface knows whether a row's bundle is a real one.
+  const entry = files[index] ?? null
+  const inspectorTarget = useMemo(() => inspectorTargetForEntry(entry), [entry])
+
   // Only an indexed video has a manifest to read, and only a video needs one.
   const manifestBundleId = isVideo && current?.fileId ? current.bundleId : null
   const { data: manifest, isLoading: manifestLoading } = usePlaybackManifest(manifestBundleId)
@@ -76,6 +81,7 @@ export function FileEntryViewer({
       onClose={onClose}
       errorHeading="Couldn’t load this file."
       emptyMessage={items.length === 0 ? 'Nothing here can be previewed.' : null}
+      inspectorTarget={inspectorTarget}
     />
   )
 }

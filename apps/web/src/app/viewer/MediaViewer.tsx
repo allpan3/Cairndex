@@ -10,6 +10,7 @@ import {
   usePlaybackManifest,
 } from '../../api/hooks'
 import type { PlayerPrefs } from '../types'
+import { inspectorTargetForBundleFile } from '../fileFacts'
 import { ViewerShell, type ShellCoverActions } from './ViewerShell'
 import { viewerItemFromFile } from './viewerItem'
 
@@ -104,6 +105,14 @@ export function MediaViewer({
     [playlistFiles],
   )
 
+  const inspectorTarget = useMemo(
+    () =>
+      bundle
+        ? inspectorTargetForBundleFile(bundleId, bundle.grouping_state, current ?? null)
+        : null,
+    [bundle, bundleId, current],
+  )
+
   const cover = useMemo<ShellCoverActions | null>(() => {
     if (!currentId) return null
     return {
@@ -139,6 +148,7 @@ export function MediaViewer({
       errorHeading="Couldn’t load this bundle."
       emptyMessage={emptyMessage}
       cover={cover}
+      inspectorTarget={inspectorTarget}
     />
   )
 }

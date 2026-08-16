@@ -288,6 +288,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **An unbundled video in the viewer shows its own details, not a bundle's.** A
+  scan stages every new file into a provisional one-file bundle, so an unbundled
+  file has a `bundle_id` like any other — and the viewer's docked pane took that
+  as licence to show the Bundle Inspector, stating that the file was in a bundle
+  when it was not. Only a *confirmed* bundle gets the bundle pane now; an
+  unbundled file, and a File Browser path that was never indexed, get the file
+  inspector instead. The toggle is named for whichever it will open, and it is
+  no longer disabled for an unindexed path — that path has details too. The file
+  inspector also reads real dimensions and frame rate for a File Browser row now
+  that the listing carries them.
 - **Two playback-position writes landing together no longer fail one of them.**
   The player saves progress periodically *and* on completion, which on a short
   file arrive at once — and the write was read-then-insert, so both found no row,
