@@ -389,8 +389,32 @@ Image, previews a chosen picture on a checkerboard, and both mark kinds were
 rendered through the real module against white, mid-tone, and near-black. A
 shadow alone was not enough on pure white, so the text mark is outlined too.
 
-**Not done:** the desktop shell was not exercised (same gap the GIF work
-recorded), and there is no e2e Playwright spec for the setting. A **moving**
+### The desktop gap, closed by the owner actually running it (2026-08-16)
+
+The untested desktop path finally got exercised, and it was broken: **a GIF
+export failed with a 404 in the shell while working in a browser.** Not the
+watermark — the artifact download.
+
+The finished GIF is fetched through the shell's loopback media relay, the way a
+contact sheet is, so a bearer never travels in a URL. The relay keeps a strict
+route allowlist (`media_proxy::media_route_library_id`), and
+`files/{id}/exports/{export_id}/download` was not on it, so the _shell_ answered
+404 before the request reached the server. That is precisely how contact sheets
+shipped broken in 2026-07; a route added since repeated it, and the allowlist
+test even carries a comment about the first occurrence.
+
+Fixed by listing the download route, with a test beside the contact-sheet one.
+Only the download is relayed: create, poll and delete carry their own auth over
+`hostFetch`, and the relay refuses anything but GET/HEAD regardless, so nothing
+destructive became reachable.
+
+**The lesson worth keeping:** any new read-only media route the web layer
+fetches needs an allowlist entry, or it works in the browser and 404s in the
+desktop app. Two routes have now hit this.
+
+**Not done:** the desktop shell is otherwise still lightly exercised — the
+`save_export_file` raw-IPC hop has not been confirmed end to end — and there is
+no e2e Playwright spec for the setting. A **moving**
 mark remains unbuilt, but is now a known-cheap option rather than an open
 question — see the measurements above.
 
