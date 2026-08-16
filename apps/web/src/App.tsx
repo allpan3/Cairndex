@@ -93,7 +93,7 @@ import {
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
 import type { DragItem } from './app/dnd'
-import { getActiveDrag, setActiveDrag } from './app/dnd'
+import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -141,6 +141,7 @@ import {
   isDesktopHost,
   hasHostDeviceAccess,
   hasHostDeviceToken,
+  hostAltKeyHeld,
   hostOperationErrorMessage,
   reverseMapHostPaths,
   type DeepLinkTarget,
@@ -755,6 +756,11 @@ function Workspace({
     setActiveDrag(item)
     setDragItem(item)
   }, [])
+  // Whether a drag is asking to copy (⌥) rather than move cannot be read off the
+  // drop event alone; this watches the drag for whichever signal the engine
+  // actually delivers, and asks the desktop host — the only source that answers
+  // during a native drag in the shell. See dnd.ts and ADR-0023.
+  useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [viewerTarget, setViewerTarget] = useState<{
     bundleId: string
@@ -1319,6 +1325,16 @@ function Workspace({
   )
 
   const includeSubContents = selection.collectionId !== null && showSubContents
+  // The badge beside a collection says what opening it will show. Clicking one
+  // lists its own bundles unless "Show subcollection contents" is on, so the
+  // number follows the same switch. It used to always be the subtree total, which
+  // meant a parent read 1 beside an empty grid whenever its only bundle sat in a
+  // child — a number that looked broken because it would not move when the grid
+  // did (owner, 2026-08-15). Both figures come from one request, so the toggle
+  // does not cost a round trip.
+  const badgeCounts = showSubContents
+    ? collectionCounts.data?.subtree
+    : collectionCounts.data?.direct
   // Manual order scope: a single collection uses its own membership order; the
   // All/system views and a descendant-inclusive collection use the global order
   // (mirrors browse's MANUAL sort). Drives drag-reorder and "Clean up by…".
@@ -1939,13 +1955,21 @@ function Workspace({
   )
 
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
-  // "add") remove them from the collection currently in view. Reads the dragged
-  // bundle ids from the active dragItem.
+  // "add") remove them from the collection currently in view.
+  //
+  // The ids come from the *synchronous* drag store, with the reactive `dragItem`
+  // only as a fallback. This is a commit path, and the store exists precisely
+  // because a fast drag can deliver its drop before React has committed the
+  // dragstart's state update (see dnd.ts). Reading the prop here undid that: the
+  // callers had already resolved the drag from the store to decide they were
+  // holding bundles at all, and then this dropped the write on the floor — no
+  // mutation, no count change, nothing on screen to say a drag had happened.
   const moveBundlesToCollection = useCallback(
     (targetCollectionId: string, alt: boolean) => {
-      if (dragItem?.kind !== 'bundles' || dragItem.ids.length === 0) return
+      const live = getActiveDrag() ?? dragItem
+      if (live?.kind !== 'bundles' || live.ids.length === 0) return
       batch.mutate({
-        bundle_ids: dragItem.ids,
+        bundle_ids: live.ids,
         add_collection_ids: [targetCollectionId],
         remove_collection_ids: alt || !selection.collectionId ? [] : [selection.collectionId],
       })
@@ -2153,7 +2177,7 @@ function Workspace({
         if (getActiveDrag() === null && dragItem === null) return
         if (e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
-        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+        e.dataTransfer.dropEffect = isCopyDrag() ? 'copy' : 'move'
       }}
       onDrop={(e) => {
         if (getActiveDrag() === null && dragItem === null) return
@@ -2235,7 +2259,7 @@ function Workspace({
           }}
           counts={counts.data}
           collections={collections.data ?? []}
-          collectionCounts={collectionCounts.data}
+          collectionCounts={badgeCounts}
           onDeleteCollection={removeCollection}
           onCreateCollection={(payload, callbacks) => createCollection.mutate(payload, callbacks)}
           onRenameCollection={(id, name, callbacks) =>
@@ -2343,7 +2367,7 @@ function Workspace({
                     subcollections={headerCollections}
                     layout={prefs.layout}
                     sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
-                    counts={collectionCounts.data}
+                    counts={badgeCounts}
                     subcounts={subCounts}
                     // The "Show subcollection contents" toggle only applies inside
                     // a collection; the All view has no such toggle.
@@ -2741,6 +2765,9 @@ function Workspace({
       {dragItem && (
         <div className="drag-hint" role="status" aria-live="polite">
           {dragItem.kind === 'bundles' ? (
+            // Unqualified again: ⌥ pressed mid-drag now works in the shell too,
+            // because the host reads the modifier from the OS rather than hoping
+            // the webview reports it (ADR-0023).
             <>
               Drag to <strong>move</strong> · hold <kbd>⌥</kbd> to <strong>copy</strong>
             </>

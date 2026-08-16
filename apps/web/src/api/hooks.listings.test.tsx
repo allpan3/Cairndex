@@ -4,17 +4,19 @@ import type { ReactNode } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { BundleBrowsePage, BundleSummary, CollectionRead } from './client'
-import { useBatchUpdate, useSetBundleCollections, type BrowseQuery } from './hooks'
+import { useBatchUpdate, useBrowse, useSetBundleCollections, type BrowseQuery } from './hooks'
 
 const api = vi.hoisted(() => ({
   batchUpdate: vi.fn(),
   setBundleCollections: vi.fn(),
+  browseBundles: vi.fn(),
 }))
 
 vi.mock('./client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./client')>()),
   batchUpdate: api.batchUpdate,
   setBundleCollections: api.setBundleCollections,
+  browseBundles: api.browseBundles,
 }))
 
 function collection(id: string, parentId: string | null = null): CollectionRead {
@@ -48,12 +50,17 @@ function summary(id: string): BundleSummary {
   } as unknown as BundleSummary
 }
 
+function page(ids: string[]): BundleBrowsePage {
+  return {
+    items: ids.map(summary),
+    total: ids.length,
+    offset: 0,
+    limit: 100,
+  } as unknown as BundleBrowsePage
+}
+
 /** One cached browse listing, as `useBrowse` stores it. */
-function listing(
-  client: QueryClient,
-  scope: Partial<BrowseQuery> & { collectionId: string },
-  ids: string[],
-) {
+function listing(client: QueryClient, scope: Partial<BrowseQuery>, ids: string[]) {
   const key: BrowseQuery = {
     view: 'all',
     sort: 'manual',
@@ -62,26 +69,19 @@ function listing(
     ...scope,
   } as BrowseQuery
   client.setQueryData<InfiniteData<BundleBrowsePage>>(['browse', key], {
-    pages: [
-      {
-        items: ids.map(summary),
-        total: ids.length,
-        offset: 0,
-        limit: 100,
-      } as unknown as BundleBrowsePage,
-    ],
+    pages: [page(ids)],
     pageParams: [0],
   })
   return key
 }
 
-const itemsIn = (client: QueryClient, key: BrowseQuery) =>
-  client
-    .getQueryData<InfiniteData<BundleBrowsePage>>(['browse', key])!
-    .pages.flatMap((page) => page.items.map((item) => item.id))
+const cached = (client: QueryClient, key: BrowseQuery) =>
+  client.getQueryData<InfiniteData<BundleBrowsePage>>(['browse', key])
 
-const totalIn = (client: QueryClient, key: BrowseQuery) =>
-  client.getQueryData<InfiniteData<BundleBrowsePage>>(['browse', key])!.pages[0]!.total
+const itemsIn = (client: QueryClient, key: BrowseQuery) =>
+  cached(client, key)!.pages.flatMap((page) => page.items.map((item) => item.id))
+
+const totalIn = (client: QueryClient, key: BrowseQuery) => cached(client, key)!.pages[0]!.total
 
 //   shelf ── shelf-nested
 //   crate
@@ -105,6 +105,7 @@ function wrapper(client: QueryClient) {
 beforeEach(() => {
   api.batchUpdate.mockReset()
   api.setBundleCollections.mockReset()
+  api.browseBundles.mockReset()
 })
 
 test('a bundle filed into a collection appears in that collection’s cached listing', async () => {
@@ -156,7 +157,7 @@ test('a listing showing subcollection contents gains a bundle filed into a child
   expect(itemsIn(client, flat)).toEqual([])
 })
 
-test('a filtered listing is left to the refetch rather than guessed at', async () => {
+test('a filtered listing is dropped rather than left to answer from stale rows', async () => {
   const client = seedClient()
   client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: [] })
   listing(client, { collectionId: 'crate' }, ['b1'])
@@ -165,13 +166,144 @@ test('a filtered listing is left to the refetch rather than guessed at', async (
     { collectionId: 'shelf', filter: { field: 'rating', op: 'gte', value: 4 } } as never,
     [],
   )
+  const inFlight: string[][] = []
+  api.batchUpdate.mockImplementation(async () => {
+    inFlight.push(itemsIn(client, filtered))
+    return { updated: 1 }
+  })
+  const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
+
+  await act(() => result.current.mutateAsync({ bundle_ids: ['b1'], add_collection_ids: ['shelf'] }))
+
+  // Whether an unrated bundle belongs in a rating filter is the server's call,
+  // so it is never guessed into the listing…
+  expect(inFlight[0]).toEqual([])
+  // …and the listing is then removed rather than merely invalidated. Marking it
+  // stale would leave React Query free to serve these pre-drop rows the instant
+  // the view opened, refetching behind them — the count moves, the grid doesn't.
+  expect(cached(client, filtered)).toBeUndefined()
+})
+
+test('a destination with no cached row to draw is dropped rather than left short', async () => {
+  const client = seedClient()
+  client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: [] })
+  // No listing anywhere holds b1, so the projection has no summary to draw with.
+  const destination = listing(client, { collectionId: 'shelf' }, ['b9'])
   api.batchUpdate.mockResolvedValue({ updated: 1 })
   const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
 
   await act(() => result.current.mutateAsync({ bundle_ids: ['b1'], add_collection_ids: ['shelf'] }))
 
-  // Whether an unrated bundle belongs in a rating filter is the server's call.
-  expect(itemsIn(client, filtered)).toEqual([])
+  expect(cached(client, destination)).toBeUndefined()
+})
+
+test('Uncategorized is dropped when a bundle gains its first collection', async () => {
+  const client = seedClient()
+  client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: [] })
+  const uncategorized = listing(client, { view: 'uncategorized' }, ['b1'])
+  // Membership decides what Uncategorized holds, but not what All holds.
+  const all = listing(client, { view: 'all' }, ['b1'])
+  api.batchUpdate.mockResolvedValue({ updated: 1 })
+  const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
+
+  await act(() => result.current.mutateAsync({ bundle_ids: ['b1'], add_collection_ids: ['shelf'] }))
+
+  expect(cached(client, uncategorized)).toBeUndefined()
+  expect(itemsIn(client, all)).toEqual(['b1'])
+})
+
+test('an unknown membership drops every listing the write could have moved', async () => {
+  const client = seedClient()
+  // b1's memberships were never loaded, so no delta is computable and nothing is
+  // projected — the case a fast drag hits when the prefetch has not landed.
+  const source = listing(client, { collectionId: 'crate' }, ['b1'])
+  const uncategorized = listing(client, { view: 'uncategorized' }, [])
+  const all = listing(client, { view: 'all' }, ['b1'])
+  api.batchUpdate.mockResolvedValue({ updated: 1 })
+  const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
+
+  await act(() =>
+    result.current.mutateAsync({
+      bundle_ids: ['b1'],
+      add_collection_ids: ['shelf'],
+      remove_collection_ids: ['crate'],
+    }),
+  )
+
+  expect(cached(client, source)).toBeUndefined()
+  expect(cached(client, uncategorized)).toBeUndefined()
+  expect(itemsIn(client, all)).toEqual(['b1'])
+})
+
+test('a listing fetch already in flight cannot land on top of the drop', async () => {
+  const client = seedClient()
+  client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: ['crate'] })
+  const source = listing(client, { collectionId: 'crate' }, ['b1', 'b2'])
+  // A refetch that started before the drop and answers after it, carrying the
+  // pre-drop page. Left running it overwrites the projection, and the settle
+  // invalidation is deduplicated against this very request.
+  let answer: () => void = () => undefined
+  const pending = new Promise<void>((resolve) => {
+    answer = resolve
+  })
+  void client
+    .fetchInfiniteQuery({
+      queryKey: ['browse', source],
+      queryFn: async () => {
+        await pending
+        return page(['b1', 'b2'])
+      },
+      initialPageParam: 0,
+    })
+    .catch(() => undefined)
+  api.batchUpdate.mockResolvedValue({ updated: 1 })
+  const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
+
+  await act(() =>
+    result.current.mutateAsync({
+      bundle_ids: ['b1'],
+      add_collection_ids: ['shelf'],
+      remove_collection_ids: ['crate'],
+    }),
+  )
+  await act(async () => {
+    answer()
+    await pending
+  })
+
+  expect(itemsIn(client, source)).toEqual(['b2'])
+})
+
+test('the listing on screen is refetched in place rather than dropped', async () => {
+  const client = seedClient()
+  client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: [] })
+  // Filtered, so the projection cannot prove it — but it is the grid the owner is
+  // looking at, and removing it would blank the view under the cursor.
+  const watched: BrowseQuery = {
+    view: 'all',
+    sort: 'manual',
+    order: 'asc',
+    limit: 100,
+    collectionId: 'shelf',
+    filter: { field: 'rating', op: 'gte', value: 4 },
+  } as never
+  api.browseBundles.mockResolvedValue(page(['b9']))
+  api.batchUpdate.mockResolvedValue({ updated: 1 })
+  const { result } = renderHook(() => ({ browse: useBrowse(watched), batch: useBatchUpdate() }), {
+    wrapper: wrapper(client),
+  })
+  await act(async () => {
+    await vi.waitFor(() => expect(cached(client, watched)).toBeDefined())
+  })
+
+  await act(() =>
+    result.current.batch.mutateAsync({ bundle_ids: ['b1'], add_collection_ids: ['shelf'] }),
+  )
+
+  expect(cached(client, watched)).toBeDefined()
+  expect(itemsIn(client, watched)).toEqual(['b9'])
+  // Kept means refetched: it was invalidated, so the server answered again.
+  expect(api.browseBundles.mock.calls.length).toBeGreaterThan(1)
 })
 
 test('the collection picker projects the same way a drop does', async () => {
