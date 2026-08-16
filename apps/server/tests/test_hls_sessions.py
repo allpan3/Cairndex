@@ -800,3 +800,129 @@ def test_unknown_session_playlist_404(
         f"/playback-sessions/does-not-exist/index.m3u8"
     )
     assert resp.status_code == 404
+
+
+# --- File Browser paths: playback with no index row --------------------------
+def _make_real_video(path: Path, *, pix_fmt: str = "yuv420p") -> None:
+    """A tiny real file, so the on-demand probe has something to read."""
+    assert _FFMPEG is not None
+    subprocess.run(
+        [
+            _FFMPEG, "-y", "-v", "error",
+            "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:d=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-c:v", "libx264", "-pix_fmt", pix_fmt, "-c:a", "aac", str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )  # fmt: skip
+
+
+@requires_ffmpeg
+def test_an_unindexed_path_gets_a_real_decision_and_session(
+    client: TestClient,
+    library_id: str,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    """File-browser-only mode: a library that was never scanned still plays.
+
+    Without a row there was no decision at all — playback fell through to a
+    native progressive read, so anything the browser could not decode failed
+    with the format card and no conversion on offer (owner-reported,
+    2026-08-15). Nothing here is indexed: the path is the whole identity.
+    """
+    _use_stub_manager(client, make_manager(delay=0.0))
+    (library_root / "Set07").mkdir()
+    _make_real_video(library_root / "Set07" / "clip1.mkv")
+    base = f"/api/v1/libraries/{library_id}/file-browser"
+
+    decision = client.post(
+        f"{base}/playback-decision",
+        json={
+            "path": "Set07/clip1.mkv",
+            "caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]},
+        },
+    ).json()
+
+    # MKV holding H.264/AAC: the container is the only problem, so copy it over.
+    assert decision["method"] == "remux"
+    assert decision["duration"] is not None and decision["duration"] > 0
+    assert decision["session"] is not None
+    # Everything that needs a file row stays empty rather than being faked.
+    assert decision["subtitles"] == [] and decision["storyboard_url"] is None
+    assert decision["progress"] is None
+
+    session_id = decision["session"]["id"]
+    assert decision["session"]["playlist_url"] == (
+        f"{base}/playback-sessions/{session_id}/index.m3u8"
+    )
+    playlist = client.get(decision["session"]["playlist_url"])
+    assert playlist.status_code == 200
+    assert playlist.text.startswith("#EXTM3U")
+    assert client.get(f"{base}/playback-sessions/{session_id}/init.mp4").content == b"init"
+    assert client.delete(f"{base}/playback-sessions/{session_id}").status_code == 204
+
+
+@requires_ffmpeg
+def test_an_unindexed_directly_playable_path_streams_from_the_path_reader(
+    client: TestClient, library_id: str, library_root: Path, make_manager: ManagerFactory
+) -> None:
+    _use_stub_manager(client, make_manager(delay=0.0))
+    _make_real_video(library_root / "clip.mp4")
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "clip.mp4",
+            "caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]},
+        },
+    ).json()
+
+    assert decision["method"] == "direct"
+    assert decision["session"] is None
+    # The path-scoped reader, not a file-id stream endpoint: there is no row.
+    assert decision["stream_url"] == f"/api/v1/libraries/{library_id}/file?path=clip.mp4"
+    assert client.get(decision["stream_url"]).status_code == 200
+
+
+@requires_ffmpeg
+def test_an_unindexed_ten_bit_path_is_transcoded_rather_than_handed_over(
+    client: TestClient, library_id: str, library_root: Path, make_manager: ManagerFactory
+) -> None:
+    _use_stub_manager(client, make_manager(delay=0.0))
+    _make_real_video(library_root / "hi10.mp4", pix_fmt="yuv420p10le")
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "hi10.mp4",
+            "caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]},
+        },
+    ).json()
+
+    assert decision["method"] == "transcode"
+    assert decision["session"] is not None
+
+
+def test_file_browser_playback_refuses_paths_outside_the_library(
+    client: TestClient, library_id: str
+) -> None:
+    base = f"/api/v1/libraries/{library_id}/file-browser/playback-decision"
+    caps = {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}
+    for bad in ("../../etc/hosts", "/etc/hosts"):
+        assert client.post(base, json={"path": bad, "caps": caps}).status_code == 422
+
+
+def test_file_browser_playback_refuses_a_non_video_path(
+    client: TestClient, library_id: str, library_root: Path
+) -> None:
+    (library_root / "notes.txt").write_text("not a video")
+    resp = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "notes.txt",
+            "caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]},
+        },
+    )
+    assert resp.status_code == 422

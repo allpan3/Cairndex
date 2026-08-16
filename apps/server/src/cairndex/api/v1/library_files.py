@@ -127,8 +127,20 @@ def _enqueue(
 
 
 @router.post("/jobs/scan", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
-def enqueue_scan(library_id: str, registry: RegistryDbSession) -> JobRead:
-    return _enqueue(registry, library_id, JobType.SCAN, {})
+def enqueue_scan(
+    library_id: str,
+    registry: RegistryDbSession,
+    suggest_grouping: Annotated[bool, Query()] = True,
+) -> JobRead:
+    """Enqueue library discovery, optionally with the grouping-suggestion pass.
+
+    ``suggest_grouping=false`` is discovery on its own — what "Scan new files"
+    asks for. Grouping is a separate, reviewable step the owner opens
+    deliberately, and running it unasked both costs a directory-tree walk and
+    puts the review dialog on screen at the end of a scan (owner-reported,
+    2026-08-15). The combined Update keeps the default.
+    """
+    return _enqueue(registry, library_id, JobType.SCAN, {"suggest_grouping": suggest_grouping})
 
 
 @router.post("/jobs/probe", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)

@@ -130,3 +130,57 @@ test('refuses direct play of an hev1 source the client only confirmed as hvc1', 
   expect(canDirectPlayVideo(source, caps)).toBe(true)
   expect(canDirectPlayVideo({ ...source, videoCodecTag: null }, caps)).toBe(true)
 })
+
+test('a browser that only confirms 8-bit codecs advertises no depth token', () => {
+  // The family probes are all 8-bit profile strings, so answering them says
+  // nothing about 10-bit content. Advertising the family alone let a 10-bit
+  // source take the direct path and be refused by the engine (2026-08-15).
+  const caps = computeCapabilities(
+    probe([
+      'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      'video/mp4; codecs="avc1.42E01E"',
+      'video/mp4; codecs="hvc1.1.6.L93.B0"',
+      'audio/mp4; codecs="mp4a.40.2"',
+    ]),
+  )
+  expect(caps.video_codecs).toEqual(expect.arrayContaining(['h264', 'hevc']))
+  expect(caps.video_codecs).not.toContain('hevc10')
+  expect(caps.video_codecs).not.toContain('h26410')
+})
+
+test('a browser that confirms 10-bit HEVC advertises the depth token too', () => {
+  const caps = computeCapabilities(
+    probe([
+      'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      'video/mp4; codecs="avc1.42E01E"',
+      'video/mp4; codecs="hvc1.1.6.L93.B0"',
+      'video/mp4; codecs="hvc1.2.4.L120.B0"',
+      'audio/mp4; codecs="mp4a.40.2"',
+    ]),
+  )
+  expect(caps.video_codecs).toEqual(expect.arrayContaining(['hevc', 'hevc10']))
+  // High 10 H.264 is decoded by nothing, so it stays absent either way.
+  expect(caps.video_codecs).not.toContain('h26410')
+})
+
+test('the direct-play gate refuses depths and Dolby Vision the server would too', () => {
+  // This gate and the server's decision matrix have to agree: a source waved
+  // through here is one the client will try to play as plain bytes, and the
+  // server would have routed it to a transcode instead.
+  const eightBitOnly = computeCapabilities(
+    probe([
+      'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      'video/mp4; codecs="avc1.42E01E"',
+      'video/mp4; codecs="hvc1.1.6.L93.B0"',
+      'audio/mp4; codecs="mp4a.40.2"',
+    ]),
+  )
+  const source = { relativePath: 'clip.mp4', videoCodec: 'hevc', audioCodec: 'aac' }
+
+  expect(canDirectPlayVideo({ ...source, bitDepth: 8 }, eightBitOnly)).toBe(true)
+  expect(canDirectPlayVideo({ ...source, bitDepth: 10 }, eightBitOnly)).toBe(false)
+  // Unprobed depth stays optimistic, like the unprobed codec tag beside it.
+  expect(canDirectPlayVideo(source, eightBitOnly)).toBe(true)
+  // Dolby Vision is signalled only by the tag; the family and depth both pass.
+  expect(canDirectPlayVideo({ ...source, videoCodecTag: 'dvh1' }, eightBitOnly)).toBe(false)
+})

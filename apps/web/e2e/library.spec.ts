@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// The scan job carries `?suggest_grouping=`, which "Scan new files" turns off
+// and Update leaves on, so a bare `**/jobs/scan` glob no longer matches.
+const SCAN_ROUTE = /\/jobs\/scan(\?|$)/
+
 // Hermetic e2e: the API is mocked so the desktop library UI can be exercised
 // in a real browser (where the virtualized grid actually lays out) without a
 // running backend.
@@ -237,7 +241,7 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await mockApi(page)
   // Scan job: enqueue returns a running snapshot, then polling completes it.
   let scanPolls = 0
-  await page.route('**/jobs/scan', (r) =>
+  await page.route(SCAN_ROUTE, (r) =>
     r.fulfill({
       json: jobRead({ id: 'job-scan', phase: 'discovering', processed: 42, total: 100 }),
     }),
@@ -322,7 +326,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
       },
     ],
   }
-  await page.route('**/jobs/scan', (route) =>
+  await page.route(SCAN_ROUTE, (route) =>
     route.fulfill({
       json: jobRead({
         id: 'job-scan',
@@ -384,13 +388,41 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
 })
 
 test('standalone Scan reports the linked missing-file total', async ({ page }) => {
+  const scanUrls: string[] = []
   await mockApi(page)
-  await page.route('**/jobs/scan', (route) =>
-    route.fulfill({
+  await page.route(SCAN_ROUTE, (route) => {
+    scanUrls.push(route.request().url())
+    return route.fulfill({
       json: jobRead({
         id: 'job-scan',
         status: 'succeeded',
         result: { grouping_proposal_count: 0, missing_total: 1 },
+        finished_at: '2026-06-25T00:01:00Z',
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Scan new files' }).click()
+
+  await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
+  // It asks for discovery on its own — "Suggest grouping" is the item beside it.
+  expect(scanUrls).toHaveLength(1)
+  expect(scanUrls[0]).toContain('suggest_grouping=false')
+})
+
+test('Scan new files does not open grouping review', async ({ page }) => {
+  // The owner pressed Scan and got the grouping review dialog on top of it
+  // (2026-08-15). A scan-only job reports no plan, and nothing may open one.
+  await mockApi(page)
+  await page.route(SCAN_ROUTE, (route) =>
+    route.fulfill({
+      json: jobRead({
+        id: 'job-scan',
+        status: 'succeeded',
+        // Even if a run came back naming a plan, Scan must not act on it.
+        result: { grouping_plan_id: 'plan1', grouping_proposal_count: 3, missing_total: 0 },
         finished_at: '2026-06-25T00:01:00Z',
       }),
     }),
@@ -400,7 +432,8 @@ test('standalone Scan reports the linked missing-file total', async ({ page }) =
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Scan new files' }).click()
 
-  await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
+  await expect(page.getByText('Scan complete: 0 linked files are missing.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Suggested grouping' })).toBeHidden()
 })
 
 test('each Update stage has a standalone maintenance action', async ({ page }) => {

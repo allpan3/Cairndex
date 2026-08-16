@@ -183,7 +183,8 @@ function mockApi(
           started_at: '2026-01-01T00:00:02Z',
           finished_at: '2026-01-01T00:00:03Z',
         }
-      else if (url.endsWith('/jobs/scan') && init?.method === 'POST')
+      // The query string carries suggest_grouping, so match the path, not the end.
+      else if (url.includes('/jobs/scan') && init?.method === 'POST')
         body = {
           id: 'job1',
           library_id: 'lib1',

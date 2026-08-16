@@ -236,6 +236,49 @@ def test_scan_job_generates_grouping_plan_without_applying(
         eng.dispose()
 
 
+def test_a_scan_only_job_writes_no_plan_and_reports_none(
+    registry_session_factory: sessionmaker[Session],
+    library_id: str,
+    library_root: Path,
+) -> None:
+    """Discovery on its own, which is what "Scan new files" asks for.
+
+    Grouping is the reviewable step in the same menu; running it here made one
+    menu item do the other's work and put its dialog on screen at the end of a
+    scan (owner-reported, 2026-08-15). The client opens that dialog off the two
+    grouping keys in the result, so a scan-only pass must report neither.
+    """
+    (library_root / "Set07").mkdir()
+    (library_root / "Set07" / "clip1.mp4").write_text("v")
+    (library_root / "Set07" / "clip1.en.srt").write_text("s")
+
+    with registry_session_factory() as reg:
+        job = job_service.create_job(
+            reg,
+            library_id=library_id,
+            job_type=JobType.SCAN,
+            payload={"suggest_grouping": False},
+        )
+        reg.commit()
+        job_id = job.id
+
+    assert execute_job(registry_session_factory, job_id, build_registry()) == JobStatus.SUCCEEDED
+    with registry_session_factory() as reg:
+        result = job_service.get_job(reg, job_id).result
+
+    assert result is not None
+    assert result["discovered"] == 2  # the scan itself still ran
+    assert result["grouping_plan_id"] is None
+    assert result["grouping_proposal_count"] == 0
+
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
+    try:
+        with sessionmaker(eng)() as db:
+            assert list(db.scalars(select(GroupingPlan))) == []
+    finally:
+        eng.dispose()
+
+
 def test_a_second_scan_keeps_the_plan_it_already_wrote(
     registry_session_factory: sessionmaker[Session],
     library_id: str,
