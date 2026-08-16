@@ -60,39 +60,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   accurately. **Set In** / **Set Out** put an end at the playhead, and
   when that would land past the other end the whole clip moves and keeps its
   length rather than collapsing — the length is already decided, the click only
-  says where it sits. **Range** plays the marked span and stops at its end;
-  **Loop** repeats it instead, and turns Range on with it. Save GIF… asks for
-  the output width and frame rate, showing the pixel size and frame count it
-  will actually produce, then encodes server-side (≤30 s, ≤1920 px) and
-  downloads, or saves through the native dialog in the desktop app.
-- **Export sizes are chosen on a scrolling wheel rather than a row of
-  buttons.** A row had to fit every choice side by side, so it held three or
-  four; a wheel scrolls, so the ladders are as long as they should be — fifteen
-  GIF widths, ten sheet widths, and five grids. GIF frame rates run 5–50 (the
-  ceiling was 15), and each says what it will really play at: a GIF stores
-  frame delays in whole centiseconds, so 15 fps plays at 14.3 and the wheel
-  says so rather than leaving it to be discovered. Rates the source cannot meaningfully
-  supply are left off — though a 24 fps source can still reach 25, which fits
-  it far better than 20 does. The GIF and
-  snapshot wheels end at the source's own width, marked `native`, since scaling
-  either up adds nothing. Contact-sheet widths now run 800–6144 px (they were
-  three fixed values), and grids 4×4 through 8×8, defaulting to 5×5.
+  says where it sits. Save GIF… asks for the output width and frame rate,
+  showing the pixel size and frame count it will actually produce, then encodes
+  server-side (≤30 s, ≤1920 px) and downloads, or saves through the native
+  dialog in the desktop app.
+- **Export sizes are chosen on a scrolling wheel rather than a row of buttons.**
+  A row had to fit every choice side by side, so it held three or four; a wheel
+  scrolls, so the ladders are as long as they should be — fifteen GIF widths,
+  ten sheet widths, and five grids. GIF frame rates run 5–50 (the ceiling was
+  15), and each says what it will really play at: a GIF stores frame delays in
+  whole centiseconds, so 15 fps plays at 14.3 and the wheel says so rather than
+  leaving it to be discovered. Rates the source cannot meaningfully supply are
+  left off — though a 24 fps source can still reach 25, which fits it far better
+  than 20 does. The GIF and snapshot wheels end at the source's own width,
+  marked `native`, since scaling either up adds nothing. Contact-sheet widths
+  now run 800–6144 px (they were three fixed values), and grids 4×4 through 8×8,
+  defaulting to 5×5.
 - **Snapshots can be saved at a chosen size.** `S` and the camera button are
-  unchanged — one press, at the source's own resolution — and a new **Save
-  Snapshot As…** on the viewer's right-click menu asks for a width first.
-  the output width — 320, 480, 720 or **Original**, with anything at or above
-  the source's own size left off since upscaling a GIF buys nothing — and the
-  frame rate, showing the pixel size and frame count it will actually produce.
-  It then encodes server-side (≤30 s, ≤1920 px) and downloads, or saves through
-  the native dialog in the desktop app.
-  the output width and frame rate — showing the pixel size it will actually
-  produce, and withholding presets that would upscale the source — then encodes
-  server-side (≤30 s) and downloads, or saves through the native dialog in the
-  desktop app.
-  **Loop** repeats it instead, and turns Range on with it. Save GIF…
-  encodes server-side (≤30 s, 480 px, 12 fps) and downloads, or saves through
-  the native dialog in the desktop app. Output size and frame rate are on the
-  API but not yet in the UI; that is the next slice.
+  unchanged — one press, at the source's own resolution, because the common case
+  is grabbing a frame rather than configuring one. A new **Save Snapshot As…**
+  on the viewer's right-click menu asks for a width first, from 320 px up to the
+  source's own, and says the pixel size the PNG will have. Nothing above the
+  source is offered, since scaling a still up adds nothing; the wheel opens one
+  rung below native, which is "smaller than the original, but not tiny". Unlike
+  a GIF this is a canvas draw rather than an encode, so it needs no server, has
+  no size cap of its own, and is saved the moment it is asked for.
 - **How much of a filename has to match is now a dial, not three named stops.**
   Grouping compares filename stems, and the sensitivity was `narrow` /
   `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
