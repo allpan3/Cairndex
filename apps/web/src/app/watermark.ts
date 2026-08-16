@@ -135,6 +135,16 @@ export interface WatermarkBox {
    * sheet's height, but wants it scaled to the sheet.
    */
   scaleWidth?: number
+  /**
+   * The inset from the box's edges, when the box has padding of its own.
+   *
+   * Defaults to `watermarkMargin`, which is derived from the mark's size and is
+   * right when the mark sits on a frame. The contact-sheet header is not a
+   * frame: it already has a padding its metadata rows observe, and the mark's
+   * own inset is the larger of the two, so left to default the mark started
+   * visibly lower than the text beside it (owner, 2026-08-16).
+   */
+  margin?: number
 }
 
 /**
@@ -158,6 +168,35 @@ export function markSize(
   // The em box, not the tight glyph bounds: it keeps descenders inside the
   // mark's own rectangle so a corner inset means the same thing for both kinds.
   return { width, height: Math.round(fontSize * 1.2) }
+}
+
+/**
+ * Shrink a mark, keeping its aspect, until it fits inside its box's padding.
+ *
+ * A picture mark is sized against the export's *width*, so nothing in that
+ * calculation knows how tall the box holding it is. In the contact-sheet header
+ * — a band whose height comes from three rows of text — a tall enough logo
+ * overflowed it, and because the frame grid is drawn after the mark, the grid
+ * painted over the overflow and shaved the mark's bottom off (owner reported it
+ * as sitting too low, 2026-08-16). Fitting here means a mark can never be
+ * clipped by whatever is drawn next.
+ *
+ * Null when there is no room at all, which is not a mark worth drawing.
+ */
+export function fitWithin(
+  size: { width: number; height: number },
+  box: WatermarkBox,
+  margin: number,
+): { width: number; height: number } | null {
+  const availableWidth = box.width - margin * 2
+  const availableHeight = box.height - margin * 2
+  if (!(availableWidth > 0) || !(availableHeight > 0)) return null
+  const scale = Math.min(1, availableWidth / size.width, availableHeight / size.height)
+  if (scale >= 1) return size
+  return {
+    width: Math.max(1, Math.round(size.width * scale)),
+    height: Math.max(1, Math.round(size.height * scale)),
+  }
 }
 
 /**
@@ -195,18 +234,26 @@ export function drawWatermark(
   if (mark.kind === 'text' && mark.text.length === 0) return 0
   const scaleWidth = box.scaleWidth ?? box.width
   const fontSize = watermarkFontSize(scaleWidth)
-  const margin = watermarkMargin(fontSize)
+  const margin = box.margin ?? watermarkMargin(fontSize)
 
   ctx.save()
   try {
-    const size = markSize(ctx, mark, scaleWidth)
+    const measured = markSize(ctx, mark, scaleWidth)
+    if (measured === null) return 0
+    const size = fitWithin(measured, box, margin)
     if (size === null) return 0
+    // How much the fit had to give up, applied to whichever knob actually
+    // resizes this kind of mark: an image is drawn at explicit dimensions,
+    // but glyphs only shrink if the *font* does — scaling a text mark's
+    // reported box alone would move it without making it any smaller.
+    const scale = size.height / measured.height
+    const drawnFontSize = Math.max(1, Math.round(fontSize * scale))
     const origin = cornerOrigin(box, size, margin)
 
     // The shadow is what keeps either kind off a background of its own colour.
     ctx.shadowColor = SHADOW_COLOR
-    ctx.shadowBlur = Math.max(2, Math.round(fontSize * 0.35))
-    ctx.shadowOffsetY = Math.max(1, Math.round(fontSize * 0.06))
+    ctx.shadowBlur = Math.max(2, Math.round(drawnFontSize * 0.35))
+    ctx.shadowOffsetY = Math.max(1, Math.round(drawnFontSize * 0.06))
 
     if (mark.kind === 'image') {
       ctx.globalAlpha = IMAGE_ALPHA
@@ -216,9 +263,9 @@ export function drawWatermark(
       // origin arithmetic serves both kinds.
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.font = watermarkFont(fontSize)
+      ctx.font = watermarkFont(drawnFontSize)
       ctx.strokeStyle = OUTLINE_COLOR
-      ctx.lineWidth = Math.max(1, fontSize / 9)
+      ctx.lineWidth = Math.max(1, drawnFontSize / 9)
       // Round joins: mitred corners on a heavy face throw spikes off the glyphs.
       ctx.lineJoin = 'round'
       ctx.strokeText(mark.text, origin.x, origin.y)
