@@ -10,15 +10,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
-- **A contact sheet's watermark sits at the top of its header, not adrift below
-  it.** The mark derived its inset from its own size rather than using the
-  header's padding, so it started lower than the metadata rows beside it. Worse,
-  a picture mark is scaled to the sheet's _width_, which knows nothing of how
-  tall the header is — a tall logo overflowed the band, and since the frame grid
-  is drawn afterwards, the grid painted over the overflow and shaved the mark's
-  bottom off. A mark is now fitted to the band that holds it and shares the
-  header's own padding, so it lines up with the first metadata row and can never
-  be clipped by whatever is drawn next.
+- **The marked span is something you play, with `\` or Play Range.** The clip
+  strip had grown an action and a mode that only meant anything together —
+  "From In" and "Range" — so they are now one control. **Play Range** jumps to
+  the in-point and runs to the out-point, `⟳ Loop` repeats it instead of
+  stopping, and pressing it again restarts, which is what checking a mark
+  actually needs. The button shows while the span is running.
+- **Ordinary play now ignores the marks.** Range used to be a standing mode, so
+  Space meant one thing with a clip marked and another without. Space is plain
+  playback again: it never jumps to the in-point and never stops at the
+  out-point, and pausing ends a running span so resuming is unconfined. Only
+  Play Range confines anything, and only while it runs. (A-B loop replay, when
+  it lands, will drive the same span from playback settings.)
+
 - **The watermark can be your own image instead of words.** Settings → Exports
   offers Text or Image; choosing Image takes a PNG, JPEG, WebP, or GIF, with a
   transparent PNG working best. The picture is fitted inside both a height and

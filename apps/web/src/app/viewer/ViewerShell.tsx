@@ -273,7 +273,11 @@ export function ViewerShell({
   const clipAvailable = videoActive && fileId !== null
   // Suppressed mid-drag: a handle drag is already scrubbing the playhead
   // deliberately, and the mode would fight it.
-  useClipPlayback(videoElement, clip.range, clip.adjusting ? 'off' : clip.playMode)
+  useClipPlayback(videoElement, clip.range, {
+    playing: clip.playingRange && !clip.adjusting,
+    loop: clip.loop,
+    onEnd: clip.endRangePlayback,
+  })
 
   // Save GIF… opens the options dialog rather than exporting straight away.
   // The range is already decided by then; what is left is size and rate, and
@@ -592,6 +596,7 @@ export function ViewerShell({
       previous: () => step(-1),
       next: () => step(1),
       markClipEdge: clipAvailable ? clip.markAtPlayhead : undefined,
+      playClipRange: clipAvailable ? clip.playRange : undefined,
       // `player` exists even for image bundles (only its use as a *controller* is
       // gated on videoActive), so fullscreen state stays correct for images too.
       isFullscreen: () => player.fullscreen,
@@ -607,6 +612,7 @@ export function ViewerShell({
       player,
       clipAvailable,
       clip.markAtPlayhead,
+      clip.playRange,
     ],
   )
 

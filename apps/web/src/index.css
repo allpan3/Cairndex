@@ -4400,6 +4400,7 @@ code {
 }
 .mv-clip__step,
 .mv-clip__here,
+.mv-clip__play,
 .mv-clip__toggle,
 .mv-clip__export,
 .mv-clip__close {
@@ -4413,6 +4414,7 @@ code {
 }
 .mv-clip__step:hover,
 .mv-clip__here:hover,
+.mv-clip__play:hover,
 .mv-clip__toggle:hover,
 .mv-clip__export:hover:not(:disabled),
 .mv-clip__close:hover {
@@ -4422,6 +4424,13 @@ code {
   border-color: rgba(255, 190, 74, 0.6);
   background: rgba(255, 190, 74, 0.18);
   color: #ffd591;
+}
+/* The action among the modes: weighted a little heavier than the Range and
+   Loop toggles beside it, but not as loud as the export — it starts playback,
+   it does not produce a file. */
+.mv-clip__play {
+  font-weight: 600;
+  white-space: nowrap;
 }
 .mv-clip__export {
   border-color: var(--accent);
