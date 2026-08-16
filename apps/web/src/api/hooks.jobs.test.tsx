@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { JobRead } from './client'
-import { useUpdateLibrary } from './hooks'
+import { useIndexNewLibrary, useScan, useUpdateLibrary } from './hooks'
 
 const api = vi.hoisted(() => ({
   enqueueScan: vi.fn(),
@@ -143,4 +143,81 @@ test('metadata failure does not close grouping or start storyboards', async () =
   )
   expect(api.enqueueStoryboards).not.toHaveBeenCalled()
   expect(result.current.isError).toBe(false)
+})
+
+test('scanning for new files does not group, probe, or open the review dialog', async () => {
+  // "Scan new files" and "Suggest grouping" are two items in one menu, so the
+  // first must not do the second's work. The owner asked for a scan and the
+  // grouping review dialog opened at the end of it (2026-08-15).
+  const onGroupingPlan = vi.fn()
+  const { result } = renderHook(() => useScan({ onGroupingPlan }), { wrapper })
+
+  await act(async () => {
+    await result.current.mutateAsync()
+  })
+
+  expect(api.enqueueScan).toHaveBeenCalledWith({ suggestGrouping: false })
+  expect(onGroupingPlan).not.toHaveBeenCalled()
+  expect(api.enqueueProbe).not.toHaveBeenCalled()
+  expect(api.enqueueStoryboards).not.toHaveBeenCalled()
+})
+
+test('a scan-only job reporting a stale plan still opens nothing', async () => {
+  // Belt and braces for the server contract: even if a scan-only run came back
+  // naming a plan, this hook has no path that could open it.
+  api.enqueueScan.mockResolvedValue(
+    job({
+      id: 'scan',
+      job_type: 'scan',
+      result: { grouping_plan_id: 'plan1', grouping_proposal_count: 3 },
+    }),
+  )
+  const onGroupingPlan = vi.fn()
+  const { result } = renderHook(() => useScan({ onGroupingPlan }), { wrapper })
+
+  await act(async () => {
+    await result.current.mutateAsync()
+  })
+
+  expect(onGroupingPlan).not.toHaveBeenCalled()
+})
+
+test('a newly created library indexes itself: discovery, then metadata', async () => {
+  // Adding a library used to leave every view empty until the owner found two
+  // menu items, and playback had no metadata to decide from (2026-08-15).
+  const { result } = renderHook(() => useIndexNewLibrary(), { wrapper })
+
+  await act(async () => {
+    await result.current.mutateAsync('lib-new')
+  })
+
+  // Scoped to the new library, not the active one — the switch may not have
+  // settled yet — and with no grouping pass to open a dialog over it.
+  expect(api.enqueueScan).toHaveBeenCalledWith({ suggestGrouping: false, libraryId: 'lib-new' })
+  expect(api.enqueueProbe).toHaveBeenCalledWith('lib-new')
+  // Storyboards stay a deliberate action; they are the expensive one.
+  expect(api.enqueueStoryboards).not.toHaveBeenCalled()
+})
+
+test('metadata still runs in order after discovery finishes', async () => {
+  let finishScan: (value: JobRead) => void = () => undefined
+  api.enqueueScan.mockReturnValue(
+    new Promise<JobRead>((resolve) => {
+      finishScan = resolve
+    }),
+  )
+  const { result } = renderHook(() => useIndexNewLibrary(), { wrapper })
+
+  let done: Promise<unknown> = Promise.resolve()
+  await act(async () => {
+    done = result.current.mutateAsync('lib-new')
+    await Promise.resolve()
+  })
+  expect(api.enqueueProbe).not.toHaveBeenCalled()
+
+  await act(async () => {
+    finishScan(job({ id: 'scan', job_type: 'scan' }))
+    await done
+  })
+  expect(api.enqueueProbe).toHaveBeenCalledWith('lib-new')
 })

@@ -7,7 +7,12 @@ import {
   DEFAULT_CONTACT_SHEET_WIDTH,
   contactSheetRows,
 } from './contactSheetExport'
+import { setActiveLibraryId } from '../api/client'
 import { CONTACT_SHEET_WATERMARK } from './viewer/contactSheet'
+import { viewerItemFromEntry } from './viewer/viewerItem'
+
+// viewerItemFromEntry builds a stream URL for a linked row, which is scoped.
+setActiveLibraryId('lib1')
 
 // Both ladders grew when the dialog moved from segmented rows onto wheels
 // (owner, 2026-08-15) — a row had to fit every option side by side.
@@ -66,4 +71,50 @@ test('keeps every header row when metadata is unavailable', () => {
 
 test('brands the exported header without changing its metadata rows', () => {
   expect(CONTACT_SHEET_WATERMARK).toEqual(['EXPORTED FROM', 'CAIRNDEX'])
+})
+
+test('a sheet cut from a File Browser row prints its real dimensions', () => {
+  // The same file, opened from the physical browsing surface rather than the
+  // logical one, used to lose both numbers on the way: the listing did not
+  // carry them, so the header read "— / —" (owner-reported, 2026-08-15).
+  const item = viewerItemFromEntry({
+    name: 'clip.mp4',
+    relative_path: 'Set07/clip.mp4',
+    kind: 'file',
+    size_bytes: 1_500_000_000,
+    modified_at: null,
+    created_at: null,
+    extension: 'mp4',
+    mime_type: 'video/mp4',
+    media_kind: 'video',
+    supported: true,
+    linked: true,
+    bundle_id: 'b1',
+    file_id: 'f1',
+    container: 'mov,mp4',
+    video_codec: 'h264',
+    video_codec_tag: 'avc1',
+    audio_codec: 'aac',
+    duration: 797,
+    width: 3840,
+    height: 2160,
+    fps: 23.976,
+    resume_position: null,
+    unbundled: false,
+  })
+
+  const rows = contactSheetRows({
+    fileId: item.fileId ?? '',
+    title: item.title,
+    sizeBytes: item.sizeBytes,
+    duration: item.duration,
+    width: item.width,
+    height: item.height,
+    fps: item.fps,
+  })
+
+  expect(rows[1]).toEqual({
+    label: 'Details',
+    value: '1.4 GB · 13:17 · 3840×2160 / 23.98 fps',
+  })
 })

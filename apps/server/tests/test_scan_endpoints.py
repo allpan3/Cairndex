@@ -62,6 +62,19 @@ def test_storyboard_trigger_does_not_dedupe_running_job(
     assert second["status"] == "queued"
 
 
+def test_scan_trigger_defaults_to_suggesting_grouping(client: TestClient, library_id: str) -> None:
+    body = client.post(f"/api/v1/libraries/{library_id}/jobs/scan").json()
+    assert body["payload"]["suggest_grouping"] is True
+
+
+def test_scan_trigger_can_ask_for_discovery_only(client: TestClient, library_id: str) -> None:
+    """ "Scan new files" must not carry the grouping pass (owner-reported, 2026-08-15)."""
+    body = client.post(
+        f"/api/v1/libraries/{library_id}/jobs/scan", params={"suggest_grouping": "false"}
+    ).json()
+    assert body["payload"]["suggest_grouping"] is False
+
+
 def test_scan_trigger_unknown_library_404(client: TestClient) -> None:
     assert client.post("/api/v1/libraries/01000000000000000000000000/jobs/scan").status_code == 404
 

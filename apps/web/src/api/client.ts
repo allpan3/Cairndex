@@ -380,19 +380,45 @@ export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   )
 
 // --- Playback decisions + HLS sessions (plan 1 §6.3, M7) ---------------------
-// Ask the server how to play one file for this client's capabilities. A direct
+// Ask the server how to play one source for this client's capabilities. A direct
 // decision returns a progressive `stream_url`; remux/transcode returns a started
 // HLS `session` whose playlist the player feeds to hls.js or native HLS.
+
+/**
+ * What a decision is about: an indexed file row, or a bare File Browser path.
+ *
+ * Both reach the same matrix and the same sessions; a path is probed on demand
+ * in place of stored metadata, and gives up only what genuinely needs a row —
+ * subtitles, storyboards, and resume. Before this, a path had no decision at
+ * all and could play only what the browser itself decodes.
+ */
+export type PlaybackTarget = { kind: 'file'; fileId: string } | { kind: 'path'; path: string }
+
+const playbackBase = (target: PlaybackTarget) =>
+  target.kind === 'file'
+    ? `${lib()}/files/${target.fileId}/playback-sessions`
+    : `${lib()}/file-browser/playback-sessions`
+
 export const requestPlaybackDecision = (
-  fileId: string,
+  target: PlaybackTarget,
   payload: PlaybackDecisionRequest,
   signal?: AbortSignal,
 ) =>
   sendSignal<PlaybackDecisionResponse>(
-    `${lib()}/files/${fileId}/playback-decision`,
+    target.kind === 'file'
+      ? `${lib()}/files/${target.fileId}/playback-decision`
+      : `${lib()}/file-browser/playback-decision`,
     'POST',
     signal,
-    payload,
+    // A path has no subtitle rows, so it has nothing to burn in.
+    target.kind === 'file'
+      ? payload
+      : {
+          path: target.path,
+          caps: payload.caps,
+          audio_stream_index: payload.audio_stream_index,
+          max_height: payload.max_height,
+        },
   ).then((decision) => ({
     ...decision,
     stream_url: decision.stream_url ? resolveAssetUrl(decision.stream_url) : null,
@@ -407,8 +433,8 @@ export const requestPlaybackDecision = (
   }))
 
 /** Tear down an HLS session (player close, file switch, quality/audio switch). */
-export const deletePlaybackSession = (fileId: string, sessionId: string) =>
-  send<void>(`${lib()}/files/${fileId}/playback-sessions/${sessionId}`, 'DELETE')
+export const deletePlaybackSession = (target: PlaybackTarget, sessionId: string) =>
+  send<void>(`${playbackBase(target)}/${sessionId}`, 'DELETE')
 
 /** Start encoding a GIF from a marked span; returns before it is finished. */
 export const createClipExport = (fileId: string, payload: ClipExportCreate) =>
@@ -440,9 +466,9 @@ function beacon(url: string, body?: unknown): boolean {
 }
 
 /** Best-effort browser teardown on pagehide via sendBeacon's POST-only transport. */
-export function beaconTeardownSession(fileId: string, sessionId: string): boolean {
+export function beaconTeardownSession(target: PlaybackTarget, sessionId: string): boolean {
   // The teardown alias takes no body — a bodyless beacon keeps it CORS-safelisted.
-  return beacon(`${lib()}/files/${fileId}/playback-sessions/${sessionId}/teardown`)
+  return beacon(`${playbackBase(target)}/${sessionId}/teardown`)
 }
 
 export const fetchContinueWatching = (limit = 20, offset = 0, signal?: AbortSignal) =>
@@ -772,7 +798,11 @@ export async function setLibraryWriteMode(
 }
 
 // --- Background jobs ----------------------------------------------------------
-export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')
+/** Enqueue discovery. `suggestGrouping` adds the reviewable grouping pass to it. */
+export const enqueueScan = (options: { suggestGrouping?: boolean; libraryId?: string } = {}) => {
+  const suggest = options.suggestGrouping ?? true
+  return send<JobRead>(`${lib(options.libraryId)}/jobs/scan?suggest_grouping=${suggest}`, 'POST')
+}
 
 export const enqueueProbe = (libraryId?: string) =>
   send<JobRead>(`${lib(libraryId)}/jobs/probe`, 'POST')

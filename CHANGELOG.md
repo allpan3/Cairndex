@@ -114,6 +114,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **"Scan new files" now scans, and only scans.** It sat in the same menu as
+  "Suggest grouping" and did that item's work too, ending a scan by opening the
+  grouping review dialog nobody had asked for. The scan job takes a
+  `suggest_grouping` flag (`POST …/jobs/scan?suggest_grouping=false`), which the
+  menu item sends and the combined ⟳ Update does not, so Update is unchanged.
+- **A newly created library indexes itself.** A folder that had only just become
+  a library held nothing, so every view was empty and playback had no metadata
+  to decide from until the owner found two menu items. Creating one now enqueues
+  discovery and then metadata, reported in the sidebar like any other job.
+  Deliberately not the full Update: no grouping pass, so no review dialog opens
+  over a library just added, and no storyboards, which stay a deliberate action.
+  Registering a library that already exists is untouched — it arrives with its
+  own database, and re-reading a multi-terabyte tree unasked is what ⟳ Update is
+  for.
 - **Export artifacts now reach the desktop shell as raw bytes rather than as
   JSON.** `save_export_file` took its bytes as a JSON number array, which turned
   a few-megabyte artifact into tens of megabytes serialized on the main thread —
@@ -244,6 +258,36 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A video the browser cannot decode is now converted instead of refused.** The
+  playback decision compared the source's container and codec *family* against
+  what the client advertised, and nothing else — so a 10-bit source passed,
+  because every capability probe string a browser answers (`avc1.640028`,
+  `hvc1.1.6.L93.B0`) describes an 8-bit profile. High 10 H.264 is the worst
+  case: no browser decodes it at all, and it arrived on the direct path and
+  failed with "This video can't be played here." Colour depth and Dolby Vision
+  now take part in the decision, clients advertise the depths they separately
+  confirmed, and a source that fails either is transcoded — which is what the
+  server was there to do. A client that does confirm 10-bit still plays it
+  directly, and a 10-bit file in the wrong container still only pays for a
+  remux.
+- **Playback no longer waits for the metadata job to have run.** The decision
+  reads codec, depth and duration off the file's row, and with none of them
+  present it had to guess "play it directly" — so a freshly scanned library
+  handed every file straight to the browser, and anything the browser could not
+  decode failed until the owner found **Collect metadata**. A file whose
+  metadata is missing or from an older probe is now probed on the way to the
+  decision: one file, bounded, written back, and silent if it fails.
+- **The File Browser can play a library that was never scanned.** A path with no
+  index row skipped the decision entirely and fell through to a native read, so
+  file-browser-only use could show only what the browser itself decodes. A bare
+  path now gets the same decision and the same remux/transcode sessions, with an
+  on-demand probe standing in for stored metadata. What still needs a row stays
+  absent for an unindexed path: subtitles, storyboards, resume, and cover frames.
+- **A contact sheet cut from the File Browser prints its real dimensions.** The
+  listing carried codecs and duration but not width, height or frame rate, so
+  the sheet's Details row read `— / —` where the same file cut from the Bundle
+  Browser read the real numbers. The listing now carries all three (and colour
+  depth, so hover preview judges direct playability the way the server does).
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.
