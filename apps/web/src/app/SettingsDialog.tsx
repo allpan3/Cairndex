@@ -11,6 +11,12 @@ import { useDeviceMutations, useDevices } from '../api/hooks'
 import { formatDateTime } from '../lib/format'
 import { useDisplayPrefs } from '../state/displayPrefs'
 import {
+  DEFAULT_EXPORT_PREFS,
+  MAX_WATERMARK_TEXT_LENGTH,
+  useExportPrefs,
+} from '../state/exportPrefs'
+import { importWatermarkImage, WatermarkImageError, WATERMARK_FILE_ACCEPT } from './watermarkImage'
+import {
   clearHostDeviceToken,
   getHostLabels,
   getHostPlatform,
@@ -66,14 +72,12 @@ export function SettingsDialog({
                 Libraries
               </button>
             )}
-            {desktop && (
-              <button
-                className={`settings-nav__item${page === 'exports' ? ' settings-nav__item--active' : ''}`}
-                onClick={() => setPage('exports')}
-              >
-                Exports
-              </button>
-            )}
+            <button
+              className={`settings-nav__item${page === 'exports' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('exports')}
+            >
+              Exports
+            </button>
             <button
               className={`settings-nav__item${page === 'appearance' ? ' settings-nav__item--active' : ''}`}
               onClick={() => setPage('appearance')}
@@ -85,8 +89,8 @@ export function SettingsDialog({
             <AppearancePage />
           ) : desktop && page === 'libraries' ? (
             <LibraryMappingsPage libraries={libraries} />
-          ) : desktop && page === 'exports' ? (
-            <ExportsPage />
+          ) : page === 'exports' ? (
+            <ExportsPage desktop={desktop} />
           ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
           ) : (
@@ -98,12 +102,38 @@ export function SettingsDialog({
   )
 }
 
-/** Where snapshots and exports land (owner request, 2026-07-27). Desktop only —
- * a browser can only ever download. Unset means the native save dialog asks
- * every time; choosing a folder makes saves land there silently, keep-both on
- * name collisions. The path is stored by the shell and only ever enters it from
- * the OS folder picker. */
-function ExportsPage() {
+/**
+ * Everything about the copies Cairndex writes outside the library.
+ *
+ * Two answers with different reach, which is why they share a page but not a
+ * gate. **Where** exports land is desktop-only, because a browser can only ever
+ * download. **What is stamped on them** applies wherever an export can be
+ * started, so the page itself is no longer behind the desktop check it was
+ * introduced under (2026-07-27).
+ */
+function ExportsPage({ desktop }: { desktop: boolean }) {
+  return (
+    <section className="devices-page" aria-labelledby="exports-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="exports-title">Exports</h3>
+          <p>
+            Snapshots, GIFs, and contact sheets. Nothing here changes your library — these are
+            copies written outside it.
+          </p>
+        </div>
+      </div>
+      {desktop && <ExportFolderSetting />}
+      <WatermarkSetting />
+    </section>
+  )
+}
+
+/** Where snapshots and exports land (owner request, 2026-07-27). Unset means
+ * the native save dialog asks every time; choosing a folder makes saves land
+ * there silently, keep-both on name collisions. The path is stored by the shell
+ * and only ever enters it from the OS folder picker. */
+function ExportFolderSetting() {
   const platform = getHostPlatform()
   const [dir, setDir] = useState<string | null>(null)
   useEffect(() => {
@@ -112,49 +142,194 @@ function ExportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return (
-    <section className="devices-page" aria-labelledby="exports-title">
-      <div className="devices-page__head">
-        <div>
-          <h3 id="exports-title">Exports</h3>
-          <p>
-            Where snapshots and contact sheets are saved. Nothing here changes your library — these
-            are copies written outside it.
-          </p>
-        </div>
-      </div>
-      <div className="settings-toggle">
-        <span>
-          <strong>{dir ?? 'Ask every time'}</strong>
-          <span className="settings-toggle__hint">
-            {dir
-              ? 'Exports are saved straight here. A name already in use keeps both, never replacing the earlier file.'
-              : 'Every export opens the save dialog so you can choose where it goes.'}
-          </span>
+    <div className="settings-toggle">
+      <span>
+        <strong>{dir ?? 'Ask every time'}</strong>
+        <span className="settings-toggle__hint">
+          {dir
+            ? 'Exports are saved straight here. A name already in use keeps both, never replacing the earlier file.'
+            : 'Every export opens the save dialog so you can choose where it goes.'}
         </span>
-        <span className="settings-actions">
+      </span>
+      <span className="settings-actions">
+        <button
+          className="btn"
+          onClick={() => {
+            void platform.pickExportDir?.().then((picked) => {
+              if (picked !== null) setDir(picked)
+            })
+          }}
+        >
+          Choose Folder…
+        </button>
+        {dir !== null && (
           <button
             className="btn"
             onClick={() => {
-              void platform.pickExportDir?.().then((picked) => {
-                if (picked !== null) setDir(picked)
-              })
+              void platform.clearExportDir?.().then(() => setDir(null))
             }}
           >
-            Choose Folder…
+            Ask Every Time
           </button>
-          {dir !== null && (
-            <button
-              className="btn"
-              onClick={() => {
-                void platform.clearExportDir?.().then(() => setDir(null))
-              }}
-            >
-              Ask Every Time
-            </button>
-          )}
+        )}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The mark stamped on every export, and what it says.
+ *
+ * Off by default: these are the owner's own files, and a watermark is branding
+ * rather than a courtesy. Turning it on replaces the fixed block contact sheets
+ * used to carry, so the same mark now appears on all three export kinds instead
+ * of one of them wearing a hardcoded one.
+ *
+ * The text field appears only once the mark is on, rather than sitting disabled
+ * — there is nothing to say about the wording of a mark that is not applied.
+ */
+function WatermarkSetting() {
+  const [prefs, setPrefs] = useExportPrefs()
+  return (
+    <>
+      <label className="settings-toggle">
+        <input
+          type="checkbox"
+          checked={prefs.watermarkEnabled}
+          onChange={(event) => setPrefs({ watermarkEnabled: event.target.checked })}
+        />
+        <span>
+          <strong>Watermark exports</strong>
+          <span className="settings-toggle__hint">
+            Stamps snapshots and GIFs in the bottom-right corner, and contact sheets in their
+            header. Only exported copies are marked — never the files in your library.
+          </span>
         </span>
-      </div>
-    </section>
+      </label>
+      {prefs.watermarkEnabled && (
+        <div className="settings-field">
+          <span className="field-label" id="watermark-kind-label">
+            Mark
+          </span>
+          <div className="settings-choice" role="radiogroup" aria-labelledby="watermark-kind-label">
+            {(['text', 'image'] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                role="radio"
+                aria-checked={prefs.watermarkKind === kind}
+                className={`settings-choice__item${
+                  prefs.watermarkKind === kind ? ' settings-choice__item--active' : ''
+                }`}
+                onClick={() => setPrefs({ watermarkKind: kind })}
+              >
+                {kind === 'text' ? 'Text' : 'Image'}
+              </button>
+            ))}
+          </div>
+          {prefs.watermarkKind === 'text' ? (
+            <>
+              <label className="field-label" htmlFor="watermark-text">
+                Watermark text
+              </label>
+              <input
+                id="watermark-text"
+                className="edit"
+                value={prefs.watermarkText}
+                maxLength={MAX_WATERMARK_TEXT_LENGTH}
+                spellCheck={false}
+                placeholder={DEFAULT_EXPORT_PREFS.watermarkText}
+                onChange={(event) => setPrefs({ watermarkText: event.target.value })}
+              />
+              <span className="settings-toggle__hint">
+                Left empty, nothing is stamped. The mark scales with the export, so it reads the
+                same on a small GIF as on a full-resolution snapshot.
+              </span>
+            </>
+          ) : (
+            <WatermarkImageField />
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * Choosing the picture used as the mark.
+ *
+ * The file is inlined rather than referenced: a browser hands out no usable
+ * path, and a copy under the data dir would turn a machine-local preference
+ * into server state. It is bounded and normalized on the way in
+ * (`watermarkImage.ts`), which is what makes storing it locally safe.
+ */
+function WatermarkImageField() {
+  const [prefs, setPrefs] = useExportPrefs()
+  const input = useRef<HTMLInputElement | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const choose = async (file: File | undefined) => {
+    if (!file) return
+    setError(null)
+    try {
+      const imported = await importWatermarkImage(file)
+      setPrefs({ watermarkImage: imported.dataUrl, watermarkImageName: imported.name })
+    } catch (caught) {
+      setError(
+        caught instanceof WatermarkImageError
+          ? caught.message
+          : 'That image could not be used as a watermark.',
+      )
+    }
+  }
+
+  return (
+    <>
+      <span className="field-label">Watermark image</span>
+      {prefs.watermarkImage && (
+        <div className="watermark-preview">
+          {/* On a checkerboard, so a transparent logo does not look like it has
+              a background it does not have. */}
+          <span className="watermark-preview__plate">
+            <img src={prefs.watermarkImage} alt="Watermark preview" />
+          </span>
+          <span className="watermark-preview__name">{prefs.watermarkImageName ?? 'Chosen'}</span>
+        </div>
+      )}
+      <input
+        ref={input}
+        type="file"
+        className="visually-hidden"
+        accept={WATERMARK_FILE_ACCEPT}
+        onChange={(event) => {
+          void choose(event.target.files?.[0])
+          // Cleared so re-picking the same file fires a change event again.
+          event.target.value = ''
+        }}
+      />
+      <span className="settings-actions settings-actions--start">
+        <button className="btn btn--compact" onClick={() => input.current?.click()}>
+          {prefs.watermarkImage ? 'Change Image…' : 'Choose Image…'}
+        </button>
+        {prefs.watermarkImage && (
+          <button
+            className="btn btn--compact"
+            onClick={() => setPrefs({ watermarkImage: null, watermarkImageName: null })}
+          >
+            Remove
+          </button>
+        )}
+      </span>
+      {error !== null && (
+        <div className="modal__error" role="alert">
+          {error}
+        </div>
+      )}
+      <span className="settings-toggle__hint">
+        PNG, JPEG, WebP, or GIF. A transparent PNG works best. The image is scaled to the export, so
+        one logo suits every size; with none chosen, nothing is stamped.
+      </span>
+    </>
   )
 }
 

@@ -4400,6 +4400,7 @@ code {
 }
 .mv-clip__step,
 .mv-clip__here,
+.mv-clip__play,
 .mv-clip__toggle,
 .mv-clip__export,
 .mv-clip__close {
@@ -4413,6 +4414,7 @@ code {
 }
 .mv-clip__step:hover,
 .mv-clip__here:hover,
+.mv-clip__play:hover,
 .mv-clip__toggle:hover,
 .mv-clip__export:hover:not(:disabled),
 .mv-clip__close:hover {
@@ -4422,6 +4424,13 @@ code {
   border-color: rgba(255, 190, 74, 0.6);
   background: rgba(255, 190, 74, 0.18);
   color: #ffd591;
+}
+/* The action among the modes: weighted a little heavier than the Range and
+   Loop toggles beside it, but not as loud as the export — it starts playback,
+   it does not produce a file. */
+.mv-clip__play {
+  font-weight: 600;
+  white-space: nowrap;
 }
 .mv-clip__export {
   border-color: var(--accent);
@@ -5874,6 +5883,98 @@ code {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.4;
+}
+/* A text answer under the toggle that reveals it (Settings → Exports →
+   watermark). Indented to the toggle's label column so it reads as belonging to
+   the switch above rather than as a setting of its own. */
+.settings-field {
+  display: grid;
+  gap: 4px;
+  padding: 0 0 10px 26px;
+  max-width: 420px;
+}
+/* Text-or-image: two mutually exclusive choices, so a segmented pair rather
+   than a dropdown — both options stay readable without being opened. */
+.settings-choice {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  width: fit-content;
+  margin-bottom: 6px;
+}
+.settings-choice__item {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 4px 14px;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-choice__item--active {
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
+  color: var(--text);
+}
+/* The trailing-button row is normally pushed to the far edge by
+   `.settings-toggle`; inside a field it belongs at the start instead. */
+.settings-actions--start {
+  margin-left: 0;
+  align-self: start;
+}
+.watermark-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+/* A checkerboard, so a transparent logo is not mistaken for one with a
+   background the export will not have. */
+.watermark-preview__plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 6px;
+  background-color: #2a2d33;
+  background-image:
+    linear-gradient(45deg, #23262b 25%, transparent 25%),
+    linear-gradient(-45deg, #23262b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #23262b 75%),
+    linear-gradient(-45deg, transparent 75%, #23262b 75%);
+  background-size: 12px 12px;
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+}
+.watermark-preview__plate img {
+  max-width: 132px;
+  max-height: 48px;
+  display: block;
+}
+.watermark-preview__name {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Reachable by a screen reader and by the label's click, but not seen: the
+   native file input is replaced by a styled button. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* --- Global fetching indicator: visible feedback for ⌘R / any refresh ------ */

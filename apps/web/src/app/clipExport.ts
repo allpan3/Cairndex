@@ -15,7 +15,9 @@ import {
   type ClipExportRead,
 } from '../api/client'
 import { getHostPlatform, isDesktopHost } from '../platform'
+import { getExportPrefs } from '../state/exportPrefs'
 import { exportFileName } from './exportNaming'
+import { resolveWatermark, watermarkTileBase64 } from './watermark'
 import type { WheelOption } from './WheelPicker'
 
 /**
@@ -274,12 +276,23 @@ export async function saveClipGif(
   report('Building GIF…')
   let exportId: string | null = null
   try {
+    // Rendered here and sent as pixels: the server's ffmpeg has no `drawtext`,
+    // so it cannot draw the mark itself, and drawing it here is also what keeps
+    // a GIF's mark identical to the one on a snapshot of the same frame. Sized
+    // against the width the export will actually have — the server's default
+    // when the caller did not choose one.
+    const watermark = await watermarkTileBase64(
+      await resolveWatermark(getExportPrefs()),
+      options.width ?? DEFAULT_CLIP_WIDTH,
+    )
     const created = await createClipExport(target.fileId, {
       kind: 'gif',
       start_s: range.start,
       end_s: range.end,
       width: options.width ?? null,
       fps: options.fps ?? null,
+      watermark_png: watermark,
+      watermark_corner: 'bottom-right',
     })
     exportId = created.export_id
     await awaitArtifact(target.fileId, exportId)

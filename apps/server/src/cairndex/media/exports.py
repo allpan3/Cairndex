@@ -24,20 +24,26 @@ scan must not queue-block a ten-second export.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import io
 import shutil
 import threading
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
+
+from PIL import Image
 
 from cairndex.core.errors import CapacityError, ValidationError
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 
 ExportKind = Literal["gif"]
 ExportStatus = Literal["pending", "running", "done", "failed"]
+WatermarkCorner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 
 # Caps from plan 1 §10. A GIF is an uncompressed-ish format with a 256-colour
 # palette per frame: these bounds are what keep one export a few megabytes and
@@ -72,6 +78,16 @@ DEFAULT_FPS = 15
 # reported rather than held open forever.
 FFMPEG_TIMEOUT = 300.0
 
+# The client renders the watermark and sends the pixels, because these ffmpeg
+# builds have no `drawtext` — it needs freetype and font discovery, the same
+# reason the contact sheet's header is composed in the browser. Half a megabyte
+# is far more than the couple of kilobytes a text mark costs and leaves room for
+# the image mark that comes next, while keeping a create request small.
+MAX_WATERMARK_BYTES = 512 * 1024
+# A mark wider than the widest output could never be placed inside a frame.
+MAX_WATERMARK_DIMENSION = MAX_WIDTH
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
 # How long a finished artifact survives if nobody downloads it.
 DEFAULT_TTL_SECONDS = 3600.0
 _REAP_INTERVAL = 300.0
@@ -91,6 +107,10 @@ class GifParams:
     end_s: float
     width: int
     fps: int
+    corner: WatermarkCorner = "bottom-right"
+    #: Where the rendered mark was written, filled in by the manager once it
+    #: knows the artifact directory. None when the export carries no mark.
+    watermark_path: Path | None = None
 
     @property
     def duration(self) -> float:
@@ -106,6 +126,9 @@ class ClipExport:
     params: GifParams
     output_path: Path
     filename: str
+    #: The rendered mark, held until the worker can write it beside the artifact
+    #: so a request rejected for capacity leaves no directory behind.
+    watermark_png: bytes | None = None
     status: ExportStatus = "pending"
     error: str | None = None
     created_at: float = 0.0
@@ -131,6 +154,7 @@ def validated_gif_params(
     width: int | None,
     fps: int | None,
     duration: float | None,
+    corner: WatermarkCorner = "bottom-right",
 ) -> GifParams:
     """Check a requested range and encoding against the caps and the source.
 
@@ -166,7 +190,63 @@ def validated_gif_params(
         # `-2`; an odd request would otherwise fail deep in the filter graph.
         width=resolved_width - (resolved_width % 2),
         fps=resolved_fps,
+        corner=corner,
     )
+
+
+def validated_watermark(encoded: str | None) -> bytes | None:
+    """Decode and check a client-rendered watermark, or return None for none.
+
+    The bytes arrive base64 in the create request's JSON rather than as an
+    upload: the server has no multipart route and no ``python-multipart``, and a
+    text mark is a couple of kilobytes of mostly-transparent PNG.
+
+    Checked here rather than trusted, because these bytes become an ffmpeg
+    input: bounded in size, confirmed to be a PNG, and opened by Pillow so a
+    malformed file is refused with a clear message instead of failing deep in a
+    filter graph as an unexplained encode error.
+    """
+    if encoded is None or encoded == "":
+        return None
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValidationError("the watermark is not valid base64") from exc
+    if len(raw) > MAX_WATERMARK_BYTES:
+        raise ValidationError(f"a watermark may be at most {MAX_WATERMARK_BYTES // 1024} KB")
+    if not raw.startswith(_PNG_MAGIC):
+        raise ValidationError("the watermark must be a PNG")
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            image.verify()
+            width, height = image.size
+    except Exception as exc:  # noqa: BLE001 - any decode failure is one answer
+        raise ValidationError("the watermark could not be read as an image") from exc
+    if width <= 0 or height <= 0:
+        raise ValidationError("the watermark is empty")
+    if width > MAX_WATERMARK_DIMENSION or height > MAX_WATERMARK_DIMENSION:
+        raise ValidationError(f"a watermark may be at most {MAX_WATERMARK_DIMENSION}px on a side")
+    return raw
+
+
+def _overlay_position(corner: WatermarkCorner) -> str:
+    """Where the mark sits, as an ffmpeg ``overlay`` expression.
+
+    ``W``/``H`` are the frame's size and ``w``/``h`` the mark's, so the corner is
+    computed at filter time and cannot be thrown off by the scaler rounding the
+    output height to an even number of lines. ``max(0, …)`` keeps a mark that is
+    somehow larger than the frame on screen rather than off its left edge; the
+    comma is escaped because a bare one would end the filter.
+
+    The mark's inset from the edges is baked into the tile as transparent
+    padding by the client, so there is no margin to add here — every question of
+    how the mark is laid out is answered in one place, on the side that drew it.
+    """
+    right = r"max(0\,W-w)"
+    bottom = r"max(0\,H-h)"
+    x = right if corner in ("top-right", "bottom-right") else "0"
+    y = bottom if corner in ("bottom-left", "bottom-right") else "0"
+    return f"overlay=x={x}:y={y}"
 
 
 def build_gif_command(source: Path, dest: Path, params: GifParams) -> list[str]:
@@ -182,24 +262,49 @@ def build_gif_command(source: Path, dest: Path, params: GifParams) -> list[str]:
     omits `-noaccurate_seek`: a sheet wants a representative frame and can sit
     on the preceding keyframe, whereas a clip's in-point is the frame the owner
     placed to the millisecond, so ffmpeg must decode forward to it.
+
+    A watermark is overlaid *before* `palettegen`, not after: the palette is
+    generated from the frames it will be applied to, so a mark added afterwards
+    would have no colours of its own reserved and would be quantized to whatever
+    the footage happened to need. The mark is a still image, so `overlay` holds
+    its single frame for the whole clip.
     """
     scale = f"scale={params.width}:-2:flags=lanczos"
-    return [
-        ffmpeg_exe(),
-        "-y",
+    inputs = [
         "-ss",
         f"{params.start_s:.3f}",
         "-t",
         f"{params.duration:.3f}",
         "-i",
         str(source),
+    ]
+    # `stats_mode=diff` weights the palette toward what actually changes between
+    # frames, which is what a short clip of mostly-static footage needs;
+    # `paletteuse` then dithers against it.
+    palette = (
+        "split[a][b];"
+        "[a]palettegen=stats_mode=diff[p];"
+        "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
+    )
+    if params.watermark_path is None:
+        # Unlabelled, so ffmpeg takes the only input there is — left exactly as
+        # it was before marks existed.
+        graph = f"fps={params.fps},{scale},{palette}"
+    else:
+        # `-ss`/`-t` bind to the input they precede, so the mark is added after
+        # them and is not itself seeked or trimmed.
+        inputs += ["-i", str(params.watermark_path)]
+        graph = (
+            f"[0:v]fps={params.fps},{scale}[base];"
+            f"[base][1:v]{_overlay_position(params.corner)}[marked];"
+            f"[marked]{palette}"
+        )
+    return [
+        ffmpeg_exe(),
+        "-y",
+        *inputs,
         "-filter_complex",
-        # `stats_mode=diff` weights the palette toward what actually changes
-        # between frames, which is what a short clip of mostly-static footage
-        # needs; `paletteuse` then dithers against it.
-        f"fps={params.fps},{scale},split[a][b];"
-        f"[a]palettegen=stats_mode=diff[p];"
-        f"[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+        graph,
         # An animated GIF with no audio and no stray data streams.
         "-an",
         "-loop",
@@ -253,6 +358,7 @@ class ExportManager:
         source_path: Path,
         params: GifParams,
         filename: str,
+        watermark_png: bytes | None = None,
     ) -> ClipExport:
         """Register an export and start encoding it in the background."""
         export_id = uuid.uuid4().hex
@@ -265,6 +371,7 @@ class ExportManager:
             params=params,
             output_path=output_path,
             filename=filename,
+            watermark_png=watermark_png,
             created_at=self._clock(),
         )
         with self._lock:
@@ -290,7 +397,15 @@ class ExportManager:
         with export.lock:
             export.status = "running"
         try:
-            self._runner(source_path, export.output_path, export.params)
+            params = export.params
+            if export.watermark_png is not None:
+                # Beside the artifact, so the same rmtree that drops a finished
+                # or reaped export takes the mark with it.
+                export.output_path.parent.mkdir(parents=True, exist_ok=True)
+                mark = export.output_path.parent / "watermark.png"
+                mark.write_bytes(export.watermark_png)
+                params = replace(params, watermark_path=mark)
+            self._runner(source_path, export.output_path, params)
         except Exception as exc:  # noqa: BLE001 - reported to the caller as state
             with export.lock:
                 export.status = "failed"

@@ -53,6 +53,7 @@ function mockActions() {
     isFullscreen: vi.fn(() => false),
     exitFullscreen: vi.fn(),
     markClipEdge: vi.fn(),
+    playClipRange: vi.fn(),
   }
 }
 
@@ -75,6 +76,29 @@ test('marks the clip range ends on [ and ]', () => {
 // A source with no file id cannot be exported, so the viewer withholds the
 // action — and the keys must then fall through to the browser rather than be
 // swallowed as handled-but-inert.
+// `\\` sits beside them and plays what they marked. Space stays ordinary
+// playback: the span is asked for, never a redefinition of play.
+test('plays the marked span on backslash', () => {
+  const player = mockPlayer()
+  const actions = mockActions()
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: '\\' }), player, actions)).toBe(
+    true,
+  )
+  expect(actions.playClipRange).toHaveBeenCalledOnce()
+  // And it is not the play button in disguise.
+  expect(player.playPause).not.toHaveBeenCalled()
+})
+
+test('leaves backslash unhandled when the source cannot be clipped', () => {
+  const player = mockPlayer()
+  const actions = { ...mockActions(), playClipRange: undefined }
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: '\\' }), player, actions)).toBe(
+    false,
+  )
+})
+
 test('leaves [ and ] unhandled when the source cannot be clipped', () => {
   const player = mockPlayer()
   const actions = { ...mockActions(), markClipEdge: undefined }
