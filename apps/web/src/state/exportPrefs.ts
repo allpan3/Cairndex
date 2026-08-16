@@ -113,13 +113,25 @@ export function getExportPrefs(): ExportPrefs {
 }
 
 /**
- * Test seam: forget every subscriber and re-read storage.
+ * Test seam: a clean slate — no subscribers, no stored value, no snapshot.
  *
- * Re-reading rather than simply resetting to the defaults is what makes a
- * fresh page load testable — it is the only way to exercise `read`'s merge of a
- * stored value that predates a newer field.
+ * Clearing storage is the point. Leaving it behind made "reset" a lie in any
+ * environment that actually has `localStorage`: the snapshot went back to the
+ * defaults while the stored value stayed, so the next read resurrected it and
+ * one test's preferences leaked into the next.
  */
 export function resetExportPrefsForTests(): void {
+  listeners.clear()
+  try {
+    globalThis.localStorage?.removeItem(STORAGE_KEY)
+  } catch {
+    /* nothing stored, nothing to clear */
+  }
+  snapshot = DEFAULT_EXPORT_PREFS
+}
+
+/** Test seam: re-read storage without clearing it, modelling a fresh load. */
+export function reloadExportPrefsForTests(): void {
   listeners.clear()
   snapshot = read()
 }
