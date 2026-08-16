@@ -1020,6 +1020,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-browser/playback-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File Browser Playback Decision
+         * @description Decide direct/remux/transcode for a library-relative path, session and all.
+         */
+        post: operations["file_browser_playback_decision_api_v1_libraries__library_id__file_browser_playback_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete File Browser Session
+         * @description Tear down a path-scoped session (player close, file switch, unmount).
+         */
+        delete: operations["delete_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}/teardown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Beacon Teardown File Browser Session
+         * @description Tear down a path-scoped session via a POST beacon (see the per-file alias).
+         */
+        post: operations["beacon_teardown_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__teardown_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}/{artifact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * File Browser Session Artifact
+         * @description Serve a path-scoped session's playlist, init segment, or media segment.
+         *
+         *     Identical to the per-file route: a session is addressed by its own id, and
+         *     the manager holds the bytes, so nothing here needs to know what produced it.
+         */
+        get: operations["file_browser_session_artifact_api_v1_libraries__library_id__file_browser_playback_sessions__session_id___artifact__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file-ops": {
         parameters: {
             query?: never;
@@ -3216,6 +3299,18 @@ export interface components {
             missing_files_updated: number;
             /** Path */
             path: string;
+        };
+        /** FileBrowserPlaybackDecisionRequest */
+        FileBrowserPlaybackDecisionRequest: {
+            /** Audio Stream Index */
+            audio_stream_index?: number | null;
+            caps: components["schemas"]["ClientCapabilities"];
+            /** Max Height */
+            max_height?: number | null;
+            /** Path */
+            path: string;
+            /** Start S */
+            start_s?: number | null;
         };
         /** FileLink */
         FileLink: {
@@ -6740,6 +6835,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileBrowserListingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_browser_playback_decision_api_v1_libraries__library_id__file_browser_playback_decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileBrowserPlaybackDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackDecisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                session_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    beacon_teardown_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__teardown_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                session_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_browser_session_artifact_api_v1_libraries__library_id__file_browser_playback_sessions__session_id___artifact__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+                session_id: string;
+                artifact: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
