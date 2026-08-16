@@ -1939,13 +1939,21 @@ function Workspace({
   )
 
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
-  // "add") remove them from the collection currently in view. Reads the dragged
-  // bundle ids from the active dragItem.
+  // "add") remove them from the collection currently in view.
+  //
+  // The ids come from the *synchronous* drag store, with the reactive `dragItem`
+  // only as a fallback. This is a commit path, and the store exists precisely
+  // because a fast drag can deliver its drop before React has committed the
+  // dragstart's state update (see dnd.ts). Reading the prop here undid that: the
+  // callers had already resolved the drag from the store to decide they were
+  // holding bundles at all, and then this dropped the write on the floor — no
+  // mutation, no count change, nothing on screen to say a drag had happened.
   const moveBundlesToCollection = useCallback(
     (targetCollectionId: string, alt: boolean) => {
-      if (dragItem?.kind !== 'bundles' || dragItem.ids.length === 0) return
+      const live = getActiveDrag() ?? dragItem
+      if (live?.kind !== 'bundles' || live.ids.length === 0) return
       batch.mutate({
-        bundle_ids: dragItem.ids,
+        bundle_ids: live.ids,
         add_collection_ids: [targetCollectionId],
         remove_collection_ids: alt || !selection.collectionId ? [] : [selection.collectionId],
       })
