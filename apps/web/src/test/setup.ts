@@ -1,3 +1,5 @@
+import { beforeEach } from 'vitest'
+
 import '@testing-library/jest-dom/vitest'
 
 // jsdom has no layout engine, so ResizeObserver (used by the virtualized
@@ -38,3 +40,26 @@ class IntersectionObserverStub {
 }
 globalThis.IntersectionObserver =
   globalThis.IntersectionObserver ?? (IntersectionObserverStub as never)
+
+/**
+ * A working `localStorage`, because the absence of one hid a real bug.
+ *
+ * This environment provides none (Node's is behind `--localstorage-file`),
+ * while CI's does — so preference stores silently never persisted here and
+ * every write leaked between tests there. Four tests passed locally and failed
+ * in CI for exactly that reason. Backed by a Map, and cleared before each test
+ * so a file's cases stay independent whichever environment runs them.
+ */
+const testStorage = new Map<string, string>()
+globalThis.localStorage = {
+  getItem: (key: string) => testStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => void testStorage.set(key, String(value)),
+  removeItem: (key: string) => void testStorage.delete(key),
+  clear: () => testStorage.clear(),
+  key: (index: number) => [...testStorage.keys()][index] ?? null,
+  get length() {
+    return testStorage.size
+  },
+} satisfies Storage
+
+beforeEach(() => testStorage.clear())
