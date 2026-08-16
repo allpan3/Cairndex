@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.util import identity_key
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.time import utcnow
@@ -73,6 +75,19 @@ def is_completed(position_s: float, duration_s: float | None) -> bool:
     return bool(duration_s and duration_s > 0 and position_s / duration_s >= COMPLETED_THRESHOLD)
 
 
+# Columns an existing row takes from the incoming write. The primary key is
+# absent for the obvious reason; everything else is rewritten, matching the
+# last-write-wins behaviour this endpoint has always had.
+_PROGRESS_UPDATABLE = (
+    "bundle_id",
+    "position_s",
+    "duration_s",
+    "completed",
+    "updated_at",
+    "user_id",
+)
+
+
 # Idempotently store progress for an existing video file
 def upsert_progress(
     session: Session,
@@ -82,6 +97,15 @@ def upsert_progress(
     duration_s: float | None,
     user_id: str | None = None,
 ) -> ProgressValue:
+    """Write one file's playback position, creating the row if it is the first.
+
+    A single statement, not read-then-insert. The player writes progress
+    periodically *and* on completion, so the two land together at the end of a
+    short file — and both would find no row, both INSERT, and the second would
+    fail the ``file_id`` primary key with a 500 the owner saw as a failed
+    request (2026-08-16). ``ON CONFLICT DO UPDATE`` makes the write atomic, so
+    whichever arrives second updates instead of colliding.
+    """
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
@@ -93,34 +117,36 @@ def upsert_progress(
     assert raw_position is not None
     position = clamp_position(raw_position, duration)
     completed = is_completed(position, duration)
-    now = utcnow()
-    row = session.get(PlaybackProgress, file_id)
-    if row is None:
-        row = PlaybackProgress(
-            file_id=file_id,
-            bundle_id=asset_file.bundle_id,
-            position_s=position,
-            duration_s=duration,
-            completed=completed,
-            updated_at=now,
-            user_id=user_id,
-        )
-        session.add(row)
-    else:
-        row.bundle_id = asset_file.bundle_id
-        row.position_s = position
-        row.duration_s = duration
-        row.completed = completed
-        row.updated_at = now
-        row.user_id = user_id
-    session.flush()
-    return ProgressValue(
-        file_id=row.file_id,
-        bundle_id=row.bundle_id,
-        position_s=row.position_s,
-        duration_s=row.duration_s,
-        completed=bool(row.completed),
+    value = ProgressValue(
+        file_id=file_id,
+        bundle_id=asset_file.bundle_id,
+        position_s=position,
+        duration_s=duration,
+        completed=completed,
     )
+
+    statement = sqlite_insert(PlaybackProgress).values(
+        file_id=file_id,
+        bundle_id=asset_file.bundle_id,
+        position_s=position,
+        duration_s=duration,
+        completed=completed,
+        updated_at=utcnow(),
+        user_id=user_id,
+    )
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[PlaybackProgress.file_id],
+            set_={name: getattr(statement.excluded, name) for name in _PROGRESS_UPDATABLE},
+        )
+    )
+    # A Core statement does not reach the ORM identity map, so a row this
+    # session had already loaded would keep the numbers it was loaded with.
+    # Expiring it sends the next read back to what we just wrote.
+    stale = session.identity_map.get(identity_key(PlaybackProgress, file_id))
+    if stale is not None:
+        session.expire(stale)
+    return value
 
 
 # Fetch progress for a manifest's already-known file ids in one query

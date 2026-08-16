@@ -288,6 +288,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **Two playback-position writes landing together no longer fail one of them.**
+  The player saves progress periodically *and* on completion, which on a short
+  file arrive at once — and the write was read-then-insert, so both found no row,
+  both inserted, and the second hit the primary key and returned a 500. It is
+  one `ON CONFLICT DO UPDATE` statement now, so whichever arrives second updates.
+  Last-write-wins is unchanged.
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.

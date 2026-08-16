@@ -185,18 +185,59 @@ grouping plans; the decision filled in metadata with no probe job ever run; and
 in the browser both the 10-bit MP4 and the MKV played (`readyState` 4, no
 fallback card) where the 10-bit one previously showed the owner's screenshot.
 
-**Found, not fixed (out of scope, chip raised).** `PUT …/files/{id}/progress`
-500s when two progress writes for the same file race:
-`services/playback_progress.upsert_progress` is read-then-insert, so both see no
-row and the second hits `UNIQUE constraint failed: playback_progress.file_id`.
-Pre-existing and untouched by this branch — it only became visible because the
-video now plays. Wants an `ON CONFLICT DO UPDATE`.
+**Also fixed (found while verifying, owner asked for it).** `PUT
+…/files/{id}/progress` 500'd when two progress writes for the same file raced —
+`upsert_progress` was read-then-insert, so both saw no row and the second hit
+`UNIQUE constraint failed: playback_progress.file_id`. Now one
+`ON CONFLICT DO UPDATE`; last-write-wins is unchanged, and the ORM identity map
+is expired after the Core statement so a session that had already loaded the row
+does not keep stale numbers.
 
-**Not done.** HDR tone mapping: a 10-bit HDR10 source now transcodes to 8-bit
-`yuv420p` with no tone map, so colour will look flat for a client that cannot
-decode 10-bit. That is strictly better than the black error card it replaced,
-but it is a real gap — `zscale`/`libplacebo` availability varies by ffmpeg
-build, so it needs its own decision rather than a half-implementation.
+**Worth knowing for the next person: this race cannot be reproduced as a
+deterministic test, and it is not for want of trying.** SQLite serializes
+writers, and pysqlite runs SELECTs in autocommit — so two in-process sessions
+always see each other's committed row, even with one holding an open
+transaction. Six concurrent threads against the old code collided in **zero of
+eight trials**. The window is real but needs two genuinely concurrent HTTP
+requests with I/O between the read and the write. What is pinned instead is the
+invariant that closes it: `test_progress_is_written_as_one_atomic_statement`
+records the statements the write emits and asserts there is exactly one and it
+carries `ON CONFLICT`. Verified to fail on the old code, printing the very
+SELECT/INSERT pair that is the bug. Do not "improve" it into a threaded test.
+
+**Open: HDR tone mapping.** A transcoded HDR source gets `-pix_fmt yuv420p` and
+no colour conversion, so PQ values are read as BT.709 gamma and the picture
+comes out flat. Scoped smaller than it first looked, and measured rather than
+assumed:
+
+- **10-bit SDR needs nothing.** High 10 H.264 (the common Hi10P case) is BT.709;
+  the existing 8-bit conversion is already correct for it.
+- **Most HDR never reaches the transcoder on a current browser.** Measured on
+  Chrome 148/macOS: `hvc1.2.4.L120.B0`, `hev1.2.4.L120.B0`, `av01.0.05M.10` and
+  `vp09.02.10.10` all answer *probably*, so 10-bit HEVC/AV1/VP9 direct-play and
+  the capability tokens do their job. Only `avc1.6E01E0` (High 10 H.264) is
+  refused — and that is SDR.
+- **So the reachable cases are** HDR on a client without 10-bit HEVC/AV1 decode
+  (Firefox, Chrome without HEVC hardware), and **Dolby Vision on every client**,
+  because the DV rule forces a transcode regardless of caps. DV is therefore the
+  priority, and the worst-looking: profile 8.1 has an HDR10-compatible base layer
+  and merely goes flat, while profile 5 is IPT and comes out green/magenta.
+  `_is_dolby_vision` does not record `dv_profile`, so the two cannot currently
+  be told apart — recording it is a prerequisite for treating them differently.
+- **Availability genuinely varies.** Confirmed locally: Homebrew's ffmpeg has
+  `tonemap` but neither `zscale` nor `libplacebo`, and `tonemap` alone is
+  useless — it needs zscale to linearize either side of it. Debian's apt ffmpeg
+  (the Docker image) and the pinned martin-riedl static build (the macOS
+  sidecar) were **not** checked; no Docker daemon was running and the bundle is
+  not in this worktree. Check both before designing around either.
+
+Suggested order when it is picked up: (1) say so in the decision `reason` and
+surface it, so wrong colour is explained rather than mysterious; (2) detect
+`zscale`/`libplacebo` once at startup rather than assuming; (3) tone map only
+when `hdr` is non-null, behind `CAIRNDEX_FFMPEG_TONEMAP=auto|off`; (4) measure
+on the NAS before trusting it — the float32 linear intermediate is the expensive
+part, sessions serve segments just ahead of the player, and a 4K HDR tone-mapped
+transcode may not keep up.
 
 **Next.** Owner pass on a real library: confirm the previously-failing files now
 play, and confirm "Scan new files" no longer opens the grouping pane.
