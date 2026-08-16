@@ -142,6 +142,27 @@ class PlaybackDecisionRequest(BaseModel):
     max_height: int | None = None
 
 
+# Playback decision for a File Browser path that need not be indexed at all.
+# Deliberately narrower than the per-file request: subtitle burn-in names a
+# `SubtitleTrack` row, and a bare path has none.
+class FileBrowserPlaybackDecisionRequest(BaseModel):
+    # Library-root-relative; absolute paths and traversal are rejected server-side.
+    path: str
+    caps: ClientCapabilities
+    audio_stream_index: int | None = None
+    max_height: int | None = None
+    start_s: float | None = None
+
+    @field_validator("start_s")
+    @classmethod
+    def finite_non_negative(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("start_s must be a finite non-negative number")
+        return value
+
+
 # Decision response: how to play plus the metadata the player needs up front
 class PlaybackDecisionResponse(BaseModel):
     method: str  # "direct" | "remux" | "transcode"

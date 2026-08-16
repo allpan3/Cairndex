@@ -118,6 +118,145 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: library setup and the videos that would not play (2026-08-16)
+
+Branch `claude/library-setup-scan-issues-db7786`, off `main` at `a8e077a4`.
+Three owner reports from using the app on a newly created library, plus one
+related export gap raised mid-session.
+
+**What was reported.** (1) "Scan new files" also ran other steps and popped the
+grouping suggestion pane. (2) A new library could not play anything until both
+**Scan new files** and **Collect metadata** had been run by hand — and the owner
+wants file-browser-only use to work at all. (3) A video still failed with "This
+video can't be played here." (4) A contact sheet cut from the File Browser
+printed `Details: … · — / —`.
+
+**What was actually wrong.** All of (2) and (3) are one defect with two halves.
+The decision matrix (`media/playback.decide_playback`) tested container and
+codec *family* and nothing else, and was deliberately optimistic about anything
+it did not know:
+
+- **Nothing probed → `direct` for everything.** An unprobed row has no codec, so
+  `video_ok` is true by default. A fresh library therefore handed every file
+  straight to the browser, and anything the browser could not decode failed with
+  the format card. Verified against the real code, not inferred.
+- **Probed, and still wrong for 10-bit.** Every capability string a browser can
+  be probed with is an 8-bit profile — `avc1.640028` is High, `hvc1.1.6.L93.B0`
+  is Main — so a 10-bit source passes the family test and is refused by the
+  engine anyway. `bit_depth` was already recorded by the probe (v5) and simply
+  never consulted. Measured with ffmpeg-built fixtures: High 10 H.264 and
+  Main 10 HEVC both decided `direct` before, both correct after. **High 10 H.264
+  is decoded by no browser at all**, which makes it the most likely explanation
+  for the screenshot (an hour-long MP4 whose codec name is just `h264`).
+- **Dolby Vision has the same shape** — an ordinary HEVC base layer, so family
+  and tag both pass — and is now transcoded.
+
+**What landed.**
+
+1. `suggest_grouping` on the scan job; "Scan new files" sends `false`, Update
+   keeps the default, and a scan-only run reports a null `grouping_plan_id` so
+   the client has nothing to open.
+2. Depth and Dolby Vision in the decision matrix; `h26410`/`hevc10`/`vp910`/
+   `av110` capability tokens; `assess_playability` stops claiming a 10-bit or DV
+   source is natively playable (it is the client's fallback when a decision
+   fails, so claiming it sent playback back to the same refusal).
+3. `probe_service.ensure_probed` — one bounded ffprobe of one file's header on
+   the way to the decision, written back, silent on failure.
+4. Path-scoped playback: `POST …/file-browser/playback-decision` plus its own
+   session/teardown routes, backed by `probe_service.probe_path`. Sessions are
+   keyed for reuse by `path:{relative_path}` and share the manager, bound, and
+   reaper with the per-file ones. `useHlsSession` takes `fileId` **and**
+   `browserPath` as primitives (an object target re-decided on every render).
+5. `useIndexNewLibrary` — creating a library enqueues discovery then metadata.
+   Registering an existing one does not.
+6. `width`/`height`/`fps` (and `bit_depth`) on `FileBrowserEntryRead`, through
+   `viewerItemFromEntry` and the File Browser's contact-sheet target.
+
+**Verified.** Full gates green: backend ruff/format/mypy and **1039 pytest**;
+frontend lint/format/typecheck, **737 vitest**, and build. Note that
+`tsc --noEmit -p tsconfig.json` checks *nothing* in this repo — the root config
+is a solution file with `files: []`. Use `npm run typecheck` (`tsc -b`).
+
+Also verified by hand against a synthetic three-file library (8-bit MP4, High 10
+MP4, H.264-in-MKV) on a scratch `CAIRNDEX_DATA_DIR`: unindexed paths decided
+direct/transcode/remux correctly with **no scan at all**; a transcoded segment
+pulled from the session ffprobes as 8-bit High H.264; a scan-only job left zero
+grouping plans; the decision filled in metadata with no probe job ever run; and
+in the browser both the 10-bit MP4 and the MKV played (`readyState` 4, no
+fallback card) where the 10-bit one previously showed the owner's screenshot.
+
+**Also fixed (owner-reported while testing).** The viewer's docked pane showed
+the Bundle Inspector for an unbundled video, stating it was in a bundle. The
+trap is that "has a `bundle_id`" is not "is in a bundle": a scan stages every
+new file into a provisional one-file bundle, so every unbundled file has one.
+`inspectorTargetForEntry` / `inspectorTargetForBundleFile` in
+`app/fileFacts.ts` now decide, and `ViewerShell` is told rather than guessing —
+the shell cannot know, because only the opening surface has the `unbundled` flag
+(File Browser) or the bundle's `grouping_state` (Bundle Browser). Note the
+Bundle Browser needs it too: its views exclude provisional bundles, but **Missing
+Files does not**, so a scan-staged bundle can be opened there. An unindexed path
+now gets the file pane as well, where it previously got nothing and a disabled
+toggle. `factsFromEntry` also picks up the width/height/fps the listing gained
+above — the File Browser's own inspector was showing "—" for numbers the server
+already had.
+
+**Also fixed (found while verifying, owner asked for it).** `PUT
+…/files/{id}/progress` 500'd when two progress writes for the same file raced —
+`upsert_progress` was read-then-insert, so both saw no row and the second hit
+`UNIQUE constraint failed: playback_progress.file_id`. Now one
+`ON CONFLICT DO UPDATE`; last-write-wins is unchanged, and the ORM identity map
+is expired after the Core statement so a session that had already loaded the row
+does not keep stale numbers.
+
+**Worth knowing for the next person: this race cannot be reproduced as a
+deterministic test, and it is not for want of trying.** SQLite serializes
+writers, and pysqlite runs SELECTs in autocommit — so two in-process sessions
+always see each other's committed row, even with one holding an open
+transaction. Six concurrent threads against the old code collided in **zero of
+eight trials**. The window is real but needs two genuinely concurrent HTTP
+requests with I/O between the read and the write. What is pinned instead is the
+invariant that closes it: `test_progress_is_written_as_one_atomic_statement`
+records the statements the write emits and asserts there is exactly one and it
+carries `ON CONFLICT`. Verified to fail on the old code, printing the very
+SELECT/INSERT pair that is the bug. Do not "improve" it into a threaded test.
+
+**Open: HDR tone mapping.** A transcoded HDR source gets `-pix_fmt yuv420p` and
+no colour conversion, so PQ values are read as BT.709 gamma and the picture
+comes out flat. Scoped smaller than it first looked, and measured rather than
+assumed:
+
+- **10-bit SDR needs nothing.** High 10 H.264 (the common Hi10P case) is BT.709;
+  the existing 8-bit conversion is already correct for it.
+- **Most HDR never reaches the transcoder on a current browser.** Measured on
+  Chrome 148/macOS: `hvc1.2.4.L120.B0`, `hev1.2.4.L120.B0`, `av01.0.05M.10` and
+  `vp09.02.10.10` all answer *probably*, so 10-bit HEVC/AV1/VP9 direct-play and
+  the capability tokens do their job. Only `avc1.6E01E0` (High 10 H.264) is
+  refused — and that is SDR.
+- **So the reachable cases are** HDR on a client without 10-bit HEVC/AV1 decode
+  (Firefox, Chrome without HEVC hardware), and **Dolby Vision on every client**,
+  because the DV rule forces a transcode regardless of caps. DV is therefore the
+  priority, and the worst-looking: profile 8.1 has an HDR10-compatible base layer
+  and merely goes flat, while profile 5 is IPT and comes out green/magenta.
+  `_is_dolby_vision` does not record `dv_profile`, so the two cannot currently
+  be told apart — recording it is a prerequisite for treating them differently.
+- **Availability genuinely varies.** Confirmed locally: Homebrew's ffmpeg has
+  `tonemap` but neither `zscale` nor `libplacebo`, and `tonemap` alone is
+  useless — it needs zscale to linearize either side of it. Debian's apt ffmpeg
+  (the Docker image) and the pinned martin-riedl static build (the macOS
+  sidecar) were **not** checked; no Docker daemon was running and the bundle is
+  not in this worktree. Check both before designing around either.
+
+Suggested order when it is picked up: (1) say so in the decision `reason` and
+surface it, so wrong colour is explained rather than mysterious; (2) detect
+`zscale`/`libplacebo` once at startup rather than assuming; (3) tone map only
+when `hdr` is non-null, behind `CAIRNDEX_FFMPEG_TONEMAP=auto|off`; (4) measure
+on the NAS before trusting it — the float32 linear intermediate is the expensive
+part, sessions serve segments just ahead of the player, and a 4K HDR tone-mapped
+transcode may not keep up.
+
+**Next.** Owner pass on a real library: confirm the previously-failing files now
+play, and confirm "Scan new files" no longer opens the grouping pane.
+
 ## Open on branch: drag-and-drop between collections (2026-08-15)
 
 Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the

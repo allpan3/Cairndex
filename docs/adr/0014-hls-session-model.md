@@ -154,6 +154,28 @@ have a timeout and be killed on teardown.
 - If the owner rejects any decision here, a superseding ADR is required; until
   ratification this ADR is **proposed**.
 
+## Amendment history
+
+**2026-08-16 — a session's source need not be an indexed file.** The decision
+above assumes every session names an `AssetFile`, because that was the only way
+to reach one. The File Browser is the physical surface, and a path there need
+not be indexed at all; until now that meant no decision and no conversion, so a
+never-scanned library could play only what the browser itself decodes
+(owner-reported). `POST …/file-browser/playback-decision` now takes a
+library-relative path and reaches the same matrix and the same sessions, with an
+on-demand ffprobe standing in for stored `tech_metadata`.
+
+Nothing in §4 changes. The reuse key stays `(library_id, file_id, kind,
+params)`; a path simply occupies the `file_id` slot as `path:{relative_path}`,
+an internal identity that never leaves the server — the artifact routes address
+a session by its own id, as they already did. The bound, the 429, the idle
+reaper, and teardown all apply unchanged and are shared with the per-file
+sessions rather than pooled separately. Path safety is the File Browser's own
+(relative only, no traversal, no symlink escape); non-video paths are refused.
+What an unindexed source goes without is what genuinely needs a row: subtitle
+tracks, storyboards, resume, and burn-in — so the path request has no
+`burn_subtitle_track_id`.
+
 ## References
 
 - `docs/plans/01-web-media-player-and-viewer.md` §6, §12 (draft rationale)

@@ -19,8 +19,9 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
@@ -84,6 +85,17 @@ class FileBrowserEntry:
     audio_bitrate: int | None
     audio_sample_rate: int | None
     duration: float | None
+    # Dimensions and frame rate, for the same reason the codecs are here: an
+    # export started from this surface prints them, and without them a contact
+    # sheet built from a File Browser row read "— / —" where the Bundle Browser's
+    # read the real numbers (owner-reported, 2026-08-15).
+    width: int | None
+    height: int | None
+    fps: float | None
+    # Colour depth, so the client's direct-play gate can reach the same verdict
+    # as the server's playback decision — which refuses >8-bit sources the
+    # browser cannot decode (see media/playback.py).
+    bit_depth: int | None
     resume_position: float | None
     # True when linked into a scan-staged *provisional* bundle — i.e. the file is
     # known but not yet in a confirmed bundle ("unbundled"). False for unlinked
@@ -105,6 +117,10 @@ class _Link:
     audio_bitrate: int | None
     audio_sample_rate: int | None
     duration: float | None
+    width: int | None
+    height: int | None
+    fps: float | None
+    bit_depth: int | None
     resume_position: float | None
     unbundled: bool  # in a provisional/scan_suggestion bundle (not yet confirmed)
 
@@ -220,6 +236,10 @@ def list_unbundled_files(
                 "audio_sample_rate"
             ),
             func.json_extract(AssetFile.tech_metadata, "$.duration").label("duration"),
+            func.json_extract(AssetFile.tech_metadata, "$.width").label("width"),
+            func.json_extract(AssetFile.tech_metadata, "$.height").label("height"),
+            func.json_extract(AssetFile.tech_metadata, "$.fps").label("fps"),
+            func.json_extract(AssetFile.tech_metadata, "$.bit_depth").label("bit_depth"),
             PlaybackProgress.position_s.label("resume_position"),
             PlaybackProgress.completed.label("progress_completed"),
         )
@@ -232,45 +252,15 @@ def list_unbundled_files(
     ]
     rows.sort(key=lambda row: row.relative_path.lower())
     total = len(rows)
-    items = [
-        _unbundled_entry(
-            row.file_id,
-            row.relative_path,
-            row.bundle_id,
-            row.size_bytes,
-            row.mtime,
-            row.container,
-            row.video_codec,
-            row.video_codec_tag,
-            row.audio_codec,
-            row.video_bitrate,
-            row.audio_bitrate,
-            row.audio_sample_rate,
-            row.duration,
-            progress_resume_position(row.resume_position, row.progress_completed),
-        )
-        for row in rows[offset : offset + limit]
-    ]
+    items = [_unbundled_entry(row) for row in rows[offset : offset + limit]]
     return UnbundledFilesPage(items=items, total=total, offset=offset, limit=limit)
 
 
-# Shape one linked provisional row like a File Browser entry
-def _unbundled_entry(
-    file_id: str,
-    relative_path: str,
-    bundle_id: str,
-    size_bytes: int | None,
-    mtime: datetime | None,
-    container: str | None,
-    video_codec: str | None,
-    video_codec_tag: str | None,
-    audio_codec: str | None,
-    video_bitrate: int | None,
-    audio_bitrate: int | None,
-    audio_sample_rate: int | None,
-    duration: float | None,
-    resume_position: float | None,
-) -> FileBrowserEntry:
+# Shape one linked provisional row like a File Browser entry. Takes the query
+# row rather than a positional field list: every column is already labelled to
+# match, and threading eighteen arguments through was its own hazard.
+def _unbundled_entry(row: Row[Any]) -> FileBrowserEntry:
+    relative_path: str = row.relative_path
     name = relative_path.rsplit("/", 1)[-1]
     _, _, ext = name.rpartition(".")
     extension = ext.lower() if ext and ext != name else None
@@ -279,25 +269,29 @@ def _unbundled_entry(
         name=name,
         relative_path=relative_path,
         kind="file",
-        size_bytes=size_bytes,
-        modified_at=mtime,
+        size_bytes=row.size_bytes,
+        modified_at=row.mtime,
         created_at=None,
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,
         supported=is_openable_media(classification[0], relative_path) if classification else False,
         linked=True,
-        bundle_id=bundle_id,
-        file_id=file_id,
-        container=container,
-        video_codec=video_codec,
-        video_codec_tag=video_codec_tag,
-        audio_codec=audio_codec,
-        video_bitrate=video_bitrate,
-        audio_bitrate=audio_bitrate,
-        audio_sample_rate=audio_sample_rate,
-        duration=duration,
-        resume_position=resume_position,
+        bundle_id=row.bundle_id,
+        file_id=row.file_id,
+        container=row.container,
+        video_codec=row.video_codec,
+        video_codec_tag=row.video_codec_tag,
+        audio_codec=row.audio_codec,
+        video_bitrate=row.video_bitrate,
+        audio_bitrate=row.audio_bitrate,
+        audio_sample_rate=row.audio_sample_rate,
+        duration=row.duration,
+        width=row.width,
+        height=row.height,
+        fps=row.fps,
+        bit_depth=row.bit_depth,
+        resume_position=progress_resume_position(row.resume_position, row.progress_completed),
         unbundled=True,
     )
 
@@ -378,6 +372,10 @@ def _build_entry(
             audio_bitrate=None,
             audio_sample_rate=None,
             duration=None,
+            width=None,
+            height=None,
+            fps=None,
+            bit_depth=None,
             resume_position=None,
             unbundled=False,
         )
@@ -408,6 +406,10 @@ def _build_entry(
         audio_bitrate=link.audio_bitrate if link is not None else None,
         audio_sample_rate=link.audio_sample_rate if link is not None else None,
         duration=link.duration if link is not None else None,
+        width=link.width if link is not None else None,
+        height=link.height if link is not None else None,
+        fps=link.fps if link is not None else None,
+        bit_depth=link.bit_depth if link is not None else None,
         resume_position=link.resume_position if link is not None else None,
         unbundled=link.unbundled if link is not None else False,
     )
@@ -456,6 +458,10 @@ def _linked_paths(session: Session, parent_rel: str) -> tuple[dict[str, _Link], 
             audio_bitrate=meta.get("audio_bitrate"),
             audio_sample_rate=meta.get("audio_sample_rate"),
             duration=meta.get("duration"),
+            width=meta.get("width"),
+            height=meta.get("height"),
+            fps=meta.get("fps"),
+            bit_depth=meta.get("bit_depth"),
             resume_position=progress_resume_position(resume_position, progress_completed),
             unbundled=unbundled,
         )
