@@ -539,13 +539,15 @@ export function ViewerShell({
 
   // `S` and the camera button: one press, at the source's own resolution.
   const snapshot = useCallback(() => {
-    if (videoElement) saveSnapshot(videoElement, current?.title ?? title)
+    // Fire and forget: the capture is only awaited internally so a picture
+    // watermark can decode, and there is nothing here to do afterwards.
+    if (videoElement) void saveSnapshot(videoElement, current?.title ?? title)
   }, [current?.title, title, videoElement])
 
   // "Snapshot As…": the same capture, at a size chosen first.
   const snapshotAt = useCallback(
     (width: number) => {
-      if (videoElement) saveSnapshot(videoElement, current?.title ?? title, { width })
+      if (videoElement) void saveSnapshot(videoElement, current?.title ?? title, { width })
     },
     [current?.title, title, videoElement],
   )

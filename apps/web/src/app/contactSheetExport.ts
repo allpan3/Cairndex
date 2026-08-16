@@ -19,7 +19,7 @@ import {
 } from '../lib/format'
 import { getHostPlatform, isDesktopHost } from '../platform'
 import { getExportPrefs } from '../state/exportPrefs'
-import { watermarkLabel } from './watermark'
+import { resolveWatermark } from './watermark'
 
 /**
  * The grids offered. Square, and within the server's 2–8 column bound.
@@ -118,7 +118,7 @@ export async function saveContactSheet(
       metadataRows: contactSheetRows(target),
       cols: grid,
       rows: grid,
-      watermark: watermarkLabel(getExportPrefs()),
+      watermark: await resolveWatermark(getExportPrefs()),
     })
     const name = `${safeName(target.title)} — contact sheet.jpg`
     if (isDesktopHost()) {

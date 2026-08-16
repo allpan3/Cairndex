@@ -10,6 +10,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **The watermark can be your own image instead of words.** Settings → Exports
+  offers Text or Image; choosing Image takes a PNG, JPEG, WebP, or GIF, with a
+  transparent PNG working best. The picture is fitted inside both a height and
+  a width bound rather than scaled by one of them, because the two shapes
+  people actually use pull in opposite directions — a square badge scaled to a
+  fixed width becomes enormously tall, and a long wordmark scaled to a fixed
+  height runs off the frame. It scales with the export like the text does, so
+  one logo suits a 480 px GIF and a 4K snapshot alike, and it keeps the same
+  soft shadow, which is what stops a white logo vanishing into a white frame.
+  Chosen images are stored on this machine, resized to at most 1024 px on the
+  longest side and re-encoded as PNG so transparency survives; SVG is not
+  accepted, being a document that can carry scripts rather than a picture.
+  Switching between Text and Image keeps both answers, so neither has to be
+  retyped or re-picked.
 - **Exports can carry a watermark, and it says what you tell it to.**
   Settings → Exports has an off-by-default switch and a text field; with it on,
   the mark is stamped on snapshots and GIFs in the bottom-right corner and on

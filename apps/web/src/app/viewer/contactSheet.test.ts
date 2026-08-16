@@ -78,7 +78,7 @@ test('draws no mark when the owner has not asked for one', async () => {
 })
 
 test('draws the mark at the header’s top right, above the metadata rows', async () => {
-  const { drawn } = await compose({ watermark: 'STUDIO ALPHA' })
+  const { drawn } = await compose({ watermark: { kind: 'text', text: 'STUDIO ALPHA' } })
   expect(drawn.map(({ text }) => text)).toEqual([
     'STUDIO ALPHA',
     'File Name: video.mp4',
@@ -86,16 +86,20 @@ test('draws the mark at the header’s top right, above the metadata rows', asyn
     'Codec: H.264 / 14.0 Mbps · AAC / 192 kbps / 48 kHz',
   ])
   const [mark, firstRow] = drawn
-  expect(mark?.align).toBe('right')
-  // Anchored to the right edge, while the rows run from the left.
+  // Positioned rather than merely right-aligned: the mark's origin is computed
+  // from its measured size, which is what lets a picture land in the same spot.
   expect(mark?.x).toBeGreaterThan(1280 / 2)
   expect(firstRow?.align).toBe('left')
   expect(firstRow?.x).toBeLessThan(1280 / 2)
+  // Clear of the rows it shares the band with.
+  expect(mark?.x).toBeGreaterThan(firstRow?.x ?? 0)
 })
 
 // The mark sits in the header band, which is above the grid — never over a frame.
 test('keeps the mark inside the header, off the frames', async () => {
-  const { drawn, grid, drawImage } = await compose({ watermark: 'STUDIO ALPHA' })
+  const { drawn, grid, drawImage } = await compose({
+    watermark: { kind: 'text', text: 'STUDIO ALPHA' },
+  })
   const headerHeight = drawImage.mock.calls[0]?.[2] as number
   expect(drawImage).toHaveBeenCalledWith(grid, 0, expect.any(Number))
   expect(drawn[0]?.y).toBeLessThan(headerHeight)
@@ -105,7 +109,7 @@ test('keeps the mark inside the header, off the frames', async () => {
 // Retiring the fixed block must not change the band's height — the sheet's
 // proportions come from its three metadata rows, not from what is beside them.
 test('leaves the header height to the metadata rows', async () => {
-  const withMark = await compose({ watermark: 'STUDIO ALPHA' })
+  const withMark = await compose({ watermark: { kind: 'text', text: 'STUDIO ALPHA' } })
   const without = await compose()
   expect(withMark.canvas.height).toBe(without.canvas.height)
   expect(without.canvas.height).toBeGreaterThan(without.grid.height + 70)

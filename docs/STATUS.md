@@ -319,18 +319,57 @@ over a still mark** — far less than feared, so the still-first decision is not
 being forced by encoding cost. Synthetic sources, so treat the direction as
 sound and the exact percentages as indicative.
 
+### The image mark, added the same day
+
+The second half of the owner's request, and it needed **no server change at
+all** — the payoff of rendering client-side. A picked image and a rendered
+string both leave `app/watermark.ts` as the same transparent PNG, so ffmpeg
+never learns which it composited.
+
+Three decisions worth recording:
+
+- **Fitted inside both a height and a width bound**, not scaled by one. The two
+  shapes people use pull in opposite directions: a square badge scaled to a
+  fixed width becomes enormously tall, a long wordmark scaled to a fixed height
+  runs off the frame.
+- **Stored inline as a `data:` URL** beside the rest of `exportPrefs`, bounded
+  on import to 1024 px on the longest side and re-encoded to PNG when resized.
+  A browser hands out no usable path, and a copy under the data dir would make
+  a machine-local preference into server state.
+- **No SVG.** It is a document that can carry scripts and fetch external
+  references, and nothing here needs one — the mark is rasterized regardless.
+
+Placement was unified while doing this: text and picture now share one
+`cornerOrigin` calculation rather than text relying on canvas alignment, which
+is what guarantees the two land in the same place.
+
+### A real bug the image work surfaced
+
+`HTMLImageElement.decode()` is the obvious way to wait for an image, and it is
+the wrong one. In a window that is not painting it can **never settle** —
+observed directly here: an image reporting `complete` and its true 520×160
+dimensions while the promise hung indefinitely past a 4-second race, where
+`onload` fired immediately on the same image. Left in, an export started from a
+backgrounded tab would have hung forever with no error.
+
+Both call sites now wait on `onload` (`loadImage` in `watermarkImage.ts`). The
+test double for `Image` **throws from `decode()`** so nothing can quietly reach
+for it again.
+
 ### State
 
-Implemented and green: 1,030 backend tests, 731+ frontend tests, lint, format,
+Implemented and green: 1,030 backend tests, 755 frontend tests, lint, format,
 typecheck, and the web build. A real-ffmpeg test encodes a clip with a mark and
-asserts the burned-in pixel in the corner. Verified in the running app that
-Settings → Exports appears in a browser, defaults off, reveals the text field,
-and that the mark reads against white, mid-tone, and near-black — a shadow alone
-was not enough on pure white, so the mark is outlined as well.
+asserts the burned-in pixel in the corner. Verified in the running app: the
+Exports page appears in a browser, defaults off, switches between Text and
+Image, previews a chosen picture on a checkerboard, and both mark kinds were
+rendered through the real module against white, mid-tone, and near-black. A
+shadow alone was not enough on pure white, so the text mark is outlined too.
 
 **Not done:** the desktop shell was not exercised (same gap the GIF work
-recorded), and there is no e2e Playwright spec for the setting. The **image
-watermark is the next slice**, and the plumbing is already shaped for it.
+recorded), and there is no e2e Playwright spec for the setting. A **moving**
+mark remains unbuilt, but is now a known-cheap option rather than an open
+question — see the measurements above.
 
 ## Open on branch: drag-and-drop between collections (2026-08-15)
 

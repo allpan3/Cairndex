@@ -15,6 +15,7 @@ import {
   MAX_WATERMARK_TEXT_LENGTH,
   useExportPrefs,
 } from '../state/exportPrefs'
+import { importWatermarkImage, WatermarkImageError, WATERMARK_FILE_ACCEPT } from './watermarkImage'
 import {
   clearHostDeviceToken,
   getHostLabels,
@@ -207,24 +208,127 @@ function WatermarkSetting() {
       </label>
       {prefs.watermarkEnabled && (
         <div className="settings-field">
-          <label className="field-label" htmlFor="watermark-text">
-            Watermark text
-          </label>
-          <input
-            id="watermark-text"
-            className="edit"
-            value={prefs.watermarkText}
-            maxLength={MAX_WATERMARK_TEXT_LENGTH}
-            spellCheck={false}
-            placeholder={DEFAULT_EXPORT_PREFS.watermarkText}
-            onChange={(event) => setPrefs({ watermarkText: event.target.value })}
-          />
-          <span className="settings-toggle__hint">
-            Left empty, nothing is stamped. The mark scales with the export, so it reads the same on
-            a small GIF as on a full-resolution snapshot.
+          <span className="field-label" id="watermark-kind-label">
+            Mark
           </span>
+          <div className="settings-choice" role="radiogroup" aria-labelledby="watermark-kind-label">
+            {(['text', 'image'] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                role="radio"
+                aria-checked={prefs.watermarkKind === kind}
+                className={`settings-choice__item${
+                  prefs.watermarkKind === kind ? ' settings-choice__item--active' : ''
+                }`}
+                onClick={() => setPrefs({ watermarkKind: kind })}
+              >
+                {kind === 'text' ? 'Text' : 'Image'}
+              </button>
+            ))}
+          </div>
+          {prefs.watermarkKind === 'text' ? (
+            <>
+              <label className="field-label" htmlFor="watermark-text">
+                Watermark text
+              </label>
+              <input
+                id="watermark-text"
+                className="edit"
+                value={prefs.watermarkText}
+                maxLength={MAX_WATERMARK_TEXT_LENGTH}
+                spellCheck={false}
+                placeholder={DEFAULT_EXPORT_PREFS.watermarkText}
+                onChange={(event) => setPrefs({ watermarkText: event.target.value })}
+              />
+              <span className="settings-toggle__hint">
+                Left empty, nothing is stamped. The mark scales with the export, so it reads the
+                same on a small GIF as on a full-resolution snapshot.
+              </span>
+            </>
+          ) : (
+            <WatermarkImageField />
+          )}
         </div>
       )}
+    </>
+  )
+}
+
+/**
+ * Choosing the picture used as the mark.
+ *
+ * The file is inlined rather than referenced: a browser hands out no usable
+ * path, and a copy under the data dir would turn a machine-local preference
+ * into server state. It is bounded and normalized on the way in
+ * (`watermarkImage.ts`), which is what makes storing it locally safe.
+ */
+function WatermarkImageField() {
+  const [prefs, setPrefs] = useExportPrefs()
+  const input = useRef<HTMLInputElement | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const choose = async (file: File | undefined) => {
+    if (!file) return
+    setError(null)
+    try {
+      const imported = await importWatermarkImage(file)
+      setPrefs({ watermarkImage: imported.dataUrl, watermarkImageName: imported.name })
+    } catch (caught) {
+      setError(
+        caught instanceof WatermarkImageError
+          ? caught.message
+          : 'That image could not be used as a watermark.',
+      )
+    }
+  }
+
+  return (
+    <>
+      <span className="field-label">Watermark image</span>
+      {prefs.watermarkImage && (
+        <div className="watermark-preview">
+          {/* On a checkerboard, so a transparent logo does not look like it has
+              a background it does not have. */}
+          <span className="watermark-preview__plate">
+            <img src={prefs.watermarkImage} alt="Watermark preview" />
+          </span>
+          <span className="watermark-preview__name">{prefs.watermarkImageName ?? 'Chosen'}</span>
+        </div>
+      )}
+      <input
+        ref={input}
+        type="file"
+        className="visually-hidden"
+        accept={WATERMARK_FILE_ACCEPT}
+        onChange={(event) => {
+          void choose(event.target.files?.[0])
+          // Cleared so re-picking the same file fires a change event again.
+          event.target.value = ''
+        }}
+      />
+      <span className="settings-actions settings-actions--start">
+        <button className="btn btn--compact" onClick={() => input.current?.click()}>
+          {prefs.watermarkImage ? 'Change Image…' : 'Choose Image…'}
+        </button>
+        {prefs.watermarkImage && (
+          <button
+            className="btn btn--compact"
+            onClick={() => setPrefs({ watermarkImage: null, watermarkImageName: null })}
+          >
+            Remove
+          </button>
+        )}
+      </span>
+      {error !== null && (
+        <div className="modal__error" role="alert">
+          {error}
+        </div>
+      )}
+      <span className="settings-toggle__hint">
+        PNG, JPEG, WebP, or GIF. A transparent PNG works best. The image is scaled to the export, so
+        one logo suits every size; with none chosen, nothing is stamped.
+      </span>
     </>
   )
 }

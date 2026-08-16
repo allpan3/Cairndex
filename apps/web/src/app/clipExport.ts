@@ -17,7 +17,7 @@ import {
 import { getHostPlatform, isDesktopHost } from '../platform'
 import { getExportPrefs } from '../state/exportPrefs'
 import { exportFileName } from './exportNaming'
-import { watermarkLabel, watermarkTileBase64 } from './watermark'
+import { resolveWatermark, watermarkTileBase64 } from './watermark'
 import type { WheelOption } from './WheelPicker'
 
 /**
@@ -282,7 +282,7 @@ export async function saveClipGif(
     // against the width the export will actually have — the server's default
     // when the caller did not choose one.
     const watermark = await watermarkTileBase64(
-      watermarkLabel(getExportPrefs()),
+      await resolveWatermark(getExportPrefs()),
       options.width ?? DEFAULT_CLIP_WIDTH,
     )
     const created = await createClipExport(target.fileId, {
