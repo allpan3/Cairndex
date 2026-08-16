@@ -1,11 +1,21 @@
-import { expect, test } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, expect, test, vi } from 'vitest'
 
+import { resetExportPrefsForTests, useExportPrefs } from '../state/exportPrefs'
 import {
   defaultSnapshotWidth,
+  saveSnapshot,
   snapshotFileName,
   snapshotHeight,
   snapshotWidthOptions,
 } from './snapshotExport'
+import { watermarkFontSize } from './watermark'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  resetExportPrefsForTests()
+})
 
 const widths = (source: number) =>
   snapshotWidthOptions(source).map((option) => `${option.label}:${option.value}`)
@@ -60,6 +70,84 @@ test('keeps the source aspect when scaling', () => {
 
 test('has no height for an unprobed source', () => {
   expect(snapshotHeight(480, 0, 0)).toBe(0)
+})
+
+/**
+ * Save one snapshot against a recording canvas.
+ *
+ * `createElement` is tag-aware because the browser download path asks for an
+ * `<a>` from the same document the canvas came from.
+ */
+function saveAgainstFakeCanvas(width?: number) {
+  const drawn: { text: string; x: number; y: number; align: string }[] = []
+  const context = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    drawImage: vi.fn(),
+    measureText: vi.fn(() => ({ width: 120 })),
+    fillRect: vi.fn(),
+    fillText: vi.fn((text: string, x: number, y: number) =>
+      drawn.push({ text, x, y, align: context.textAlign }),
+    ),
+    font: '',
+    fillStyle: '',
+    textAlign: 'left',
+    textBaseline: 'alphabetic',
+    shadowColor: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    lineJoin: 'round',
+    strokeText: vi.fn(),
+    shadowBlur: 0,
+    shadowOffsetY: 0,
+  }
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+    toBlob: vi.fn((callback: BlobCallback) => callback(new Blob(['png']))),
+  } as unknown as HTMLCanvasElement
+  const anchor = { href: '', download: '', click: vi.fn() }
+
+  vi.spyOn(document, 'createElement').mockImplementation(
+    (tag: string) => (tag === 'canvas' ? canvas : anchor) as unknown as HTMLElement,
+  )
+  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() })
+
+  const video = { videoWidth: 1920, videoHeight: 1080 } as HTMLVideoElement
+  saveSnapshot(video, 'clip.mp4', width === undefined ? {} : { width })
+  return { drawn, canvas }
+}
+
+test('stamps nothing on a snapshot while the mark is off', () => {
+  const { drawn } = saveAgainstFakeCanvas()
+  expect(drawn).toEqual([])
+})
+
+test('stamps the mark bottom-right of the snapshot', () => {
+  const { result } = renderHook(() => useExportPrefs())
+  act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
+
+  const { drawn, canvas } = saveAgainstFakeCanvas()
+
+  expect(drawn.map(({ text }) => text)).toEqual(['STUDIO'])
+  expect(drawn[0]?.align).toBe('right')
+  expect(drawn[0]?.x).toBeGreaterThan(canvas.width / 2)
+  expect(drawn[0]?.y).toBeGreaterThan(canvas.height / 2)
+})
+
+// Sized against the output, not the source: a 4K frame saved at 640px gets a
+// mark to match rather than one shrunk from the resolution it was cut from.
+test('sizes the mark against the scaled-down output', () => {
+  const { result } = renderHook(() => useExportPrefs())
+  act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
+
+  const { drawn, canvas } = saveAgainstFakeCanvas(640)
+
+  expect(canvas.width).toBe(640)
+  // The baseline sits within one mark-height of the bottom edge, which only
+  // holds if the mark was sized for 640 rather than for the 1920 source.
+  expect(canvas.height - (drawn[0]?.y ?? 0)).toBeLessThan(watermarkFontSize(640) * 2)
 })
 
 // The old name mangled the extension into the stem, giving `clip_mp4.png`.
