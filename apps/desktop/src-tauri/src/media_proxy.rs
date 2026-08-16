@@ -258,6 +258,13 @@ fn media_route_library_id(path: &str) -> Option<&str> {
         | ["subtitles", _, "vtt"]
         | ["file"]
         | ["file", "preview"] => true,
+        // A finished clip export, fetched the same way a contact sheet is. The
+        // artifact is generated, read-only, and library-scoped, so it belongs
+        // here for the same reason: the client reaches it through the relay so
+        // the bearer never has to travel in a URL. Only the *download* — the
+        // create, poll, and delete calls carry their own auth over `hostFetch`,
+        // and the relay refuses anything but GET/HEAD regardless.
+        ["files", _, "exports", _, "download"] => true,
         ["files", _, "storyboard", sheet_name] => sheet_name.ends_with(".jpg"),
         ["files", _, "playback-sessions", _, artifact] => !artifact.is_empty(),
         _ => false,
@@ -511,10 +518,21 @@ mod tests {
             media_route_library_id("/api/v1/libraries/lib/files/file/contact-sheet"),
             Some("lib")
         );
+        // And it happened again with the GIF export, which reaches its artifact
+        // through the relay exactly as a contact sheet does: the web app was
+        // fine, the desktop app answered its own 404 (owner, 2026-08-16).
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib/files/file/exports/e1/download"),
+            Some("lib")
+        );
         assert!(media_route_library_id("/api/v1/libraries/lib/bundles/bundle").is_none());
         assert!(media_route_library_id("/api/v1/auth/devices").is_none());
         // Still a strict allowlist: a neighbouring write route stays refused.
         assert!(media_route_library_id("/api/v1/libraries/lib/files/file/cover-frame").is_none());
+        // The export's own create/poll/delete endpoint is not the download, and
+        // is not relayable — those calls carry their bearer over `hostFetch`.
+        assert!(media_route_library_id("/api/v1/libraries/lib/files/file/exports/e1").is_none());
+        assert!(media_route_library_id("/api/v1/libraries/lib/files/file/exports").is_none());
     }
 
     // Rejects authority and credential forwarding while preserving range headers

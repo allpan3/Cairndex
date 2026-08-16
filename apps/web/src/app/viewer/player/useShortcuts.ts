@@ -14,6 +14,11 @@ export interface ShortcutActions {
    */
   markClipEdge?: (edge: 'start' | 'end') => void
   /**
+   * Play the marked span (`\\`, beside the `[` and `]` that mark its ends).
+   * Absent when the source cannot be clipped; a no-op when nothing is marked.
+   */
+  playClipRange?: () => void
+  /**
    * Whether the viewer is currently fullscreen. Supplied by the viewer rather than
    * read from the player, because an image bundle has no `PlayerController` yet can
    * still be fullscreen via the View menu.
@@ -165,6 +170,9 @@ export function handleViewerShortcut(
   // left to the browser — on a source that cannot be clipped.
   else if (key === '[' && actions.markClipEdge) actions.markClipEdge('start')
   else if (key === ']' && actions.markClipEdge) actions.markClipEdge('end')
+  // `\\` sits next to them, and plays what they marked. Ordinary play stays
+  // Space: the span is something you ask for, not a redefinition of play.
+  else if (key === '\\' && actions.playClipRange) actions.playClipRange()
   else if (/^[0-9]$/.test(key)) player.seek((player.duration * Number(key)) / 10)
   else return false
 

@@ -10,6 +10,46 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **The marked span is something you play, with `\` or Play Range.** The clip
+  strip had grown an action and a mode that only meant anything together —
+  "From In" and "Range" — so they are now one control. **Play Range** jumps to
+  the in-point and runs to the out-point, `⟳ Loop` repeats it instead of
+  stopping, and pressing it again restarts, which is what checking a mark
+  actually needs. The button shows while the span is running.
+- **Ordinary play now ignores the marks.** Range used to be a standing mode, so
+  Space meant one thing with a clip marked and another without. Space is plain
+  playback again: it never jumps to the in-point and never stops at the
+  out-point, and pausing ends a running span so resuming is unconfined. Only
+  Play Range confines anything, and only while it runs. (A-B loop replay, when
+  it lands, will drive the same span from playback settings.)
+
+- **The watermark can be your own image instead of words.** Settings → Exports
+  offers Text or Image; choosing Image takes a PNG, JPEG, WebP, or GIF, with a
+  transparent PNG working best. The picture is fitted inside both a height and
+  a width bound rather than scaled by one of them, because the two shapes
+  people actually use pull in opposite directions — a square badge scaled to a
+  fixed width becomes enormously tall, and a long wordmark scaled to a fixed
+  height runs off the frame. It scales with the export like the text does, so
+  one logo suits a 480 px GIF and a 4K snapshot alike, and it keeps the same
+  soft shadow, which is what stops a white logo vanishing into a white frame.
+  Chosen images are stored on this machine, resized to at most 1024 px on the
+  longest side and re-encoded as PNG so transparency survives; SVG is not
+  accepted, being a document that can carry scripts rather than a picture.
+  Switching between Text and Image keeps both answers, so neither has to be
+  retyped or re-picked.
+- **Exports can carry a watermark, and it says what you tell it to.**
+  Settings → Exports has an off-by-default switch and a text field; with it on,
+  the mark is stamped on snapshots and GIFs in the bottom-right corner and on
+  contact sheets at the top right of their header. Only the exported copy is
+  marked — nothing in the library is touched. The mark scales with the export
+  rather than with the source, so it reads the same on a 480 px GIF as on a
+  full-resolution snapshot, and it is drawn in white over a soft shadow because
+  a frame can be a snowfield or a night sky and neither a light nor a dark mark
+  reads on both. Leaving the text empty stamps nothing. The setting is local to
+  the machine, like the export folder beside it, and the Exports page is now
+  reachable in a browser instead of only in the desktop app — a watermark
+  applies wherever an export can be started, even though the folder choice
+  above it is still desktop-only.
 - **A span of a video can be marked in the player and saved as a GIF.** The
   clip button (or `[` and `]`) marks the two ends at the playhead; the seek bar
   carries the selection in the context of the whole file, and a magnified track
@@ -20,39 +60,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   accurately. **Set In** / **Set Out** put an end at the playhead, and
   when that would land past the other end the whole clip moves and keeps its
   length rather than collapsing — the length is already decided, the click only
-  says where it sits. **Range** plays the marked span and stops at its end;
-  **Loop** repeats it instead, and turns Range on with it. Save GIF… asks for
-  the output width and frame rate, showing the pixel size and frame count it
-  will actually produce, then encodes server-side (≤30 s, ≤1920 px) and
-  downloads, or saves through the native dialog in the desktop app.
-- **Export sizes are chosen on a scrolling wheel rather than a row of
-  buttons.** A row had to fit every choice side by side, so it held three or
-  four; a wheel scrolls, so the ladders are as long as they should be — fifteen
-  GIF widths, ten sheet widths, and five grids. GIF frame rates run 5–50 (the
-  ceiling was 15), and each says what it will really play at: a GIF stores
-  frame delays in whole centiseconds, so 15 fps plays at 14.3 and the wheel
-  says so rather than leaving it to be discovered. Rates the source cannot meaningfully
-  supply are left off — though a 24 fps source can still reach 25, which fits
-  it far better than 20 does. The GIF and
-  snapshot wheels end at the source's own width, marked `native`, since scaling
-  either up adds nothing. Contact-sheet widths now run 800–6144 px (they were
-  three fixed values), and grids 4×4 through 8×8, defaulting to 5×5.
+  says where it sits. Save GIF… asks for the output width and frame rate,
+  showing the pixel size and frame count it will actually produce, then encodes
+  server-side (≤30 s, ≤1920 px) and downloads, or saves through the native
+  dialog in the desktop app.
+- **Export sizes are chosen on a scrolling wheel rather than a row of buttons.**
+  A row had to fit every choice side by side, so it held three or four; a wheel
+  scrolls, so the ladders are as long as they should be — fifteen GIF widths,
+  ten sheet widths, and five grids. GIF frame rates run 5–50 (the ceiling was
+  15), and each says what it will really play at: a GIF stores frame delays in
+  whole centiseconds, so 15 fps plays at 14.3 and the wheel says so rather than
+  leaving it to be discovered. Rates the source cannot meaningfully supply are
+  left off — though a 24 fps source can still reach 25, which fits it far better
+  than 20 does. The GIF and snapshot wheels end at the source's own width,
+  marked `native`, since scaling either up adds nothing. Contact-sheet widths
+  now run 800–6144 px (they were three fixed values), and grids 4×4 through 8×8,
+  defaulting to 5×5.
 - **Snapshots can be saved at a chosen size.** `S` and the camera button are
-  unchanged — one press, at the source's own resolution — and a new **Save
-  Snapshot As…** on the viewer's right-click menu asks for a width first.
-  the output width — 320, 480, 720 or **Original**, with anything at or above
-  the source's own size left off since upscaling a GIF buys nothing — and the
-  frame rate, showing the pixel size and frame count it will actually produce.
-  It then encodes server-side (≤30 s, ≤1920 px) and downloads, or saves through
-  the native dialog in the desktop app.
-  the output width and frame rate — showing the pixel size it will actually
-  produce, and withholding presets that would upscale the source — then encodes
-  server-side (≤30 s) and downloads, or saves through the native dialog in the
-  desktop app.
-  **Loop** repeats it instead, and turns Range on with it. Save GIF…
-  encodes server-side (≤30 s, 480 px, 12 fps) and downloads, or saves through
-  the native dialog in the desktop app. Output size and frame rate are on the
-  API but not yet in the UI; that is the next slice.
+  unchanged — one press, at the source's own resolution, because the common case
+  is grabbing a frame rather than configuring one. A new **Save Snapshot As…**
+  on the viewer's right-click menu asks for a width first, from 320 px up to the
+  source's own, and says the pixel size the PNG will have. Nothing above the
+  source is offered, since scaling a still up adds nothing; the wheel opens one
+  rung below native, which is "smaller than the original, but not tiny". Unlike
+  a GIF this is a canvas draw rather than an encode, so it needs no server, has
+  no size cap of its own, and is saved the moment it is asked for.
 - **How much of a filename has to match is now a dial, not three named stops.**
   Grouping compares filename stems, and the sensitivity was `narrow` /
   `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
@@ -111,9 +143,29 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   single ffmpeg call — one storyboard file over a network share is about half a
   minute — stops there instead of at the next checkpoint behind it.
 
-
 ### Changed
 
+- **Snapshot and GIF watermarks sit closer to the corner.** The inset was wide
+  enough that the mark read as floating in the bottom-right rather than sitting
+  in it; it is now near 1% of the export's width — a corner inset rather than a
+  margin. Contact sheets are unchanged: their mark takes the header's own
+  padding, so it stays level with the metadata rows.
+- **A contact sheet's watermark sits at the top of its header, not adrift below
+  it.** The mark derived its inset from its own size rather than using the
+  header's padding, so it started lower than the metadata rows beside it. Worse,
+  a picture mark is scaled to the sheet's _width_, which knows nothing of how
+  tall the header is — a tall logo overflowed the band, and since the frame grid
+  is drawn afterwards, the grid painted over the overflow and shaved the mark's
+  bottom off. A mark is now fitted to the band that holds it and shares the
+  header's own padding, so it lines up with the first metadata row and can never
+  be clipped by whatever is drawn next.
+- **The contact sheet's fixed Cairndex brand block is retired.** Every sheet
+  carried a blue-accented `EXPORTED FROM CAIRNDEX` lockup in its header whether
+  or not the owner wanted one; that is replaced by the opt-in watermark above,
+  which is off by default. A sheet exported without one now has no branding at
+  all, and its metadata rows spread into the width the block used to occupy.
+  The header's height is unchanged — it was always set by the three metadata
+  rows, not by what sat beside them.
 - **"Scan new files" now scans, and only scans.** It sat in the same menu as
   "Suggest grouping" and did that item's work too, ending a scan by opening the
   grouping review dialog nobody had asked for. The scan job takes a
@@ -255,8 +307,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sampling mode is part of the cache key too, so switching it retires cached
   sheets rather than leaving a library holding a mix of two qualities.
 
-
 ### Fixed
+
+- **A GIF export saved from the desktop app no longer fails with a 404.** The
+  finished artifact is fetched through the shell's loopback media relay, the
+  same way a contact sheet is, so that the bearer never has to travel in a URL —
+  but the relay's route allowlist did not name it, so the shell answered its own
+  404 before the request ever reached the server. Exactly the failure contact
+  sheets shipped with in 2026-07, repeated by a route added since. The web app
+  was unaffected, which is why it went unnoticed. Only the download is relayed;
+  create, poll, and delete carry their own auth, and the relay still refuses
+  anything but GET and HEAD.
 
 - **A playback session that died no longer surrenders to the unplayable card.**
   When a session's segments stop resolving — the ordinary consequence of it
@@ -409,6 +470,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   of two (**1,793 ms → ~750 ms**), the surviving rows keep their ids, and nothing
   re-folds. Applying the *whole* plan is unchanged, including its documented
   idempotency.
+
 - **A collapsed run's "Show all N" no longer floats off on its own.** It was pushed
   right with `margin-left: auto` in a row that wraps, and an auto margin on a
   wrapped flex item pins it to the right of an otherwise empty line — so once a row
@@ -435,6 +497,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   The collapse is still right when the *suggester* finds a single group — no
   collection wrapper around one bundle — so the rule is now "a bundle takes its
   folder's name only if the owner did not widen it there".
+
 - **The stem dial says what it is matching on, and its buttons stop moving.**
   `Narrow`/`Widen` sat beside a "stem 2 of 3" label and a `Reset` button that only
   appeared away from the default; the row is right-aligned, so the label's width
@@ -449,6 +512,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the ones on disk (`STUDIO-025`, not the comparison key's `studio 025`). Adjusting
   a folder now says so: *"Genre/Studio now matches on names like “STUDIO-025” — 12
   bundles."*
+
 - **Grouping plans moved out of the library, onto the server's own disk**
   (ADR-0022). A plan is a snapshot of a suggestion run — regenerable from the
   library at any moment, and by far its heaviest writer: ~1,100 rows rewritten
@@ -479,6 +543,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   in-library tables dropped, in that order and inside a savepoint, so an
   interruption leaves them where they were. A plan no longer travels with its
   library: carry the library elsewhere and Update writes a fresh one.
+
 - **Superseded plans are actually pruned now.** Two bounds sized for the old cost
   had between them stopped the backlog draining: pruning ran only when a scan wrote
   a *new* plan — so the steady state, Update finding nothing changed and keeping the
@@ -513,6 +578,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
   Both are general: they make every write to a network-hosted library faster, not
   just plans.
+
 - **Update no longer rewrites a plan that would come out identical.** A plan is a
   snapshot of suggestions over the files not yet in a confirmed bundle; if nothing
   in the library has been touched since it was written, regenerating produces the
@@ -846,6 +912,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   that was, in every other respect, clean. Every one-shot open of a library
   database — creation, and each of the offline `devtools` maintenance
   scripts — now converts back on its own before disposing its connection.
+
 - **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
   that said nothing about what was happening or how far along it was. Two causes,
   both in the reporting rather than the work: a phase change could not clear the
@@ -855,7 +922,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   was already over. **Progress now moves on any library size and names what it is
   doing** — "Discovering files", "Reconciling moves", "Generating thumbnails" —
   with a count when the work has one.
-
 
 ### Internal
 
@@ -869,7 +935,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   have pointed every cue past the first sheet at a copy of it. Generation pins
   the sync mode, and a test fails if a pass writes more sheets than its tiles
   fill.
-
 
 ## [0.1.1] — 2026-07-30
 

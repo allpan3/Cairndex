@@ -6,11 +6,10 @@
  * text natively.
  */
 
+import { drawWatermark, type WatermarkMark } from '../watermark'
+
 const HEADER_BACKGROUND = '#070809'
 const HEADER_TEXT = '#e8eaed'
-const WATERMARK_ACCENT = '#5b8cff'
-const WATERMARK_MUTED = '#a6afbf'
-export const CONTACT_SHEET_WATERMARK = ['EXPORTED FROM', 'CAIRNDEX'] as const
 
 export interface ContactSheetRow {
   label: string
@@ -23,6 +22,15 @@ export interface ContactSheetSource {
   /** Grid shape, so each cell can be found and labelled. */
   cols: number
   rows: number
+  /**
+   * The owner's watermark, already resolved to words or a decoded picture, or
+   * null for none.
+   *
+   * Passed in rather than read from the preference store here, so composing a
+   * sheet stays a function of its arguments; the caller that knows it is acting
+   * on the owner's behalf (`contactSheetExport`) is the one that reads it.
+   */
+  watermark?: WatermarkMark | null
 }
 
 /** `H:MM:SS` / `M:SS`, matching the clock the player shows. */
@@ -81,30 +89,27 @@ export async function composeContactSheet(source: ContactSheetSource): Promise<B
 
   ctx.fillStyle = HEADER_BACKGROUND
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = HEADER_TEXT
-  ctx.font = `400 ${fontSize}px system-ui, sans-serif`
   ctx.textBaseline = 'alphabetic'
-  const brandSize = Math.max(26, Math.round(fontSize * 1.75))
-  const eyebrowSize = Math.max(10, Math.round(fontSize * 0.68))
-  ctx.font = `750 ${brandSize}px system-ui, sans-serif`
-  const brandWidth = ctx.measureText(CONTACT_SHEET_WATERMARK[1]).width
-  const brandRight = canvas.width - margin
-  const brandMiddle = headerHeight / 2
-  const accentX = brandRight - brandWidth - fontSize
-  ctx.fillStyle = WATERMARK_ACCENT
-  ctx.fillRect(accentX, margin, Math.max(3, Math.round(fontSize / 4)), headerHeight - margin * 2)
-  ctx.textAlign = 'right'
-  ctx.font = `600 ${eyebrowSize}px system-ui, sans-serif`
-  ctx.fillStyle = WATERMARK_MUTED
-  ctx.fillText(CONTACT_SHEET_WATERMARK[0], brandRight, brandMiddle - brandSize * 0.3)
-  ctx.font = `750 ${brandSize}px system-ui, sans-serif`
-  ctx.fillStyle = HEADER_TEXT
-  ctx.fillText(CONTACT_SHEET_WATERMARK[1], brandRight, brandMiddle + brandSize * 0.65)
+
+  // The owner's mark, where the fixed "EXPORTED FROM / CAIRNDEX" block used to
+  // be. Drawn before the metadata rows because what it occupies is what they
+  // have to avoid; with no mark it returns zero and they get the whole width.
+  const markWidth = drawWatermark(ctx, source.watermark ?? null, {
+    left: 0,
+    top: 0,
+    width: canvas.width,
+    height: headerHeight,
+    corner: 'top-right',
+    // The header's own padding, not the mark's. The default is an inset for a
+    // mark sitting on a frame; this band already has a padding its metadata
+    // rows observe, and the mark has to line up with them.
+    margin,
+  })
 
   ctx.fillStyle = HEADER_TEXT
   ctx.font = `400 ${fontSize}px system-ui, sans-serif`
   ctx.textAlign = 'left'
-  const rowWidth = accentX - margin * 2
+  const rowWidth = canvas.width - markWidth - margin * 2
   for (const [index, row] of source.metadataRows.entries()) {
     ctx.fillText(
       `${row.label}: ${row.value}`,

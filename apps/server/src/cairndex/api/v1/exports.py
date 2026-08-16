@@ -102,7 +102,9 @@ def create_export(
             width=body.width,
             fps=body.fps,
             duration=duration,
+            corner=body.watermark_corner,
         )
+        watermark = exports.validated_watermark(body.watermark_png)
         library_root = library_root_for_session(db)
         source = Path(resolve_within_root(library_root, asset_file.relative_path))
         title = asset_file.display_title or Path(asset_file.relative_path).stem
@@ -116,6 +118,7 @@ def create_export(
         source_path=source,
         params=params,
         filename=f"{_safe_stem(title)}.gif",
+        watermark_png=watermark,
     )
     return _read(export)
 

@@ -2831,7 +2831,7 @@ test('Set In past the out-point carries the clip and keeps its length', async ({
   await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
 })
 
-test('range mode stops at the out-point and loop implies it', async ({ page }) => {
+test('Loop is a standing preference, and starts nothing on its own', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
   await page.goto('/')
@@ -2841,25 +2841,64 @@ test('range mode stops at the out-point and loop implies it', async ({ page }) =
   await page.keyboard.press('[')
 
   const bar = page.locator('[data-testid="clip-bar"]')
-  const rangeToggle = bar.getByRole('button', { name: /Range/ })
   const loopToggle = bar.getByRole('button', { name: /Loop/ })
-  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
+  const playRange = bar.getByRole('button', { name: 'Play range' })
+
+  // One span control now, not an action and a mode that only meant anything
+  // together.
+  await expect(bar.getByRole('button', { name: /^▶\| Range$/ })).toHaveCount(0)
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
 
-  // Loop is a modifier on Range, so asking for it turns Range on too.
+  // Turning Loop on says what the *next* Play Range does; it must not start one.
   await loopToggle.click()
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'true')
-  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+  await expect(playRange).toHaveAttribute('title', /repeating it/)
 
-  // Dropping Loop leaves Range standing — stop at the end rather than repeat.
   await loopToggle.click()
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
-  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(playRange).toHaveAttribute('title', /stop at Out/)
+})
 
-  // Turning Range off turns everything off.
-  await rangeToggle.click()
-  await expect(rangeToggle).toHaveAttribute('aria-pressed', 'false')
-  await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+test('Play Range plays the span, and Space is ordinary playback', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 40, '0:40')
+  await page.keyboard.press('[')
+  await expect(clipRow(page, 'In')).toHaveText('0:40.000')
+
+  const bar = page.locator('[data-testid="clip-bar"]')
+  const playRange = bar.getByRole('button', { name: 'Play range' })
+  const now = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime)
+  const paused = () => video.evaluate((el) => (el as HTMLVideoElement).paused)
+
+  // The action leads the modifier that qualifies it.
+  await expect(bar.locator('.mv-clip__buttons button').first()).toHaveText('▶ Play Range')
+
+  // From elsewhere in the file, it returns to the in-point and plays.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 100))
+  await playRange.click()
+  await expect.poll(now).toBeGreaterThanOrEqual(40)
+  await expect.poll(now).toBeLessThan(50)
+  await expect.poll(paused).toBe(false)
+  // While the span runs, the control shows it.
+  await expect(playRange).toHaveClass(/is-active/)
+
+  // Space is plain playback: pausing ends the span, so what follows is not
+  // confined to it. This is the rule the old Range mode broke.
+  await page.keyboard.press('Space')
+  await expect.poll(paused).toBe(true)
+  await expect(playRange).not.toHaveClass(/is-active/)
+
+  // `\\` sits beside `[` and `]`, and plays what they marked.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 100))
+  await page.keyboard.press('\\')
+  await expect.poll(now).toBeGreaterThanOrEqual(40)
+  await expect.poll(now).toBeLessThan(50)
+  await expect(playRange).toHaveClass(/is-active/)
 })
 
 test('the clip selection does not follow the viewer to the next file', async ({ page }) => {

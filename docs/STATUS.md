@@ -1,7 +1,7 @@
 # Project status
 
 > **Repository note (2026-08-09): the repository was recreated a second time.**
-> The 2026-07-30 recreation (below) removed user data from the *old* repo, but the
+> The 2026-07-30 recreation (below) removed user data from the _old_ repo, but the
 > same strings came back in with the source that was pushed to the new one — a
 > performer name, a studio domain, and dated release titles across 40 lines of
 > four files, published on `main`.
@@ -64,7 +64,7 @@
 > (2026-07-28) — tag `v0.1.0` at `0821890`, one Apple Silicon DMG with its
 > checksum and the third-party notices, verified by the owner on a genuinely
 > downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
-> *not* in this release; it lives on as branch `plan/folder-as-bundle-member`.
+> _not_ in this release; it lives on as branch `plan/folder-as-bundle-member`.
 > Ten owner-reported faults in the Suggest-grouping review dialog are **merged**
 > (PR #40), two of which could silently drop files from a plan.
 >
@@ -133,7 +133,7 @@ printed `Details: … · — / —`.
 
 **What was actually wrong.** All of (2) and (3) are one defect with two halves.
 The decision matrix (`media/playback.decide_playback`) tested container and
-codec *family* and nothing else, and was deliberately optimistic about anything
+codec _family_ and nothing else, and was deliberately optimistic about anything
 it did not know:
 
 - **Nothing probed → `direct` for everything.** An unprobed row has no codec, so
@@ -174,7 +174,7 @@ it did not know:
 
 **Verified.** Full gates green: backend ruff/format/mypy and **1039 pytest**;
 frontend lint/format/typecheck, **737 vitest**, and build. Note that
-`tsc --noEmit -p tsconfig.json` checks *nothing* in this repo — the root config
+`tsc --noEmit -p tsconfig.json` checks _nothing_ in this repo — the root config
 is a solution file with `files: []`. Use `npm run typecheck` (`tsc -b`).
 
 Also verified by hand against a synthetic three-file library (8-bit MP4, High 10
@@ -229,7 +229,7 @@ assumed:
   the existing 8-bit conversion is already correct for it.
 - **Most HDR never reaches the transcoder on a current browser.** Measured on
   Chrome 148/macOS: `hvc1.2.4.L120.B0`, `hev1.2.4.L120.B0`, `av01.0.05M.10` and
-  `vp09.02.10.10` all answer *probably*, so 10-bit HEVC/AV1/VP9 direct-play and
+  `vp09.02.10.10` all answer _probably_, so 10-bit HEVC/AV1/VP9 direct-play and
   the capability tokens do their job. Only `avc1.6E01E0` (High 10 H.264) is
   refused — and that is SDR.
 - **So the reachable cases are** HDR on a client without 10-bit HEVC/AV1 decode
@@ -257,6 +257,198 @@ transcode may not keep up.
 **Next.** Owner pass on a real library: confirm the previously-failing files now
 play, and confirm "Scan new files" no longer opens the grouping pane.
 
+## Open on branch: the clip strip's play control (2026-08-16)
+
+On the export-watermark branch by the owner's leave, though unrelated to it.
+
+Started as "a play button that starts from the In mark", shipped once, and the
+owner's own use of it produced the better shape: the strip was **too crowded**,
+and the action and the mode next to it — `From In` and `Range` — only ever
+meant anything together. They are now one control, **Play Range**, bound to
+`\` (beside the `[` and `]` that mark the ends). `⟳ Loop` survives as the one
+genuine modifier.
+
+**The real change is what Space means.** `Range` was a standing mode, so the
+play button did one thing with a clip marked and another without — the marks
+silently redefined playback. Confinement is now a _session_ rather than a mode:
+`useClipPlayback` runs only while a span is playing, and any pause ends it, so
+resuming with Space is ordinary playback. One consequence worth knowing: pausing
+mid-loop drops the loop, which is the honest reading of "Space ignores the
+range" and is one keypress to resume.
+
+Deliberately deferred: A-B loop replay will drive the same span from playback
+settings, and the `useClipPlayback` seam is still the place for it.
+
+Tests: 827 frontend, including two e2e that exercise the button, the shortcut,
+and Space-ends-the-span in a real browser — which matters here, because the
+preview pane throttles `requestAnimationFrame` to 1 fps and cannot measure the
+out-point at all.
+
+**Not verified in the running app.** The attempt surfaced one of the owner's
+real libraries instead of the throwaway one, so it was stopped rather than
+continued; the e2e in real Chromium is the standing evidence.
+
+## Open on branch: the export watermark (2026-08-15)
+
+Branch `claude/export-watermark-settings-41db44`, rebased onto `main` at
+`a8e077a4` (the drag-and-drop merge); cut from the GIF export merge, which it
+builds on. Owner request:
+one watermark setting covering snapshot, GIF, and contact sheet, retiring the
+contact sheet's hardcoded brand block, with custom **text** now and a custom
+**image** next.
+
+**Owner decisions taken before implementing.** Stored **client-local** in
+`localStorage` (`cairndex.exportPrefs`), matching `displayPrefs` and the export
+folder beside it; **off by default**; contact-sheet mark at the **top right of
+the header**, where the retired block sat, rather than over a frame.
+
+### The one real design question: the GIF is encoded server-side
+
+Snapshots and contact sheets are composed on a canvas in the browser, so a mark
+is a few lines each. A GIF is encoded by ffmpeg on the server, and **the ffmpeg
+builds Cairndex runs against have no `drawtext`** — verified on the dev machine's
+Homebrew ffmpeg 9.0.1, which reports no such filter and no freetype/fontconfig
+in its configuration. That is the same constraint that put the contact sheet's
+header in the browser in the first place. `overlay` is present.
+
+Two ways out were considered:
+
+- **Pillow on the server.** It is already a dependency and its bundled default
+  font is scalable (`ImageFont.load_default(size=…)` returns a `FreeTypeFont`),
+  so the server _could_ draw the text. Rejected: it makes two renderers, and the
+  same setting would then look different on a GIF than on a snapshot of the same
+  frame. It also only defers the image mark's upload problem rather than solving
+  it.
+- **The client renders, the server composites.** Chosen. The mark is drawn once
+  in `app/watermark.ts` and, for the GIF only, sent as a bare base64 PNG on the
+  existing create-export request; ffmpeg `overlay`s it. Base64 in the JSON
+  rather than multipart because there is no upload route and no
+  `python-multipart`, and a text mark is a couple of kilobytes. **The image mark
+  needs no server change at all** — a rendered string and a chosen image arrive
+  as the same transparent PNG.
+
+Two details worth keeping: the overlay runs **before `palettegen`**, so the
+mark's colours are in the palette rather than being quantized to whatever the
+footage needed; and the corner is an ffmpeg expression (`max(0\,W-w)`), not a
+baked coordinate, so the scaler rounding the height to an even number of lines
+cannot shift the mark off its corner. The mark's inset is baked into the tile as
+transparent padding, so layout is decided in one module.
+
+### Measured: a still mark is free, and motion is nearly free
+
+The owner asked what a moving watermark would cost before committing to a still
+one. Measured at 480 px, 5 s, 15 fps against two synthetic sources:
+
+| source       | no mark  | still            | moving           |
+| ------------ | -------- | ---------------- | ---------------- |
+| `testsrc`    | 439 KB   | 427 KB (−2.7%)   | 461 KB (+5.0%)   |
+| `mandelbrot` | 4,882 KB | 4,704 KB (−3.6%) | 4,796 KB (−1.8%) |
+
+A **still mark makes the file slightly smaller**: its pixels stop changing
+between frames, and a GIF stores inter-frame differences. **Motion costs 2–8%
+over a still mark** — far less than feared, so the still-first decision is not
+being forced by encoding cost. Synthetic sources, so treat the direction as
+sound and the exact percentages as indicative.
+
+### The image mark, added the same day
+
+The second half of the owner's request, and it needed **no server change at
+all** — the payoff of rendering client-side. A picked image and a rendered
+string both leave `app/watermark.ts` as the same transparent PNG, so ffmpeg
+never learns which it composited.
+
+Three decisions worth recording:
+
+- **Fitted inside both a height and a width bound**, not scaled by one. The two
+  shapes people use pull in opposite directions: a square badge scaled to a
+  fixed width becomes enormously tall, a long wordmark scaled to a fixed height
+  runs off the frame.
+- **Stored inline as a `data:` URL** beside the rest of `exportPrefs`, bounded
+  on import to 1024 px on the longest side and re-encoded to PNG when resized.
+  A browser hands out no usable path, and a copy under the data dir would make
+  a machine-local preference into server state.
+- **No SVG.** It is a document that can carry scripts and fetch external
+  references, and nothing here needs one — the mark is rasterized regardless.
+
+Placement was unified while doing this: text and picture now share one
+`cornerOrigin` calculation rather than text relying on canvas alignment, which
+is what guarantees the two land in the same place.
+
+### A real bug the image work surfaced
+
+`HTMLImageElement.decode()` is the obvious way to wait for an image, and it is
+the wrong one. In a window that is not painting it can **never settle** —
+observed directly here: an image reporting `complete` and its true 520×160
+dimensions while the promise hung indefinitely past a 4-second race, where
+`onload` fired immediately on the same image. Left in, an export started from a
+backgrounded tab would have hung forever with no error.
+
+Both call sites now wait on `onload` (`loadImage` in `watermarkImage.ts`). The
+test double for `Image` **throws from `decode()`** so nothing can quietly reach
+for it again.
+
+### Owner-reported: the sheet's mark sat too low (2026-08-16)
+
+Reported from a real export as a placement preference; it was two defects, both
+pushing the mark down, and the second was worse than cosmetic.
+
+- **It used its own inset, not the header's.** `watermarkMargin` is derived from
+  the mark's size (`0.9 × width/52`); the header's padding is `1.15 × width/95`.
+  The former is ~40% larger, so the mark began below the first metadata row
+  instead of level with it — 35px against 25px on a default 2048px sheet.
+- **A picture mark could overflow the band and be clipped.** It is scaled to the
+  sheet's _width_ (`width/18`), which knows nothing of the header's height, and
+  the header's height comes from three rows of text. At 2048 the mark ran to
+  149px in a 140px band; the frame grid is drawn _after_ the mark, so the grid
+  painted over the overflow and shaved its bottom. Overflowed at every width
+  from 1280 up — by 9px at the default, 33px at 6144.
+
+Fixed by giving `WatermarkBox` an optional `margin` (the contact sheet passes
+the header's own) and adding `fitWithin`, which shrinks a mark to its box
+keeping aspect. Text honours the same scale through its _font_, since glyphs do
+not shrink just because the reported box did. At 2048 the mark now runs 25–115
+in a 140px band: level with the rows, and clear of the grid.
+
+### State
+
+Implemented and green after rebasing onto `main` at `12a16828` (PR #4):
+1,054 backend tests, 807 frontend tests, lint, format, typecheck, and the web
+build. A real-ffmpeg test encodes a clip with a mark and
+asserts the burned-in pixel in the corner. Verified in the running app: the
+Exports page appears in a browser, defaults off, switches between Text and
+Image, previews a chosen picture on a checkerboard, and both mark kinds were
+rendered through the real module against white, mid-tone, and near-black. A
+shadow alone was not enough on pure white, so the text mark is outlined too.
+
+### The desktop gap, closed by the owner actually running it (2026-08-16)
+
+The untested desktop path finally got exercised, and it was broken: **a GIF
+export failed with a 404 in the shell while working in a browser.** Not the
+watermark — the artifact download.
+
+The finished GIF is fetched through the shell's loopback media relay, the way a
+contact sheet is, so a bearer never travels in a URL. The relay keeps a strict
+route allowlist (`media_proxy::media_route_library_id`), and
+`files/{id}/exports/{export_id}/download` was not on it, so the _shell_ answered
+404 before the request reached the server. That is precisely how contact sheets
+shipped broken in 2026-07; a route added since repeated it, and the allowlist
+test even carries a comment about the first occurrence.
+
+Fixed by listing the download route, with a test beside the contact-sheet one.
+Only the download is relayed: create, poll and delete carry their own auth over
+`hostFetch`, and the relay refuses anything but GET/HEAD regardless, so nothing
+destructive became reachable.
+
+**The lesson worth keeping:** any new read-only media route the web layer
+fetches needs an allowlist entry, or it works in the browser and 404s in the
+desktop app. Two routes have now hit this.
+
+**Not done:** the desktop shell is otherwise still lightly exercised — the
+`save_export_file` raw-IPC hop has not been confirmed end to end — and there is
+no e2e Playwright spec for the setting. A **moving**
+mark remains unbuilt, but is now a known-cheap option rather than an open
+question — see the measurements above.
+
 ## Open on branch: drag-and-drop between collections (2026-08-15)
 
 Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the
@@ -273,8 +465,8 @@ Owner-reported, two symptoms from one gesture: **(1)** dragging a bundle into a
 collection often does not show — it stays in the collection it left or never
 appears in the one it joined, reloading always shows the correct state, and the
 sidebar count sometimes moves when the listing does not; **(2)** **⌥-drag should
-copy and mostly moves.** Owner's framing, which is the right one: *"This seems to
-be a lasting issue. Even if the files are on SMB, I had no issue with Eagle."*
+copy and mostly moves.** Owner's framing, which is the right one: _"This seems to
+be a lasting issue. Even if the files are on SMB, I had no issue with Eagle."_
 Not the network — client-side cache behaviour, plus one server inconsistency.
 
 ### Fixed: a count that disagreed with its own listing
@@ -283,7 +475,7 @@ Not the network — client-side cache behaviour, plus one server inconsistency.
 `asset_bundles`, so a scan-staged provisional bundle — which belongs to the
 Unbundled view and nowhere else — was counted against every collection and tag it
 was filed into. Unrelated to the drag, and a real inconsistency on its own. The
-collection query restricts the *join* rather than filtering the result so a
+collection query restricts the _join_ rather than filtering the result so a
 collection holding nothing keeps its zero; tags can use an inner join because
 every tag is already backfilled to 0. Both new tests fail against the old
 queries.
@@ -313,7 +505,7 @@ invalidation is then deduplicated against that same request. It is a genuine
 clobber and it survived every other attempt at this bug.
 
 Weighed and rejected: dropping the listing rewrite entirely and making the server
-authoritative. Removing *all* inactive browse listings on settle is the blunt
+authoritative. Removing _all_ inactive browse listings on settle is the blunt
 version — it broke four existing tests, and those tests are the specification of
 the instant-feel behaviour. Keeping the rewrite for what it can prove and
 evicting only what it cannot leaves all four passing untouched, and only the
@@ -323,12 +515,12 @@ exactly the behaviour being removed.
 ### Fixed: ⌥ to copy, read from the OS in the shell (ADR-0023)
 
 Four attempts each bet on one web channel and lost. The owner's pass on the
-packaged shell settled why, and their objection — *"I use many apps and none of
-them have this restriction"* — settled what to do about it.
+packaged shell settled why, and their objection — _"I use many apps and none of
+them have this restriction"_ — settled what to do about it.
 
 What was always true: `update_bundles` honours ⌥ correctly (with
 `remove_collection_ids` empty the change is a pure add) and the flag reaches it
-intact. The break was only ever in *reading* the modifier.
+intact. The break was only ever in _reading_ the modifier.
 
 Measured, not assumed:
 
@@ -336,7 +528,7 @@ Measured, not assumed:
   `DragEvent`/`DataTransfer` objects; the verdict flips to copy when ⌥ arrives and
   back when it is released before the drop.
 - **The shell's WKWebView delivers neither channel.** ⌥ pressed mid-drag changed
-  nothing while ⌥ held *before* the drag worked, which only the `dragstart`
+  nothing while ⌥ held _before_ the drag worked, which only the `dragstart`
   reading explains. `dropEffect` never varied either, sampled from a capture-phase
   listener on both `dragover` and `dragenter` (the latter is written by no
   handler, so it cannot be the app's own value returning).
@@ -355,7 +547,7 @@ the Ubuntu Rust-only gate keeps building, and no new dependency: `core-graphics`
 does not bind that call, so the module declares it and its two constants.
 
 `isCopyDrag()` in `apps/web/src/app/dnd.ts` polls the host every 40ms between
-`dragstart` and `dragend` and ranks the channels: either *real* modifier reading
+`dragstart` and `dragend` and ranks the channels: either _real_ modifier reading
 (host, or drag-event flags where an engine delivers them) settles it, and either
 saying "down" is enough since neither can invent a copy; `dropEffect` is consulted
 only when it has been seen to change, which is what stops the
@@ -364,7 +556,7 @@ stuck-at-`copy`-with-nothing-held default from copying every time; and the
 with no host at all. Default is move — a wrong move is one undo, a wrong copy
 silently duplicates membership.
 
-**Confirmed by the owner on the packaged shell (2026-08-15):** ⌥ pressed *mid-drag*
+**Confirmed by the owner on the packaged shell (2026-08-15):** ⌥ pressed _mid-drag_
 copies. That was the one link no test here could reach — the Rust read is
 unit-tested and the channel ranking has sixteen unit tests against a fake host,
 but only a real ⌥ during a real drag in the shell exercises the join. The
@@ -391,8 +583,8 @@ visual weight.
 
 The owner chose "match the grid". `/collections/counts` now returns
 `direct_counts` alongside `counts`, and the badge follows whichever the grid is
-listing — the collection's own bundles, or the subtree total when *Show
-subcollection contents* is on. Both arrive in one request, so the toggle costs no
+listing — the collection's own bundles, or the subtree total when _Show
+subcollection contents_ is on. Both arrive in one request, so the toggle costs no
 round trip. They cannot be derived from one another on the client: summing direct
 counts over a subtree double-counts a bundle filed in both a parent and its child,
 which the server's `DISTINCT` avoids. `CountsResponse` stays shared with tags,
@@ -411,10 +603,10 @@ cancelling the first one's reconciling refetch, and a refetch already in flight
 answering with pre-drop numbers. All three already settle on the server's
 figures, so none of them was the reported fault.
 
-Two behaviours that are *by design* and worth remembering, because both look like
+Two behaviours that are _by design_ and worth remembering, because both look like
 a count that will not update: dragging from All/Recent/search removes the bundle
-from nothing (there is no collection in view to remove it from), and with *Show
-subcollection contents* on, dropping a bundle whose membership is in a child
+from nothing (there is no collection in view to remove it from), and with _Show
+subcollection contents_ on, dropping a bundle whose membership is in a child
 targets the parent for removal, which it is not a member of.
 
 ### Tests
@@ -426,7 +618,7 @@ Desktop: `cargo fmt --check`, `cargo clippy --locked --all-targets -D warnings`,
 Playwright was **not** run.
 
 `isCopyDrag()` has eleven unit tests in `dndCopyDrag.test.ts`, each playing one
-engine's *behaviour* — flags that arrive, flags that never do, a `dropEffect` that
+engine's _behaviour_ — flags that arrive, flags that never do, a `dropEffect` that
 tracks the modifier, a `dropEffect` stuck at its `effectAllowed` default — rather
 than asserting one platform's answer.
 
@@ -450,7 +642,7 @@ become (owner, 2026-07-11).
 
 **One thing the owner should still check:** the desktop app was not exercised
 at all. The web behaviour is verified end to end, but `save_export_file` moved
-from a JSON number array to a raw Tauri IPC body, and *that hop* — the
+from a JSON number array to a raw Tauri IPC body, and _that hop_ — the
 JavaScript `invoke(cmd, arrayBuffer, {headers})` reaching Rust as
 `InvokeBody::Raw` — can only run inside a real shell. Both sides are tested up
 to the boundary: 108 Rust tests including the body/header extraction and its
@@ -460,13 +652,13 @@ browser download path is unaffected). Contact sheets and snapshots ride the
 same seam, so they are in the same position.
 
 **Two owner decisions shaped it.** Both mechanisms for precision, not one — a
-seek-bar band with handles *and* a magnified track — but no editable timestamp
+seek-bar band with handles _and_ a magnified track — but no editable timestamp
 field. And loop scope stops at the picking session; persistent A-B loop replay
 is a follow-up.
 
 **A second owner pass (2026-08-15) changed four things**, all from using it:
 
-- Dragging the *seek bar's* handle carried an edge outside the magnified
+- Dragging the _seek bar's_ handle carried an edge outside the magnified
   window, which is frozen for the length of a gesture — so the zoomed handle
   escaped the track entirely (measured ~3700 px past its end). Rendering is now
   pinned to the track's ends and the window re-fits on release.
@@ -476,7 +668,7 @@ is a follow-up.
   It now **carries the whole span and keeps its length** — the length is
   already decided, the click only says where it sits. The video running out is
   the one exception, and then the named instant wins. The end does the mirror
-  of this; a *drag* still clamps, because there the other handle is the fixed
+  of this; a _drag_ still clamps, because there the other handle is the fixed
   reference being measured against.
 - Playback gained a **range** mode that stops at the out-point, with **loop**
   as a modifier that turns range on with it. Modelled as one `ClipPlayMode`
@@ -509,7 +701,7 @@ plan 1 §2 reserved), and the frame step uses the probed rate with the same 30 f
 fallback `frameStep` has always had.
 
 **Server: a task, not a request.** A contact sheet seeks to sixteen keyframes
-and costs the same at any length; a GIF decodes a *contiguous* span and scales
+and costs the same at any length; a GIF decodes a _contiguous_ span and scales
 with resolution and storage speed, so on 4K over a network mount it can outlast
 the desktop shell's 30-second relay read timeout — the same wall that broke long
 contact sheets before they were rewritten to seek. Hence create/poll/download,
@@ -526,7 +718,7 @@ header. Contact sheets and snapshots moved onto it too.
 **Found by running it:** the export was named `X.mp4.gif` (display titles carry
 the source extension), and marking an edge read `player.currentTime` — React
 state fed by `timeupdate`, so it lagged the element by a render and could record
-where the playhead *had been*. Both fixed, both with regression tests; the
+where the playhead _had been_. Both fixed, both with regression tests; the
 second is why `useClipRange` takes a live `getCurrentTime`.
 
 Tests run: **998 server** (26 new, including a real-ffmpeg case asserting an
@@ -550,7 +742,7 @@ regression — but it is a flake worth watching.
 **Size and frame-rate controls followed (2026-08-15).** An options dialog on
 Save GIF…, in the contact sheet's shape — a dialog rather than more controls in
 the clip bar, since choosing a width does not need the frame on screen and the
-bar had just been trimmed. Widths are the fixed sizes *below* the source (320,
+bar had just been trimmed. Widths are the fixed sizes _below_ the source (320,
 480, 720) followed by the source's own, so nothing on offer upscales and
 nothing appears twice — a 720p source shows 320, 480 and Original rather than
 Original beside a redundant 720.
@@ -575,7 +767,7 @@ output rather than inferred: 5→exact, 8→7.69, 10→exact, 12→12.5, 15→**
 Two corrections came out of that measurement. **15 fps plays at 14.29, not the
 16.7 recorded here earlier** — that figure came from ffprobe's
 `avg_frame_rate`, which is not the delay a viewer obeys. And **the fps ceiling
-of 15 was a sketch in plan 1 §10, not a finding**: 20 and 25 are exact *and*
+of 15 was a sketch in plan 1 §10, not a finding**: 20 and 25 are exact _and_
 smoother, so `MAX_FPS` is now 50 (a 2cs delay; 1cs is the value historic
 viewers reinterpret as 10cs).
 
@@ -584,7 +776,7 @@ owner's call (2026-08-15), after a round trip worth recording. The rates were
 first cut to the exact ones only, which deleted 15; that was wrong, because 15
 is the rate people actually reach for in a GIF and a 4.7% drift is invisible.
 The default meanwhile went 10 → 20 → 10 → 15: 20 was an over-correction (the
-question that prompted it had been about the *ceiling*, and the default
+question that prompted it had been about the _ceiling_, and the default
 followed it up without cause), and 10 the conventional-and-exact compromise
 before the owner settled it.
 
@@ -657,9 +849,9 @@ reframes every performance decision in the grouping code.
 **The owner's library lives on an SMB share.** Measured against it, read-only,
 with a locally-copied control:
 
-| a trivial `SELECT` on `library.db` | time |
-| --- | --- |
-| on its own volume (SMB) | **35.9 ms** |
+| a trivial `SELECT` on `library.db`          | time         |
+| ------------------------------------------- | ------------ |
+| on its own volume (SMB)                     | **35.9 ms**  |
 | the identical database copied to local disk | **0.021 ms** |
 
 That is ~1,700x per query. A full directory walk of its 2,683 files takes 6.8 s
@@ -677,7 +869,7 @@ slowness was ever about plan size, row counts, or render work.
   minutes** — exactly what the owner reported. Now ~15 statements.
 - a conversion read the whole plan twice and fetched each descendant's files
   separately: hundreds of statements, so tens of seconds.
-- Narrow/Widen re-runs the suggester *and* spliced with a flush per fresh row.
+- Narrow/Widen re-runs the suggester _and_ spliced with a flush per fresh row.
 
 So the round-trip reductions committed above are the right fixes for this setup,
 and their real-world effect is roughly 400x larger than the local-disk numbers
@@ -688,12 +880,12 @@ it should have been read as a constraint on the whole module, not one function.
 Per-operation statement counts on the owner's library, after the fixes — the
 number that matters, at ~36 ms each:
 
-| operation | statements | ~SMB |
-| --- | --- | --- |
-| Suggest grouping | 8 | 0.3 s |
-| GET one plan | 3 | 0.1 s |
-| Convert | 11 | 0.4 s |
-| Narrow/Widen | 21 | 0.8 s |
+| operation        | statements | ~SMB  |
+| ---------------- | ---------- | ----- |
+| Suggest grouping | 8          | 0.3 s |
+| GET one plan     | 3          | 0.1 s |
+| Convert          | 11         | 0.4 s |
+| Narrow/Widen     | 21         | 0.8 s |
 
 **This is why the delta-response idea was dropped.** Returning only the changed
 rows instead of the whole plan would save the response's own re-read: about three
@@ -707,26 +899,27 @@ Still outstanding:
   cancelled plans are deleted when a new one is generated, keeping one so a client
   still holding a stale id resolves rather than 404s. Applied plans stay.
 - The suggester's sidecar matching was quadratic in files per folder (fixed
-  below). CPU-bound, so it did *not* affect this library — but it would have as it
+  below). CPU-bound, so it did _not_ affect this library — but it would have as it
   grows, and it made Narrow/Widen quadratic too.
+
 ### Measured: the stem dial's steps are uneven, and the owner is fine with that (2026-08-15)
 
 The owner asked whether the default stem matching starts too narrow, suggesting it
 begin "one step wider". Measured on their library, that changes almost nothing:
 
-| default | bundles | multi-file bundles |
-| --- | --- | --- |
-| level 1 (shipped) | 295 | 8 |
-| level 2 | 294 | 9 |
-| level 3 | 293 | 9 |
-| compare the first 2 segments | **276** | **26** |
-| compare the first 3 segments | 294 | 8 |
+| default                      | bundles | multi-file bundles |
+| ---------------------------- | ------- | ------------------ |
+| level 1 (shipped)            | 295     | 8                  |
+| level 2                      | 294     | 9                  |
+| level 3                      | 293     | 9                  |
+| compare the first 2 segments | **276** | **26**             |
+| compare the first 3 segments | 294     | 8                  |
 
 The reason is the dial's definition: depth is `max - level + 1`, where `max` is the
-segment count of the folder's *longest* filename. One 22-segment name makes level 2
+segment count of the folder's _longest_ filename. One 22-segment name makes level 2
 mean "compare 21 of 22 segments", so several steps in a row change nothing and then
 one merges the whole folder — which is the overshoot the owner hit (they wanted
-`ID-number`, got `ID`). Only a fixed *depth* of 2 segments groups their naming
+`ID-number`, got `ID`). Only a fixed _depth_ of 2 segments groups their naming
 convention, and that is too aggressive to make a global default: a library named
 like `The Matrix 1999` / `The Matrix Reloaded 2003` would merge them.
 
@@ -758,7 +951,7 @@ Two bugs the tests caught while this went in, both worth remembering:
 - The migration used `INSERT OR IGNORE`, which **skips** a row violating a
   constraint rather than failing — and the next statement dropped the source table.
   It is a plain `INSERT` now, with a row-count check before the drop.
-- `DirEntry.is_dir(follow_symlinks=False)` caches the *lstat*, not the stat, so
+- `DirEntry.is_dir(follow_symlinks=False)` caches the _lstat_, not the stat, so
   warming `entry.stat()` in the worker thread matters: without it every file was
   still stat'ed one at a time, 2.3 s of a 3.6 s walk.
 
@@ -806,11 +999,11 @@ the answer is small and general.
 
 Writing 340 proposals into their 5.75 MB library on the SMB share:
 
-| configuration | insert | whole `persist_plan` |
-| --- | --- | --- |
-| as shipped | **>600 s** | **>600 s** |
-| `cache_size=-32768` | 5,228 ms | 14,096 ms |
-| that plus indexes on the grouping foreign keys | **236 ms** | **4,614 ms** |
+| configuration                                  | insert     | whole `persist_plan` |
+| ---------------------------------------------- | ---------- | -------------------- |
+| as shipped                                     | **>600 s** | **>600 s**           |
+| `cache_size=-32768`                            | 5,228 ms   | 14,096 ms            |
+| that plus indexes on the grouping foreign keys | **236 ms** | **4,614 ms**         |
 
 How it was found, after several wrong turns:
 
@@ -819,7 +1012,7 @@ How it was found, after several wrong turns:
    `sqlite3.Cursor.execute` inside SQLAlchemy's insertmanyvalues, at 0% CPU — I/O,
    not computation.
 3. Hand-written SQL of the same shape ran in 342 ms, so the statement form was not
-   the problem. Capturing SQLAlchemy's *exact* statement and parameters and
+   the problem. Capturing SQLAlchemy's _exact_ statement and parameters and
    replaying them through raw `sqlite3` was still slow — so not the ORM either.
 4. Bisecting the parameters: nulling `parent_proposal_id` → 394 ms; keeping it but
    setting `foreign_keys=OFF` → 449 ms. So it was foreign-key verification of the
@@ -838,13 +1031,13 @@ believing the measurement.
 
 ### Earlier, superseded: writes over SMB are ~1,000x, not 36x
 
-The 35.9 ms figure was a *read*. Measured separately on the same share, with a
+The 35.9 ms figure was a _read_. Measured separately on the same share, with a
 throwaway database:
 
-| on the share | local |
-| --- | --- |
-| 750-row `executemany` — 100 ms | 0.6 ms |
-| its commit — **450 ms** | 0.4 ms |
+| on the share                                   | local  |
+| ---------------------------------------------- | ------ |
+| 750-row `executemany` — 100 ms                 | 0.6 ms |
+| its commit — **450 ms**                        | 0.4 ms |
 | eight small write+commit cycles — **2,220 ms** | 0.3 ms |
 
 SQLite cannot host WAL on SMB (ADR-0021 detects this and heals the file back to a
@@ -865,8 +1058,8 @@ wrong because it was reasoned from read latency alone. Any operation that writes
 few hundred rows is minutes on that share. The reuse path avoids the common case;
 the first Update after a real change still pays it.
 
-- **Keeping `library.db` inside the library package costs 36 ms a *read* on SMB and
-  ~300 ms a *write*,**
+- **Keeping `library.db` inside the library package costs 36 ms a _read_ on SMB and
+  ~300 ms a _write_,**
   which is ADR-0008's deliberate trade (the database travels with the library).
   Running a server on the NAS instead is the structural answer, and it is **not
   urgent**: after the fixes above the owner's operations are 8–21 statements, so
@@ -891,20 +1084,20 @@ A synthetic library of the reported shape (folders of dated releases, each a
 video plus two sidecars), with the client's server mocked so the two halves could
 be separated:
 
-| at 8,400 suggestions | before | after |
-| --- | --- | --- |
+| at 8,400 suggestions     | before   | after  |
+| ------------------------ | -------- | ------ |
 | open the dialog (client) | 2,214 ms | 747 ms |
-| DOM nodes | 222,000 | 33,600 |
-| one conversion (client) | 5,050 ms | 826 ms |
+| DOM nodes                | 222,000  | 33,600 |
+| one conversion (client)  | 5,050 ms | 826 ms |
 
-| at 2,700 suggestions, fresh session (server) | before | after |
-| --- | --- | --- |
-| convert collection to bundle | 307 ms | 226 ms |
-| convert bundle to collection | 394 ms | 116 ms |
-| reparent a collection | 253 ms | 126 ms |
-| stem level change | 997 ms | 727 ms |
+| at 2,700 suggestions, fresh session (server) | before | after  |
+| -------------------------------------------- | ------ | ------ |
+| convert collection to bundle                 | 307 ms | 226 ms |
+| convert bundle to collection                 | 394 ms | 116 ms |
+| reparent a collection                        | 253 ms | 126 ms |
+| stem level change                            | 997 ms | 727 ms |
 
-The client dominated, and by an order of magnitude. Folding *hid* rows rather
+The client dominated, and by an order of magnitude. Folding _hid_ rows rather
 than unmounting them, so a folded subtree was still built, reconciled and laid
 out on every render — folding freed nothing, which was already recorded as a gap
 here and turns out to be the whole story. With file lists closed by default,
@@ -912,7 +1105,7 @@ every file in the plan was in the DOM unseen. Folding now unmounts, and a plan
 over 400 suggestions opens folded, which is how a plan that size is read anyway.
 
 On the server, `_open_proposal` checked one column via `get_plan`, whose eager
-load exists so that *serializing* a response is not N+1 — so every edit read the
+load exists so that _serializing_ a response is not N+1 — so every edit read the
 whole plan twice. Removing that exposed a second fault it had been masking:
 `_container_to_bundle` reads `row.files` per descendant, which was one query each
 and only looked cheap because the whole plan happened to be warm.
@@ -928,7 +1121,7 @@ Two regression tests, both shown to fail against the unfixed code: merging a
 collection reads its bundles' files in one query (asserted on the merge itself in
 a deliberately cold session, because through the endpoint the response's own
 eager load hides the difference), and a long plan opens folded. The
-whole-plan-read-twice fix has no honest unit test — the query *count* is
+whole-plan-read-twice fix has no honest unit test — the query _count_ is
 unchanged, only the rows loaded — so it is recorded here as a measurement rather
 than asserted as a green test that proves nothing.
 
@@ -939,17 +1132,17 @@ was still not instant. Profiling `POST /plans` found the real cost was never the
 heuristic — it was **10,416 SQL statements** for a 3,605-suggestion plan, from two
 independent faults in `persist_plan`:
 
-* it flushed inside its loop, solely to learn the id it was about to need for the
+- it flushed inside its loop, solely to learn the id it was about to need for the
   row's files. `UlidPk` defaults to a plain Python callable, so assigning `id`
   explicitly makes every primary key known before the insert and lets SQLAlchemy
   batch them (the self-referential parent FK is why it otherwise inserts one row
   at a time).
-* the files were linked by `proposal_id` rather than through `row.files`, so
+- the files were linked by `proposal_id` rather than through `row.files`, so
   serializing the response lazy-loaded each row's files: one SELECT per proposal.
 
 Priming the collection needs `set_committed_value` **after** the flush — turning a
 pending instance persistent resets that bookkeeping, so doing it earlier silently
-does nothing, and plain assignment leaves an *empty* collection unloaded so every
+does nothing, and plain assignment leaves an _empty_ collection unloaded so every
 container still paid a query. `extend` is worse than either: it loads before
 appending.
 
@@ -962,7 +1155,7 @@ parent-link pass, because the foreign key is enforced immediately.
 Server-side per edit at 3,605 suggestions is now: convert 145–317 ms, reparent
 114 ms, stem level 829 ms, plus ~130 ms to serialize the response.
 
-**Still not instant, and why.** Every edit returns the *whole* plan — 3 MB at
+**Still not instant, and why.** Every edit returns the _whole_ plan — 3 MB at
 3,605 suggestions — because a conversion changes the tree's shape. The client then
 re-parses it and rebuilds ten O(plan) memos. That is the remaining cost and it is
 structural: the next step is a delta response (`{removed_proposal_ids, proposals}`)
@@ -1002,12 +1195,12 @@ rendition tag included), because folding `4K [tag]` versus `720p` is not
 expressible as a segment count.
 
 **The mistake worth not repeating.** The first implementation read the level
-*relatively*: drop `L - 1` trailing segments from each name. It is the obvious
+_relatively_: drop `L - 1` trailing segments from each name. It is the obvious
 design and it is broken. Two names with different segment counts then produce
 keys of different lengths, which can never be equal, so nothing merges until the
 top rung clamps every name to one segment and the whole folder merges at once.
 The 12-and-9-segment pair in the suggester test reached "two bundles" by pairing
-the *wrong* two files, and the test passed. `_StemKey` is per folder for exactly
+the _wrong_ two files, and the test passed. `_StemKey` is per folder for exactly
 this reason, and the regression test asserts which files meet, not just how many
 bundles result.
 
@@ -1027,14 +1220,14 @@ are coerced on read with `wide` resolving to that folder's maximum.
 ### The controls
 
 Narrow/Widen are visible on the row that speaks for the folder, with the level as
-text and tooltips that say what each does to the *stem* before what it does to
+text and tooltips that say what each does to the _stem_ before what it does to
 the bundles. The owner's own words are back; this branch's "Split/Merge into
 more/fewer bundles" was churn.
 
 **What the folder-header spec got wrong.** It called for re-grouping the rendered
 rows by source directory, and named as "the hard part" that the tree nests by
 `parent_proposal_id` instead. That framing was backwards. A collection suggestion
-for a folder *already is* that folder's header — same name, same scope, its rows
+for a folder _already is_ that folder's header — same name, same scope, its rows
 nested beneath it — so the tree already groups by folder wherever a folder has a
 collection row. Re-parenting the render would have duplicated that for no gain
 while breaking drop targets, tri-state selection, fold keys, sibling rollup, and
@@ -1066,7 +1259,7 @@ fixed** in the follow-up commit, each with a regression test that fails against
 the unfixed code. The two that mattered most:
 
 - `usePopover`'s outside-click handler stopped propagation without preventing
-  the default, so with any popover open a click on a *controlled* checkbox
+  the default, so with any popover open a click on a _controlled_ checkbox
   unticked the DOM while React state kept the row selected — the visible ticks
   and "N bundles selected" disagreed, and Accept confirmed a bundle the owner
   had watched themselves skip. Shared hook; the fix reaches every picker.
@@ -1103,7 +1296,7 @@ and `GroupingReview.tsx` remains large enough that its pure plan logic wants a
 sibling module.
 
 Then, after owner testing against the real library: the confidence tabs replaced
-by a per-row confidence label (a two-tab filter can *hide* the mislabeled row
+by a per-row confidence label (a two-tab filter can _hide_ the mislabeled row
 from the view that claims to show what needs deciding), bundle↔collection
 conversion restored as always-available, the shortest shared prefix as the
 default bundle title, and the migration repair below. The stem dial that closed
@@ -1121,7 +1314,7 @@ passes in isolation and predates this branch's review fixes. Lint, format,
 typecheck and build clean on both stacks.
 
 Known flake, since resolved: `library.spec.ts` "switches one addition row" used
-to fail roughly one full-spec run in four. It asserted on a *hidden* file list;
+to fail roughly one full-spec run in four. It asserted on a _hidden_ file list;
 rewriting it for the unmounting fold made it deterministic, and the spec has since
 passed 35/35 four runs running. Whether the hidden list was the cause or only
 where the race surfaced is unproven.
@@ -1152,7 +1345,7 @@ Branch `codex/fix-grouping-selection-placement` off `main` at `7acc7bc`, open as
 >
 > Three lower-confidence findings are **not** fixed and are follow-up work:
 > `service._with_collection_context` collapses two persisted collections that
-> share a name path *and* `sort_order` onto one plan node, making the applied
+> share a name path _and_ `sort_order` onto one plan node, making the applied
 > destination depend on set iteration order; the proposal tree is not virtualized
 > and folding hides rather than unmounts, so Collapse all frees no work at scale;
 > and `GroupingReview.tsx` is ~1700 lines and wants splitting on the seams the
@@ -1421,7 +1614,7 @@ earlier interruptions already left behind.
 job stayed on screen until a page refresh, reading as though the stop had not
 taken: the server had already dropped it (cancelled is terminal, so it leaves
 the active list) and the app was holding the last snapshot deliberately —
-correct for a *failure*, which nobody asked for and whose row is the only
+correct for a _failure_, which nobody asked for and whose row is the only
 account of it, wrong for a stop someone requested. And the maintenance error
 rendered at the top of the sidebar under the button that started the work, while
 the job it described was reported at the bottom; it now sits with the job rows,
@@ -1463,7 +1656,7 @@ once and the inspector reads from context, with `bundleId` its only prop. That
 is the point of the change rather than parity today — an action added to the
 interface later is supplied in one place and arrives on every surface, where two
 call sites left the next one free to go missing. A surface needing an action to
-*mean* something different overrides those entries and inherits the rest.
+_mean_ something different overrides those entries and inherits the rest.
 
 That shared action set now includes the write-gated **Move to Trash** callback.
 The bundle album already offered the journaled, recoverable deletion; the file
@@ -1509,7 +1702,7 @@ the same `--inspector-w`, preserving the ordinary 18 px edge inset on the media
 side. A browser geometry regression fixes that boundary in place.
 
 **Collection listings lagged their counts.** Filing a bundle in moved the count
-at once and left the contents behind: the destination's *cached* listing
+at once and left the contents behind: the destination's _cached_ listing
 rendered first, without the bundle, while the refetch was in flight. Only
 previously-visited collections showed it, which is why it read as intermittent.
 Measured here at ~60 ms against a local SQLite; on the owner's network-mounted
@@ -1524,7 +1717,7 @@ cover image in `useState`, so the 404 answered before a thumbnail exists (or
 while the collection is empty) pinned the folder glyph for the life of the
 component. And membership changes never moved `updated_at`, which is the cover's
 cache-busting key — so filing a bundle into an empty collection changed what its
-auto cover *should* be while the URL stayed identical and the browser served its
+auto cover _should_ be while the URL stayed identical and the browser served its
 cached 404. Both sides of a move and their ancestors are now touched;
 `invalidateCollectionCounts` refetches the collection rows as well as the counts.
 The card's flex thumbnail could also collapse to the metadata footer's height,
@@ -1601,7 +1794,7 @@ set completed.
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
 the bundle. It now touches that file only; the bundle is touched solely when the
-file already *is* the cover, where its picture genuinely changed. That left
+file already _is_ the cover, where its picture genuinely changed. That left
 `AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
 with nothing to do, so it is removed along with its repair-time rewrite.
 
@@ -1647,7 +1840,7 @@ an SMB share is a beat you can see.
 
 **Why it had been left that way, and why that reasoning did not survive.** The
 mutation deliberately skipped optimistic count math: the server counts a
-collection's *subtree*, so filing a bundle into a subcollection of the one being
+collection's _subtree_, so filing a bundle into a subcollection of the one being
 viewed must leave that collection's number unchanged, and a flat ±1 would be
 wrong for exactly the commonest gesture. True — but it does not follow that
 nothing can be computed. The client already holds the collection tree, so the
@@ -1657,7 +1850,7 @@ leaves the shared ancestors in both sets and they do not move, with no special
 case. `apps/web/src/api/counts.ts` holds the arithmetic as pure functions;
 `hooks.ts` reads and writes the caches.
 
-The arithmetic needs each moved bundle's *whole* membership (a bundle can be in
+The arithmetic needs each moved bundle's _whole_ membership (a bundle can be in
 several collections), so when any of it is uncached the counts are left to the
 server rather than guessed partway — and dragging an **unselected** card, the one
 gesture whose bundle no inspector has loaded, now warms that cache on
@@ -1667,13 +1860,13 @@ gesture whose bundle no inspector has loaded, now warms that cache on
 everything else that moves a count:
 
 - **A collection reparent never refreshed the counts at all.** Every nesting
-  drag in the sidebar — the "into" drop *and* a gap drop into another parent's
+  drag in the sidebar — the "into" drop _and_ a gap drop into another parent's
   group — goes through `useReorderCollections`, which by design invalidates
   nothing (a reorder must not re-answer its own question). But it also reparents,
   which changes what every collection above it on both sides counts. It now
   refetches the counts when a moved collection's parent actually changed, and
   still nothing when the drag only reordered. Exact deltas are not computable
-  client-side: an ancestor counts *distinct* bundles across its subtree, and the
+  client-side: an ancestor counts _distinct_ bundles across its subtree, and the
   client holds no membership for the bundles inside the collection being moved.
 - **`['collection-stats']` — the collection inspector's three figures — was
   invalidated by nothing in the entire app.** Filing a bundle into that
@@ -1696,7 +1889,7 @@ tree: sibling→sibling, parent→own child and back, already-a-member, a second
 membership under a shared ancestor, multi-select, copy-not-move, the
 Uncategorized edges, and the no-negative clamp.
 `apps/web/src/api/hooks.counts.test.tsx` covers the cache behaviour: counts have
-moved *while the write is still in flight*, an unknown membership moves nothing,
+moved _while the write is still in flight_, an unknown membership moves nothing,
 a rejected write puts every number back, the inspector's subtree and direct
 figures move apart, and a reparenting reorder refetches while a plain reorder
 does not. Full web gate green (lint, format, typecheck, 515 tests, build).
@@ -1779,13 +1972,13 @@ forces, over a share, and reported it still felt slow. It was: the pass now
 moves bytes at the share's own read throughput — the job's effective rate
 matched a direct read of the same share, measured while the two competed — so
 **decode has left the critical path entirely and the wall clock is now the
-transfer**. `-skip_frame nokey` stops ffmpeg *decoding* every frame; it does not
-stop the demuxer *reading* every byte. On a local disk that read is free and the
+transfer**. `-skip_frame nokey` stops ffmpeg _decoding_ every frame; it does not
+stop the demuxer _reading_ every byte. On a local disk that read is free and the
 fixture speedups are what you see; on a share it is the whole cost, and no
 decode saving can go below it.
 
 That reframes the fixture benchmark rather than contradicting it, and it is the
-regime the seek-per-cue rejection above was *not* measured in: those numbers
+regime the seek-per-cue rejection above was _not_ measured in: those numbers
 came from a local SSD, where re-reading a group costs nothing but decode.
 
 **Next lever, not taken here:** read less, using the container's own keyframe
@@ -1818,11 +2011,11 @@ it, surfacing as HTTP 500 from `/bundles/browse` with a traceback ending at
 
 **The premise that was wrong.** `_apply_sqlite_pragmas` set four pragmas on
 every connection, its docstring saying "these are per-connection in SQLite".
-True of three of them; `journal_mode` is recorded in the database *file header*
+True of three of them; `journal_mode` is recorded in the database _file header_
 and is a property of the file. So the hook was rewriting every library on every
 connect — and a WAL database cannot be opened over SMB or NFS at all, not even
 read-only, because WAL needs a `-shm` index that every connection memory-maps.
-Setting the pragma from a machine on the share had always failed *silently*
+Setting the pragma from a machine on the share had always failed _silently_
 (SQLite keeps the mode and returns it, no error), which is why nothing looked
 wrong for months; the first server with local access flipped the file for good.
 
@@ -1976,7 +2169,7 @@ its own data volume.
 Linux). The smoke test failed on `ubuntu-latest` at its last assertion, reading
 the ownership lease from the host after the container stopped:
 `PermissionError: … /.cairndex/locks/active-owner.json`. The image was fine —
-*the test* was macOS-shaped. A Linux bind mount preserves real uids, so
+_the test_ was macOS-shaped. A Linux bind mount preserves real uids, so
 everything the container writes into the library is owned on the host by its uid
 10001, and the lease is mode `0600`; Docker Desktop remaps ownership to the
 invoking user, so the host-side reads passed locally and the cleanup `rm -rf`
@@ -2031,7 +2224,7 @@ mounting. It is `/libraries` now, with one mount per share beneath it, and
 vocabulary — the entrypoint has called it `CAIRNDEX_LIBRARY_MOUNT` all along —
 so only the path string disagreed.
 
-The reason mounts are *children* of `/libraries` rather than the root itself is
+The reason mounts are _children_ of `/libraries` rather than the root itself is
 worth keeping: the registry records each library under the path the container
 saw at registration, so re-pathing a mount orphans everything inside it. A
 deployment that starts with one share must be able to gain a second without
@@ -2076,8 +2269,9 @@ account, and the first push creates a **private** package that needs its
 visibility changed by hand before a server can pull without credentials.
 
 ## Merged: half-star ratings (2026-07-30)
+
 **Owner test, 2026-07-30 — a half star could not be set in the desktop shell.**
-Clicking a star did nothing at all. `setPointerCapture` retargets *every* later
+Clicking a star did nothing at all. `setPointerCapture` retargets _every_ later
 event of the gesture to the capturing element, the click included, so taking it on
 `pointerdown` meant the half button's own `onClick` could never fire — picking had
 to be reconstructed from the release and the click swallowed to stop it
@@ -2097,13 +2291,12 @@ click on "3½ stars" stores 3.5, a sweep from "1 star" to "4½ stars" stores 4.5
 dependency on capture semantics rather than patching a quirk, which is the reason
 to expect it to hold there.
 
-
 Branch `feat/half-star-ratings`, off `main` at `708d788`. Owner-requested:
 ratings go to half-star granularity.
 
 **The design decision worth recording.** A rating is stored as a **number of
 stars** (`3.5`), not a count of half-star units (`7`). The obvious alternative —
-rescaling the column to 0–10 — would have required rewriting stored values *and*
+rescaling the column to 0–10 — would have required rewriting stored values _and_
 every rating literal inside saved Smart Collections' `filter_json`, plus
 rebuilding `asset_bundles` to widen its `CHECK (rating >= 0 AND rating <= 5)`,
 because SQLite cannot alter a constraint in place and there is no migration
@@ -2117,7 +2310,7 @@ column is declared `INTEGER`, and INTEGER affinity narrows a REAL only when the
 conversion is lossless — so `3.5` stores as REAL, `4.0` as INTEGER `4`, and the
 two storage classes compare, sort, and group numerically. Half steps are exact
 in binary floating point, so equality never misses. `tests/test_rating_scale.py`
-pins this against the *old* DDL rather than the current model, since the current
+pins this against the _old_ DDL rather than the current model, since the current
 model is not what an existing library has.
 
 Two consequences that needed handling rather than assuming:
@@ -2140,7 +2333,7 @@ is what it showed before.
 
 **Usability round (owner feedback, 2026-07-29).** "Does not seem to work" was
 most likely a stale build — this branch is unmerged, so a dev server or desktop
-app running `main` still shows whole stars; re-verified here with *coordinate*
+app running `main` still shows whole stars; re-verified here with _coordinate_
 clicks against a real backend (left half of star 4 → PATCH stored `3.5`).
 Reworked regardless: glyphs enlarged (20→26px popover, 17→22px inspector) with
 tighter spacing; **drag-to-rate** (press anywhere on the row, sweep, commit on
@@ -2176,12 +2369,12 @@ made the operation 13× faster at 3,000 files.
 Measured through the HTTP API on a generated library of 3,030 files in ten folders
 (3,041 proposals):
 
-| Operation | Before | After |
-| --- | --- | --- |
-| `GET /plans` (dialog opens) | read every proposal of every plan | **3 ms** |
-| `GET /plans/{id}` | — | **63 ms** (0.97 MB) |
-| Convert bundle → collection | 0.70 s | **0.06 s** |
-| Convert collection → bundle | ~1.0 s | **0.47 s** |
+| Operation                   | Before                            | After               |
+| --------------------------- | --------------------------------- | ------------------- |
+| `GET /plans` (dialog opens) | read every proposal of every plan | **3 ms**            |
+| `GET /plans/{id}`           | —                                 | **63 ms** (0.97 MB) |
+| Convert bundle → collection | 0.70 s                            | **0.06 s**          |
+| Convert collection → bundle | ~1.0 s                            | **0.47 s**          |
 
 Four causes, all the same shape — work proportional to the plan, one round trip at
 a time:
@@ -2193,7 +2386,7 @@ a time:
    plan to produce a handful of integers. Now one grouped `COUNT`.
 3. `_proposal_observations` did `session.get(AssetFile, …)` per file — 300 round
    trips for a folder of 300 images. Now one `IN` query.
-4. `_container_to_bundle` called that helper once *per descendant*, and both
+4. `_container_to_bundle` called that helper once _per descendant_, and both
    conversion directions scanned the group linearly per file to find a path
    (quadratic in group size). Now one resolve for all descendants, and a dict.
 
@@ -2215,7 +2408,7 @@ bundle measured the same.
 candidate is scale on network storage: the owner's real library is a NAS mount
 (`/Volumes/media`), and [plan 5](plans/05-network-library-latency.md) already
 records ~500 ms for a NAS-mounted inspector read. At that per-round-trip cost the
-*thousands* of round trips removed above are exactly the shape of a 30-second
+_thousands_ of round trips removed above are exactly the shape of a 30-second
 stall. `apps/web/vite.config.ts` gained a `preview` proxy so the production bundle
 can be measured against a local backend without packaging the desktop app, which
 is how the dev-versus-production question got settled.
@@ -2246,11 +2439,11 @@ then reported **still wrong** after the first fix, naming a specific
 `BundleAlbum`, the viewer's file list) — is left behind by **three** different
 paths that repoint a row, and only one had been fixed.
 
-| Path | When it runs | First fix |
-| --- | --- | --- |
-| `file_ops.operations.repoint_linked_rows` | a rename or move Cairndex performs | covered |
-| `scanning.scanner` move-repair pass | a rename made **outside** Cairndex, found by a scan | missed |
-| `scanning.repair.repair_file` | a missing file the owner repairs by hand | missed |
+| Path                                      | When it runs                                        | First fix |
+| ----------------------------------------- | --------------------------------------------------- | --------- |
+| `file_ops.operations.repoint_linked_rows` | a rename or move Cairndex performs                  | covered   |
+| `scanning.scanner` move-repair pass       | a rename made **outside** Cairndex, found by a scan | missed    |
+| `scanning.repair.repair_file`             | a missing file the owner repairs by hand            | missed    |
 
 The rule now lives once, in `domain.file_names.display_title_after_move`, and all
 three call it: the shown name follows the file **only while it still is the old
@@ -2260,13 +2453,13 @@ first path — it records the name at import — though the scanner's repair pas
 always updated it, which is left as it was.
 
 Lesson worth keeping: the first fix was made at the one call site the reported
-symptom pointed at, without asking what *else* writes that column. `grep` for
+symptom pointed at, without asking what _else_ writes that column. `grep` for
 every writer of the field, not for the path in the report.
 
 **Then the owner reported it a third time, with screenshots** — one file, 442 KB,
 showing as `dist_44921set07pl.webp` in the bundle rail and `SET-025.webp` in the
 File Browser. Two things were true at once: the fixes were on an unmerged branch
-they were not running, *and* a scan-time heal added in round two deliberately
+they were not running, _and_ a scan-time heal added in round two deliberately
 skipped their case. Once the scanner's repair path has left a title behind,
 `original_filename` is already the new name, which makes the row
 indistinguishable from a deliberately chosen title — so no heuristic can safely
@@ -2306,7 +2499,7 @@ bundle's files are known, so the picker never opens at the root and then jumps.
 what the code read like. `ImageStage` calls `setPointerCapture` on pointerdown to
 pan, and **capture retargets the later click and dblclick to the capturing
 element** — so a double-click on the picture arrived at `.mv-stage` with the
-*stage div* as its target, which `isStageSurface` did not accept (it accepted
+_stage div_ as its target, which `isStageSurface` did not accept (it accepted
 `IMG` and `mv-video-stage`). The close was skipped and `onDoubleClick={cycleFit}`
 ran instead: it zoomed and stayed open. Verified in a browser by logging event
 targets — `mousedown` on `mv-image`, `click` and `dblclick` on `mv-image-stage`.
@@ -2336,7 +2529,7 @@ selected the stem on focus, and a genuine double-click in the in-app Chromium
 lands on the stem — measured: `selected: "Alpha.Show.S01.cover"` of
 `Alpha.Show.S01.cover.jpg`. **So this does not reproduce in a browser**, and the
 report is almost certainly the desktop shell: WebKit can settle its own
-double-click selection on the newly focused input *after* focus, overriding the
+double-click selection on the newly focused input _after_ focus, overriding the
 programmatic one — the same engine difference that already forced the
 `caretRangeFromPoint` fallback in the grouping dialog. The selection is now
 re-asserted on the next animation frame, which lands after either ordering, via a
@@ -2381,7 +2574,7 @@ bundle↔collection conversions, "to me this is just a persistent state so long
 as the grouping window is open". Both had one cause: `setStemMode` called the
 same full-regeneration path as Suggest grouping, `generate_plan` superseded the
 open plan and wrote entirely new rows, and everything keyed to the old rows —
-the client's id-based selection *and every server-side owner edit* — was lost.
+the client's id-based selection _and every server-side owner edit_ — was lost.
 
 Fixed structurally rather than by carry-forward matching:
 `PUT /plans/{id}/stem-modes` re-suggests **one directory in place**. The
@@ -2390,15 +2583,15 @@ computable in isolation), but only its output for that directory is spliced
 into the open plan. Rows outside the directory are never touched, so renames,
 destination switches, drag edits, conversions, and checkboxes survive because
 nothing happened to them — there is no cross-plan identity matching to get
-wrong. Three splice subtleties worth remembering: files the owner dragged *out*
+wrong. Three splice subtleties worth remembering: files the owner dragged _out_
 of the directory are not re-proposed (a fresh row claiming a file another row
 still holds would bundle it twice); subdirectory bundles hanging under a
-replaced container re-link to its successor; and a conversion made *inside* the
+replaced container re-link to its successor; and a conversion made _inside_ the
 adjusted directory is replaced — that is the folder the owner just asked to
 redo. An explicit **Suggest grouping** still resets everything; that is a fresh
 start, not an adjustment.
 
-Client-side, deselection is additionally keyed by *content* (`proposalKey`: a
+Client-side, deselection is additionally keyed by _content_ (`proposalKey`: a
 bundle is its sorted file-id set plus addition target, a collection its
 directory) rather than by row id — a second line of defense now that ids are
 mostly stable, and the thing that keeps behavior sane around conversions.
@@ -2412,7 +2605,7 @@ children exist in no fresh plan).
 **2. No way to say "this folder is a collection, not a bundle".** The real gap
 was narrower than "the suggester guessed wrong": `_bundle_groups` short-circuits
 on `_is_multipart` **ahead of the stem-mode check**, so a folder whose files
-carry part markers (`Trip.part1.mp4`, …) is one bundle at *every* sensitivity —
+carry part markers (`Trip.part1.mp4`, …) is one bundle at _every_ sensitivity —
 Narrow cannot split it. That is precisely the folder an owner wants to override,
 and there was no control for it.
 
@@ -2458,7 +2651,7 @@ Second round, on the review dialog's density and vocabulary:
 - **Bundle titles now come from the shared filename part** (`_shared_stem_title`).
   `_bundle_proposal` used `_stem(files[0])`, so a prefix-matched group of four was
   titled after one member — with that member's tail attached, which read as a
-  claim about the whole bundle. Computed on the *raw* stems so the owner's
+  claim about the whole bundle. Computed on the _raw_ stems so the owner's
   delimiters and casing survive, then trimmed back to a delimiter so it never
   ends mid-token (a pair of dates yields `…19.12`, not `…19.12.2`). Multipart
   gains too: `Trip.part1` → `Trip`. Folder-owning bundles and single subjects are
@@ -2470,7 +2663,7 @@ Second round, on the review dialog's density and vocabulary:
   aligns to `baseline` so a wrapped second line lines up with its own text.
 - **Narrow/Widen tooltips rewritten** to name the folder and drop the "stem
   matching" jargon. The owner asked what the control applies to — bundles or
-  collections — and the honest answer is *neither*: it belongs to a **folder**,
+  collections — and the honest answer is _neither_: it belongs to a **folder**,
   one pair per folder (`stemControlOwners`), attached to whichever row speaks for
   it. That is a collection row when the folder became a collection and a bundle
   row when it became one bundle, which is exactly why it looked like two
@@ -2478,7 +2671,7 @@ Second round, on the review dialog's density and vocabulary:
 
 **Eighth round.** A tooltip could stick on screen: `TipButton` hid only on
 `mouseleave` / `blur` / scroll, and clicking a control is precisely the case where
-the pointer never leaves it — the *row* moves instead. So the portal kept its
+the pointer never leaves it — the _row_ moves instead. So the portal kept its
 stale coordinates while the button's label flipped underneath. Fixed twice over:
 dismiss on activation, and store the tip text alongside the position so a
 placement computed for a label that has since changed is not rendered. The second
@@ -2498,7 +2691,7 @@ which is the gesture jsdom cannot reproduce.
   and lands at the end.
 - **Single-subject conversion allowed again, bounded differently.** The previous
   rule ("refuse unless it divides into 2+") left rows with no path to becoming a
-  collection, which the owner wanted. The bound is now *positional*: refuse only
+  collection, which the owner wanted. The bound is now _positional_: refuse only
   when the row already sits in a collection for its own directory
   (`_sits_in_a_collection_for_its_own_folder`). That still terminates, because the
   child a conversion creates always lands in exactly that position — and it no
@@ -2531,12 +2724,12 @@ helpers).
   Pass one: `_addition_proposal` hardcoded `parent_directory=None`, so an
   "Add to …" row always sat at the top level. Fixed by resolving the nearest
   enclosing proposed-collection folder (`_enclosing_container`), which required
-  building additions *after* `_classify`, since the set of proposed collections
+  building additions _after_ `_classify`, since the set of proposed collections
   is its output.
 
   Pass two, after the owner reported it unchanged: the folder is not enough.
   `grouping/service.py` is a second placement layer that nests suggestions under
-  *existing* collections, and it had two faults. Its `_proposal_collection`
+  _existing_ collections, and it had two faults. Its `_proposal_collection`
   docstring promised "prefer the target bundle's membership, then a matching
   directory hierarchy", but the sort key re-ranked membership candidates by
   whether the collection's name path also prefixed the proposal's directory — so
@@ -2545,10 +2738,11 @@ helpers).
   proposal that already had a parent, which pass one had just given every
   addition. Membership is now ranked by depth alone and outranks a folder-derived
   parent. In the reported layout the folder-derived parent really is the
-  *grandparent*: once the folder's remaining fresh files form one bundle they own
+  _grandparent_: once the folder's remaining fresh files form one bundle they own
   that folder, so no collection is proposed for it and walking up lands on
   `Studios`. Both failure modes have tests that were confirmed to fail without
   the fix.
+
 - **Tooltips no longer clip.** `.tip::after` is absolutely positioned inside
   `.grp-body { overflow: auto }`, so the dialog's own scroll container cut it
   off — worst for these controls, whose tooltips are the dialog's longest text.
@@ -2556,7 +2750,7 @@ helpers).
   `position: fixed`, right-aligned via `right` so the width never needs
   measuring, clamped into the viewport, and flipped below the control when there
   is no room above. Hover handlers live on a wrapper rather than the button
-  because a *disabled* button fires no mouse events, and Narrow/Widen disable at
+  because a _disabled_ button fires no mouse events, and Narrow/Widen disable at
   the ends of their scale — precisely when the tooltip is wanted. `data-tip`
   stays on the button, which is what two existing tests read. Deliberately scoped
   to this dialog rather than replacing `.tip` app-wide.
@@ -2567,7 +2761,7 @@ helpers).
 **A third round found the nesting bug.** Owner screenshot: five collections deep,
 each named `StudioBeta.E003.Lead`, each holding one bundle of the same name. Cause
 was in `split_for_collection`'s `len(videos) < 2` branch, which returned one group
-*per file*. For a one-file bundle that is a single group, so converting wrapped it
+_per file_. For a one-file bundle that is a single group, so converting wrapped it
 in a collection of one identical bundle — and the child was convertible in turn,
 so every click added a layer. It was also wrong for one video plus sidecars: it
 would have put a subtitle in a bundle of its own.
@@ -2588,15 +2782,15 @@ merging a two-video folder and dividing it again round-trips 200/200.
 collection turned into a bundle "gets widening and narrowing buttons, and when
 you change it back they stay". Reproduced, then traced: `bundleDirectories` read
 `proposal.directory`, but merging a collection whose bundles live in subfolders
-(`Show/A`, `Show/B`) leaves one row whose `directory` is the *parent* `Show` — a
+(`Show/A`, `Show/B`) leaves one row whose `directory` is the _parent_ `Show` — a
 folder with no direct media. So the row was offered a stem control, and
 **using it deleted the row while the suggester produced nothing for `Show`, so
 both files dropped out of the plan entirely** (verified against the API: rows
 went to `[]`, files unproposed). Two fixes: the client derives a row's folders
-from its *files' paths*, so a cross-folder row gets no control; and the server
+from its _files' paths_, so a cross-folder row gets no control; and the server
 refuses any splice that would drop a file rather than performing it — the
 general invariant, which is what caught that the first guard ("refuse when the
-directory yields nothing") was too narrow, since the suggester *does* still
+directory yields nothing") was too narrow, since the suggester _does_ still
 propose a bare container for `Show`.
 
 **Gates run** (final, at merge): backend `ruff format --check`, `ruff check`,
@@ -2619,7 +2813,7 @@ and `Solo/`: unchecked `Solo`, converted `Trip` to a collection via the icon
 button, then clicked Widen on `Duo` — `Duo` regenerated into one wide bundle
 while `Solo` stayed unchecked and `Trip` stayed a converted collection with its
 three children. Earlier round additionally verified apply end-to-end
-(*3 bundles, 1 collection, 3 subtitles linked*) and the reverse conversion.
+(_3 bundles, 1 collection, 3 subtitles linked_) and the reverse conversion.
 
 ## Shipped: v0.1.0, the first public release (2026-07-28)
 
@@ -2720,7 +2914,7 @@ plateauing. A `/health` control probe held at 5 ms while bundle reads hit
 queueing.
 
 Two things worth carrying forward. **ADR-0013 write mode does not help**: it
-gates *media* operations, while these are *metadata* writes it neither gates nor
+gates _media_ operations, while these are _metadata_ writes it neither gates nor
 could. And the owner's framing — **Theater Mode** (watching; nothing written)
 vs **Management Mode** (organizing) — is a second axis orthogonal to write mode,
 with one tension to resolve first: watching is precisely when playback progress
@@ -2746,7 +2940,7 @@ against a sibling that differs in nothing else:
 
 Both labels normalized to `hevc` in `media/playback.py`, and the probe never
 recorded the label at all, so the two files were indistinguishable to
-`decide_playback`. On the client, `caps.ts` advertised `hevc` when *either*
+`decide_playback`. On the client, `caps.ts` advertised `hevc` when _either_
 label probed supported, and its `supported()` OR-ed `canPlayType` with
 `MediaSource.isTypeSupported` — and WebKit returns `isTypeSupported: true` for
 `hev1` while `canPlayType` returns `""`. So an MSE-only capability vouched for
@@ -2806,7 +3000,7 @@ been red on `main` before this. It went in
 squashed to four commits by subsystem (server / desktop / web / docs), off `main`
 at `b2c2814`. A whole-branch review pass before the PR caught three things no
 single round would have: the tag delete skipped its own confirmation when the
-impact lookup failed (an unknown cost is a reason to *ask*), the filename scan
+impact lookup failed (an unknown cost is a reason to _ask_), the filename scan
 was O(files²) and unmemoized in a component that re-renders on every drag move,
 and `--mv-controls-h` had gone circular. Browser e2e is **92/92**.
 
@@ -2823,8 +3017,8 @@ and that spec runs at the reproducing width so the default viewport cannot hide
 it again.
 
 The other was `manual-bundling`'s drag-to-select, which had been red on `main`
-too: it asserted that a click on empty space clears the selection *while a
-context menu is open*, which this branch deliberately changed — dismissing a
+too: it asserted that a click on empty space clears the selection _while a
+context menu is open_, which this branch deliberately changed — dismissing a
 menu now leaves the selection alone. The spec dismisses first, checks the
 selection survived, then clears it. The owner's
 refinement list, each its own commit: (1) viewer topbar clears the traffic
@@ -2849,7 +3043,7 @@ synchronous handled-flag), and dropping on a bundle card imports + links into
 that bundle under write mode.
 
 One regression caught by the e2e run and fixed in the last commit: with the new
-context menu open, Escape closed the menu *and* the viewer.
+context menu open, Escape closed the menu _and_ the viewer.
 
 ### Round 8 follow-up (2026-07-27)
 
@@ -2865,7 +3059,7 @@ The helper is reusable — the viewer playlist and the album rows share this
 disease and can adopt it later.
 
 **The tag chords are optimistic now.** Copy reads the active bundle's tags from
-the query cache (the pills on screen *are* that cache) instead of fetching;
+the query cache (the pills on screen _are_ that cache) instead of fetching;
 paste shows the toast and updates the pills at the keystroke and lets the PUTs
 catch up, cancelling in-flight refetches before the optimistic write and rolling
 back to the server's truth on failure — the same shape as `useSetBundleTags`.
@@ -2879,7 +3073,7 @@ file table had scoped its row-height rule to itself, which is why the album's
 identical rows ignored the slider.
 
 **"This library is open on AP3-M5Pro", diagnosed.** The lease on
-`/Volumes/media/library` was held by the *repo dev backend* used for verification —
+`/Volumes/media/library` was held by the _repo dev backend_ used for verification —
 its `server_uuid` matches `apps/server/var/registry.db`'s identity, not the
 desktop sidecar's — acquired 07:29:30 local, last heartbeat 07:30:09, holder
 killed rather than shut down. A dead holder cannot release, so the lease reads
@@ -2941,7 +3135,7 @@ The rest:
   for deliberately.
 - **Shift-Cmd-C / Shift-Cmd-V** copy and paste tags across a bundle selection.
   Paste is a union, and skips bundles that would gain nothing rather than bumping
-  their version for no change. Both chords are handled *before* the
+  their version for no change. Both chords are handled _before_ the
   don't-hijack-typing guard, because clicking a card can leave focus on an input,
   which swallowed them.
 
@@ -2960,21 +3154,21 @@ binds neither, so both work there — which is where the owner asked for them.
 
 Seven items. Two needed measuring before they could be fixed.
 
-**The contact sheet's tail.** Cells were taken from the *leading edge* of their
+**The contact sheet's tail.** Cells were taken from the _leading edge_ of their
 slice, so the last slice was never sampled, and the edge trim was a flat 4% of
 duration. Stacked, on a one-hour video:
 
-| | before | after |
-| --- | --- | --- |
-| first cell | 144.0s | 117.2s |
-| last cell | 3249.0s | 3482.8s |
+|                | before             | after                   |
+| -------------- | ------------------ | ----------------------- |
+| first cell     | 144.0s             | 117.2s                  |
+| last cell      | 3249.0s            | 3482.8s                 |
 | unsampled tail | **351s (5.8 min)** | 117s, equal to the head |
 
 Cells now come from the middle of their slice, and the trim is capped at five
 seconds. What is left over at each end is the same half-slice, so the sampling
 is symmetric rather than systematically missing the end.
 
-**The resume toast.** It had moved — to 6px above the control *bar*. But the bar
+**The resume toast.** It had moved — to 6px above the control _bar_. But the bar
 is a button row above a seek track, so that left it 52px from the playhead it
 refers to, which is the gap the owner kept seeing. The bar now measures where
 its track starts and publishes `--mv-seek-top`; the toast sits 8px above that.
@@ -3020,7 +3214,7 @@ Eight items. Two were the same undefined CSS variable.
   picker's rule, decided once and rendered from the same value. Both pickers
   clear their search on close.
 - **The resume toast** is anchored to the control bar's height rather than a
-  literal near it. At 64px its bottom edge was 6px *inside* the bar — which is
+  literal near it. At 64px its bottom edge was 6px _inside_ the bar — which is
   what "it didn't move" looked like. One `--mv-controls-h`, used by both.
 - **One file menu, one file inspector.** `bundleFileMenu` replaces the two menus
   the album grid and the inspector's file list had grown for the same file;
@@ -3052,12 +3246,12 @@ Nine items. The one that needed diagnosis was the contact-sheet 502.
 
 **It was a timeout, and the shape of the cost was the bug.** Sampling with
 `fps=1/n` makes ffmpeg decode every frame between the first sample and the last,
-so generation scaled with the video's *duration*, not the number of cells:
+so generation scaled with the video's _duration_, not the number of cells:
 
-| video | decode-and-sample | seek per frame |
-| --- | --- | --- |
-| 2-minute 4K | 3.9s | 0.9s |
-| 12-minute 4K | 24.3s | 2.1s (4×4), 6.1s (6×6) |
+| video        | decode-and-sample | seek per frame         |
+| ------------ | ----------------- | ---------------------- |
+| 2-minute 4K  | 3.9s              | 0.9s                   |
+| 12-minute 4K | 24.3s             | 2.1s (4×4), 6.1s (6×6) |
 
 The desktop relay gives up at 30s. That explains the whole report exactly:
 a long video fails, a second attempt sometimes succeeds because the abandoned
@@ -3104,7 +3298,7 @@ picker with the bundle still selected.
 
 Five items. Two were the same requirement misread twice more.
 
-- **Two panels, not one.** Round 2 folded the bundle inspector *into* the info
+- **Two panels, not one.** Round 2 folded the bundle inspector _into_ the info
   panel; the owner wanted them separate. The `i` button is the media's own
   information again — type, size, dimensions, duration, subtitles, playlist —
   and a sidebar toggle docks the main shell's `Inspector` as a right rail. Both
@@ -3127,17 +3321,17 @@ The owner reported seeking a 4K file feeling slower. The media pipeline
 measured clean end to end, so the cost was in the app and in how the app is
 being run:
 
-| layer | measured | verdict |
-| --- | --- | --- |
-| server range response | 2–6 ms TTFB | fine |
-| Tauri media proxy | 453 MB/s, flat across 24 abandoned ranges | fine |
-| playback decision | `direct`, no transcode | fine |
-| the file itself | faststart `moov`, keyframe every 0.4 s | fine |
-| element seek (Chrome) | 7–26 ms | fine |
+| layer                 | measured                                  | verdict |
+| --------------------- | ----------------------------------------- | ------- |
+| server range response | 2–6 ms TTFB                               | fine    |
+| Tauri media proxy     | 453 MB/s, flat across 24 abandoned ranges | fine    |
+| playback decision     | `direct`, no transcode                    | fine    |
+| the file itself       | faststart `moov`, keyframe every 0.4 s    | fine    |
+| element seek (Chrome) | 7–26 ms                                   | fine    |
 
 Two hypotheses were checked and **disconfirmed**, recorded so they are not
 re-opened: the media proxy does not degrade when a client abandons range
-requests, and Starlette's `FileResponse` does *not* keep draining a file after
+requests, and Starlette's `FileResponse` does _not_ keep draining a file after
 the client disconnects — instrumented at 2.2 MiB read from a 256 MiB file, not
 the whole thing, despite the range loop having no disconnect check.
 
@@ -3201,11 +3395,11 @@ capture phase so clicking away no longer clears the bundle selection underneath.
 Tagging is optimistic and stopped force-refetching the whole grid.
 
 **The info sidebar was the misread.** Round 1 built a read-only metadata echo;
-the owner wanted *the* inspector — tags, collections, rating, notes — while
+the owner wanted _the_ inspector — tags, collections, rating, notes — while
 media plays. It now embeds the real component, with its pickers portalled above
 the viewer. A collection's description was the same shape of problem: the field
 and API already existed, but navigating into a collection from the sidebar left
-the inspector empty, so it only appeared when a collection *card* was selected.
+the inspector empty, so it only appeared when a collection _card_ was selected.
 
 Verified live against the Demo library: inspector embedded and editable during
 playback, collection description reachable from the sidebar, picker click-away
@@ -3237,7 +3431,7 @@ not, and are listed with reasons below.** Landed:
 **The desktop importer's library id (the PR #30 review's hardening note).** It
 reached the upload URL through `format!` into a string that was then parsed, so an
 id carrying `..`, `?`, `#` or an extra `/` restructured the URL. The reason it was
-reachable at all: `media_proxy::target_for` accepts *any* non-empty id — it
+reachable at all: `media_proxy::target_for` accepts _any_ non-empty id — it
 consults the id only to decide whether to attach the bearer token — so nothing
 upstream constrained the value. With `server_scoped_token` set the token is
 attached regardless, which made the worst case an authenticated POST carrying the
@@ -3330,8 +3524,8 @@ These are feature-sized rather than hardening, and each is its own reviewable
 slice. W6 is proposed as closed without them; reopen or re-file as preferred.
 
 - **Drag-move onto a directory row.** The capability exists via the Move to…
-  dialog; this is a second *gesture* for it, threaded through the File Browser's
-  marquee and native drag-*out* system. W3 already called it a slice of its own
+  dialog; this is a second _gesture_ for it, threaded through the File Browser's
+  marquee and native drag-_out_ system. W3 already called it a slice of its own
   and nothing since has made it smaller.
 - **`file_ops_batch` job + the multi-item plan/preview endpoint.** Both are about
   making bulk moves asynchronous and previewable. Worth more now than when W3
@@ -3369,7 +3563,7 @@ created inside the currently open collection rather than at the top level.
 
 **The + was the actual bug.** It inferred its parent from `selection.collectionId`,
 so one button did two different things depending on what happened to be open — and
-while browsing a collection there was *no* way to ask for a top-level one. It is
+while browsing a collection there was _no_ way to ask for a top-level one. It is
 now unconditionally top level, and nesting became its own gesture: **right-click a
 collection → New Subcollection**. "New Collection" was added to the Collections
 heading and its section run-out, both main-grid sections, and the native
@@ -3378,7 +3572,7 @@ accelerators are never reused). All routes end in the same inline rename box.
 
 **Owner correction, second pass.** The grid's menu first created at the top level,
 on the reasoning that the grid has no notion of "here" in the collection tree. It
-does: the level being *looked at*. It now creates under `selection.collectionId`
+does: the level being _looked at_. It now creates under `selection.collectionId`
 and labels itself "New Subcollection" inside a collection, matching the section
 heading, which reads "Subcollections" there. It also had to go on **both** grid
 sections — a collection with no subcollections yet renders no collections section,
@@ -3468,7 +3662,7 @@ seek, as they do in the bundle viewer; file stepping is the chevrons and
 
 **Degradation for an unindexed path**, all for want of a file row: no subtitles,
 storyboard, chapters, or saved position, and no server-side remux/transcode, so
-an undecodable codec fails as it did before. A *linked* entry resolves its real
+an undecodable codec fails as it did before. A _linked_ entry resolves its real
 manifest row and behaves exactly like opening it from its bundle, resume
 included; if the manifest has no row for it (never probed), it falls back to the
 direct path entry rather than hanging on "Preparing playback…".
@@ -3511,7 +3705,7 @@ generic inference and makes `mutate` accept anything, so a call site on a retire
 contract still type-checks.
 
 **Drag-and-drop has a settled model now; keep to it.** A drop resolves to a
-*destination* — the item a block lands in front of, the end of a group, or "nest
+_destination_ — the item a block lands in front of, the end of a group, or "nest
 into this one" — and that single value paints the seam and commits the move, so
 the two cannot disagree. The container owns the gesture; cards and rows carry
 only dragstart/dragend. The dragged payload lives in a synchronous store
@@ -3522,7 +3716,7 @@ Reordering never bumps `updated_at`. Most of the bug reports on this branch were
 some version of violating one of those.
 
 **Tauri's `dragDropEnabled` is a whole-pipeline switch, not a feature toggle.**
-With it `true` (the default), tauri-runtime-wry answers *every* drag event as
+With it `true` (the default), tauri-runtime-wry answers _every_ drag event as
 handled, which wry reports to WKWebView as "block the OS default" — and that
 takes the page's own HTML5 drag events with it. Internal drag-and-drop had
 therefore never worked in the desktop shell; it works in a browser, which is why
@@ -3581,7 +3775,7 @@ suites re-run clean) found one inconsistency worth fixing before merge: **the
 sidebar's Trash entry rendered only while write mode was on**, while the server
 deliberately keeps `GET /file-ops/trash` readable without it — its docstring
 names hiding the trash as exactly the wrong outcome, because files an owner
-deleted must never *look* permanently gone. Delete files, flip write mode off
+deleted must never _look_ permanently gone. Delete files, flip write mode off
 (or have the deployment flip it), and the Trash view disappeared with the files
 still in it.
 
@@ -3607,7 +3801,7 @@ disk).
 **The bug: undoing a move silently overwrote whatever now sat at the vacated
 path.** The `MOVE` branch of `undo` called `_rename_on_disk(destination, source)`
 with no occupancy check on the source, and POSIX `rename` clobbers its target
-silently. Reproduced: move `a.mkv` into `sub/`, drop a *new* `a.mkv` at the root
+silently. Reproduced: move `a.mkv` into `sub/`, drop a _new_ `a.mkv` at the root
 (an import, a Finder copy, a re-download), press Undo — the undo succeeded and the
 newcomer's bytes were gone, not trashed, not journaled, not errored. It was the
 only data-destroying path in write mode that is not Empty Trash, and it was a
@@ -3620,13 +3814,13 @@ entry's source path — against both the filesystem and the linked rows — befo
 moving anything, and refuses the whole undo with a clear message naming the
 occupied path. All-or-nothing, up front, like restore. It also absorbs the
 metadata echo the review noted (a linked newcomer would have hit the unique
-constraint *after* the bytes were destroyed) and most of the mid-undo `OSError`
+constraint _after_ the bytes were destroyed) and most of the mid-undo `OSError`
 window (the occupied-source case was its main non-error trigger). Backend
 **766 passed** (+3 regression tests, each confirmed to fail against the old code).
 
 **Two non-blocking observations from the same review are left as known
 limitations**, both manual-recovery and neither data-losing: (1) a Replace entry
-whose *own* rename then fails leaves its displaced file in the trash as its own
+whose _own_ rename then fails leaves its displaced file in the trash as its own
 operation — visible and restorable there — but the failed entry drops out of the
 move payload, so undo will not bring it back automatically; (2) a crash mid-batch
 loses the `replaced_operation_id` association for the same reason (it is written
@@ -3648,7 +3842,7 @@ with one undo**. The shape that mattered:
 - **Collisions are resolved before the disk is touched.** A `fail` answer moves
   nothing and returns the same 409 `path_conflict` rename does, so the client
   can ask; `skip`/`suffix`/`replace` settle per entry. Replace files its
-  displaced file as its own trash operation, recorded *per moved entry* (a
+  displaced file as its own trash operation, recorded _per moved entry_ (a
   batch can displace more than one), which is why undo restores every one of
   them and refuses up front if any was already emptied.
 - **A per-file `OSError` is tolerated like a partly-failed delete** — the
@@ -3679,8 +3873,8 @@ folder is correctly excluded from it.
 
 **Deferred, and the one piece of W3 that did not land: drag-move onto a
 directory row.** The File Browser's drag system is already intricate — a
-rubber-band marquee interleaved with native file-promise drag-*out* to the OS —
-and wiring an internal drag-*move* target correctly alongside it is a slice of
+rubber-band marquee interleaved with native file-promise drag-_out_ to the OS —
+and wiring an internal drag-_move_ target correctly alongside it is a slice of
 its own. The dialog delivers the capability; drag is a second gesture for the
 same thing, and folding it into the existing DnD deserves its own change rather
 than riding on this one. Also not built here, and consistent with how W4/W5
@@ -3702,7 +3896,7 @@ to fail against the old code before the fix went in.
 
 **1. A partly failed delete stranded files invisibly.** When an `OSError` hit
 partway through a multi-path delete, `journal.fail` rolled the row updates back
-and marked the operation failed — while the entries moved *before* the failure
+and marked the operation failed — while the entries moved _before_ the failure
 were already inside `.cairndex/trash/{op_id}/`. The trash listing only shows
 `done` operations, restore refuses a failed one, and Empty Trash never prunes
 it: the files were gone from their original path and reachable by nothing.
@@ -3716,7 +3910,7 @@ in a new `failed_paths` field, and only fails outright when nothing moved at all
 Real trigger: a multi-select delete where one item hits a permissions error on an
 SMB/NAS mount.
 
-**2. Undoing a *skipped* import trashed the innocent file.** A skipped import
+**2. Undoing a _skipped_ import trashed the innocent file.** A skipped import
 finishes `done` with its destination pointing at the file that was already
 there — the one it deliberately did not overwrite. Undo saw a file at the
 destination and moved it to the trash. Undo now refuses a skipped operation,
@@ -3724,7 +3918,7 @@ and the same guard covers a skipped rename, whose no-op journal row now records
 `skipped` for consistency.
 
 **3. Undo of a Replace after Empty Trash half-executed.** The inverse rename ran
-first, *then* the restore raised 409 because the trash op had been emptied — so
+first, _then_ the restore raised 409 because the trash op had been emptied — so
 `mark_undone` never ran: the file was renamed back on disk while the journal
 still advertised the operation as undoable, and a second attempt 404'd on the
 now-missing source. Both undo paths (rename and import) now check the replaced
@@ -3734,7 +3928,7 @@ to finish is worse than a clear no.
 
 **Also fixed, from the same review's non-blocking observation:** a crash mid-
 upload for a Replace import was reconciled as `done` because its destination
-existed — that being the *old* file, still in place. The staging `.part` file is
+existed — that being the _old_ file, still in place. The staging `.part` file is
 the evidence that settles it, and reconciliation already runs before the sweep
 that removes it, so it was there to be read all along.
 
@@ -3752,7 +3946,7 @@ Same branch. The thing write mode was built for: dragging media from Finder onto
 the app copies it in.
 
 **Why it needed Rust at all.** Tauri's `dragDropEnabled` intercepts an OS drop
-*before* the webview sees it, so the browser-side upload flow never fires in the
+_before_ the webview sees it, so the browser-side upload flow never fires in the
 shell — the drop arrives as absolute paths, and a webview cannot turn an
 absolute path into a readable `File`. `importer.rs` streams the file to the
 import endpoint from a file handle, so a 60 GB video costs constant memory on
@@ -3765,13 +3959,13 @@ accepts absolute paths from the web layer, but statting a path leaks its
 existence while uploading one leaks its contents. Two rules bound it:
 
 1. **Only paths the user actually dropped.** The shell records each drop's paths
-   from the *window event* — its own observation, not the webview's report — and
+   from the _window event_ — its own observation, not the webview's report — and
    refuses to upload anything it has not seen. Comparison is canonicalized, so a
    symlink cannot smuggle a different file past a matching string, and each drop
    replaces the last rather than accumulating a growing allowlist.
 2. **The destination is not the caller's to choose.** Server URL and bearer come
    from the media proxy's own configuration via a shared `target_for`, which
-   applies the *same* per-library token scoping the media relay does — shared
+   applies the _same_ per-library token scoping the media relay does — shared
    rather than re-derived so the rule cannot be changed in one place and
    forgotten in the other.
 
@@ -3815,10 +4009,10 @@ Same branch. The only path by which bytes from outside a library ever enter it.
    trip.
 
 **Nothing is held in memory.** The body is written in 1 MB chunks to
-`.cairndex/tmp/{op_id}.part` — inside the package, so it is on the *same
-filesystem as the destination* and the final step is a rename rather than a
+`.cairndex/tmp/{op_id}.part` — inside the package, so it is on the _same
+filesystem as the destination_ and the final step is a rename rather than a
 second full copy. Verified with a 3 MB file: byte-identical sha256, empty
-staging directory afterwards. The size limit is enforced *while streaming*
+staging directory afterwards. The size limit is enforced _while streaming_
 rather than from a `Content-Length`, because trusting the client about the
 number you are limiting is not a limit.
 
@@ -3876,7 +4070,7 @@ same row coming back.
 
 **Three decisions worth carrying into W3/W5.**
 
-1. **A trashed row's `relative_path` moves *into* the trash**, rather than
+1. **A trashed row's `relative_path` moves _into_ the trash**, rather than
    staying at the original path. `relative_path` means "where the bytes are",
    and after a delete they really are in there. The consequence that matters:
    the original path stops being occupied, so something else can take it —
@@ -3933,15 +4127,15 @@ than a trash mechanism — everything it needs now exists server-side.
 Same branch as W0. The first operations that actually touch files, and the
 machinery that makes them safe to have.
 
-**The invariant W1 exists to deliver:** a rename performed *by* Cairndex needs
+**The invariant W1 exists to deliver:** a rename performed _by_ Cairndex needs
 no repair, ever. The `os.rename` and the `AssetFile.relative_path` update happen
 in one operation, so `AssetFile.id` is preserved by construction and bundle
 membership, covers, subtitle links, notes, ratings and cache identity survive
 without anything having to infer what happened. ADR-0006's moved-file repair
-stays underneath as the backstop for changes made *outside* the app.
+stays underneath as the backstop for changes made _outside_ the app.
 
 **The journal is intent-before-action.** A `pending` row in `library.db` is
-committed *before* the filesystem is touched; the content rows and the `done`
+committed _before_ the filesystem is touched; the content rows and the `done`
 status then land in one transaction. A crash in between leaves a `pending` row
 that the reconciler settles on next library open by reading the filesystem —
 source gone + destination present means finish the metadata side, the reverse
@@ -3970,7 +4164,7 @@ library.
 
 **Undo is the journal's, not the UI's.** Each completed operation's toast
 carries the inverse the journal recorded; applying it flips the row to `undone`
-rather than deleting it, and the inverse rename does *not* leave a second entry
+rather than deleting it, and the inverse rename does _not_ leave a second entry
 pretending to be a user action. A `mkdir` undo refuses a folder that is no
 longer empty — at that point removing it would be a delete, not an undo.
 
@@ -3979,7 +4173,7 @@ Verification: backend Ruff, `ruff format --check`, mypy, full pytest
 validator rejections on both source and destination, `.cairndex` and
 symlink-escape refusals, directory-subtree renames matched on segments, cover
 and membership survival, all three collision policies, the linked-row conflict
-caught *before* the file moves, an OS-level failure journaled as failed, undo
+caught _before_ the file moves, an OS-level failure journaled as failed, undo
 round trips, and four crash-recovery cases including the ambiguous one).
 Web Prettier, ESLint, `tsc -b`, full Vitest (**342 passed**, +8), the Vite
 build. OpenAPI and `schema.d.ts` regenerated.
@@ -3987,7 +4181,7 @@ build. OpenAPI and `schema.d.ts` regenerated.
 **Manually verified against a real dev server and a scratch library**, because
 this is the milestone where tests alone are not enough: rename through the
 context menu (inline editor opens with the stem selected, not the extension),
-the listing refreshing, the Undo toast reversing it on disk *and* flipping the
+the listing refreshing, the Undo toast reversing it on disk _and_ flipping the
 journal row to `undone`, the collision dialog appearing with both files
 untouched, New Folder creating a real directory — and, last, a planted
 interrupted operation (filesystem half done, `pending` row committed, metadata
@@ -4008,7 +4202,7 @@ working tree, the server gate, then the web toggle, with this documentation
 slice on top.
 
 **What landed is a refusal, not a capability.** Nothing in Cairndex writes to a
-library yet. W0 exists so that the answer is already *no* before there is
+library yet. W0 exists so that the answer is already _no_ before there is
 anything to say no to — every W1+ endpoint declares one dependency and inherits
 a structured `403 write_mode_disabled` it cannot forget to check.
 
@@ -4022,7 +4216,7 @@ names which gate said no, in `details.reason`, because the two have different
 fixes and one of them may not be the user's to apply.
 
 **One clarification against the plan, worth recording.** ADR-0013 says enabling
-requires an unlocked session *and* re-prompts for the passphrase. Implemented
+requires an unlocked session _and_ re-prompts for the passphrase. Implemented
 literally, a locked library would cost two passphrase prompts to enable — one to
 unlock, one to re-auth — for no security gain. So a correct passphrase presented
 to `PUT /write-mode` authorizes that request **by itself**. It authorizes the one
@@ -4069,6 +4263,7 @@ rather than linked, so the three-year term does not depend on a third-party
 host.
 
 **Two defects that only building it could have found**, both fixed:
+
 - The app bundle shipped an **invalid** signature — a signed executable with no
   `_CodeSignature` resource seal, which macOS rejects harder than an unsigned
   one. Invisible locally, because Gatekeeper only assesses quarantined apps.
@@ -4101,17 +4296,17 @@ the bill.
 **Where the minutes actually went**, 30 days to 2026-07-23, computed from job
 timestamps because the per-run billing endpoint reports zeroes:
 
-| | billable min | share |
-| --- | ---: | ---: |
-| `CI / Desktop shell (macOS)` | 1,570 | 58% |
-| all other CI jobs combined | 860 | 32% |
-| `Release` (one-off, both arches) | 261 | 10% |
-| **total** | **2,691** | |
+|                                  | billable min | share |
+| -------------------------------- | -----------: | ----: |
+| `CI / Desktop shell (macOS)`     |        1,570 |   58% |
+| all other CI jobs combined       |          860 |   32% |
+| `Release` (one-off, both arches) |          261 |   10% |
+| **total**                        |    **2,691** |       |
 
 One job was 58% of everything, because the repository is private and macOS bills
 at **10×**. Two facts made it worse: roughly **half of this repository's commits
 touch only documentation** (12 of the last 25), and CI ran on both
-`pull_request` *and* the `push` that merged it — so a green PR's macOS build was
+`pull_request` _and_ the `push` that merged it — so a green PR's macOS build was
 immediately re-run against identical code.
 
 **Two changes went in, and one came straight back out.** `paths-ignore` for
@@ -4158,11 +4353,11 @@ merged through a PR at the owner's request (2026-07-23), after two review
 rounds on the branch — the last engineering commit is `5e95d5d` (workflow
 hardening).
 
-*This section is the working record of the branch, kept for the reasoning in it.
+_This section is the working record of the branch, kept for the reasoning in it.
 D7 is closed; the summary is at the top of this file. Two things it describes as
 open were resolved after it was written: the release workflow was run for real
 at `v0.1.0`, and the `pillow-heif` licensing question was investigated and
-settled by swapping to `pi-heif`.*
+settled by swapping to `pi-heif`._
 
 **The blocker is resolved: ffmpeg is pinned.** Both macOS architectures now pin
 FFmpeg 8.1.2 from the Martin Riedl build server. The choice was made by
@@ -4170,7 +4365,7 @@ verification rather than by reputation, and the check that decided it was
 licensing, not staticness: the obvious candidate — `eugeneware/ffmpeg-static`,
 static, current, widely used — carries `--enable-nonfree` and therefore **may
 not be redistributed at all**, which is fatal for a milestone whose entire point
-is publishing binaries. The same builder's *Linux* artifacts fail the same way
+is publishing binaries. The same builder's _Linux_ artifacts fail the same way
 (`--enable-decklink` forces nonfree), so `linux-x86_64` stays deliberately
 unpinned and documented; it is not a release target, and the container path uses
 the image's own ffmpeg. What was verified on the pinned builds, none of it taken
@@ -4189,7 +4384,7 @@ where a binary becomes part of something published.
 existed.** `Cairndex.app` shipped with no `Contents/_CodeSignature/CodeResources`:
 Tauri only runs `codesign` when a `signingIdentity` is configured and none was,
 so the app had a linker-ad-hoc-signed executable and no resource seal. macOS
-rejects that as *malformed* — "code has no resources but signature indicates
+rejects that as _malformed_ — "code has no resources but signature indicates
 they must be present" — which is worse than being unsigned, and is precisely the
 failure ADR-0019 §4 warned about while asserting the invariant already held. It
 was invisible because Gatekeeper only assesses **quarantined** apps and every
@@ -4206,25 +4401,25 @@ said "All rights reserved" while `LICENSE` has been MIT since 2026-07-21.
 
 **Four review findings fixed on the same branch.**
 
-1. *The README promised updates would skip the Gatekeeper walk.* They will not.
+1. _The README promised updates would skip the Gatekeeper walk._ They will not.
    There is no updater, so an update is a fresh quarantined download, and an
    ad-hoc signature has no stable identity for macOS to carry the approval
    across — the CDHash changes every build. The section now says the step
    repeats per version, and ADR-0019 §4 carries the same amendment, since
    "cost paid on every release" is a materially different trade from "cost paid
    once" for the Developer ID decision.
-2. *The smoke test could pass while proving the opposite.* It set
+2. _The smoke test could pass while proving the opposite._ It set
    `CAIRNDEX_FFMPEG_PATH` and trusted the sidecar to honour it, but
    `media/tool_paths.py` falls back to PATH discovery when a configured binary
    is not executable — correct for the app, wrong for the one run that exists to
    prove the bundled binary works. On this machine (Homebrew ffmpeg on PATH) a
    lost execute bit would have passed. It now refuses a non-executable bundled
    binary, and a bundle staging one media tool without the other.
-3. *The GPL offer leaned on a third-party server and covered one architecture.*
+3. _The GPL offer leaned on a third-party server and covered one architecture._
    Both `versions.txt` files are committed under `packaging/ffmpeg-build-info/`
    and referenced from the manifest; the notices file no longer presents the
    arm64 configure line as if it were both.
-4. *`packaging/` was outside every typing gate*, because the gate named `src` —
+4. _`packaging/` was outside every typing gate_, because the gate named `src` —
    leaving the checksum gate that decides what may be published unchecked. It is
    now in scope (`mypy src packaging`, also set as `files` in pyproject), the
    five pre-existing `smoke_test.py` errors are fixed too, and
@@ -4242,7 +4437,7 @@ frontend; no web source changed, so the web unit/e2e suites were not re-run.
 **Verified by hand, end to end:** fetched the pinned binaries, confirmed the
 Developer ID signatures survive download → extract → stage → bundle, built the
 213 MB app, installed it, and launched it with the sidecar spawning from inside
-the bundle. The packaged smoke test passes against the *bundled* ffmpeg — and
+the bundle. The packaged smoke test passes against the _bundled_ ffmpeg — and
 that was proven rather than assumed by sabotaging the bundled binary and
 confirming the smoke test fails (it did, though only with a raw traceback; it
 now reports the failure in its own words).
@@ -4254,12 +4449,12 @@ sidecar against its bundled ffmpeg, and drafts a release carrying both DMGs, a
 `.sha256` beside each, and `THIRD-PARTY-NOTICES.md`. Publishing stays a human
 decision.
 
-*Native jobs rather than cross-compilation, and this is not a preference.* The
+_Native jobs rather than cross-compilation, and this is not a preference._ The
 Rust half cross-compiles fine with `--target`; the sidecar does not, because
 PyInstaller freezes the interpreter that runs it and has no cross-compile mode.
 So the matrix pins `uv sync --python cpython-3.12-macos-<arch>-none` — that line
 is what decides the sidecar's architecture. `--platform` selects which checksum
-pin to verify against and *cannot* change what was frozen, which is a trap worth
+pin to verify against and _cannot_ change what was frozen, which is a trap worth
 naming: staging a correctly-pinned Intel ffmpeg beside an arm64 sidecar passes
 every digest check and produces an app that dies on launch. `build_sidecar.py`
 now reads the frozen executable's Mach-O header and refuses the mismatch
@@ -4342,15 +4537,16 @@ section being necessary, demonstrated rather than assumed. A genuine
 browser-download pass is still the owner's to do.
 
 Two workflow gaps this run exposed, both fixed:
+
 - **No `timeout-minutes`**, so a wedged Tauri DMG bundler (it drives Finder over
   AppleScript, the documented reason CI skips DMG) could have burned hours of
   10×-billed minutes against GitHub's 6-hour default. Now 45.
 - **Cancelling one matrix leg would have skipped `publish` entirely** (`needs:
-  build`), losing the draft release along with the successful arm64 artifact.
+build`), losing the draft release along with the successful arm64 artifact.
   That is why the Intel leg was left to finish rather than cancelled when the
   decision to drop it came mid-run.
 
-The procedure is now a runbook in `docs/deployment.md` (*Cutting a release*):
+The procedure is now a runbook in `docs/deployment.md` (_Cutting a release_):
 pre-tag version bumps, tagging, watching, reviewing the draft, publishing, and
 backing out. `AGENTS.md` gains the matching rule — releasing is owner-triggered
 like opening a PR, and a tag with a published release must never be moved.
@@ -4385,6 +4581,7 @@ case), no x265, and dropped from 213 MB to **196 MB**. HEIC previews verified
 end to end through the repacked sidecar.
 
 **Next**, in order:
+
 1. **An owner pass on a genuinely downloaded build**, which needs a release to
    exist. The `xattr` reproduction is faithful to the quarantine bit and the
    published artifact was verified after a real `gh release download`, but a
@@ -4430,7 +4627,7 @@ picker, so one surface covers adding, opening, and removing — and it is now
 rendered in the states that replace the workspace (a lease refusal, a locked
 library), which are exactly where switching libraries is what a user wants and
 where the dialog previously did not exist. First-run setup keeps the direct
-picker on purpose: the dialog lists a *server's* libraries and first run has no
+picker on purpose: the dialog lists a _server's_ libraries and first run has no
 server, which is the situation the picker resolves (ADR-0018's "local libraries
 just work"). That removed App's whole duplicated folder-opening path — naming
 dialog, state, toast, error handling — since the dialog owns all of it. The
@@ -4467,7 +4664,7 @@ only adds.
    cannot prove the handler ever gets the event, that the element is where it
    claims to be, or that it stayed there.
 2. **Content query keys are not library-scoped.** The cache is cleared on every
-   library switch instead, so removing the *active* library had to clear it
+   library switch instead, so removing the _active_ library had to clear it
    explicitly; without that the next library inherits the removed one's bundles
    and counts. This is a standing trap for anything that changes the active
    library outside `changeLibrary`.
@@ -4713,24 +4910,24 @@ mutation.
    called in exactly one place: inside `verifyServer`, as a probe side effect.
    So a local activation left every JSON request pointed at the previous remote
    server (or at nothing on first run) while the UI said "This Computer", and a
-   *failed* activation left them pointed at the dead server just probed.
+   _failed_ activation left them pointed at the dead server just probed.
    Confirmed with a test against the real `verifyServer` + `api/client` before
    fixing: three scenarios, three failures. Fixed by making the base an
    explicit activation **commit** step for both kinds, making `verifyServer` a
    pure probe (it asks the candidate URL directly), and teaching `restore` to
-   re-point a *local* previous connection (the old `!previous?.serverUrl` guard
+   re-point a _local_ previous connection (the old `!previous?.serverUrl` guard
    skipped it — the one compensation path could not compensate for local).
    `connections.apiBase.test.ts` pins all five outcomes; deleting the commit
    step fails three of them.
 
    Why every earlier gate missed it: the connections suite mocks `verifyServer`
    wholesale and the app suites mock the platform fetch, so activation
-   *ordering* was proven while nothing observed where a request would land —
+   _ordering_ was proven while nothing observed where a request would land —
    the milestone's model-not-exercise failure mode, seventh instance. The owner
    acceptance pass missed it because its scenarios ran with the main server
    also serving the test folder, which masks the wrong base.
 
-2. **P2 — a heartbeat *read* blip surrendered the lease while a *write* blip
+2. **P2 — a heartbeat _read_ blip surrendered the lease while a _write_ blip
    was tolerated.** `read_lease` folded `OSError` into `corrupt`, which the
    watchdog treats as "someone else is writing this file" — so one transient
    NFS/SMB error during the 60 s re-read unmounted the library, cancelled its
@@ -4828,7 +5025,7 @@ at" and "nothing happened" were indistinguishable.
 
 **The pattern across all five: tests that modelled the code instead of exercising
 it.** The worst case was the test harness itself — the mocked `useDesktopMenu`
-used `??=`, freezing the *first* render's closure, so the handler under test saw
+used `??=`, freezing the _first_ render's closure, so the handler under test saw
 an empty library list while the real ref-based hook sees the current one. Four
 increasingly "faithful" integration tests passed against a program that was not
 the one shipping. Counting the earlier `beforeBuildCommand` guard and the smoke
@@ -4839,15 +5036,17 @@ Final gates: web ESLint/Prettier/tsc, **284 Vitest**, Vite build; desktop
 fmt/Clippy/**66**; `tauri build` produces a launching `Cairndex.app`.
 
 ### Next
+
 Plan 3 **D7 — first public release**. The only true blocker is pinning a static
 ffmpeg (ADR-0019 §3); everything else there is pipeline and documentation.
 
 Two gaps carried forward, neither D6-specific:
+
 - **A lease redirect lands on the target server's first library**, not the one
   asked for — library ids are per-registry, so the fix is carrying
   `library_uuid` on the ownership response (plan 3 §7.1).
 - **`localStorage` is undefined in this jsdom setup**, so `usePersistentState` is
-  inert under test and *every* persisted UI preference is unverified. Pre-existing
+  inert under test and _every_ persisted UI preference is unverified. Pre-existing
   and much wider than D6; worth its own slice.
 
 ---
@@ -4900,11 +5099,11 @@ both fixed — which is the point of doing this rather than trusting the mocks.
 **1. A fatal abort in the sidecar, from a real crash report.**
 `~/Library/Logs/DiagnosticReports/cairndex-sidecar-*.ips` showed `SIGABRT`,
 `abort() called`, with the stack `_enter_buffered_busy → _Py_FatalErrorFormat →
-abort`. That is CPython's *"could not acquire lock for `<_io.BufferedReader
-name='<stdin>'>` at interpreter shutdown, possibly due to daemon threads"*, and
+abort`. That is CPython's _"could not acquire lock for `<_io.BufferedReader
+name='<stdin>'>` at interpreter shutdown, possibly due to daemon threads"_, and
 the cause was mine: `watch_parent` blocked a daemon thread inside
 `sys.stdin.buffer.read()`, holding the BufferedReader's lock, so an interpreter
-finalization from any *other* cause could not close stdin.
+finalization from any _other_ cause could not close stdin.
 
 Reproduced deterministically as `--watch-parent` + SIGINT. The harm was not
 cosmetic: **an abort skips the lifespan shutdown, so the ownership lease is never
@@ -4921,7 +5120,7 @@ shell does and fails on `SIGABRT` or a logged fatal error — verified by mutati
 **2. The `beforeBuildCommand` guard was wired to the wrong path.** It ran
 `node ../check-sidecar-staged.mjs`, but the command's working directory is
 `apps/desktop`, not `src-tauri` — so it pointed outside the repo and failed
-*every* build, including valid ones. My earlier "verification" ran the script
+_every_ build, including valid ones. My earlier "verification" ran the script
 directly rather than through a build, which is the same mistake as testing a
 component instead of the integration. Fixed and confirmed both ways: a real build
 passes with the bundle staged and fails with the documented message without it.
@@ -4934,13 +5133,12 @@ real binary: `GET …/ownership` returns exactly the declared field set,
 false` / a redirect URL, a loopback holder's URL is suppressed, a stale lease
 reports `can_take_over: true`, content routes 409 with `library_lease_held` and
 `library_lease_takeover_required`, `POST …/takeover` returns 202 with
-`takeover.running` already true, and taking over a live lease is refused with
-422. All passed.
+`takeover.running` already true, and taking over a live lease is refused with 422. All passed.
 
-*(The two paragraphs below were written on 2026-07-20 and are now answered by the
+_(The two paragraphs below were written on 2026-07-20 and are now answered by the
 owner acceptance pass at the top of this file. Kept because what they predicted —
 that the untested half was where the defects would be — turned out to be exactly
-right, four times over.)*
+right, four times over.)_
 
 **Still not verified: the UI itself.** Driving the menu bar and the native folder
 picker needs assistive access this environment does not have. Note also that
@@ -4956,8 +5154,6 @@ packaged app. That owner pass is the remaining acceptance step for D6, and it
 wants the ffmpeg manifest pinned first (ADR-0019 §3) — without it a packaged
 sidecar falls back to a system ffmpeg, which works on this machine and not on a
 user's.
-
-
 
 Same branch `feat/library-ownership-lease`. Started 2026-07-20 once both
 server-side prerequisites (the lease and §6 hygiene) were in place.
@@ -5052,7 +5248,7 @@ request, so the three new/changed jobs are verified config, not observed runs.
   it inside a function) and JPEG/PNG never exercise it — so the test now
   generates a **HEIC fixture and renders a preview**. Verified by mutation:
   excluding `pillow_heif` from the bundle now fails with the real error.
-- The smoke test drives the *packaged binary over HTTP* through library creation
+- The smoke test drives the _packaged binary over HTTP_ through library creation
   (SQLAlchemy's sqlite dialect, FTS5), a scan job, a thumbnail job, the HEIC
   preview, and SIGTERM — then asserts the lease came back with `released_at`.
 
@@ -5066,8 +5262,8 @@ licensing decision for the owner (ADR-0019 §3), and any practical static build 
 GPL. Until it is populated, builds use `--skip-ffmpeg` and the sidecar falls back
 to a system ffmpeg via `media/tool_paths.py`. That works on a developer machine
 and **not** on a user's, so this blocks a real release, not D6.3.
-*(Resolved 2026-07-22 in D7 — see the entry at the top of this file. Both macOS
-architectures are pinned; `--skip-ffmpeg` is now the Linux-only path.)*
+_(Resolved 2026-07-22 in D7 — see the entry at the top of this file. Both macOS
+architectures are pinned; `--skip-ffmpeg` is now the Linux-only path.)_
 
 ### Landed: sidecar lifecycle in the shell (D6.3)
 
@@ -5101,7 +5297,7 @@ Verification:
 - The lifecycle test **spawns the real packaged bundle** — loopback bind, health
   open, 401 anonymous, 200 with the token, and stdin-close shutdown leaving the
   port dead. It skips unless `CAIRNDEX_SIDECAR_BIN` is set, so the desktop
-  *tests* stay runnable without Python; CI's macOS job sets it, which is what
+  _tests_ stay runnable without Python; CI's macOS job sets it, which is what
   turns it from a no-op into a real check. **Compilation is a different matter —
   see the review round below.**
 - A release `tauri build` produced `Cairndex.app` (**88 MB**) with the sidecar at
@@ -5110,7 +5306,7 @@ Verification:
   `.app`** and served health 200 and an authenticated request 200.
 
 Known gaps: no UI consumes the commands yet (D6.4/D6.5), and the app still has
-no way to *open a local folder* — that is the next slice. The bundled build
+no way to _open a local folder_ — that is the next slice. The bundled build
 carries no ffmpeg until the manifest is pinned, so a packaged sidecar currently
 falls back to a system ffmpeg.
 
@@ -5120,7 +5316,7 @@ An external review of D6.2/D6.3 found one P1, one P2, and three smaller items.
 All confirmed by reproduction before fixing, and all applied.
 
 - **P1 — the desktop crate stopped compiling without the sidecar bundle.**
-  `tauri-build` copies `bundle.resources` at *compile* time, not bundle time, so
+  `tauri-build` copies `bundle.resources` at _compile_ time, not bundle time, so
   the missing path fails `cargo check`, `cargo test`, and `tauri dev` — not just
   `tauri build`, which is all I had claimed. **The Ubuntu "Desktop Rust" job
   would have failed on the first push**, since only the macOS job got a
@@ -5134,15 +5330,15 @@ All confirmed by reproduction before fixing, and all applied.
 - **P2 — two concurrent `start_local_server` calls could hand back a dead
   server.** The `info()` check and the insert were not one critical section, so
   both callers could see an empty slot, both spawn, and the second insert
-  terminate the first child *after* its caller had already been given that
+  terminate the first child _after_ its caller had already been given that
   sidecar's URL and token. The comment asserting "`start_local_server`
   guarantees the slot is empty" named exactly the guarantee concurrency breaks.
   Not theoretical: React StrictMode double-invoking a mount effect is the normal
   way a UI produces those two calls, and D6.4 is about to add one. Fixed with a
   dedicated `startup` mutex held across check-launch-insert; the fast path in
-  the command was *removed*, because checking outside the lock is what created
+  the command was _removed_, because checking outside the lock is what created
   the race. A new test runs two threads against the real bundle and asserts both
-  get the same server *and* that it is still alive; removing the lock fails it.
+  get the same server _and_ that it is still alive; removing the lock fails it.
 - **P3 — `SO_REUSEADDR` on the sidecar's listening socket.** Pointless here (we
   bind `:0` and never rebind a specific port) and actively harmful on Windows,
   where it lets a different socket bind a port already in use and steal
@@ -5150,7 +5346,7 @@ All confirmed by reproduction before fixing, and all applied.
   Removed. Worth noting the shutdown design is justified by Windows portability,
   so a Windows-unsafe option had no business sitting next to it.
 - **P3 — a non-ASCII bearer produced a 500 instead of a 401.**
-  `secrets.compare_digest` raises `TypeError` on non-ASCII *strings*. Now
+  `secrets.compare_digest` raises `TypeError` on non-ASCII _strings_. Now
   compares encoded bytes. The HTTP-level regression test sends the header as raw
   **bytes**, because httpx refuses to encode a non-ASCII `str` header at all —
   a str-typed test would only ever have failed in the client and proved nothing.
@@ -5182,9 +5378,9 @@ executes nothing. Getting a real verdict on the three new/changed jobs needs a
 PR, which is the owner's call.
 
 ### Remaining
+
 - Nothing in D6. See the acceptance receipt at the top of this file; the release
   work that D6 surfaced is now plan 3 **D7**.
-
 
 ## Completed: SQLite sync hygiene (ADR-0018 §6)
 
@@ -5192,11 +5388,11 @@ Same branch `feat/library-ownership-lease`, following the lease slices below.
 Closes the last server-side item before plan 3 D6.
 
 Established first, empirically, rather than assumed: a plain `engine.dispose()`
-*already* folds the WAL in and removes `-wal`/`-shm`, and a normal interpreter
+_already_ folds the WAL in and removes `-wal`/`-shm`, and a normal interpreter
 exit does too because CPython closes the connections during teardown. So the
 "clean close" half was mostly working by accident. The two real gaps were that
 **library engines were never disposed on shutdown at all** (`main.py` disposed
-the worker and HLS sessions but not the per-library engines), and that a *running*
+the worker and HLS sessions but not the per-library engines), and that a _running_
 server leaves a live WAL indefinitely — SQLite's automatic checkpoint only fires
 around 1000 pages, which a browsing session may not reach, and that is exactly
 the state a sync engine uploads.
@@ -5213,7 +5409,7 @@ Implementation:
   copy taken while a WAL is outstanding silently misses everything the WAL holds.
   A test pins that distinction by mutation.
 - **Clean close** now checkpoints and disposes every library engine, ordered
-  *before* releasing the leases, so each library is a single consistent file
+  _before_ releasing the leases, so each library is a single consistent file
   before another machine is invited to pick it up.
 - Maintenance only touches libraries whose lease we hold — maintaining one we
   lost would be writing into another server's library. The owned set is passed to
@@ -5250,7 +5446,6 @@ is ever wanted as more than a last resort.
 Next recommended task: **Plan 3 D6 — local-server sidecar**. Every server-side
 prerequisite is now in place.
 
-
 ## Completed: server-side library ownership lease (ADR-0018 §2–§4)
 
 Branch `feat/library-ownership-lease` from `main` at `d953d95`. This is build-order
@@ -5273,7 +5468,7 @@ Implementation:
   record. Every write regenerates the `nonce`, heartbeats included; that is what
   makes an overwrite detectable at all.
 - **Five states, not four.** Released / own / fresh / stale, plus **unreadable**.
-  A lease we cannot parse is deliberately *not* folded into released: "we could
+  A lease we cannot parse is deliberately _not_ folded into released: "we could
   not find out" must never become "nobody holds it", or a corrupt or
   partially-written file becomes a silent second writer. It routes to the same
   confirmation path as stale, with the holder unknown.
@@ -5293,7 +5488,7 @@ Implementation:
   auto-takeover after any TTL. Because clean shutdown releases, the prompt is
   reached only after a crash or under sync lag.
 - **The heartbeat is the watchdog.** Every interval it re-reads before rewriting.
-  A foreign `server_uuid`, *or our own under a nonce we did not write* (a sync
+  A foreign `server_uuid`, _or our own under a nonce we did not write_ (a sync
   engine resolving a conflict the other way), means ownership moved: never
   re-grab, stop writing, cancel that library's jobs, unmount. Two servers each
   re-grabbing would be exactly the alternating dual-writer the lease exists to
@@ -5313,10 +5508,10 @@ Implementation:
   own lease but never takes a foreign one — a background worker must not make the
   user's takeover decision.
 - **Endpoints.** `GET /api/v1/libraries/{id}/ownership` sits outside the mount
-  gate on purpose: it is what a client calls *because* a mount was refused.
+  gate on purpose: it is what a client calls _because_ a mount was refused.
   `POST .../ownership/takeover` returns 202 and runs the observation window on a
   background thread, since the window outlasts a heartbeat period and no HTTP
-  request should be held open for minutes. Taking over a *live* lease is refused
+  request should be held open for minutes. Taking over a _live_ lease is refused
   with 422 rather than forced — "that machine is gone" is not a claim anyone can
   make about a server that heartbeat seconds ago.
 - **Sync-conflict artifacts** next to the lease are logged loudly and never
@@ -5331,7 +5526,7 @@ Two defects found and fixed during the work, both in my own code:
 
 - `acquire` originally held the manager's state lock across its sleeps, so a
   two-minute takeover observation would have blocked `holds()` — and therefore
-  every request to *every* library — for its full duration. Acquisition is now
+  every request to _every_ library — for its full duration. Acquisition is now
   serialized per library, outside the state lock.
 - The first observation-window test passed with the observation window deleted:
   it was catching the injected steal via write-then-verify instead. Found by
@@ -5392,7 +5587,6 @@ Known gaps, honestly:
 Next recommended task: **ADR-0018 §6 (idle/close WAL checkpointing + snapshot
 job)**, then **Plan 3 D6 — local-server sidecar**, whose gate this branch clears.
 
-
 ## Open follow-ups from the D5 owner pass (2026-07-20)
 
 Recorded so they survive the session; none is started.
@@ -5403,7 +5597,7 @@ Recorded so they survive the session; none is started.
   where it matters most: after an app restart or reload mid-job, for a job started
   from another client, and for the `Update` chain's fire-and-forget storyboard
   stage. The server already exposes `GET /api/v1/jobs` with
-  `processed`/`total`/`phase`, so a persistent indicator sourced from *that*
+  `processed`/`total`/`phase`, so a persistent indicator sourced from _that_
   (rather than from local mutation state) would survive reloads, show other
   clients' work, and give the D5b dock badge something meaningful to reflect. Needs
   an idle strategy — poll while work is active, stop when idle — so it does not
@@ -5412,7 +5606,7 @@ Recorded so they survive the session; none is started.
   `apps/server/src/cairndex/jobs/worker.py` wraps the entire handler run in one
   `with registry_factory() as reg:`, so a long job keeps a SQLite connection
   checked out for its full duration — 442 s in the one observed case. That job
-  failed with `Cannot operate on a closed database` *after* completing all its work
+  failed with `Cannot operate on a closed database` _after_ completing all its work
   (4/4 processed), failing only at commit. The most likely trigger was a
   `uvicorn --reload` restart during active editing rather than a product defect
   (the failure sits ~11 minutes after a commit that morning, and 48 jobs have run
@@ -5426,7 +5620,6 @@ Recorded so they survive the session; none is started.
   network filesystem. `3444c76` added `_sqlite_filesystem_identity` at 10:37 Z,
   after both. No scan has failed since. Recorded only so the entries in the job
   history are not re-investigated.
-
 
 ## Completed: Plan 3 D5c — desktop distribution (DMG + env-gated signing docs)
 
@@ -5464,7 +5657,7 @@ Implementation:
   keychain profile name; **unset, the build is exactly today's ad-hoc build**, so
   nothing is re-plumbed when signing is eventually wanted.
 - **The docs say plainly that a DMG is not trust.** It is install ergonomics.
-  An unsigned DMG on another Mac still needs System Settings → *Open Anyway*, and
+  An unsigned DMG on another Mac still needs System Settings → _Open Anyway_, and
   the section says so explicitly so the DMG is not mistaken for a signing
   substitute.
 
@@ -5492,8 +5685,8 @@ optional hardening. All applied.
   is already live.** Installing from the DMG leaves two copies of the app: the
   `/Applications` one and the build-directory one, recreated by every build. Both
   claim the scheme, LaunchServices picks by its own heuristics, and `open
-  cairndex://…` may cold-launch the stale build-dir copy. The sharper failure is
-  the one the reviewer identified: if the intended copy is *running* and a
+cairndex://…` may cold-launch the stale build-dir copy. The sharper failure is
+  the one the reviewer identified: if the intended copy is _running_ and a
   different copy is launched for the link, single-instance forwards only **argv**,
   while macOS delivers the URL by **Apple Event** — so the link parks in a process
   that immediately exits and is silently lost.
@@ -5501,7 +5694,7 @@ optional hardening. All applied.
   Investigating this found something beyond the report: **the DMG build alone
   already creates a second registrant.** `bundle_dmg.sh` stages the app on a
   temporary `/Volumes/dmg.XXXXXX` volume, and that claim survives the volume. On
-  this machine, after one DMG build and *no* installation, two paths claimed the
+  this machine, after one DMG build and _no_ installation, two paths claimed the
   scheme — the build directory and `/Volumes/dmg.f9FEwK/Cairndex.app`, a mount
   point that no longer exists. This **supersedes the D5b receipt's claim** that
   LaunchServices reported exactly one claimant; that was true when written but is
@@ -5509,8 +5702,9 @@ optional hardening. All applied.
   in `docs/deployment.md` with the real inspection command and its actual output,
   plus cleanup steps, and added to the owner checklist as item 5 — deep-link
   testing against the wrong copy proves nothing.
+
 - **Nit — the DMG-signing claim was too confident.** "Tauri signs the app and the
-  DMG" was asserted, but whether the bundler codesigns the DMG *container* rather
+  DMG" was asserted, but whether the bundler codesigns the DMG _container_ rather
   than only the app inside is version-dependent and unexercised here. Reworded to
   instruct verifying with `codesign -dv` on first use and signing the container
   manually if it did not, since notarization wants the container signed.
@@ -5539,7 +5733,7 @@ claims, and that `lsregister -u <path>` is the tool that works — including for
 paths on volumes that no longer exist. The docs now use `-u` per path, address the
 build bundle through `git rev-parse --show-toplevel` so it cannot resolve
 relatively, name both non-working commands so a reader does not retry them, note
-that a *mounted* DMG is itself a claimant, and warn that every `tauri build`
+that a _mounted_ DMG is itself a claimant, and warn that every `tauri build`
 recreates and re-registers the build-directory bundle. On the owner's machine five
 paths claimed the scheme (an `/Applications` install, the build directory, a
 mounted DMG, and two dead scratch mounts); after the corrected procedure, exactly
@@ -5568,7 +5762,6 @@ Next recommended task: **Plan 3 D6 — local-server sidecar** (ADR-0018), which 
 gated on the server-side ownership lease landing first; see
 `docs/plans/README.md` phase F.
 
-
 ## Completed: Plan 3 D5b — deep links, job notifications, export seam
 
 Branch `codex/plan3-d5b-deeplinks-notifications`, stacked on the **unmerged**
@@ -5586,7 +5779,7 @@ Implementation:
   `take_pending_deep_link` once listening. Windows/Linux pass the URL in argv, to
   the first process on a cold start and to a second process on a warm one, whose
   argv the single-instance plugin forwards (hence single-instance is registered
-  *before* the deep-link plugin). The SPA subscribes **before** draining, so a
+  _before_ the deep-link plugin). The SPA subscribes **before** draining, so a
   link arriving in between is not lost, and de-duplicates by identity, so a
   cold-start link that also arrives as an event opens once rather than twice.
   **Decision:** a link naming a library this server does not have is reported
@@ -5595,7 +5788,7 @@ Implementation:
   truncated, for the same reason.
 - **Job notifications and dock badge.** Rides on the job snapshots the sidebar
   progress bar already polls, so no new polling. **Decision:** the unit is a
-  *run*, not a job — `Update library` chains scan → probe → storyboards, so
+  _run_, not a job — `Update library` chains scan → probe → storyboards, so
   per-job notification would fire three times for one user action; a run ends only
   after activity has been absent for a settle window, since that chain briefly
   reports no active job between stages. A notification fires only when the run
@@ -5603,12 +5796,12 @@ Implementation:
   to someone watching its progress bar is noise). Duration uses the server's
   `started_at`, so a run queued behind another job is measured by when it actually
   ran. A cancelled job is a deliberate user action and is not reported as a
-  failure. Permission is requested when a run *starts*, so the system prompt
+  failure. Permission is requested when a run _starts_, so the system prompt
   appears while the user is present and has just asked for the work. The browser
   build stays inert deliberately: a web page prompting for notifications is the
   pattern users distrust.
 - **Export save seam (M11 hook only, no export UI).** `save_export_file` takes
-  bytes plus a suggested file *name*; the destination comes solely from the native
+  bytes plus a suggested file _name_; the destination comes solely from the native
   save dialog, and any path structure in the suggestion is stripped first —
   mirroring the D3 rule that no client-supplied absolute path is trusted. Sized
   for plan 1 §10's small artifacts (a capped GIF, one contact sheet), not
@@ -5621,7 +5814,7 @@ An external review found two P1s, both in exactly the places this receipt had
 admitted were not runtime-verified. Applied, with the P3s and nits.
 
 - **P1 — the dock badge was capability-blocked and failing silently.**
-  `core:window:default` grants only *getter* commands, so `setBadgeCount` needed
+  `core:window:default` grants only _getter_ commands, so `setBadgeCount` needed
   an explicit `core:window:allow-set-badge-count` that the capability file did not
   carry. Every badge call would have been rejected — and `useJobNotifications`
   swallowed the rejection with `.catch(() => undefined)`, so nothing would have
@@ -5711,7 +5904,7 @@ Owner manual checklist for D5a+D5b:
    than one bundle can claim it (an `/Applications` install, the build-directory
    copy, and a dead DMG scratch mount all register), and LaunchServices picks by
    its own heuristics. Deep-link testing against the wrong copy proves nothing —
-   and if a *different* copy is launched while the intended one runs, the link is
+   and if a _different_ copy is launched while the intended one runs, the link is
    silently lost, because single-instance forwards only argv while macOS delivers
    the URL by Apple Event. `docs/deployment.md` has the inspection and cleanup
    commands.
@@ -5719,7 +5912,6 @@ Owner manual checklist for D5a+D5b:
 Next recommended task: **Plan 3 D5c — Developer ID signing and notarization
 pipeline** (needs the owner's paid Apple Developer Program enrollment; see the
 D5a receipt).
-
 
 ## Completed: Plan 3 D5a — menus, shortcuts, window state, viewer fullscreen
 
@@ -5732,7 +5924,7 @@ Implementation:
 
 - **One keymap table, not two.** `apps/web/src/platform/keymap.json` is the
   single source of truth for the native menu bar. The shell embeds it with
-  `include_str!` and *builds* the menu from it (`src-tauri/src/keymap.rs`), so a
+  `include_str!` and _builds_ the menu from it (`src-tauri/src/keymap.rs`), so a
   label or accelerator cannot drift between shell and SPA — the usual failure
   mode of a mirrored table is structurally impossible. The SPA reads the same
   file through `platform/keymap.ts`. Enablement groups (`server` / `library` /
@@ -5797,7 +5989,7 @@ An external review of the above found one P2 and two P3s, all applied.
   off `player?.fullscreen`, and images have no player, so a fullscreen image
   viewer closed and left the workspace window stuck in fullscreen. Fullscreen
   state now comes from viewer-supplied `isFullscreen`/`exitFullscreen` actions
-  (the `player` object exists for images; only its use as a *controller* is
+  (the `player` object exists for images; only its use as a _controller_ is
   gated), so both media kinds behave the same.
 - **P3 — the Playback menu was live-but-dead on image bundles.** All ten items
   were enabled whenever a viewer was mounted, though only Previous/Next File do
@@ -5887,7 +6079,7 @@ external review of the D4 hardening produced two unifying data-model changes,
 one more P0, and P1/P2 items — all applied.
 
 - **Per-reason skip reporting (change A, findings 1–3, 5).** `resolve_or_stage_paths`
-  now *skips* a confirmed-bundle member instead of raising mid-loop (a folder of
+  now _skips_ a confirmed-bundle member instead of raising mid-loop (a folder of
   partly-organized media still adds the rest), and the single skip counter is
   split into `skipped_non_media` / `skipped_missing` / `skipped_already_bundled`
   (plus a derived `files_skipped` total) so a missing movie is no longer reported
@@ -5909,7 +6101,7 @@ one more P0, and P1/P2 items — all applied.
   so `resetHostPlatformForTests` drops it) clears only the current drag's id via
   `listen`+unlisten, with a ~300 ms grace, a drop-lands-on-us belt, and a
   last-resort timeout. `handleFileDrop`'s block reason is `'modal' | 'self-drag' |
-  null`; a self-drag is a silent ignore, not the "close the dialog" flash.
+null`; a self-drag is a silent ignore, not the "close the dialog" flash.
 - **Popover/menu drop hole (P1-6, finding 6).** `isBlockingSurfaceOpen` also
   matches an open context menu (`role="menu"`) and toolbar popovers
   (`.picker__panel`).
@@ -5940,7 +6132,7 @@ carried this further — see the round-2 receipt above.)
 - **Drag-in batch tolerance (P0-1).** A dropped directory or a non-media sidecar
   no longer poisons the fast-add batch. `relative_within_root` maps only regular
   files (directories count outside), and the server's `resolve_or_stage_paths`
-  now skips and *reports* non-linkable paths instead of raising. The additive
+  now skips and _reports_ non-linkable paths instead of raising. The additive
   `files_skipped` flows through `ManualBundleResult` /`ManualBundleResultRead`
   (OpenAPI + `schema.d.ts` regenerated) into every manual-bundling success
   message; an all-non-media selection fails with a clear "not linkable media"
@@ -5952,7 +6144,7 @@ carried this further — see the round-2 receipt above.)
   flight (the shell emits `cairndex://drag-out-ended`; the SPA guards from invoke
   until then), and while the mapping is still resolving (tri-state defers instead
   of mis-reporting unmapped). The W5 seam (P1-6) is offered the un-addable
-  remainder of *every* drop, mixed or all-outside.
+  remainder of _every_ drop, mixed or all-outside.
 - **List-layout marquee (P0-2).** A File Browser list row is a drag-out source
   only once selected, so a press-drag on an unselected row still starts the
   rubber-band marquee; grid cards are unaffected.
@@ -7701,8 +7893,8 @@ slice without new runtime dependencies and without backend/API changes:
   only the selected track shows, and disabled tracks skip their cue fetch).
 - File Browser still used `FileEntryViewer` with path-based URLs and native
   browser controls at the time of this merge, sharing only the fallback card
-  component. **Resolved later** — see *Merged: one media viewer shell for both
-  browsing surfaces* below, which retired that split.
+  component. **Resolved later** — see _Merged: one media viewer shell for both
+  browsing surfaces_ below, which retired that split.
 - Follow-up recorded in plan 1: replace the removed inline file list with an
   expandable bundle-files side panel, and expand the right-side metadata panel
   into a first-class file/bundle metadata drawer.

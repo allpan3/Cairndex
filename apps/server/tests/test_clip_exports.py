@@ -1,5 +1,8 @@
 """Clip exports: validation, the encode task, and the endpoints (plan 1 §10)."""
 
+import base64
+import io
+import os
 import shutil
 import subprocess
 import threading
@@ -8,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from cairndex.api.v1 import exports as exports_api
@@ -536,3 +540,192 @@ def test_real_ffmpeg_produces_a_playable_gif(tmp_path: Path) -> None:
     assert int.from_bytes(data[6:8], "little") == 160
     # More than one image block means it actually animates.
     assert data.count(b"\x21\xf9\x04") > 1
+
+
+# --- the watermark ----------------------------------------------------------
+
+
+def _png(width: int = 60, height: int = 20, colour: str = "#ff0000") -> bytes:
+    """A solid PNG, standing in for the tile the client renders."""
+    buffer = io.BytesIO()
+    Image.new("RGBA", (width, height), colour).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _encoded(**kwargs: object) -> str:
+    return base64.b64encode(_png(**kwargs)).decode()  # type: ignore[arg-type]
+
+
+def test_no_watermark_leaves_the_command_exactly_as_it_was() -> None:
+    args = exports.build_gif_command(Path("/src.mp4"), Path("/out.gif"), _params())
+    joined = " ".join(args)
+    assert joined.count("-i ") == 1
+    assert "overlay" not in joined
+
+
+def test_a_watermark_is_overlaid_before_the_palette_is_generated() -> None:
+    # The palette is built from the frames it will be applied to; a mark added
+    # after `paletteuse` would have no colours of its own reserved.
+    args = exports.build_gif_command(
+        Path("/src.mp4"), Path("/out.gif"), _params(watermark_path=Path("/wm.png"))
+    )
+    joined = " ".join(args)
+    graph = args[args.index("-filter_complex") + 1]
+
+    assert joined.count("-i ") == 2
+    assert graph.index("overlay") < graph.index("palettegen")
+    # The mark is a second input, added after the seek so it is not itself
+    # trimmed to the clip's range.
+    assert args.index("/wm.png") > args.index("/src.mp4")
+    assert args.index("-t") < args.index("/src.mp4")
+
+
+@pytest.mark.parametrize(
+    ("corner", "expected"),
+    [
+        ("bottom-right", r"overlay=x=max(0\,W-w):y=max(0\,H-h)"),
+        ("top-right", r"overlay=x=max(0\,W-w):y=0"),
+        ("bottom-left", r"overlay=x=0:y=max(0\,H-h)"),
+        ("top-left", "overlay=x=0:y=0"),
+    ],
+)
+def test_each_corner_is_computed_at_filter_time(corner: str, expected: str) -> None:
+    # `W`/`H` rather than baked numbers, so the scaler rounding the height to an
+    # even number of lines cannot shift the mark off its corner.
+    args = exports.build_gif_command(
+        Path("/src.mp4"),
+        Path("/out.gif"),
+        _params(corner=corner, watermark_path=Path("/wm.png")),
+    )
+    assert expected in args[args.index("-filter_complex") + 1]
+
+
+def test_a_watermark_is_decoded_and_measured() -> None:
+    assert exports.validated_watermark(_encoded()) == _png()
+    assert exports.validated_watermark(None) is None
+    # An empty string is "no mark", not a malformed one.
+    assert exports.validated_watermark("") is None
+
+
+def test_a_watermark_that_is_not_an_image_is_refused() -> None:
+    with pytest.raises(ValidationError, match="base64"):
+        exports.validated_watermark("not base64!!")
+    with pytest.raises(ValidationError, match="must be a PNG"):
+        exports.validated_watermark(base64.b64encode(b"GIF89a nope").decode())
+    # PNG magic, then nothing a decoder can use — refused here with a clear
+    # reason rather than failing deep in a filter graph as an encode error.
+    with pytest.raises(ValidationError, match="could not be read"):
+        exports.validated_watermark(base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32).decode())
+
+
+def test_an_oversized_watermark_is_refused() -> None:
+    with pytest.raises(ValidationError, match="KB"):
+        # Noise, because a solid image of this size compresses far below the cap.
+        payload = b"\x89PNG\r\n\x1a\n" + os.urandom(exports.MAX_WATERMARK_BYTES + 1)
+        exports.validated_watermark(base64.b64encode(payload).decode())
+
+    with pytest.raises(ValidationError, match="on a side"):
+        exports.validated_watermark(_encoded(width=exports.MAX_WATERMARK_DIMENSION + 2, height=4))
+
+
+def test_the_mark_is_written_beside_the_artifact_and_reaped_with_it(tmp_path: Path) -> None:
+    seen: dict[str, Path | None] = {}
+
+    def runner(source: Path, dest: Path, params: GifParams) -> None:
+        seen["watermark"] = params.watermark_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"GIF89a")
+
+    manager = ExportManager(exports_dir=tmp_path, runner=runner, start_reaper=False)
+    export = manager.create(
+        library_id="lib",
+        file_id="file",
+        source_path=Path("/src.mp4"),
+        params=_params(),
+        filename="clip.gif",
+        watermark_png=_png(),
+    )
+    assert _settled(manager, export.id) == "done"
+
+    mark = seen["watermark"]
+    assert mark is not None and mark.exists()
+    assert mark.parent == export.output_path.parent
+    assert mark.read_bytes() == _png()
+
+    # Dropped with the artifact it belongs to, not left behind in the data dir.
+    manager.discard(export.id)
+    assert not mark.exists()
+
+
+def test_a_capacity_refusal_leaves_no_directory_behind(tmp_path: Path) -> None:
+    release = threading.Event()
+    manager = ExportManager(
+        exports_dir=tmp_path,
+        max_concurrent=1,
+        runner=lambda s, d, p: release.wait(timeout=5.0),
+        start_reaper=False,
+    )
+    first = manager.create(
+        library_id="lib",
+        file_id="file",
+        source_path=Path("/src.mp4"),
+        params=_params(),
+        filename="clip.gif",
+        watermark_png=_png(),
+    )
+    # Let the accepted export's worker finish writing its own mark first, so
+    # what follows is measured against a settled directory instead of racing
+    # the thread that is still creating one.
+    deadline = time.monotonic() + 5.0
+    while not (first.output_path.parent / "watermark.png").exists():
+        assert time.monotonic() < deadline, "the first mark was never written"
+        time.sleep(0.01)
+    before = set(tmp_path.iterdir())
+
+    with pytest.raises(CapacityError):
+        manager.create(
+            library_id="lib",
+            file_id="file",
+            source_path=Path("/src.mp4"),
+            params=_params(),
+            filename="clip.gif",
+            watermark_png=_png(),
+        )
+
+    # The mark is held in memory until a worker can write it, so a refused
+    # request never creates an artifact directory.
+    assert set(tmp_path.iterdir()) == before
+    release.set()
+
+
+@requires_ffmpeg
+def test_real_ffmpeg_burns_the_mark_into_the_corner(tmp_path: Path) -> None:
+    source = tmp_path / "movie.mp4"
+    _make_video(source)
+    mark = tmp_path / "wm.png"
+    # Bright green, a colour testsrc2 does not put in this corner, so finding it
+    # in the output means the overlay ran and the palette kept it.
+    mark.write_bytes(_png(width=40, height=12, colour="#00ff00"))
+
+    plain = tmp_path / "plain" / "clip.gif"
+    marked = tmp_path / "marked" / "clip.gif"
+    exports._run_gif(source, plain, _params(start_s=1.0, end_s=2.0, width=160, fps=10))
+    exports._run_gif(
+        source,
+        marked,
+        _params(start_s=1.0, end_s=2.0, width=160, fps=10, watermark_path=mark),
+    )
+
+    assert marked.read_bytes().startswith(b"GIF89a")
+    assert marked.read_bytes() != plain.read_bytes()
+
+    with Image.open(marked) as gif:
+        frame = gif.convert("RGB")
+    width, height = frame.size
+    # Inside the bottom-right corner the mark occupies, and clear of its edge.
+    red, green, blue = frame.getpixel((width - 20, height - 6))  # type: ignore[misc]
+    assert green > 200 and red < 80 and blue < 80
+
+    with Image.open(plain) as gif:
+        unmarked = gif.convert("RGB")
+    assert unmarked.getpixel((width - 20, height - 6)) != (red, green, blue)

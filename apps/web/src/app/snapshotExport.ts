@@ -8,7 +8,9 @@
  */
 
 import { getHostPlatform, isDesktopHost } from '../platform'
+import { getExportPrefs } from '../state/exportPrefs'
 import { exportFileName } from './exportNaming'
+import { drawWatermark, resolveWatermark } from './watermark'
 import type { WheelOption } from './WheelPicker'
 
 /**
@@ -65,11 +67,11 @@ function downloadInBrowser(blob: Blob, name: string): void {
  * `width` scales the output, keeping the aspect; omitted, the frame is saved at
  * the source's own resolution — which is what plain `S` does.
  */
-export function saveSnapshot(
+export async function saveSnapshot(
   video: HTMLVideoElement,
   title: string,
   options: { width?: number } = {},
-): void {
+): Promise<void> {
   const nativeWidth = Math.max(1, video.videoWidth || 1280)
   const nativeHeight = Math.max(1, video.videoHeight || 720)
   const width = Math.max(1, Math.round(options.width ?? nativeWidth))
@@ -88,6 +90,18 @@ export function saveSnapshot(
     ctx.fillStyle = '#050609'
     ctx.fillRect(0, 0, width, height)
   }
+
+  // After the frame, so the mark is on top of it, and sized against the output
+  // rather than the source: a snapshot scaled down to 640px gets a mark to
+  // match, not one shrunk from the 4K it was cut from. Awaited because a
+  // picture mark has to decode before it can be measured.
+  drawWatermark(ctx, await resolveWatermark(getExportPrefs()), {
+    left: 0,
+    top: 0,
+    width,
+    height,
+    corner: 'bottom-right',
+  })
 
   canvas.toBlob((blob) => {
     if (!blob) return
