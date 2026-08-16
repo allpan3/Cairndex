@@ -5875,6 +5875,15 @@ code {
   font-size: 12px;
   line-height: 1.4;
 }
+/* A text answer under the toggle that reveals it (Settings → Exports →
+   watermark). Indented to the toggle's label column so it reads as belonging to
+   the switch above rather than as a setting of its own. */
+.settings-field {
+  display: grid;
+  gap: 4px;
+  padding: 0 0 10px 26px;
+  max-width: 420px;
+}
 
 /* --- Global fetching indicator: visible feedback for ⌘R / any refresh ------ */
 .top-progress {

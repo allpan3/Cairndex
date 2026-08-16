@@ -257,6 +257,81 @@ transcode may not keep up.
 **Next.** Owner pass on a real library: confirm the previously-failing files now
 play, and confirm "Scan new files" no longer opens the grouping pane.
 
+## Open on branch: the export watermark (2026-08-15)
+
+Branch `claude/export-watermark-settings-41db44`, rebased onto `main` at
+`a8e077a4` (the drag-and-drop merge); cut from the GIF export merge, which it
+builds on. Owner request:
+one watermark setting covering snapshot, GIF, and contact sheet, retiring the
+contact sheet's hardcoded brand block, with custom **text** now and a custom
+**image** next.
+
+**Owner decisions taken before implementing.** Stored **client-local** in
+`localStorage` (`cairndex.exportPrefs`), matching `displayPrefs` and the export
+folder beside it; **off by default**; contact-sheet mark at the **top right of
+the header**, where the retired block sat, rather than over a frame.
+
+### The one real design question: the GIF is encoded server-side
+
+Snapshots and contact sheets are composed on a canvas in the browser, so a mark
+is a few lines each. A GIF is encoded by ffmpeg on the server, and **the ffmpeg
+builds Cairndex runs against have no `drawtext`** — verified on the dev machine's
+Homebrew ffmpeg 9.0.1, which reports no such filter and no freetype/fontconfig
+in its configuration. That is the same constraint that put the contact sheet's
+header in the browser in the first place. `overlay` is present.
+
+Two ways out were considered:
+
+- **Pillow on the server.** It is already a dependency and its bundled default
+  font is scalable (`ImageFont.load_default(size=…)` returns a `FreeTypeFont`),
+  so the server *could* draw the text. Rejected: it makes two renderers, and the
+  same setting would then look different on a GIF than on a snapshot of the same
+  frame. It also only defers the image mark's upload problem rather than solving
+  it.
+- **The client renders, the server composites.** Chosen. The mark is drawn once
+  in `app/watermark.ts` and, for the GIF only, sent as a bare base64 PNG on the
+  existing create-export request; ffmpeg `overlay`s it. Base64 in the JSON
+  rather than multipart because there is no upload route and no
+  `python-multipart`, and a text mark is a couple of kilobytes. **The image mark
+  needs no server change at all** — a rendered string and a chosen image arrive
+  as the same transparent PNG.
+
+Two details worth keeping: the overlay runs **before `palettegen`**, so the
+mark's colours are in the palette rather than being quantized to whatever the
+footage needed; and the corner is an ffmpeg expression (`max(0\,W-w)`), not a
+baked coordinate, so the scaler rounding the height to an even number of lines
+cannot shift the mark off its corner. The mark's inset is baked into the tile as
+transparent padding, so layout is decided in one module.
+
+### Measured: a still mark is free, and motion is nearly free
+
+The owner asked what a moving watermark would cost before committing to a still
+one. Measured at 480 px, 5 s, 15 fps against two synthetic sources:
+
+| source | no mark | still | moving |
+| --- | --- | --- | --- |
+| `testsrc` | 439 KB | 427 KB (−2.7%) | 461 KB (+5.0%) |
+| `mandelbrot` | 4,882 KB | 4,704 KB (−3.6%) | 4,796 KB (−1.8%) |
+
+A **still mark makes the file slightly smaller**: its pixels stop changing
+between frames, and a GIF stores inter-frame differences. **Motion costs 2–8%
+over a still mark** — far less than feared, so the still-first decision is not
+being forced by encoding cost. Synthetic sources, so treat the direction as
+sound and the exact percentages as indicative.
+
+### State
+
+Implemented and green: 1,030 backend tests, 731+ frontend tests, lint, format,
+typecheck, and the web build. A real-ffmpeg test encodes a clip with a mark and
+asserts the burned-in pixel in the corner. Verified in the running app that
+Settings → Exports appears in a browser, defaults off, reveals the text field,
+and that the mark reads against white, mid-tone, and near-black — a shadow alone
+was not enough on pure white, so the mark is outlined as well.
+
+**Not done:** the desktop shell was not exercised (same gap the GIF work
+recorded), and there is no e2e Playwright spec for the setting. The **image
+watermark is the next slice**, and the plumbing is already shaped for it.
+
 ## Open on branch: drag-and-drop between collections (2026-08-15)
 
 Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the

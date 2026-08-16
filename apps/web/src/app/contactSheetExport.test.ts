@@ -8,7 +8,6 @@ import {
   contactSheetRows,
 } from './contactSheetExport'
 import { setActiveLibraryId } from '../api/client'
-import { CONTACT_SHEET_WATERMARK } from './viewer/contactSheet'
 import { viewerItemFromEntry } from './viewer/viewerItem'
 
 // viewerItemFromEntry builds a stream URL for a linked row, which is scoped.
@@ -67,10 +66,6 @@ test('keeps every header row when metadata is unavailable', () => {
     { label: 'Details', value: '— · — · — / —' },
     { label: 'Codec', value: '— · —' },
   ])
-})
-
-test('brands the exported header without changing its metadata rows', () => {
-  expect(CONTACT_SHEET_WATERMARK).toEqual(['EXPORTED FROM', 'CAIRNDEX'])
 })
 
 test('a sheet cut from a File Browser row prints its real dimensions', () => {

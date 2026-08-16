@@ -2875,6 +2875,14 @@ export interface components {
             kind: "gif";
             /** Start S */
             start_s: number;
+            /**
+             * Watermark Corner
+             * @default bottom-right
+             * @enum {string}
+             */
+            watermark_corner: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+            /** Watermark Png */
+            watermark_png?: string | null;
             /** Width */
             width?: number | null;
         };
