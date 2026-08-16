@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import type { PlayableVideo } from '../../api/client'
 import type { PlayerController } from './player/usePlayer'
+import { stageFailureOf, type StageFailure } from './player/engine'
 
 interface VideoStageProps {
   video: PlayableVideo
@@ -11,7 +12,7 @@ interface VideoStageProps {
   artworkUrl: string
   /** Receives the element's `MediaError` so the shell can tell a format the
    *  engine refused from a read that merely failed. */
-  onError: (mediaError: MediaError | null) => void
+  onError: (mediaError: MediaError | null, stageFailure: StageFailure | null) => void
   /** Left-click on the stage. The shell owns it so a click that merely dismissed
    *  the context menu does not also toggle playback. */
   onActivate: () => void
@@ -102,7 +103,7 @@ export function VideoStage({
         className="mv-video"
         playsInline
         crossOrigin="anonymous"
-        onError={(event) => onError(event.currentTarget.error)}
+        onError={(event) => onError(event.currentTarget.error, stageFailureOf(event.nativeEvent))}
         data-testid="media-video"
         // Left click is the primary play/pause gesture, matching every other
         // video player. Right click opens the viewer's own menu, handled by the

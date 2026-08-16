@@ -50,6 +50,7 @@ import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporte
 import { usePlayer, type PlayerController } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
 import { consumeEndedTransition, handlePlaybackEnded } from './player/endBehavior'
+import type { StageFailure } from './player/engine'
 import { classifyMediaError, type PlaybackFailureKind } from './player/mediaError'
 
 // A native progressive video has no HLS session to re-attach, so a transient
@@ -351,12 +352,33 @@ export function ViewerShell({
     resumeNotice && resumeNotice.key === currentKey ? resumeNotice.position : null
   const { reattach, retry: retryPlayback } = hls
   const handleStageError = useCallback(
-    (mediaError?: MediaError | null) => {
+    (mediaError?: MediaError | null, stageFailure?: StageFailure | null) => {
       // A format the engine has already refused cannot be recovered by opening
       // the same bytes again: re-attaching or reloading would replay the refusal
       // and burn the budget on the way to the same card. Fail straight to the
       // explanatory version instead.
-      if (classifyMediaError(mediaError) === 'unsupported') {
+      //
+      // ...but the element's code only *is* that verdict when the element read
+      // the file. For an HLS source it did not: it read a playlist, and both a
+      // refused codec and a segment that 404s surface as
+      // `MEDIA_ERR_SRC_NOT_SUPPORTED`. Measured on the reaped-session case —
+      // the browser raises a trusted code 4 about bytes that never arrived —
+      // so reading it as a verdict sent an idled-out session straight to the
+      // unplayable card instead of re-attaching. That is true of native HLS as
+      // much as of the MediaSource path; the ambiguity is in the code, not the
+      // engine.
+      //
+      // An HLS failure therefore goes to the re-attach budget first, which is
+      // bounded at three and lands on the card once spent. Only the engine can
+      // refuse outright, because only it saw hls.js call the fatal a media
+      // error rather than a network one. Direct play is unchanged: there the
+      // element really did look at the file, which is the case this rule was
+      // written for (a hev1 tag the browser would not decode, #36).
+      const refused =
+        source?.kind === 'hls'
+          ? stageFailure === 'decode'
+          : classifyMediaError(mediaError) === 'unsupported'
+      if (refused) {
         if (currentKey) setFailure({ key: currentKey, kind: 'unsupported' })
         return
       }
@@ -378,7 +400,10 @@ export function ViewerShell({
           return
         }
       }
-      if (currentKey) setFailure({ key: currentKey, kind: 'interrupted' })
+      // Budget spent. Name it for what the element reported rather than always
+      // "interrupted": a stream that really was undecodable should explain
+      // itself once re-attaching has been ruled out.
+      if (currentKey) setFailure({ key: currentKey, kind: classifyMediaError(mediaError) })
     },
     [currentKey, reattach, retryPlayback, source?.kind],
   )

@@ -258,6 +258,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A playback session that died no longer surrenders to the unplayable card.**
+  When a session's segments stop resolving — the ordinary consequence of it
+  being reaped after a long pause — the client is supposed to request a fresh
+  decision and carry on. It stopped doing so in 2026-07, when failures began
+  being classified by the element's `MediaError` so that a file the browser
+  genuinely cannot decode would skip the retry budget. The two collided: an HLS
+  element reports `MEDIA_ERR_SRC_NOT_SUPPORTED` for a segment that 404s just as
+  it does for a codec it refuses, so a dead session was read as a bad file and
+  went straight to the card. An HLS failure now goes to the bounded re-attach
+  budget first, and only the engine — which alone saw whether hls.js called the
+  fatal a media error or a network one — can refuse outright. Direct playback is
+  untouched, which is the case that classification was written for.
+
 - **A video the browser cannot decode is now converted instead of refused.** The
   playback decision compared the source's container and codec *family* against
   what the client advertised, and nothing else — so a 10-bit source passed,
