@@ -1,38 +1,19 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
 
 import {
   DEFAULT_EXPORT_PREFS,
   getExportPrefs,
+  reloadExportPrefsForTests,
   resetExportPrefsForTests,
   useExportPrefs,
 } from './exportPrefs'
 
-/**
- * jsdom is configured here without a storage origin, so `localStorage` is
- * undefined rather than empty — the store copes with that on purpose (private
- * mode behaves the same), but persistence itself needs somewhere to persist.
- */
-const store = new Map<string, string>()
-const fakeStorage = {
-  getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, value: string) => void store.set(key, value),
-  removeItem: (key: string) => void store.delete(key),
-  clear: () => store.clear(),
-  key: (index: number) => [...store.keys()][index] ?? null,
-  get length() {
-    return store.size
-  },
-} satisfies Storage
-
 beforeEach(() => {
-  vi.stubGlobal('localStorage', fakeStorage)
-  store.clear()
   resetExportPrefsForTests()
 })
 
 afterEach(() => {
-  vi.unstubAllGlobals()
   resetExportPrefsForTests()
 })
 
@@ -85,7 +66,7 @@ test('survives a reload', () => {
 // A value stored before a newer field existed must not read back as undefined.
 test('merges a stored value over the defaults', () => {
   localStorage.setItem('cairndex.exportPrefs', JSON.stringify({ watermarkEnabled: true }))
-  resetExportPrefsForTests()
+  reloadExportPrefsForTests()
   const { result } = renderHook(() => useExportPrefs())
   // `reset` clears the in-memory snapshot; a fresh reader still sees a complete
   // object rather than one missing the field that was never stored.
@@ -94,7 +75,7 @@ test('merges a stored value over the defaults', () => {
 
 test('unreadable storage falls back to the defaults', () => {
   localStorage.setItem('cairndex.exportPrefs', 'not json')
-  resetExportPrefsForTests()
+  reloadExportPrefsForTests()
   const { result } = renderHook(() => useExportPrefs())
   expect(result.current[0]).toEqual(DEFAULT_EXPORT_PREFS)
 })
