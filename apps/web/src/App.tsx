@@ -93,7 +93,7 @@ import {
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
 import type { DragItem } from './app/dnd'
-import { getActiveDrag, setActiveDrag } from './app/dnd'
+import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -141,6 +141,7 @@ import {
   isDesktopHost,
   hasHostDeviceAccess,
   hasHostDeviceToken,
+  hostAltKeyHeld,
   hostOperationErrorMessage,
   reverseMapHostPaths,
   type DeepLinkTarget,
@@ -755,6 +756,11 @@ function Workspace({
     setActiveDrag(item)
     setDragItem(item)
   }, [])
+  // Whether a drag is asking to copy (⌥) rather than move cannot be read off the
+  // drop event alone; this watches the drag for whichever signal the engine
+  // actually delivers, and asks the desktop host — the only source that answers
+  // during a native drag in the shell. See dnd.ts and ADR-0023.
+  useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [viewerTarget, setViewerTarget] = useState<{
     bundleId: string
@@ -2171,7 +2177,7 @@ function Workspace({
         if (getActiveDrag() === null && dragItem === null) return
         if (e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
-        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+        e.dataTransfer.dropEffect = isCopyDrag() ? 'copy' : 'move'
       }}
       onDrop={(e) => {
         if (getActiveDrag() === null && dragItem === null) return
@@ -2759,6 +2765,9 @@ function Workspace({
       {dragItem && (
         <div className="drag-hint" role="status" aria-live="polite">
           {dragItem.kind === 'bundles' ? (
+            // Unqualified again: ⌥ pressed mid-drag now works in the shell too,
+            // because the host reads the modifier from the OS rather than hoping
+            // the webview reports it (ADR-0023).
             <>
               Drag to <strong>move</strong> · hold <kbd>⌥</kbd> to <strong>copy</strong>
             </>

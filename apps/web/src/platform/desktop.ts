@@ -310,6 +310,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     // pre-toggle state across two IPC round trips.
     toggleWindowFullscreen: () => invoke<boolean>('toggle_window_fullscreen'),
     isWindowFullscreen: () => getCurrentWindow().isFullscreen(),
+    altKeyHeld: () => invoke<boolean>('alt_key_held'),
     listenFullscreen: (handler) =>
       listen<boolean>('cairndex://fullscreen', (event) => handler(event.payload)),
     listenDeepLink: (handler) =>
