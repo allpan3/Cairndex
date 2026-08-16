@@ -21,6 +21,17 @@ class ClipExportCreate(BaseModel):
     end_s: float = Field(gt=0)
     width: int | None = Field(default=None, ge=exports.MIN_WIDTH, le=exports.MAX_WIDTH)
     fps: int | None = Field(default=None, ge=exports.MIN_FPS, le=exports.MAX_FPS)
+    #: The watermark, already rendered, as a bare base64 PNG (no data: prefix).
+    #:
+    #: Pixels rather than a string because these ffmpeg builds have no
+    #: `drawtext`, so the server cannot draw text at all; the client that
+    #: composes the snapshot and contact-sheet marks renders this one too, which
+    #: is what keeps the same setting looking identical on all three. The image
+    #: mark planned next arrives through this same field.
+    watermark_png: str | None = Field(default=None, repr=False)
+    #: Which corner the mark is placed in. Its inset from the edges is baked
+    #: into the image as transparent padding, so no margin is sent.
+    watermark_corner: exports.WatermarkCorner = "bottom-right"
 
 
 class ClipExportRead(BaseModel):
