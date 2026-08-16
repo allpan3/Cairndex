@@ -19,6 +19,7 @@ import {
   type BundleRead,
   type BundleSummary,
   type CleanupSort,
+  type CollectionCounts,
   type CollectionCreate,
   type CollectionRead,
   type CollectionStats,
@@ -1637,15 +1638,22 @@ function applyCollectionCounts(qc: QueryClient, changes: MembershipChange[]): Ca
   if (changes.length === 0 || collections === undefined) return []
   const snapshots: CacheSnapshot[] = []
   const subtree = collectionCountDeltas(collections, changes)
-  const counts = qc.getQueryData<Record<string, number>>(['collection-counts'])
+  const direct = directMembershipDeltas(changes)
+  // Both maps move, because the sidebar shows whichever one matches the grid it
+  // sits beside and either may be on screen. Filing into a subcollection moves
+  // only the parent's subtree figure, which is precisely the case where showing
+  // one number for the other read as a count that refused to update.
+  const counts = qc.getQueryData<CollectionCounts>(['collection-counts'])
   if (counts) {
     snapshots.push([['collection-counts'], counts])
-    qc.setQueryData(['collection-counts'], applyCountDeltas(counts, subtree))
+    qc.setQueryData<CollectionCounts>(['collection-counts'], {
+      subtree: applyCountDeltas(counts.subtree, subtree),
+      direct: applyCountDeltas(counts.direct, direct),
+    })
   }
   // The inspector shows the same collection's numbers beside the sidebar's, so
   // they move together: its subtree total is the count above, and its "directly
   // in this collection" figure is plain membership.
-  const direct = directMembershipDeltas(changes)
   for (const [key, stats] of qc.getQueriesData<CollectionStats>({
     queryKey: ['collection-stats'],
   })) {

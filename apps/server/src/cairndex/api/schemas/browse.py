@@ -59,3 +59,12 @@ class CountsResponse(BaseModel):
     """Generic id → bundle-count map (collections, tags)."""
 
     counts: dict[str, int]
+
+
+class CollectionCountsResponse(BaseModel):
+    """Both figures a collection has, because the sidebar badge shows whichever
+    one its grid is showing: ``counts`` is the whole subtree, ``direct_counts``
+    is the collection's own bundles."""
+
+    counts: dict[str, int]
+    direct_counts: dict[str, int]

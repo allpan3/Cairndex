@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
-import type { CollectionRead, ViewCounts } from './client'
+import type { CollectionCounts, CollectionRead, ViewCounts } from './client'
 import {
   useBatchUpdate,
   useReorderCollections,
@@ -59,7 +59,12 @@ function seedClient(): QueryClient {
     ['collections'],
     [collection('shelf'), collection('shelf-nested', 'shelf'), collection('crate')],
   )
-  client.setQueryData(['collection-counts'], { shelf: 5, 'shelf-nested': 2, crate: 3 })
+  // Both figures the sidebar can show: shelf's subtree holds 5, of which
+  // shelf-nested holds 2, so shelf itself directly holds 3.
+  client.setQueryData(['collection-counts'], {
+    subtree: { shelf: 5, 'shelf-nested': 2, crate: 3 },
+    direct: { shelf: 3, 'shelf-nested': 2, crate: 3 },
+  })
   client.setQueryData(['view-counts'], VIEW_COUNTS)
   client.setQueryData(['tag-counts'], { blue: 4, green: 1 })
   return client
@@ -71,8 +76,12 @@ function wrapper(client: QueryClient) {
   }
 }
 
+/** The subtree totals, and the collection's-own figures the badge shows while the
+ *  grid lists one collection at a time. */
 const counts = (client: QueryClient) =>
-  client.getQueryData<Record<string, number>>(['collection-counts'])
+  client.getQueryData<CollectionCounts>(['collection-counts'])?.subtree
+const direct = (client: QueryClient) =>
+  client.getQueryData<CollectionCounts>(['collection-counts'])?.direct
 const views = (client: QueryClient) => client.getQueryData<ViewCounts>(['view-counts'])
 
 beforeEach(() => {
@@ -103,6 +112,8 @@ test('a drag between collections moves the counts while the write is still in fl
   // Before the server answered: the subcollection and its parent gained the
   // bundle, the source lost it.
   expect(inFlight[0]).toEqual({ shelf: 6, 'shelf-nested': 3, crate: 2 })
+  // shelf gains it only as an ancestor, so its own figure does not move.
+  expect(direct(client)).toEqual({ shelf: 3, 'shelf-nested': 3, crate: 2 })
   expect(client.getQueryData(['bundle-collections', 'b1'])).toEqual({
     bundle_id: 'b1',
     collection_ids: ['shelf-nested'],
@@ -123,7 +134,12 @@ test('filing into a subcollection of the collection already holding it leaves th
     }),
   )
 
+  // The subtree total cannot move: the bundle is still somewhere under shelf.
   expect(counts(client)).toEqual({ shelf: 5, 'shelf-nested': 3, crate: 3 })
+  // What shelf holds *itself* does move, and that is the number the badge shows
+  // while the grid lists one collection's own bundles. Showing the subtree figure
+  // there was the count that appeared to refuse to update (owner, 2026-08-15).
+  expect(direct(client)).toEqual({ shelf: 2, 'shelf-nested': 3, crate: 3 })
 })
 
 test('a bundle gaining its first collection leaves Uncategorized', async () => {
@@ -148,15 +164,16 @@ test('a multi-select batch sums, and an unknown membership leaves the counts to 
     result.current.mutateAsync({ bundle_ids: ['b1', 'b2'], add_collection_ids: ['crate'] }),
   )
   expect(counts(client)?.crate).toBe(5)
+  expect(direct(client)?.crate).toBe(5)
 
   // b3's memberships were never loaded: guessing would put a number on screen
   // that is neither the old count nor the new one, so nothing moves until the
   // refetch lands.
-  const before = { ...counts(client)! }
+  const before = { subtree: { ...counts(client)! }, direct: { ...direct(client)! } }
   await act(() =>
     result.current.mutateAsync({ bundle_ids: ['b1', 'b3'], add_collection_ids: ['shelf'] }),
   )
-  expect(counts(client)).toEqual(before)
+  expect({ subtree: counts(client), direct: direct(client) }).toEqual(before)
 })
 
 test('a rejected batch puts every count back', async () => {
@@ -178,6 +195,7 @@ test('a rejected batch puts every count back', async () => {
   })
 
   expect(counts(client)).toEqual({ shelf: 5, 'shelf-nested': 2, crate: 3 })
+  expect(direct(client)).toEqual({ shelf: 3, 'shelf-nested': 2, crate: 3 })
   expect(client.getQueryData(['tag-counts'])).toEqual({ blue: 4, green: 1 })
   expect(views(client)).toEqual(VIEW_COUNTS)
   expect(client.getQueryData(['bundle-collections', 'b1'])).toEqual({
@@ -198,6 +216,7 @@ test('the collection picker moves the same counts as a drag', async () => {
   await act(() => result.current.mutateAsync(['shelf-nested']))
 
   expect(inFlight[0]).toEqual({ shelf: 6, 'shelf-nested': 3, crate: 3 })
+  expect(direct(client)).toEqual({ shelf: 3, 'shelf-nested': 3, crate: 3 })
   expect(views(client)?.uncategorized).toBe(VIEW_COUNTS.uncategorized - 1)
 })
 

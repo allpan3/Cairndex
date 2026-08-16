@@ -1338,6 +1338,31 @@
         "title": "CollectionCleanup",
         "type": "object"
       },
+      "CollectionCountsResponse": {
+        "description": "Both figures a collection has, because the sidebar badge shows whichever\none its grid is showing: ``counts`` is the whole subtree, ``direct_counts``\nis the collection's own bundles.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "direct_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Direct Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "counts",
+          "direct_counts"
+        ],
+        "title": "CollectionCountsResponse",
+        "type": "object"
+      },
       "CollectionCreate": {
         "properties": {
           "name": {
@@ -10024,6 +10049,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/counts": {
       "get": {
+        "description": "Both figures per collection: its whole subtree, and its own bundles. The\nsidebar badge shows whichever the grid beside it is listing.",
         "operationId": "collection_counts_api_v1_libraries__library_id__collections_counts_get",
         "parameters": [
           {
@@ -10073,7 +10099,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CountsResponse"
+                  "$ref": "#/components/schemas/CollectionCountsResponse"
                 }
               }
             },

@@ -668,6 +668,26 @@ def collection_counts(session: Session) -> dict[str, int]:
     return {collection_id: count for collection_id, count in session.execute(stmt).all()}
 
 
+def collection_direct_counts(session: Session) -> dict[str, int]:
+    """Bundles filed *directly* in each collection, ignoring subcollections.
+
+    The subtree total above answers "is there anything under here"; this answers
+    "what will I see if I open it". The sidebar badge follows whichever one the
+    grid beside it is showing, so the two can never disagree — a parent used to
+    read 1 with an empty grid because its only bundle sat in a child.
+    """
+    stmt = (
+        select(asset_bundle_collections.c.collection_id, func.count(func.distinct(AssetBundle.id)))
+        .join(AssetBundle, AssetBundle.id == asset_bundle_collections.c.bundle_id)
+        .where(not_(_unbundled_predicate()))
+        .group_by(asset_bundle_collections.c.collection_id)
+    )
+    counts = {collection_id: count for collection_id, count in session.execute(stmt).all()}
+    for (collection_id,) in session.execute(select(Collection.id)).all():
+        counts.setdefault(collection_id, 0)
+    return counts
+
+
 def tag_counts(session: Session) -> dict[str, int]:
     """Bundle count per tag id (direct membership), for the tag picker."""
     # Excludes unbundled files for the same reason as `collection_counts`. An

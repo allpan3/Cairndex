@@ -1319,6 +1319,16 @@ function Workspace({
   )
 
   const includeSubContents = selection.collectionId !== null && showSubContents
+  // The badge beside a collection says what opening it will show. Clicking one
+  // lists its own bundles unless "Show subcollection contents" is on, so the
+  // number follows the same switch. It used to always be the subtree total, which
+  // meant a parent read 1 beside an empty grid whenever its only bundle sat in a
+  // child — a number that looked broken because it would not move when the grid
+  // did (owner, 2026-08-15). Both figures come from one request, so the toggle
+  // does not cost a round trip.
+  const badgeCounts = showSubContents
+    ? collectionCounts.data?.subtree
+    : collectionCounts.data?.direct
   // Manual order scope: a single collection uses its own membership order; the
   // All/system views and a descendant-inclusive collection use the global order
   // (mirrors browse's MANUAL sort). Drives drag-reorder and "Clean up by…".
@@ -2243,7 +2253,7 @@ function Workspace({
           }}
           counts={counts.data}
           collections={collections.data ?? []}
-          collectionCounts={collectionCounts.data}
+          collectionCounts={badgeCounts}
           onDeleteCollection={removeCollection}
           onCreateCollection={(payload, callbacks) => createCollection.mutate(payload, callbacks)}
           onRenameCollection={(id, name, callbacks) =>
@@ -2351,7 +2361,7 @@ function Workspace({
                     subcollections={headerCollections}
                     layout={prefs.layout}
                     sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
-                    counts={collectionCounts.data}
+                    counts={badgeCounts}
                     subcounts={subCounts}
                     // The "Show subcollection contents" toggle only applies inside
                     // a collection; the All view has no such toggle.
