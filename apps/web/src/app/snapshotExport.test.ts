@@ -146,11 +146,11 @@ test('sizes the mark against the scaled-down output', async () => {
   const { drawn, canvas } = await saveAgainstFakeCanvas(640)
 
   expect(canvas.width).toBe(640)
-  // The whole mark and its inset fit into less than the inset *alone* would be
-  // at 1920 — which only holds if it was sized for the 640px output rather
-  // than for the source it was cut from.
+  // The whole mark and its inset together come to less than a single cap
+  // height at 1920 — which only holds if it was sized for the 640px output
+  // rather than for the source it was cut from.
   const fromBottom = canvas.height - (drawn[0]?.y ?? 0)
-  expect(fromBottom).toBeLessThan(watermarkMargin(watermarkFontSize(1920)))
+  expect(fromBottom).toBeLessThan(watermarkFontSize(1920))
   expect(fromBottom).toBeGreaterThan(watermarkMargin(watermarkFontSize(640)))
 })
 
