@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, event, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.domain.enums import (
     FileAvailability,
@@ -619,3 +619,90 @@ def test_subtitle_vtt_endpoint_converts_srt(
     assert vtt.exists()
     # Cached inside the library's portable .cairndex/cache/subtitles (phase 8).
     assert vtt.is_relative_to(pkg.cache_dir(library_root) / "subtitles")
+
+
+def test_two_writers_that_both_found_no_row_do_not_collide(
+    session: Session,
+    session_factory: sessionmaker[Session],
+    library_root: Path,
+) -> None:
+    """The player writes progress periodically *and* on completion.
+
+    On a short file those two land together, and both used to look for a row,
+    both find none, and both INSERT — the second failing the ``file_id``
+    primary key, which reached the owner as a 500 on an ordinary playback
+    (2026-08-16). The write is one statement now, so whichever arrives second
+    updates instead of colliding.
+    """
+    _bundle, video = _bundle_with_media(session, library_root)
+    file_id = video.id
+    session.commit()
+
+    with session_factory() as first, session_factory() as second:
+        # Both open their read snapshot before either writes — the window.
+        assert first.get(PlaybackProgress, file_id) is None
+        assert second.get(PlaybackProgress, file_id) is None
+
+        progress_service.upsert_progress(first, file_id, position_s=4.0, duration_s=10.0)
+        first.commit()
+
+        progress_service.upsert_progress(second, file_id, position_s=6.0, duration_s=10.0)
+        second.commit()
+
+    session.expire_all()
+    rows = session.scalars(select(PlaybackProgress)).all()
+    assert len(rows) == 1
+    # Last write wins, as this endpoint has always behaved.
+    assert rows[0].position_s == 6.0
+
+
+def test_a_later_write_is_visible_to_the_session_that_made_it(
+    session: Session, library_root: Path
+) -> None:
+    """The upsert is a Core statement, so it must not leave the ORM's copy stale."""
+    _bundle, video = _bundle_with_media(session, library_root)
+    progress_service.upsert_progress(session, video.id, position_s=3.0, duration_s=10.0)
+    session.commit()
+
+    # Load the row as an entity, so it lands in this session's identity map.
+    loaded = session.get(PlaybackProgress, video.id)
+    assert loaded is not None and loaded.position_s == 3.0
+
+    progress_service.upsert_progress(session, video.id, position_s=7.0, duration_s=10.0)
+
+    assert progress_service.progress_for_files(session, [video.id])[video.id].position_s == 7.0
+
+
+def test_progress_is_written_as_one_atomic_statement(
+    session: Session, engine: Engine, library_root: Path
+) -> None:
+    """The guard for the collision above, which cannot be provoked on demand.
+
+    The read-then-insert window is a wall-clock race between two requests, and
+    it is not reachable from a test: SQLite serializes writers, and pysqlite
+    runs SELECTs in autocommit, so an in-process pair always sees the other's
+    committed row. Six concurrent writers against the old code collided in none
+    of eight trials — which is the nature of the bug, not evidence against it.
+
+    So pin what actually closes the window: the write is a single upsert, with
+    no SELECT of its own to go stale between.
+    """
+    _bundle, video = _bundle_with_media(session, library_root)
+    session.commit()
+
+    statements: list[str] = []
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def record(  # type: ignore[no-untyped-def]
+        conn, cursor, statement, parameters, context, executemany
+    ) -> None:
+        statements.append(statement)
+
+    try:
+        progress_service.upsert_progress(session, video.id, position_s=1.0, duration_s=10.0)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    writes = [s for s in statements if "playback_progress" in s.lower()]
+    assert len(writes) == 1, f"expected one statement against the table, got {writes}"
+    assert "ON CONFLICT" in writes[0].upper()
