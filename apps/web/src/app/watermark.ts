@@ -11,13 +11,28 @@
  *
  * One renderer rather than one per surface is the point: the alternative was
  * the server drawing the GIF's mark with Pillow, which would have made the same
- * setting look different on a GIF than on a snapshot of the same frame. It also
- * means the image watermark the owner asked for next needs no server change —
- * an image and a rendered string arrive as the same transparent PNG.
+ * setting look different on a GIF than on a snapshot of the same frame. It is
+ * also what made the image mark cost nothing on the server — a rendered string
+ * and a chosen picture leave here as the same transparent PNG, so ffmpeg never
+ * learns which one it composited.
  */
+
+import type { ExportPrefs } from '../state/exportPrefs'
+import { loadImage } from './watermarkImage'
 
 /** Which corner the mark sits in. */
 export type WatermarkCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+/**
+ * A mark ready to draw: the words, or a decoded picture.
+ *
+ * Resolved from the preferences by `resolveWatermark` so that everything after
+ * that point — sizing, placement, painting — treats the two the same and cannot
+ * drift apart.
+ */
+export type WatermarkMark =
+  | { kind: 'text'; text: string }
+  | { kind: 'image'; image: CanvasImageSource; naturalWidth: number; naturalHeight: number }
 
 /**
  * Cap height as a fraction of the export's width, so the mark reads the same
@@ -28,6 +43,23 @@ const SIZE_RATIO = 1 / 52
 const MIN_FONT_SIZE = 11
 /** The gap between the mark and the edges it is tucked into, in text units. */
 const MARGIN_RATIO = 0.9
+
+/**
+ * How tall a picture mark stands, again as a fraction of the export's width.
+ *
+ * Roughly three times the text's cap height, which is what makes a logo read as
+ * the same weight of mark as a word rather than as a stamp on top of the frame.
+ */
+const IMAGE_HEIGHT_RATIO = 1 / 18
+/**
+ * ...but never wider than this fraction of the export.
+ *
+ * A picture mark is fitted inside *both* bounds rather than scaled by height
+ * alone, because the two shapes people actually use pull in opposite
+ * directions: a square badge scaled to a fixed width becomes enormously tall,
+ * and a long wordmark scaled to a fixed height runs off the frame.
+ */
+const IMAGE_MAX_WIDTH_RATIO = 0.28
 
 /**
  * White, over a dark outline and a soft shadow.
@@ -45,6 +77,12 @@ const MARGIN_RATIO = 0.9
 const TEXT_FILL = 'rgba(255, 255, 255, 0.92)'
 const OUTLINE_COLOR = 'rgba(0, 0, 0, 0.55)'
 const SHADOW_COLOR = 'rgba(0, 0, 0, 0.55)'
+/**
+ * A picture arrives already designed, so it is composited nearly as given —
+ * only the same shadow the text gets, which is what stops a white logo
+ * disappearing into a white frame.
+ */
+const IMAGE_ALPHA = 0.92
 
 /** The type face, matching the contact sheet header's. */
 function watermarkFont(fontSize: number): string {
@@ -62,18 +100,26 @@ export function watermarkMargin(fontSize: number): number {
 }
 
 /**
- * The text actually drawn, or null when nothing should be.
+ * The size a picture mark is drawn at, fitted inside both bounds.
  *
- * Whitespace-only text counts as nothing: a mark of one space would otherwise
- * reserve layout in the contact sheet header and draw an invisible nothing.
+ * Null when the image reports no dimensions — an image element that has not
+ * decoded, which must not be drawn as a zero-sized nothing.
  */
-export function watermarkLabel(prefs: {
-  watermarkEnabled: boolean
-  watermarkText: string
-}): string | null {
-  if (!prefs.watermarkEnabled) return null
-  const text = prefs.watermarkText.trim()
-  return text.length > 0 ? text : null
+export function imageMarkSize(
+  naturalWidth: number,
+  naturalHeight: number,
+  scaleWidth: number,
+): { width: number; height: number } | null {
+  if (!(naturalWidth > 0) || !(naturalHeight > 0)) return null
+  const targetHeight = Math.max(12, Math.round(scaleWidth * IMAGE_HEIGHT_RATIO))
+  const maxWidth = Math.max(12, Math.round(scaleWidth * IMAGE_MAX_WIDTH_RATIO))
+  let height = targetHeight
+  let width = Math.round(naturalWidth * (height / naturalHeight))
+  if (width > maxWidth) {
+    width = maxWidth
+    height = Math.round(naturalHeight * (width / naturalWidth))
+  }
+  return { width: Math.max(1, width), height: Math.max(1, height) }
 }
 
 export interface WatermarkBox {
@@ -92,34 +138,44 @@ export interface WatermarkBox {
 }
 
 /**
- * Where the mark's baseline lands inside its box.
+ * The mark's drawn size, in the units the box is measured in.
  *
- * Pure, so the placement is testable without a canvas: everything a caller
- * needs to draw is derived here and only the painting itself needs a context.
- * The measured text width is deliberately not an input — the canvas aligns
- * right-hand text from its right edge, so the anchor is the edge itself.
+ * Text needs a context to measure, which is why one is passed in rather than
+ * the width being guessed from the character count.
  */
-export function watermarkPlacement(box: WatermarkBox): {
-  x: number
-  y: number
-  align: 'left' | 'right'
-  fontSize: number
-} {
-  const fontSize = watermarkFontSize(box.scaleWidth ?? box.width)
-  const margin = watermarkMargin(fontSize)
+export function markSize(
+  ctx: CanvasRenderingContext2D,
+  mark: WatermarkMark,
+  scaleWidth: number,
+): { width: number; height: number } | null {
+  if (mark.kind === 'image') {
+    return imageMarkSize(mark.naturalWidth, mark.naturalHeight, scaleWidth)
+  }
+  const fontSize = watermarkFontSize(scaleWidth)
+  ctx.font = watermarkFont(fontSize)
+  const width = ctx.measureText(mark.text).width
+  if (!(width > 0)) return null
+  // The em box, not the tight glyph bounds: it keeps descenders inside the
+  // mark's own rectangle so a corner inset means the same thing for both kinds.
+  return { width, height: Math.round(fontSize * 1.2) }
+}
+
+/**
+ * The top-left corner the mark is drawn from.
+ *
+ * One calculation for both kinds — the reason a picture and a word end up in
+ * exactly the same place, tucked against exactly the same two edges.
+ */
+export function cornerOrigin(
+  box: WatermarkBox,
+  size: { width: number; height: number },
+  margin: number,
+): { x: number; y: number } {
   const right = box.corner === 'top-right' || box.corner === 'bottom-right'
   const bottom = box.corner === 'bottom-left' || box.corner === 'bottom-right'
   return {
-    // Right-aligned text draws from its right edge, so the x is the edge itself
-    // rather than the edge less the measured width.
-    x: right ? box.left + box.width - margin : box.left + margin,
-    // `alphabetic` baseline: the glyphs sit above it, so the bottom corner needs
-    // a descender's worth of room left under it.
-    y: bottom
-      ? box.top + box.height - margin - Math.round(fontSize * 0.22)
-      : box.top + margin + fontSize,
-    align: right ? 'right' : 'left',
-    fontSize,
+    x: right ? box.left + box.width - margin - size.width : box.left + margin,
+    y: bottom ? box.top + box.height - margin - size.height : box.top + margin,
   }
 }
 
@@ -132,43 +188,108 @@ export function watermarkPlacement(box: WatermarkBox): {
  */
 export function drawWatermark(
   ctx: CanvasRenderingContext2D,
-  text: string | null,
+  mark: WatermarkMark | null,
   box: WatermarkBox,
 ): number {
-  if (text === null || text.length === 0) return 0
-  const fontSize = watermarkFontSize(box.scaleWidth ?? box.width)
+  if (mark === null) return 0
+  if (mark.kind === 'text' && mark.text.length === 0) return 0
+  const scaleWidth = box.scaleWidth ?? box.width
+  const fontSize = watermarkFontSize(scaleWidth)
+  const margin = watermarkMargin(fontSize)
+
   ctx.save()
   try {
-    ctx.font = watermarkFont(fontSize)
-    ctx.textBaseline = 'alphabetic'
-    const textWidth = ctx.measureText(text).width
-    const placement = watermarkPlacement(box)
-    ctx.textAlign = placement.align
+    const size = markSize(ctx, mark, scaleWidth)
+    if (size === null) return 0
+    const origin = cornerOrigin(box, size, margin)
 
-    // The outline carries the shadow, so the halo sits behind the mark's whole
-    // silhouette rather than being traced a second time around the fill.
+    // The shadow is what keeps either kind off a background of its own colour.
     ctx.shadowColor = SHADOW_COLOR
     ctx.shadowBlur = Math.max(2, Math.round(fontSize * 0.35))
     ctx.shadowOffsetY = Math.max(1, Math.round(fontSize * 0.06))
-    ctx.strokeStyle = OUTLINE_COLOR
-    ctx.lineWidth = Math.max(1, fontSize / 9)
-    // Round joins: mitred corners on a heavy face throw spikes off the glyphs.
-    ctx.lineJoin = 'round'
-    ctx.strokeText(text, placement.x, placement.y)
 
-    // Shadow off for the fill: drawn through it a second time it compounds into
-    // a grey smudge around letters that should be clean.
-    ctx.shadowColor = 'transparent'
-    ctx.shadowBlur = 0
-    ctx.shadowOffsetY = 0
-    ctx.fillStyle = TEXT_FILL
-    ctx.fillText(text, placement.x, placement.y)
-    return textWidth + watermarkMargin(fontSize) * 2
+    if (mark.kind === 'image') {
+      ctx.globalAlpha = IMAGE_ALPHA
+      ctx.drawImage(mark.image, origin.x, origin.y, size.width, size.height)
+    } else {
+      // Drawn from the box's top-left rather than a baseline, so the same
+      // origin arithmetic serves both kinds.
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.font = watermarkFont(fontSize)
+      ctx.strokeStyle = OUTLINE_COLOR
+      ctx.lineWidth = Math.max(1, fontSize / 9)
+      // Round joins: mitred corners on a heavy face throw spikes off the glyphs.
+      ctx.lineJoin = 'round'
+      ctx.strokeText(mark.text, origin.x, origin.y)
+
+      // Shadow off for the fill: drawn through it a second time it compounds
+      // into a grey smudge around letters that should be clean.
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
+      ctx.shadowOffsetY = 0
+      ctx.fillStyle = TEXT_FILL
+      ctx.fillText(mark.text, origin.x, origin.y)
+    }
+    return size.width + margin * 2
   } finally {
-    // Shadow and alignment are context-wide; leaking them would put a drop
-    // shadow under everything drawn after the mark.
+    // Shadow, alpha and alignment are context-wide; leaking them would put a
+    // drop shadow under everything drawn after the mark.
     ctx.restore()
   }
+}
+
+// One decoded image per `data:` URL, so a burst of exports does not re-decode
+// the same logo each time. Keyed by the URL itself: changing the image in
+// Settings changes the key, so a stale picture can never be drawn.
+let decoded: { src: string; image: HTMLImageElement } | null = null
+
+/** Decode a stored `data:` URL into something a canvas can draw. */
+async function decodeWatermarkImage(src: string): Promise<HTMLImageElement | null> {
+  if (decoded?.src === src) return decoded.image
+  try {
+    // `loadImage`, not `decode()` — see the note there: `decode()` can hang
+    // forever in a window that is not painting, which would strand an export
+    // started from a background tab.
+    const image = await loadImage(src)
+    decoded = { src, image }
+    return image
+  } catch {
+    // A stored value that no longer loads marks nothing rather than failing
+    // the export it was asked for.
+    return null
+  }
+}
+
+/**
+ * The mark the preferences currently describe, or null for none.
+ *
+ * Async only because a picture has to decode before it can be measured; the
+ * text answer is immediate. Every export path awaits this once and then draws
+ * synchronously.
+ */
+export async function resolveWatermark(prefs: ExportPrefs): Promise<WatermarkMark | null> {
+  if (!prefs.watermarkEnabled) return null
+  if (prefs.watermarkKind === 'image') {
+    if (!prefs.watermarkImage) return null
+    const image = await decodeWatermarkImage(prefs.watermarkImage)
+    if (image === null) return null
+    return {
+      kind: 'image',
+      image,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+    }
+  }
+  // Whitespace-only text counts as nothing: a mark of one space would otherwise
+  // reserve layout in the contact sheet header and draw an invisible nothing.
+  const text = prefs.watermarkText.trim()
+  return text.length > 0 ? { kind: 'text', text } : null
+}
+
+/** Test seam: forget the decoded image so one case cannot leak into the next. */
+export function resetWatermarkImageCacheForTests(): void {
+  decoded = null
 }
 
 /**
@@ -181,27 +302,28 @@ export function drawWatermark(
  *
  * Null when there is nothing to draw, so a caller can skip the whole overlay.
  */
-export function renderWatermarkTile(text: string | null, width: number): HTMLCanvasElement | null {
-  if (text === null || text.length === 0) return null
+export function renderWatermarkTile(
+  mark: WatermarkMark | null,
+  width: number,
+): HTMLCanvasElement | null {
+  if (mark === null) return null
   const fontSize = watermarkFontSize(width)
   const margin = watermarkMargin(fontSize)
 
   const canvas = document.createElement('canvas')
   const measuring = canvas.getContext('2d')
   if (!measuring) return null
-  measuring.font = watermarkFont(fontSize)
-  const textWidth = measuring.measureText(text).width
-  if (!(textWidth > 0)) return null
+  const size = markSize(measuring, mark, width)
+  if (size === null) return null
 
-  // Sized to the mark plus its inset on the two edges it is tucked against, and
-  // a descender's room under the baseline.
-  canvas.width = Math.ceil(textWidth + margin * 2)
-  canvas.height = Math.ceil(fontSize * 1.25 + margin)
+  // Sized to the mark plus its inset on the two edges it is tucked against.
+  canvas.width = Math.ceil(size.width + margin * 2)
+  canvas.height = Math.ceil(size.height + margin * 2)
 
   // Resizing a canvas resets its context, so everything is set again here.
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-  drawWatermark(ctx, text, {
+  drawWatermark(ctx, mark, {
     left: 0,
     top: 0,
     width: canvas.width,
@@ -217,13 +339,14 @@ export function renderWatermarkTile(text: string | null, width: number): HTMLCan
  *
  * Base64 in the existing JSON rather than a multipart upload: the server has no
  * upload route and no `python-multipart`, and a text mark is a couple of
- * kilobytes of mostly-transparent PNG. A future image mark rides the same field.
+ * kilobytes of mostly-transparent PNG. A picture mark rides the same field,
+ * which is the whole reason it needed no server change.
  */
 export async function watermarkTileBase64(
-  text: string | null,
+  mark: WatermarkMark | null,
   width: number,
 ): Promise<string | null> {
-  const canvas = renderWatermarkTile(text, width)
+  const canvas = renderWatermarkTile(mark, width)
   if (canvas === null) return null
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (blob === null) return null

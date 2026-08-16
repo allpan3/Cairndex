@@ -9,7 +9,7 @@ import {
   snapshotHeight,
   snapshotWidthOptions,
 } from './snapshotExport'
-import { watermarkFontSize } from './watermark'
+import { watermarkFontSize, watermarkMargin } from './watermark'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -78,7 +78,7 @@ test('has no height for an unprobed source', () => {
  * `createElement` is tag-aware because the browser download path asks for an
  * `<a>` from the same document the canvas came from.
  */
-function saveAgainstFakeCanvas(width?: number) {
+async function saveAgainstFakeCanvas(width?: number) {
   const drawn: { text: string; x: number; y: number; align: string }[] = []
   const context = {
     save: vi.fn(),
@@ -115,39 +115,43 @@ function saveAgainstFakeCanvas(width?: number) {
   vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() })
 
   const video = { videoWidth: 1920, videoHeight: 1080 } as HTMLVideoElement
-  saveSnapshot(video, 'clip.mp4', width === undefined ? {} : { width })
+  // Awaited: the capture resolves the mark first, so a picture watermark has
+  // decoded before anything is drawn.
+  await saveSnapshot(video, 'clip.mp4', width === undefined ? {} : { width })
   return { drawn, canvas }
 }
 
-test('stamps nothing on a snapshot while the mark is off', () => {
-  const { drawn } = saveAgainstFakeCanvas()
+test('stamps nothing on a snapshot while the mark is off', async () => {
+  const { drawn } = await saveAgainstFakeCanvas()
   expect(drawn).toEqual([])
 })
 
-test('stamps the mark bottom-right of the snapshot', () => {
+test('stamps the mark bottom-right of the snapshot', async () => {
   const { result } = renderHook(() => useExportPrefs())
   act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
 
-  const { drawn, canvas } = saveAgainstFakeCanvas()
+  const { drawn, canvas } = await saveAgainstFakeCanvas()
 
   expect(drawn.map(({ text }) => text)).toEqual(['STUDIO'])
-  expect(drawn[0]?.align).toBe('right')
   expect(drawn[0]?.x).toBeGreaterThan(canvas.width / 2)
   expect(drawn[0]?.y).toBeGreaterThan(canvas.height / 2)
 })
 
 // Sized against the output, not the source: a 4K frame saved at 640px gets a
 // mark to match rather than one shrunk from the resolution it was cut from.
-test('sizes the mark against the scaled-down output', () => {
+test('sizes the mark against the scaled-down output', async () => {
   const { result } = renderHook(() => useExportPrefs())
   act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
 
-  const { drawn, canvas } = saveAgainstFakeCanvas(640)
+  const { drawn, canvas } = await saveAgainstFakeCanvas(640)
 
   expect(canvas.width).toBe(640)
-  // The baseline sits within one mark-height of the bottom edge, which only
-  // holds if the mark was sized for 640 rather than for the 1920 source.
-  expect(canvas.height - (drawn[0]?.y ?? 0)).toBeLessThan(watermarkFontSize(640) * 2)
+  // The whole mark and its inset fit into less than the inset *alone* would be
+  // at 1920 — which only holds if it was sized for the 640px output rather
+  // than for the source it was cut from.
+  const fromBottom = canvas.height - (drawn[0]?.y ?? 0)
+  expect(fromBottom).toBeLessThan(watermarkMargin(watermarkFontSize(1920)))
+  expect(fromBottom).toBeGreaterThan(watermarkMargin(watermarkFontSize(640)))
 })
 
 // The old name mangled the extension into the stem, giving `clip_mp4.png`.

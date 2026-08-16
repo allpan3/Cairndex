@@ -6,7 +6,7 @@
  * text natively.
  */
 
-import { drawWatermark } from '../watermark'
+import { drawWatermark, type WatermarkMark } from '../watermark'
 
 const HEADER_BACKGROUND = '#070809'
 const HEADER_TEXT = '#e8eaed'
@@ -23,13 +23,14 @@ export interface ContactSheetSource {
   cols: number
   rows: number
   /**
-   * The owner's watermark, or null for none.
+   * The owner's watermark, already resolved to words or a decoded picture, or
+   * null for none.
    *
    * Passed in rather than read from the preference store here, so composing a
    * sheet stays a function of its arguments; the caller that knows it is acting
    * on the owner's behalf (`contactSheetExport`) is the one that reads it.
    */
-  watermark?: string | null
+  watermark?: WatermarkMark | null
 }
 
 /** `H:MM:SS` / `M:SS`, matching the clock the player shows. */
