@@ -41,8 +41,17 @@ export type WatermarkMark =
 const SIZE_RATIO = 1 / 52
 /** Never below this: past it the mark is unreadable at any resolution. */
 const MIN_FONT_SIZE = 11
-/** The gap between the mark and the edges it is tucked into, in text units. */
-const MARGIN_RATIO = 0.9
+/**
+ * The gap between the mark and the edges it is tucked into, in text units.
+ *
+ * This is the inset on a *frame* — the bottom-right mark on a snapshot or a
+ * GIF. Tightened from 0.9 on 2026-08-16 because at that value the mark read as
+ * floating in the corner rather than sitting in it. At `1/52` cap height this
+ * works out near 1% of the export's width, which is a corner inset rather than
+ * a margin. The contact-sheet header does not use it: a band with a padding of
+ * its own passes that instead, so the mark lines up with the text beside it.
+ */
+const MARGIN_RATIO = 0.55
 
 /**
  * How tall a picture mark stands, again as a fraction of the export's width.
@@ -138,11 +147,11 @@ export interface WatermarkBox {
   /**
    * The inset from the box's edges, when the box has padding of its own.
    *
-   * Defaults to `watermarkMargin`, which is derived from the mark's size and is
-   * right when the mark sits on a frame. The contact-sheet header is not a
-   * frame: it already has a padding its metadata rows observe, and the mark's
-   * own inset is the larger of the two, so left to default the mark started
-   * visibly lower than the text beside it (owner, 2026-08-16).
+   * Defaults to `watermarkMargin`, which is derived from the mark's size and
+   * suits a mark tucked into the corner of a frame. The contact-sheet header is
+   * not a frame: it has a padding of its own that its metadata rows observe, so
+   * it passes that and the mark lines up with the text beside it rather than
+   * being inset by an unrelated amount (owner, 2026-08-16).
    */
   margin?: number
 }

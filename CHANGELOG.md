@@ -153,6 +153,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Snapshot and GIF watermarks sit closer to the corner.** The inset was wide
+  enough that the mark read as floating in the bottom-right rather than sitting
+  in it; it is now near 1% of the export's width — a corner inset rather than a
+  margin. Contact sheets are unchanged: their mark takes the header's own
+  padding, so it stays level with the metadata rows.
+- **A contact sheet's watermark sits at the top of its header, not adrift below
+  it.** The mark derived its inset from its own size rather than using the
+  header's padding, so it started lower than the metadata rows beside it. Worse,
+  a picture mark is scaled to the sheet's _width_, which knows nothing of how
+  tall the header is — a tall logo overflowed the band, and since the frame grid
+  is drawn afterwards, the grid painted over the overflow and shaved the mark's
+  bottom off. A mark is now fitted to the band that holds it and shares the
+  header's own padding, so it lines up with the first metadata row and can never
+  be clipped by whatever is drawn next.
 - **The contact sheet's fixed Cairndex brand block is retired.** Every sheet
   carried a blue-accented `EXPORTED FROM CAIRNDEX` lockup in its header whether
   or not the owner wanted one; that is replaced by the opt-in watermark above,
