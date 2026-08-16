@@ -4,7 +4,7 @@ import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import type { DragItem } from './dnd'
 import type { LayoutMode } from './types'
-import { dropZone, getActiveDrag, sameTarget, seamFor, setActiveDrag } from './dnd'
+import { dropZone, getActiveDrag, isCopyDrag, sameTarget, seamFor, setActiveDrag } from './dnd'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
 import { IconChevron, IconFolder } from './icons'
@@ -304,7 +304,9 @@ export function CollectionHeader({
     if (gap === null) return
     e.preventDefault()
     const live = getActiveDrag() ?? dragItem
-    if (live?.kind === 'bundles') e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+    // See dnd.ts: `e.altKey` is not reliably delivered mid-drag, and the badge
+    // has to agree with what the drop will actually do.
+    if (live?.kind === 'bundles') e.dataTransfer.dropEffect = isCopyDrag() ? 'copy' : 'move'
     setDropSlot((prev) => (sameTarget(prev, gap) ? prev : gap))
   }
   const onSurfaceDrop = (e: React.DragEvent) => {
@@ -313,7 +315,7 @@ export function CollectionHeader({
     if (live === null || gap === null) return
     e.preventDefault()
     if (live.kind === 'bundles') {
-      if (gap.kind === 'into') onMoveBundlesInto(gap.id, e.altKey)
+      if (gap.kind === 'into') onMoveBundlesInto(gap.id, isCopyDrag())
     } else if (gap.kind === 'into') {
       onReparentCollections(live.ids, gap.id)
     } else {

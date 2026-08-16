@@ -31,7 +31,7 @@ import {
   IconTrash,
 } from './icons'
 import type { DragItem, TreeDrop } from './dnd'
-import { dropZone, getActiveDrag, sameTreeDrop, seamFor, setActiveDrag } from './dnd'
+import { dropZone, getActiveDrag, isCopyDrag, sameTreeDrop, seamFor, setActiveDrag } from './dnd'
 import { PickGuides } from './PickGuides'
 import { gapBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
@@ -958,7 +958,10 @@ function CollectionBranch({
           let zone: 'before' | 'into' | 'after' | null = null
           if (live?.kind === 'bundles') {
             zone = 'into'
-            e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+            // `isCopyDrag()` rather than `e.altKey`: the flag is not reliably
+            // delivered mid-drag, and the badge has to agree with what the drop
+            // will actually do (see dnd.ts).
+            e.dataTransfer.dropEffect = isCopyDrag() ? 'copy' : 'move'
           } else if (live?.kind === 'collection' && !live.ids.includes(id)) {
             const r = e.currentTarget.getBoundingClientRect()
             zone = dropZone(e, r, 'vertical', true)
@@ -985,7 +988,7 @@ function CollectionBranch({
           if (!live) return
           if (live.kind === 'bundles') {
             e.preventDefault()
-            onMoveBundlesInto?.(id, e.altKey)
+            onMoveBundlesInto?.(id, isCopyDrag())
           } else if (!live.ids.includes(id)) {
             e.preventDefault()
             // Recompute the zone from the cursor at drop time — the last dragover
