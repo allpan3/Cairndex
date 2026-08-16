@@ -100,9 +100,9 @@ export async function composeContactSheet(source: ContactSheetSource): Promise<B
     width: canvas.width,
     height: headerHeight,
     corner: 'top-right',
-    // The header's own padding, not the mark's. Left to its default the mark
-    // derives an inset from its own size, which here is the larger of the two —
-    // so it began lower than the first metadata row instead of level with it.
+    // The header's own padding, not the mark's. The default is an inset for a
+    // mark sitting on a frame; this band already has a padding its metadata
+    // rows observe, and the mark has to line up with them.
     margin,
   })
 

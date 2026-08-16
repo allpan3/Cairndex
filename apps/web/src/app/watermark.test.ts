@@ -308,8 +308,9 @@ test('honours a box’s own padding over the mark’s default inset', () => {
     margin: 25,
   })
   expect(images[0]?.y).toBe(25)
-  // Which is higher than the inset it would have chosen for itself.
-  expect(25).toBeLessThan(watermarkMargin(watermarkFontSize(2048)))
+  // And not the inset it would have chosen for itself, whichever way that
+  // happens to fall — the point is that the box's own padding won.
+  expect(25).not.toBe(watermarkMargin(watermarkFontSize(2048)))
 })
 
 // The grid is drawn after the mark, so an overflowing mark was not merely
