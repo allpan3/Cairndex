@@ -1,6 +1,24 @@
 import type Hls from 'hls.js'
 import type { ErrorData } from 'hls.js'
 
+/**
+ * Why an engine gave up, when the element's own `MediaError` cannot say.
+ *
+ * hls.js delivers media over MediaSource, so when it surrenders the element is
+ * left holding whatever the teardown produced — observed as
+ * `MEDIA_ERR_SRC_NOT_SUPPORTED` after a reaped session's segments 404, which
+ * reads as a verdict about bytes that in fact never arrived. The engine is the
+ * only place that knows which it was, so it says, rather than leaving the
+ * player to infer it from a code that means something else.
+ */
+export type StageFailure = 'session' | 'decode'
+
+/** Read the engine's reason off a synthetic error event, if it left one. */
+export function stageFailureOf(event: Event): StageFailure | null {
+  const detail: unknown = (event as CustomEvent<unknown>).detail
+  return detail === 'session' || detail === 'decode' ? detail : null
+}
+
 export interface PlaybackSource {
   src: string
   mimeType: string
@@ -165,12 +183,22 @@ export class HlsEngine extends BaseVideoEngine {
       hls.recoverMediaError()
       return
     }
-    this.fail()
+    // A media fatal that has already survived one in-engine recovery is a
+    // verdict about the bytes. Anything else — segments 404ing because the
+    // session was reaped, a manifest that will not load — is the session, and
+    // a fresh one fixes it.
+    this.fail(data.type === HlsCtor.ErrorTypes.MEDIA_ERROR ? 'decode' : 'session')
   }
 
-  private fail(): void {
+  /**
+   * Surface a failure as the `error` event the player already listens for,
+   * carrying the reason the element cannot express. Defaults to `decode`
+   * because the other callers — hls.js failing to load, or MSE being
+   * unsupported — are capability verdicts, which no re-attach can change.
+   */
+  private fail(reason: StageFailure = 'decode'): void {
     if (this.destroyed) return
-    this.video.dispatchEvent(new Event('error'))
+    this.video.dispatchEvent(new CustomEvent('error', { detail: reason }))
   }
 
   destroy(): void {
