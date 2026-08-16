@@ -20,21 +20,26 @@ import type { PlayerController } from './usePlayer'
  * so a nudge or a handle drag scrubs the video to the edge being moved. That
  * is why this lives next to the player rather than inside a dialog.
  */
-/**
- * What playback does with the marked span.
- *
- * `loop` is `range` plus a rewind, which is why they are one setting rather
- * than two booleans: "loop but do not honour the out-point" has no meaning, and
- * as separate flags it would be representable.
- */
-export type ClipPlayMode = 'off' | 'range' | 'loop'
-
 export interface ClipRangeController {
   /** Whether the clip bar and the seek-bar band are showing. */
   active: boolean
   range: ClipRange | null
-  /** Off, stop at the out-point, or return to the in-point and keep going. */
-  playMode: ClipPlayMode
+  /**
+   * Whether playing the span repeats it instead of stopping at the out-point.
+   *
+   * A standing preference, not a playback state: it decides what the *next*
+   * Play Range does, and takes effect immediately on one already running.
+   */
+  loop: boolean
+  /**
+   * Whether the span is playing *as a span* right now.
+   *
+   * The span is something you play, not a mode that quietly redefines the play
+   * button (owner, 2026-08-16). Space is ordinary playback and ignores the
+   * marks entirely; only this session confines playback to them, and any pause
+   * ends it — so resuming with Space is unconfined, as it should be.
+   */
+  playingRange: boolean
   /** One frame in seconds, for the frame-sized nudge buttons. */
   frame: number
   /** True while a handle is being dragged — suspends the preview loop. */
@@ -61,7 +66,23 @@ export interface ClipRangeController {
    * throttled — the same split the scrub path has always used.
    */
   moveTo: (edge: ClipEdge, seconds: number, options?: { scrub?: boolean }) => void
-  setPlayMode: (mode: ClipPlayMode) => void
+  /**
+   * Play the span: jump to the in-point and run to the out-point.
+   *
+   * Repeats instead of stopping when `loop` is on. Pressing it again restarts
+   * from the in-point, which is what checking a mark actually needs — nudge,
+   * press, watch, repeat.
+   */
+  playRange: () => void
+  setLoop: (on: boolean) => void
+  /**
+   * Give up confining playback to the span.
+   *
+   * Called by `useClipPlayback` when the element pauses or ends, which is the
+   * one place that can see it happen — including the pause it performs itself
+   * at the out-point, so both endings run through the same door.
+   */
+  endRangePlayback: () => void
   setAdjusting: (on: boolean) => void
 }
 
@@ -91,7 +112,8 @@ export function useClipRange({
 }: UseClipRangeOptions): ClipRangeController {
   const [active, setActive] = useState(false)
   const [range, setRange] = useState<ClipRange | null>(null)
-  const [playMode, setPlayMode] = useState<ClipPlayMode>('off')
+  const [loop, setLoop] = useState(false)
+  const [playingRange, setPlayingRange] = useState(false)
   // One piece of state for both facts: a drag is in progress, and this is the
   // span it started from.
   const [adjustBase, setAdjustBase] = useState<ClipRange | null>(null)
@@ -120,7 +142,8 @@ export function useClipRange({
     /* eslint-disable react-hooks/set-state-in-effect */
     setActive(false)
     setRange(null)
-    setPlayMode('off')
+    setLoop(false)
+    setPlayingRange(false)
     setAdjustBase(null)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [sourceKey])
@@ -131,7 +154,8 @@ export function useClipRange({
     rangeRef.current = null
     setActive(false)
     setRange(null)
-    setPlayMode('off')
+    setLoop(false)
+    setPlayingRange(false)
     setAdjustBase(null)
   }, [])
 
@@ -206,11 +230,26 @@ export function useClipRange({
     [commit],
   )
 
+  const playRange = useCallback(() => {
+    const current = rangeRef.current
+    // Nothing marked means nothing to play — the shortcut is then simply not
+    // this window's to handle.
+    if (!current) return
+    // Seek before play, so the frame that arrives is the in-point rather than
+    // a moment of wherever the playhead happened to be.
+    playerRef.current.seek(current.start)
+    playerRef.current.play()
+    setPlayingRange(true)
+  }, [])
+
+  const endRangePlayback = useCallback(() => setPlayingRange(false), [])
+
   return useMemo(
     () => ({
       active,
       range,
-      playMode,
+      loop,
+      playingRange,
       frame,
       adjusting: adjustBase !== null,
       adjustBase,
@@ -219,19 +258,24 @@ export function useClipRange({
       markAtPlayhead,
       nudge,
       moveTo,
-      setPlayMode,
+      playRange,
+      setLoop,
+      endRangePlayback,
       setAdjusting,
     }),
     [
       active,
       adjustBase,
       close,
+      endRangePlayback,
       frame,
-      playMode,
+      loop,
       markAtPlayhead,
       moveTo,
       nudge,
       open,
+      playRange,
+      playingRange,
       range,
       setAdjusting,
     ],
@@ -239,24 +283,30 @@ export function useClipRange({
 }
 
 /**
- * Confine playback to the marked span: stop at the out-point (`range`), or
- * return to the in-point and keep going (`loop`).
+ * Confine playback to the marked span, for as long as the span is playing.
+ *
+ * **A session, not a mode.** Playing the span used to be a standing setting
+ * that redefined the play button, so Space meant one thing with a clip marked
+ * and another without. Now Space is always ordinary playback and this only
+ * runs while Play Range says so (owner, 2026-08-16) — which is also why every
+ * way out is a pause: the element pausing is the single fact that ends it,
+ * whether that pause came from the owner, from the out-point below, or from
+ * running off the end of the file.
  *
  * Driven off `requestAnimationFrame` rather than `timeupdate`, which fires as
  * seldom as four times a second — an out-point enforced on it overshoots by up
  * to 250 ms, which is exactly the precision this whole feature exists to give.
- * The frame callback only runs while a mode is on.
  *
- * This is also the seam A-B loop replay lands on: the same span and the same
- * modes, driven from playback settings instead of the clip bar.
+ * This is also the seam A-B loop replay lands on: the same span, driven from
+ * playback settings instead of the clip bar.
  */
 export function useClipPlayback(
   video: HTMLVideoElement | null,
   range: ClipRange | null,
-  mode: ClipPlayMode,
+  { playing, loop, onEnd }: { playing: boolean; loop: boolean; onEnd: () => void },
 ) {
   useEffect(() => {
-    if (!video || !range || mode === 'off') return
+    if (!video || !range || !playing) return
     let frame = 0
     const tick = () => {
       frame = requestAnimationFrame(tick)
@@ -265,21 +315,21 @@ export function useClipPlayback(
       // the byte range the same way unthrottled scrubbing does.
       if (video.paused || video.seeking) return
       if (video.currentTime < range.end) return
-      if (mode === 'loop') video.currentTime = range.start
+      if (loop) video.currentTime = range.start
+      // Not looping: stop on the out-point and let the pause below close the
+      // session, so there is one ending rather than two that can disagree.
       else video.pause()
     }
-    // Pressing play once `range` has stopped at the out-point would otherwise
-    // stop again on the same frame, with nothing to show for the press. Start
-    // the span over instead — which is also what "play only the marked range"
-    // should do from anywhere past it.
-    const onPlay = () => {
-      if (video.currentTime >= range.end) video.currentTime = range.start
-    }
-    video.addEventListener('play', onPlay)
+    const stop = () => onEnd()
+    video.addEventListener('pause', stop)
+    // A span reaching the end of the file need not emit `pause` on every
+    // browser, and a session left open would confine the next play.
+    video.addEventListener('ended', stop)
     frame = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(frame)
-      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', stop)
+      video.removeEventListener('ended', stop)
     }
-  }, [mode, range, video])
+  }, [loop, onEnd, playing, range, video])
 }

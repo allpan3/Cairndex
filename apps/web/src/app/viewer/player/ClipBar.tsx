@@ -15,6 +15,9 @@ import type { PlayerController } from './usePlayer'
 /** A coarse step alongside the frame step, for getting close quickly. */
 const COARSE_NUDGE_SECONDS = 1
 
+/** The key that plays the span, next to the `[` and `]` that mark its ends. */
+export const PLAY_RANGE_KEY = '\\'
+
 interface ClipBarProps {
   clip: ClipRangeController
   player: PlayerController
@@ -119,22 +122,27 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarPro
           )}
         </div>
         <div className="mv-clip__buttons">
-          {/* Range is the mode; Loop is a modifier on it. Turning Loop on turns
-              Range on with it, because looping while ignoring the out-point is
-              not a state that means anything. */}
+          {/* One control, not two. "From In" and "Range" were an action and a
+              mode that only ever made sense together, and separating them left
+              a strip too crowded to read (owner, 2026-08-16). Loop is what is
+              left as a modifier, because "repeat" genuinely is one. */}
           <button
-            className={`mv-clip__toggle${clip.playMode !== 'off' ? ' is-active' : ''}`}
-            onClick={() => clip.setPlayMode(clip.playMode === 'off' ? 'range' : 'off')}
-            aria-pressed={clip.playMode !== 'off'}
-            title="Play only the marked span, stopping at the end point"
+            className={`mv-clip__play${clip.playingRange ? ' is-active' : ''}`}
+            onClick={clip.playRange}
+            aria-label="Play range"
+            title={
+              clip.loop
+                ? `Play the span from In, repeating it (${PLAY_RANGE_KEY})`
+                : `Play the span from In and stop at Out (${PLAY_RANGE_KEY})`
+            }
           >
-            ▶| Range
+            ▶ Play Range
           </button>
           <button
-            className={`mv-clip__toggle${clip.playMode === 'loop' ? ' is-active' : ''}`}
-            onClick={() => clip.setPlayMode(clip.playMode === 'loop' ? 'range' : 'loop')}
-            aria-pressed={clip.playMode === 'loop'}
-            title="Repeat the marked span instead of stopping at its end"
+            className={`mv-clip__toggle${clip.loop ? ' is-active' : ''}`}
+            onClick={() => clip.setLoop(!clip.loop)}
+            aria-pressed={clip.loop}
+            title="Repeat the span instead of stopping at Out. Applies to Play Range; ordinary playback ignores the marks."
           >
             ⟳ Loop
           </button>
