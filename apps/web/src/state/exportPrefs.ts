@@ -14,22 +14,43 @@ import { useCallback, useSyncExternalStore } from 'react'
  * state would leave a snapshot taken straight after the change still carrying
  * the old mark.
  */
+/** Whether the mark is words or a picture. One or the other, never both. */
+export type WatermarkKind = 'text' | 'image'
+
 export interface ExportPrefs {
   /** Whether exports carry a watermark at all. */
   watermarkEnabled: boolean
-  /** The text drawn as the mark. Ignored while `watermarkEnabled` is false. */
+  /** Which of the two marks below is used. */
+  watermarkKind: WatermarkKind
+  /** The text drawn as the mark, when the kind is `text`. */
   watermarkText: string
+  /**
+   * The chosen image as a `data:` URL, or null if none has been picked.
+   *
+   * Inlined rather than referenced by path: a browser never gets a usable path
+   * from a file picker, and a copy under the data dir would be a server round
+   * trip for something only this machine needs. Bounded on import
+   * (`watermarkImage.ts`) so one logo cannot exhaust the storage quota.
+   */
+  watermarkImage: string | null
+  /** The chosen file's name, so Settings can say which image is in use. */
+  watermarkImageName: string | null
 }
 
 /**
  * Off, because a watermark is branding rather than a default courtesy: these
  * are the owner's own files, and every export before this setting existed was
  * unmarked apart from the contact sheet's hardcoded block, which this replaces.
- * The text is seeded anyway so enabling the toggle produces something at once.
+ * The text is seeded anyway so enabling the toggle produces something at once —
+ * which is also why `text` is the starting kind: an image needs a file chosen
+ * before it can mark anything, so starting there would show an empty setting.
  */
 export const DEFAULT_EXPORT_PREFS: ExportPrefs = {
   watermarkEnabled: false,
+  watermarkKind: 'text',
   watermarkText: 'CAIRNDEX',
+  watermarkImage: null,
+  watermarkImageName: null,
 }
 
 /** Longer than this stops being a mark and starts being a caption. */

@@ -65,13 +65,18 @@ test('a partial update leaves the other answers alone', () => {
   const { result } = renderHook(() => useExportPrefs())
   act(() => result.current[1]({ watermarkText: 'STUDIO' }))
   act(() => result.current[1]({ watermarkEnabled: true }))
-  expect(result.current[0]).toEqual({ watermarkEnabled: true, watermarkText: 'STUDIO' })
+  expect(result.current[0]).toEqual({
+    ...DEFAULT_EXPORT_PREFS,
+    watermarkEnabled: true,
+    watermarkText: 'STUDIO',
+  })
 })
 
 test('survives a reload', () => {
   const { result } = renderHook(() => useExportPrefs())
   act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
   expect(JSON.parse(localStorage.getItem('cairndex.exportPrefs') ?? '{}')).toEqual({
+    ...DEFAULT_EXPORT_PREFS,
     watermarkEnabled: true,
     watermarkText: 'STUDIO',
   })
