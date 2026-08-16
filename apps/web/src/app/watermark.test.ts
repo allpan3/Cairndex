@@ -4,6 +4,7 @@ import { DEFAULT_EXPORT_PREFS } from '../state/exportPrefs'
 import {
   cornerOrigin,
   drawWatermark,
+  fitWithin,
   imageMarkSize,
   markSize,
   renderWatermarkTile,
@@ -267,4 +268,78 @@ test('renders no tile when the mark is off', () => {
   const createElement = vi.spyOn(document, 'createElement')
   expect(renderWatermarkTile(null, 1920)).toBeNull()
   expect(createElement).not.toHaveBeenCalled()
+})
+
+// --- fitting a mark to the band that holds it -------------------------------
+
+test('leaves a mark that already fits alone', () => {
+  const size = { width: 100, height: 40 }
+  expect(fitWithin(size, box('top-right', 1000, 600), 20)).toBe(size)
+})
+
+// A picture mark is sized against the export's *width*, so nothing in that
+// calculation knows how tall the box holding it is.
+test('shrinks a mark too tall for its band, keeping its aspect', () => {
+  const fitted = fitWithin({ width: 400, height: 200 }, box('top-right', 1000, 120), 20)
+  // Band leaves 80px of room, so the height halves and the width follows.
+  expect(fitted).toEqual({ width: 160, height: 80 })
+})
+
+test('shrinks a mark too wide for its band as well', () => {
+  const fitted = fitWithin({ width: 400, height: 40 }, box('top-right', 240, 600), 20)
+  expect(fitted).toEqual({ width: 200, height: 20 })
+})
+
+test('has nothing to draw when the padding leaves no room', () => {
+  expect(fitWithin({ width: 10, height: 10 }, box('top-right', 30, 30), 20)).toBeNull()
+})
+
+// The header has a padding of its own that its metadata rows observe; left to
+// default, the mark derived a larger inset from its own size and began lower
+// than the text beside it (owner, 2026-08-16).
+test('honours a box’s own padding over the mark’s default inset', () => {
+  const { context, images } = fakeContext()
+  drawWatermark(context, imageMark(400, 200), {
+    left: 0,
+    top: 0,
+    width: 2048,
+    height: 140,
+    corner: 'top-right',
+    margin: 25,
+  })
+  expect(images[0]?.y).toBe(25)
+  // Which is higher than the inset it would have chosen for itself.
+  expect(25).toBeLessThan(watermarkMargin(watermarkFontSize(2048)))
+})
+
+// The grid is drawn after the mark, so an overflowing mark was not merely
+// low — its bottom was painted over.
+test('keeps a tall picture mark inside the band it was given', () => {
+  const { context, images } = fakeContext()
+  const band = {
+    left: 0,
+    top: 0,
+    width: 2048,
+    height: 140,
+    corner: 'top-right' as const,
+    margin: 25,
+  }
+  drawWatermark(context, imageMark(400, 400), band)
+
+  const drawn = images[0]
+  expect(drawn).toBeDefined()
+  expect(drawn!.y).toBe(25)
+  expect(drawn!.y + drawn!.height).toBeLessThanOrEqual(band.height - 25)
+})
+
+// Glyphs only shrink if the font does; scaling a text mark's reported box
+// alone would move it without making it any smaller.
+test('shrinks the font when a text mark has to be fitted', () => {
+  const { context, calls } = fakeContext(4000)
+  drawWatermark(context, TEXT, { left: 0, top: 0, width: 600, height: 60, corner: 'top-right' })
+  // Measured at 4000px wide against a 600px box, so it must have been scaled —
+  // and the font it was actually drawn with must have come down with it.
+  const drawnFont = calls[0]?.font ?? ''
+  const size = Number(/(\d+)px/.exec(drawnFont)?.[1])
+  expect(size).toBeLessThan(watermarkFontSize(600))
 })
