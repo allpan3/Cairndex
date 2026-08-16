@@ -257,6 +257,37 @@ transcode may not keep up.
 **Next.** Owner pass on a real library: confirm the previously-failing files now
 play, and confirm "Scan new files" no longer opens the grouping pane.
 
+## Open on branch: the clip strip's play control (2026-08-16)
+
+On the export-watermark branch by the owner's leave, though unrelated to it.
+
+Started as "a play button that starts from the In mark", shipped once, and the
+owner's own use of it produced the better shape: the strip was **too crowded**,
+and the action and the mode next to it — `From In` and `Range` — only ever
+meant anything together. They are now one control, **Play Range**, bound to
+`\` (beside the `[` and `]` that mark the ends). `⟳ Loop` survives as the one
+genuine modifier.
+
+**The real change is what Space means.** `Range` was a standing mode, so the
+play button did one thing with a clip marked and another without — the marks
+silently redefined playback. Confinement is now a _session_ rather than a mode:
+`useClipPlayback` runs only while a span is playing, and any pause ends it, so
+resuming with Space is ordinary playback. One consequence worth knowing: pausing
+mid-loop drops the loop, which is the honest reading of "Space ignores the
+range" and is one keypress to resume.
+
+Deliberately deferred: A-B loop replay will drive the same span from playback
+settings, and the `useClipPlayback` seam is still the place for it.
+
+Tests: 827 frontend, including two e2e that exercise the button, the shortcut,
+and Space-ends-the-span in a real browser — which matters here, because the
+preview pane throttles `requestAnimationFrame` to 1 fps and cannot measure the
+out-point at all.
+
+**Not verified in the running app.** The attempt surfaced one of the owner's
+real libraries instead of the throwaway one, so it was stopped rather than
+continued; the e2e in real Chromium is the standing evidence.
+
 ## Open on branch: the export watermark (2026-08-15)
 
 Branch `claude/export-watermark-settings-41db44`, rebased onto `main` at

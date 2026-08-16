@@ -165,13 +165,15 @@ test('records the span a drag started from and releases it after', () => {
 test('clears the selection when the file changes', () => {
   const { result, rerender } = setup()
   act(() => result.current.open())
-  act(() => result.current.setPlayMode('loop'))
+  act(() => result.current.setLoop(true))
+  act(() => result.current.playRange())
   expect(result.current.range).not.toBeNull()
 
   rerender({ key: 'file-2' })
   expect(result.current.active).toBe(false)
   expect(result.current.range).toBeNull()
-  expect(result.current.playMode).toBe('off')
+  expect(result.current.loop).toBe(false)
+  expect(result.current.playingRange).toBe(false)
 })
 
 test('closing discards the selection', () => {
@@ -209,29 +211,37 @@ function fakeVideo() {
   }
 }
 
-function runPlayback(video: ReturnType<typeof fakeVideo>, mode: 'off' | 'range' | 'loop') {
+function runPlayback(
+  video: ReturnType<typeof fakeVideo>,
+  options: { playing?: boolean; loop?: boolean } = {},
+) {
   const pending: FrameRequestCallback[] = []
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
     pending.push(fn)
     return pending.length
   })
   vi.stubGlobal('cancelAnimationFrame', () => {})
+  const onEnd = vi.fn()
   const view = renderHook(() =>
-    useClipPlayback(video as unknown as HTMLVideoElement, { start: 10, end: 20 }, mode),
+    useClipPlayback(
+      video as unknown as HTMLVideoElement,
+      { start: 10, end: 20 },
+      { playing: options.playing ?? true, loop: options.loop ?? false, onEnd },
+    ),
   )
   // One rAF turn: the effect queued the first callback at mount.
   const tick = () => pending.splice(0, pending.length).forEach((fn) => fn(0))
-  return { tick, unmount: view.unmount }
+  return { tick, onEnd, unmount: view.unmount }
 }
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('range mode stops playback at the out-point', () => {
+test('a playing span stops at the out-point', () => {
   const video = fakeVideo()
   video.currentTime = 19
-  const { tick } = runPlayback(video, 'range')
+  const { tick } = runPlayback(video)
 
   tick()
   expect(video.pause).not.toHaveBeenCalled()
@@ -243,48 +253,62 @@ test('range mode stops playback at the out-point', () => {
   expect(video.currentTime).toBeCloseTo(20.1)
 })
 
-test('loop mode returns to the in-point instead of stopping', () => {
+test('looping returns to the in-point instead of stopping', () => {
   const video = fakeVideo()
   video.currentTime = 20.1
-  const { tick } = runPlayback(video, 'loop')
+  const { tick } = runPlayback(video, { loop: true })
 
   tick()
   expect(video.pause).not.toHaveBeenCalled()
   expect(video.currentTime).toBe(10)
 })
 
-// Without this, pressing play after `range` parked the playhead on the
-// out-point would stop again on the same frame and look like a dead button.
-test('replaying after range stopped starts the span over', () => {
+// The one fact that ends a span, wherever the pause came from — the owner
+// pressing Space, or the out-point stop above.
+test('a pause ends the span, so resuming is ordinary playback', () => {
   const video = fakeVideo()
-  video.currentTime = 20.1
-  const { tick } = runPlayback(video, 'range')
-  tick()
-  expect(video.pause).toHaveBeenCalled()
+  video.currentTime = 15
+  const { onEnd } = runPlayback(video)
 
-  video.paused = false
-  video.emit('play')
-  expect(video.currentTime).toBe(10)
+  video.emit('pause')
+  expect(onEnd).toHaveBeenCalledOnce()
 })
 
-test('off leaves playback alone entirely', () => {
+// Running off the end of the file need not emit `pause` on every browser, and
+// a session left open would confine whatever plays next.
+test('reaching the end of the file ends the span too', () => {
+  const video = fakeVideo()
+  const { onEnd } = runPlayback(video)
+
+  video.emit('ended')
+  expect(onEnd).toHaveBeenCalledOnce()
+})
+
+// Space is plain playback now: with no span playing, the marks are inert.
+test('leaves playback alone entirely when no span is playing', () => {
   const video = fakeVideo()
   video.currentTime = 90
-  const { tick } = runPlayback(video, 'off')
+  const { tick } = runPlayback(video, { playing: false })
 
   tick()
   expect(video.pause).not.toHaveBeenCalled()
   expect(video.currentTime).toBe(90)
+
+  // Even past the out-point, which a mode would have pounced on.
+  video.currentTime = 25
+  tick()
+  expect(video.pause).not.toHaveBeenCalled()
+  expect(video.currentTime).toBe(25)
 })
 
 // A drag is deliberately scrubbing the playhead; enforcing the out-point mid
-// gesture would yank it back under the pointer. (The viewer passes 'off' while
-// adjusting; this covers the other two gates.)
+// gesture would yank it back under the pointer. (The viewer stops passing
+// `playing` while adjusting; this covers the other two gates.)
 test('never acts on a paused or seeking element', () => {
   const video = fakeVideo()
   video.currentTime = 50
   video.paused = true
-  const { tick } = runPlayback(video, 'loop')
+  const { tick } = runPlayback(video, { loop: true })
   tick()
   expect(video.currentTime).toBe(50)
 
@@ -292,4 +316,89 @@ test('never acts on a paused or seeking element', () => {
   video.seeking = true
   tick()
   expect(video.currentTime).toBe(50)
+})
+
+// --- playing the span --------------------------------------------------
+
+test('Play Range seeks to the in-point, plays, and opens a span session', () => {
+  const player = mockPlayer({ currentTime: 40 })
+  const { result } = setup(player)
+  act(() => result.current.open())
+  const start = result.current.range!.start
+
+  act(() => result.current.playRange())
+
+  expect(player.seek).toHaveBeenCalledWith(start)
+  expect(player.play).toHaveBeenCalledOnce()
+  expect(result.current.playingRange).toBe(true)
+  // Seek first: the frame that arrives is the in-point, not a moment of
+  // wherever the playhead happened to be.
+  expect((player.seek as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan(
+    (player.play as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!,
+  )
+})
+
+// Checking a mark is nudge, press, watch, repeat — a second press has to start
+// over rather than do nothing because playback is already running.
+test('pressing it again restarts the span', () => {
+  const player = mockPlayer({ currentTime: 40, status: 'playing' })
+  const { result } = setup(player)
+  act(() => result.current.open())
+  const start = result.current.range!.start
+
+  act(() => result.current.playRange())
+  act(() => result.current.playRange())
+
+  expect(player.seek).toHaveBeenNthCalledWith(2, start)
+  expect(player.play).toHaveBeenCalledTimes(2)
+})
+
+test('Play Range does nothing with no span marked', () => {
+  const player = mockPlayer()
+  const { result } = setup(player)
+
+  act(() => result.current.playRange())
+
+  expect(player.seek).not.toHaveBeenCalled()
+  expect(player.play).not.toHaveBeenCalled()
+  expect(result.current.playingRange).toBe(false)
+})
+
+// Loop is a standing preference for what Play Range does, not a playback state
+// of its own: turning it on must not start anything.
+test('Loop is a preference, and does not start playback', () => {
+  const player = mockPlayer({ currentTime: 10 })
+  const { result } = setup(player)
+  act(() => result.current.open())
+
+  act(() => result.current.setLoop(true))
+
+  expect(result.current.loop).toBe(true)
+  expect(result.current.playingRange).toBe(false)
+  expect(player.play).not.toHaveBeenCalled()
+})
+
+test('the span session ends when playback stops being confined', () => {
+  const { result } = setup(mockPlayer({ currentTime: 10 }))
+  act(() => result.current.open())
+  act(() => result.current.playRange())
+  expect(result.current.playingRange).toBe(true)
+
+  act(() => result.current.endRangePlayback())
+  expect(result.current.playingRange).toBe(false)
+  // The marks and the preference survive it — only the session ended.
+  expect(result.current.range).not.toBeNull()
+})
+
+test('closing the picker ends any span session with it', () => {
+  const { result } = setup(mockPlayer({ currentTime: 10 }))
+  act(() => result.current.open())
+  act(() => result.current.setLoop(true))
+  act(() => result.current.playRange())
+
+  act(() => result.current.close())
+
+  expect(result.current.playingRange).toBe(false)
+  expect(result.current.loop).toBe(false)
+  expect(result.current.range).toBeNull()
 })
