@@ -52,7 +52,9 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: {}, direct_counts: {} } }),
+  )
   await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } }),
@@ -1722,7 +1724,7 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
     r.fulfill({ json: { items: collections, next_cursor: null } }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 2, c2: 1 } } }),
+    r.fulfill({ json: { counts: { c1: 2, c2: 1 }, direct_counts: { c1: 2, c2: 1 } } }),
   )
   let deleteUrl: string | null = null
   await page.route('**/collections/c1*', (r) => {
@@ -1760,7 +1762,10 @@ test('the sidebar "+" creates a collection with an inline rename box', async ({ 
   // Mirror the backend: every collection appears in counts (0 when empty).
   await page.route('**/collections/counts', (r) =>
     r.fulfill({
-      json: { counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])) },
+      json: {
+        counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])),
+        direct_counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])),
+      },
     }),
   )
   await page.route('**/collections', (r) => {
@@ -1817,7 +1822,7 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1, c2: 2 } } }),
+    r.fulfill({ json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } } }),
   )
   await page.route('**/collections/c2/stats', (r) =>
     r.fulfill({ json: { direct_bundles: 2, total_bundles: 2, subcollections: 0 } }),
@@ -1882,7 +1887,7 @@ test('collection cover thumbnails fill the card at the intended aspect ratio', a
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1, c2: 2 } } }),
+    r.fulfill({ json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } } }),
   )
   await page.route('**/collections/c2/thumbnail**', (r) =>
     r.fulfill({
@@ -1941,7 +1946,9 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1, c2: 2, c3: 1 } } }),
+    r.fulfill({
+      json: { counts: { c1: 1, c2: 2, c3: 1 }, direct_counts: { c1: 1, c2: 2, c3: 1 } },
+    }),
   )
   await page.route('**/bundles/browse**', (r) => {
     const url = new URL(r.request().url())
@@ -1992,7 +1999,9 @@ test('right-click a bundle in a collection sets it as the collection cover', asy
       json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
     }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: { c1: 1 } } }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 1 }, direct_counts: { c1: 1 } } }),
+  )
   await page.route('**/bundles/browse**', (r) => {
     const cid = new URL(r.request().url()).searchParams.get('collection_id')
     if (cid === 'c1') {

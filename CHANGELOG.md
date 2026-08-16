@@ -247,6 +247,21 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.
+- **A collection's count now says what opening it will show.** The badge counted
+  everything in the collection's whole subtree while the grid beside it listed only
+  that collection's own bundles, so a parent read `1` next to an empty grid whenever
+  its one bundle sat in a child — and moving a bundle from a parent into its own
+  child left the parent's number motionless while the grid lost a card, which read
+  as a count that refused to update. The badge now follows the grid: a collection's
+  own bundles, or the subtree total when **Show subcollection contents** is on.
+  Both figures come from the same request, so the toggle costs no round trip, and
+  the collection inspector still shows the two side by side as it always did.
+- **A drop that lands quickly after it starts no longer does nothing.** Dropping
+  bundles on a collection re-read the dragged ids from React state, which a fast
+  drag outruns — the app keeps a synchronous copy for exactly this reason and every
+  other part of the drop path already used it. When the two disagreed the write was
+  never sent at all: no card moved, no count changed, and nothing later corrected it
+  because nothing had happened.
 - **A collection opened after a drop shows what is in it, not what was.** Dropping
   bundles on a collection rewrote the cached listings it could work out and marked
   the rest stale — but a stale listing is still served the instant its view opens,

@@ -22,6 +22,7 @@ from cairndex.services.browse import (
     browse_bundles,
     cleanup_bundle_order,
     collection_counts,
+    collection_direct_counts,
     reorder_bundles,
     tag_counts,
     view_counts,
@@ -390,8 +391,12 @@ def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None
     client.put(f"{base}/bundles/{nested}/collections", json={"ids": [leaf]})
     client.put(f"{base}/bundles/{shared}/collections", json={"ids": [child, leaf]})
 
-    counts = client.get(f"{base}/collections/counts").json()["counts"]
-    assert counts == {root: 3, child: 2, leaf: 2, empty: 0}
+    body = client.get(f"{base}/collections/counts").json()
+    assert body["counts"] == {root: 3, child: 2, leaf: 2, empty: 0}
+    # …and what each collection holds on its own, which is what the sidebar badge
+    # shows while the grid beside it is listing one collection's own bundles. The
+    # root reads 1 rather than 3: the other two live in its descendants.
+    assert body["direct_counts"] == {root: 1, child: 1, leaf: 2, empty: 0}
 
 
 def test_collection_counts_ignore_unbundled_files(session: Session) -> None:
@@ -407,6 +412,7 @@ def test_collection_counts_ignore_unbundled_files(session: Session) -> None:
 
     assert _browse_ids(session, collection_id=coll.id) == [confirmed.id]
     assert collection_counts(session)[coll.id] == 1
+    assert collection_direct_counts(session)[coll.id] == 1
 
 
 def test_tag_counts_ignore_unbundled_files(session: Session) -> None:

@@ -462,10 +462,32 @@ export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>(`${lib()}/bundles/counts`, signal)
 }
 
-export function fetchCollectionCounts(signal?: AbortSignal): Promise<Record<string, number>> {
-  return getJson<{ counts: Record<string, number> }>(`${lib()}/collections/counts`, signal).then(
-    (r) => r.counts,
-  )
+/**
+ * The two figures every collection has. `subtree` counts everything beneath it,
+ * `direct` only its own bundles — and the sidebar badge shows whichever one the
+ * grid beside it is listing, so the number can never contradict the list. They
+ * cannot be derived from one another on the client: summing `direct` over a
+ * subtree would count a bundle filed in both a parent and its child twice, which
+ * is exactly what the server's `DISTINCT` avoids.
+ */
+export interface CollectionCounts {
+  subtree: Record<string, number>
+  direct: Record<string, number>
+}
+
+export function fetchCollectionCounts(signal?: AbortSignal): Promise<CollectionCounts> {
+  return getJson<{ counts: Record<string, number>; direct_counts?: Record<string, number> }>(
+    `${lib()}/collections/counts`,
+    signal,
+  ).then((r) => ({
+    subtree: r.counts,
+    // A server that does not send `direct_counts` — one older than the field —
+    // falls back to the subtree total rather than leaving every badge blank. The
+    // desktop shell can point at a remote server of any version, so this is not
+    // hypothetical, and degrading to the previous behaviour beats rendering
+    // nothing where a number belongs.
+    direct: r.direct_counts ?? r.counts,
+  }))
 }
 
 interface Page<T> {
