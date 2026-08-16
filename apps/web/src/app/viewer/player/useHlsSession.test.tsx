@@ -40,6 +40,7 @@ const CAPS: ClientCapabilities = {
 function options(fileId: string | null): UseHlsSessionOptions {
   return {
     fileId,
+    browserPath: null,
     enabled: fileId !== null,
     directPlayable: false,
     directStreamUrl: '/f/stream',
@@ -109,7 +110,7 @@ test('a remux decision starts an HLS source and tears the session down on unmoun
   expect(result.current.source?.nativeHls).toBe(false)
 
   unmount()
-  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1')
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1')
 })
 
 test('beacons the live session on web pagehide', async () => {
@@ -118,7 +119,7 @@ test('beacons the live session on web pagehide', async () => {
 
   act(() => window.dispatchEvent(new Event('pagehide')))
 
-  expect(mocks.beaconTeardownSession).toHaveBeenCalledWith('f1', 's1')
+  expect(mocks.beaconTeardownSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1')
 })
 
 test('awaits ordinary session teardown during desktop exit', async () => {
@@ -139,7 +140,7 @@ test('awaits ordinary session teardown during desktop exit', async () => {
   })
   await Promise.resolve()
 
-  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1')
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1')
   expect(settled).toBe(false)
   act(() => window.dispatchEvent(new Event('pagehide')))
   expect(mocks.beaconTeardownSession).not.toHaveBeenCalled()
@@ -154,7 +155,9 @@ test('switching files tears down the previous file session', async () => {
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s1/index.m3u8'))
 
   rerender({ id: 'f2' })
-  await waitFor(() => expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1'))
+  await waitFor(() =>
+    expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1'),
+  )
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s2/index.m3u8'))
 })
 
@@ -170,7 +173,7 @@ test('a quality switch re-decides and tears down the superseded session', async 
   expect(secondCall?.[1]?.max_height).toBe(720)
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s2/index.m3u8'))
   expect(result.current.source?.startAt).toBe(12.5)
-  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1')
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1')
 })
 
 test('a direct decision plays natively without starting a session', async () => {
@@ -210,7 +213,7 @@ test('reaps a session the server started for a decision the client aborted', asy
     resolve(remuxDecision('orphan'))
     await Promise.resolve()
   })
-  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 'orphan')
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 'orphan')
 })
 
 test('a double-error burst consumes a single re-attach slot', async () => {
@@ -301,10 +304,14 @@ test('an unanswered decision times out to a retryable unavailable state', async 
   }
 })
 
-/** Options for a path with no `AssetFile` row — the File Browser's unindexed case. */
+/**
+ * Options for a source the server cannot be asked about: no row, and no path
+ * either. What is left is the raw bytes and the media element's own verdict.
+ */
 function pathOptions(streamUrl: string): UseHlsSessionOptions {
   return {
     fileId: null,
+    browserPath: null,
     enabled: true,
     directPlayable: true,
     directStreamUrl: streamUrl,
@@ -314,7 +321,7 @@ function pathOptions(streamUrl: string): UseHlsSessionOptions {
   }
 }
 
-test('an unindexed path plays natively without requesting a decision', async () => {
+test('a source with nothing to decide about plays natively', async () => {
   const { result } = renderHook(() => useHlsSession(pathOptions('/file?path=loose.mp4')))
 
   await waitFor(() => expect(result.current.status).toBe('ready'))
@@ -324,13 +331,13 @@ test('an unindexed path plays natively without requesting a decision', async () 
     mimeType: 'video/mp4',
     startAt: 0,
   })
-  // There is no file row to decide on, so the round-trip must be skipped.
+  // Neither a row nor a path, so there is nothing to ask the server about.
   expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
   // Nothing to re-attach either — recovery falls to the native reload path.
   expect(result.current.reattach()).toBe(false)
 })
 
-test('stepping between unindexed paths does not carry the previous playhead', async () => {
+test('stepping between undecidable sources does not carry the previous playhead', async () => {
   const { result, rerender } = renderHook(
     ({ url }: { url: string }) => useHlsSession(pathOptions(url)),
     {
@@ -343,17 +350,55 @@ test('stepping between unindexed paths does not carry the previous playhead', as
   act(() => result.current.retry())
   await waitFor(() => expect(result.current.source?.startAt).toBe(12.5))
 
-  // Switching to a different path is a different file, so it starts at zero even
-  // though both share a null file id.
+  // A different URL is a different file, so it starts at zero even though both
+  // share a null file id and a null path.
   rerender({ url: '/file?path=b.mp4' })
   await waitFor(() => expect(result.current.source?.src).toBe('/file?path=b.mp4'))
   expect(result.current.source?.startAt).toBe(0)
 })
 
-test('an unindexed path with no readable URL stays idle', async () => {
+test('a source with no readable URL at all stays idle', async () => {
   const { result } = renderHook(() => useHlsSession({ ...pathOptions(''), directStreamUrl: null }))
 
   await waitFor(() => expect(result.current.status).toBe('idle'))
   expect(result.current.source).toBeNull()
+  expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
+})
+
+test('an unindexed File Browser path still gets a decision, addressed by path', () => {
+  // Before this, a path with no row skipped the decision entirely and played
+  // natively, so a never-scanned library could show only what the browser
+  // itself decodes (owner-reported, 2026-08-15).
+  const { result } = renderHook(() =>
+    useHlsSession({
+      ...options('f1'),
+      fileId: null,
+      browserPath: 'Set07/clip1.mkv',
+    }),
+  )
+
+  expect(mocks.requestPlaybackDecision).toHaveBeenCalledWith(
+    { kind: 'path', path: 'Set07/clip1.mkv' },
+    expect.anything(),
+    expect.anything(),
+  )
+  expect(result.current).toBeDefined()
+})
+
+test('a row wins over a path, so an indexed entry keeps its subtitles and resume', () => {
+  renderHook(() =>
+    useHlsSession({ ...options('f1'), fileId: 'f1', browserPath: 'Set07/clip1.mkv' }),
+  )
+
+  expect(mocks.requestPlaybackDecision).toHaveBeenCalledWith(
+    { kind: 'file', fileId: 'f1' },
+    expect.anything(),
+    expect.anything(),
+  )
+})
+
+test('neither a row nor a path means no decision at all', () => {
+  renderHook(() => useHlsSession({ ...options(null), fileId: null, browserPath: null }))
+
   expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
 })

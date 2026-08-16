@@ -1472,7 +1472,7 @@ test('plays a linked File Browser video in the app player, not native controls',
   await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4')
 })
 
-test('plays an unindexed File Browser video with no playback decision', async ({ page }) => {
+test('decides playback for an unindexed File Browser video, by path', async ({ page }) => {
   const decisions: string[] = []
   const pathReads: string[] = []
   page.on('request', (request) => {
@@ -1490,15 +1490,40 @@ test('plays an unindexed File Browser video with no playback decision', async ({
   await page.route(/\/api\/v1\/libraries\/lib1\/file\?path=/, (route) =>
     fulfillMedia(route, generatedMp4 ?? Buffer.from([])),
   )
+  // A path with no row still gets a real decision — this one is directly
+  // playable, so it comes back pointing at the path-scoped reader.
+  await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/playback-decision$/, (route) =>
+    route.fulfill({
+      json: {
+        method: 'direct',
+        reason: 'Source container and codecs are directly playable',
+        stream_url: '/api/v1/libraries/lib1/file?path=loose.mp4',
+        session: null,
+        duration: 3,
+        audio_streams: [],
+        subtitles: [],
+        chapters: [],
+        storyboard_url: null,
+        progress: null,
+      },
+    }),
+  )
   await page.goto('/')
   await page.getByRole('tab', { name: 'Files' }).click()
   await page.locator('.file-row__name', { hasText: 'loose.mp4' }).dblclick()
 
-  // Same player shell, but sourced straight from the path — an unindexed file has
-  // no row to decide on, so no decision/session request may be made for it.
+  // Same player shell. An unindexed path used to skip the decision entirely and
+  // play the raw bytes, so a never-scanned library could show only what the
+  // browser itself decodes (owner-reported, 2026-08-15). It is asked about by
+  // path now, which is what lets the server remux or transcode it.
   await expect(page.getByTestId('media-controls')).toBeVisible()
   await expect.poll(() => pathReads.some((url) => url.includes('path=loose.mp4'))).toBe(true)
-  expect(decisions).toEqual([])
+  // Not an exact count: StrictMode replays the effect in dev, so the decision
+  // can be requested twice. What matters is where it goes.
+  expect(decisions.length).toBeGreaterThan(0)
+  expect(decisions.every((url) => url.includes('/file-browser/playback-decision'))).toBe(true)
+  // Addressed by path, never by a fabricated file id.
+  expect(decisions.some((url) => /\/files\/[^/]+\/playback-decision/.test(url))).toBe(false)
 
   // The playlist is the folder — both of its videos, in the listing's order —
   // not the bundle the other one happens to belong to.

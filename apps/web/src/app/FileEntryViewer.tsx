@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { type FileBrowserEntry, type PlayableVideo } from '../api/client'
 import { usePlaybackManifest } from '../api/hooks'
 import type { PlayerPrefs } from './types'
+import { inspectorTargetForEntry } from './fileFacts'
 import { ViewerShell } from './viewer/ViewerShell'
 import { type ViewerItem, viewerItemFromEntry } from './viewer/viewerItem'
 
@@ -19,9 +20,11 @@ import { type ViewerItem, viewerItemFromEntry } from './viewer/viewerItem'
  *   owns the index rather than handing the shell a bundle to derive one from.
  * - An entry need not be indexed. A linked path resolves its real manifest entry
  *   and behaves exactly like the bundle viewer; an unlinked path gets a direct
- *   entry pointing at the path-scoped reader, which plays natively without
- *   subtitles, storyboards, chapters, or saved progress — there is no file row to
- *   hang those on.
+ *   entry pointing at the path-scoped reader, and its playback decision is made
+ *   against the path itself — so the server still remuxes or transcodes what the
+ *   browser cannot decode, in a library that was never scanned. What an unlinked
+ *   path still goes without is what genuinely needs a row: subtitles,
+ *   storyboards, saved progress, and a cover frame.
  */
 export function FileEntryViewer({
   files,
@@ -44,6 +47,10 @@ export function FileEntryViewer({
   const items = useMemo(() => files.map(viewerItemFromEntry), [files])
   const current = items[index] ?? null
   const isVideo = current?.mediaKind === 'video'
+
+  // Only this surface knows whether a row's bundle is a real one.
+  const entry = files[index] ?? null
+  const inspectorTarget = useMemo(() => inspectorTargetForEntry(entry), [entry])
 
   // Only an indexed video has a manifest to read, and only a video needs one.
   const manifestBundleId = isVideo && current?.fileId ? current.bundleId : null
@@ -74,6 +81,7 @@ export function FileEntryViewer({
       onClose={onClose}
       errorHeading="Couldn’t load this file."
       emptyMessage={items.length === 0 ? 'Nothing here can be previewed.' : null}
+      inspectorTarget={inspectorTarget}
     />
   )
 }
@@ -82,9 +90,9 @@ export function FileEntryViewer({
  * A direct-play entry for a path with no usable manifest row.
  *
  * Covers both an unindexed path and an indexed one the manifest doesn't list
- * (e.g. never probed). `playable: true` defers the verdict to the media element:
- * if the browser can't decode the container/codec, the stage's error path shows
- * the same "can't play this" card a failed decision would.
+ * (e.g. never probed). This is only the *fallback* the player uses when the
+ * decision itself cannot be made; `playable: true` then defers the verdict to
+ * the media element, because native playback is the one option left.
  */
 function directEntry(item: ViewerItem): PlayableVideo {
   return {

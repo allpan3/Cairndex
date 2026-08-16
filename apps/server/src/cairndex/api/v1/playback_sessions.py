@@ -12,6 +12,7 @@ served with ``no-store`` because they are throwaway session state.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import FileResponse, Response
@@ -21,6 +22,7 @@ from cairndex.api.deps import LibraryAccessDep, LibrarySession
 from cairndex.api.schemas.playback import (
     AudioStreamRead,
     ClientCapabilities,
+    FileBrowserPlaybackDecisionRequest,
     PlaybackDecisionRequest,
     PlaybackDecisionResponse,
     PlaybackProgressRead,
@@ -31,10 +33,12 @@ from cairndex.api.schemas.playback import (
 from cairndex.api.v1.playback import _chapters, _track_read
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import resolve_within_root
-from cairndex.media import hls, playback
+from cairndex.domain.enums import MediaKind
+from cairndex.media import hls, playback, probe_service
 from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, SessionParams
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
+from cairndex.services import file_browser as file_browser_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
 
@@ -97,6 +101,7 @@ def _decide(
 
     streams = _audio_streams(meta)
     height = meta.get("height")
+    depth = meta.get("bit_depth")
     return playback.decide_playback(
         caps,
         ext=extension_of(asset_file.relative_path),
@@ -106,6 +111,8 @@ def _decide(
             meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
         ),
         source_height=height if isinstance(height, int) else None,
+        bit_depth=depth if isinstance(depth, int) else None,
+        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
         audio_stream_index=audio_stream_index,
         default_audio_index=playback.default_audio_stream_index(streams),
         burn_subtitle=burn_subtitle_track_id is not None,
@@ -230,6 +237,12 @@ def _resolve_and_decide(
     max_height: int | None,
 ) -> _DecisionContext:
     video_path, asset_file = playback.resolve_video_path(db, file_id)
+    # A scanned-but-unprobed row has no codec, depth or duration, and the matrix
+    # below is deliberately optimistic about all three — so without this the
+    # answer for a fresh library is always "direct", and every source the browser
+    # cannot decode fails on arrival. Bounded, cached in the row, and silent on
+    # failure (see ensure_probed).
+    probe_service.ensure_probed(db, asset_file)
     meta = asset_file.tech_metadata or {}
     profile = _profile(caps)
     decision = _decide(
@@ -442,5 +455,192 @@ def beacon_teardown_playback_session(
     manager: SessionManagerDep,
 ) -> Response:
     """Tear down a session via a POST beacon (pagehide `navigator.sendBeacon`)."""
+    manager.teardown(library_id, session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- File Browser paths: playback without an index row -----------------------
+# The File Browser is the physical surface, and a path there need not be in the
+# library database at all. Until now that meant no decision: playback fell
+# straight through to a native progressive read, so a fresh library could play
+# only what the browser itself decodes, and everything else showed the format
+# card with no server-side conversion available (owner-reported, 2026-08-15).
+#
+# These routes give a bare path the same decision and the same HLS sessions a
+# file row gets, with an on-demand probe standing in for the stored metadata.
+# What stays absent is what genuinely needs a row: subtitle tracks, storyboards,
+# resume, and the cover frame.
+
+
+def _path_session_key(relative_path: str) -> str:
+    """Session-reuse identity for a path, in the slot a file id normally fills.
+
+    Never leaves the server: the manager keys reuse on it, and the artifact
+    routes below address a session by its own id.
+    """
+    return f"path:{relative_path}"
+
+
+def _resolve_browser_video(db: Session, raw_path: str) -> tuple[Path, str, dict[str, Any]]:
+    """Path-safe absolute path, normalized relative path, and probed metadata."""
+    from cairndex.core.paths import normalize_relative_path
+    from cairndex.media import probe_service
+    from cairndex.scanning.media_types import classify
+
+    video_path = file_browser_service.resolve_entry_path(db, raw_path)
+    relative_path = normalize_relative_path(raw_path)
+    classification = classify(video_path.name)
+    if classification is None or classification[0] is not MediaKind.VIDEO:
+        raise ValidationError("only video files are streamable")
+    return video_path, relative_path, probe_service.probe_path(video_path) or {}
+
+
+@router.post("/file-browser/playback-decision", response_model=PlaybackDecisionResponse)
+def file_browser_playback_decision(
+    library_id: str,
+    payload: FileBrowserPlaybackDecisionRequest,
+    db: LibrarySession,
+    manager: SessionManagerDep,
+) -> PlaybackDecisionResponse:
+    """Decide direct/remux/transcode for a library-relative path, session and all."""
+    video_path, relative_path, meta = _resolve_browser_video(db, payload.path)
+    caps = _profile(payload.caps)
+    streams = _audio_streams(meta)
+    height = meta.get("height")
+    depth = meta.get("bit_depth")
+    decision = playback.decide_playback(
+        caps,
+        ext=video_path.suffix.lstrip("."),
+        video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
+        audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
+        video_codec_tag=(
+            meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
+        ),
+        source_height=height if isinstance(height, int) else None,
+        bit_depth=depth if isinstance(depth, int) else None,
+        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
+        audio_stream_index=payload.audio_stream_index,
+        default_audio_index=playback.default_audio_stream_index(streams),
+        requested_max_height=payload.max_height,
+    )
+
+    duration = _duration(meta)
+    stream_url: str | None = None
+    session_ref: PlaybackSessionRef | None = None
+    reason = decision.reason
+    if decision.method == "direct":
+        stream_url = f"/api/v1/libraries/{library_id}/file?path={quote(relative_path, safe='')}"
+    elif duration is None or duration <= 0:
+        # Same degradation as the per-file route: answer without a session and
+        # let the client fall back, rather than refusing the whole decision.
+        reason = f"{decision.reason}; session unavailable until the file can be probed"
+    else:
+        created = manager.create_session(
+            library_id=library_id,
+            file_id=_path_session_key(relative_path),
+            source_path=video_path,
+            duration=duration,
+            kind=decision.session_kind,
+            params=_path_session_params(meta, caps, payload),
+            start_s=payload.start_s or 0.0,
+        )
+        session_ref = PlaybackSessionRef(
+            id=created.id,
+            playlist_url=(
+                f"/api/v1/libraries/{library_id}/file-browser/playback-sessions/"
+                f"{created.id}/index.m3u8"
+            ),
+        )
+
+    return PlaybackDecisionResponse(
+        method=decision.method,
+        reason=reason,
+        stream_url=stream_url,
+        session=session_ref,
+        duration=duration,
+        audio_streams=_audio_stream_reads(streams),
+        # All four need a file row to hang on, which this path does not have.
+        subtitles=[],
+        chapters=_chapters(meta),
+        storyboard_url=None,
+        progress=None,
+    )
+
+
+def _path_session_params(
+    meta: dict[str, Any],
+    caps: playback.CapabilityProfile,
+    payload: FileBrowserPlaybackDecisionRequest,
+) -> SessionParams:
+    from cairndex.core.config import get_settings
+
+    streams = _audio_streams(meta)
+    # An unknown index cannot be honored, including on a file the probe could
+    # not read (no streams at all) — mirrors the per-file path.
+    if payload.audio_stream_index is not None and payload.audio_stream_index not in {
+        s.get("index") for s in streams
+    }:
+        raise ValidationError(f"audio stream {payload.audio_stream_index} does not exist")
+    selected = _selected_audio_codec(meta, streams, payload.audio_stream_index)
+    hwaccel = get_settings().ffmpeg_hwaccel
+    if hwaccel and hwaccel.lower() == "none":
+        hwaccel = None
+    return SessionParams(
+        audio_stream_index=payload.audio_stream_index,
+        audio_copy=playback.normalize_audio_codec(selected) == "aac",
+        max_height=playback.effective_max_height(caps.max_height, payload.max_height),
+        burn_subtitle=None,
+        hwaccel=hwaccel,
+        video_codec=playback.normalize_video_codec(meta.get("video_codec")),
+    )
+
+
+@router.get("/file-browser/playback-sessions/{session_id}/{artifact}")
+def file_browser_session_artifact(
+    library_id: str,
+    session_id: str,
+    artifact: str,
+    access: LibraryAccessDep,
+    manager: SessionManagerDep,
+) -> Response:
+    """Serve a path-scoped session's playlist, init segment, or media segment.
+
+    Identical to the per-file route: a session is addressed by its own id, and
+    the manager holds the bytes, so nothing here needs to know what produced it.
+    """
+    no_store = {"Cache-Control": "no-store"}
+    if artifact == "index.m3u8":
+        body = manager.serve_playlist(library_id, session_id)
+        return Response(content=body, media_type="application/vnd.apple.mpegurl", headers=no_store)
+    path = manager.serve_artifact(library_id, session_id, artifact)
+    return FileResponse(str(path), media_type="video/mp4", headers=no_store)
+
+
+@router.delete(
+    "/file-browser/playback-sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_file_browser_session(
+    library_id: str,
+    session_id: str,
+    db: LibrarySession,
+    manager: SessionManagerDep,
+) -> Response:
+    """Tear down a path-scoped session (player close, file switch, unmount)."""
+    manager.teardown(library_id, session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/file-browser/playback-sessions/{session_id}/teardown",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def beacon_teardown_file_browser_session(
+    library_id: str,
+    session_id: str,
+    db: LibrarySession,
+    manager: SessionManagerDep,
+) -> Response:
+    """Tear down a path-scoped session via a POST beacon (see the per-file alias)."""
     manager.teardown(library_id, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

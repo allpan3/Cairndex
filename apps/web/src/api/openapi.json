@@ -2315,6 +2315,17 @@
             ],
             "title": "Audio Sample Rate"
           },
+          "bit_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bit Depth"
+          },
           "bundle_id": {
             "anyOf": [
               {
@@ -2381,6 +2392,28 @@
               }
             ],
             "title": "File Id"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
           },
           "kind": {
             "title": "Kind",
@@ -2494,6 +2527,17 @@
               }
             ],
             "title": "Video Codec Tag"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
           }
         },
         "required": [
@@ -2545,6 +2589,56 @@
           "missing_files_updated"
         ],
         "title": "FileBrowserListingRead",
+        "type": "object"
+      },
+      "FileBrowserPlaybackDecisionRequest": {
+        "properties": {
+          "audio_stream_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Stream Index"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/ClientCapabilities"
+          },
+          "max_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Height"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          }
+        },
+        "required": [
+          "path",
+          "caps"
+        ],
+        "title": "FileBrowserPlaybackDecisionRequest",
         "type": "object"
       },
       "FileLink": {
@@ -11008,6 +11102,336 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/file-browser/playback-decision": {
+      "post": {
+        "description": "Decide direct/remux/transcode for a library-relative path, session and all.",
+        "operationId": "file_browser_playback_decision_api_v1_libraries__library_id__file_browser_playback_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileBrowserPlaybackDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Browser Playback Decision",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}": {
+      "delete": {
+        "description": "Tear down a path-scoped session (player close, file switch, unmount).",
+        "operationId": "delete_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete File Browser Session",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}/teardown": {
+      "post": {
+        "description": "Tear down a path-scoped session via a POST beacon (see the per-file alias).",
+        "operationId": "beacon_teardown_file_browser_session_api_v1_libraries__library_id__file_browser_playback_sessions__session_id__teardown_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Beacon Teardown File Browser Session",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-browser/playback-sessions/{session_id}/{artifact}": {
+      "get": {
+        "description": "Serve a path-scoped session's playlist, init segment, or media segment.\n\nIdentical to the per-file route: a session is addressed by its own id, and\nthe manager holds the bytes, so nothing here needs to know what produced it.",
+        "operationId": "file_browser_session_artifact_api_v1_libraries__library_id__file_browser_playback_sessions__session_id___artifact__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact",
+            "required": true,
+            "schema": {
+              "title": "Artifact",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Browser Session Artifact",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/file-ops": {
       "get": {
         "description": "Newest-first history of what write mode has done to this library.\n\nReadable without write mode: turning the capability off must not hide what\nit did while it was on.",
@@ -14911,6 +15335,7 @@
     },
     "/api/v1/libraries/{library_id}/jobs/scan": {
       "post": {
+        "description": "Enqueue library discovery, optionally with the grouping-suggestion pass.\n\n``suggest_grouping=false`` is discovery on its own \u2014 what \"Scan new files\"\nasks for. Grouping is a separate, reviewable step the owner opens\ndeliberately, and running it unasked both costs a directory-tree walk and\nputs the review dialog on screen at the end of a scan (owner-reported,\n2026-08-15). The combined Update keeps the default.",
         "operationId": "enqueue_scan_api_v1_libraries__library_id__jobs_scan_post",
         "parameters": [
           {
@@ -14920,6 +15345,16 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "suggest_grouping",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Suggest Grouping",
+              "type": "boolean"
             }
           }
         ],

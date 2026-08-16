@@ -18,6 +18,11 @@ from cairndex.scanning.scanner import scan_library
 # Run discovery, then persist a reviewable grouping plan without applying it
 def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     batch_size = int(ctx.payload.get("batch_size", 200))
+    # Discovery on its own is a legitimate thing to ask for, and it is what the
+    # "Scan new files" action means. Grouping is the reviewable step next to it
+    # in the same menu, so running it here regardless made one menu item do the
+    # other's work and open its dialog (owner-reported, 2026-08-15).
+    suggest_grouping = bool(ctx.payload.get("suggest_grouping", True))
 
     # ctx.progress, not ctx.checkpoint: the scanner now reports every file and
     # commits on its own batch schedule, so this must not force a commit per
@@ -39,8 +44,8 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     # few hundred identical rows and discarding the owner's selections with the
     # plan they were made on. On a network-hosted library that rewrite was seven
     # minutes per Update (owner-reported, 2026-08-13).
-    plan = plan_store.reusable_open_plan(ctx.session)
-    if plan is None:
+    plan = plan_store.reusable_open_plan(ctx.session) if suggest_grouping else None
+    if suggest_grouping and plan is None:
         ctx.set_phase(JobPhase.GROUPING, "Matching filenames")
         data = suggest_for_session(ctx.session)
         ctx.set_phase(JobPhase.GROUPING, "Writing grouping suggestions")
@@ -55,6 +60,7 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     # steady state — Update finding nothing changed and keeping the open plan —
     # never pruned, and the backlog only ever grew (135 plans, 5.6 MB, owner's
     # library 2026-08-14). Cheap enough to run every time now that plans are local.
+    # Runs for a scan-only pass too: it prunes plans this scan just obsoleted.
     plan_store.prune_obsolete_plans(ctx.session)
     ctx.set_phase(JobPhase.FINALIZING)
     return {
@@ -64,6 +70,9 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         "missing": summary.missing,
         "missing_total": summary.missing_total,
         "repaired": summary.repaired,
-        "grouping_plan_id": plan.id,
-        "grouping_proposal_count": len(plan.proposals),
+        # Null on a scan-only pass. The client opens grouping review off these
+        # two keys, so a scan that was not asked to suggest must not report a
+        # plan — not even an older open one it happened to leave alone.
+        "grouping_plan_id": plan.id if plan is not None else None,
+        "grouping_proposal_count": len(plan.proposals) if plan is not None else 0,
     }

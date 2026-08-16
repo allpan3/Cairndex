@@ -509,6 +509,7 @@ export function Sidebar({
                   setJobsMenuOpen(false)
                   onScanFiles()
                 }}
+                title="Find new, moved, and missing files. Nothing else — grouping and metadata are the items below."
                 disabled={scanningFiles}
               >
                 {scanningFiles ? 'Scanning…' : 'Scan new files'}

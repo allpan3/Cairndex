@@ -34,6 +34,14 @@ export interface ViewerItem {
   key: string
   /** `AssetFile` id when this item is indexed; null for an unindexed path. */
   fileId: string | null
+  /**
+   * Library-relative path, when this item came from the File Browser.
+   *
+   * What an unindexed source is addressed by: with no row to name, the server
+   * still decides and converts for it through the path-scoped playback routes.
+   * Null for a bundle file, which is always addressed by `fileId`.
+   */
+  pathTarget: string | null
   /** Bundle owning `fileId`. Drives manifest lookup and progress writes. */
   bundleId: string | null
   title: string
@@ -109,6 +117,8 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
   return {
     key: file.id,
     fileId: file.id,
+    // A bundle file is always addressed by its row id.
+    pathTarget: null,
     bundleId: file.bundle_id,
     title: file.display_title,
     mediaKind: file.media_kind,
@@ -163,6 +173,7 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
   return {
     key: entry.relative_path,
     fileId: entry.file_id ?? null,
+    pathTarget: entry.relative_path,
     bundleId: entry.bundle_id ?? null,
     title: entry.name,
     mediaKind: entry.media_kind ?? null,
@@ -178,20 +189,21 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
       : fileBrowserContentUrl(entry.relative_path),
     mimeType: entry.mime_type ?? null,
     sizeBytes: entry.size_bytes ?? null,
-    width: null,
-    height: null,
+    width: entry.width ?? null,
+    height: entry.height ?? null,
     duration: entry.duration ?? null,
-    fps: null,
+    fps: entry.fps ?? null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
     videoBitrate: entry.video_bitrate ?? null,
     audioBitrate: entry.audio_bitrate ?? null,
     audioSampleRate: entry.audio_sample_rate ?? null,
-    // The browser listing carries only what its cards need; an indexed path
-    // still reaches the full facts through its bundle row.
+    // Container bitrate and HDR class are the remaining info-panel fields the
+    // listing does not carry; an indexed path reaches them through its bundle
+    // row. Depth is here because the direct-play gate needs it.
     bitrate: null,
     hdr: null,
-    bitDepth: null,
+    bitDepth: entry.bit_depth ?? null,
     // An unclassified path has no media kind; 'other' makes the label fall back
     // to the file extension, matching how a bundle file labels the same case.
     typeLabel: formatFileType(entry.media_kind ?? 'other', entry.name),

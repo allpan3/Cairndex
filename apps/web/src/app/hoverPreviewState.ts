@@ -17,6 +17,7 @@ export interface HoverPreviewSource {
   container?: string | null
   videoCodec?: string | null
   videoCodecTag?: string | null
+  bitDepth?: number | null
   audioCodec?: string | null
   duration?: number | null
   startTime?: number | null
@@ -43,6 +44,7 @@ export function hoverPreviewMode(
       container: source.container,
       videoCodec: source.videoCodec,
       videoCodecTag: source.videoCodecTag,
+      bitDepth: source.bitDepth,
       audioCodec: source.audioCodec,
     },
     capabilities,

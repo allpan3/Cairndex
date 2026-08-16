@@ -66,20 +66,20 @@ export function factsFromEntry(entry: FileBrowserEntry): FileFacts {
     mediaKind: entry.media_kind ?? null,
     supported: entry.supported,
     status: entryStatus(entry),
-    width: null,
-    height: null,
+    width: entry.width ?? null,
+    height: entry.height ?? null,
     duration: entry.duration ?? null,
-    fps: null,
+    fps: entry.fps ?? null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
     videoBitrate: entry.video_bitrate ?? null,
     audioBitrate: entry.audio_bitrate ?? null,
     audioSampleRate: entry.audio_sample_rate ?? null,
-    // The browser listing carries only the fields its cards need; the rest
-    // arrive once the file is opened from an indexed row.
+    // Container bitrate and HDR class are the two the listing still does not
+    // carry; they arrive once the file is opened from an indexed row.
     bitrate: null,
     hdr: null,
-    bitDepth: null,
+    bitDepth: entry.bit_depth ?? null,
   }
 }
 
@@ -122,4 +122,43 @@ function entryStatus(entry: FileBrowserEntry): string {
   if (!entry.linked) return 'Not indexed'
   if (entry.unbundled) return 'Unbundled'
   return 'In a bundle'
+}
+
+/**
+ * Which pane the viewer's docked inspector should show for one item.
+ *
+ * The distinction that matters is *not* "does this file have a bundle id" — a
+ * scan stages every new file into a provisional one-file bundle, so an
+ * unbundled file has one. Showing the Bundle Inspector for it told the owner
+ * their file was in a bundle when it was not (2026-08-16). Only a confirmed
+ * bundle gets the bundle pane; everything else describes the file.
+ */
+export type ViewerInspectorTarget =
+  | { kind: 'bundle'; bundleId: string }
+  | { kind: 'file'; facts: FileFacts }
+
+/** For a File Browser row, indexed or not. */
+export function inspectorTargetForEntry(
+  entry: FileBrowserEntry | null,
+): ViewerInspectorTarget | null {
+  if (!entry) return null
+  return entry.bundle_id && !entry.unbundled
+    ? { kind: 'bundle', bundleId: entry.bundle_id }
+    : { kind: 'file', facts: factsFromEntry(entry) }
+}
+
+/**
+ * For a file opened from a bundle.
+ *
+ * Bundle Browser views exclude provisional bundles — but Missing Files does
+ * not, so a scan-staged one can be opened here too and must not be named a
+ * bundle either.
+ */
+export function inspectorTargetForBundleFile(
+  bundleId: string,
+  groupingState: string | null | undefined,
+  file: FileRead | null,
+): ViewerInspectorTarget | null {
+  if (groupingState !== 'provisional') return { kind: 'bundle', bundleId }
+  return file ? { kind: 'file', facts: factsFromBundleFile(file) } : null
 }
