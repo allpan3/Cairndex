@@ -41,3 +41,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0020](0020-macos-private-api-startup-background.md) | macOS private API for the desktop webview background | accepted |
 | [0021](0021-library-journal-mode-lifecycle.md) | Library journal-mode lifecycle — WAL while served, rollback at rest | accepted |
 | [0022](0022-grouping-plans-in-a-server-local-database.md) | Grouping plans live in a server-local database, attached to each library | accepted |
+| [0023](0023-native-modifier-state-during-drag.md) | Read modifier state natively during a drag | accepted |

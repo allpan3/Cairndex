@@ -825,7 +825,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Collection Counts */
+        /**
+         * Collection Counts
+         * @description Both figures per collection: its whole subtree, and its own bundles. The
+         *     sidebar badge shows whichever the grid beside it is listing.
+         */
         get: operations["collection_counts_api_v1_libraries__library_id__collections_counts_get"];
         put?: never;
         post?: never;
@@ -2817,6 +2821,22 @@ export interface components {
              * @enum {string}
              */
             order: "asc" | "desc";
+        };
+        /**
+         * CollectionCountsResponse
+         * @description Both figures a collection has, because the sidebar badge shows whichever
+         *     one its grid is showing: ``counts`` is the whole subtree, ``direct_counts``
+         *     is the collection's own bundles.
+         */
+        CollectionCountsResponse: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Direct Counts */
+            direct_counts: {
+                [key: string]: number;
+            };
         };
         /** CollectionCreate */
         CollectionCreate: {
@@ -6326,7 +6346,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CountsResponse"];
+                    "application/json": components["schemas"]["CollectionCountsResponse"];
                 };
             };
             /** @description Validation Error */

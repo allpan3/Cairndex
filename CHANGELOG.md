@@ -247,7 +247,55 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **A snapshot's filename no longer mangles the source's extension into its
   stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
   matching how GIF exports are named.
-
+- **A collection's count now says what opening it will show.** The badge counted
+  everything in the collection's whole subtree while the grid beside it listed only
+  that collection's own bundles, so a parent read `1` next to an empty grid whenever
+  its one bundle sat in a child — and moving a bundle from a parent into its own
+  child left the parent's number motionless while the grid lost a card, which read
+  as a count that refused to update. The badge now follows the grid: a collection's
+  own bundles, or the subtree total when **Show subcollection contents** is on.
+  Both figures come from the same request, so the toggle costs no round trip, and
+  the collection inspector still shows the two side by side as it always did.
+- **A drop that lands quickly after it starts no longer does nothing.** Dropping
+  bundles on a collection re-read the dragged ids from React state, which a fast
+  drag outruns — the app keeps a synchronous copy for exactly this reason and every
+  other part of the drop path already used it. When the two disagreed the write was
+  never sent at all: no card moved, no count changed, and nothing later corrected it
+  because nothing had happened.
+- **Holding ⌥ while dropping bundles on a collection copies them instead of
+  moving them.** It was meant to already, and mostly moved. The app read the
+  modifier off the drop event's `altKey`, which a native macOS drag does not
+  reliably deliver: the window server owns the keyboard for the duration, and
+  whether the flag reaches the page depends on the browser engine — Chrome passes
+  it through, the desktop shell's WKWebView does not. That is a limit on web
+  content, not on macOS; every native app tracks ⌥ mid-drag by reading the
+  system's own event state. So the desktop shell now reads it the same way and the
+  app asks the shell for the duration of each drag (ADR-0023), which is what makes
+  ⌥ work mid-drag there at all. The browser build keeps using the drag events'
+  own flags, and both fall back to the modifier state at `dragstart` — read before
+  the drag takes the keyboard — so holding ⌥ *before* starting a drag works with
+  no host at all. The default is move: a wrong move is one undo, while a wrong
+  copy quietly duplicates membership. The cursor's copy badge follows the same
+  answer, so it can no longer promise a copy the drop won't perform.
+- **A collection opened after a drop shows what is in it, not what was.** Dropping
+  bundles on a collection rewrote the cached listings it could work out and marked
+  the rest stale — but a stale listing is still served the instant its view opens,
+  refetching behind it, so any listing the rewrite quietly skipped showed its
+  pre-drop contents while the count beside it had already moved. Listings the
+  rewrite cannot prove — one carrying a filter or a search, an arrival with no
+  cached card to draw, a drag whose memberships had not loaded yet, and
+  Uncategorized or Untagged — are now dropped instead, so the next open fetches
+  them. The grid on screen still refetches in place rather than blanking. A browse
+  fetch already in flight when the drop lands is also cancelled: it used to answer
+  afterwards with the pre-drop page, overwrite the rewrite, and take the reconciling
+  refetch down with it as a duplicate request.
+- **A sidebar count no longer includes bundles the listing beside it hides.** Both
+  the per-collection and per-tag counts totted up membership rows without asking
+  what was on the other end, so an unbundled file — which belongs to the Unbundled
+  view and no other — was counted against every collection and tag it was filed
+  into. Opening that collection showed one fewer than its own badge claimed. A tag
+  carried only by unbundled files now reports 0 rather than dropping out of the
+  picker.
 - **Accepting a selection keeps the review open on what is left.** Reviewing a long
   plan happens in batches, and every accept used to end the dialog, so carrying on
   meant reopening it. Accepting now confirms the chosen bundles and immediately

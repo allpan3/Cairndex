@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
-from cairndex.api.schemas.browse import CountsResponse
+from cairndex.api.schemas.browse import CollectionCountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
     CollectionCleanup,
@@ -26,9 +26,14 @@ from cairndex.services import collections as service
 router = APIRouter(prefix="/libraries/{library_id}/collections", tags=["library-collections"])
 
 
-@router.get("/counts", response_model=CountsResponse)
-def collection_counts(db: LibrarySession) -> CountsResponse:
-    return CountsResponse(counts=browse_service.collection_counts(db))
+@router.get("/counts", response_model=CollectionCountsResponse)
+def collection_counts(db: LibrarySession) -> CollectionCountsResponse:
+    """Both figures per collection: its whole subtree, and its own bundles. The
+    sidebar badge shows whichever the grid beside it is listing."""
+    return CollectionCountsResponse(
+        counts=browse_service.collection_counts(db),
+        direct_counts=browse_service.collection_direct_counts(db),
+    )
 
 
 @router.post("", response_model=CollectionRead, status_code=status.HTTP_201_CREATED)
