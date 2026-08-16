@@ -10,6 +10,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Exports can carry a watermark, and it says what you tell it to.**
+  Settings → Exports has an off-by-default switch and a text field; with it on,
+  the mark is stamped on snapshots and GIFs in the bottom-right corner and on
+  contact sheets at the top right of their header. Only the exported copy is
+  marked — nothing in the library is touched. The mark scales with the export
+  rather than with the source, so it reads the same on a 480 px GIF as on a
+  full-resolution snapshot, and it is drawn in white over a soft shadow because
+  a frame can be a snowfield or a night sky and neither a light nor a dark mark
+  reads on both. Leaving the text empty stamps nothing. The setting is local to
+  the machine, like the export folder beside it, and the Exports page is now
+  reachable in a browser instead of only in the desktop app — a watermark
+  applies wherever an export can be started, even though the folder choice
+  above it is still desktop-only.
 - **A span of a video can be marked in the player and saved as a GIF.** The
   clip button (or `[` and `]`) marks the two ends at the playhead; the seek bar
   carries the selection in the context of the whole file, and a magnified track
@@ -114,6 +127,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The contact sheet's fixed Cairndex brand block is retired.** Every sheet
+  carried a blue-accented `EXPORTED FROM CAIRNDEX` lockup in its header whether
+  or not the owner wanted one; that is replaced by the opt-in watermark above,
+  which is off by default. A sheet exported without one now has no branding at
+  all, and its metadata rows spread into the width the block used to occupy.
+  The header's height is unchanged — it was always set by the three metadata
+  rows, not by what sat beside them.
 - **"Scan new files" now scans, and only scans.** It sat in the same menu as
   "Suggest grouping" and did that item's work too, ending a scan by opening the
   grouping review dialog nobody had asked for. The scan job takes a

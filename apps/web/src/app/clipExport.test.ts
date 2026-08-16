@@ -1,5 +1,8 @@
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
+import { resetExportPrefsForTests, useExportPrefs } from '../state/exportPrefs'
+import { watermarkFontSize } from './watermark'
 import {
   CLIP_FPS_CHOICES,
   DEFAULT_CLIP_FPS,
@@ -58,6 +61,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  resetExportPrefsForTests()
 })
 
 test('creates the export from the marked range and reports progress', async () => {
@@ -70,6 +75,8 @@ test('creates the export from the marked range and reports progress', async () =
     end_s: 9,
     width: null,
     fps: null,
+    watermark_png: null,
+    watermark_corner: 'bottom-right',
   })
   // The ellipsis is how the viewer knows to leave the message up.
   expect(report.mock.calls[0]?.[0]).toBe('Building GIF…')
@@ -79,6 +86,89 @@ test('creates the export from the marked range and reports progress', async () =
 test('passes size and rate through when given', async () => {
   await saveClipGif(TARGET, RANGE, { width: 320, fps: 15 }, vi.fn())
   expect(created).toHaveBeenCalledWith('file-1', expect.objectContaining({ width: 320, fps: 15 }))
+})
+
+/**
+ * Stand in for the canvas the mark is rendered on, recording the width it was
+ * sized against. The server's ffmpeg cannot draw text, so this is the only
+ * place the GIF's mark can come from.
+ */
+function stubWatermarkCanvas() {
+  const fonts: string[] = []
+  const context = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    measureText: vi.fn(() => ({ width: 90 })),
+    fillText: vi.fn(),
+    set font(value: string) {
+      fonts.push(value)
+    },
+    get font() {
+      return fonts[fonts.length - 1] ?? ''
+    },
+    fillStyle: '',
+    textAlign: 'left',
+    textBaseline: 'alphabetic',
+    shadowColor: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    lineJoin: 'round',
+    strokeText: vi.fn(),
+    shadowBlur: 0,
+    shadowOffsetY: 0,
+  }
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+    toBlob: vi.fn((callback: BlobCallback) => callback(new Blob([new Uint8Array([137, 80])]))),
+  }
+  const anchor = { href: '', download: '', click: vi.fn() }
+  vi.spyOn(document, 'createElement').mockImplementation(
+    (tag: string) => (tag === 'canvas' ? canvas : anchor) as unknown as HTMLElement,
+  )
+  return { canvas, fonts }
+}
+
+test('sends no mark while the watermark is off', async () => {
+  await saveClipGif(TARGET, RANGE, {}, vi.fn())
+  expect(created).toHaveBeenCalledWith('file-1', expect.objectContaining({ watermark_png: null }))
+})
+
+test('sends the rendered mark as base64 PNG in the bottom-right', async () => {
+  const { result } = renderHook(() => useExportPrefs())
+  act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
+  stubWatermarkCanvas()
+
+  await saveClipGif(TARGET, RANGE, {}, vi.fn())
+
+  const payload = created.mock.calls[0]?.[1] as { watermark_png: string; watermark_corner: string }
+  expect(payload.watermark_corner).toBe('bottom-right')
+  // The two bytes the fake canvas encoded, base64'd — the client sends pixels,
+  // not the string, because the server's ffmpeg has no `drawtext`.
+  expect(payload.watermark_png).toBe(btoa('\x89P'))
+})
+
+// Sized against the width the GIF will have, so the mark is proportionate to
+// the output rather than to whatever the source happened to be.
+test('sizes the mark against the requested output width', async () => {
+  const { result } = renderHook(() => useExportPrefs())
+  act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
+  const { fonts } = stubWatermarkCanvas()
+
+  await saveClipGif(TARGET, RANGE, { width: 1280 }, vi.fn())
+
+  expect(fonts[0]).toContain(`${watermarkFontSize(1280)}px`)
+})
+
+test('falls back to the server’s own default width when none was chosen', async () => {
+  const { result } = renderHook(() => useExportPrefs())
+  act(() => result.current[1]({ watermarkEnabled: true, watermarkText: 'STUDIO' }))
+  const { fonts } = stubWatermarkCanvas()
+
+  await saveClipGif(TARGET, RANGE, {}, vi.fn())
+
+  expect(fonts[0]).toContain(`${watermarkFontSize(DEFAULT_CLIP_WIDTH)}px`)
 })
 
 test('polls until the export finishes', async () => {

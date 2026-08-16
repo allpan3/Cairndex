@@ -8,7 +8,9 @@
  */
 
 import { getHostPlatform, isDesktopHost } from '../platform'
+import { getExportPrefs } from '../state/exportPrefs'
 import { exportFileName } from './exportNaming'
+import { drawWatermark, watermarkLabel } from './watermark'
 import type { WheelOption } from './WheelPicker'
 
 /**
@@ -88,6 +90,17 @@ export function saveSnapshot(
     ctx.fillStyle = '#050609'
     ctx.fillRect(0, 0, width, height)
   }
+
+  // After the frame, so the mark is on top of it, and sized against the output
+  // rather than the source: a snapshot scaled down to 640px gets a mark to
+  // match, not one shrunk from the 4K it was cut from.
+  drawWatermark(ctx, watermarkLabel(getExportPrefs()), {
+    left: 0,
+    top: 0,
+    width,
+    height,
+    corner: 'bottom-right',
+  })
 
   canvas.toBlob((blob) => {
     if (!blob) return

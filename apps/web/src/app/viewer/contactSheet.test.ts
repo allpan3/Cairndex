@@ -1,25 +1,43 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { composeContactSheet, CONTACT_SHEET_WATERMARK } from './contactSheet'
+import { composeContactSheet, type ContactSheetSource } from './contactSheet'
 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
-test('draws three metadata rows at left and the Cairndex brand at right', async () => {
-  const fillText = vi.fn()
+const ROWS = [
+  { label: 'File Name', value: 'video.mp4' },
+  { label: 'Details', value: '1.4 GB · 13:17 · 3840×2160 / 23.98 fps' },
+  { label: 'Codec', value: 'H.264 / 14.0 Mbps · AAC / 192 kbps / 48 kHz' },
+]
+
+/** Compose a sheet against a recording canvas, returning what was drawn. */
+async function compose(overrides: Partial<ContactSheetSource> = {}) {
+  const drawn: { text: string; x: number; y: number; align: string }[] = []
   const drawImage = vi.fn()
   const context = {
+    save: vi.fn(),
+    restore: vi.fn(),
     fillRect: vi.fn(),
     fillStyle: '',
-    fillText,
     font: '',
     measureText: vi.fn(() => ({ width: 150 })),
     textAlign: 'left',
     textBaseline: 'alphabetic',
+    shadowColor: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    lineJoin: 'round',
+    strokeText: vi.fn(),
+    shadowBlur: 0,
+    shadowOffsetY: 0,
     drawImage,
-  } as unknown as CanvasRenderingContext2D
+    fillText: vi.fn((text: string, x: number, y: number) =>
+      drawn.push({ text, x, y, align: context.textAlign }),
+    ),
+  }
   const canvas = {
     width: 0,
     height: 0,
@@ -40,23 +58,56 @@ test('draws three metadata rows at left and the Cairndex brand at right', async 
 
   await composeContactSheet({
     sheetUrl: '/contact-sheet',
-    metadataRows: [
-      { label: 'File Name', value: 'video.mp4' },
-      { label: 'Details', value: '1.4 GB · 13:17 · 3840×2160 / 23.98 fps' },
-      { label: 'Codec', value: 'H.264 / 14.0 Mbps · AAC / 192 kbps / 48 kHz' },
-    ],
+    metadataRows: ROWS,
     cols: 4,
     rows: 4,
+    ...overrides,
   })
+  return { drawn, canvas, grid, drawImage }
+}
 
-  expect(fillText.mock.calls.map(([text]) => text)).toEqual([
-    ...CONTACT_SHEET_WATERMARK,
+// The header used to carry a fixed "EXPORTED FROM / CAIRNDEX" block whether the
+// owner wanted one or not; it is now the same opt-in mark the other exports use.
+test('draws no mark when the owner has not asked for one', async () => {
+  const { drawn } = await compose()
+  expect(drawn.map(({ text }) => text)).toEqual([
     'File Name: video.mp4',
     'Details: 1.4 GB · 13:17 · 3840×2160 / 23.98 fps',
     'Codec: H.264 / 14.0 Mbps · AAC / 192 kbps / 48 kHz',
   ])
-  expect(fillText.mock.calls[0]?.[1]).toBeGreaterThan(fillText.mock.calls[2]?.[1] as number)
+})
+
+test('draws the mark at the header’s top right, above the metadata rows', async () => {
+  const { drawn } = await compose({ watermark: 'STUDIO ALPHA' })
+  expect(drawn.map(({ text }) => text)).toEqual([
+    'STUDIO ALPHA',
+    'File Name: video.mp4',
+    'Details: 1.4 GB · 13:17 · 3840×2160 / 23.98 fps',
+    'Codec: H.264 / 14.0 Mbps · AAC / 192 kbps / 48 kHz',
+  ])
+  const [mark, firstRow] = drawn
+  expect(mark?.align).toBe('right')
+  // Anchored to the right edge, while the rows run from the left.
+  expect(mark?.x).toBeGreaterThan(1280 / 2)
+  expect(firstRow?.align).toBe('left')
+  expect(firstRow?.x).toBeLessThan(1280 / 2)
+})
+
+// The mark sits in the header band, which is above the grid — never over a frame.
+test('keeps the mark inside the header, off the frames', async () => {
+  const { drawn, grid, drawImage } = await compose({ watermark: 'STUDIO ALPHA' })
+  const headerHeight = drawImage.mock.calls[0]?.[2] as number
   expect(drawImage).toHaveBeenCalledWith(grid, 0, expect.any(Number))
-  expect(canvas.height).toBeGreaterThan(grid.height + 70)
-  expect(canvas.height).toBeLessThan(grid.height + 120)
+  expect(drawn[0]?.y).toBeLessThan(headerHeight)
+  expect(drawn[0]?.y).toBeGreaterThan(0)
+})
+
+// Retiring the fixed block must not change the band's height — the sheet's
+// proportions come from its three metadata rows, not from what is beside them.
+test('leaves the header height to the metadata rows', async () => {
+  const withMark = await compose({ watermark: 'STUDIO ALPHA' })
+  const without = await compose()
+  expect(withMark.canvas.height).toBe(without.canvas.height)
+  expect(without.canvas.height).toBeGreaterThan(without.grid.height + 70)
+  expect(without.canvas.height).toBeLessThan(without.grid.height + 120)
 })
