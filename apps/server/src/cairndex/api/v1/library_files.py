@@ -10,15 +10,15 @@ resolves the library root); job enqueueing writes to the registry queue with the
 import mimetypes
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Query, Request, status
+from fastapi.responses import FileResponse, Response
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession, RegistryDbSession
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
 from cairndex.domain.enums import JobType
-from cairndex.media import previews
+from cairndex.media import hevc_relabel, previews, ranged_stream
 from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.scanning.fast_add import fast_add
@@ -73,21 +73,38 @@ def serve_file_preview(
 
 
 @router.get("/file")
-def serve_file(access: LibraryAccessDep, path: Annotated[str, Query()]) -> FileResponse:
+def serve_file(
+    access: LibraryAccessDep, path: Annotated[str, Query()], request: Request
+) -> Response:
     """Serve the raw bytes of a file under the library root (File Browser preview).
 
     Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
-    need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
+    need not be linked into a bundle. Range is honoured either way.
 
     This is the route an *unindexed* File Browser video plays through, so it sees
     the same overlapping range requests as ``/files/{id}/stream`` and needs the
     same scoped session — a yield dependency here pins two connections for the
     whole transfer and strands them outright when a seek aborts the request.
+
+    It relabels ``hev1`` HEVC as ``hvc1`` on the way out for the same reason that
+    route does: five bytes of header, byte-for-byte what a remux would produce,
+    and the file plays directly instead of needing a session
+    (``media/hevc_relabel``). An unindexed path benefits most — it has no row to
+    hang a session's metadata on in the first place.
     """
     with access.session() as db:
         target = file_browser_service.resolve_entry_path(db, path)
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-    return FileResponse(str(target), media_type=media_type, filename=target.name)
+    relabel = hevc_relabel.relabel_for(target)
+    if relabel is None:
+        return FileResponse(str(target), media_type=media_type, filename=target.name)
+    return ranged_stream.ranged_file_response(
+        target,
+        media_type=media_type,
+        size=target.stat().st_size,
+        range_header=request.headers.get("range"),
+        patch=relabel.apply,
+    )
 
 
 @router.post("/fast-add", response_model=FastAddResponse)

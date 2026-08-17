@@ -362,6 +362,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **HEVC files tagged `hev1` now play directly instead of being converted.** The
+  two HEVC tags differ only in where the stream's parameter sets are allowed to
+  live, and Safari — so the desktop app — plays only `hvc1`. That single refusal
+  was why such a file needed a server-side conversion at all, and everything that
+  followed from one: an ffmpeg process, a session that could expire, the pauses
+  and stalls when it did. The five bytes of header that distinguish the two tags
+  are now rewritten as the file streams, which is byte-for-byte what the
+  conversion produced — so the file plays directly, immediately, with nothing
+  running on the server. A file whose parameter sets are *not* provably complete
+  in its header is left alone and converted as before, because relabelling that
+  one would break playback partway through.
 - **A video left open no longer has its playback session deleted underneath it.**
   The server reaps a session with no playlist or segment fetch for 60 seconds —
   and a *paused* video fetches nothing, so leaving the viewer open was enough to

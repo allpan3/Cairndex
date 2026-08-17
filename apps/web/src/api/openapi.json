@@ -10953,7 +10953,7 @@
     },
     "/api/v1/libraries/{library_id}/file": {
       "get": {
-        "description": "Serve the raw bytes of a file under the library root (File Browser preview).\n\nRead-only and path-safe (same scoping as ``/file-browser/entries``). Files here\nneed not be linked into a bundle. ``FileResponse`` honors HTTP Range.\n\nThis is the route an *unindexed* File Browser video plays through, so it sees\nthe same overlapping range requests as ``/files/{id}/stream`` and needs the\nsame scoped session \u2014 a yield dependency here pins two connections for the\nwhole transfer and strands them outright when a seek aborts the request.",
+        "description": "Serve the raw bytes of a file under the library root (File Browser preview).\n\nRead-only and path-safe (same scoping as ``/file-browser/entries``). Files here\nneed not be linked into a bundle. Range is honoured either way.\n\nThis is the route an *unindexed* File Browser video plays through, so it sees\nthe same overlapping range requests as ``/files/{id}/stream`` and needs the\nsame scoped session \u2014 a yield dependency here pins two connections for the\nwhole transfer and strands them outright when a seek aborts the request.\n\nIt relabels ``hev1`` HEVC as ``hvc1`` on the way out for the same reason that\nroute does: five bytes of header, byte-for-byte what a remux would produce,\nand the file plays directly instead of needing a session\n(``media/hevc_relabel``). An unindexed path benefits most \u2014 it has no row to\nhang a session's metadata on in the first place.",
         "operationId": "serve_file_api_v1_libraries__library_id__file_get",
         "parameters": [
           {
@@ -14090,7 +14090,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/stream": {
       "get": {
-        "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).\n\nThe content session is scoped to path resolution and released *before* the\nresponse streams, so overlapping drag-seek range requests don't pin\nconnections and exhaust the pool (see ``LibraryAccess``).",
+        "description": "Range-streamed video, relabelling ``hev1`` HEVC as ``hvc1`` on the way out.\n\nThe content session is scoped to path resolution and released *before* the\nresponse streams, so overlapping drag-seek range requests don't pin\nconnections and exhaust the pool (see ``LibraryAccess``).\n\nAn ``hev1`` file whose parameter sets are complete in ``hvcC`` is served with\nfive bytes of header rewritten (``media/hevc_relabel``), which is byte-for-byte\nwhat a remux would have produced \u2014 so AVFoundation accepts it directly and no\nHLS session, ffmpeg run or session lifetime is involved at all. Anything the\nrelabel cannot vouch for streams untouched and the decision sends it to a\nsession as before.",
         "operationId": "stream_file_api_v1_libraries__library_id__files__file_id__stream_get",
         "parameters": [
           {
