@@ -362,6 +362,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **A video left open no longer has its playback session deleted underneath it.**
+  The server reaps a session with no playlist or segment fetch for 60 seconds —
+  and a *paused* video fetches nothing, so leaving the viewer open was enough to
+  lose it. Seeking past the buffered region then found a hole, and with the
+  playlist gone too the player ended the stream and reported the duration as
+  whatever had been buffered: 18:31 for a 68-minute video, with the controls
+  dead. A held session is now kept warm for as long as the player holds it, and
+  a touch that comes back "no such session" establishes a fresh one at the live
+  playhead instead of waiting for playback to trip over the gap.
 - **A clip range whose end sits on the file's own end now behaves.** Marking an
   in-point late in a video slides the span so its out-point lands on the
   duration — and from there the media ended itself before the range could act, so

@@ -32,6 +32,34 @@ const CAPACITY_RETRY_MS = 350
 // we abort and surface an explicit "server unavailable" card the user can retry,
 // instead of a spinner that never resolves.
 const DECISION_TIMEOUT_MS = 15_000
+// How often a held session is touched so the server does not reap it.
+//
+// `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` (default 60 s) reaps a session with no
+// playlist or segment fetch — and a *paused* video fetches nothing, so leaving
+// the viewer open was enough to have the session deleted underneath it. Seeking
+// past the buffered region then asked for a segment that no longer existed, and
+// with the playlist gone too hls.js ended the stream, collapsing the reported
+// duration to whatever had been buffered (owner-reported: 18:31 shown for a
+// 68-minute video, 2026-08-16).
+//
+// A paused video with the player attached is not abandoned, and this is what
+// says so. `serve_playlist` refreshes `last_access` and returns an in-memory
+// string, so the touch costs a round trip and nothing else — no new endpoint.
+// Comfortably under the default so a couple of missed beats are survivable.
+const SESSION_KEEPALIVE_MS = 20_000
+
+/**
+ * What one keepalive response says about the session we are holding.
+ *
+ * The distinction that matters is between "the server says there is no such
+ * session" and "we could not ask". A 404/410 is definitive and the only honest
+ * response is to establish a new session; a network failure is no information at
+ * all, and acting on it would throw away a working session over a blip.
+ */
+export function sessionTouchOutcome(status: number | null): 'alive' | 'gone' | 'unknown' {
+  if (status === null) return 'unknown'
+  return status === 404 || status === 410 ? 'gone' : 'alive'
+}
 const PLAYBACK_UNAVAILABLE_REASON =
   'The playback server is unavailable. It may be overloaded or restarting — try again in a moment.'
 
@@ -140,6 +168,8 @@ export function useHlsSession({
   // Bumped by a quality/audio/burn-in switch or a re-attach to force a fresh
   // decision for the same source without changing the target.
   const [epoch, setEpoch] = useState(0)
+  // The live session's playlist URL, or null when nothing needs keeping warm.
+  const [keepAliveUrl, setKeepAliveUrl] = useState<string | null>(null)
 
   const paramsRef = useRef<SwitchParams>(DEFAULT_PARAMS)
   const startAtRef = useRef(0)
@@ -157,6 +187,7 @@ export function useHlsSession({
 
   // Claims and deletes the tracked session so desktop exit can await completion
   const teardownLive = useCallback(async () => {
+    setKeepAliveUrl(null)
     const live = liveSessionRef.current
     if (live) {
       liveSessionRef.current = null
@@ -281,6 +312,7 @@ export function useHlsSession({
           }
         } else if (decision.session) {
           liveSessionRef.current = { target, sessionId: decision.session.id }
+          setKeepAliveUrl(decision.session.playlist_url)
           setSource({
             src: decision.session.playlist_url,
             mimeType: HLS_MIME,
@@ -337,6 +369,41 @@ export function useHlsSession({
       controller.abort()
     }
   }, [target, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
+
+  // Keep a held session warm for as long as the player holds it, and treat the
+  // touch as the liveness check it inherently is (see SESSION_KEEPALIVE_MS).
+  //
+  // A 404 means the session is *gone*, not glitching — the only honest response
+  // is to establish a new one, which a fresh decision does. Doing it here rather
+  // than waiting for playback to trip over the missing segment is the difference
+  // between resuming and a dead frame: by the time a segment 404s, hls.js may
+  // already have ended the stream and truncated the duration, and it does not
+  // reliably escalate that to a fatal error anyone can catch.
+  //
+  // Network failures are ignored on purpose. Those are transient and the next
+  // beat retries; only a definite "no such session" acts.
+  useEffect(() => {
+    if (keepAliveUrl === null) return
+    let cancelled = false
+    const id = window.setInterval(() => {
+      void fetch(keepAliveUrl, { method: 'GET', cache: 'no-store' })
+        .then((response) => (cancelled ? null : sessionTouchOutcome(response.status)))
+        .catch(() => null) // could not ask; see sessionTouchOutcome
+        .then((outcome) => {
+          if (cancelled || outcome !== 'gone') return
+          // Re-decide at the live playhead. The session is already gone server
+          // side, so drop the ref rather than trying to DELETE a 404.
+          liveSessionRef.current = null
+          setKeepAliveUrl(null)
+          startAtRef.current = Math.max(0, getCurrentTimeRef.current())
+          setEpoch((current) => current + 1)
+        })
+    }, SESSION_KEEPALIVE_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [keepAliveUrl])
 
   // Awaits ordinary authenticated teardown before the desktop host exits
   useEffect(() => {
