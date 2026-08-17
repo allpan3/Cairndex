@@ -67,6 +67,9 @@ const PLAYBACK_UNAVAILABLE_REASON =
 // perfectly playable, but the server could not be reached to decide/prepare it.
 export type HlsStatus = 'idle' | 'deciding' | 'ready' | 'error' | 'unavailable'
 
+/** What the server decided to do with the source — mirrors the API's `method`. */
+export type PlaybackMethod = 'direct' | 'remux' | 'transcode'
+
 /** User-selectable switches that force a fresh decision + session (§6.3). */
 export interface SwitchParams {
   audioStreamIndex: number | null
@@ -113,6 +116,8 @@ export interface HlsSessionState {
   /** The source to feed the player, or null while deciding / unplayable. */
   source: PlaybackSource | null
   status: HlsStatus
+  /** How the server chose to deliver this source; null before it has answered. */
+  method: PlaybackMethod | null
   reason: string
   /** Selectable audio tracks (from the decision) — empty for direct play. */
   audioStreams: AudioStreamRead[]
@@ -163,6 +168,7 @@ export function useHlsSession({
   // loading state, never a flash of the "can't be previewed" fallback card.
   const [status, setStatus] = useState<HlsStatus>('deciding')
   const [reason, setReason] = useState('')
+  const [method, setMethod] = useState<PlaybackMethod | null>(null)
   const [audioStreams, setAudioStreams] = useState<AudioStreamRead[]>([])
   const [params, setParams] = useState<SwitchParams>(DEFAULT_PARAMS)
   // Bumped by a quality/audio/burn-in switch or a re-attach to force a fresh
@@ -300,6 +306,7 @@ export function useHlsSession({
         reattachingRef.current = false
         const replaced = liveSessionRef.current
         setReason(decision.reason)
+        setMethod(decision.method as PlaybackMethod)
         setAudioStreams(decision.audio_streams)
         if (decision.method === 'direct') {
           liveSessionRef.current = null
@@ -474,6 +481,7 @@ export function useHlsSession({
   return {
     source,
     status,
+    method,
     reason,
     audioStreams,
     params,

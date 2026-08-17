@@ -186,6 +186,15 @@ test('a direct decision plays natively without starting a session', async () => 
   expect(mocks.deletePlaybackSession).not.toHaveBeenCalled()
 })
 
+test('reports the method the server chose, so the info panel can name it', async () => {
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.method).toBe('remux'))
+
+  mocks.requestPlaybackDecision.mockImplementation(() => Promise.resolve(directDecision()))
+  const direct = render('f2')
+  await waitFor(() => expect(direct.result.current.method).toBe('direct'))
+})
+
 test('re-attach re-requests a fresh session at the current playhead', async () => {
   const { result } = render('f1')
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s1/index.m3u8'))

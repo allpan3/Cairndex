@@ -45,6 +45,7 @@ import { SnapshotDialog } from '../SnapshotDialog'
 import { saveSnapshot } from '../snapshotExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
 import { createStallDetector } from './player/stallDetector'
+import { describePlayback, type PlaybackDescription } from './player/playbackInfo'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
@@ -917,6 +918,7 @@ export function ViewerShell({
         <InfoPanel
           item={current}
           playable={playable}
+          playback={describePlayback(hls.status, hls.method, hls.reason)}
           items={items}
           index={index}
           onIndex={onIndex}
@@ -1208,12 +1210,14 @@ const Topbar = memo(function Topbar({
 function InfoPanel({
   item,
   playable,
+  playback,
   items,
   index,
   onIndex,
 }: {
   item: ViewerItem
   playable: PlayableVideo | null
+  playback: PlaybackDescription | null
   items: ViewerItem[]
   index: number
   onIndex: (index: number) => void
@@ -1275,6 +1279,19 @@ function InfoPanel({
           <dt>Subtitles</dt>
           <dd>{subtitles && subtitles.length > 0 ? subtitles.join(', ') : '—'}</dd>
         </div>
+        {/* The consequence of the rows above it: given this encoding and this
+            client, here is what the server decided to do. Last, and only for a
+            video the player actually took on. */}
+        {item.mediaKind === 'video' && playback && (
+          <div>
+            <dt>Playback</dt>
+            <dd>
+              {playback.label}
+              {playback.session && <span className="mv-info__badge">HLS session</span>}
+              {playback.detail && <span className="mv-info__note">{playback.detail}</span>}
+            </dd>
+          </div>
+        )}
       </dl>
       {items.length > 1 && <FileList items={items} index={index} onIndex={onIndex} />}
     </aside>
