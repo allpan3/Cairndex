@@ -178,10 +178,21 @@ them in a range-aware reader.
 after the fourCC hits arbitrary payload and left two offsets wrong out of five.
 The parse is the work; the patch is trivial once the offsets are right.
 
-**Also still open**, both smaller and both about the session path that this work
-would make mostly irrelevant: ffmpeg exits after 28 of 40 segments on a plain
-`-c:v copy` remux, and a segment inside the ahead-window can 404 instantly
-(reproduced; cause unknown).
+**Both "remaining session issues" were closed as not-a-defect — they were my own
+arithmetic**, and the correction is worth keeping because the mistake is easy to
+repeat. I read "240 s file, 6 s segments, so 40 segments", then treated 29
+segments and an instant 404 on segment 30 as two bugs.
+
+A **remux** splits on the *source's own keyframes*, not a 6 s grid — its playlist
+is keyframe-derived, which `docs/architecture.md` §6 already says. The fixture was
+encoded `-g 250` at 30 fps, so its GOP is 8.33 s and the playlist is 29 segments
+averaging 8.28 s. ffmpeg had produced every one and **exited 0**; segment 30 does
+not exist, and refusing it instantly is correct. Only a *transcode* forces
+keyframes onto the 6 s grid that would have given 40.
+
+Verified against a real session afterwards: the last segment (28) and a mid-file
+one (14) each serve in 0.1 s from a cold far seek, and the first index past the end
+is a clean 404. If a far seek misbehaves again, suspect the client, not this.
 
 ## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
 
