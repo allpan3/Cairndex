@@ -382,6 +382,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   dead. A held session is now kept warm for as long as the player holds it, and
   a touch that comes back "no such session" establishes a fresh one at the live
   playhead instead of waiting for playback to trip over the gap.
+- **The info panel says how the video is actually playing.** A **Playback** row
+  now reads Direct play, Remuxing or Transcoding, tags the latter two with an
+  `HLS session` badge, and prints the server's own reason for choosing it
+  underneath — "hevc video codec is not in client capabilities", say. The server
+  had always decided this and always explained itself; none of it reached the
+  screen, so the difference between a file streaming untouched and one burning an
+  ffmpeg process behind it was invisible. That gap mattered more once `hev1` HEVC
+  began playing directly, because the files that used to need a session mostly
+  stopped needing one. To exercise the other path deliberately, pick a quality
+  below the source's own height from the player's settings menu — the row flips
+  to Transcoding while you watch.
 - **A clip range whose end sits on the file's own end now behaves.** Marking an
   in-point late in a video slides the span so its out-point lands on the
   duration — and from there the media ended itself before the range could act, so
