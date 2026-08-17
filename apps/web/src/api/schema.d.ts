@@ -981,12 +981,18 @@ export interface paths {
          * @description Serve the raw bytes of a file under the library root (File Browser preview).
          *
          *     Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
-         *     need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
+         *     need not be linked into a bundle. Range is honoured either way.
          *
          *     This is the route an *unindexed* File Browser video plays through, so it sees
          *     the same overlapping range requests as ``/files/{id}/stream`` and needs the
          *     same scoped session — a yield dependency here pins two connections for the
          *     whole transfer and strands them outright when a seek aborts the request.
+         *
+         *     It relabels ``hev1`` HEVC as ``hvc1`` on the way out for the same reason that
+         *     route does: five bytes of header, byte-for-byte what a remux would produce,
+         *     and the file plays directly instead of needing a session
+         *     (``media/hevc_relabel``). An unindexed path benefits most — it has no row to
+         *     hang a session's metadata on in the first place.
          */
         get: operations["serve_file_api_v1_libraries__library_id__file_get"];
         put?: never;
@@ -1725,11 +1731,18 @@ export interface paths {
         };
         /**
          * Stream File
-         * @description Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).
+         * @description Range-streamed video, relabelling ``hev1`` HEVC as ``hvc1`` on the way out.
          *
          *     The content session is scoped to path resolution and released *before* the
          *     response streams, so overlapping drag-seek range requests don't pin
          *     connections and exhaust the pool (see ``LibraryAccess``).
+         *
+         *     An ``hev1`` file whose parameter sets are complete in ``hvcC`` is served with
+         *     five bytes of header rewritten (``media/hevc_relabel``), which is byte-for-byte
+         *     what a remux would have produced — so AVFoundation accepts it directly and no
+         *     HLS session, ffmpeg run or session lifetime is involved at all. Anything the
+         *     relabel cannot vouch for streams untouched and the decision sends it to a
+         *     session as before.
          */
         get: operations["stream_file_api_v1_libraries__library_id__files__file_id__stream_get"];
         put?: never;

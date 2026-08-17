@@ -36,6 +36,7 @@ in the file, because the caller patches bytes while streaming.
 from __future__ import annotations
 
 import struct
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -248,3 +249,30 @@ def find_hevc_relabel(path: Path) -> HevcRelabel | None:
                 array_offsets=tuple(moov_start + offset for offset in offsets),
             )
     return None
+
+
+# Relabels already worked out, keyed by identity on disk rather than path alone so
+# a replaced file is re-read instead of served stale offsets. The decision and the
+# stream route both need the same answer within milliseconds of each other, and
+# `moov` is megabytes — parsing it twice per play would be the waste. Bounded and
+# in-process, like `probe_service.probe_path`: this is a cache, not a store.
+_CACHE_LIMIT = 256
+_cache: OrderedDict[tuple[str, int, int], HevcRelabel | None] = OrderedDict()
+
+
+def relabel_for(path: Path) -> HevcRelabel | None:
+    """:func:`find_hevc_relabel`, memoised on the file's identity on disk."""
+    try:
+        stat = path.stat()
+        key = (str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
+    if key in _cache:
+        _cache.move_to_end(key)
+        return _cache[key]
+    # Cached even when None: "this needs a remux" is just as worth not re-deriving.
+    found = find_hevc_relabel(path)
+    _cache[key] = found
+    while len(_cache) > _CACHE_LIMIT:
+        _cache.popitem(last=False)
+    return found
