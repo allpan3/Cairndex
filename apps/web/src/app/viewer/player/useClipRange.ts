@@ -320,16 +320,39 @@ export function useClipPlayback(
       // session, so there is one ending rather than two that can disagree.
       else video.pause()
     }
-    const stop = () => onEnd()
-    video.addEventListener('pause', stop)
-    // A span reaching the end of the file need not emit `pause` on every
-    // browser, and a session left open would confine the next play.
-    video.addEventListener('ended', stop)
+    // `pause` and `ended` get distinct owners, because a span whose out-point is
+    // the *file's* own end finishes through both — and the spec fires `pause`
+    // first. Treating that pause as an ordinary one tore the session down before
+    // loop could come round, and the tick above cannot help: by then the element
+    // has paused itself, so its first guard returns. Marking an in-point late in
+    // a video is enough to get there, since `setEdgeAtPlayhead` keeps the span's
+    // length and clamps the out-point to the duration (owner-reported,
+    // 2026-08-16: the playhead parked at the far right and Loop never returned).
+    const onPause = () => {
+      // The media pausing itself at its own end is `ended`'s business.
+      if (video.ended) return
+      onEnd()
+    }
+    const onEnded = () => {
+      if (loop) {
+        video.currentTime = range.start
+        void video.play()
+        return
+      }
+      // Not looping: park at the in-point rather than at the file's end, so the
+      // next press replays the span instead of restarting the whole file — a
+      // browser resets an ended element's playhead before `play` fires, which is
+      // why leaving it at the end silently lost the selection.
+      video.currentTime = range.start
+      onEnd()
+    }
+    video.addEventListener('pause', onPause)
+    video.addEventListener('ended', onEnded)
     frame = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(frame)
-      video.removeEventListener('pause', stop)
-      video.removeEventListener('ended', stop)
+      video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
     }
   }, [loop, onEnd, playing, range, video])
 }

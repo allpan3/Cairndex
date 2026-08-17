@@ -164,9 +164,11 @@ export function ViewerShell({
   const endedHandledRef = useRef(false)
   const endedContextRef = useRef<{
     fileLoop: boolean
+    /** A marked span is playing, so it owns the end of the file. */
+    clipPlaying: boolean
     player: PlayerController | null
     step: (delta: number) => void
-  }>({ fileLoop: false, player: null, step: () => {} })
+  }>({ fileLoop: false, clipPlaying: false, player: null, step: () => {} })
   const [resumeNotice, setResumeNotice] = useState<{ key: string; position: number } | null>(null)
   // Transient feedback for exports ("Building contact sheet…" / errors) — the
   // viewer has no toast bus of its own.
@@ -539,8 +541,8 @@ export function ViewerShell({
   )
 
   useEffect(() => {
-    endedContextRef.current = { fileLoop, player, step }
-  }, [fileLoop, player, step])
+    endedContextRef.current = { fileLoop, clipPlaying: clip.playingRange, player, step }
+  }, [clip.playingRange, fileLoop, player, step])
 
   // What the docked Bundle Inspector's actions mean *here*. Everything not
   // listed is inherited from the shell unchanged — the whole point of the
@@ -606,6 +608,11 @@ export function ViewerShell({
   useEffect(() => {
     consumeEndedTransition(player.status, endedHandledRef, () => {
       const context = endedContextRef.current
+      // A span whose out-point is the file's own end reaches this too, and
+      // `useClipPlayback` has already dealt with it — looped, or parked at the
+      // in-point. Advancing to the next file on top of that is the last thing a
+      // clip selection wants (owner-reported, 2026-08-16).
+      if (context.clipPlaying) return
       if (context.player) {
         handlePlaybackEnded(context.fileLoop, context.player, () => context.step(1))
       }
