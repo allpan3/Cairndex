@@ -125,3 +125,94 @@ def test_an_h264_mp4_has_no_hev1_entry(tmp_path: Path) -> None:
     )  # fmt: skip
 
     assert find_hevc_relabel(h264) is None
+
+
+# --- end to end: an hev1 file plays directly and arrives as hvc1 --------------
+@requires_hevc
+def test_an_hev1_file_decides_direct_and_streams_as_hvc1(
+    client, library_id: str, session, library_root: Path
+) -> None:
+    """The point of the whole exercise, through the API.
+
+    An `hev1` file used to be a `remux` — an ffmpeg session, with everything that
+    hangs off one. It is `direct` now, and the bytes the client receives are the
+    ones a remux would have produced.
+    """
+    from cairndex.domain.enums import FileRole, MediaKind
+    from cairndex.services import bundles as bundle_service
+
+    _encode(library_root / "hev1.mp4", tag="hev1")
+    bundle = bundle_service.create_bundle(session, title="hev1.mp4")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="hev1.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    # A WKWebView-shaped client: hvc1 yes, hev1 no — measured, see the module docs.
+    caps = {
+        "containers": ["mp4"],
+        "video_codecs": ["h264", "hevc", "hvc1", "hevc10"],
+        "audio_codecs": ["aac"],
+    }
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/files/{video.id}/playback-decision",
+        json={"caps": caps},
+    ).json()
+
+    assert decision["method"] == "direct", decision["reason"]
+    assert decision["session"] is None
+
+    served = client.get(decision["stream_url"])
+    assert served.status_code == 200
+    assert served.headers["accept-ranges"] == "bytes"
+    # Byte-identical to a real hvc1 remux of the same content.
+    reference = library_root / "reference-hvc1.mp4"
+    _encode(reference, tag="hvc1")
+    assert served.content == reference.read_bytes()
+
+
+@requires_hevc
+def test_a_client_that_cannot_take_hvc1_still_gets_a_session(
+    client, library_id: str, session, library_root: Path
+) -> None:
+    """The relabel only helps a client that accepts `hvc1`; others must remux."""
+    from cairndex.domain.enums import FileRole, MediaKind
+    from cairndex.services import bundles as bundle_service
+
+    _encode(library_root / "hev1b.mp4", tag="hev1")
+    bundle = bundle_service.create_bundle(session, title="hev1b.mp4")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="hev1b.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/files/{video.id}/playback-decision",
+        json={"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}},
+    ).json()
+
+    assert decision["method"] == "transcode"
+
+
+@requires_hevc
+def test_an_unindexed_hev1_path_is_relabelled_too(
+    client, library_id: str, library_root: Path
+) -> None:
+    """The File Browser path reader benefits most: no row, so no session metadata."""
+    (library_root / "Set07").mkdir()
+    _encode(library_root / "Set07" / "hev1.mp4", tag="hev1")
+    reference = library_root / "ref.mp4"
+    _encode(reference, tag="hvc1")
+
+    served = client.get(f"/api/v1/libraries/{library_id}/file", params={"path": "Set07/hev1.mp4"})
+
+    assert served.status_code == 200
+    assert served.content == reference.read_bytes()

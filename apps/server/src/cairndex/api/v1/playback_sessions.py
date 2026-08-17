@@ -34,7 +34,7 @@ from cairndex.api.v1.playback import _chapters, _track_read
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import MediaKind
-from cairndex.media import hls, playback, probe_service
+from cairndex.media import hevc_relabel, hls, playback, probe_service
 from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, SessionParams
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
@@ -88,10 +88,29 @@ def _audio_stream_reads(streams: list[dict[str, Any]]) -> list[AudioStreamRead]:
     ]
 
 
+def _effective_video_tag(
+    caps: playback.CapabilityProfile, meta: dict[str, Any], path: Path
+) -> str | None:
+    """The codec tag to decide on, after an in-place relabel is accounted for.
+
+    An `hev1` file that carries its parameter sets in `hvcC` can be served *as*
+    `hvc1` by rewriting five bytes of header on the way out (see
+    `media/hevc_relabel`), which makes it directly playable on a client that
+    takes `hvc1` — no session, no ffmpeg, and none of the session lifetime that
+    used to hang off it. Resolved here rather than in `decide_playback`, which is
+    a pure function and must stay one.
+    """
+    tag = meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
+    if tag != "hev1" or "hvc1" not in caps.video_codec_tags:
+        return tag
+    return "hvc1" if hevc_relabel.relabel_for(path) is not None else tag
+
+
 def _decide(
     caps: playback.CapabilityProfile,
     asset_file: AssetFile,
     meta: dict[str, Any],
+    video_path: Path,
     *,
     audio_stream_index: int | None,
     burn_subtitle_track_id: str | None,
@@ -107,9 +126,7 @@ def _decide(
         ext=extension_of(asset_file.relative_path),
         video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
         audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
-        video_codec_tag=(
-            meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
-        ),
+        video_codec_tag=_effective_video_tag(caps, meta, video_path),
         source_height=height if isinstance(height, int) else None,
         bit_depth=depth if isinstance(depth, int) else None,
         hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
@@ -249,6 +266,7 @@ def _resolve_and_decide(
         profile,
         asset_file,
         meta,
+        video_path,
         audio_stream_index=audio_stream_index,
         burn_subtitle_track_id=burn_subtitle_track_id,
         max_height=max_height,
@@ -513,9 +531,7 @@ def file_browser_playback_decision(
         ext=video_path.suffix.lstrip("."),
         video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
         audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
-        video_codec_tag=(
-            meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
-        ),
+        video_codec_tag=_effective_video_tag(caps, meta, video_path),
         source_height=height if isinstance(height, int) else None,
         bit_depth=depth if isinstance(depth, int) else None,
         hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
