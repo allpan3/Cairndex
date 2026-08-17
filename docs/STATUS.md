@@ -118,9 +118,37 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Next: take `hev1` HEVC off HLS entirely (designed, measured, not built)
+## Open on branch: `hev1` HEVC off HLS entirely, and playback you can see (2026-08-16)
 
-**Why this is the fundamental fix and everything else is a safety net.** An
+Branch `fix/hevc-direct-play-and-playback-resilience` (renamed from
+`fix/desktop-relay-and-stall-watchdog` as its scope grew), off `main` at
+`12a16828`. The measurement and design below were written first and are kept
+because they are the argument; **it is built now** — `media/hevc_relabel.py`,
+`media/ranged_stream.py`, and the `_effective_video_tag` hook in the playback
+routes, with the equivalence to `-tag:v hvc1` pinned byte-for-byte at 8- and
+10-bit. The one design change: offsets are memoised in-process on
+`(path, size, mtime_ns)` rather than stored in `tech_metadata`, so an unindexed
+File Browser path gets the same treatment as an indexed row and a replaced file
+is never served stale offsets.
+
+**Also on this branch: the info panel now says how a video is playing.** The
+owner's question was literally "how do I even know it does?" — the server had
+always decided `direct`/`remux`/`transcode` and always written a human reason,
+and none of it reached the screen. `useHlsSession` exposes `method` alongside
+`reason`; `player/playbackInfo.describePlayback` turns the pair into a label, an
+`HLS session` badge for remux and transcode, and the server's reason underneath;
+`InfoPanel` renders it as a **Playback** row. It returns null before a decision
+lands, so the row is hidden rather than showing an em-dash or a guess.
+
+Worth knowing, because it is now the only easy way to reach a session on this
+machine: **taking `hev1` direct removed most of what used to need one.** To force
+a transcode on any file, pick a quality below the source's own height from the
+player's settings menu (`qualityOptions` offers only heights at or below the
+source, and `decide_playback` transcodes when `source_height > max_height`) — the
+Playback row flips while you watch. A `-c copy` remux into MKV is the other
+route: no browser advertises the container, so it is always a session.
+
+**Why the relabel is the fundamental fix and everything else is a safety net.** An
 `hev1`-tagged HEVC file needs an HLS session for one reason: AVFoundation refuses
 that four-character code progressively, so the only route to a decoder is MSE,
 and MSE is only reachable through HLS. Every downstream problem — ffmpeg running
@@ -159,7 +187,8 @@ the header either way. **A remux is therefore byte-equivalent to patching five
 bytes of header and serving the original `mdat` untouched** — no ffmpeg, no
 session, no reaper exposure.
 
-**Design.** At probe time, locate and store the offsets; at serve time, patch
+**Design, as planned** — shipped as described except for where the offsets live
+(see above). At probe time, locate and store the offsets; at serve time, patch
 them in a range-aware reader.
 
 1. Parse `hvcC` properly. `hev1_relabel_offsets` belongs beside `mp4_index.py`,
@@ -196,7 +225,7 @@ is a clean 404. If a far seek misbehaves again, suspect the client, not this.
 
 ## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
 
-Branch `fix/desktop-relay-and-stall-watchdog`, off `main` at `12a16828`. One
+The first commit of the branch recorded above, under its original name. One
 commit. Owner-reported live, while testing on `claude/export-watermark-settings-41db44`
 (which contains the PR #4 merge).
 
