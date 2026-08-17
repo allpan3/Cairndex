@@ -362,6 +362,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **A clip range whose end sits on the file's own end now behaves.** Marking an
+  in-point late in a video slides the span so its out-point lands on the
+  duration — and from there the media ended itself before the range could act, so
+  Loop never came round, the playhead parked at the far right, the viewer stepped
+  on to the next file, and the next press of play restarted the whole video with
+  the marked span silently ignored. `pause` and `ended` have distinct owners now:
+  the pause the media performs at its own end belongs to the range, Loop comes
+  round from it, and a non-looping span parks at the in-point so the next press
+  replays the span.
 - **A video that quietly stops now says so instead of freezing.** The load
   watchdog stops caring once metadata arrives, and after that the only thing
   that reaches the failure path is the media element's own `error` event — which

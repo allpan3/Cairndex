@@ -195,8 +195,13 @@ function fakeVideo() {
     currentTime: 0,
     paused: false,
     seeking: false,
+    ended: false,
     pause: vi.fn(function (this: { paused: boolean }) {
       this.paused = true
+    }),
+    play: vi.fn(function (this: { paused: boolean }) {
+      this.paused = false
+      return Promise.resolve()
     }),
     addEventListener(type: string, fn: () => void) {
       if (!listeners.has(type)) listeners.set(type, new Set())
@@ -274,13 +279,47 @@ test('a pause ends the span, so resuming is ordinary playback', () => {
   expect(onEnd).toHaveBeenCalledOnce()
 })
 
-// Running off the end of the file need not emit `pause` on every browser, and
-// a session left open would confine whatever plays next.
-test('reaching the end of the file ends the span too', () => {
+// Running off the end of the file ends the span too, but parked at the in-point
+// rather than at the file's end: a browser resets an ended element's playhead
+// before `play` fires, so leaving it there silently lost the selection on the
+// next press (owner-reported, 2026-08-16).
+test('reaching the end of the file ends the span, parked at the in-point', () => {
   const video = fakeVideo()
+  video.currentTime = 240
+  video.ended = true
   const { onEnd } = runPlayback(video)
 
   video.emit('ended')
+  expect(onEnd).toHaveBeenCalledOnce()
+  expect(video.currentTime).toBe(10)
+})
+
+// The case that broke: an out-point sitting on the file's own end. The media
+// pauses itself first, so the tick cannot act and `pause` must not surrender.
+test('a span ending at the file end still loops', () => {
+  const video = fakeVideo()
+  video.currentTime = 240
+  video.ended = true
+  const { onEnd } = runPlayback(video, { loop: true })
+
+  // The spec fires `pause` before `ended` when the media reaches its end.
+  video.emit('pause')
+  expect(onEnd).not.toHaveBeenCalled()
+
+  video.emit('ended')
+  expect(video.currentTime).toBe(10)
+  expect(video.play).toHaveBeenCalled()
+  // Still confining: the session must survive so the span keeps repeating.
+  expect(onEnd).not.toHaveBeenCalled()
+})
+
+test('an ordinary pause still ends the span, even mid-span', () => {
+  const video = fakeVideo()
+  video.currentTime = 15
+  video.ended = false
+  const { onEnd } = runPlayback(video, { loop: true })
+
+  video.emit('pause')
   expect(onEnd).toHaveBeenCalledOnce()
 })
 
