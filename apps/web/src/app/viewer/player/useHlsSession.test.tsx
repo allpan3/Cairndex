@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { ClientCapabilities, PlaybackDecisionResponse } from '../../../api/client'
 import { runDesktopExitTasks } from '../../../desktop/exitTasks'
-import { useHlsSession, type UseHlsSessionOptions } from './useHlsSession'
+import { sessionTouchOutcome, useHlsSession, type UseHlsSessionOptions } from './useHlsSession'
 
 const mocks = vi.hoisted(() => {
   class HttpErrorMock extends Error {
@@ -401,4 +401,62 @@ test('neither a row nor a path means no decision at all', () => {
   renderHook(() => useHlsSession({ ...options(null), fileId: null, browserPath: null }))
 
   expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
+})
+
+// A paused video fetches no segments, so the server's idle reaper deleted the
+// session underneath an open viewer — and seeking past the buffered region then
+// found a hole that hls.js turned into a truncated duration rather than an error
+// (owner-reported, 2026-08-16: 18:31 shown for a 68-minute video).
+test('a held session is kept warm so the server does not reap it', async () => {
+  vi.useFakeTimers()
+  const fetchMock = vi.fn(() => Promise.resolve({ ok: true, status: 200 } as Response))
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    render('f1')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(20_000)
+    // The playlist, which refreshes last_access and costs nothing else.
+    expect(fetchMock).toHaveBeenCalledWith('/s/s1/index.m3u8', expect.anything())
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3)
+  } finally {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  }
+})
+
+test('a transient network failure on the touch is ignored', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.reject(new Error('offline'))),
+  )
+  try {
+    render('f1')
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    // Still one decision: a failed touch is not evidence the session is gone.
+    expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(1)
+  } finally {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  }
+})
+
+// The policy the keepalive applies, named and tested on its own: fighting fake
+// timers to observe it through the hook proved far less clear than this.
+test('a keepalive response says alive, gone, or nothing at all', () => {
+  // Definitive: the server has no such session, so a new one must be made.
+  expect(sessionTouchOutcome(404)).toBe('gone')
+  expect(sessionTouchOutcome(410)).toBe('gone')
+  // Healthy.
+  expect(sessionTouchOutcome(200)).toBe('alive')
+  // A blip, or the server briefly refusing: no information about the session,
+  // and throwing a working one away over it would be the worse mistake.
+  expect(sessionTouchOutcome(null)).toBe('unknown')
+  expect(sessionTouchOutcome(503)).toBe('alive')
+  expect(sessionTouchOutcome(429)).toBe('alive')
 })
