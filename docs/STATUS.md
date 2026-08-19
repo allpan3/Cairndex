@@ -118,6 +118,71 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Next: take `hev1` HEVC off HLS entirely (designed, measured, not built)
+
+**Why this is the fundamental fix and everything else is a safety net.** An
+`hev1`-tagged HEVC file needs an HLS session for one reason: AVFoundation refuses
+that four-character code progressively, so the only route to a decoder is MSE,
+and MSE is only reachable through HLS. Every downstream problem — ffmpeg running
+at all, sessions expiring, the reaper, keepalives, segment holes, transcode disk
+— exists solely because of that refusal. Remove it and the whole class goes,
+rather than being managed. The owner asked for exactly this ("if there is
+something fundamentally missing, fix it fundamentally").
+
+**Measured on the actual engine, not inferred.** A WKWebView probe (a ~60-line
+Swift harness; worth rebuilding rather than trusting Chrome, which answers
+differently):
+
+| probe | `canPlayType` | `MSE.isTypeSupported` |
+| --- | --- | --- |
+| hevc `hvc1` 8-bit | probably | true |
+| hevc `hvc1` **10-bit** | **probably** | true |
+| hevc `hev1` 8-bit | **(empty)** | true |
+| hevc `hev1` 10-bit | **(empty)** | true |
+| h264 High10 | (empty) | false |
+
+Two conclusions. The bit-depth rule added in PR #4 is **not** implicated —
+WKWebView advertises `hvc1` 10-bit as playable, so `hevc10` is in the profile and
+the rule never fires for it. And `hev1` is refused progressively at *both*
+depths while MSE accepts it, which is the whole story.
+
+**The conversion is five bytes.** Encoding the same content twice with
+`-tag:v hvc1` and `-tag:v hev1` produces files that differ in exactly five bytes,
+all inside `moov`:
+
+- the sample-entry fourCC — 2 bytes, since `hvc1`/`hev1` share `h` and `1`;
+- `array_completeness` on each of the VPS/SPS/PPS arrays in `hvcC`, `0xA0/A1/A2`
+  vs `0x20/21/22` — 3 bytes.
+
+Both files carried an identical 2433-byte `hvcC`, so the parameter sets are in
+the header either way. **A remux is therefore byte-equivalent to patching five
+bytes of header and serving the original `mdat` untouched** — no ffmpeg, no
+session, no reaper exposure.
+
+**Design.** At probe time, locate and store the offsets; at serve time, patch
+them in a range-aware reader.
+
+1. Parse `hvcC` properly. `hev1_relabel_offsets` belongs beside `mp4_index.py`,
+   which already walks `moov` boxes byte-wise. Record the offsets in
+   `tech_metadata` so serving costs no re-parse.
+2. `hvcC` layout: 23 bytes of fixed fields, then `numOfArrays`, then per array a
+   `completeness/reserved/NAL_unit_type` byte, `numNalus`, and length-prefixed
+   NALs. The sample entry is 8 + 78 bytes before its child boxes.
+3. Guard: only claim `hvc1` when the arrays are present and complete. If a stream
+   genuinely varies its parameter sets in-band, relabelling is a lie that breaks
+   playback partway, so the guard is load-bearing rather than defensive.
+4. `decide_playback` then treats a relabellable `hev1` as `hvc1`, and the direct
+   `stream_url` serves the patched header.
+
+**Do not byte-search for the array bytes.** Tried it: searching for `0x20/21/22`
+after the fourCC hits arbitrary payload and left two offsets wrong out of five.
+The parse is the work; the patch is trivial once the offsets are right.
+
+**Also still open**, both smaller and both about the session path that this work
+would make mostly irrelevant: ffmpeg exits after 28 of 40 segments on a plain
+`-c:v copy` remux, and a segment inside the ahead-window can 404 instantly
+(reproduced; cause unknown).
+
 ## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
 
 Branch `fix/desktop-relay-and-stall-watchdog`, off `main` at `12a16828`. One
