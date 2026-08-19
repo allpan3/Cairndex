@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from cairndex.media.hevc_relabel import find_hevc_relabel
+from cairndex.media.hevc_relabel import Outcome, inspect_hevc
 
 _FFMPEG = shutil.which("ffmpeg")
 requires_hevc = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not installed")
@@ -43,7 +43,7 @@ def test_patching_hev1_reproduces_the_hvc1_remux_byte_for_byte(tmp_path: Path) -
     _encode(hev1, tag="hev1")
     _encode(hvc1, tag="hvc1")
 
-    relabel = find_hevc_relabel(hev1)
+    relabel = inspect_hevc(hev1).relabel
     assert relabel is not None
 
     source = hev1.read_bytes()
@@ -63,7 +63,7 @@ def test_it_patches_across_a_chunk_boundary(tmp_path: Path) -> None:
     hvc1 = tmp_path / "hvc1.mp4"
     _encode(hev1, tag="hev1")
     _encode(hvc1, tag="hvc1")
-    relabel = find_hevc_relabel(hev1)
+    relabel = inspect_hevc(hev1).relabel
     assert relabel is not None
 
     source = hev1.read_bytes()
@@ -83,7 +83,7 @@ def test_an_already_hvc1_file_needs_no_relabel(tmp_path: Path) -> None:
     _encode(hvc1, tag="hvc1")
 
     # Nothing to do, so nothing is claimed — the caller plays it directly as is.
-    assert find_hevc_relabel(hvc1) is None
+    assert inspect_hevc(hvc1).relabel is None
 
 
 @requires_hevc
@@ -94,7 +94,7 @@ def test_ten_bit_hev1_relabels_the_same_way(tmp_path: Path) -> None:
     _encode(hev1, tag="hev1", pix_fmt="yuv420p10le")
     _encode(hvc1, tag="hvc1", pix_fmt="yuv420p10le")
 
-    relabel = find_hevc_relabel(hev1)
+    relabel = inspect_hevc(hev1).relabel
     assert relabel is not None
     assert relabel.apply(hev1.read_bytes(), 0) == hvc1.read_bytes()
 
@@ -103,11 +103,11 @@ def test_a_non_mp4_is_refused_rather_than_guessed(tmp_path: Path) -> None:
     junk = tmp_path / "notes.txt"
     junk.write_text("not a video at all")
 
-    assert find_hevc_relabel(junk) is None
+    assert inspect_hevc(junk).relabel is None
 
 
 def test_a_missing_file_is_refused(tmp_path: Path) -> None:
-    assert find_hevc_relabel(tmp_path / "absent.mp4") is None
+    assert inspect_hevc(tmp_path / "absent.mp4").relabel is None
 
 
 @requires_hevc
@@ -124,7 +124,7 @@ def test_an_h264_mp4_has_no_hev1_entry(tmp_path: Path) -> None:
         capture_output=True,
     )  # fmt: skip
 
-    assert find_hevc_relabel(h264) is None
+    assert inspect_hevc(h264).relabel is None
 
 
 # --- end to end: an hev1 file plays directly and arrives as hvc1 --------------
@@ -216,3 +216,187 @@ def test_an_unindexed_hev1_path_is_relabelled_too(
 
     assert served.status_code == 200
     assert served.content == reference.read_bytes()
+
+
+# --- refusals explain themselves ---------------------------------------------
+# A refusal used to be an unadorned None, which reached the UI as a remux with no
+# stated cause. These pin the words, because they are what someone reads when
+# their file is the one that will not play directly.
+@requires_hevc
+def test_a_file_missing_a_parameter_set_says_which_one(tmp_path: Path) -> None:
+    """The realistic refusal: a muxer that left a parameter set out of `hvcC`."""
+    hev1 = tmp_path / "hev1.mp4"
+    _encode(hev1, tag="hev1")
+    source = hev1.read_bytes()
+
+    # Drop the VPS array by renumbering it to a type nothing requires. The array
+    # walk still parses; only the completeness guard changes its mind.
+    relabel = inspect_hevc(hev1).relabel
+    assert relabel is not None
+    vps_offset = relabel.array_offsets[0]
+    mangled = bytearray(source)
+    assert mangled[vps_offset] & 0x3F == 32, "first parameter-set array should be the VPS"
+    mangled[vps_offset] = (mangled[vps_offset] & ~0x3F) | 39  # SEI: not required
+    stripped = tmp_path / "no-vps.mp4"
+    stripped.write_bytes(bytes(mangled))
+
+    outcome = inspect_hevc(stripped)
+
+    assert outcome.relabel is None
+    assert outcome.why == "its header carries no VPS, so the decoder needs them in-band"
+
+
+@requires_hevc
+def test_a_sample_entry_without_hvcc_says_so(tmp_path: Path) -> None:
+    hev1 = tmp_path / "hev1.mp4"
+    _encode(hev1, tag="hev1")
+    source = hev1.read_bytes()
+    # Rename `hvcC` so the sample entry no longer advertises a configuration.
+    mangled = source.replace(b"hvcC", b"xxxC", 1)
+    assert mangled != source
+    broken = tmp_path / "no-hvcc.mp4"
+    broken.write_bytes(mangled)
+
+    outcome = inspect_hevc(broken)
+
+    assert outcome.relabel is None
+    assert outcome.why == "its sample entry carries no hvcC configuration"
+
+
+@requires_hevc
+def test_a_relabellable_file_offers_no_excuse(tmp_path: Path) -> None:
+    hev1 = tmp_path / "hev1.mp4"
+    _encode(hev1, tag="hev1")
+
+    outcome = inspect_hevc(hev1)
+
+    assert outcome.relabel is not None
+    assert outcome.why is None
+
+
+def test_a_file_that_was_never_hev1_is_not_explained(tmp_path: Path) -> None:
+    """There was no relabel on offer, so there is nothing to excuse."""
+    junk = tmp_path / "notes.txt"
+    junk.write_text("not a video at all")
+
+    assert inspect_hevc(junk) == Outcome(None, None)
+
+
+def test_a_missing_file_says_its_header_could_not_be_read(tmp_path: Path) -> None:
+    assert inspect_hevc(tmp_path / "absent.mp4").why == "its header could not be read"
+
+
+# --- and the decision says it, which is where anyone will actually read it -----
+@requires_hevc
+def test_a_client_taking_no_hevc_tag_is_told_that_is_why(
+    client, library_id: str, library_root: Path
+) -> None:
+    """`hev1 codec tag is not in client capabilities` alone reads as arbitrary.
+
+    The owner hit exactly this (2026-08-16): a remux, an HLS session, and no clue
+    whether the file or the client was the obstacle.
+    """
+    (library_root / "Set07").mkdir(exist_ok=True)
+    _encode(library_root / "Set07" / "tagless.mp4", tag="hev1")
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "Set07/tagless.mp4",
+            # HEVC decodes, but only through MSE — no tag plays progressively.
+            "caps": {"containers": ["mp4"], "video_codecs": ["hevc"], "audio_codecs": ["aac"]},
+        },
+    ).json()
+
+    assert decision["method"] == "remux"
+    assert decision["reason"].endswith("this client plays no HEVC tag progressively")
+
+
+@requires_hevc
+def test_a_file_that_cannot_be_relabelled_says_which_set_is_missing(
+    client, library_id: str, library_root: Path
+) -> None:
+    (library_root / "Set08").mkdir(exist_ok=True)
+    source = library_root / "Set08" / "whole.mp4"
+    _encode(source, tag="hev1")
+    relabel = inspect_hevc(source).relabel
+    assert relabel is not None
+    mangled = bytearray(source.read_bytes())
+    offset = relabel.array_offsets[0]
+    mangled[offset] = (mangled[offset] & ~0x3F) | 39
+    (library_root / "Set08" / "novps.mp4").write_bytes(bytes(mangled))
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "Set08/novps.mp4",
+            # This client *would* take the relabelled result; the file cannot give it.
+            "caps": {
+                "containers": ["mp4"],
+                "video_codecs": ["hevc", "hvc1"],
+                "audio_codecs": ["aac"],
+            },
+        },
+    ).json()
+
+    assert decision["method"] == "remux"
+    assert decision["reason"].endswith(
+        "its header carries no VPS, so the decoder needs them in-band"
+    )
+
+
+@requires_hevc
+def test_a_direct_decision_carries_no_excuse(client, library_id: str, library_root: Path) -> None:
+    """Nothing to explain when the relabel worked — the note is for refusals."""
+    (library_root / "Set09").mkdir(exist_ok=True)
+    _encode(library_root / "Set09" / "fine.mp4", tag="hev1")
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "Set09/fine.mp4",
+            "caps": {
+                "containers": ["mp4"],
+                "video_codecs": ["hevc", "hvc1"],
+                "audio_codecs": ["aac"],
+            },
+        },
+    ).json()
+
+    assert decision["method"] == "direct"
+    assert ";" not in decision["reason"]
+
+
+@requires_hevc
+def test_a_tag_that_disagrees_with_the_header_is_reported_as_such(
+    client, library_id: str, library_root: Path, monkeypatch
+) -> None:
+    """The one refusal that means a defect here, not a property of the file."""
+    (library_root / "Set10").mkdir(exist_ok=True)
+    # Genuinely `hvc1` on disk, so the parser finds no `hev1` entry to relabel...
+    _encode(library_root / "Set10" / "mismatch.mp4", tag="hvc1")
+    # ...while the probe insists it is `hev1`.
+    from cairndex.media import probe_service
+
+    real = probe_service.probe_path
+
+    def lying_probe(abs_path: Path) -> dict[str, object]:
+        meta = dict(real(abs_path))
+        meta["video_codec_tag"] = "hev1"
+        return meta
+
+    monkeypatch.setattr(probe_service, "probe_path", lying_probe)
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "Set10/mismatch.mp4",
+            "caps": {
+                "containers": ["mp4"],
+                "video_codecs": ["hevc", "hvc1"],
+                "audio_codecs": ["aac"],
+            },
+        },
+    ).json()
+
+    assert decision["reason"].endswith("its container header does not match its probed codec tag")
