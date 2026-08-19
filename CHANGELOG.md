@@ -393,6 +393,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   stopped needing one. To exercise the other path deliberately, pick a quality
   below the source's own height from the player's settings menu — the row flips
   to Transcoding while you watch.
+- **A refused HEVC relabel now says why, in the Playback row.** "hev1 codec tag
+  is not in client capabilities" was true and useless: it did not distinguish a
+  file whose header cannot be relabelled from a client that would not take the
+  result anyway, and both fell back to a session in silence. The reason now names
+  which — "this client plays no HEVC tag progressively", or "its header carries
+  no VPS, so the decoder needs them in-band". A third case is called out
+  explicitly rather than left silent: a file whose container header disagrees
+  with its probed codec tag, which is a defect here rather than a property of the
+  file.
 - **A clip range whose end sits on the file's own end now behaves.** Marking an
   in-point late in a video slides the span so its out-point lands on the
   duration — and from there the media ended itself before the range could act, so

@@ -59,6 +59,21 @@ _ARRAY_COMPLETE = 0x80
 
 
 @dataclass(frozen=True)
+class Outcome:
+    """The relabel if one applies, and otherwise why it does not.
+
+    ``why`` exists because "not directly playable" was, on its own, an
+    unactionable thing to read: a refused relabel and a client that takes no
+    HEVC tag at all produced the same silent fallback to a session. It is
+    phrased for a person and is only set when the file *is* ``hev1`` — for
+    anything else there was never a relabel on offer.
+    """
+
+    relabel: HevcRelabel | None
+    why: str | None = None
+
+
+@dataclass(frozen=True)
 class HevcRelabel:
     """Absolute file offsets that turn an ``hev1`` track into an ``hvc1`` one."""
 
@@ -161,28 +176,35 @@ def _descend(data: bytes, span: tuple[int, int], path: tuple[bytes, ...]) -> tup
     return current
 
 
-def _array_offsets(data: bytes, hvcc: tuple[int, int]) -> tuple[int, ...] | None:
-    """Offsets of each NAL array header byte in ``hvcC``, or None if unusable.
+_ARRAY_NAMES = {_VPS: "VPS", _SPS: "SPS", _PPS: "PPS"}
 
-    Returns None unless VPS, SPS and PPS are all present with at least one NAL
-    each — see the module docstring on why that guard decides correctness.
+
+def _array_offsets(data: bytes, hvcc: tuple[int, int]) -> tuple[int, ...] | str:
+    """Offsets of each NAL array header byte in ``hvcC``, or why they are unusable.
+
+    Refuses unless VPS, SPS and PPS are all present with at least one NAL each —
+    see the module docstring on why that guard decides correctness.
     """
     start, end = hvcc
     cursor = start + _HVCC_FIXED_FIELDS
     if cursor + 1 > end:
-        return None
+        return "its hvcC header is truncated"
     count = data[cursor]
     cursor += 1
     offsets: list[int] = []
     seen: set[int] = set()
     for _ in range(count):
         if cursor + 3 > end:
-            return None
+            return "its hvcC parameter-set arrays are truncated"
         header = data[cursor]
         nal_type = header & 0x3F
         num_nalus = struct.unpack(">H", data[cursor + 1 : cursor + 3])[0]
         if num_nalus == 0:
-            return None  # an empty array cannot be "complete"
+            # An empty array cannot be "complete"; the sets must be in-band.
+            if nal_type in _REQUIRED_ARRAYS:
+                return f"its hvcC declares an empty {_ARRAY_NAMES[nal_type]} array"
+            cursor += 3
+            continue
         if nal_type in _REQUIRED_ARRAYS:
             # Only the parameter sets are claimed complete. SEI and the rest can
             # legitimately arrive in-band, and ffmpeg leaves their bit clear —
@@ -192,35 +214,39 @@ def _array_offsets(data: bytes, hvcc: tuple[int, int]) -> tuple[int, ...] | None
         cursor += 3
         for _ in range(num_nalus):
             if cursor + 2 > end:
-                return None
+                return "its hvcC parameter-set arrays are truncated"
             length = struct.unpack(">H", data[cursor : cursor + 2])[0]
             cursor += 2 + length
             if cursor > end:
-                return None
-    if not _REQUIRED_ARRAYS.issubset(seen):
-        return None
+                return "its hvcC parameter-set arrays are truncated"
+    missing = sorted(_ARRAY_NAMES[nal] for nal in _REQUIRED_ARRAYS - seen)
+    if missing:
+        return f"its header carries no {' or '.join(missing)}, so the decoder needs them in-band"
     return tuple(offsets)
 
 
-def find_hevc_relabel(path: Path) -> HevcRelabel | None:
-    """Offsets that relabel an ``hev1`` track as ``hvc1``, or ``None``.
+def inspect_hevc(path: Path) -> Outcome:
+    """Whether ``path`` can be relabelled ``hev1`` -> ``hvc1``, and if not, why.
 
-    ``None`` means "remux it" — not an MP4, no ``hev1`` sample entry, no
+    A refusal means "remux it" — not an MP4, no ``hev1`` sample entry, no
     ``hvcC``, or parameter sets that are not provably complete in the header.
+    Only the last kind carries a ``why``: the others are not ``hev1`` files at
+    all, so no relabel was ever on offer and there is nothing to explain.
     """
+    unreadable = Outcome(None, "its header could not be read")
     try:
         file_size = path.stat().st_size
         with path.open("rb") as fh:
             moov = _find_moov(fh, file_size)
             if moov is None:
-                return None
+                return Outcome(None)
             moov_start, moov_end = moov
             fh.seek(moov_start)
             data = fh.read(moov_end - moov_start)
     except OSError:
-        return None
+        return unreadable
     if len(data) != moov_end - moov_start:
-        return None
+        return unreadable
 
     # Offsets within `data` are relative to `moov_start`; the caller needs them
     # absolute, because it patches bytes as they stream past.
@@ -230,7 +256,7 @@ def find_hevc_relabel(path: Path) -> HevcRelabel | None:
             continue
         stsd = _descend(data, (trak_start, trak_end), (b"mdia", b"minf", b"stbl", b"stsd"))
         if stsd is None:
-            continue
+            continue  # not a media track we can read; the audio track lands here
         # `stsd` is a full box: version/flags (4) then entry_count (4).
         entries_start = stsd[0] + 8
         for entry_type, entry_payload, entry_end in _children(data, entries_start, stsd[1]):
@@ -240,15 +266,17 @@ def find_hevc_relabel(path: Path) -> HevcRelabel | None:
             children_start = entry_payload + _VISUAL_SAMPLE_ENTRY_FIELDS
             hvcc = _child(data, (children_start, entry_end), b"hvcC")
             if hvcc is None:
-                return None
+                return Outcome(None, "its sample entry carries no hvcC configuration")
             offsets = _array_offsets(data, hvcc)
-            if offsets is None:
-                return None
-            return HevcRelabel(
-                tag_offset=moov_start + tag_offset,
-                array_offsets=tuple(moov_start + offset for offset in offsets),
+            if isinstance(offsets, str):
+                return Outcome(None, offsets)
+            return Outcome(
+                HevcRelabel(
+                    tag_offset=moov_start + tag_offset,
+                    array_offsets=tuple(moov_start + offset for offset in offsets),
+                )
             )
-    return None
+    return Outcome(None)
 
 
 # Relabels already worked out, keyed by identity on disk rather than path alone so
@@ -257,22 +285,28 @@ def find_hevc_relabel(path: Path) -> HevcRelabel | None:
 # `moov` is megabytes — parsing it twice per play would be the waste. Bounded and
 # in-process, like `probe_service.probe_path`: this is a cache, not a store.
 _CACHE_LIMIT = 256
-_cache: OrderedDict[tuple[str, int, int], HevcRelabel | None] = OrderedDict()
+_cache: OrderedDict[tuple[str, int, int], Outcome] = OrderedDict()
 
 
-def relabel_for(path: Path) -> HevcRelabel | None:
-    """:func:`find_hevc_relabel`, memoised on the file's identity on disk."""
+def outcome_for(path: Path) -> Outcome:
+    """:func:`inspect_hevc`, memoised on the file's identity on disk."""
     try:
         stat = path.stat()
         key = (str(path), stat.st_size, stat.st_mtime_ns)
     except OSError:
-        return None
+        return Outcome(None, "its header could not be read")
     if key in _cache:
         _cache.move_to_end(key)
         return _cache[key]
-    # Cached even when None: "this needs a remux" is just as worth not re-deriving.
-    found = find_hevc_relabel(path)
+    # Cached even when refused: "this needs a remux" is just as worth not
+    # re-deriving, and the reason is what the UI shows.
+    found = inspect_hevc(path)
     _cache[key] = found
     while len(_cache) > _CACHE_LIMIT:
         _cache.popitem(last=False)
     return found
+
+
+def relabel_for(path: Path) -> HevcRelabel | None:
+    """The relabel to apply while streaming ``path``, if there is one."""
+    return outcome_for(path).relabel

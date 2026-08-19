@@ -140,6 +140,38 @@ and none of it reached the screen. `useHlsSession` exposes `method` alongside
 `InfoPanel` renders it as a **Playback** row. It returns null before a decision
 lands, so the row is hidden rather than showing an em-dash or a guess.
 
+**A refused relabel now explains itself, because the first owner report after it
+shipped was a file that stayed on `remux`.** The reason read "hev1 codec tag is
+not in client capabilities", which was true and unactionable: three unrelated
+situations produced it and nothing distinguished them. `inspect_hevc` returns an
+`Outcome` carrying the refusal in words; the routes append it to the reason; the
+Playback row shows it. The ladder, in the order worth checking:
+
+1. **"this client plays no HEVC tag progressively"** — the client decodes HEVC
+   only through MSE, so relabelling would not help and a session is correct.
+   Chromium is *not* this case: measured here, Chrome 148 answers _probably_ to
+   `hvc1` **and** `hev1` at both depths, so it direct-plays either without any
+   relabel. WKWebView is the case that matters.
+2. **"its header carries no VPS…" / "…no hvcC configuration"** — the file itself.
+   Correctly refused: claiming `hvc1` when the decoder needs parameter sets
+   in-band breaks playback partway, which is worse than a remux. Do not weaken
+   this guard to make a file direct-play.
+3. **"its container header does not match its probed codec tag"** — the parser
+   found no `hev1` sample entry in a file the probe called `hev1`. This one is a
+   defect here, not a property of the file, and was previously silent.
+
+To ask the question directly about one file, from `apps/server`:
+
+```
+uv run python -c "
+import sys
+from pathlib import Path
+from cairndex.media.hevc_relabel import inspect_hevc
+outcome = inspect_hevc(Path(sys.argv[1]))
+print(outcome.relabel and 'direct play' or ('needs a session: ' + (outcome.why or 'not hev1')))
+" /path/to/file.mp4
+```
+
 Worth knowing, because it is now the only easy way to reach a session on this
 machine: **taking `hev1` direct removed most of what used to need one.** To force
 a transcode on any file, pick a quality below the source's own height from the
