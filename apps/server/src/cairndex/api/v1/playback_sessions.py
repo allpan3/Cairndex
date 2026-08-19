@@ -9,7 +9,7 @@ idle. Path resolution stays server-side and every route is gated by the same
 served with ``no-store`` because they are throwaway session state.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -90,8 +90,8 @@ def _audio_stream_reads(streams: list[dict[str, Any]]) -> list[AudioStreamRead]:
 
 def _effective_video_tag(
     caps: playback.CapabilityProfile, meta: dict[str, Any], path: Path
-) -> str | None:
-    """The codec tag to decide on, after an in-place relabel is accounted for.
+) -> tuple[str | None, str | None]:
+    """``(tag to decide on, why a relabel was unavailable)``.
 
     An `hev1` file that carries its parameter sets in `hvcC` can be served *as*
     `hvc1` by rewriting five bytes of header on the way out (see
@@ -99,11 +99,36 @@ def _effective_video_tag(
     takes `hvc1` — no session, no ffmpeg, and none of the session lifetime that
     used to hang off it. Resolved here rather than in `decide_playback`, which is
     a pure function and must stay one.
+
+    The second element is the difference between "this file cannot be relabelled"
+    and "this client would not take the result anyway". Both used to fall back to
+    a session in silence, which made a remux look arbitrary; whichever applies is
+    now said out loud in the decision reason.
     """
     tag = meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
-    if tag != "hev1" or "hvc1" not in caps.video_codec_tags:
-        return tag
-    return "hvc1" if hevc_relabel.relabel_for(path) is not None else tag
+    if tag != "hev1":
+        return tag, None
+    if "hvc1" not in caps.video_codec_tags:
+        return tag, "this client plays no HEVC tag progressively"
+    outcome = hevc_relabel.outcome_for(path)
+    if outcome.relabel is not None:
+        return "hvc1", None
+    # No relabel *and* nothing to say means the parser found no `hev1` sample
+    # entry in a file the probe called `hev1` — the two disagree, which is a
+    # defect here rather than a property of the file. Say that instead of
+    # falling back in silence; silence is what made this class hard to chase.
+    return tag, outcome.why or "its container header does not match its probed codec tag"
+
+
+def _explained(decision: playback.PlaybackDecision, note: str | None) -> playback.PlaybackDecision:
+    """Append a relabel note to a non-direct decision's reason.
+
+    Only when it is non-direct: on a `direct` decision the relabel either worked
+    or was never needed, and there is nothing left to excuse.
+    """
+    if not note or decision.method == "direct":
+        return decision
+    return replace(decision, reason=f"{decision.reason}; {note}")
 
 
 def _decide(
@@ -121,19 +146,27 @@ def _decide(
     streams = _audio_streams(meta)
     height = meta.get("height")
     depth = meta.get("bit_depth")
-    return playback.decide_playback(
-        caps,
-        ext=extension_of(asset_file.relative_path),
-        video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
-        audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
-        video_codec_tag=_effective_video_tag(caps, meta, video_path),
-        source_height=height if isinstance(height, int) else None,
-        bit_depth=depth if isinstance(depth, int) else None,
-        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
-        audio_stream_index=audio_stream_index,
-        default_audio_index=playback.default_audio_stream_index(streams),
-        burn_subtitle=burn_subtitle_track_id is not None,
-        requested_max_height=max_height,
+    tag, note = _effective_video_tag(caps, meta, video_path)
+    return _explained(
+        playback.decide_playback(
+            caps,
+            ext=extension_of(asset_file.relative_path),
+            video_codec=meta.get("video_codec")
+            if isinstance(meta.get("video_codec"), str)
+            else None,
+            audio_codec=meta.get("audio_codec")
+            if isinstance(meta.get("audio_codec"), str)
+            else None,
+            video_codec_tag=tag,
+            source_height=height if isinstance(height, int) else None,
+            bit_depth=depth if isinstance(depth, int) else None,
+            hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
+            audio_stream_index=audio_stream_index,
+            default_audio_index=playback.default_audio_stream_index(streams),
+            burn_subtitle=burn_subtitle_track_id is not None,
+            requested_max_height=max_height,
+        ),
+        note,
     )
 
 
@@ -526,18 +559,26 @@ def file_browser_playback_decision(
     streams = _audio_streams(meta)
     height = meta.get("height")
     depth = meta.get("bit_depth")
-    decision = playback.decide_playback(
-        caps,
-        ext=video_path.suffix.lstrip("."),
-        video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
-        audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
-        video_codec_tag=_effective_video_tag(caps, meta, video_path),
-        source_height=height if isinstance(height, int) else None,
-        bit_depth=depth if isinstance(depth, int) else None,
-        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
-        audio_stream_index=payload.audio_stream_index,
-        default_audio_index=playback.default_audio_stream_index(streams),
-        requested_max_height=payload.max_height,
+    tag, note = _effective_video_tag(caps, meta, video_path)
+    decision = _explained(
+        playback.decide_playback(
+            caps,
+            ext=video_path.suffix.lstrip("."),
+            video_codec=meta.get("video_codec")
+            if isinstance(meta.get("video_codec"), str)
+            else None,
+            audio_codec=meta.get("audio_codec")
+            if isinstance(meta.get("audio_codec"), str)
+            else None,
+            video_codec_tag=tag,
+            source_height=height if isinstance(height, int) else None,
+            bit_depth=depth if isinstance(depth, int) else None,
+            hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
+            audio_stream_index=payload.audio_stream_index,
+            default_audio_index=playback.default_audio_stream_index(streams),
+            requested_max_height=payload.max_height,
+        ),
+        note,
     )
 
     duration = _duration(meta)
