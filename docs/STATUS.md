@@ -118,6 +118,70 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
+
+Branch `fix/desktop-relay-and-stall-watchdog`, off `main` at `12a16828`. One
+commit. Owner-reported live, while testing on `claude/export-watermark-settings-41db44`
+(which contains the PR #4 merge).
+
+**Report.** A video open in the desktop app froze: could not play, could not
+seek, the rest of the UI fine. Later refined — it happens after seeking the
+playhead past the buffered region, and the bar then "drifts to the right end,
+goes back to the left, and reads 0.0/0.0". That reading is the signature of the
+element being *reset*: `currentTime / duration` renders 100% when duration hits
+0, then 0% when currentTime follows.
+
+**What the live system ruled out**, before touching any code — worth repeating
+because it took minutes and saved hours:
+
+- the sidecar was healthy throughout (`/health` 2–5 ms, library-scoped DB routes
+  3–20 ms), so no pool exhaustion;
+- zero jobs, both library roots readable in ~20 ms;
+- **no `transcode/` directory at all**, and the session manager mkdirs it the
+  moment any playback route resolves — so no HLS session existed and the source
+  was progressive;
+- **no version skew**: the prebuilt sidecar was rebuilt at 02:04:03, after the
+  01:51:16 merge, and its live `/openapi.json` matches HEAD's committed artifact
+  path-for-path;
+- `lsof` on the sidecar port showed only the LISTEN socket over a 6 s sample —
+  the client was requesting nothing at all;
+- the File Browser path reader **does** honour Range (verified live: `206`, a
+  correct `content-range` on a 3.3 GB file), so the seek was not failing there.
+
+**Three fixes landed.**
+
+1. `media_proxy.rs` had no allowlist arm for
+   `["file-browser", "playback-sessions", _, artifact]`, so the desktop shell
+   404'd the path-scoped sessions PR #4 added — in the app only; a browser does
+   not go through the relay. **This allowlist has now bitten three times**
+   (contact sheets 2026-07-27, GIF exports on the watermark branch, this). It is
+   an explicit list with no compile-time tie to the routes it mirrors; a fourth
+   occurrence should probably buy a real fix rather than a fourth arm.
+2. `player/stallDetector.ts` plus a sampler in `ViewerShell`: a progressive read
+   that dies without an `error` event now ends in the existing
+   "Playback interrupted" path instead of silence.
+3. `nativeRecoveringRef` was cleared only on a new `source` object, but the
+   `unavailable` and `error` branches settle without minting one — so one failed
+   recovery made the player swallow every later error, frozen with no card.
+   Pre-existing on `main`, and the likeliest explanation for the report.
+
+**Adversarial review earned its keep** and should be repeated for anything in
+this file. It caught two false positives in the watchdog before it shipped, both
+worse than the bug: sampling only `buffered.end(length - 1)` (a refilling
+*earlier* range reads as a dead read — i.e. it would have fired on exactly the
+seek-past-the-buffer gesture that motivated it), and applying to HLS, where the
+server holds a segment request for two 20 s passes and 15 s would have been the
+tightest deadline in the stack.
+
+**Not verified by the owner yet.** The fix is reasoned and unit-tested; nobody
+has yet reproduced the freeze *with* it in place. The recovery that needs no
+restart is a quality or audio-track switch, which bumps the epoch and reloads
+the element.
+
+**Known local-only e2e failure**, unchanged: `transparently re-attaches a fresh
+session when HLS segments fail` fails on this machine and on unmodified `main`,
+and passes in CI.
+
 ## Open on branch: library setup and the videos that would not play (2026-08-16)
 
 Branch `claude/library-setup-scan-issues-db7786`, off `main` at `a8e077a4`.

@@ -44,6 +44,7 @@ import { ClipExportDialog } from '../ClipExportDialog'
 import { SnapshotDialog } from '../SnapshotDialog'
 import { saveSnapshot } from '../snapshotExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
+import { createStallDetector } from './player/stallDetector'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
@@ -68,6 +69,14 @@ const MAX_NATIVE_RECOVER = 3
 // reload opens a fresh connection, and an exhausted budget surfaces the
 // retryable "Playback interrupted" card instead of a dead player.
 const LOAD_WATCHDOG_MS = 15_000
+
+// The same idea once metadata has arrived, for a read that dies without an
+// error event (see `stallDetector.ts`). The same 15 s, for the same reason: long
+// enough that a slow network filling a buffer is never mistaken for a stall,
+// and the detector additionally requires the buffer to be static. Sampled every
+// second, which is cheap and fine-grained enough to date the stall.
+const STALL_WATCHDOG_MS = 15_000
+const STALL_SAMPLE_MS = 1_000
 
 /** Cover-frame actions the owning surface supplies, when the item is indexed. */
 export interface ShellCoverActions {
@@ -235,12 +244,20 @@ export function ViewerShell({
     nativeRecoverRef.current = 0
     nativeRecoveringRef.current = false
   }, [currentKey])
-  // The retried decision resolved into a (new) source object and the engine
-  // reloaded — the recovery window is over. If this reload is also broken, its
-  // own error event must count against the budget again.
+  // The retried decision resolved — the recovery window is over, and if this
+  // reload is also broken its own error event must count against the budget
+  // again.
+  //
+  // Keyed on the decision *settling*, not only on a new source object. The
+  // unavailable and error branches settle without minting one, so keyed on
+  // `source` alone this flag stuck true forever: every later stage error hit
+  // the early return below, leaving a frozen frame with no recovery and no
+  // card — exactly the dead end this whole path exists to avoid. Still held
+  // through `deciding`, which is the burst it is meant to swallow.
+  const hlsStatus = hls.status
   useEffect(() => {
-    nativeRecoveringRef.current = false
-  }, [source])
+    if (hlsStatus !== 'deciding') nativeRecoveringRef.current = false
+  }, [source, hlsStatus])
   const lastTimeRef = useRef(0)
   useEffect(() => {
     const delta = player.currentTime - lastTimeRef.current
@@ -458,6 +475,60 @@ export function ViewerShell({
       video.removeEventListener('error', disarm)
     }
   }, [source, videoElement])
+  // The watchdog above stops caring once metadata lands, and after that only the
+  // element's own `error` event reaches the failure path — which a progressive
+  // read that simply dies never fires. See `stallDetector.ts` for what that left
+  // on screen. Sampling is the only way to notice: there is no event for "this
+  // has quietly stopped".
+  useEffect(() => {
+    const video = videoElement
+    // Progressive only. hls.js already has fragment timeouts, retries and a
+    // fatal path into this same handler, and the server legitimately holds a
+    // segment request for two 20 s passes while ffmpeg catches up
+    // (hls.py DEFAULT_SEGMENT_WAIT) — a 15 s client deadline would be the
+    // tightest in the stack and would tear down a session that was only
+    // transcoding slowly. With MSE the buffer also grows a whole fragment at a
+    // time, so "bytes are still arriving" is invisible here in a way it is not
+    // for a progressive read.
+    if (!video || !source || source.kind === 'hls') return
+    const detector = createStallDetector(STALL_WATCHDOG_MS, STALL_SAMPLE_MS * 4)
+    const id = window.setInterval(() => {
+      // Every range, not the last one: seeking forward and back leaves several,
+      // and the one being refilled is often not the furthest along.
+      const ranges = video.buffered
+      let bufferedSeconds = 0
+      for (let i = 0; i < ranges.length; i++) bufferedSeconds += ranges.end(i) - ranges.start(i)
+      const stalled = detector.observe(
+        {
+          paused: video.paused,
+          seeking: video.seeking,
+          ended: video.ended,
+          playbackRate: video.playbackRate,
+          readyState: video.readyState,
+          currentTime: video.currentTime,
+          bufferedSeconds,
+        },
+        performance.now(),
+      )
+      // Straight to the card, deliberately *not* through handleStageError.
+      //
+      // That path reloads the element first, which is right for a transient
+      // error the element reported — but a post-metadata stall with a static
+      // buffer means the read is already dead, so reloading only churns. And it
+      // churns visibly: a reload resets `video.duration` to NaN, which the
+      // control bar renders as `0:00` beside a `currentTime` frozen at its last
+      // value, three times over before any card appeared. The owner reported
+      // that as a worse freeze than the silence it replaced (2026-08-16), and
+      // they were right.
+      //
+      // The card's own "Try again" performs exactly that reload — under the
+      // owner's hand, with the state explained rather than mid-churn.
+      if (stalled && currentKey) setFailure({ key: currentKey, kind: 'interrupted' })
+    }, STALL_SAMPLE_MS)
+    return () => window.clearInterval(id)
+    // `currentKey` is what the failure is filed under, so a step to another file
+    // must rebuild the detector rather than report against the previous one.
+  }, [source, videoElement, currentKey])
 
   const step = useCallback(
     (delta: number) => {
