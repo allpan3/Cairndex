@@ -131,6 +131,33 @@ routes, with the equivalence to `-tag:v hvc1` pinned byte-for-byte at 8- and
 File Browser path gets the same treatment as an indexed row and a replaced file
 is never served stale offsets.
 
+**Owner-verified on a real library, 2026-08-19.** Ready for review; no PR opened
+(the owner's call).
+
+**The trap that cost most of this branch's debugging: the desktop app serves a
+compiled backend, so server-side work does not apply until it is rebuilt.** The
+owner reported an `hev1` file still deciding `remux` after the relabel shipped,
+and the panel's reason carried none of the new explanation. Neither was a defect:
+the bundled `cairndex-sidecar` had been built at 18:47 and `hevc_relabel.py` did
+not exist until 22:33, so none of the HEVC work was in the running process. The
+frontend *was* current — Vite serves it, so the new Playback row appeared — and
+that split is exactly what makes this misleading: half the change is live and
+half is four hours stale.
+
+`just bundled` rebuilds when `apps/server` is newer (`apps/desktop/
+dev-bundled.mjs` compares mtimes), so it cannot happen that way. Launching a
+packaged `.app`, or `npm run tauri dev`, uses whatever binary is on disk. When a
+desktop symptom contradicts a green backend suite, date the sidecar first:
+
+```
+ls -la apps/server/packaging/dist/cairndex-sidecar/cairndex-sidecar
+```
+
+Note that grepping the bundle for a module name proves nothing either way — the
+modules are inside a compressed PYZ, so `hevc_relabel` and `ranged_stream` are
+both absent from a bundle that contains them. Compare build time against
+`git log --diff-filter=A -- <file>` instead.
+
 **Also on this branch: the info panel now says how a video is playing.** The
 owner's question was literally "how do I even know it does?" — the server had
 always decided `direct`/`remux`/`transcode` and always written a human reason,
