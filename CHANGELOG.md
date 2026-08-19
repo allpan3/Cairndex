@@ -362,6 +362,30 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **A video that quietly stops now says so instead of freezing.** The load
+  watchdog stops caring once metadata arrives, and after that the only thing
+  that reaches the failure path is the media element's own `error` event — which
+  a progressive read that simply dies never fires. The result was the last frame
+  on screen with a live control bar, no message, no retry, and nothing being
+  requested: play and seek appeared to do nothing at all. A stalled read is
+  detected now and ends in the ordinary "Playback interrupted / Try again" card.
+  It watches progressive sources only, counts bytes landing in *any* buffered
+  range as progress, and ignores a gap left by a sleeping machine — each of
+  which would otherwise interrupt playback that was actually fine. It shows the
+  card straight away rather than reloading first: a stalled read is already dead,
+  and reloading it churned the control bar through `3:32 / 0:00` three times
+  before saying anything, which read as a worse freeze than the silence.
+- **A failed recovery no longer swallows every error after it.** The flag that
+  suppresses the burst of errors around one reload was cleared only when a new
+  source arrived, and two of the ways a retry can end don't produce one — so
+  after a single failed recovery the player would ignore every later failure,
+  leaving a frozen frame with no card and no way back short of reopening the
+  video.
+- **The desktop app can play a File Browser video that needs converting.** The
+  shell's media relay allowlists routes explicitly, and the path-scoped playback
+  sessions added in the previous entry were not on the list, so it answered its
+  own 404 before the server ever saw the request — working in a browser and
+  failing in the app.
 - **An unbundled video in the viewer shows its own details, not a bundle's.** A
   scan stages every new file into a provisional one-file bundle, so an unbundled
   file has a `bundle_id` like any other — and the viewer's docked pane took that

@@ -267,6 +267,13 @@ fn media_route_library_id(path: &str) -> Option<&str> {
         ["files", _, "exports", _, "download"] => true,
         ["files", _, "storyboard", sheet_name] => sheet_name.ends_with(".jpg"),
         ["files", _, "playback-sessions", _, artifact] => !artifact.is_empty(),
+        // The same session artifacts for a File Browser path, which need not be
+        // indexed at all (ADR-0014 amendment). Without this arm the relay
+        // answers its own 404 and the desktop app cannot play anything the
+        // browser must have remuxed or transcoded — the whole point of the
+        // path-scoped routes — while a plain browser, which does not go through
+        // the relay, plays it fine.
+        ["file-browser", "playback-sessions", _, artifact] => !artifact.is_empty(),
         _ => false,
     };
     allowed.then_some(library_id)
@@ -525,6 +532,19 @@ mod tests {
             media_route_library_id("/api/v1/libraries/lib/files/file/exports/e1/download"),
             Some("lib")
         );
+        // ...and it happened again with the path-scoped session artifacts: a
+        // File Browser video needing a remux played in a browser and 404'd in
+        // the shell, because only the `files/` shape was listed (2026-08-16).
+        assert_eq!(
+            media_route_library_id(
+                "/api/v1/libraries/lib/file-browser/playback-sessions/s/index.m3u8"
+            ),
+            Some("lib")
+        );
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib/file-browser/playback-sessions/s/0.m4s"),
+            Some("lib")
+        );
         assert!(media_route_library_id("/api/v1/libraries/lib/bundles/bundle").is_none());
         assert!(media_route_library_id("/api/v1/auth/devices").is_none());
         // Still a strict allowlist: a neighbouring write route stays refused.
@@ -533,6 +553,26 @@ mod tests {
         // is not relayable — those calls carry their bearer over `hostFetch`.
         assert!(media_route_library_id("/api/v1/libraries/lib/files/file/exports/e1").is_none());
         assert!(media_route_library_id("/api/v1/libraries/lib/files/file/exports").is_none());
+        // The path-scoped teardown is a POST the relay must never carry; it is
+        // not an artifact fetch, and desktop sends it over the authenticated
+        // DELETE instead.
+        assert!(
+            media_route_library_id(
+                "/api/v1/libraries/lib/file-browser/playback-sessions/s/teardown"
+            )
+            .is_some(),
+            "teardown matches the artifact shape, so the GET/HEAD gate is what refuses it"
+        );
+        // An empty artifact is not a fetch of anything.
+        assert!(
+            media_route_library_id("/api/v1/libraries/lib/file-browser/playback-sessions/s/")
+                .is_none()
+        );
+        // The decision itself is a POST against a different shape: never relayed.
+        assert!(
+            media_route_library_id("/api/v1/libraries/lib/file-browser/playback-decision")
+                .is_none()
+        );
     }
 
     // Rejects authority and credential forwarding while preserving range headers
