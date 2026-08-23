@@ -163,10 +163,37 @@ be reached. Renaming such a row is therefore visible in the panel but not in the
 result. Fixing it properly means deciding what renaming an existing collection
 from the grouping panel should mean, which is a product question, not a bug.
 
-Tests: `just check-server` clean (1088 passed, ruff format/check, mypy). No web,
+### Second report on the same branch: the dial reset the row it sits on
+
+Renaming a folder's collection suggestion, placing it in an existing collection,
+then nudging Narrow/Widen undid both — and pruned the "Existing" path the
+placement had built, since it then led nowhere.
+
+`set_directory_stem_level` splices one directory by deleting every row whose
+`directory` is that folder and re-inserting the suggester's output for it. That
+set included the folder's **own** row, which is where the dial lives and where its
+title and placement live. `_folder_header` now picks that row out — the outermost
+non-context container for the directory, so a collection the owner converted
+*inside* the folder is still grouping and still redone — and the splice keeps it,
+skips the fresh container, and hangs the fresh bundles under it.
+
+One further fold, found while testing rather than reported: a folder the suggester
+insists is one bundle (`owns_directory`, e.g. explicit multipart names) proposes
+that bundle with the folder's *parent* as its parent. Kept header or not, that row
+landed beside the folder's row rather than inside it, so a hand-made conversion
+went childless and was deleted — the dial dissolving a collection on a folder it
+cannot regroup at all. Fresh rows for a non-root directory now always go inside
+the kept header.
+
+Behaviour deliberately changed, and the two tests that asserted the old shape were
+updated with it: the folder's row keeps its id across a splice (it was asserted to
+be replaced), and its subdirectory children stay attached rather than being
+re-linked to a successor. The re-link is still there for the no-header case.
+
+Tests: `just check-server` clean (1089 passed, ruff format/check, mypy). No web,
 desktop, or e2e file changed — the placement e2e is fully mocked — so those gates
-were not re-run. Next: owner verification against the real library, since the
-shape was reproduced from the report rather than from their data.
+were not re-run. Next: owner verification against the real library, since both
+shapes were reproduced from the reports rather than from their data.
 
 ## Open on branch: Add Files to Library (2026-08-23)
 

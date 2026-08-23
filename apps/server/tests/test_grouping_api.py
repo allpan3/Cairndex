@@ -781,6 +781,9 @@ def test_stem_level_change_preserves_every_other_row_and_edit(
 
     before = {p["id"]: p for p in client.get(f"{base}/plans/{plan_id}").json()["proposals"]}
     duo_ids = {pid for pid, p in before.items() if p["directory"] == "Duo"}
+    duo_folder_id = next(
+        pid for pid, p in before.items() if p["directory"] == "Duo" and p["kind"] == "container"
+    )
     kept_ids = set(before) - duo_ids
     duo_bundles_before = [
         p for p in before.values() if p["directory"] == "Duo" and p["kind"] == "bundle"
@@ -803,13 +806,16 @@ def test_stem_level_change_preserves_every_other_row_and_edit(
     trip_children = [p for p in after["proposals"] if p["parent_proposal_id"] == trip["id"]]
     assert len(trip_children) == 3, "the conversion's children survive too"
 
-    # Duo itself genuinely regenerated: its collection kept, holding the one bundle
-    # the widened stem matched, with new ids.
+    # Duo's *grouping* genuinely regenerated: one bundle where there were two,
+    # holding what the widened stem matched, with a new id. The folder's own row is
+    # not a suggestion to redo — it keeps its identity, and with it whatever the
+    # owner named or placed it as.
     duo_after = [p for p in after["proposals"] if p["directory"] == "Duo"]
     assert [p["kind"] for p in duo_after] == ["container", "bundle"]
     assert len(duo_after[1]["files"]) == 2
     assert duo_after[1]["parent_proposal_id"] == duo_after[0]["id"]
-    assert not duo_ids & {p["id"] for p in duo_after}
+    assert duo_after[0]["id"] == duo_folder_id
+    assert not (duo_ids - {duo_folder_id}) & {p["id"] for p in duo_after}
 
 
 def test_stem_level_back_to_the_default_clears_the_override(
@@ -1078,11 +1084,118 @@ def test_stem_level_change_does_not_reclaim_a_dragged_out_file(
     assert holders == [solo["id"]], "the dragged file must stay only where the owner put it"
 
 
-def test_stem_level_change_relinks_subdirectory_children(
+# The dial groups a folder's files; it does not restate what the folder is
+def test_stem_level_change_keeps_the_folders_own_name_and_placement(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
-    """Replacing a directory's container must not orphan bundles from its
-    subdirectories — they follow the container to its successor."""
+    """Narrow/Widen used to reset the row it sits on.
+
+    Renaming a folder's collection suggestion and placing it inside an existing
+    collection, then nudging the dial, silently undid both: the row was replaced by
+    a fresh suggestion carrying the folder's name and the suggester's parent, and
+    the "Existing" path the placement had built was then pruned for leading nowhere
+    (owner-reported, 2026-08-23).
+    """
+    folder = library_root / "Archive" / "SetOne"
+    folder.mkdir(parents=True)
+    (folder / "City Tour - Part One - Morning.mp4").write_text("v")
+    (folder / "City Tour - Part One - Evening.mp4").write_text("v")
+    scan_library(session, library_root)
+    root = Collection(name="Archive")
+    talent = Collection(name="Talent", parent=root)
+    session.add_all([root, talent])
+    session.flush()
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    folder_row = next(p for p in plan["proposals"] if p["directory"] == "Archive/SetOne")
+    assert folder_row["kind"] == "container"
+
+    client.patch(f"{base}/plans/{plan_id}/proposals/{folder_row['id']}", json={"title": "My Set"})
+    placed = client.put(
+        f"{base}/plans/{plan_id}/proposals/{folder_row['id']}/parent",
+        json={"target_collection_id": talent.id},
+    )
+    assert placed.status_code == 200
+    context_id = next(
+        p["id"] for p in placed.json()["proposals"] if p["target_collection_id"] == talent.id
+    )
+
+    widened = client.put(
+        f"{base}/plans/{plan_id}/stem-levels",
+        json={"directory": "Archive/SetOne", "level": plan["stem_levels"]["Archive/SetOne"]["max"]},
+    )
+
+    assert widened.status_code == 200, widened.text
+    proposals = widened.json()["proposals"]
+    kept = next(p for p in proposals if p["id"] == folder_row["id"])
+    assert kept["title"] == "My Set"
+    assert kept["parent_proposal_id"] == context_id
+    # Its contents did regenerate: two bundles merged into the one the widest stem
+    # matched, hanging off the row the owner had already named and placed.
+    inside = [p for p in proposals if p["parent_proposal_id"] == folder_row["id"]]
+    assert [p["kind"] for p in inside] == ["bundle"]
+    assert len(inside[0]["files"]) == 2
+    assert inside[0]["id"] not in {p["id"] for p in plan["proposals"]}
+    # And the placement's context path is still there, because it still leads
+    # somewhere.
+    assert any(p["id"] == context_id for p in proposals)
+
+
+# The dial regroups a collection's contents; only the convert control undoes it
+def test_stem_level_change_keeps_a_collection_the_owner_converted_into_one(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A folder the suggester calls one bundle, made a collection by hand.
+
+    The dial cannot regroup a multipart folder at all — every level matches the
+    whole of it — so its fresh suggestion is the folder as one bundle, which names
+    the folder's *parent* as its parent. That row landed beside the collection
+    instead of inside it, leaving it childless and deleted: touching a control that
+    could change nothing dissolved the conversion, and the rename with it.
+    """
+    folder = library_root / "Trip"
+    folder.mkdir()
+    for index in (1, 2, 3):
+        (folder / f"Trip.part{index}.mp4").write_text("v")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    trip = next(p for p in plan["proposals"] if p["directory"] == "Trip")
+    assert trip["kind"] == "bundle", "the suggester is certain this folder is one bundle"
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{trip['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+    client.patch(f"{base}/plans/{plan_id}/proposals/{trip['id']}", json={"title": "My Trip"})
+
+    dialled = client.put(
+        f"{base}/plans/{plan_id}/stem-levels",
+        json={"directory": "Trip", "level": converted.json()["stem_levels"]["Trip"]["max"]},
+    )
+
+    assert dialled.status_code == 200, dialled.text
+    rows = dialled.json()["proposals"]
+    kept = next((p for p in rows if p["id"] == trip["id"]), None)
+    assert kept is not None, "the collection the owner made must survive the dial"
+    assert kept["kind"] == "container"
+    assert kept["title"] == "My Trip"
+    inside = [p for p in rows if p["parent_proposal_id"] == trip["id"]]
+    assert [p["kind"] for p in inside] == ["bundle"]
+    assert len(inside[0]["files"]) == 3
+
+
+def test_stem_level_change_keeps_subdirectory_children_under_the_folder(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Adjusting a directory must not orphan bundles from its subdirectories.
+
+    They stay put because the folder's own row does: the FK is SET NULL, so a
+    replaced container used to hand its subdirectory children to its successor,
+    and that re-link is still there for a folder with no collection row of its own
+    (see ``_folder_header``).
+    """
     show = library_root / "Show"
     (show / "A").mkdir(parents=True)
     (show / "B").mkdir()
@@ -1103,13 +1216,13 @@ def test_stem_level_change_relinks_subdirectory_children(
         f"{base}/plans/{plan_id}/stem-levels", json={"directory": "Show", "level": 0}
     ).json()
 
-    fresh_container = next(
+    kept_container = next(
         p for p in after["proposals"] if p["kind"] == "container" and p["directory"] == "Show"
     )
-    assert fresh_container["id"] != container["id"]
+    assert kept_container["id"] == container["id"]
     for child_id in child_ids:
         child = next(p for p in after["proposals"] if p["id"] == child_id)
-        assert child["parent_proposal_id"] == fresh_container["id"]
+        assert child["parent_proposal_id"] == kept_container["id"]
 
 
 def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(

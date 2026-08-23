@@ -775,6 +775,32 @@ def stem_levels(plan: GroupingPlan) -> dict[str, StemDial]:
     return dials
 
 
+# The row a folder's own identity lives on, as opposed to its grouping
+def _folder_header(in_directory: list[GroupingProposal]) -> GroupingProposal | None:
+    """The outermost collection suggestion standing for this folder, if it has one.
+
+    Outermost because the folder can hold collection suggestions of its own: a
+    bundle converted to a collection keeps the folder's ``directory`` while
+    sitting *inside* the folder's row (``_bundle_to_container``). That inner one
+    is grouping, which the dial redoes; the one no other same-folder collection
+    contains is the folder itself, which it must not.
+
+    ``None`` for a folder with no collection row — merged into a single bundle by
+    hand, or never given one — and then the dial replaces what is there, as it
+    always did.
+    """
+    containers = [
+        proposal
+        for proposal in in_directory
+        if proposal.kind is ProposalKind.CONTAINER and not proposal.is_collection_context
+    ]
+    inner = {proposal.id for proposal in containers}
+    outermost = [
+        proposal for proposal in containers if proposal.parent_proposal_id not in inner
+    ] or containers
+    return min(outermost, key=lambda proposal: (proposal.sort_order, proposal.id), default=None)
+
+
 def set_directory_stem_level(
     session: Session, plan_id: str, directory: str, level: int
 ) -> GroupingPlan:
@@ -789,9 +815,17 @@ def set_directory_stem_level(
 
     The suggester still runs over the whole library (a directory's grouping is
     not computable in isolation), but only its output for ``directory`` is used.
-    Within that directory the rows genuinely are new suggestions — including any
-    conversion the owner had made *there*, which is the folder they just asked
-    to redo. ``POST /plans`` (Suggest grouping) remains the full reset.
+    Within that directory the *bundles* genuinely are new suggestions — including
+    any conversion the owner had made among them, which is the grouping they just
+    asked to redo. ``POST /plans`` (Suggest grouping) remains the full reset.
+
+    The folder's own row is **not** one of them. The dial sits on it, and the dial
+    groups a folder's files; it does not restate what the folder is. Replacing it
+    with a fresh suggestion took its title and its placement with it, so renaming
+    a collection and putting it inside another one, then nudging the dial, silently
+    undid both — and pruned the "Existing" path the placement had built, since it
+    then led nowhere (owner-reported, 2026-08-23). It is kept instead, and the
+    fresh bundles are hung under the row already on screen.
 
     Files the owner dragged out of this directory into surviving suggestions are
     not re-proposed: a fresh row claiming a file that another row still holds
@@ -822,7 +856,10 @@ def set_directory_stem_level(
     data = suggest_for_session(session, stem_levels=levels)
     fresh = [p for p in data.proposals if p.directory == directory]
 
-    existing = [p for p in plan.proposals if p.directory == directory]
+    in_directory = [p for p in plan.proposals if p.directory == directory]
+    # The folder's own row survives; everything else it holds is re-suggested.
+    header = _folder_header(in_directory)
+    existing = [p for p in in_directory if p is not header]
     existing_ids = {p.id for p in existing}
 
     # A splice must never lose a file. Every file the replaced rows hold has to
@@ -851,7 +888,7 @@ def set_directory_stem_level(
     # Where the folder sat in the review list, so the fresh rows take its place
     # rather than jumping to the bottom.
     insert_at = min(
-        (p.sort_order for p in existing),
+        (p.sort_order for p in in_directory),
         default=max((p.sort_order for p in plan.proposals), default=-1) + 1,
     )
     # Children of a replaced container that live in *other* directories (e.g.
@@ -889,6 +926,8 @@ def set_directory_stem_level(
         kept = [pf for pf in proposal.files if pf.asset_file_id not in claimed]
         if proposal.kind is ProposalKind.BUNDLE and not kept:
             continue  # every file here was dragged elsewhere by the owner
+        if proposal.kind is ProposalKind.CONTAINER and header is not None:
+            continue  # the folder already has its row, and it is the owner's
         row = GroupingProposal(
             id=new_id(),
             plan_id=plan.id,
@@ -949,31 +988,48 @@ def set_directory_stem_level(
     # enforced immediately.
     session.flush()
 
-    # Link fresh rows to their parents: the directory's own fresh container, or
-    # a surviving container for an ancestor directory.
-    lookup = dict(container_by_dir)
-    if fresh_container_id is not None:
-        lookup[directory] = fresh_container_id
-    for row, parent_dir in inserted_parents:
-        row.parent_proposal_id = lookup.get(parent_dir) if parent_dir is not None else None
+    # The row that holds this directory's bundles now: the folder's kept row, or
+    # the fresh container when the folder had none to keep.
+    holder_id = header.id if header is not None else fresh_container_id
 
-    # Children of the replaced container follow it to its successor (or the top
+    # Link fresh rows to their parents: the row holding this directory, or a
+    # surviving container for an ancestor directory. A kept header stays where the
+    # owner put it, so the fresh container's suggested parent is ignored with it.
+    lookup = dict(container_by_dir)
+    if holder_id is not None:
+        lookup[directory] = holder_id
+    for row, parent_dir in inserted_parents:
+        if header is not None and directory:
+            # A folder that is a collection in this plan holds its own bundles,
+            # including the one the suggester would have made the folder itself
+            # (``owns_directory``) — that row names the folder's *parent* as its
+            # parent, so it landed beside the header and left it childless, which
+            # dissolved the collection the dial is not allowed to dissolve.
+            row.parent_proposal_id = header.id
+        else:
+            row.parent_proposal_id = lookup.get(parent_dir) if parent_dir is not None else None
+
+    # Children of a replaced row follow it to the folder's holder (or the top
     # level if the directory no longer warrants one).
     for orphan_id in orphaned_ids:
         orphan = session.get(GroupingProposal, orphan_id)
         if orphan is not None:
-            orphan.parent_proposal_id = fresh_container_id
+            orphan.parent_proposal_id = holder_id
 
-    # A fresh container whose bundles were all claimed away holds nothing —
-    # drop it rather than showing an empty collection suggestion.
-    if fresh_container_id is not None:
-        has_children = bool(orphaned_ids) or any(
-            row.parent_proposal_id == fresh_container_id
-            for row, _ in inserted_parents
-            if row.id != fresh_container_id
+    session.flush()
+
+    # A collection suggestion for this folder whose bundles were all claimed away
+    # holds nothing — drop it rather than showing an empty collection. Counted
+    # from the table rather than the insert list, because a kept header can also
+    # hold rows this splice never touched.
+    if holder_id is not None:
+        children = session.scalar(
+            select(func.count())
+            .select_from(GroupingProposal)
+            .where(GroupingProposal.parent_proposal_id == holder_id)
         )
-        if not has_children:
-            childless = session.get(GroupingProposal, fresh_container_id)
+        if not children:
+            childless = session.get(GroupingProposal, holder_id)
             if childless is not None:
                 session.delete(childless)
 
