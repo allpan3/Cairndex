@@ -863,3 +863,27 @@ def test_delete_with_files_skips_a_file_already_in_the_trash(
     listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
     trashed = sorted(e["original_path"] for op in listing["operations"] for e in op["entries"])
     assert trashed == ["b.mkv", "c.mkv"]
+
+
+def test_two_imports_into_one_folder_both_land(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    """Owner report (2026-08-23): two files picked, only one arrived.
+
+    The client sends one request per file, sequentially, which is the shape this
+    reproduces — nothing about the second should disturb the first.
+    """
+    (library_root / "Show").mkdir()
+
+    first = _import(client, writable, b"one", "first.mp4", dest_dir="Show")
+    second = _import(client, writable, b"two", "second.mp4", dest_dir="Show")
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert (library_root / "Show/first.mp4").read_bytes() == b"one"
+    assert (library_root / "Show/second.mp4").read_bytes() == b"two"
+    assert sorted(p.name for p in (library_root / "Show").iterdir()) == [
+        "first.mp4",
+        "second.mp4",
+    ]
+    assert list((library_root / ".cairndex" / "tmp").iterdir()) == []
