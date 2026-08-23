@@ -37,6 +37,25 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
       if (inside(e.target)) return
       onClose()
       e.stopPropagation()
+      // Own the *rest* of this gesture too. `onClose` clears `state`, which tears
+      // this effect down, so the `mouseup` and `click` still to come may find no
+      // listener left — and whether they do depends on React flushing the state
+      // update before the engine dispatches them. Chromium usually swallowed the
+      // click; WKWebView let it through, so dismissing the viewer's menu also
+      // toggled playback (owner report, 2026-08-23). One-shot listeners make it
+      // deterministic instead of engine-dependent.
+      const swallow = (event: Event) => {
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+      }
+      window.addEventListener('mouseup', swallow, true)
+      window.addEventListener('click', swallow, true)
+      // After the gesture, whatever it turned out to be: a drag that never
+      // clicks must not leave these attached.
+      setTimeout(() => {
+        window.removeEventListener('mouseup', swallow, true)
+        window.removeEventListener('click', swallow, true)
+      }, 0)
     }
     const onAway = (e: MouseEvent) => {
       if (inside(e.target)) return
