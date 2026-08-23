@@ -282,7 +282,7 @@ test('renders the shell with the brand and the system views', async () => {
   expect(screen.queryByRole('button', { name: /Probe/i })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Group/i })).not.toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'More library maintenance actions' }))
+  fireEvent.click(screen.getByRole('button', { name: 'More library actions' }))
   expect(screen.getByRole('button', { name: /Scan new files/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Collect metadata/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Suggest grouping/i })).toBeInTheDocument()
@@ -294,7 +294,7 @@ test('can generate storyboards independently from Update', async () => {
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
 
-  fireEvent.click(screen.getByRole('button', { name: 'More library maintenance actions' }))
+  fireEvent.click(screen.getByRole('button', { name: 'More library actions' }))
   fireEvent.click(screen.getByRole('button', { name: 'Generate storyboards' }))
 
   await waitFor(() =>

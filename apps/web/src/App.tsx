@@ -2255,6 +2255,7 @@ function Workspace({
           }}
           canLock={canLock}
           onLock={onLock}
+          onAddFiles={writeMode ? () => addFilesInputRef.current?.click() : undefined}
           onUpdateLibrary={() => updateLibrary.mutate()}
           updating={updateLibrary.isPending}
           onScanFiles={() => scanFiles.mutate()}

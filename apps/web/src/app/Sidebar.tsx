@@ -75,6 +75,12 @@ export interface SidebarProps {
   onLock?: () => void
   onUpdateLibrary: () => void
   updating?: boolean
+  /**
+   * Opens the Add Files flow. Supplied only in write mode — and the reason it
+   * lives in this menu at all is that the web build has no menu bar, so
+   * `File ▸ Add Files to Library…` is unreachable there.
+   */
+  onAddFiles?: () => void
   onScanFiles: () => void
   scanningFiles?: boolean
   onProbe: () => void
@@ -188,6 +194,7 @@ export function Sidebar({
   onLock,
   onUpdateLibrary,
   updating,
+  onAddFiles,
   onScanFiles,
   scanningFiles,
   onProbe,
@@ -482,7 +489,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="sidebar__jobs" role="group" aria-label="Library maintenance">
+      <div className="sidebar__jobs" role="group" aria-label="Library actions">
         <button
           className="sidebar__job"
           onClick={onUpdateLibrary}
@@ -495,8 +502,8 @@ export function Sidebar({
           <button
             className="sidebar__job-more"
             onClick={() => setJobsMenuOpen((open) => !open)}
-            title="More library maintenance actions"
-            aria-label="More library maintenance actions"
+            title="More library actions"
+            aria-label="More library actions"
             aria-expanded={jobsMenuOpen}
             disabled={libraryId === null}
           >
@@ -504,6 +511,20 @@ export function Sidebar({
           </button>
           {jobsMenuOpen && (
             <div className="sidebar__job-popover">
+              {onAddFiles && (
+                <>
+                  <button
+                    onClick={() => {
+                      setJobsMenuOpen(false)
+                      onAddFiles()
+                    }}
+                    title="Copy files from this computer into a folder you pick"
+                  >
+                    Add Files
+                  </button>
+                  <div className="sidebar__job-divider" role="separator" />
+                </>
+              )}
               <button
                 onClick={() => {
                   setJobsMenuOpen(false)

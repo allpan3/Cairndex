@@ -403,7 +403,7 @@ test('standalone Scan reports the linked missing-file total', async ({ page }) =
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Scan new files' }).click()
 
   await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
@@ -429,7 +429,7 @@ test('Scan new files does not open grouping review', async ({ page }) => {
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Scan new files' }).click()
 
   await expect(page.getByText('Scan complete: 0 linked files are missing.')).toBeVisible()
@@ -450,7 +450,7 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collect metadata' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Suggest grouping' })).toBeVisible()
@@ -562,7 +562,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
   // The folder's dial is visible on the row that speaks for the folder, rather
@@ -657,7 +657,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
 
   for (const [kind, title] of [
@@ -779,7 +779,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Surf On The Ridge - 4K' })
   await expect(checkbox).toBeChecked()
@@ -1085,7 +1085,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
 
   const anchor = page.getByRole('button', {
@@ -1284,7 +1284,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await page.getByRole('button', { name: 'Rename collection suggestion Movies' }).dblclick()
   const input = page.getByRole('textbox', { name: 'Collection suggestion title' })
@@ -2078,7 +2078,7 @@ test('a maintenance error is reported with the job rows, not under the button', 
     r.fulfill({ status: 500, json: { message: 'Background job was cancelled.' } }),
   )
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Generate storyboards' }).click()
   // Docked in the foot beside the job rows: the message outlives the button
   // that started the work, and one place for "what is happening" and "what went
@@ -2266,4 +2266,52 @@ test('Skip leaves one file out and copies the rest', async ({ page }) => {
     .poll(() => attempted, { timeout: 10_000 })
     .toEqual(['first.mp4:fail', 'first.mp4:skip', 'second.mp4:fail'])
   await expect(page.getByText(/Added 1 of 2 files/)).toBeVisible()
+})
+
+test('the sidebar can add files, which is the only way in on the web', async ({ page }) => {
+  // The native File menu carries this command in the desktop app; a browser tab
+  // has no menu bar, so without this entry the feature would be desktop-only
+  // (owner, 2026-08-23).
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams
+    imported.push(`${query.get('dest_dir') ?? ''}|${query.get('filename') ?? ''}`)
+    await route.fulfill({
+      json: {
+        path: query.get('filename') ?? '',
+        operation: { id: 'op-1' },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 3,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await page.getByRole('button', { name: 'Add Files', exact: true }).click()
+  await page.getByTestId('add-files-input').setInputFiles({
+    name: 'added.mp4',
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('vid'),
+  })
+
+  await expect(page.getByRole('heading', { name: 'Add the file to…' })).toBeVisible()
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect.poll(() => imported).toEqual(['|added.mp4'])
+})
+
+test('a read-only library offers no way to add files', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+
+  await expect(page.getByRole('button', { name: 'Add Files', exact: true })).toHaveCount(0)
+  // The maintenance jobs are still there; only the write action is withheld.
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
 })
