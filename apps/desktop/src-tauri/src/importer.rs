@@ -279,6 +279,44 @@ pub(crate) fn finish_import_batch(batches: State<'_, ImportBatches>, batch_id: S
     batches.finish(&batch_id);
 }
 
+/// Whether a dropped path lives inside the target library's own root.
+///
+/// Both sides are canonicalized: a symlink pointing into the library is still
+/// inside it, and comparing strings would miss that. An unresolvable path or an
+/// unmapped library answers `false` — this guard exists to catch an obvious
+/// mistake, and refusing an import because a mapping could not be read would
+/// turn a safety net into an outage.
+fn source_is_inside_library<R: Runtime>(
+    app: &AppHandle<R>,
+    library_id: &str,
+    source: &Path,
+) -> bool {
+    let Ok(mappings) = mappings::load_mappings(app) else {
+        return false;
+    };
+    let Ok(root) = mappings::verified_root_for(&mappings, library_id) else {
+        return false;
+    };
+    path_is_inside(&root, source)
+}
+
+/// Whether `source` resolves to somewhere at or under `root`.
+///
+/// Both sides are canonicalized, so a symlink pointing into the library counts
+/// as inside it. Comparison is `Path::starts_with`, which is component-wise —
+/// a sibling whose name merely begins with the root's name (`…/library-backup`
+/// beside `…/library`) is *not* inside it, where a string prefix test would say
+/// it was. Either side failing to resolve answers `false`: the guard catches an
+/// obvious mistake, and refusing an import because a path could not be read
+/// would turn a safety net into an outage.
+fn path_is_inside(root: &Path, source: &Path) -> bool {
+    let (Ok(root), Ok(source)) = (std::fs::canonicalize(root), std::fs::canonicalize(source))
+    else {
+        return false;
+    };
+    source.starts_with(&root)
+}
+
 /// Stream one dropped file into a library through the server's import endpoint.
 ///
 /// One file per call, mirroring the endpoint: each import gets its own
@@ -309,6 +347,22 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
         return Err(ImportError::new(
             "not_dropped",
             "That file was not part of a drop into this window.",
+        ));
+    }
+    // A file already in this library must not be imported into it. The import
+    // endpoint cannot catch this — it receives bytes and no path, by design — but
+    // the shell holds the dropped path, so this is the one layer that can. The
+    // realistic accident is dragging out of a Finder window that happens to be
+    // showing the library (owner question, 2026-08-23).
+    //
+    // A copy would be silent whenever the destination folder differs, and worse
+    // when it does not: answering Replace trashes the original row, so a bundle
+    // containing that file loses it and identical bytes land at the same path
+    // with no row at all.
+    if source_is_inside_library(&app, &library_id, &source) {
+        return Err(ImportError::new(
+            "already_in_library",
+            "That file is already in this library. Use Move to… to file it somewhere else.",
         ));
     }
     let Some((server_url, token)) = proxy.target_for(&library_id) else {
@@ -684,6 +738,89 @@ mod tests {
                 "library id {hostile:?} should be refused"
             );
         }
+    }
+
+    // --- the self-import guard ------------------------------------------------
+    // A file already in the library must not be imported into it: a copy is
+    // silent when the destination folder differs, and answering Replace when it
+    // does not trashes the original row, so a bundle containing that file loses
+    // it (owner question, 2026-08-23).
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cairndex-inside-test-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_file_in_the_library_is_inside_it() {
+        let root = scratch("root");
+        let file = root.join("clip.mkv");
+        std::fs::write(&file, b"x").unwrap();
+
+        assert!(path_is_inside(&root, &file));
+    }
+
+    #[test]
+    fn a_file_in_a_subdirectory_is_inside_too() {
+        let root = scratch("nested");
+        let sub = root.join("Set07");
+        std::fs::create_dir_all(&sub).unwrap();
+        let file = sub.join("clip.mkv");
+        std::fs::write(&file, b"x").unwrap();
+
+        assert!(path_is_inside(&root, &file));
+    }
+
+    #[test]
+    fn a_sibling_sharing_a_name_prefix_is_not_inside() {
+        // The bug a string prefix test would have: `…/lib-backup` starts with
+        // `…/lib` as text, and is a different directory entirely.
+        let parent = scratch("prefix");
+        let root = parent.join("lib");
+        let sibling = parent.join("lib-backup");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let file = sibling.join("clip.mkv");
+        std::fs::write(&file, b"x").unwrap();
+
+        assert!(!path_is_inside(&root, &file));
+    }
+
+    #[test]
+    fn a_symlink_into_the_library_is_still_inside_it() {
+        let parent = scratch("symlink");
+        let root = parent.join("lib");
+        std::fs::create_dir_all(&root).unwrap();
+        let real = root.join("clip.mkv");
+        std::fs::write(&real, b"x").unwrap();
+        let link = parent.join("shortcut.mkv");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        #[cfg(unix)]
+        assert!(
+            path_is_inside(&root, &link),
+            "a symlink must not smuggle a library file past the guard"
+        );
+    }
+
+    #[test]
+    fn a_file_outside_the_library_is_importable() {
+        let parent = scratch("outside");
+        let root = parent.join("lib");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = parent.join("downloaded.mkv");
+        std::fs::write(&file, b"x").unwrap();
+
+        assert!(!path_is_inside(&root, &file));
+    }
+
+    #[test]
+    fn a_path_that_cannot_be_resolved_does_not_block_an_import() {
+        let root = scratch("missing");
+
+        assert!(!path_is_inside(&root, &root.join("not-there.mkv")));
     }
 
     #[test]
