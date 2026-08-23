@@ -4792,6 +4792,12 @@ code {
   background: var(--surface);
   box-shadow: 0 12px 30px rgb(0 0 0 / 35%);
 }
+/* Separates the one item that opens a dialog from the jobs that run behind it. */
+.sidebar__job-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
 .sidebar__job-popover button {
   display: block;
   width: 100%;

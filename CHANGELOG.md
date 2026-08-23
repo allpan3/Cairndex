@@ -20,6 +20,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   should go is often the moment you notice the folder does not exist yet; the new
   folder becomes the destination straight away. Move to… is unchanged.
 
+  On the web the same command is **Add Files** in the sidebar's **⋯** menu beside
+  Update,
+  which is renamed from "library maintenance" to **library actions** — it was
+  already the home for library-scoped things that do not earn a button, and
+  adding files is not maintenance. It sits above a divider, because everything
+  else in there runs in the background while this one opens a dialog. It appears
+  only in write mode.
+
   The collision prompt gained a **Skip**. It offered Cancel, Replace and Keep
   both — and Cancel abandons every file still queued, so with several files
   picked there was no way to say "not this one, carry on". Skip leaves that file
