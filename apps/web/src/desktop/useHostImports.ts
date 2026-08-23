@@ -34,6 +34,7 @@ export interface HostImports {
   copyIn: (paths: string[]) => void
   keepBoth: () => void
   replace: () => void
+  skip: () => void
   dismiss: () => void
   stop: () => void
 }
@@ -138,7 +139,7 @@ export function useHostImports({
     void start(batch)
   }
 
-  const answer = (policy: 'suffix' | 'replace') => {
+  const answer = (policy: 'suffix' | 'replace' | 'skip') => {
     const batch = batchRef.current
     if (!batch || !conflict || batch.stopping || batch.inFlight) return
     setConflict(null)
@@ -164,6 +165,8 @@ export function useHostImports({
     copyIn,
     keepBoth: () => answer('suffix'),
     replace: () => answer('replace'),
+    // Skips this file and continues; `dismiss` abandons what is left.
+    skip: () => answer('skip'),
     dismiss: stop,
     stop,
   }
@@ -190,7 +193,10 @@ export function useHostImports({
   }
 
   /** Continue sequential uploads until completion, stop, or a collision */
-  async function run(batch: HostImportBatch, oneShotPolicy?: 'suffix' | 'replace'): Promise<void> {
+  async function run(
+    batch: HostImportBatch,
+    oneShotPolicy?: 'suffix' | 'replace' | 'skip',
+  ): Promise<void> {
     if (!libraryId) return
     while (batch.index < batch.paths.length) {
       if (batch.stopping) {

@@ -118,6 +118,47 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: Add Files to Library (2026-08-23)
+
+Branch `feat/add-files-to-library`, off `main` at `ea3f12a7`. `File ▸ Add Files
+to Library…` (⇧⌘A) picks files, asks for a destination, and copies them in. Most
+of the machinery already existed — W5's import op, W3's `DirectoryPicker` — so
+the work was joining them and adding New Folder to the picker.
+
+**Deliberately desktop-only.** The owner removed the Bundle Browser toolbar
+button, and the web build has no menu bar, so this command is unreachable in a
+browser tab. `Add Files Here` in the File Browser is unaffected. That also means
+the flow has **no end-to-end coverage**: nothing in a browser can dispatch a
+native menu event (`useDesktopMenu` early-returns unless `isDesktopHost()`), so
+the picker is covered by component tests and the one line the menu action runs is
+covered by nothing.
+
+**Self-import: what is and is not guarded.** Dragging in a file that already
+lives in the library is refused (`importer.rs`, `path_is_inside`). The **Add Files
+picker cannot be guarded the same way** and this is not an oversight: the browser
+does not give the page a `File`'s path, which is the same boundary that stops the
+web layer reading arbitrary files, and the import endpoint takes bytes with no
+path by design (plan 4 §6). So neither the app nor the server can tell that
+picked bytes came from inside the library.
+
+Worth knowing before anyone "fixes" that: nothing is ever destroyed — an upload
+stages to a `.part` file before anything moves, and Replace is journaled
+trash-then-rename — but the outcomes are still bad. A different destination
+folder makes a **silent** duplicate (no collision, so no prompt; `link` defaults
+false, so nothing appears until the next scan). The same folder prompts, and
+answering **Replace** is the worst choice while sounding the most innocuous: a
+trashed row keeps its id and moves its `relative_path` into the trash, so a
+bundle containing that file **loses it**, while identical bytes land at the
+original path with no row. On a file already in the library, Skip is the right
+answer.
+
+**Deferred by the owner (2026-08-23):** a name+size warning in the picker was
+offered and declined. The intent is an Eagle-style **hash-based duplicate
+detector** as its own feature later. That is the right shape — it is the only
+thing that turns a guess into proof, and as a deliberate pass rather than an
+inline request-path check it is not bound by the no-full-hashing rule. Do not
+add the heuristic in the meantime.
+
 ## Open on branch: `hev1` HEVC off HLS entirely, and playback you can see (2026-08-16)
 
 Branch `fix/hevc-direct-play-and-playback-resilience` (renamed from

@@ -406,7 +406,7 @@ test('dropping files copies them into the folder being browsed', async () => {
 test('a read-only library has no way to copy files in', () => {
   renderBrowser(false)
 
-  expect(screen.queryByRole('button', { name: 'Add Files…' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Add Files Here' })).toBeNull()
   dropFiles(new File(['x'], 'x.mkv'))
   expect(importFiles).not.toHaveBeenCalled()
 })

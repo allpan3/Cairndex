@@ -10,6 +10,41 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Adding files to the library no longer means standing in the right folder
+  first.** `File ▸ Add Files to Library…` (⇧⌘A) picks files and then asks where
+  they should go, so it works from the Bundle Browser and the viewer, not just
+  the File Browser. Collisions raise the same Replace / Skip / Keep both prompt
+  as a drag-in, and each copy keeps its own Undo.
+
+  The destination dialog can **create a folder**, because deciding where a file
+  should go is often the moment you notice the folder does not exist yet; the new
+  folder becomes the destination straight away. Move to… is unchanged.
+
+  On the web the same command is **Add files** in the sidebar's **⋯** menu beside
+  Update, which is renamed from "library maintenance" to **library actions** — it
+  was already the home for library-scoped things that do not earn a button, and
+  adding files is not maintenance. It sits above a divider, because everything
+  else in there runs in the background while this one opens a dialog. It appears
+  only in write mode.
+
+  The collision prompt gained a **Skip**. It offered Cancel, Replace and Keep
+  both — and Cancel abandons every file still queued, so with several files
+  picked there was no way to say "not this one, carry on". Skip leaves that file
+  alone and continues; Cancel stops and copies nothing further. The dialog now
+  says which is which, since the buttons alone did not.
+
+  **Dragging a file that is already in the library into it is refused**, with a
+  message pointing at Move to… instead. Copying it in would be silent whenever
+  the destination folder differed, and worse when it did not: answering Replace
+  moves the original to Trash, so a bundle containing that file loses it while
+  identical bytes land at the same path untracked. Only the drag-in can be
+  guarded — the Add Files picker receives bytes with no path, deliberately, so
+  neither the app nor the server can tell where they came from.
+
+  The File Browser's existing button is renamed **Add Files Here**, because that
+  is what it does — it copies into the folder on screen without asking, which is
+  the faster path when you are already there.
+
 - **The marked span is something you play, with `\` or Play Range.** The clip
   strip had grown an action and a mode that only meant anything together —
   "From In" and "Range" — so they are now one control. **Play Range** jumps to
