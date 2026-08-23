@@ -2350,6 +2350,38 @@ test('plays a remux HLS source through hls.js and shows the quality/audio menus'
   await expect.poll(() => deletes.length).toBeGreaterThan(0)
 })
 
+test('the info panel names the delivery method and flags a live HLS session', async ({ page }) => {
+  // The owner's question was literally "how do I even know it does?" (2026-08-16):
+  // now that hev1 HEVC plays directly, nothing on screen distinguished a direct
+  // file from one burning an ffmpeg session behind it.
+  test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS info-panel e2e')
+  await mockApi(page, { forceHls: true })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await page.getByRole('button', { name: 'Info' }).click()
+  const playback = page.locator('.mv-info dl div', { has: page.getByText('Playback') })
+
+  await expect(playback).toContainText('Remuxing')
+  await expect(playback.locator('.mv-info__badge')).toHaveText('HLS session')
+  // The server's own words for why, rather than a label invented in the client.
+  await expect(playback.locator('.mv-info__note')).toContainText('forced remux')
+})
+
+test('the info panel calls a directly played file direct, with no session badge', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await page.getByRole('button', { name: 'Info' }).click()
+  const playback = page.locator('.mv-info dl div', { has: page.getByText('Playback') })
+
+  await expect(playback).toContainText('Direct play')
+  await expect(playback.locator('.mv-info__badge')).toHaveCount(0)
+})
+
 test('transparently re-attaches a fresh session when HLS segments fail', async ({ page }) => {
   test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS re-attach e2e')
   await page.addInitScript(() => {

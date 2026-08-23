@@ -362,6 +362,79 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the sheet's Details row read `— / —` where the same file cut from the Bundle
   Browser read the real numbers. The listing now carries all three (and colour
   depth, so hover preview judges direct playability the way the server does).
+- **HEVC files tagged `hev1` now play directly instead of being converted.** The
+  two HEVC tags differ only in where the stream's parameter sets are allowed to
+  live, and Safari — so the desktop app — plays only `hvc1`. That single refusal
+  was why such a file needed a server-side conversion at all, and everything that
+  followed from one: an ffmpeg process, a session that could expire, the pauses
+  and stalls when it did. The five bytes of header that distinguish the two tags
+  are now rewritten as the file streams, which is byte-for-byte what the
+  conversion produced — so the file plays directly, immediately, with nothing
+  running on the server. A file whose parameter sets are *not* provably complete
+  in its header is left alone and converted as before, because relabelling that
+  one would break playback partway through.
+- **A video left open no longer has its playback session deleted underneath it.**
+  The server reaps a session with no playlist or segment fetch for 60 seconds —
+  and a *paused* video fetches nothing, so leaving the viewer open was enough to
+  lose it. Seeking past the buffered region then found a hole, and with the
+  playlist gone too the player ended the stream and reported the duration as
+  whatever had been buffered: 18:31 for a 68-minute video, with the controls
+  dead. A held session is now kept warm for as long as the player holds it, and
+  a touch that comes back "no such session" establishes a fresh one at the live
+  playhead instead of waiting for playback to trip over the gap.
+- **The info panel says how the video is actually playing.** A **Playback** row
+  now reads Direct play, Remuxing or Transcoding, tags the latter two with an
+  `HLS session` badge, and prints the server's own reason for choosing it
+  underneath — "hevc video codec is not in client capabilities", say. The server
+  had always decided this and always explained itself; none of it reached the
+  screen, so the difference between a file streaming untouched and one burning an
+  ffmpeg process behind it was invisible. That gap mattered more once `hev1` HEVC
+  began playing directly, because the files that used to need a session mostly
+  stopped needing one. To exercise the other path deliberately, pick a quality
+  below the source's own height from the player's settings menu — the row flips
+  to Transcoding while you watch.
+- **A refused HEVC relabel now says why, in the Playback row.** "hev1 codec tag
+  is not in client capabilities" was true and useless: it did not distinguish a
+  file whose header cannot be relabelled from a client that would not take the
+  result anyway, and both fell back to a session in silence. The reason now names
+  which — "this client plays no HEVC tag progressively", or "its header carries
+  no VPS, so the decoder needs them in-band". A third case is called out
+  explicitly rather than left silent: a file whose container header disagrees
+  with its probed codec tag, which is a defect here rather than a property of the
+  file.
+- **A clip range whose end sits on the file's own end now behaves.** Marking an
+  in-point late in a video slides the span so its out-point lands on the
+  duration — and from there the media ended itself before the range could act, so
+  Loop never came round, the playhead parked at the far right, the viewer stepped
+  on to the next file, and the next press of play restarted the whole video with
+  the marked span silently ignored. `pause` and `ended` have distinct owners now:
+  the pause the media performs at its own end belongs to the range, Loop comes
+  round from it, and a non-looping span parks at the in-point so the next press
+  replays the span.
+- **A video that quietly stops now says so instead of freezing.** The load
+  watchdog stops caring once metadata arrives, and after that the only thing
+  that reaches the failure path is the media element's own `error` event — which
+  a progressive read that simply dies never fires. The result was the last frame
+  on screen with a live control bar, no message, no retry, and nothing being
+  requested: play and seek appeared to do nothing at all. A stalled read is
+  detected now and ends in the ordinary "Playback interrupted / Try again" card.
+  It watches progressive sources only, counts bytes landing in *any* buffered
+  range as progress, and ignores a gap left by a sleeping machine — each of
+  which would otherwise interrupt playback that was actually fine. It shows the
+  card straight away rather than reloading first: a stalled read is already dead,
+  and reloading it churned the control bar through `3:32 / 0:00` three times
+  before saying anything, which read as a worse freeze than the silence.
+- **A failed recovery no longer swallows every error after it.** The flag that
+  suppresses the burst of errors around one reload was cleared only when a new
+  source arrived, and two of the ways a retry can end don't produce one — so
+  after a single failed recovery the player would ignore every later failure,
+  leaving a frozen frame with no card and no way back short of reopening the
+  video.
+- **The desktop app can play a File Browser video that needs converting.** The
+  shell's media relay allowlists routes explicitly, and the path-scoped playback
+  sessions added in the previous entry were not on the list, so it answered its
+  own 404 before the server ever saw the request — working in a browser and
+  failing in the app.
 - **An unbundled video in the viewer shows its own details, not a bundle's.** A
   scan stages every new file into a provisional one-file bundle, so an unbundled
   file has a `bundle_id` like any other — and the viewer's docked pane took that

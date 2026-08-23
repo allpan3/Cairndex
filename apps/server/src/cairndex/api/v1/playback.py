@@ -9,11 +9,11 @@ which honors HTTP Range (206 + Content-Range). Subtitles are served as WebVTT.
 
 import math
 import mimetypes
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
@@ -34,7 +34,15 @@ from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import MediaKind
-from cairndex.media import contact_sheets, playback, previews, storyboards, thumbnails
+from cairndex.media import (
+    contact_sheets,
+    hevc_relabel,
+    playback,
+    previews,
+    ranged_stream,
+    storyboards,
+    thumbnails,
+)
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
 from cairndex.services import collections as collection_service
@@ -283,18 +291,41 @@ def continue_watching(
 
 
 @router.get("/files/{file_id}/stream")
-def stream_file(file_id: str, access: LibraryAccessDep) -> FileResponse:
-    """Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).
+def stream_file(file_id: str, access: LibraryAccessDep, request: Request) -> Response:
+    """Range-streamed video, relabelling ``hev1`` HEVC as ``hvc1`` on the way out.
 
     The content session is scoped to path resolution and released *before* the
     response streams, so overlapping drag-seek range requests don't pin
     connections and exhaust the pool (see ``LibraryAccess``).
+
+    An ``hev1`` file whose parameter sets are complete in ``hvcC`` is served with
+    five bytes of header rewritten (``media/hevc_relabel``), which is byte-for-byte
+    what a remux would have produced — so AVFoundation accepts it directly and no
+    HLS session, ffmpeg run or session lifetime is involved at all. Anything the
+    relabel cannot vouch for streams untouched and the decision sends it to a
+    session as before.
     """
     with access.session() as db:
         path, asset_file = playback.resolve_video_path(db, file_id)
         cap = playback.assess_playability(asset_file)
         media_type, filename = cap.mime_type, asset_file.original_filename
-    return FileResponse(str(path), media_type=media_type, filename=filename)
+    return _video_response(path, media_type, filename, request)
+
+
+def _video_response(path: Path, media_type: str, filename: str, request: Request) -> Response:
+    """Serve video bytes, patched to ``hvc1`` when that is provably equivalent."""
+    relabel = hevc_relabel.relabel_for(path)
+    if relabel is None:
+        # Nothing to rewrite: FileResponse remains the better-tested path, and it
+        # sets Content-Disposition from `filename` as this route always has.
+        return FileResponse(str(path), media_type=media_type, filename=filename)
+    return ranged_stream.ranged_file_response(
+        path,
+        media_type=media_type,
+        size=path.stat().st_size,
+        range_header=request.headers.get("range"),
+        patch=relabel.apply,
+    )
 
 
 @router.get("/files/{file_id}/content")

@@ -44,6 +44,8 @@ import { ClipExportDialog } from '../ClipExportDialog'
 import { SnapshotDialog } from '../SnapshotDialog'
 import { saveSnapshot } from '../snapshotExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
+import { createStallDetector } from './player/stallDetector'
+import { describePlayback, type PlaybackDescription } from './player/playbackInfo'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
@@ -68,6 +70,14 @@ const MAX_NATIVE_RECOVER = 3
 // reload opens a fresh connection, and an exhausted budget surfaces the
 // retryable "Playback interrupted" card instead of a dead player.
 const LOAD_WATCHDOG_MS = 15_000
+
+// The same idea once metadata has arrived, for a read that dies without an
+// error event (see `stallDetector.ts`). The same 15 s, for the same reason: long
+// enough that a slow network filling a buffer is never mistaken for a stall,
+// and the detector additionally requires the buffer to be static. Sampled every
+// second, which is cheap and fine-grained enough to date the stall.
+const STALL_WATCHDOG_MS = 15_000
+const STALL_SAMPLE_MS = 1_000
 
 /** Cover-frame actions the owning surface supplies, when the item is indexed. */
 export interface ShellCoverActions {
@@ -155,9 +165,11 @@ export function ViewerShell({
   const endedHandledRef = useRef(false)
   const endedContextRef = useRef<{
     fileLoop: boolean
+    /** A marked span is playing, so it owns the end of the file. */
+    clipPlaying: boolean
     player: PlayerController | null
     step: (delta: number) => void
-  }>({ fileLoop: false, player: null, step: () => {} })
+  }>({ fileLoop: false, clipPlaying: false, player: null, step: () => {} })
   const [resumeNotice, setResumeNotice] = useState<{ key: string; position: number } | null>(null)
   // Transient feedback for exports ("Building contact sheet…" / errors) — the
   // viewer has no toast bus of its own.
@@ -235,12 +247,20 @@ export function ViewerShell({
     nativeRecoverRef.current = 0
     nativeRecoveringRef.current = false
   }, [currentKey])
-  // The retried decision resolved into a (new) source object and the engine
-  // reloaded — the recovery window is over. If this reload is also broken, its
-  // own error event must count against the budget again.
+  // The retried decision resolved — the recovery window is over, and if this
+  // reload is also broken its own error event must count against the budget
+  // again.
+  //
+  // Keyed on the decision *settling*, not only on a new source object. The
+  // unavailable and error branches settle without minting one, so keyed on
+  // `source` alone this flag stuck true forever: every later stage error hit
+  // the early return below, leaving a frozen frame with no recovery and no
+  // card — exactly the dead end this whole path exists to avoid. Still held
+  // through `deciding`, which is the burst it is meant to swallow.
+  const hlsStatus = hls.status
   useEffect(() => {
-    nativeRecoveringRef.current = false
-  }, [source])
+    if (hlsStatus !== 'deciding') nativeRecoveringRef.current = false
+  }, [source, hlsStatus])
   const lastTimeRef = useRef(0)
   useEffect(() => {
     const delta = player.currentTime - lastTimeRef.current
@@ -458,6 +478,60 @@ export function ViewerShell({
       video.removeEventListener('error', disarm)
     }
   }, [source, videoElement])
+  // The watchdog above stops caring once metadata lands, and after that only the
+  // element's own `error` event reaches the failure path — which a progressive
+  // read that simply dies never fires. See `stallDetector.ts` for what that left
+  // on screen. Sampling is the only way to notice: there is no event for "this
+  // has quietly stopped".
+  useEffect(() => {
+    const video = videoElement
+    // Progressive only. hls.js already has fragment timeouts, retries and a
+    // fatal path into this same handler, and the server legitimately holds a
+    // segment request for two 20 s passes while ffmpeg catches up
+    // (hls.py DEFAULT_SEGMENT_WAIT) — a 15 s client deadline would be the
+    // tightest in the stack and would tear down a session that was only
+    // transcoding slowly. With MSE the buffer also grows a whole fragment at a
+    // time, so "bytes are still arriving" is invisible here in a way it is not
+    // for a progressive read.
+    if (!video || !source || source.kind === 'hls') return
+    const detector = createStallDetector(STALL_WATCHDOG_MS, STALL_SAMPLE_MS * 4)
+    const id = window.setInterval(() => {
+      // Every range, not the last one: seeking forward and back leaves several,
+      // and the one being refilled is often not the furthest along.
+      const ranges = video.buffered
+      let bufferedSeconds = 0
+      for (let i = 0; i < ranges.length; i++) bufferedSeconds += ranges.end(i) - ranges.start(i)
+      const stalled = detector.observe(
+        {
+          paused: video.paused,
+          seeking: video.seeking,
+          ended: video.ended,
+          playbackRate: video.playbackRate,
+          readyState: video.readyState,
+          currentTime: video.currentTime,
+          bufferedSeconds,
+        },
+        performance.now(),
+      )
+      // Straight to the card, deliberately *not* through handleStageError.
+      //
+      // That path reloads the element first, which is right for a transient
+      // error the element reported — but a post-metadata stall with a static
+      // buffer means the read is already dead, so reloading only churns. And it
+      // churns visibly: a reload resets `video.duration` to NaN, which the
+      // control bar renders as `0:00` beside a `currentTime` frozen at its last
+      // value, three times over before any card appeared. The owner reported
+      // that as a worse freeze than the silence it replaced (2026-08-16), and
+      // they were right.
+      //
+      // The card's own "Try again" performs exactly that reload — under the
+      // owner's hand, with the state explained rather than mid-churn.
+      if (stalled && currentKey) setFailure({ key: currentKey, kind: 'interrupted' })
+    }, STALL_SAMPLE_MS)
+    return () => window.clearInterval(id)
+    // `currentKey` is what the failure is filed under, so a step to another file
+    // must rebuild the detector rather than report against the previous one.
+  }, [source, videoElement, currentKey])
 
   const step = useCallback(
     (delta: number) => {
@@ -468,8 +542,8 @@ export function ViewerShell({
   )
 
   useEffect(() => {
-    endedContextRef.current = { fileLoop, player, step }
-  }, [fileLoop, player, step])
+    endedContextRef.current = { fileLoop, clipPlaying: clip.playingRange, player, step }
+  }, [clip.playingRange, fileLoop, player, step])
 
   // What the docked Bundle Inspector's actions mean *here*. Everything not
   // listed is inherited from the shell unchanged — the whole point of the
@@ -535,6 +609,11 @@ export function ViewerShell({
   useEffect(() => {
     consumeEndedTransition(player.status, endedHandledRef, () => {
       const context = endedContextRef.current
+      // A span whose out-point is the file's own end reaches this too, and
+      // `useClipPlayback` has already dealt with it — looped, or parked at the
+      // in-point. Advancing to the next file on top of that is the last thing a
+      // clip selection wants (owner-reported, 2026-08-16).
+      if (context.clipPlaying) return
       if (context.player) {
         handlePlaybackEnded(context.fileLoop, context.player, () => context.step(1))
       }
@@ -839,6 +918,7 @@ export function ViewerShell({
         <InfoPanel
           item={current}
           playable={playable}
+          playback={describePlayback(hls.status, hls.method, hls.reason)}
           items={items}
           index={index}
           onIndex={onIndex}
@@ -1130,12 +1210,14 @@ const Topbar = memo(function Topbar({
 function InfoPanel({
   item,
   playable,
+  playback,
   items,
   index,
   onIndex,
 }: {
   item: ViewerItem
   playable: PlayableVideo | null
+  playback: PlaybackDescription | null
   items: ViewerItem[]
   index: number
   onIndex: (index: number) => void
@@ -1197,6 +1279,19 @@ function InfoPanel({
           <dt>Subtitles</dt>
           <dd>{subtitles && subtitles.length > 0 ? subtitles.join(', ') : '—'}</dd>
         </div>
+        {/* The consequence of the rows above it: given this encoding and this
+            client, here is what the server decided to do. Last, and only for a
+            video the player actually took on. */}
+        {item.mediaKind === 'video' && playback && (
+          <div>
+            <dt>Playback</dt>
+            <dd>
+              {playback.label}
+              {playback.session && <span className="mv-info__badge">HLS session</span>}
+              {playback.detail && <span className="mv-info__note">{playback.detail}</span>}
+            </dd>
+          </div>
+        )}
       </dl>
       {items.length > 1 && <FileList items={items} index={index} onIndex={onIndex} />}
     </aside>

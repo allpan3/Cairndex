@@ -118,6 +118,234 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: `hev1` HEVC off HLS entirely, and playback you can see (2026-08-16)
+
+Branch `fix/hevc-direct-play-and-playback-resilience` (renamed from
+`fix/desktop-relay-and-stall-watchdog` as its scope grew), off `main` at
+`12a16828`. The measurement and design below were written first and are kept
+because they are the argument; **it is built now** — `media/hevc_relabel.py`,
+`media/ranged_stream.py`, and the `_effective_video_tag` hook in the playback
+routes, with the equivalence to `-tag:v hvc1` pinned byte-for-byte at 8- and
+10-bit. The one design change: offsets are memoised in-process on
+`(path, size, mtime_ns)` rather than stored in `tech_metadata`, so an unindexed
+File Browser path gets the same treatment as an indexed row and a replaced file
+is never served stale offsets.
+
+**Owner-verified on a real library, 2026-08-19.** Ready for review; no PR opened
+(the owner's call).
+
+**The trap that cost most of this branch's debugging: the desktop app serves a
+compiled backend, so server-side work does not apply until it is rebuilt.** The
+owner reported an `hev1` file still deciding `remux` after the relabel shipped,
+and the panel's reason carried none of the new explanation. Neither was a defect:
+the bundled `cairndex-sidecar` had been built at 18:47 and `hevc_relabel.py` did
+not exist until 22:33, so none of the HEVC work was in the running process. The
+frontend *was* current — Vite serves it, so the new Playback row appeared — and
+that split is exactly what makes this misleading: half the change is live and
+half is four hours stale.
+
+`just bundled` rebuilds when `apps/server` is newer (`apps/desktop/
+dev-bundled.mjs` compares mtimes), so it cannot happen that way. Launching a
+packaged `.app`, or `npm run tauri dev`, uses whatever binary is on disk. When a
+desktop symptom contradicts a green backend suite, date the sidecar first:
+
+```
+ls -la apps/server/packaging/dist/cairndex-sidecar/cairndex-sidecar
+```
+
+Note that grepping the bundle for a module name proves nothing either way — the
+modules are inside a compressed PYZ, so `hevc_relabel` and `ranged_stream` are
+both absent from a bundle that contains them. Compare build time against
+`git log --diff-filter=A -- <file>` instead.
+
+**Also on this branch: the info panel now says how a video is playing.** The
+owner's question was literally "how do I even know it does?" — the server had
+always decided `direct`/`remux`/`transcode` and always written a human reason,
+and none of it reached the screen. `useHlsSession` exposes `method` alongside
+`reason`; `player/playbackInfo.describePlayback` turns the pair into a label, an
+`HLS session` badge for remux and transcode, and the server's reason underneath;
+`InfoPanel` renders it as a **Playback** row. It returns null before a decision
+lands, so the row is hidden rather than showing an em-dash or a guess.
+
+**A refused relabel now explains itself, because the first owner report after it
+shipped was a file that stayed on `remux`.** The reason read "hev1 codec tag is
+not in client capabilities", which was true and unactionable: three unrelated
+situations produced it and nothing distinguished them. `inspect_hevc` returns an
+`Outcome` carrying the refusal in words; the routes append it to the reason; the
+Playback row shows it. The ladder, in the order worth checking:
+
+1. **"this client plays no HEVC tag progressively"** — the client decodes HEVC
+   only through MSE, so relabelling would not help and a session is correct.
+   Chromium is *not* this case: measured here, Chrome 148 answers _probably_ to
+   `hvc1` **and** `hev1` at both depths, so it direct-plays either without any
+   relabel. WKWebView is the case that matters.
+2. **"its header carries no VPS…" / "…no hvcC configuration"** — the file itself.
+   Correctly refused: claiming `hvc1` when the decoder needs parameter sets
+   in-band breaks playback partway, which is worse than a remux. Do not weaken
+   this guard to make a file direct-play.
+3. **"its container header does not match its probed codec tag"** — the parser
+   found no `hev1` sample entry in a file the probe called `hev1`. This one is a
+   defect here, not a property of the file, and was previously silent.
+
+To ask the question directly about one file, from `apps/server`:
+
+```
+uv run python -c "
+import sys
+from pathlib import Path
+from cairndex.media.hevc_relabel import inspect_hevc
+outcome = inspect_hevc(Path(sys.argv[1]))
+print(outcome.relabel and 'direct play' or ('needs a session: ' + (outcome.why or 'not hev1')))
+" /path/to/file.mp4
+```
+
+Worth knowing, because it is now the only easy way to reach a session on this
+machine: **taking `hev1` direct removed most of what used to need one.** To force
+a transcode on any file, pick a quality below the source's own height from the
+player's settings menu (`qualityOptions` offers only heights at or below the
+source, and `decide_playback` transcodes when `source_height > max_height`) — the
+Playback row flips while you watch. A `-c copy` remux into MKV is the other
+route: no browser advertises the container, so it is always a session.
+
+**Why the relabel is the fundamental fix and everything else is a safety net.** An
+`hev1`-tagged HEVC file needs an HLS session for one reason: AVFoundation refuses
+that four-character code progressively, so the only route to a decoder is MSE,
+and MSE is only reachable through HLS. Every downstream problem — ffmpeg running
+at all, sessions expiring, the reaper, keepalives, segment holes, transcode disk
+— exists solely because of that refusal. Remove it and the whole class goes,
+rather than being managed. The owner asked for exactly this ("if there is
+something fundamentally missing, fix it fundamentally").
+
+**Measured on the actual engine, not inferred.** A WKWebView probe (a ~60-line
+Swift harness; worth rebuilding rather than trusting Chrome, which answers
+differently):
+
+| probe | `canPlayType` | `MSE.isTypeSupported` |
+| --- | --- | --- |
+| hevc `hvc1` 8-bit | probably | true |
+| hevc `hvc1` **10-bit** | **probably** | true |
+| hevc `hev1` 8-bit | **(empty)** | true |
+| hevc `hev1` 10-bit | **(empty)** | true |
+| h264 High10 | (empty) | false |
+
+Two conclusions. The bit-depth rule added in PR #4 is **not** implicated —
+WKWebView advertises `hvc1` 10-bit as playable, so `hevc10` is in the profile and
+the rule never fires for it. And `hev1` is refused progressively at *both*
+depths while MSE accepts it, which is the whole story.
+
+**The conversion is five bytes.** Encoding the same content twice with
+`-tag:v hvc1` and `-tag:v hev1` produces files that differ in exactly five bytes,
+all inside `moov`:
+
+- the sample-entry fourCC — 2 bytes, since `hvc1`/`hev1` share `h` and `1`;
+- `array_completeness` on each of the VPS/SPS/PPS arrays in `hvcC`, `0xA0/A1/A2`
+  vs `0x20/21/22` — 3 bytes.
+
+Both files carried an identical 2433-byte `hvcC`, so the parameter sets are in
+the header either way. **A remux is therefore byte-equivalent to patching five
+bytes of header and serving the original `mdat` untouched** — no ffmpeg, no
+session, no reaper exposure.
+
+**Design, as planned** — shipped as described except for where the offsets live
+(see above). At probe time, locate and store the offsets; at serve time, patch
+them in a range-aware reader.
+
+1. Parse `hvcC` properly. `hev1_relabel_offsets` belongs beside `mp4_index.py`,
+   which already walks `moov` boxes byte-wise. Record the offsets in
+   `tech_metadata` so serving costs no re-parse.
+2. `hvcC` layout: 23 bytes of fixed fields, then `numOfArrays`, then per array a
+   `completeness/reserved/NAL_unit_type` byte, `numNalus`, and length-prefixed
+   NALs. The sample entry is 8 + 78 bytes before its child boxes.
+3. Guard: only claim `hvc1` when the arrays are present and complete. If a stream
+   genuinely varies its parameter sets in-band, relabelling is a lie that breaks
+   playback partway, so the guard is load-bearing rather than defensive.
+4. `decide_playback` then treats a relabellable `hev1` as `hvc1`, and the direct
+   `stream_url` serves the patched header.
+
+**Do not byte-search for the array bytes.** Tried it: searching for `0x20/21/22`
+after the fourCC hits arbitrary payload and left two offsets wrong out of five.
+The parse is the work; the patch is trivial once the offsets are right.
+
+**Both "remaining session issues" were closed as not-a-defect — they were my own
+arithmetic**, and the correction is worth keeping because the mistake is easy to
+repeat. I read "240 s file, 6 s segments, so 40 segments", then treated 29
+segments and an instant 404 on segment 30 as two bugs.
+
+A **remux** splits on the *source's own keyframes*, not a 6 s grid — its playlist
+is keyframe-derived, which `docs/architecture.md` §6 already says. The fixture was
+encoded `-g 250` at 30 fps, so its GOP is 8.33 s and the playlist is 29 segments
+averaging 8.28 s. ffmpeg had produced every one and **exited 0**; segment 30 does
+not exist, and refusing it instantly is correct. Only a *transcode* forces
+keyframes onto the 6 s grid that would have given 40.
+
+Verified against a real session afterwards: the last segment (28) and a mid-file
+one (14) each serve in 0.1 s from a cold far seek, and the first index past the end
+is a clean 404. If a far seek misbehaves again, suspect the client, not this.
+
+## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
+
+The first commit of the branch recorded above, under its original name. One
+commit. Owner-reported live, while testing on `claude/export-watermark-settings-41db44`
+(which contains the PR #4 merge).
+
+**Report.** A video open in the desktop app froze: could not play, could not
+seek, the rest of the UI fine. Later refined — it happens after seeking the
+playhead past the buffered region, and the bar then "drifts to the right end,
+goes back to the left, and reads 0.0/0.0". That reading is the signature of the
+element being *reset*: `currentTime / duration` renders 100% when duration hits
+0, then 0% when currentTime follows.
+
+**What the live system ruled out**, before touching any code — worth repeating
+because it took minutes and saved hours:
+
+- the sidecar was healthy throughout (`/health` 2–5 ms, library-scoped DB routes
+  3–20 ms), so no pool exhaustion;
+- zero jobs, both library roots readable in ~20 ms;
+- **no `transcode/` directory at all**, and the session manager mkdirs it the
+  moment any playback route resolves — so no HLS session existed and the source
+  was progressive;
+- **no version skew**: the prebuilt sidecar was rebuilt at 02:04:03, after the
+  01:51:16 merge, and its live `/openapi.json` matches HEAD's committed artifact
+  path-for-path;
+- `lsof` on the sidecar port showed only the LISTEN socket over a 6 s sample —
+  the client was requesting nothing at all;
+- the File Browser path reader **does** honour Range (verified live: `206`, a
+  correct `content-range` on a 3.3 GB file), so the seek was not failing there.
+
+**Three fixes landed.**
+
+1. `media_proxy.rs` had no allowlist arm for
+   `["file-browser", "playback-sessions", _, artifact]`, so the desktop shell
+   404'd the path-scoped sessions PR #4 added — in the app only; a browser does
+   not go through the relay. **This allowlist has now bitten three times**
+   (contact sheets 2026-07-27, GIF exports on the watermark branch, this). It is
+   an explicit list with no compile-time tie to the routes it mirrors; a fourth
+   occurrence should probably buy a real fix rather than a fourth arm.
+2. `player/stallDetector.ts` plus a sampler in `ViewerShell`: a progressive read
+   that dies without an `error` event now ends in the existing
+   "Playback interrupted" path instead of silence.
+3. `nativeRecoveringRef` was cleared only on a new `source` object, but the
+   `unavailable` and `error` branches settle without minting one — so one failed
+   recovery made the player swallow every later error, frozen with no card.
+   Pre-existing on `main`, and the likeliest explanation for the report.
+
+**Adversarial review earned its keep** and should be repeated for anything in
+this file. It caught two false positives in the watchdog before it shipped, both
+worse than the bug: sampling only `buffered.end(length - 1)` (a refilling
+*earlier* range reads as a dead read — i.e. it would have fired on exactly the
+seek-past-the-buffer gesture that motivated it), and applying to HLS, where the
+server holds a segment request for two 20 s passes and 15 s would have been the
+tightest deadline in the stack.
+
+**Not verified by the owner yet.** The fix is reasoned and unit-tested; nobody
+has yet reproduced the freeze *with* it in place. The recovery that needs no
+restart is a quality or audio-track switch, which bumps the epoch and reloads
+the element.
+
+**Known local-only e2e failure**, unchanged: `transparently re-attaches a fresh
+session when HLS segments fail` fails on this machine and on unmodified `main`,
+and passes in CI.
+
 ## Open on branch: library setup and the videos that would not play (2026-08-16)
 
 Branch `claude/library-setup-scan-issues-db7786`, off `main` at `a8e077a4`.
