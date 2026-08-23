@@ -926,3 +926,94 @@ def test_file_browser_playback_refuses_a_non_video_path(
         },
     )
     assert resp.status_code == 422
+
+
+# --- HDR tone mapping (media/tonemap) ----------------------------------------
+# The order of this graph is the substance: scale before tone map so the float32
+# linear intermediate covers as few pixels as possible (measured: a 4K source
+# tone maps at 1.4x realtime, the same source capped to 1080p at 10x), and burn-in
+# after it so subtitle graphics are not composited onto linear-light pixels.
+def _tonemappable(monkeypatch: pytest.MonkeyPatch, *, ok: bool = True) -> None:
+    from cairndex.media import tonemap
+
+    monkeypatch.setattr(tonemap, "available", lambda: ok)
+    monkeypatch.setattr(tonemap, "enabled", lambda: ok)
+
+
+def test_an_hdr10_transcode_tone_maps_after_the_downscale(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _tonemappable(monkeypatch)
+    session = _session(
+        tmp_path, kind="transcode", params=SessionParams(max_height=720, hdr="hdr10")
+    )
+
+    graph = ",".join(hls._transcode_filters(session))
+
+    assert graph.index("scale=-2") < graph.index("zscale=t=linear"), (
+        "tone mapping must see the downscaled frame, not the source"
+    )
+    assert graph.endswith("zscale=t=bt709:m=bt709:r=tv")
+
+
+def test_burn_in_is_composited_after_tone_mapping(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from cairndex.media.hls import BurnSubtitle
+
+    _tonemappable(monkeypatch)
+    session = _session(
+        tmp_path,
+        kind="transcode",
+        params=SessionParams(hdr="hlg", burn_subtitle=BurnSubtitle(path=Path("/s.srt"))),
+    )
+
+    graph = ",".join(hls._transcode_filters(session))
+
+    assert graph.index("tonemap=") < graph.index("subtitles=")
+
+
+def test_an_sdr_transcode_is_untouched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _tonemappable(monkeypatch)
+    session = _session(tmp_path, kind="transcode", params=SessionParams(max_height=720))
+
+    assert hls._transcode_filters(session) == ["scale=-2:'min(ih,720)'"]
+
+
+def test_dolby_vision_is_not_tone_mapped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Profile 5 is IPT; this chain would turn it green and magenta."""
+    _tonemappable(monkeypatch)
+    session = _session(tmp_path, kind="transcode", params=SessionParams(hdr="dv"))
+
+    assert hls._transcode_filters(session) == []
+
+
+def test_a_build_that_cannot_tone_map_emits_no_chain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Better a flat picture than a command line ffmpeg rejects outright."""
+    _tonemappable(monkeypatch, ok=False)
+    session = _session(tmp_path, kind="transcode", params=SessionParams(hdr="hdr10"))
+
+    assert hls._transcode_filters(session) == []
+
+
+def test_a_remux_never_gains_a_filter_graph(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A remux copies the video; there is nothing to tone map, and -vf would
+    contradict -c:v copy."""
+    _tonemappable(monkeypatch)
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    session = _session(tmp_path, kind="remux", params=SessionParams(hdr="hdr10"))
+
+    args = hls.build_ffmpeg_command(session, 0, 0.0)
+
+    assert "-vf" not in args
+    assert "copy" in args
+
+
+def test_hdr_does_not_fragment_session_reuse() -> None:
+    """`hdr` is constant per source, so equality-based reuse still matches."""
+    assert SessionParams(hdr="hdr10") == SessionParams(hdr="hdr10")
+    assert SessionParams(hdr="hdr10") != SessionParams(hdr=None)

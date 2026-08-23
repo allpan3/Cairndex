@@ -566,7 +566,63 @@ records the statements the write emits and asserts there is exactly one and it
 carries `ON CONFLICT`. Verified to fail on the old code, printing the very
 SELECT/INSERT pair that is the bug. Do not "improve" it into a threaded test.
 
-**Open: HDR tone mapping.** A transcoded HDR source gets `-pix_fmt yuv420p` and
+## Open on branch: HDR tone mapping (2026-08-23)
+
+Branch `feat/hdr-tone-mapping`, off `main` at `ea3f12a7`. Built from the scoping
+below, which held up except on one point that mattered.
+
+**The scoping was wrong about filter availability, and it mattered.** It recorded
+that Homebrew's ffmpeg has `tonemap` but neither `zscale` nor `libplacebo`, and
+left Debian's and the pinned macOS sidecar build unchecked with "check both
+before designing around either". Checked now: **the shipped sidecar build
+(martin-riedl 8.1.2) has `zscale`** — so the deployment that actually matters on
+macOS can tone map, and only the dev machine cannot. Debian's is still unverified
+(no daemon here), which is why availability is **probed at runtime** rather than
+assumed. `media/tonemap.py` does it once per process off `ffmpeg -filters`.
+
+Note for anyone touching that probe: the flags column is **two** characters wide
+on ffmpeg 8 (`.S`) and three on 7 and earlier (`..C`), so keying on its width
+matches nothing. The `in->out` column is the discriminator. The first version of
+this parsed exactly one filter name out of 483 and reported "cannot tone map" on
+a build that can.
+
+**What landed.** `zscale=t=linear -> format=gbrpf32le -> zscale=p=bt709 ->
+tonemap=hable:desat=0 -> zscale=t=bt709:m=bt709:r=tv`, inserted into the
+transcode's `-vf` graph, behind `CAIRNDEX_FFMPEG_TONEMAP=auto|off`, with
+`SessionParams.hdr` carrying the signalling (constant per source, so it does not
+fragment equality-based session reuse). Verified end to end: a PQ/BT.2020 source
+comes out tagged `bt709`/`bt709`/`bt709`, and `normalize_metadata` reports
+`hdr: None` for the result.
+
+**Graph order is the substance, and it is measured.** Scale comes *first* so the
+float32 linear intermediate covers as few pixels as possible; burn-in comes
+*last* so subtitle graphics are not composited onto linear-light pixels. On this
+machine, 10 s of source through the chain:
+
+| source | wall | vs real time |
+| --- | --- | --- |
+| 1080p HDR -> 1080p SDR | 1.00 s | 10x |
+| 4K HDR -> 4K SDR | 6.73 s | **1.4x** |
+
+So a 4K source on **Auto** quality (no height cap, so no downscale) has only 40%
+headroom here and would plausibly fall *below* real time on the NAS, where a
+session must stay ahead of the player. Deliberately not "fixed" by silently
+capping resolution — that is a product decision, not a bug fix. The mitigations
+that exist are the quality ladder (picking 1080p makes it 10x, because the
+downscale runs first) and `CAIRNDEX_FFMPEG_TONEMAP=off`. **Measure on the NAS
+before trusting `auto` there.**
+
+**Dolby Vision is still excluded, and now says so.** Profile 8.1 has an
+HDR10-compatible base layer and would tone map correctly; profile 5 is IPT and
+this chain would turn it green and magenta, which is worse than flat.
+`ffprobe._hdr` reports only `"dv"`, so the two cannot be distinguished —
+recording `dv_profile` remains the prerequisite, and is the obvious next slice.
+
+**Next.** Owner pass on real HDR content; NAS throughput measurement; then
+`dv_profile` and DV 8.1.
+
+**Superseded by the branch above — kept for the measurements it records.** A
+transcoded HDR source gets `-pix_fmt yuv420p` and
 no colour conversion, so PQ values are read as BT.709 gamma and the picture
 comes out flat. Scoped smaller than it first looked, and measured rather than
 assumed:
