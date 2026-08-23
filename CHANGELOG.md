@@ -20,6 +20,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   should go is often the moment you notice the folder does not exist yet; the new
   folder becomes the destination straight away. Move to… is unchanged.
 
+  The collision prompt gained a **Skip**. It offered Cancel, Replace and Keep
+  both — and Cancel abandons every file still queued, so with several files
+  picked there was no way to say "not this one, carry on". Skip leaves that file
+  alone and continues; Cancel stops and copies nothing further. The dialog now
+  says which is which, since the buttons alone did not.
+
   **Dragging a file that is already in the library into it is refused**, with a
   message pointing at Move to… instead. Copying it in would be silent whenever
   the destination folder differed, and worse when it did not: answering Replace

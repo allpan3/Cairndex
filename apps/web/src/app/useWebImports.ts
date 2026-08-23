@@ -90,7 +90,7 @@ export function useWebImports({
     return true
   }
 
-  const answer = (policy: 'suffix' | 'replace') => {
+  const answer = (policy: 'suffix' | 'replace' | 'skip') => {
     const batch = batchRef.current
     if (!batch || !conflict || batch.stopping || batch.inFlight) return
     setConflict(null)
@@ -113,6 +113,8 @@ export function useWebImports({
     copyIn,
     keepBoth: () => answer('suffix'),
     replace: () => answer('replace'),
+    // Skips this file and continues; `dismiss` abandons what is left.
+    skip: () => answer('skip'),
     dismiss: stop,
     stop,
   }

@@ -2216,3 +2216,54 @@ test('opening a video mid-upload does not cancel the rest of the batch', async (
   await expect.poll(() => imported.length, { timeout: 15_000 }).toBe(2)
   expect(imported).toEqual(['big.mp4', 'cover.jpg'])
 })
+
+test('Skip leaves one file out and copies the rest', async ({ page }) => {
+  // Owner question (2026-08-23): the collision dialog offered Cancel, Replace
+  // and Keep both — and Cancel abandons every file still queued. With several
+  // files picked there was no way to say "not this one, carry on".
+  await mockApi(page)
+  await mockWriteMode(page)
+  const attempted: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams
+    const name = query.get('filename') ?? ''
+    const policy = query.get('on_conflict')
+    attempted.push(`${name}:${policy}`)
+    // The first file collides until an answer arrives with the request.
+    if (name === 'first.mp4' && policy === 'fail') {
+      return route.fulfill({
+        status: 409,
+        json: {
+          detail: '“first.mp4” already exists here',
+          details: { code: 'path_conflict', name: 'first.mp4', path: 'first.mp4' },
+        },
+      })
+    }
+    return route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${attempted.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: policy === 'skip',
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'first.mp4', mimeType: 'video/mp4', buffer: Buffer.from('one') },
+    { name: 'second.mp4', mimeType: 'video/mp4', buffer: Buffer.from('two') },
+  ])
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible()
+  await page.getByRole('button', { name: 'Skip' }).click()
+
+  // The skipped file is re-sent with the answer, then the batch carries on.
+  await expect
+    .poll(() => attempted, { timeout: 10_000 })
+    .toEqual(['first.mp4:fail', 'first.mp4:skip', 'second.mp4:fail'])
+  await expect(page.getByText(/Added 1 of 2 files/)).toBeVisible()
+})
