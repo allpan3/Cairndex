@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileRead } from '../api/client'
-import { BundleDropDestination, DirectoryPicker } from './FileWriteDialogs'
+import { BundleDropDestination, ConflictDialog, DirectoryPicker } from './FileWriteDialogs'
 
 // The bundle whose files decide where the picker opens.
 let bundleFiles: FileRead[] = []
@@ -209,4 +209,52 @@ test('a refused folder says why and leaves the picker where it was', () => {
   renderPicker({ allowNewFolder: true, startIn: 'Studios' })
 
   expect(screen.getByRole('alert')).toHaveTextContent('already here')
+})
+
+// --- the collision dialog's third answer --------------------------------------
+test('Skip is offered only where there is a rest of the batch to carry on with', () => {
+  // For a single rename or move, skipping is what Cancel already does, so the
+  // button would be two names for one outcome.
+  const { rerender } = render(
+    <ConflictDialog
+      name="clip.mkv"
+      onKeepBoth={vi.fn()}
+      onReplace={vi.fn()}
+      onCancel={vi.fn()}
+      busy={false}
+    />,
+  )
+  expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+
+  const onSkip = vi.fn()
+  rerender(
+    <ConflictDialog
+      name="clip.mkv"
+      onKeepBoth={vi.fn()}
+      onReplace={vi.fn()}
+      onSkip={onSkip}
+      onCancel={vi.fn()}
+      busy={false}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+
+  expect(onSkip).toHaveBeenCalledTimes(1)
+})
+
+test('the dialog distinguishes Skip from Cancel in words, not just buttons', () => {
+  render(
+    <ConflictDialog
+      name="clip.mkv"
+      onKeepBoth={vi.fn()}
+      onReplace={vi.fn()}
+      onSkip={vi.fn()}
+      onCancel={vi.fn()}
+      busy={false}
+    />,
+  )
+
+  // Which one abandons the queue is the whole difference between them.
+  expect(screen.getByText(/carries on with the rest/)).toBeTruthy()
+  expect(screen.getByText(/does not copy what is left/)).toBeTruthy()
 })

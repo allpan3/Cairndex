@@ -15,12 +15,19 @@ export function ConflictDialog({
   name,
   onKeepBoth,
   onReplace,
+  onSkip,
   onCancel,
   busy,
 }: {
   name: string
   onKeepBoth: () => void
   onReplace: () => void
+  /**
+   * Leave this one alone and carry on with the rest. Offered only where there
+   * *is* a rest — a batch of files — because for a single rename or move it
+   * would mean exactly what Cancel already means.
+   */
+  onSkip?: () => void
   onCancel: () => void
   busy: boolean
 }) {
@@ -40,12 +47,24 @@ export function ConflictDialog({
           Nothing has been changed yet. <strong>Keep both</strong> adds a number to the new name,
           like “{name} (2)”. <strong>Replace</strong> moves the existing file to this library’s
           trash first, so you can still get it back.
+          {onSkip ? (
+            <>
+              {' '}
+              <strong>Skip</strong> leaves this one out and carries on with the rest, while{' '}
+              <strong>Cancel</strong> stops here and does not copy what is left.
+            </>
+          ) : null}
         </p>
         <div className="modal__actions">
           <span className="toolbar__spacer" />
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
+          {onSkip && (
+            <button type="button" className="btn" onClick={onSkip} disabled={busy}>
+              Skip
+            </button>
+          )}
           <button type="button" className="btn" onClick={onReplace} disabled={busy}>
             Replace
           </button>

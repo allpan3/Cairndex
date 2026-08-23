@@ -2720,6 +2720,7 @@ function Workspace({
           name={webImports.conflict.conflictingName}
           onKeepBoth={webImports.keepBoth}
           onReplace={webImports.replace}
+          onSkip={webImports.skip}
           onCancel={webImports.dismiss}
           busy={false}
         />
@@ -2730,6 +2731,7 @@ function Workspace({
           name={hostImports.conflict.conflictingName}
           onKeepBoth={hostImports.keepBoth}
           onReplace={hostImports.replace}
+          onSkip={hostImports.skip}
           onCancel={hostImports.dismiss}
           busy={false}
         />
