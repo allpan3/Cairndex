@@ -2128,3 +2128,42 @@ test('the sidebar tells a waiting job from a running one, and can stop either', 
   await page.getByRole('button', { name: 'Stop storyboards' }).first().click()
   await cancelled
 })
+
+test('adding several files at once imports every one of them', async ({ page }) => {
+  // Owner report (2026-08-23): picking two files showed "1 of 2" then "2 of 2",
+  // and only one file arrived.
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const url = new URL(route.request().url())
+    const name = url.searchParams.get('filename') ?? ''
+    imported.push(`${url.searchParams.get('dest_dir') ?? ''}|${name}`)
+    await route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${imported.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  // Through the Add Files command's own input. It has no clickable trigger in a
+  // browser (the menu bar is native), but the input is mounted, which is what
+  // makes this flow testable at all.
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'first.mp4', mimeType: 'video/mp4', buffer: Buffer.from('one') },
+    { name: 'second.mp4', mimeType: 'video/mp4', buffer: Buffer.from('two') },
+  ])
+  await expect(page.getByRole('heading', { name: 'Add 2 files to…' })).toBeVisible()
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect.poll(() => imported.length, { timeout: 10_000 }).toBe(2)
+  // Distinct names, same destination — one request per file, none overwritten.
+  expect(new Set(imported).size).toBe(2)
+  expect(imported.map((entry) => entry.split('|')[1]).sort()).toEqual(['first.mp4', 'second.mp4'])
+})

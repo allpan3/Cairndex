@@ -2740,6 +2740,7 @@ function Workspace({
           Browser's own toolbar input does not exist. */}
       <input
         ref={addFilesInputRef}
+        data-testid="add-files-input"
         type="file"
         multiple
         hidden
