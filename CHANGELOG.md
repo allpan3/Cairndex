@@ -20,6 +20,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   should go is often the moment you notice the folder does not exist yet; the new
   folder becomes the destination straight away. Move to… is unchanged.
 
+  **Dragging a file that is already in the library into it is refused**, with a
+  message pointing at Move to… instead. Copying it in would be silent whenever
+  the destination folder differed, and worse when it did not: answering Replace
+  moves the original to Trash, so a bundle containing that file loses it while
+  identical bytes land at the same path untracked. Only the drag-in can be
+  guarded — the Add Files picker receives bytes with no path, deliberately, so
+  neither the app nor the server can tell where they came from.
+
   The File Browser's existing button is renamed **Add Files Here**, because that
   is what it does — it copies into the folder on screen without asking, which is
   the faster path when you are already there.
