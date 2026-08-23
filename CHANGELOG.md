@@ -10,6 +10,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Adding files to the library no longer means standing in the right folder
+  first.** `File ▸ Add Files to Library…` (⇧⌘A) picks files and then asks where
+  they should go, so it works from the Bundle Browser and the viewer, not just
+  the File Browser. Collisions raise the same Replace / Skip / Keep both prompt
+  as a drag-in, and each copy keeps its own Undo.
+
+  The destination dialog can **create a folder**, because deciding where a file
+  should go is often the moment you notice the folder does not exist yet; the new
+  folder becomes the destination straight away. Move to… is unchanged.
+
+  The File Browser's existing button is renamed **Add Files Here**, because that
+  is what it does — it copies into the folder on screen without asking, which is
+  the faster path when you are already there.
+
 - **The marked span is something you play, with `\` or Play Range.** The clip
   strip had grown an action and a mode that only meant anything together —
   "From In" and "Range" — so they are now one control. **Play Range** jumps to

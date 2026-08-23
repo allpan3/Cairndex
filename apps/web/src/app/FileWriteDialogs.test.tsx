@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileRead } from '../api/client'
-import { BundleDropDestination } from './FileWriteDialogs'
+import { BundleDropDestination, DirectoryPicker } from './FileWriteDialogs'
 
 // The bundle whose files decide where the picker opens.
 let bundleFiles: FileRead[] = []
@@ -13,7 +13,11 @@ const listings: Record<string, string[]> = {
   'Studios/Alpha': [],
 }
 
+// The mkdir mutation the picker's New Folder drives.
+const mkdir = { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown }
+
 vi.mock('../api/hooks', () => ({
+  useFileOperations: () => ({ mkdir }),
   useBundleFiles: () => ({ data: bundleFiles, isLoading: false }),
   useFileBrowser: (path: string | null) => ({
     data: {
@@ -33,6 +37,10 @@ function fileAt(relativePath: string): FileRead {
 
 beforeEach(() => {
   bundleFiles = []
+  mkdir.mutate = vi.fn()
+  mkdir.isPending = false
+  mkdir.isError = false
+  mkdir.error = null
 })
 
 test('a drop onto a bundle opens where the bundle’s first file lives', () => {
@@ -93,4 +101,112 @@ test('a bundle whose file sits at the root opens at the root', () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Copy into Library root' }))
   expect(onChoose).toHaveBeenCalledWith('')
+})
+
+// --- New Folder inside the picker --------------------------------------------
+// Choosing where to *add* a file is often the moment you notice the folder does
+// not exist yet. It is opt-in because this dialog is shared with Move to…, which
+// should not gain an affordance by side effect.
+function renderPicker(props: Partial<Parameters<typeof DirectoryPicker>[0]> = {}) {
+  const onChoose = vi.fn()
+  render(<DirectoryPicker onChoose={onChoose} onCancel={vi.fn()} busy={false} {...props} />)
+  return onChoose
+}
+
+test('the picker offers no New Folder unless asked', () => {
+  renderPicker()
+
+  expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull()
+})
+
+test('a folder is created under the directory currently open', () => {
+  // Via the button, because a dialog needs a visible way to commit — the inline
+  // list editor's Enter-or-blur convention left the owner with "only this text
+  // box" and no obvious action (2026-08-23).
+  renderPicker({ allowNewFolder: true, startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: 'Gamma' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+  expect(mkdir.mutate).toHaveBeenCalledTimes(1)
+  expect(mkdir.mutate.mock.calls[0]?.[0]).toBe('Studios/Gamma')
+})
+
+test('Enter in the name box creates the folder too', () => {
+  renderPicker({ allowNewFolder: true, startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  const input = screen.getByLabelText('New folder name')
+  fireEvent.change(input, { target: { value: 'Gamma' } })
+  fireEvent.submit(input)
+
+  expect(mkdir.mutate.mock.calls[0]?.[0]).toBe('Studios/Gamma')
+})
+
+test('nothing is created by clicking away from the name box', () => {
+  // The inline editor commits on blur, which in a dialog meant clicking the
+  // confirm button created the folder *and* imported into its parent.
+  renderPicker({ allowNewFolder: true, startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  const input = screen.getByLabelText('New folder name')
+  fireEvent.change(input, { target: { value: 'Gamma' } })
+  fireEvent.blur(input)
+
+  expect(mkdir.mutate).not.toHaveBeenCalled()
+})
+
+test('the name box can be abandoned', () => {
+  renderPicker({ allowNewFolder: true })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel new folder' }))
+
+  expect(screen.queryByLabelText('New folder name')).toBeNull()
+  expect(screen.getByRole('button', { name: 'New Folder' })).toBeTruthy()
+})
+
+test('a folder created at the root has no leading slash', () => {
+  renderPicker({ allowNewFolder: true })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: 'Inbox' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+  expect(mkdir.mutate.mock.calls[0]?.[0]).toBe('Inbox')
+})
+
+test('the picker steps into the folder it just created', () => {
+  // It was created to be the destination, so leaving the picker outside it would
+  // make every caller navigate in by hand.
+  const onChoose = renderPicker({ allowNewFolder: true, startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: 'Gamma' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+  const options = mkdir.mutate.mock.calls[0]?.[1] as { onSuccess: () => void }
+  act(() => options.onSuccess())
+
+  fireEvent.click(screen.getByRole('button', { name: /^Choose|^Move|^Add|Select/ }))
+  expect(onChoose).toHaveBeenCalledWith('Studios/Gamma')
+})
+
+test('an empty name cannot be submitted', () => {
+  renderPicker({ allowNewFolder: true })
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: '   ' } })
+
+  expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+  expect(mkdir.mutate).not.toHaveBeenCalled()
+})
+
+test('a refused folder says why and leaves the picker where it was', () => {
+  mkdir.isError = true
+  mkdir.error = new Error('A folder with that name is already here.')
+  renderPicker({ allowNewFolder: true, startIn: 'Studios' })
+
+  expect(screen.getByRole('alert')).toHaveTextContent('already here')
 })

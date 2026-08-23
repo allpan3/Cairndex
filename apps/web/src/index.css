@@ -5757,6 +5757,30 @@ code {
 .dir-picker__sep {
   color: var(--text-muted);
 }
+/* The New Folder row, above the listing: a folder created here becomes the
+   destination, so it belongs where the eye already is rather than below. */
+.dir-picker__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-height: 28px;
+}
+.dir-picker__new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.dir-picker__new input {
+  flex: 1;
+  min-width: 0;
+}
+.dir-picker__error {
+  color: #ffb454;
+  font-size: 12px;
+}
 .dir-picker__list {
   list-style: none;
   margin: 0;

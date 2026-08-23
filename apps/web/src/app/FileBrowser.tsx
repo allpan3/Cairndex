@@ -705,7 +705,7 @@ function FileList({
               disabled={write.busy}
               title="Copy files from this computer into this folder"
             >
-              Add Files…
+              Add Files Here
             </button>
             <input
               ref={fileInputRef}
