@@ -324,6 +324,105 @@ def test_reparent_bundle_into_current_persisted_collection(
     assert destination in confirmed.collections
 
 
+def _seed_two_studios(session: Session, root: Path) -> None:
+    """One folder holding two subject folders, so a collection is proposed for it."""
+    for studio in ("StudioAlpha", "StudioBeta"):
+        folder = root / "Archive" / studio
+        folder.mkdir(parents=True)
+        (folder / f"{studio.lower()}-01.mp4").write_text("v")
+    scan_library(session, root)
+
+
+# One row per collection: a placement must not redraw a branch already on screen
+def test_placing_into_an_existing_collection_reuses_the_plan_row_for_its_parent(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The context path stops where the plan already speaks for the same collection.
+
+    The plan's own top-level ``Archive`` row and an existing top-level collection
+    named ``Archive`` are one destination — apply resolves an unlinked container
+    by name under its parent — so materializing a second, read-only ``Archive``
+    for the selected child's ancestry drew that collection twice, side by side at
+    the top of the review (owner-reported, 2026-08-23).
+    """
+    _seed_two_studios(session, library_root)
+    root = Collection(name="Archive")
+    talent = Collection(name="Talent", parent=root)
+    session.add_all([root, talent])
+    session.flush()
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    folder_row = next(p for p in plan["proposals"] if p["kind"] == "container")
+    assert folder_row["title"] == "Archive"
+    assert folder_row["target_collection_id"] is None
+    alpha = next(p for p in plan["proposals"] if p["title"] == "StudioAlpha")
+
+    response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{alpha['id']}/parent",
+        json={"target_collection_id": talent.id},
+    )
+
+    assert response.status_code == 200
+    proposals = response.json()["proposals"]
+    by_id = {proposal["id"]: proposal for proposal in proposals}
+    assert [p["id"] for p in proposals if p["parent_proposal_id"] is None] == [folder_row["id"]]
+    # Adopted, not replaced: still the editable folder row, now pinned to the
+    # collection it always stood for so apply nests the context child under it.
+    adopted = by_id[folder_row["id"]]
+    assert adopted["target_collection_id"] == root.id
+    assert adopted["is_collection_context"] is False
+    context = next(p for p in proposals if p["target_collection_id"] == talent.id)
+    assert context["is_collection_context"] is True
+    assert context["parent_proposal_id"] == folder_row["id"]
+    assert by_id[alpha["id"]]["parent_proposal_id"] == context["id"]
+
+    applied = client.post(f"{base}/plans/{plan['id']}/apply")
+    assert applied.status_code == 200
+    assert applied.json()["conflicts"] == []
+    assert applied.json()["collections_created"] == 0
+    moved = session.scalar(select(AssetBundle).where(AssetBundle.title == "StudioAlpha"))
+    stayed = session.scalar(select(AssetBundle).where(AssetBundle.title == "StudioBeta"))
+    assert moved is not None and stayed is not None
+    assert [collection.name for collection in moved.collections] == ["Talent"]
+    assert [collection.name for collection in stayed.collections] == ["Archive"]
+
+
+# A row that stands for a collection cannot be filed inside that same collection
+def test_collection_suggestion_cannot_be_placed_into_the_collection_it_stands_for(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Adopting a row pins it to a collection the picker still offers it.
+
+    Choosing that collection would make the row its own parent, and a
+    self-parented row drops out of the tree entirely.
+    """
+    _seed_two_studios(session, library_root)
+    root = Collection(name="Archive")
+    talent = Collection(name="Talent", parent=root)
+    session.add_all([root, talent])
+    session.flush()
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    folder_row = next(p for p in plan["proposals"] if p["kind"] == "container")
+    alpha = next(p for p in plan["proposals"] if p["title"] == "StudioAlpha")
+    adopting = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{alpha['id']}/parent",
+        json={"target_collection_id": talent.id},
+    )
+    assert adopting.status_code == 200
+
+    response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{folder_row['id']}/parent",
+        json={"target_collection_id": root.id},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    row = session.get(GroupingProposalRow, folder_row["id"])
+    assert row is not None
+    assert row.parent_proposal_id is None
+
+
 # Existing broader-scope plans remain safely editable after the scope is retired
 def test_legacy_plan_file_move_applies_across_confirmed_bundles(
     client: TestClient, library_id: str, library_root: Path, session: Session

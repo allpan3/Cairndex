@@ -344,6 +344,27 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Placing a grouping suggestion inside an existing collection no longer draws
+  that collection's parent a second time.** Choosing a destination materializes
+  the destination's ancestry as read-only "Existing" rows, and it built that path
+  from scratch every time — so a plan whose own top-level row is a folder called
+  `Archive`, placed into the existing `Archive ▸ Talent`, grew a *second*
+  top-level `Archive` beside the first, and the review appeared to be inventing a
+  hierarchy it was already showing. The path now stops where the plan already
+  speaks for the same collection: the row on screen is adopted as the branch head
+  and pinned to that collection, staying editable — its title, its stem dial and
+  its own placement are untouched — and only the levels below it are added. Apply
+  was never wrong here (an unlinked collection suggestion resolves to the
+  existing collection of the same name under the same parent, so both rows always
+  led to the one collection); the tree was.
+
+  Two smaller consequences of the pin. A row that stands for a collection is now
+  **refused as a destination for itself** — it would have become its own parent,
+  and a self-parented row leaves the tree altogether. And a pinned row keeps the
+  title the owner typed: refreshing the structural snapshot from the live
+  collection tree, which is right for an "Existing" row, would have quietly
+  reverted a rename on an editable one.
+
 - **A GIF export saved from the desktop app no longer fails with a 404.** The
   finished artifact is fetched through the shell's loopback media relay, the
   same way a contact sheet is, so that the bearer never has to travel in a URL —
