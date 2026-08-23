@@ -34,7 +34,7 @@ from cairndex.api.v1.playback import _chapters, _track_read
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import MediaKind
-from cairndex.media import hevc_relabel, hls, playback, probe_service
+from cairndex.media import hevc_relabel, hls, playback, probe_service, tonemap
 from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, SessionParams
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
@@ -131,6 +131,22 @@ def _explained(decision: playback.PlaybackDecision, note: str | None) -> playbac
     return replace(decision, reason=f"{decision.reason}; {note}")
 
 
+def _with_colour_note(
+    decision: playback.PlaybackDecision, hdr: str | None
+) -> playback.PlaybackDecision:
+    """Say what happens to an HDR source's colour, but only where it applies.
+
+    Transcode only: a direct play or a remux hands the source's own pixels to a
+    client that said it could decode them, so colour is that client's business.
+    A transcode is the one path that re-encodes, and therefore the one that can
+    get colour wrong — silently, which is why it is stated. See `media/tonemap`.
+    """
+    if decision.method != "transcode":
+        return decision
+    note = tonemap.reason(hdr)
+    return decision if note is None else replace(decision, reason=f"{decision.reason}; {note}")
+
+
 def _decide(
     caps: playback.CapabilityProfile,
     asset_file: AssetFile,
@@ -147,7 +163,7 @@ def _decide(
     height = meta.get("height")
     depth = meta.get("bit_depth")
     tag, note = _effective_video_tag(caps, meta, video_path)
-    return _explained(
+    decided = _explained(
         playback.decide_playback(
             caps,
             ext=extension_of(asset_file.relative_path),
@@ -168,6 +184,7 @@ def _decide(
         ),
         note,
     )
+    return _with_colour_note(decided, meta.get("hdr") if isinstance(meta.get("hdr"), str) else None)
 
 
 def _selected_audio_codec(
@@ -257,6 +274,7 @@ def _build_params(
         burn_subtitle=burn,
         hwaccel=hwaccel,
         video_codec=playback.normalize_video_codec(meta.get("video_codec")),
+        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
     )
 
 
@@ -580,6 +598,9 @@ def file_browser_playback_decision(
         ),
         note,
     )
+    decision = _with_colour_note(
+        decision, meta.get("hdr") if isinstance(meta.get("hdr"), str) else None
+    )
 
     duration = _duration(meta)
     stream_url: str | None = None
@@ -649,6 +670,7 @@ def _path_session_params(
         burn_subtitle=None,
         hwaccel=hwaccel,
         video_codec=playback.normalize_video_codec(meta.get("video_codec")),
+        hdr=meta.get("hdr") if isinstance(meta.get("hdr"), str) else None,
     )
 
 

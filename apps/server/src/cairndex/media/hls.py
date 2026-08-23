@@ -46,7 +46,7 @@ from cairndex.core.errors import (
     NotFoundError,
     ValidationError,
 )
-from cairndex.media import ffprobe, mp4_index
+from cairndex.media import ffprobe, mp4_index, tonemap
 from cairndex.media.ffmpeg_exec import ffmpeg_exe
 
 # Segments target 6 s (plan 1 §6.2). fMP4 needs a shared init segment.
@@ -112,6 +112,9 @@ class SessionParams:
     # the copied stream must be relabelled (HEVC → hvc1). Constant per source, so
     # it does not fragment the equality-based session reuse above.
     video_codec: str | None = None
+    # Source HDR signalling ("hdr10" | "hlg" | "dv" | None), which decides whether
+    # the transcode needs a tone-map chain. Constant per source, like the codec.
+    hdr: str | None = None
 
 
 @dataclass
@@ -244,10 +247,22 @@ def _escape_filter_path(path: Path) -> str:
 
 
 def _transcode_filters(session: HlsSession) -> list[str]:
+    """The ``-vf`` graph for a transcode, in an order that is load-bearing.
+
+    Scale first: tone mapping runs through a float32 linear intermediate and is
+    the expensive step, so it should see as few pixels as possible. Then tone
+    map, because everything after it wants ordinary BT.709. Burn-in last for the
+    same reason — overlaying subtitle graphics onto a linear-light frame blows
+    them out.
+    """
     filters: list[str] = []
     if session.params.max_height is not None:
         # Downscale only (never upscale), keeping even dimensions for yuv420p.
         filters.append(f"scale=-2:'min(ih,{session.params.max_height})'")
+    if (session.params.hdr or "").lower() in tonemap.TONE_MAPPABLE and tonemap.enabled():
+        # Without this the PQ or HLG code values reach `-pix_fmt yuv420p` and are
+        # read as BT.709 gamma, which is the flat, washed-out picture.
+        filters += tonemap.chain()
     burn = session.params.burn_subtitle
     if burn is not None:
         spec = f"subtitles={_escape_filter_path(burn.path)}"

@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     # on timeout/failure.
     transcode_keyframe_timeout: float = 60.0
 
+    # HDR tone mapping on the transcode path (``media/tonemap.py``). ``auto``
+    # tone maps when the ffmpeg in use has the filters for it and leaves the
+    # source alone when it does not; ``off`` never tone maps, which is the escape
+    # hatch if the linear intermediate proves too slow to keep a session ahead of
+    # the player. Not a per-library setting: it describes this deployment's
+    # ffmpeg and CPU, not the content.
+    ffmpeg_tonemap: Literal["auto", "off"] = "auto"
+
     # Maximum concurrent clip exports (plan 1 §10). Each runs one ffmpeg that
     # decodes a contiguous span, so the bound is separate from — and as tight
     # as — the playback-session one; starting one beyond this returns 429.

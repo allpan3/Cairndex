@@ -10,6 +10,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **HDR video no longer transcodes to a flat, washed-out picture.** A transcode
+  ended in 8-bit BT.709 with no colour conversion, so an HDR source's PQ or HLG
+  code values were read as ordinary gamma — correct for SDR, wrong for
+  everything graded brighter than it. HDR10 and HLG sources are now tone mapped
+  properly on the way through, and the **Playback** row says so. Where the
+  ffmpeg in use cannot do it — the filter needed is missing from some builds,
+  including Homebrew's — the source is left alone and the row says *that*,
+  because a flat picture with a stated cause is worth much more than a flat
+  picture without one. `CAIRNDEX_FFMPEG_TONEMAP=off` switches it off.
+
+  Two things deliberately left alone. **Dolby Vision is not converted**: profile
+  8.1 would tone map correctly but profile 5 carries a different colour encoding
+  entirely and would come out green and magenta — worse than flat — and the two
+  cannot be told apart from what is recorded today. It says so rather than
+  guessing. And **4K is the case to watch**: the conversion runs through a
+  high-precision intermediate, and measured here a 4K source converts at only
+  1.4x real time where the same source capped to 1080p manages 10x. Picking a
+  quality below the source's own height from the player's settings menu makes it
+  comfortable again, because the downscale happens first, on purpose.
+
 - **Adding files to the library no longer means standing in the right folder
   first.** `File ▸ Add Files to Library…` (⇧⌘A) picks files and then asks where
   they should go, so it works from the Bundle Browser and the viewer, not just
@@ -45,6 +65,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   is what it does — it copies into the folder on screen without asking, which is
   the faster path when you are already there.
 
+||||||| parent of 20aaecee (feat(transcode): HDR sources are tone mapped instead of coming out flat)
 - **The marked span is something you play, with `\` or Play Range.** The clip
   strip had grown an action and a mode that only meant anything together —
   "From In" and "Range" — so they are now one control. **Play Range** jumps to
