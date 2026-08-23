@@ -20,10 +20,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   should go is often the moment you notice the folder does not exist yet; the new
   folder becomes the destination straight away. Move to… is unchanged.
 
-  On the web the same command is **Add Files** in the sidebar's **⋯** menu beside
-  Update,
-  which is renamed from "library maintenance" to **library actions** — it was
-  already the home for library-scoped things that do not earn a button, and
+  On the web the same command is **Add files** in the sidebar's **⋯** menu beside
+  Update, which is renamed from "library maintenance" to **library actions** — it
+  was already the home for library-scoped things that do not earn a button, and
   adding files is not maintenance. It sits above a divider, because everything
   else in there runs in the background while this one opens a dialog. It appears
   only in write mode.

@@ -2292,7 +2292,7 @@ test('the sidebar can add files, which is the only way in on the web', async ({ 
   await page.goto('/')
 
   await page.getByRole('button', { name: 'More library actions' }).click()
-  await page.getByRole('button', { name: 'Add Files', exact: true }).click()
+  await page.getByRole('button', { name: 'Add files', exact: true }).click()
   await page.getByTestId('add-files-input').setInputFiles({
     name: 'added.mp4',
     mimeType: 'video/mp4',
@@ -2311,7 +2311,34 @@ test('a read-only library offers no way to add files', async ({ page }) => {
 
   await page.getByRole('button', { name: 'More library actions' }).click()
 
-  await expect(page.getByRole('button', { name: 'Add Files', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add files', exact: true })).toHaveCount(0)
   // The maintenance jobs are still there; only the write action is withheld.
   await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
+})
+
+test('the library actions menu closes when you click away from it', async ({ page }) => {
+  // Owner report (2026-08-23): the only way to dismiss it was the ⋯ button that
+  // opened it. Every other popover in the app closes on an outside click.
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
+
+  // Somewhere harmless and clearly outside: the sidebar's own brand row.
+  await page.locator('.sidebar__brand').click()
+
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toHaveCount(0)
+})
+
+test('Escape closes the library actions menu too', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await expect(page.getByRole('button', { name: 'Collect metadata' })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+
+  await expect(page.getByRole('button', { name: 'Collect metadata' })).toHaveCount(0)
 })

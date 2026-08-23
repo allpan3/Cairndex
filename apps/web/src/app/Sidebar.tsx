@@ -236,6 +236,28 @@ export function Sidebar({
   onDeleteSmartCollection,
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
+  const jobsMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // A menu you can only close with the button that opened it is a trap. Same
+  // shape as the player's settings menu: pointerdown outside closes, and the
+  // ref wraps the ⋯ button too, so its own click is not counted as outside.
+  useEffect(() => {
+    if (!jobsMenuOpen) return
+    const onDown = (event: PointerEvent) => {
+      if (jobsMenuRef.current && !jobsMenuRef.current.contains(event.target as Node)) {
+        setJobsMenuOpen(false)
+      }
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setJobsMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [jobsMenuOpen])
   const menu = useContextMenu()
   // Drop feedback for the hovered collection row (before/after = reorder gap,
   // into = reparent/add). The dragged payload comes from the App-level dragItem.
@@ -498,7 +520,7 @@ export function Sidebar({
         >
           {updating ? '⟳ Updating…' : '⟳ Update'}
         </button>
-        <div className="sidebar__job-menu">
+        <div className="sidebar__job-menu" ref={jobsMenuRef}>
           <button
             className="sidebar__job-more"
             onClick={() => setJobsMenuOpen((open) => !open)}
@@ -520,7 +542,7 @@ export function Sidebar({
                     }}
                     title="Copy files from this computer into a folder you pick"
                   >
-                    Add Files
+                    Add files
                   </button>
                   <div className="sidebar__job-divider" role="separator" />
                 </>
