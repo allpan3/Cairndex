@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 
 import { ContextMenu } from './ContextMenu'
-import type { MenuEntry } from './useContextMenu'
+import type { MenuEntry, MenuState } from './useContextMenu'
 
 function renderMenu(items: MenuEntry[], onClose = vi.fn()) {
   render(<ContextMenu state={{ x: 10, y: 10, items }} onClose={onClose} />)
@@ -51,4 +52,60 @@ test('renders nothing when state is null', () => {
   const { container } = render(<ContextMenu state={null} onClose={vi.fn()} />)
   expect(container).toBeEmptyDOMElement()
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+})
+
+test('the gesture that dismisses the menu does not reach what is underneath', () => {
+  // The viewer's own report: right-click the video, left-click to dismiss, and
+  // the dismissing click also toggled playback (owner, 2026-08-23). `onClose`
+  // clears the state that keeps this component's listeners mounted, so the
+  // `click` still to come could arrive after they were gone — engine-dependent,
+  // which is why Chromium behaved and WKWebView did not.
+  const underneath = vi.fn()
+  document.body.addEventListener('click', underneath)
+  document.body.addEventListener('mouseup', underneath)
+  try {
+    renderMenu([{ label: 'Play', onClick: vi.fn() }])
+
+    // The whole gesture, in the order an engine dispatches it.
+    fireEvent.mouseDown(document.body)
+    fireEvent.mouseUp(document.body)
+    fireEvent.click(document.body)
+
+    expect(underneath).not.toHaveBeenCalled()
+  } finally {
+    document.body.removeEventListener('click', underneath)
+    document.body.removeEventListener('mouseup', underneath)
+  }
+})
+
+test('a later click, after the gesture is over, is left alone', async () => {
+  // The swallow is one-shot: it must not go on eating clicks, which is how the
+  // ref it replaces used to make the *next* click do nothing. Driven through a
+  // real state transition, because a menu that never closes keeps its own
+  // listeners and would pass this for the wrong reason.
+  const underneath = vi.fn()
+  document.body.addEventListener('click', underneath)
+  try {
+    function Host() {
+      const [state, setState] = useState<MenuState | null>({
+        x: 10,
+        y: 10,
+        items: [{ label: 'Play', onClick: vi.fn() }],
+      })
+      return <ContextMenu state={state} onClose={() => setState(null)} />
+    }
+    render(<Host />)
+
+    fireEvent.mouseDown(document.body)
+    fireEvent.click(document.body)
+    expect(underneath).not.toHaveBeenCalled()
+
+    // Let the one-shot teardown run, the same macrotask the component uses.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    fireEvent.click(document.body)
+
+    expect(underneath).toHaveBeenCalledTimes(1)
+  } finally {
+    document.body.removeEventListener('click', underneath)
+  }
 })

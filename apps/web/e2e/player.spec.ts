@@ -2947,3 +2947,34 @@ test('the clip selection does not follow the viewer to the next file', async ({ 
   await page.getByRole('button', { name: /next file/i }).click()
   await expect(page.locator('[data-testid="clip-bar"]')).toHaveCount(0)
 })
+
+test('dismissing the viewer context menu does not also toggle playback', async ({ page }) => {
+  // Owner report (2026-08-23): right-click the video, then left-click to dismiss
+  // — the click that closes the menu also started playback. Cancelling a menu is
+  // not a request to play.
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  const video = page.getByTestId('media-video')
+  await expect(video).toBeVisible()
+  const paused = () => video.evaluate((el) => (el as HTMLVideoElement).paused)
+  // Settle into a known state first: the report is about a *paused* video
+  // starting, so the test is meaningless if it was already playing.
+  await video.evaluate((el) => (el as HTMLVideoElement).pause())
+  expect(await paused()).toBe(true)
+
+  await video.click({ button: 'right' })
+  await expect(page.locator('.context-menu')).toBeVisible()
+
+  // Away from the menu, which opens at the cursor and would otherwise take the
+  // click itself. `force` because the menu overlaps the video's centre.
+  await page.locator('.mv-stage').click({ position: { x: 8, y: 8 } })
+
+  await expect(page.locator('.context-menu')).toHaveCount(0)
+  expect(await paused()).toBe(true)
+
+  // And click-to-play is not broken by the fix: the *next* click still plays.
+  await video.click()
+  await expect.poll(paused).toBe(false)
+})

@@ -344,6 +344,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Dismissing the viewer's right-click menu no longer starts the video.** The
+  click that closed the menu also landed on the player underneath, so cancelling
+  a menu began playback — and because the menu opens at the cursor, the click
+  before that one hit the menu itself and appeared to do nothing. The menu now
+  keeps hold of the whole gesture that dismissed it, rather than only the part
+  that arrived before it closed. It behaved in Chrome and misbehaved in the
+  desktop app, which is what a timing-dependent fix looks like from the outside.
+
 - **Placing a grouping suggestion inside an existing collection no longer draws
   that collection's parent a second time.** Choosing a destination materializes
   the destination's ancestry as read-only "Existing" rows, and it built that path
@@ -382,6 +390,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   delete it — so a control that could not regroup that folder at all was dissolving
   the conversion.
 
+||||||| parent of 501947ef (fix(viewer): cancelling the right-click menu no longer plays the video)
 - **A GIF export saved from the desktop app no longer fails with a 404.** The
   finished artifact is fetched through the shell's loopback media relay, the
   same way a contact sheet is, so that the bearer never has to travel in a URL —

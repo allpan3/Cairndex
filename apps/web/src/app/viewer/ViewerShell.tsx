@@ -328,7 +328,6 @@ export function ViewerShell({
   // click reached the video and toggled playback, so closing the menu paused the
   // film (owner, 2026-07-27). Recorded in the capture phase, which runs before
   // the menu's own window listener.
-  const dismissedMenuRef = useRef(false)
 
   useEffect(() => rootRef.current?.focus(), [])
 
@@ -796,9 +795,6 @@ export function ViewerShell({
   return (
     <div
       onContextMenu={openViewerContextMenu}
-      onMouseDownCapture={() => {
-        dismissedMenuRef.current = contextMenu.state !== null
-      }}
       className={`media-viewer${chromeIdle ? ' media-viewer--idle' : ''}${
         inspectorOpen && inspectorTarget ? ' media-viewer--railed' : ''
       }`}
@@ -872,13 +868,7 @@ export function ViewerShell({
               currentKey && setFailure({ key: currentKey, kind: classifyMediaError(mediaError) })
             }
             onRetryFailed={retryFailedPlayback}
-            onActivate={() => {
-              if (dismissedMenuRef.current) {
-                dismissedMenuRef.current = false
-                return
-              }
-              player.playPause()
-            }}
+            onActivate={player.playPause}
           />
         )}
       </div>
