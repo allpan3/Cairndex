@@ -99,7 +99,7 @@ import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
-import { BundleDropDestination, ConflictDialog } from './app/FileWriteDialogs'
+import { BundleDropDestination, ConflictDialog, DirectoryPicker } from './app/FileWriteDialogs'
 import { Sidebar } from './app/Sidebar'
 import { TrashView } from './app/TrashView'
 import { SettingsDialog } from './app/SettingsDialog'
@@ -1092,6 +1092,13 @@ function Workspace({
     writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
   const fileOperations = useFileOperations()
   const trashFiles = fileOperations.trash.mutate
+  // Files chosen through File ▸ Add Files to Library…, waiting for a destination.
+  // Separate from `pendingBundleDrop`: that one knows which bundle it is filing
+  // into and defaults the picker to that bundle's own folder, while this one is
+  // reachable with no bundle and no current folder in view (the Bundle Browser,
+  // the viewer) and so opens at the library root.
+  const [pendingAddFiles, setPendingAddFiles] = useState<File[] | null>(null)
+  const addFilesInputRef = useRef<HTMLInputElement | null>(null)
   // One pending import target serves bundle cards and every Bundle Inspector
   const [pendingBundleDrop, setPendingBundleDrop] = useState<{
     bundleId: string
@@ -1152,6 +1159,7 @@ function Workspace({
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
+    else if (action === 'add-files') addFilesInputRef.current?.click()
     else if (action === 'new-collection') setNewCollectionRequest({ parentId: null })
     else if (action === 'show-bundles') setMode('collection')
     else if (action === 'show-files') {
@@ -1729,6 +1737,28 @@ function Workspace({
   // root, which is almost never where the bundle's own files live, so a drop
   // filed the copy in the wrong folder and left the owner to move it (owner
   // report, 2026-07-30). The picker defaults to the bundle's own folder.
+  // Copy the chosen files into the directory the picker settled on. No bundle is
+  // linked: the owner asked for the file to land in the library, and deciding
+  // which bundle it belongs to is a separate step by design.
+  const importChosenFiles = useCallback(
+    (destDir: string) => {
+      const files = pendingAddFiles
+      if (!files) return
+      // No options: this behaves exactly like the File Browser's own Add Files
+      // Here, which is the point — the only difference is being asked where.
+      // That keeps the per-file Undo notice (the way back from an accidental
+      // add) and lets a name collision raise the ordinary Replace / Skip /
+      // Keep both prompt rather than silently suffixing.
+      const accepted = webImports.copyIn(files, destDir, {
+        onSettled: () => invalidateAfterFileOperation(queryClient),
+      })
+      // Same as the bundle drop: clear only once the batch is owned elsewhere,
+      // so a refused import leaves the dialog up rather than losing the choice.
+      if (accepted) setPendingAddFiles(null)
+    },
+    [pendingAddFiles, queryClient, webImports],
+  )
+
   const importDroppedFiles = useCallback(
     (destDir: string) => {
       const pending = pendingBundleDrop
@@ -2225,6 +2255,7 @@ function Workspace({
           }}
           canLock={canLock}
           onLock={onLock}
+          onAddFiles={writeMode ? () => addFilesInputRef.current?.click() : undefined}
           onUpdateLibrary={() => updateLibrary.mutate()}
           updating={updateLibrary.isPending}
           onScanFiles={() => scanFiles.mutate()}
@@ -2690,6 +2721,7 @@ function Workspace({
           name={webImports.conflict.conflictingName}
           onKeepBoth={webImports.keepBoth}
           onReplace={webImports.replace}
+          onSkip={webImports.skip}
           onCancel={webImports.dismiss}
           busy={false}
         />
@@ -2700,7 +2732,42 @@ function Workspace({
           name={hostImports.conflict.conflictingName}
           onKeepBoth={hostImports.keepBoth}
           onReplace={hostImports.replace}
+          onSkip={hostImports.skip}
           onCancel={hostImports.dismiss}
+          busy={false}
+        />
+      )}
+
+      {/* Lives at the app root, not in a view: File ▸ Add Files to Library… is
+          reachable from the Bundle Browser and the viewer too, where the File
+          Browser's own toolbar input does not exist. */}
+      <input
+        ref={addFilesInputRef}
+        data-testid="add-files-input"
+        type="file"
+        multiple
+        hidden
+        aria-hidden="true"
+        onChange={(event) => {
+          const chosen = [...(event.target.files ?? [])]
+          if (chosen.length > 0) setPendingAddFiles(chosen)
+          // Reset, so choosing the same file twice in a row still fires.
+          event.target.value = ''
+        }}
+      />
+
+      {pendingAddFiles && (
+        <DirectoryPicker
+          startIn=""
+          heading={
+            pendingAddFiles.length === 1
+              ? 'Add the file to…'
+              : `Add ${pendingAddFiles.length} files to…`
+          }
+          confirmLabel={(where) => `Add to ${where}`}
+          allowNewFolder
+          onChoose={importChosenFiles}
+          onCancel={() => setPendingAddFiles(null)}
           busy={false}
         />
       )}

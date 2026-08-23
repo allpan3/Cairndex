@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { useBundleFiles, useFileBrowser } from '../api/hooks'
+import { useBundleFiles, useFileBrowser, useFileOperations } from '../api/hooks'
 import { focusRenameInput } from './renameSelection'
 
 /**
@@ -15,12 +15,19 @@ export function ConflictDialog({
   name,
   onKeepBoth,
   onReplace,
+  onSkip,
   onCancel,
   busy,
 }: {
   name: string
   onKeepBoth: () => void
   onReplace: () => void
+  /**
+   * Leave this one alone and carry on with the rest. Offered only where there
+   * *is* a rest — a batch of files — because for a single rename or move it
+   * would mean exactly what Cancel already means.
+   */
+  onSkip?: () => void
   onCancel: () => void
   busy: boolean
 }) {
@@ -40,12 +47,24 @@ export function ConflictDialog({
           Nothing has been changed yet. <strong>Keep both</strong> adds a number to the new name,
           like “{name} (2)”. <strong>Replace</strong> moves the existing file to this library’s
           trash first, so you can still get it back.
+          {onSkip ? (
+            <>
+              {' '}
+              <strong>Skip</strong> leaves this one out and carries on with the rest, while{' '}
+              <strong>Cancel</strong> stops here and does not copy what is left.
+            </>
+          ) : null}
         </p>
         <div className="modal__actions">
           <span className="toolbar__spacer" />
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
+          {onSkip && (
+            <button type="button" className="btn" onClick={onSkip} disabled={busy}>
+              Skip
+            </button>
+          )}
           <button type="button" className="btn" onClick={onReplace} disabled={busy}>
             Replace
           </button>
@@ -144,6 +163,11 @@ export function DeleteDialog({
  * likely answer the default one — a drop onto a bundle starts where the bundle's
  * own files live — while leaving every other folder one click away.
  */
+/** An operation failure as one readable line. */
+function messageOf(failure: unknown): string {
+  return failure instanceof Error ? failure.message : 'That could not be done.'
+}
+
 export function DirectoryPicker({
   moving = [],
   onChoose,
@@ -152,6 +176,7 @@ export function DirectoryPicker({
   startIn = '',
   heading,
   confirmLabel,
+  allowNewFolder = false,
 }: {
   /** Library-relative paths being moved, excluded from the tree. */
   moving?: string[]
@@ -164,8 +189,18 @@ export function DirectoryPicker({
   heading?: string
   /** Confirm-button label, given the chosen directory's display name. */
   confirmLabel?: (where: string) => string
+  /**
+   * Offers New Folder inside the picker. Opt-in rather than always on: choosing
+   * where to *add* a file is often the moment you realise the folder does not
+   * exist yet, while choosing where to move something usually is not — and this
+   * dialog is shared with Move to…, which should not change silently.
+   */
+  allowNewFolder?: boolean
 }) {
   const [here, setHere] = useState(startIn)
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [folderName, setFolderName] = useState('')
+  const { mkdir } = useFileOperations()
   const { data, isLoading } = useFileBrowser(here || null)
   const excluded = new Set(moving)
   const subdirs = (data?.entries ?? [])
@@ -209,6 +244,93 @@ export function DirectoryPicker({
             </span>
           ))}
         </nav>
+        {allowNewFolder && (
+          <div className="dir-picker__actions">
+            {creatingFolder ? (
+              // Deliberately not `NameEditor`, which is the *inline list* editor:
+              // it commits on blur, which is right when clicking away in a file
+              // list ends an edit and wrong in a dialog, where clicking the
+              // confirm button would create the folder and import into its
+              // parent in one gesture. A form instead — Enter submits, and the
+              // buttons say what will happen (owner report, 2026-08-23: "there's
+              // only this text box").
+              <form
+                className="dir-picker__new"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const trimmed = folderName.trim()
+                  if (!trimmed) return
+                  const path = here ? `${here}/${trimmed}` : trimmed
+                  // Step into it on success: the folder was created to be the
+                  // destination, so leaving the picker outside it would make
+                  // every caller navigate in by hand.
+                  mkdir.mutate(path, {
+                    onSuccess: () => {
+                      setHere(path)
+                      setCreatingFolder(false)
+                      setFolderName('')
+                    },
+                  })
+                }}
+              >
+                <input
+                  className="edit"
+                  value={folderName}
+                  aria-label="New folder name"
+                  placeholder="Folder name"
+                  spellCheck={false}
+                  autoFocus
+                  onChange={(event) => setFolderName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setCreatingFolder(false)
+                      setFolderName('')
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="btn btn--sm btn--primary"
+                  disabled={folderName.trim() === '' || mkdir.isPending}
+                >
+                  {mkdir.isPending ? 'Creating…' : 'Create'}
+                </button>
+                {/* An icon, not a second "Cancel": the dialog already has one
+                    at the bottom meaning "don't add the files at all", and two
+                    identically-named buttons are ambiguous to read and worse to
+                    hear. */}
+                <button
+                  type="button"
+                  className="btn btn--sm btn--compact"
+                  onClick={() => {
+                    setCreatingFolder(false)
+                    setFolderName('')
+                  }}
+                  disabled={mkdir.isPending}
+                  aria-label="Cancel new folder"
+                  title="Cancel new folder"
+                >
+                  ✕
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => setCreatingFolder(true)}
+                disabled={busy || mkdir.isPending}
+              >
+                New Folder
+              </button>
+            )}
+            {mkdir.isError && (
+              <span className="dir-picker__error" role="alert">
+                {messageOf(mkdir.error)}
+              </span>
+            )}
+          </div>
+        )}
         <ul className="dir-picker__list">
           {isLoading ? (
             <li className="dir-picker__empty">Loading…</li>

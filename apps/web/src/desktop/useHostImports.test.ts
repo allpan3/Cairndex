@@ -193,3 +193,19 @@ test('a failure without a message still says something useful', () => {
   )
   expect(hostImportMessage({}, 'a.mkv')).toBe('Could not copy “a.mkv” into the library.')
 })
+
+test('a self-import refusal reaches the owner in the shell’s own words', () => {
+  // The guard lives in the shell, because the import endpoint receives bytes and
+  // no path by design and so cannot see that the source was already in the
+  // library. Its refusal is only useful if it is shown rather than flattened
+  // into a generic failure.
+  const refusal = {
+    code: 'already_in_library',
+    message: 'That file is already in this library. Use Move to… to file it somewhere else.',
+  }
+
+  expect(hostImportMessage(refusal, 'clip.mkv')).toBe(refusal.message)
+  // And it is not mistaken for a collision, which would open the Replace prompt
+  // — the one answer that would trash the original row.
+  expect(conflictName(refusal)).toBeNull()
+})

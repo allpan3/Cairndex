@@ -15,6 +15,7 @@ const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'pair-device',
   'new-bundle',
   'new-collection',
+  'add-files',
   'show-bundles',
   'show-files',
   'zoom-in',

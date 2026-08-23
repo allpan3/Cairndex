@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { PathConflictError, type ConflictPolicy, type ImportResult } from '../api/client'
 import { useFileOperations } from '../api/hooks'
-import { importStoppedSummary, type ImportActivity } from './importActivity'
+import { importPartialSummary, importStoppedSummary, type ImportActivity } from './importActivity'
 
 /** One browser import paused before a collision answer */
 export interface WebImportConflict {
@@ -40,6 +40,8 @@ interface WebImportBatch {
   failed: number
   stopping: boolean
   inFlight: boolean
+  /** First failure's message, reported once the batch settles. */
+  failure?: string
 }
 
 /** Browser-owned sequential import batches, including prompt in-flight abort */
@@ -88,7 +90,7 @@ export function useWebImports({
     return true
   }
 
-  const answer = (policy: 'suffix' | 'replace') => {
+  const answer = (policy: 'suffix' | 'replace' | 'skip') => {
     const batch = batchRef.current
     if (!batch || !conflict || batch.stopping || batch.inFlight) return
     setConflict(null)
@@ -111,6 +113,8 @@ export function useWebImports({
     copyIn,
     keepBoth: () => answer('suffix'),
     replace: () => answer('replace'),
+    // Skips this file and continues; `dismiss` abandons what is left.
+    skip: () => answer('skip'),
     dismiss: stop,
     stop,
   }
@@ -183,6 +187,9 @@ export function useWebImports({
         batch.failed += 1
         batch.index += 1
         batch.inFlight = false
+        // Kept for the end-of-batch report: the per-file toast is transient and
+        // the owner may not be looking at this surface when it fires.
+        batch.failure ??= messageOf(failure)
         onFlash(messageOf(failure))
       } finally {
         controllerRef.current = null
@@ -218,6 +225,18 @@ export function useWebImports({
       }
     }
     if (!mountedRef.current) return
+    if (!stopped) {
+      // A batch that ran to the end but left something behind says so, once,
+      // where it cannot be missed.
+      const partial = importPartialSummary({
+        imported: result.imported.length,
+        skipped: result.skipped,
+        failed: result.failed,
+        reason: batch.failure,
+      })
+      if (partial) onFlash(partial)
+      return
+    }
     if (stopped) {
       onFlash(
         importStoppedSummary({

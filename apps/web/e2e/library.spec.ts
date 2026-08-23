@@ -403,7 +403,7 @@ test('standalone Scan reports the linked missing-file total', async ({ page }) =
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Scan new files' }).click()
 
   await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
@@ -429,7 +429,7 @@ test('Scan new files does not open grouping review', async ({ page }) => {
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Scan new files' }).click()
 
   await expect(page.getByText('Scan complete: 0 linked files are missing.')).toBeVisible()
@@ -450,7 +450,7 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collect metadata' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Suggest grouping' })).toBeVisible()
@@ -562,7 +562,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
   // The folder's dial is visible on the row that speaks for the folder, rather
@@ -657,7 +657,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
   )
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
 
   for (const [kind, title] of [
@@ -779,7 +779,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Surf On The Ridge - 4K' })
   await expect(checkbox).toBeChecked()
@@ -1085,7 +1085,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
 
   const anchor = page.getByRole('button', {
@@ -1284,7 +1284,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await page.getByRole('button', { name: 'Rename collection suggestion Movies' }).dblclick()
   const input = page.getByRole('textbox', { name: 'Collection suggestion title' })
@@ -2078,7 +2078,7 @@ test('a maintenance error is reported with the job rows, not under the button', 
     r.fulfill({ status: 500, json: { message: 'Background job was cancelled.' } }),
   )
   await page.goto('/')
-  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'More library actions' }).click()
   await page.getByRole('button', { name: 'Generate storyboards' }).click()
   // Docked in the foot beside the job rows: the message outlives the button
   // that started the work, and one place for "what is happening" and "what went
@@ -2127,4 +2127,218 @@ test('the sidebar tells a waiting job from a running one, and can stop either', 
 
   await page.getByRole('button', { name: 'Stop storyboards' }).first().click()
   await cancelled
+})
+
+test('adding several files at once imports every one of them', async ({ page }) => {
+  // Owner report (2026-08-23): picking two files showed "1 of 2" then "2 of 2",
+  // and only one file arrived.
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const url = new URL(route.request().url())
+    const name = url.searchParams.get('filename') ?? ''
+    imported.push(`${url.searchParams.get('dest_dir') ?? ''}|${name}`)
+    await route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${imported.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  // Through the Add Files command's own input. It has no clickable trigger in a
+  // browser (the menu bar is native), but the input is mounted, which is what
+  // makes this flow testable at all.
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'first.mp4', mimeType: 'video/mp4', buffer: Buffer.from('one') },
+    { name: 'second.mp4', mimeType: 'video/mp4', buffer: Buffer.from('two') },
+  ])
+  await expect(page.getByRole('heading', { name: 'Add 2 files to…' })).toBeVisible()
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect.poll(() => imported.length, { timeout: 10_000 }).toBe(2)
+  // Distinct names, same destination — one request per file, none overwritten.
+  expect(new Set(imported).size).toBe(2)
+  expect(imported.map((entry) => entry.split('|')[1]).sort()).toEqual(['first.mp4', 'second.mp4'])
+})
+
+test('opening a video mid-upload does not cancel the rest of the batch', async ({ page }) => {
+  // Owner hypothesis (2026-08-23): two files picked, the video imported and the
+  // second file never reached the server at all — "during the upload I open the
+  // video". The journal agrees: one row for the batch, none for the second file.
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  let releaseFirst: () => void = () => undefined
+  const firstInFlight = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  await page.route('**/file-ops/import?*', async (route) => {
+    const name = new URL(route.request().url()).searchParams.get('filename') ?? ''
+    imported.push(name)
+    // Hold the first request open, so the video is opened while it is in flight.
+    if (imported.length === 1) await firstInFlight
+    await route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${imported.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'big.mp4', mimeType: 'video/mp4', buffer: Buffer.from('video') },
+    { name: 'cover.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('image') },
+  ])
+  await page.getByRole('button', { name: /^Add to/ }).click()
+  await expect.poll(() => imported.length).toBe(1)
+
+  // Open a video while the first file is still uploading.
+  // The viewer opening is what matters here, not decoding: this spec mocks no
+  // playback decision, so the stage shows its fallback rather than a video.
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+
+  releaseFirst()
+
+  // The second file must still be sent.
+  await expect.poll(() => imported.length, { timeout: 15_000 }).toBe(2)
+  expect(imported).toEqual(['big.mp4', 'cover.jpg'])
+})
+
+test('Skip leaves one file out and copies the rest', async ({ page }) => {
+  // Owner question (2026-08-23): the collision dialog offered Cancel, Replace
+  // and Keep both — and Cancel abandons every file still queued. With several
+  // files picked there was no way to say "not this one, carry on".
+  await mockApi(page)
+  await mockWriteMode(page)
+  const attempted: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams
+    const name = query.get('filename') ?? ''
+    const policy = query.get('on_conflict')
+    attempted.push(`${name}:${policy}`)
+    // The first file collides until an answer arrives with the request.
+    if (name === 'first.mp4' && policy === 'fail') {
+      return route.fulfill({
+        status: 409,
+        json: {
+          detail: '“first.mp4” already exists here',
+          details: { code: 'path_conflict', name: 'first.mp4', path: 'first.mp4' },
+        },
+      })
+    }
+    return route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${attempted.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: policy === 'skip',
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'first.mp4', mimeType: 'video/mp4', buffer: Buffer.from('one') },
+    { name: 'second.mp4', mimeType: 'video/mp4', buffer: Buffer.from('two') },
+  ])
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible()
+  await page.getByRole('button', { name: 'Skip' }).click()
+
+  // The skipped file is re-sent with the answer, then the batch carries on.
+  await expect
+    .poll(() => attempted, { timeout: 10_000 })
+    .toEqual(['first.mp4:fail', 'first.mp4:skip', 'second.mp4:fail'])
+  await expect(page.getByText(/Added 1 of 2 files/)).toBeVisible()
+})
+
+test('the sidebar can add files, which is the only way in on the web', async ({ page }) => {
+  // The native File menu carries this command in the desktop app; a browser tab
+  // has no menu bar, so without this entry the feature would be desktop-only
+  // (owner, 2026-08-23).
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  await page.route('**/file-ops/import?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams
+    imported.push(`${query.get('dest_dir') ?? ''}|${query.get('filename') ?? ''}`)
+    await route.fulfill({
+      json: {
+        path: query.get('filename') ?? '',
+        operation: { id: 'op-1' },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 3,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await page.getByRole('button', { name: 'Add files', exact: true }).click()
+  await page.getByTestId('add-files-input').setInputFiles({
+    name: 'added.mp4',
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('vid'),
+  })
+
+  await expect(page.getByRole('heading', { name: 'Add the file to…' })).toBeVisible()
+  await page.getByRole('button', { name: /^Add to/ }).click()
+
+  await expect.poll(() => imported).toEqual(['|added.mp4'])
+})
+
+test('a read-only library offers no way to add files', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+
+  await expect(page.getByRole('button', { name: 'Add files', exact: true })).toHaveCount(0)
+  // The maintenance jobs are still there; only the write action is withheld.
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
+})
+
+test('the library actions menu closes when you click away from it', async ({ page }) => {
+  // Owner report (2026-08-23): the only way to dismiss it was the ⋯ button that
+  // opened it. Every other popover in the app closes on an outside click.
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
+
+  // Somewhere harmless and clearly outside: the sidebar's own brand row.
+  await page.locator('.sidebar__brand').click()
+
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toHaveCount(0)
+})
+
+test('Escape closes the library actions menu too', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'More library actions' }).click()
+  await expect(page.getByRole('button', { name: 'Collect metadata' })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+
+  await expect(page.getByRole('button', { name: 'Collect metadata' })).toHaveCount(0)
 })
