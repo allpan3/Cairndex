@@ -2167,3 +2167,52 @@ test('adding several files at once imports every one of them', async ({ page }) 
   expect(new Set(imported).size).toBe(2)
   expect(imported.map((entry) => entry.split('|')[1]).sort()).toEqual(['first.mp4', 'second.mp4'])
 })
+
+test('opening a video mid-upload does not cancel the rest of the batch', async ({ page }) => {
+  // Owner hypothesis (2026-08-23): two files picked, the video imported and the
+  // second file never reached the server at all — "during the upload I open the
+  // video". The journal agrees: one row for the batch, none for the second file.
+  await mockApi(page)
+  await mockWriteMode(page)
+  const imported: string[] = []
+  let releaseFirst: () => void = () => undefined
+  const firstInFlight = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  await page.route('**/file-ops/import?*', async (route) => {
+    const name = new URL(route.request().url()).searchParams.get('filename') ?? ''
+    imported.push(name)
+    // Hold the first request open, so the video is opened while it is in flight.
+    if (imported.length === 1) await firstInFlight
+    await route.fulfill({
+      json: {
+        path: name,
+        operation: { id: `op-${imported.length}` },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 5,
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.getByTestId('add-files-input').setInputFiles([
+    { name: 'big.mp4', mimeType: 'video/mp4', buffer: Buffer.from('video') },
+    { name: 'cover.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('image') },
+  ])
+  await page.getByRole('button', { name: /^Add to/ }).click()
+  await expect.poll(() => imported.length).toBe(1)
+
+  // Open a video while the first file is still uploading.
+  // The viewer opening is what matters here, not decoding: this spec mocks no
+  // playback decision, so the stage shows its fallback rather than a video.
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+
+  releaseFirst()
+
+  // The second file must still be sent.
+  await expect.poll(() => imported.length, { timeout: 15_000 }).toBe(2)
+  expect(imported).toEqual(['big.mp4', 'cover.jpg'])
+})
