@@ -296,6 +296,44 @@ def _collection_path(session: Session, target_collection_id: str) -> list[Collec
     return list(reversed(path))
 
 
+# Reuse the row the review already draws for a collection instead of a second one
+def _adoptable_container(
+    plan: GroupingPlan,
+    parent_proposal_id: str | None,
+    collection: Collection,
+    forbidden_proposal_ids: set[str],
+) -> GroupingProposal | None:
+    """Find the editable collection suggestion that already stands for ``collection``.
+
+    A folder container the suggester proposed for ``Archive/`` and an existing
+    top-level collection named ``Archive`` are the same destination: apply
+    resolves an unlinked container by name under its parent, so both rows land
+    every bundle in that one collection. Materializing a fresh read-only
+    ``Archive`` above the selected child therefore drew the same collection
+    twice — once as the plan's own top-level row and once as the head of the
+    context path — which reads as the panel inventing a hierarchy it was already
+    showing (owner-reported, 2026-08-23). Generating a plan already dedupes this
+    way (``service._proposed_collection_paths``), but only for the collections a
+    bundle proposal happened to match, so a placement edit has to do it too.
+
+    Matched on the title under the level resolved so far, which is the same
+    identity apply uses (``collections.parent_name`` is unique); a container
+    already pinned to a *different* collection is left alone, and so is anything
+    the caller forbids — the proposal being moved and its own descendants.
+    """
+    candidates = [
+        proposal
+        for proposal in plan.proposals
+        if proposal.kind is ProposalKind.CONTAINER
+        and not proposal.is_collection_context
+        and proposal.parent_proposal_id == parent_proposal_id
+        and proposal.title == collection.name
+        and proposal.target_collection_id in (None, collection.id)
+        and proposal.id not in forbidden_proposal_ids
+    ]
+    return min(candidates, key=lambda proposal: (proposal.sort_order, proposal.id), default=None)
+
+
 # Materialize only the persisted collection path an owner explicitly selected
 def _materialize_collection_context(
     session: Session,
@@ -303,7 +341,7 @@ def _materialize_collection_context(
     target_collection_id: str,
     forbidden_proposal_ids: set[str],
 ) -> GroupingProposal:
-    """Represent a live collection path as stable read-only plan context."""
+    """Represent a live collection path as stable plan context."""
     by_target = {
         proposal.target_collection_id: proposal
         for proposal in plan.proposals
@@ -315,6 +353,15 @@ def _materialize_collection_context(
         context = by_target.get(collection.id)
         if context is not None and context.id in forbidden_proposal_ids:
             raise ValidationError("a collection suggestion cannot move inside itself")
+        adopted = None
+        if context is None:
+            adopted = _adoptable_container(
+                plan,
+                parent.id if parent is not None else None,
+                collection,
+                forbidden_proposal_ids,
+            )
+            context = adopted
         if context is None:
             context = GroupingProposal(
                 plan=plan,
@@ -331,11 +378,20 @@ def _materialize_collection_context(
             session.add(context)
             session.flush()
             by_target[collection.id] = context
-        else:
+        elif context.is_collection_context:
             # An explicit selection refreshes this structural snapshot from the
-            # same current collection tree the picker displayed
+            # same current collection tree the picker displayed. Only a snapshot:
+            # an editable suggestion linked to this collection keeps its own
+            # title and reason, or adopting one below would quietly undo the
+            # rename that is the whole point of an editable row.
             context.title = collection.name
             context.reason = "existing collection"
+        if adopted is not None:
+            # Pin the identity apply must agree on: a read-only context child
+            # nested under a container with no target is rejected as "an existing
+            # collection under a new collection suggestion", and matching by name
+            # alone would re-resolve after a rename.
+            context.target_collection_id = collection.id
         context.parent_proposal_id = parent.id if parent is not None else None
         parent = context
 
@@ -396,7 +452,11 @@ def reparent_proposal(
             session,
             proposal.plan,
             target_collection_id,
-            {descendant.id for descendant in descendants},
+            # The row being moved counts as forbidden too, exactly as it does on
+            # the branch below: a container linked to the very collection just
+            # picked would otherwise become its own parent, and a self-parented
+            # row leaves the tree altogether.
+            {proposal.id, *(descendant.id for descendant in descendants)},
         )
         parent_proposal_id = parent.id
     elif parent_proposal_id is not None:
