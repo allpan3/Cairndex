@@ -715,6 +715,19 @@ Clients declare a capability profile (containers, video/audio codecs,
   `storyboard_url`, and resume `progress`. For `direct` it returns a
   `stream_url`; for remux/transcode it **starts an HLS session** and returns
   `{session {id, playlist_url}}`.
+- **An `hev1` source is relabelled rather than remuxed.** AVFoundation refuses
+  the `hev1` four-character code at every colour depth while MediaSource accepts
+  it, which is the only reason such a file needed a session: MSE is the only route
+  to a decoder that takes it, and HLS the only route to MSE. But the two tags
+  differ in five bytes — the sample-entry fourCC and `array_completeness` on the
+  VPS/SPS/PPS arrays in `hvcC` — so `media/hevc_relabel` finds those offsets and
+  the stream routes patch them as the bytes go past (`media/ranged_stream`), which
+  is byte-identical to what `ffmpeg -tag:v hvc1` writes. The decision then treats
+  the source as `hvc1` and answers `direct`. The guard is load-bearing: a file
+  whose parameter sets are not provably complete in `hvcC` returns no relabel and
+  goes to a session, because claiming `hvc1` for a stream that varies them in-band
+  breaks playback partway. Offsets are cached in-process on the file's identity,
+  so the decision and the stream route do not each re-parse `moov`.
 - **Depth is asked for separately from the codec family**, because the family is
   not the whole answer: every capability string a browser can be probed with
   (`avc1.640028`, `hvc1.1.6.L93.B0`) names an 8-bit profile, so a 10-bit source
