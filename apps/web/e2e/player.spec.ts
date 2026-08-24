@@ -2952,6 +2952,12 @@ test('dismissing the viewer context menu does not also toggle playback', async (
   // Owner report (2026-08-23): right-click the video, then left-click to dismiss
   // — the click that closes the menu also started playback. Cancelling a menu is
   // not a request to play.
+  //
+  // Needs a decodable source: without one the stage swaps the <video> for its
+  // fallback card, and this asserts on `paused`. The mechanism itself is pinned
+  // in `ContextMenu.test.tsx`, which runs everywhere — this is the integration
+  // check, and it is honest for it to skip rather than assert against a card.
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real MP4 playback')
   await mockApi(page)
   await page.goto('/')
 
