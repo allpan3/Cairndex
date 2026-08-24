@@ -114,6 +114,11 @@
 > and ADR-0021; the residual unclean-shutdown risk was accepted by the owner
 > deliberately.
 >
+> **Open on branch (2026-08-24):** `fix/card-host-actions-primary-file` — a bundle
+> card's Open/Reveal entries no longer depend on the web viewer being able to play
+> the file, which had removed them from every card in Missing Files and from any
+> unsupported format. See the first section below.
+>
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
 > need the owner: a pass on a genuinely
@@ -122,6 +127,68 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## Open on branch: a bundle card's file on disk (2026-08-24)
+
+Branch `fix/card-host-actions-primary-file`, off `main` at `df9b9c72`. The
+follow-up the ⌘↩/⇧↩ work recorded as known and not fixed (section below).
+
+Owner: "whether [the] file format is supported … should not dictate whether we
+can open with default app or reveal in Finder. Those buttons should exist either
+way."
+
+**The card menu was asking the wrong question.** It gated both host entries on
+`resume_relative_path`, and `_summarize` fills that only when `is_openable` —
+`AVAILABLE and is_supported`. So a present file in a format the viewer cannot
+stage, and every card in the Missing Files view, produced a null path and
+`hostFileMenuEntries` was never called: two rows gone with nothing said. The
+inversion is the point — reveal exists so *another* application can have the
+file, which is most useful precisely when Cairndex cannot show it. ⌘↩ and ⇧↩ had
+the same hole, through `selectedBundlePath`.
+
+`BundleSummary` now carries **`primary_relative_path`**: the file the bundle
+stands for on disk, resolved as cursor file → the effective cover's source →
+first file, with no playability or availability test. Three steps rather than
+one, because `select_current_file` only ever returns a *supported* file, so an
+audio-only or document bundle has no cursor at all; the cover's source is then
+the file the owner is actually looking at, and the first file is what is left for
+a bundle with no cover source either. Computed from rows the summary already
+loads, so a page still costs four statements (the count test covers it).
+
+`resume_*` did not move and still means "the viewer can play this" — the viewer,
+hover previews and the card's own metadata keep reading it. The web reads the new
+field through one documented helper, `bundleHostPath`, used by both the card menu
+and the shortcut resolver so they cannot drift again.
+
+**A missing file is refused by the filesystem, not by the flag** — a deliberate
+narrowing of the brief's "keep Open gated on availability". `availability` is a
+snapshot from the last scan, so refusing on it would block a file that has since
+come back, while the shell resolves every handoff against the real filesystem and
+already answers `path_not_found` ("The file does not exist at its mapped
+location") or `volume_not_mounted` ("Reconnect it and try again"), each mapped to
+web-owned copy. So the rows are present and explain themselves on use, which is
+what the owner asked for, and no disabled rows were added to a context menu — the
+thing they rejected on 2026-08-24.
+
+Tests: three in `test_browse.py` (an unconvertible image and an audio-only bundle
+both name a file while `resume_relative_path` stays null, an empty bundle names
+nothing; a missing file keeps its path in the Missing view; the cursor beats the
+first file), plus the playable case asserted in the existing enriched-summary
+test. Two in `hostFileTarget.test.ts` for `bundleHostPath`.
+
+Gates: `apps/server` ruff / ruff format / mypy / **1117 tests** (3 new);
+`apps/web` lint / format / typecheck / **922 tests** (2 new) / build. Desktop
+gates not run — nothing under `apps/desktop` changed, and the shell's own path
+resolution and its `PathNotFound` test are untouched.
+
+**Not verified here, and the reason is structural:** the card menu cannot be
+exercised in either test harness. jsdom has no layout, so the virtualized grid
+renders no cards (`App.test.tsx` says so at the top), and a browser has no host
+actions at all, so Playwright would assert two rows that never render there. The
+runtime confirmation is the owner's, in the desktop app: right-click a card in
+Missing Files, and a card whose file is a format the viewer cannot show.
+
+Next: nothing queued on this branch.
 
 ## Merged: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
 

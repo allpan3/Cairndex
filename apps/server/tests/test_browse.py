@@ -94,6 +94,8 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.resume_audio_codec == "aac"
     assert s.resume_duration == 90.0
     assert s.resume_position == 22.0
+    # The OS-handoff path agrees with the playable one whenever there is one.
+    assert s.primary_relative_path == "m/movie.mp4"
 
     progress_service.upsert_progress(session, f.id, position_s=89.0, duration_s=90.0)
     session.commit()
@@ -233,6 +235,96 @@ def test_summary_cover_dimensions_are_absent_without_a_probe(session: Session) -
 
     summary = browse_bundles(session).items[0]
     assert summary.cover_width is None and summary.cover_height is None
+
+
+def test_summary_names_a_file_the_viewer_cannot_stage(session: Session) -> None:
+    """An unsupported format still has a path for the OS handoffs.
+
+    Open in the default app and reveal in the file manager are how another
+    application gets a file Cairndex cannot show, so a format the viewer cannot
+    stage is one of the better reasons to want them — and until this field
+    existed the card menu gated on `resume_relative_path` and dropped both
+    entries without a word (owner, 2026-08-24).
+    """
+    unconvertible = bundle_service.create_bundle(session, title="Layers")
+    bundle_service.add_file(
+        session,
+        unconvertible.id,
+        relative_path="raw/layers.psd",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    # No image and no video, so there is no cover source either: the fallback has
+    # to reach the bundle's first file to answer at all.
+    audio_only = bundle_service.create_bundle(session, title="Interview")
+    bundle_service.add_file(
+        session,
+        audio_only.id,
+        relative_path="tape/interview.wav",
+        role=FileRole.OTHER,
+        media_kind=MediaKind.AUDIO,
+    )
+    empty = bundle_service.create_bundle(session, title="Nothing yet")
+    session.commit()
+
+    summaries = {item.id: item for item in browse_bundles(session).items}
+    assert summaries[unconvertible.id].primary_relative_path == "raw/layers.psd"
+    assert summaries[audio_only.id].primary_relative_path == "tape/interview.wav"
+    # Both are unplayable, which is what the playable group must keep reporting.
+    assert summaries[unconvertible.id].resume_relative_path is None
+    assert summaries[audio_only.id].resume_relative_path is None
+    # A bundle with no files names nothing, which is the only honest answer.
+    assert summaries[empty.id].primary_relative_path is None
+
+
+def test_summary_names_a_missing_file(session: Session) -> None:
+    """A missing file keeps its path, so the whole Missing Files view can offer
+    the handoffs. Whether they succeed is the filesystem's answer at the moment
+    of the attempt, not this flag's: a file recorded missing before a rescan may
+    well be back."""
+    bundle = bundle_service.create_bundle(session, title="Gone")
+    gone = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="m/clip.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    gone.availability = FileAvailability.MISSING
+    session.commit()
+
+    summary = browse_bundles(session, view=SystemView.MISSING).items[0]
+    assert summary.primary_relative_path == "m/clip.mp4"
+    assert summary.resume_relative_path is None
+    assert summary.openable is False
+
+
+def test_summary_primary_path_prefers_the_cursor_over_the_first_file(
+    session: Session,
+) -> None:
+    """The card describes its cursor file, so that is what the handoffs act on —
+    the first-file fallback is for bundles with no cursor at all."""
+    bundle = bundle_service.create_bundle(session, title="Mixed")
+    bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="mixed/commentary.wav",
+        role=FileRole.OTHER,
+        media_kind=MediaKind.AUDIO,
+        sequence=0,
+    )
+    bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="mixed/feature.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+        sequence=1,
+    )
+    session.commit()
+
+    summary = browse_bundles(session).items[0]
+    assert summary.primary_relative_path == "mixed/feature.mp4"
 
 
 def test_system_views_filter(session: Session) -> None:

@@ -1,4 +1,4 @@
-import type { FileBrowserEntry, FileRead } from '../api/client'
+import type { BundleSummary, FileBrowserEntry, FileRead } from '../api/client'
 import type { AppMode } from './types'
 
 /** What the host-file actions would act on, and why they cannot when they
@@ -16,11 +16,36 @@ export interface HostFileTargetContext {
   /** The one file selected inside an open bundle, when the album view has one. */
   albumFile: FileRead | null
   /**
-   * The single selected bundle's playback-cursor path — the same file its card's
-   * own Open/Reveal entries use, so the shortcuts and the menus agree on what
-   * "this bundle's file" means. Null when several are selected, or none is.
+   * The single selected bundle's file on disk, from `bundleHostPath` — the same
+   * file its card's own Open/Reveal entries use, so the shortcuts and the menus
+   * agree on what "this bundle's file" means. Null when several are selected, or
+   * none is.
    */
   selectedBundlePath: string | null
+}
+
+/**
+ * The file a bundle hands to the OS, read from its card summary.
+ *
+ * Deliberately **not** `resume_relative_path`. That field is the web viewer's:
+ * the server fills it only for a file the viewer can stage, which makes it null
+ * for exactly the two cases where handing the file to another application
+ * matters most — a present file in a format Cairndex cannot show, and a file
+ * that has gone missing. Reading it here dropped Open and Reveal from the card
+ * menu with no trace, so an unsupported format looked like a missing feature and
+ * the whole Missing Files view had neither entry (owner, 2026-08-24).
+ *
+ * Availability is not tested here either. Whether the file is really on disk is
+ * the filesystem's answer at the moment of the attempt, and the shell gives it:
+ * a path that is not there comes back as `path_not_found`, an unmounted volume
+ * as `volume_not_mounted`, each with its own copy. The library's own `missing`
+ * flag is a snapshot from the last scan, so refusing on it would block a file
+ * that has since come back.
+ */
+export function bundleHostPath(
+  bundle: Pick<BundleSummary, 'primary_relative_path'> | undefined,
+): string | null {
+  return bundle?.primary_relative_path ?? null
 }
 
 /**
