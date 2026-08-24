@@ -221,3 +221,33 @@ test('has nothing to expand when no tag in scope has children', () => {
 
   expect(screen.getByRole('button', { name: 'Expand all' })).toBeDisabled()
 })
+
+test('right-clicking the blank space offers a new tag and the fold toggle', () => {
+  render(<AllTagsPage onApplyTagFilter={vi.fn()} />)
+  const grid = document.querySelector('.alltags__grid-scroll')
+  if (!(grid instanceof HTMLElement)) throw new Error('expected the tag grid')
+
+  fireEvent.contextMenu(grid)
+  const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
+  expect(items).toEqual(['New Tag', 'Expand All'])
+
+  fireEvent.click(screen.getByRole('menuitem', { name: 'New Tag' }))
+  fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Loose' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+  expect(hooks.createTagPath.mutate).toHaveBeenCalledWith(
+    { path: 'Loose', existing: hooks.tags, parentId: null },
+    expect.anything(),
+  )
+})
+
+test('right-clicking a tag keeps that tag’s menu rather than the blank-space one', () => {
+  render(<AllTagsPage onApplyTagFilter={vi.fn()} />)
+
+  // The tile sits inside the grid, so without stopping the event both menus
+  // would open and the blank-space one — the later handler — would win.
+  fireEvent.contextMenu(screen.getByText('Studio'))
+  const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
+  expect(items).toContain('New Child Tag')
+  expect(items).not.toContain('New Tag')
+})

@@ -372,6 +372,24 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     ])
   }
 
+  // Right-click the grid's blank space. "Here" is this panel: at the top level
+  // that is a top-level tag, and in a group panel `submitNewTag` files it into
+  // that group, the same as the toolbar button.
+  const openBackgroundMenu = (e: React.MouseEvent) => {
+    const items: MenuEntry[] = [
+      { label: 'New Tag', onClick: () => setCreatingTag({ parent: null }) },
+    ]
+    // A flat list of search results has no folds to open.
+    if (matches === null) {
+      items.push(null, {
+        label: allExpanded ? 'Collapse All' : 'Expand All',
+        onClick: () => setExpanded(allExpanded ? new Set() : new Set(parentIds)),
+        disabled: parentIds.length === 0,
+      })
+    }
+    menu.open(e, items)
+  }
+
   const openGroupMenu = (group: TagGroupRead, e: React.MouseEvent) => {
     e.preventDefault()
     menu.open(e, [
@@ -415,8 +433,13 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         <div
           className="tagtile__head"
           onDoubleClick={() => onApplyTagFilter(tag.id)}
-          onContextMenu={(e) => openMenu(tag, e)}
-          title="Double-click to filter · right-click to rename or delete · drag onto a tag to nest it"
+          // Stopped, or this would bubble to the grid's own menu below and the
+          // tag's entries would be replaced by the blank-space ones.
+          onContextMenu={(e) => {
+            e.stopPropagation()
+            openMenu(tag, e)
+          }}
+          title="Double-click to filter · right-click for more · drag onto a tag to nest it"
         >
           {hasKids ? (
             <button
@@ -570,6 +593,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
             if (dropId !== ROOT_DROP) setDropId(ROOT_DROP)
           }}
           onDrop={() => doReparent(null)}
+          onContextMenu={openBackgroundMenu}
         >
           {visibleCount === 0 && (
             <div className="state">

@@ -795,6 +795,11 @@ function Workspace({
   const [newCollectionRequest, setNewCollectionRequest] = useState<{
     parentId: string | null
   } | null>(null)
+  // Likewise for renaming one from a folder card's menu: the sidebar's inline
+  // rename box is the app's one rename affordance for a collection.
+  const [renameCollectionRequest, setRenameCollectionRequest] = useState<{ id: string } | null>(
+    null,
+  )
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // The single file selected inside an open bundle. When there is one, the rail
   // describes *that file* rather than the bundle around it — the same pane the
@@ -1961,6 +1966,15 @@ function Workspace({
         })
         items.push(null)
       }
+      // One at a time: renaming is a single name in a single box. The sidebar
+      // does the work — see `renameCollectionRequest`.
+      if (n === 1) {
+        items.push({
+          label: 'Rename Collection',
+          onClick: () => setRenameCollectionRequest({ id }),
+        })
+        items.push(null)
+      }
       items.push({
         label: n > 1 ? `Delete ${n} Collections` : 'Delete Collection',
         danger: true,
@@ -2306,6 +2320,8 @@ function Workspace({
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
           newCollectionRequest={newCollectionRequest}
+          renameCollectionRequest={renameCollectionRequest}
+          onRenameCollectionHandled={() => setRenameCollectionRequest(null)}
           onNewCollectionHandled={() => setNewCollectionRequest(null)}
           smartCollections={smartCollections.data ?? []}
           onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
