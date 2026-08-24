@@ -365,6 +365,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A bundle's note box can be dragged smaller again.** Bringing a tall note
+  down takes several short drags of its grip, and the second one always sprang
+  it back to full height: a drag is also a press and release on the same spot,
+  so two in quick succession are a double-click as far as the browser is
+  concerned — and double-clicking the grip means *fit to text*. The box simply
+  read as un-shrinkable. A double-click now only fits when neither half of it
+  moved the box, which is tracked as gestures rather than elapsed time because
+  the double-click threshold is a system setting no timeout reliably outlasts.
+
 - **The viewer's info panel no longer runs the full height of the window.** Its
   file list grew one row per file with nothing to stop it, so a bundle with two
   dozen files buried the metadata above it and covered the whole right side of
