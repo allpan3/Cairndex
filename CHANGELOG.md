@@ -409,6 +409,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Continue Watching had the same per-row load and gets the same fix. A test pins
   the statement count so it cannot creep back a row at a time.
 
+- **Right-clicking no longer leaves a highlighted word behind.** WebKit selects
+  the word under the cursor when a context menu opens — Chromium does not — so in
+  the desktop app every right-click on a card title, a sidebar row or a tag left
+  a stray highlight, sometimes only the fragment of a word the cursor landed in.
+  Nothing ever acted on it: those surfaces replace the native menu, and none of
+  our menus has a Copy item. The selection is now dropped as the menu opens,
+  everywhere in the app at once, and left alone inside a text field, where the
+  caret and any selection are the point.
+
 - **A bundle's note box can be dragged smaller again.** Bringing a tall note
   down takes several short drags of its grip, and the second one always sprang
   it back to full height: a drag is also a press and release on the same spot,
