@@ -10,6 +10,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
+  both are in the menu bar under `File` — greyed out when there is nothing they
+  could act on, so the answer is visible before the keystroke.
+
+  What they act on follows the surface you are looking at: the File Browser's
+  selected entry, or in the Bundle Browser the file selected inside an open
+  bundle, else the selected bundle's own playback file. A selection left behind
+  in a pane that is off screen is never what opens.
+
+- **A library this Mac is already serving no longer has to be "located".** Open
+  in Default App and Reveal in Finder need a local path for the library, and the
+  desktop app only had one if you had pointed at the folder yourself — so both
+  actions were missing from every menu for a library the app was actively
+  reading from (owner, 2026-08-23). That ceremony exists for a *remote* server,
+  whose path (`/volume1/media`) means nothing here; it was never needed for the
+  local server, which reports a path on this Mac. The app now adopts that path
+  by itself, after checking the folder's own `.cairndex` marker names the same
+  library — so it is verified, not merely trusted. Remote servers still ask,
+  because there a local *copy* of the library would pass the same check while
+  pointing at the wrong files.
+
+  Where they cannot work at all — a plain browser, or a genuinely remote server
+  — the menu-bar items are what say so. The context menus stay as they were,
+  simply leaving the pair out: no greyed rows were added there.
+
 - **Tags and tag groups can be made from the All Tags page.** It could rename,
   nest and delete what already existed, but there was no way to *create* a tag
   there at all — the only route was typing one into a bundle's tag picker — and

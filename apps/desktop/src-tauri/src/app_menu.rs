@@ -217,6 +217,20 @@ pub(crate) fn set_server_menu_enabled(app: AppHandle, enabled: bool) -> Result<(
     set_group_enabled(&app, "server", enabled)
 }
 
+// Enables Open in Default App and Reveal in Finder while the SPA has a selection
+// this Mac can hand to the OS. Its own group rather than `library`, because the
+// answer changes with the selection and with whether the library is on this
+// machine at all — an enabled item that reports "nothing selected" is a worse
+// answer than a grey one (owner, 2026-08-23).
+//
+// One group for both: they need the same thing, a resolvable local path for the
+// selected file. Splitting them would only matter to a host that could reveal
+// but not open, which no platform Tauri targets does.
+#[tauri::command]
+pub(crate) fn set_host_file_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    set_group_enabled(&app, "host-file", enabled)
+}
+
 // Enables Playback items while a viewer is open. `video` is separate because an
 // image bundle has no player: only Previous/Next File do anything there, and
 // showing the rest as enabled would offer live menu items that silently no-op.
