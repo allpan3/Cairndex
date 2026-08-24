@@ -365,6 +365,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The viewer's info panel no longer runs the full height of the window.** Its
+  file list grew one row per file with nothing to stop it, so a bundle with two
+  dozen files buried the metadata above it and covered the whole right side of
+  the picture. The list is now capped at about half the player's height and
+  scrolls inside that cap; the metadata stays where it was.
+
 - **Dismissing the viewer's right-click menu no longer starts the video.** The
   click that closed the menu also landed on the player underneath, so cancelling
   a menu began playback — and because the menu opens at the cursor, the click
