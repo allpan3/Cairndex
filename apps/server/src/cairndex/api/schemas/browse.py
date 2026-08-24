@@ -23,6 +23,11 @@ class BundleSummary(BaseModel):
     # layout shapes each tile to these so the cover fills it without black bars.
     cover_width: int | None
     cover_height: int | None
+    # The file this bundle stands for on disk — cursor file, else the cover's
+    # source, else the first file — for the OS handoffs, which work on a format
+    # the viewer cannot play. Not `resume_relative_path`: that one is null for
+    # precisely those files. Null only for a bundle with no files.
+    primary_relative_path: str | None
     # Hover/open source resolved from the bundle cursor, independent of its cover
     resume_file_id: str | None
     resume_file_updated_at: datetime | None

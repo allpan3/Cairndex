@@ -920,6 +920,17 @@
             "title": "Openable",
             "type": "boolean"
           },
+          "primary_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Relative Path"
+          },
           "rating": {
             "anyOf": [
               {
@@ -1092,6 +1103,7 @@
           "cover_key",
           "cover_width",
           "cover_height",
+          "primary_relative_path",
           "resume_file_id",
           "resume_file_updated_at",
           "resume_media_kind",
@@ -1743,6 +1755,17 @@
             "title": "Openable",
             "type": "boolean"
           },
+          "primary_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Relative Path"
+          },
           "progress": {
             "$ref": "#/components/schemas/ContinueWatchingProgressRead"
           },
@@ -1918,6 +1941,7 @@
           "cover_key",
           "cover_width",
           "cover_height",
+          "primary_relative_path",
           "resume_file_id",
           "resume_file_updated_at",
           "resume_media_kind",

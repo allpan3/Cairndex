@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
-import type { FileBrowserEntry, FileRead } from '../api/client'
-import { hostFileTargetFor, type HostFileTargetContext } from './hostFileTarget'
+import type { BundleSummary, FileBrowserEntry, FileRead } from '../api/client'
+import { bundleHostPath, hostFileTargetFor, type HostFileTargetContext } from './hostFileTarget'
 
 const EMPTY: HostFileTargetContext = {
   mode: 'collection',
@@ -80,4 +80,34 @@ test('nothing selected anywhere is refused rather than guessed at', () => {
   expect(
     hostFileTargetFor({ ...EMPTY, mode: 'tags', selectedBundlePath: 'Set07/clip1.mp4' }),
   ).toEqual({ kind: 'none', reason: 'no-selection' })
+})
+
+function summary(fields: Partial<BundleSummary>): BundleSummary {
+  return fields as BundleSummary
+}
+
+test('a bundle hands over its file whether or not the viewer can play it', () => {
+  // The two agree for a playable file...
+  expect(
+    bundleHostPath(
+      summary({
+        primary_relative_path: 'Set07/clip1.mp4',
+        resume_relative_path: 'Set07/clip1.mp4',
+      }),
+    ),
+  ).toBe('Set07/clip1.mp4')
+  // ...and the OS still gets a path when the viewer has nothing to stage, which
+  // is the case that was silently dropping Open and Reveal from the card menu:
+  // an unsupported format, or a file recorded as missing (owner, 2026-08-24).
+  expect(
+    bundleHostPath(
+      summary({ primary_relative_path: 'Set07/scan.psd', resume_relative_path: null }),
+    ),
+  ).toBe('Set07/scan.psd')
+})
+
+test('a bundle with no file, and no bundle at all, hand over nothing', () => {
+  expect(bundleHostPath(summary({ primary_relative_path: null }))).toBeNull()
+  // `find` misses while a page is loading, or when the selection outlives it.
+  expect(bundleHostPath(undefined)).toBeNull()
 })

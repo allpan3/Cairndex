@@ -440,6 +440,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Open in Default App and Reveal in Finder are on every bundle card, whatever
+  format its file is.** Both were absent from a card's menu whenever the web
+  viewer could not stage that card's file — a present file in a format Cairndex
+  cannot show, and every card in the Missing Files view — because the menu read
+  the *playback* path, which the server fills only for a file the viewer can
+  play. Handing a file Cairndex cannot show to an application that can is one of
+  the better reasons to want Finder, so that was exactly backwards; and rows
+  that vanish read as features that were never built, which is how this started
+  (owner, 2026-08-23). ⌘↩ and ⇧↩ resolved a selected bundle through the same
+  field, so they had the same hole.
+
+  A bundle summary now carries the file it stands for **on disk** — its playback
+  cursor, else the source of the cover you are looking at, else its first file —
+  and the menu and the shortcuts read that. Whether Cairndex can play something
+  no longer has any bearing on whether the OS can be handed it. Nothing about
+  playback moved: the `resume_*` fields still describe only what can be played,
+  and the viewer, hover previews and card metadata still read those.
+
+  A file that genuinely is not there still refuses, and now says why instead of
+  disappearing: the shell resolves the path against the real filesystem when the
+  action runs, so a missing file answers that it does not exist at its mapped
+  location, and an unmounted volume asks to be reconnected. That check is
+  deliberately not the library's own `missing` flag — a snapshot from the last
+  scan, which would refuse a file that has since come back.
+
 - **Opening the Random tab is no longer the slowest thing in the app.** A page
   of the bundle grid summarized one bundle at a time — a query per row, so a
   100-row page cost 100 extra round trips on top of the two that fetched it.

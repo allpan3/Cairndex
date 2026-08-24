@@ -94,6 +94,14 @@ class BundleSummary:
     # probed, or when there is no cover.
     cover_width: int | None
     cover_height: int | None
+    # The file this bundle stands for *on disk*: the cursor file, else the cover's
+    # source, else the first file. Deliberately independent of whether the web
+    # viewer can play it, because the OS handoffs (open in the default app, reveal
+    # in the file manager) do not care — handing an unsupported format to another
+    # application is one of the better reasons to want them (owner, 2026-08-24).
+    # The `resume_*` group below cannot serve that: it is null for exactly those
+    # files. Null only for a bundle with no files at all.
+    primary_relative_path: str | None
     # Hover/open source resolved from the bundle cursor, independent of its cover
     resume_file_id: str | None
     resume_file_updated_at: datetime | None
@@ -613,6 +621,11 @@ def _summarize(bundle: AssetBundle, rows: _PageRows) -> BundleSummary:
     cursor_file_id = rows.cursor_file.get(bundle.id)
     current = select_current_file(files, cursor_file_id, progress_by_file)
     preview = current if current is not None and is_openable(current) else None
+    # `select_current_file` only ever returns a *supported* file, so a bundle of
+    # formats the viewer cannot stage (an audio-only or document one, say) has no
+    # cursor at all. Fall back to what the card is showing, then to its first
+    # file, so every non-empty bundle names something the OS can be handed.
+    primary = current or effective_cover or (files[0] if files else None)
     current_progress = progress_by_file.get(current.id) if current else None
     meta: dict[str, Any] = (current.tech_metadata or {}) if current else {}
     extension = None
@@ -632,6 +645,7 @@ def _summarize(bundle: AssetBundle, rows: _PageRows) -> BundleSummary:
         cover_key=cover_key,
         cover_width=cover_meta.get("width"),
         cover_height=cover_meta.get("height"),
+        primary_relative_path=primary.relative_path if primary else None,
         resume_file_id=current.id if current else None,
         resume_file_updated_at=preview.updated_at if preview else None,
         resume_media_kind=str(preview.media_kind) if preview else None,

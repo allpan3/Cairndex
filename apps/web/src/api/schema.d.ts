@@ -2803,6 +2803,8 @@ export interface components {
             media_kind: string | null;
             /** Openable */
             openable: boolean;
+            /** Primary Relative Path */
+            primary_relative_path: string | null;
             /** Rating */
             rating: number | null;
             /** Resume Audio Codec */
@@ -3067,6 +3069,8 @@ export interface components {
             media_kind: string | null;
             /** Openable */
             openable: boolean;
+            /** Primary Relative Path */
+            primary_relative_path: string | null;
             progress: components["schemas"]["ContinueWatchingProgressRead"];
             /** Rating */
             rating: number | null;
