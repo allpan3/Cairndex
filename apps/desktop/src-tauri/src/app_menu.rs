@@ -61,6 +61,24 @@ fn build_submenu(app: &App, menu: &MenuSpec) -> tauri::Result<Submenu<tauri::Wry
     builder.build()
 }
 
+/// Every `predefined` name `apply_item` below knows how to build. Kept beside
+/// the match it mirrors, because an unknown name there is a startup panic — this
+/// list is what turns a table typo into a failing test instead.
+const KNOWN_PREDEFINED: &[&str] = &[
+    "about",
+    "close-window",
+    "copy",
+    "cut",
+    "hide",
+    "hide-others",
+    "minimize",
+    "paste",
+    "redo",
+    "select-all",
+    "show-all",
+    "undo",
+];
+
 // Applies one table entry to the submenu under construction
 fn apply_item<'a>(
     app: &App,
@@ -76,14 +94,25 @@ fn apply_item<'a>(
             "close-window" => builder.close_window(),
             "copy" => builder.copy(),
             "cut" => builder.cut(),
+            // The macOS App-menu trio, and the only source of Cmd-H and
+            // Cmd-Opt-H: a fully custom menu bar with no Hide item leaves those
+            // combos dead, which is what the shell shipped with (owner,
+            // 2026-08-23). Not gated by target: Tauri exposes all three
+            // everywhere and they no-op where the platform has no such concept.
+            "hide" => builder.hide(),
+            "hide-others" => builder.hide_others(),
             "minimize" => builder.minimize(),
             "paste" => builder.paste(),
             "redo" => builder.redo(),
             "select-all" => builder.select_all(),
+            "show-all" => builder.show_all(),
             "undo" => builder.undo(),
-            // An unknown name is a table typo; skipping silently would hide it,
-            // and the keymap test asserts every entry has a consumer.
-            other => panic!("unknown predefined menu item {other:?}"),
+            // An unknown name is a table typo; skipping silently would hide it.
+            // A test walks the table against `KNOWN_PREDEFINED` so a typo fails
+            // there rather than here, at startup.
+            other => panic!(
+                "unknown predefined menu item {other:?}; known names are {KNOWN_PREDEFINED:?}"
+            ),
         });
     }
 
@@ -188,6 +217,20 @@ pub(crate) fn set_server_menu_enabled(app: AppHandle, enabled: bool) -> Result<(
     set_group_enabled(&app, "server", enabled)
 }
 
+// Enables Open in Default App and Reveal in Finder while the SPA has a selection
+// this Mac can hand to the OS. Its own group rather than `library`, because the
+// answer changes with the selection and with whether the library is on this
+// machine at all — an enabled item that reports "nothing selected" is a worse
+// answer than a grey one (owner, 2026-08-23).
+//
+// One group for both: they need the same thing, a resolvable local path for the
+// selected file. Splitting them would only matter to a host that could reveal
+// but not open, which no platform Tauri targets does.
+#[tauri::command]
+pub(crate) fn set_host_file_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    set_group_enabled(&app, "host-file", enabled)
+}
+
 // Enables Playback items while a viewer is open. `video` is separate because an
 // image bundle has no player: only Previous/Next File do anything there, and
 // showing the rest as enabled would offer live menu items that silently no-op.
@@ -270,7 +313,51 @@ fn focus_main_window_now<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(test)]
 mod tests {
-    use super::MainWindowReady;
+    use super::{MainWindowReady, KNOWN_PREDEFINED};
+    use crate::keymap;
+
+    // A `predefined` name with no arm in `apply_item` panics when the menu is
+    // built — that is, at startup, in a packaged build. The table is edited from
+    // the web app's side too, so the guard belongs here.
+    #[test]
+    fn every_predefined_name_in_the_table_can_be_built() {
+        for menu in &keymap::keymap().menus {
+            for item in &menu.items {
+                let Some(name) = item.predefined.as_deref() else {
+                    continue;
+                };
+                assert!(
+                    KNOWN_PREDEFINED.contains(&name),
+                    "{} names predefined item {name:?}, which apply_item cannot build",
+                    menu.id
+                );
+            }
+        }
+    }
+
+    // macOS puts Hide/Hide Others/Show All in the App menu, and they are the only
+    // source of Cmd-H and Cmd-Opt-H. A custom menu bar that omits them leaves
+    // those combos dead (owner, 2026-08-23).
+    #[test]
+    fn the_app_menu_carries_the_hide_family() {
+        let app_menu = keymap::keymap()
+            .menus
+            .iter()
+            .find(|menu| menu.id == "app-menu")
+            .expect("an App menu");
+        let predefined: Vec<&str> = app_menu
+            .items
+            .iter()
+            .filter_map(|item| item.predefined.as_deref())
+            .collect();
+
+        for expected in ["hide", "hide-others", "show-all"] {
+            assert!(
+                predefined.contains(&expected),
+                "the App menu is missing the {expected:?} item"
+            );
+        }
+    }
 
     // Pins the one-way readiness transition shared by mount and focus requests
     #[test]

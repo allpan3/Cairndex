@@ -69,6 +69,7 @@ import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
 import { hostFileMenuEntries } from './app/hostActions'
+import { hostFileTargetFor } from './app/hostFileTarget'
 import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
@@ -113,6 +114,7 @@ import { useHostImports } from './desktop/useHostImports'
 import { useWebImports } from './app/useWebImports'
 import {
   connectToServer,
+  getActiveConnection,
   getConnections,
   getPendingSelectionVersion,
   libraryStorageKey,
@@ -143,8 +145,10 @@ import {
   hasHostDeviceAccess,
   hasHostDeviceToken,
   hostAltKeyHeld,
+  adoptHostLibraryMapping,
   hostOperationErrorMessage,
   reverseMapHostPaths,
+  setHostFileActionsAvailable,
   type DeepLinkTarget,
 } from './platform'
 
@@ -719,11 +723,15 @@ function Workspace({
     debounceMs: 300,
   })
   // Merge in defaults so prefs persisted before newer fields existed
-  // (sortScope/collectionSorts) don't read back as undefined.
+  // (sortScope/collectionSorts) don't read back as undefined. The zoom is also
+  // clamped, because the slider's range has moved before and will again: a value
+  // saved outside the current bounds would render cards the slider can no longer
+  // express, and the thumb would sit at an end that does not match them.
   const prefs = useMemo(
     () => ({
       ...DEFAULT_PREFS,
       ...storedPrefs,
+      zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, storedPrefs.zoom ?? DEFAULT_PREFS.zoom)),
       player: { ...DEFAULT_PREFS.player, ...storedPrefs.player },
     }),
     [storedPrefs],
@@ -795,6 +803,11 @@ function Workspace({
   const [newCollectionRequest, setNewCollectionRequest] = useState<{
     parentId: string | null
   } | null>(null)
+  // Likewise for renaming one from a folder card's menu: the sidebar's inline
+  // rename box is the app's one rename affordance for a collection.
+  const [renameCollectionRequest, setRenameCollectionRequest] = useState<{ id: string } | null>(
+    null,
+  )
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // The single file selected inside an open bundle. When there is one, the rail
   // describes *that file* rather than the bundle around it — the same pane the
@@ -1034,6 +1047,9 @@ function Workspace({
       ? 'pending'
       : 'unmapped'
 
+  // Declared here rather than beside the drag-in hook below, because the locate
+  // action further down writes the library mapping straight into its cache.
+  const queryClient = useQueryClient()
   const revealMappedFile = useCallback(
     (relativePath: string) => {
       void platform
@@ -1054,6 +1070,39 @@ function Workspace({
     libraryMapped && platform.canRevealInFinder ? revealMappedFile : undefined
   const onOpenHostFile =
     libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
+  // A library the *local* server is serving is already on this Mac, at a path the
+  // shell can use as-is — so the locate ceremony is asking the owner to point at
+  // a folder the app is actively reading from, and until they do, Open and Reveal
+  // stay disabled for want of an answer the shell already has (owner,
+  // 2026-08-24). Adopt it instead. Restricted to the local sidecar: a remote
+  // server's path means nothing here, and a local *copy* of the same library
+  // would satisfy the marker check while pointing at the wrong files.
+  //
+  // Best-effort, and deliberately quiet on failure: the manual locate stays
+  // available, and a library whose folder has since moved should not raise an
+  // error the owner did not ask for.
+  useEffect(() => {
+    if (mappingQuery.isLoading || mappingQuery.data != null) return
+    if (!isDesktopHost() || getActiveConnection()?.kind !== 'local') return
+    const active = libraries.find((candidate) => candidate.id === libraryId)
+    if (!active) return
+    void adoptHostLibraryMapping(libraryId, active.library_uuid, active.root_path)
+      .then((localRoot) => {
+        if (localRoot === null) return
+        queryClient.setQueryData(['library-mapping', libraryId], localRoot)
+      })
+      .catch(() => undefined)
+  }, [libraries, libraryId, mappingQuery.data, mappingQuery.isLoading, queryClient])
+
+  // Why both of the above are missing, when the host could do them but this
+  // library has never been located on this computer. Worth saying rather than
+  // leaving to be deduced: silently dropping the two entries is what made the
+  // owner conclude Reveal did not exist (owner, 2026-08-23).
+  const unmappedLibraryHint = `This library has not been located on this computer yet — use Settings ▸ Libraries ▸ ${hostLabels.locateLibrary}.`
+  const hostFileActions = useMemo(
+    () => ({ onOpenFile: onOpenHostFile, onRevealFile: onRevealHostFile }),
+    [onOpenHostFile, onRevealHostFile],
+  )
   // Jump to a file's directory in the File Browser, highlighting the file until
   // the user navigates away. One definition for every surface that offers
   // "Locate in File Browser", so they cannot drift on what locating means.
@@ -1432,6 +1481,47 @@ function Workspace({
   const total = browse.data?.pages[0]?.total ?? 0
   const filtered = items
 
+  // What ⌘↩ would reveal right now, recomputed as the selection moves. Also what
+  // greys both menu items out: the menu bar should answer "is there anything to
+  // act on" before it is pressed, not after (owner, 2026-08-23).
+  const hostFileTarget = hostFileTargetFor({
+    mode,
+    fileEntry,
+    albumFile,
+    selectedBundlePath:
+      selectedIds.size === 1
+        ? (filtered.find((item) => item.id === [...selectedIds][0])?.resume_relative_path ?? null)
+        : null,
+  })
+  const canActOnSelection =
+    (onRevealHostFile !== undefined || onOpenHostFile !== undefined) &&
+    hostFileTarget.kind === 'file'
+  useEffect(() => {
+    void setHostFileActionsAvailable(canActOnSelection)
+  }, [canActOnSelection])
+
+  // ⌘↩ reveals the selection in Finder and ⇧⌘↩ opens it in its default app —
+  // the shortcuts for the Open/Reveal pair the context menus carry. Their own
+  // listener rather than a branch in the workspace handler above, because
+  // resolving the target needs the loaded page, which is declared here.
+  //
+  // Both items are greyed out when this cannot work, so reaching the failure
+  // branches means a stale enablement or a keystroke racing a selection change.
+  // They still say why rather than doing nothing.
+  useDesktopMenu((action) => {
+    if (action !== 'reveal-file' && action !== 'open-file') return
+    const revealing = action === 'reveal-file'
+    const handoff = revealing ? onRevealHostFile : onOpenHostFile
+    if (!handoff) {
+      setFlash(libraryMapped ? 'This build cannot hand files to the OS.' : unmappedLibraryHint)
+      return
+    }
+    if (hostFileTarget.kind === 'file') handoff(hostFileTarget.relativePath)
+    else if (hostFileTarget.reason === 'directory')
+      setFlash(`Select a file, not a folder, to ${revealing ? 'reveal' : 'open'}.`)
+    else setFlash(revealing ? 'Select a file to reveal it in Finder.' : 'Select a file to open it.')
+  })
+
   // Exactly one subcollection selected → show its inspector; several → a small
   // multi-selection summary (see the right panel below).
   const singleSelectedCollectionId =
@@ -1665,11 +1755,7 @@ function Workspace({
       const hostPath =
         n === 1 ? filtered.find((item) => item.id === id)?.resume_relative_path : null
       if (hostPath) {
-        const hostItems = hostFileMenuEntries(
-          hostLabels,
-          { onOpenFile: onOpenHostFile, onRevealFile: onRevealHostFile },
-          hostPath,
-        )
+        const hostItems = hostFileMenuEntries(hostLabels, hostFileActions, hostPath)
         if (hostItems.length > 0) items.push(null, ...hostItems)
       }
       if (selection.collectionId) {
@@ -1703,8 +1789,7 @@ function Workspace({
       updateCollection,
       filtered,
       hostLabels,
-      onOpenHostFile,
-      onRevealHostFile,
+      hostFileActions,
       platform.kind,
       libraryId,
     ],
@@ -1725,7 +1810,6 @@ function Workspace({
   // inside this mapped library land in the fast-add flow (Create Bundle); files
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
-  const queryClient = useQueryClient()
   const webImports = useWebImports({ onFlash: showFlash })
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
@@ -1958,6 +2042,15 @@ function Workspace({
               setFlash(copied ? 'Collection URI copied.' : 'Could not copy the URI.'),
             )
           },
+        })
+        items.push(null)
+      }
+      // One at a time: renaming is a single name in a single box. The sidebar
+      // does the work — see `renameCollectionRequest`.
+      if (n === 1) {
+        items.push({
+          label: 'Rename Collection',
+          onClick: () => setRenameCollectionRequest({ id }),
         })
         items.push(null)
       }
@@ -2306,6 +2399,8 @@ function Workspace({
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
           newCollectionRequest={newCollectionRequest}
+          renameCollectionRequest={renameCollectionRequest}
+          onRenameCollectionHandled={() => setRenameCollectionRequest(null)}
           onNewCollectionHandled={() => setNewCollectionRequest(null)}
           smartCollections={smartCollections.data ?? []}
           onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}

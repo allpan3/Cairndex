@@ -10,6 +10,59 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
+  both are in the menu bar under `File` — greyed out when there is nothing they
+  could act on, so the answer is visible before the keystroke.
+
+  What they act on follows the surface you are looking at: the File Browser's
+  selected entry, or in the Bundle Browser the file selected inside an open
+  bundle, else the selected bundle's own playback file. A selection left behind
+  in a pane that is off screen is never what opens.
+
+- **A library this Mac is already serving no longer has to be "located".** Open
+  in Default App and Reveal in Finder need a local path for the library, and the
+  desktop app only had one if you had pointed at the folder yourself — so both
+  actions were missing from every menu for a library the app was actively
+  reading from (owner, 2026-08-23). That ceremony exists for a *remote* server,
+  whose path (`/volume1/media`) means nothing here; it was never needed for the
+  local server, which reports a path on this Mac. The app now adopts that path
+  by itself, after checking the folder's own `.cairndex` marker names the same
+  library — so it is verified, not merely trusted. Remote servers still ask,
+  because there a local *copy* of the library would pass the same check while
+  pointing at the wrong files.
+
+  Where they cannot work at all — a plain browser, or a genuinely remote server
+  — the menu-bar items are what say so. The context menus stay as they were,
+  simply leaving the pair out: no greyed rows were added there.
+
+- **Tags and tag groups can be made from the All Tags page.** It could rename,
+  nest and delete what already existed, but there was no way to *create* a tag
+  there at all — the only route was typing one into a bundle's tag picker — and
+  tag groups could not be created, renamed, deleted, or have anything put in
+  them from the UI, despite the API having supported all four since the taxonomy
+  went in. The page now covers the whole lifecycle:
+
+  - **New Tag** in the toolbar creates a top-level tag, reading `/` as a
+    hierarchy divider, so `Studio/Series` makes both in one pass and reuses
+    either if it is already there. Created while a group panel is open, the tag
+    joins that group — otherwise "new tag" in a group would make something the
+    panel cannot show.
+  - **New Child Tag** on a tag's context menu creates beneath that tag, and
+    unfolds it so the new child is visible rather than hidden in a folded branch.
+  - The side rail's **Tag Groups** header has a **+** for a new group, and each
+    group row right-clicks to **Rename Group** or **Delete Group**. Deleting one
+    is metadata-only and says so: the tags stay, only the grouping goes.
+  - A tag joins or leaves a group from its own context menu (**Add to …** /
+    **Remove from …**), or by being **dragged onto a group row** — which is
+    membership, not nesting, so the tag keeps its parent. A row it already holds
+    offers no drop cue.
+  - **Expand all** / **Collapse all** opens or folds every tag with children in
+    the current panel, which is the only practical way through a deep hierarchy
+    one chevron at a time.
+  - Right-clicking the page's blank space offers **New Tag** and the same fold
+    toggle — "here" being the open panel, so in a group panel the new tag joins
+    that group. Right-clicking a tag still gets the tag's own menu.
+
 - **HDR video no longer transcodes to a flat, washed-out picture.** A transcode
   ended in 8-bit BT.709 with no colour conversion, so an HDR source's PQ or HLG
   code values were read as ordinary gamma — correct for SDR, wrong for
@@ -201,6 +254,28 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The layout buttons have icons that mean something.** Card and Justified were
+  `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
+  say nothing about the layout they select. Each is now a drawn icon: **Card** is
+  a single card, cover above and title below; **Justified** is rows of unequal
+  widths flush to both edges; **List** is a thumbnail beside its line of text. No
+  two share a silhouette, which matters more than any one of them being clever —
+  they sit in one segmented control at 15px. The File Browser's two share them,
+  so the same control means the same thing on both surfaces.
+
+- **The "Grid" layout is now called "Card".** Both it and Justified are grids;
+  what distinguishes this one is that every item is a card of one fixed shape.
+  The stored preference value is unchanged, so nothing needs migrating.
+
+- **The card-size slider reaches further at both ends** — 140–640 px instead of
+  80–360. The smallest cards were too small to read and the largest not large
+  enough to look at. Justified rows also aim higher within that range (0.7 of the
+  slider value rather than 0.6): the two layouts are judged separately, and
+  Justified was the one still reading small, having no title block under each
+  tile to give it weight. A zoom saved outside the range is clamped on read,
+  since a value the slider cannot express would leave the thumb at one end
+  showing cards from somewhere else.
+
 - **Snapshot and GIF watermarks sit closer to the corner.** The inset was wide
   enough that the mark read as floating in the bottom-right rather than sitting
   in it; it is now near 1% of the export's width — a corner inset rather than a
@@ -364,6 +439,99 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sheets rather than leaving a library holding a mix of two qualities.
 
 ### Fixed
+
+- **Opening the Random tab is no longer the slowest thing in the app.** A page
+  of the bundle grid summarized one bundle at a time — a query per row, so a
+  100-row page cost 100 extra round trips on top of the two that fetched it.
+  That is the shape this library cannot afford: the owner's library is on an SMB
+  share at ~36 ms a round trip, where **statements are the cost, not
+  milliseconds** (the 2026-08-13 finding, which fixed the grouping code and
+  should have been read as a constraint on the whole read path). Every view paid
+  it, but Random paid it worst: its rows are scattered across the table by
+  design, so not one of those per-row lookups lands on a page an earlier row
+  already warmed, and it is the one view a session cannot arrive at pre-warmed.
+
+  A page now loads its files, watch progress and cursor selections once, so it
+  costs **four statements regardless of how many bundles are on it**. Measured
+  read-only against the owner's library: **56 statements and 145–185 ms → 4
+  statements and 13 ms**, warm; cold, at the 36 ms round trip the share
+  actually charges, the same page goes from roughly 3.7 s of waiting to 0.15 s.
+  Continue Watching had the same per-row load and gets the same fix. A test pins
+  the statement count so it cannot creep back a row at a time.
+
+- **⌘H hides the desktop app.** It did nothing, because the shell builds its
+  whole menu bar from the shared keymap table and that table's App menu had no
+  **Hide** item — and on macOS the Hide item *is* where ⌘H comes from. The App
+  menu now carries the standard trio: Hide Cairndex (⌘H), Hide Others (⌘⌥H) and
+  Show All. Their accelerators belong to the OS rather than the table, so the
+  test that stops an app shortcut shadowing a built-in one knows about them now
+  too.
+
+- **The Justified layout's rows are the size they claim to be, and its last row
+  no longer towers over the rest.** Two faults in one packing rule. It always
+  broke a row *after* the tile that overflowed it, so a wide cover arriving at
+  the end dragged the whole row down — measured at 74–100% of the target height,
+  every row under it, which is why the view read as too small however far the
+  size slider went. It now breaks on whichever side of the target is closer, and
+  measured on the same content lands within 10% of it. And a short last row was
+  allowed 1.3× the target while full rows undershot, so the final row — a single
+  bundle, often — could be nearly twice the height of the row above it. It is
+  now capped at that row's own height, and simply stops short of the right edge
+  the way a justified gallery should.
+
+- **Covers no longer sit in a black frame.** Two separate causes, one per
+  layout. The **Card** layout's cover frame was 1.61:1 — not a shape any camera
+  produces — because its height was whatever remained after the title block, so
+  the frame's real proportions depended on the meta's font metrics and the card's
+  border. It is now exactly **16:9**, declared in CSS rather than arrived at by
+  arithmetic, so a 16:9 cover fills it and only a genuinely different cover
+  letterboxes. The **Justified** layout shaped each tile from the file under the
+  playback cursor, which is the file that *plays*, not the one the cover comes
+  from — those follow different rules, so a chosen cover or an image leading a
+  video bundle put the cover in bars. Tiles now take the shape of their own
+  cover, which the browse response reports as `cover_width`/`cover_height`.
+
+- **A toolbar action no longer sits in the middle of the row.** Random's
+  **Shuffle** button occupied the sort control's slot — for a good reason, since
+  Random has no sort — which put it between the search box and the layout
+  buttons. The residents (filter, search, sort, layout, zoom) are furniture whose
+  positions are worth learning, so an action appearing among them shifts the lot.
+  Actions now sit immediately left of the residents, which is where the File
+  Browser's **Add Files Here** / **New Folder** and Trash's **Empty Trash…**
+  already were.
+
+- **A collection can be renamed again.** The inline rename box existed but
+  nothing ever reopened it: it appeared once, on a row, in the seconds after
+  that collection was created — so a collection named by accident, or named
+  before the right name was obvious, was stuck with it. **Rename Collection** is
+  now on a sidebar row's context menu and on a folder card's in the grid; both
+  open the same box, unfolding the tree to reach it when the row is inside a
+  folded branch. Only for one collection at a time, since renaming is a single
+  name in a single box.
+
+- **Right-clicking no longer leaves a highlighted word behind.** WebKit selects
+  the word under the cursor when a context menu opens — Chromium does not — so in
+  the desktop app every right-click on a card title, a sidebar row or a tag left
+  a stray highlight, sometimes only the fragment of a word the cursor landed in.
+  Nothing ever acted on it: those surfaces replace the native menu, and none of
+  our menus has a Copy item. The selection is now dropped as the menu opens,
+  everywhere in the app at once, and left alone inside a text field, where the
+  caret and any selection are the point.
+
+- **A bundle's note box can be dragged smaller again.** Bringing a tall note
+  down takes several short drags of its grip, and the second one always sprang
+  it back to full height: a drag is also a press and release on the same spot,
+  so two in quick succession are a double-click as far as the browser is
+  concerned — and double-clicking the grip means *fit to text*. The box simply
+  read as un-shrinkable. A double-click now only fits when neither half of it
+  moved the box, which is tracked as gestures rather than elapsed time because
+  the double-click threshold is a system setting no timeout reliably outlasts.
+
+- **The viewer's info panel no longer runs the full height of the window.** Its
+  file list grew one row per file with nothing to stop it, so a bundle with two
+  dozen files buried the metadata above it and covered the whole right side of
+  the picture. The list is now capped at about half the player's height and
+  scrolls inside that cap; the metadata stays where it was.
 
 - **Dismissing the viewer's right-click menu no longer starts the video.** The
   click that closed the menu also landed on the player underneath, so cancelling

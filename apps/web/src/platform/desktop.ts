@@ -301,7 +301,10 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     normalizeServerUrl: (value) => invoke<string>('normalize_server_url_command', { value }),
     listenMenu: (handler) =>
       listen<DesktopMenuAction>('cairndex://menu', (event) => handler(event.payload)),
+    adoptLibraryMapping: (libraryId, libraryUuid, localRoot) =>
+      invoke<string | null>('adopt_library_mapping', { libraryId, libraryUuid, localRoot }),
     setLibraryAvailable: (enabled) => invoke('set_library_menu_enabled', { enabled }),
+    setHostFileActionsAvailable: (enabled) => invoke('set_host_file_menu_enabled', { enabled }),
     setServerAvailable: (enabled) => invoke('set_server_menu_enabled', { enabled }),
     setViewerMenuAvailable: (viewer, video) => invoke('set_viewer_menu_enabled', { viewer, video }),
     // Native window fullscreen, not the HTML Fullscreen API: WKWebView requires

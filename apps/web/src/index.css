@@ -711,10 +711,37 @@ button {
   gap: 2px;
 }
 .alltags__side-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 12px 6px 4px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.alltags__side-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.alltags__side-add:hover {
+  color: var(--text-strong);
+  background: var(--surface);
+}
+.alltags__side-add .icon {
+  width: 13px;
+  height: 13px;
+}
+.alltags__side-hint {
+  margin: 0 8px 2px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .alltags__nav {
@@ -752,6 +779,11 @@ button {
 .alltags__nav.is-active {
   background: var(--accent-soft);
   color: var(--text-strong);
+}
+/* A tag being dragged onto a group row: same accent outline the tag tiles use
+   for a nesting drop, so the two gestures read as one family. */
+.alltags__nav--drop {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .alltags__main {
   flex: 1;
@@ -1221,6 +1253,17 @@ button {
   background: var(--bg-2) center/cover no-repeat;
   position: relative;
   min-height: 0;
+}
+/* The Card layout's cover frame, shaped here rather than left to arithmetic.
+   Its height used to be whatever was left after the meta block, so the frame's
+   real shape depended on the meta's font metrics and the card's border — it
+   came out 1.72:1 against an intended 1.78:1, and a 16:9 cover still sat in a
+   thin letterbox (owner, 2026-08-23). `aspect-ratio` makes the frame exact and
+   `computeRows` only has to reserve enough room for it. The Justified layout
+   keeps `flex: 1`: there the tile is already the cover's own shape. */
+.card--framed .card__thumb {
+  flex: 0 0 auto;
+  aspect-ratio: 16 / 9;
 }
 .hover-preview--media {
   background-color: #050609;
@@ -4566,10 +4609,30 @@ code {
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+/* The playlist is capped at roughly half the player and scrolls inside that
+   cap. Uncapped it grew one row per file until the panel ran the full height of
+   the window, which buried the metadata above it and left the whole side of the
+   picture covered (owner, 2026-08-23). The panel's own `max-height` still
+   applies, so a short window clips nothing — it just scrolls the panel too. */
 .mv-info__files {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.mv-info__files::-webkit-scrollbar {
+  width: 5px;
+}
+.mv-info__files::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mv-info__files::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+}
+.mv-info__files::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.36);
 }
 .mv-info__file {
   display: flex;

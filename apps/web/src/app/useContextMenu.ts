@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { dropRightClickSelection } from './selection'
+
 /** One row in a right-click menu. A `null` entry renders a separator. */
 export interface MenuItem {
   label: string
@@ -28,6 +30,11 @@ export function useContextMenu() {
   const [state, setState] = useState<MenuState | null>(null)
   const open = (e: React.MouseEvent, items: MenuEntry[]) => {
     e.preventDefault()
+    // WebKit selected the word under the cursor on the way here; the menu that
+    // replaces the native one has no use for it. Done before the empty-menu
+    // bail-out below, because the stray highlight is just as wrong on a surface
+    // whose menu turned out to have nothing to offer.
+    dropRightClickSelection(e.target)
     // An all-disabled or empty menu would just be an empty box — skip it.
     if (!items.some((i) => i && !i.disabled)) return
     setState({ x: e.clientX, y: e.clientY, items })

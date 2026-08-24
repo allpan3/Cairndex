@@ -22,6 +22,8 @@ const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'zoom-out',
   'toggle-sidebar',
   'toggle-inspector',
+  'reveal-file',
+  'open-file',
 ]
 
 const EXPECTED_PLAYBACK_ACTIONS: ViewerCommand[] = [

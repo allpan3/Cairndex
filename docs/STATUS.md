@@ -118,6 +118,412 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
+
+Branch `fix/tag-management-and-panel-sizing`, off `main` at `47e2b34a`; the last
+code commit is `7d637310`. Four reports from using the app, in the order they
+were given.
+
+### 1. "Opening Random takes almost 10 seconds. It shows loading library"
+
+**The shuffle is not the cause, and this was measured before anything was
+changed.** `RANDOM` and `ALL` compile to the same plan (`SCAN asset_bundles` +
+`USE TEMP B-TREE FOR ORDER BY` for both — the `_visible_file_exists` OR
+predicate already denies either an index walk) and cost the same:
+
+| one browse page, before                    | statements | time         |
+| ------------------------------------------ | ---------- | ------------ |
+| ALL, network-mounted library               | 56         | 145–185 ms   |
+| RANDOM, same library, same page size       | 56         | 178–184 ms   |
+| ALL, local synthetic, 1500 bundles         | 102        | 12.7 ms      |
+| RANDOM, same                               | 102        | 12.9 ms      |
+
+**What it was: the summarizer ran one query per bundle.** Which is the exact
+shape the 2026-08-13 diagnosis below says this deployment cannot afford — the
+owner's library is on SMB at ~36 ms a round trip, so *count statements, not
+milliseconds*. That finding fixed the grouping code; it should have been read as
+a constraint on the whole read path. A 100-row page was 100 extra round trips
+(~3.7 s cold, on top of the page and its count).
+
+Every view paid it. **Random paid it worst**, for two reasons that are both
+structural rather than incidental: its rows are scattered across the table by
+design, so no per-row lookup lands on a page an earlier row already warmed; and
+it is the one view a session can never arrive at already cached, because a fresh
+seed is a fresh query key and every Reshuffle re-pays the whole cost.
+
+`browse._load_page_rows` now loads the page's files (with progress, via the same
+outer join) and its cursor rows in two statements, so a page is **four
+statements regardless of its size**. Measured read-only against the owner's
+library: **56 statements / 145–185 ms → 4 / 13 ms**; local synthetic, 102 / 13 ms
+→ 4 / 5 ms. `continue_watching` had the identical per-row load and now shares
+`summarize_page`. A test pins the statement count (verified failing at 8 with the
+per-row form restored) and `browse_random_first_page` was added to the query
+benchmark.
+
+**Not claimed: that this fully accounts for ten seconds.** 4 statements at 36 ms
+is ~0.15 s, and the page/count scans on a larger library are still O(bundles)
+page reads over the share. The other candidate mechanism was *not* reproduced and
+is recorded here rather than acted on: cover thumbnails are generated
+synchronously on the request path (`GET /bundles/{id}/thumbnail` →
+`thumbnails.generate_for_bundle`, no concurrency bound), and a Random page is by
+construction ~a screenful of covers that have never been generated. Over HTTP/1.1
+those occupy the browser's six connections, and each is an ffmpeg seek into a
+multi-gigabyte file over SMB. If the owner still sees a multi-second Random after
+this branch, that is where to look next — and the discriminating observation is
+whether the previous view's thumbnails are still filling in when Random says
+"Loading library…".
+
+### 2. The bundle note box could not be dragged smaller
+
+Reproduced in the running app, and the cause is not the drag. A drag on the grip
+is also a press-and-release on the same element, so the browser counts it as a
+click; two drags in quick succession synthesise a `dblclick`, which was bound to
+fit-to-text. Bringing a tall note down takes several short drags, so the second
+one always sprang it back to full height and the box read as un-shrinkable.
+
+Fixed by recording whether each of the last two gestures on the grip moved the
+box and fitting only when neither did. **Gestures rather than a timeout**: a
+700 ms guard was written first and measured losing to a slow double-click in the
+running app, because the double-click threshold is a system setting — no fixed
+window is reliably longer than it.
+
+### 3. The viewer's info panel ran the full height of the window
+
+Its file list had no cap, so a bundle with two dozen files pushed the panel to
+the bottom of the screen and buried the metadata above it. Capped at 50vh with
+its own scrollbar; verified against a 28-file bundle (`scrollHeight` 796 px
+clamped to 450 px, panel 646 px against its 730 px max).
+
+### 4. All Tags could not create a tag, or do anything at all with tag groups
+
+Correct as reported, and the API had supported every missing operation since the
+taxonomy went in — the page just never grew the affordances. Added: **New Tag**
+(with `/` as a hierarchy divider, joining the open group panel's group), **New
+Child Tag** on a tag's menu, a **+** on the side rail's Tag Groups header,
+**Rename/Delete Group** on a group row, **Add to / Remove from** a group on a
+tag's menu, **drag a tag onto a group row** (membership, not nesting — the tag
+keeps its parent), and **Expand all / Collapse all**. All metadata-only; no
+server or schema change, so no OpenAPI regeneration.
+
+### Three follow-ups on the same branch (2026-08-23)
+
+Asked for after using the four fixes above.
+
+**Right-click the All Tags blank space → New Tag.** Every create affordance was
+in the toolbar or on a tag's own menu, so the obvious spot for "a new one here"
+did nothing. The blank-space menu offers New Tag plus the fold toggle, mirroring
+the bundle grid's empty-space menu, and "here" is the open panel — in a group
+panel the new tag joins that group. The tile's own handler now stops the event:
+without that the click reached the grid too and the blank-space entries replaced
+the tag's.
+
+**A right-click no longer leaves a highlighted word behind.** WebKit selects the
+word under the cursor when a context menu opens and Chromium does not, so this
+was desktop-only and invisible in a browser check — which is also why it cannot
+be reproduced in the preview: it was verified there by planting a selection
+first, right-clicking, and watching it go. The clear lives in
+`useContextMenu.open`, the single path every custom menu in the app passes
+through, so it covers every such surface without a list to maintain. Surfaces
+with **no** custom menu are deliberately left alone: there the native menu does
+appear, and clearing the selection first would strip its Copy and Look Up
+entries. Skipped inside text fields, which includes the inline rename boxes that
+sit inside rows carrying their own menu.
+
+**Rename Collection.** The inline rename box existed but nothing reopened it —
+it appeared once, on a row, in the seconds after that collection was created —
+so a collection carrying a placeholder name was stuck with it. The entry is now
+on a sidebar row's menu and on a folder card's in the grid. Both land in the one
+box: the card path goes through a `renameCollectionRequest` the sidebar
+consumes, which is the same shape the grid's New Collection already used,
+because the box and the unfolding needed to reach it are the sidebar's state.
+`createCollectionUnder`'s ancestor-unfolding half is factored out as
+`revealCollection` and shared, so a rename asked for on a card three levels deep
+opens a box that is actually on screen. Single selection only.
+
+Tests for the three: 7 new component/unit tests (900 web tests total, up from
+893) and 1 new e2e; `all-tags` (5) and `ordering` + `library` (49 → 50) suites
+green. No server file changed, so the backend gate was not re-run for this
+round.
+
+### Two more, one of them the first desktop-shell change (2026-08-23)
+
+**Toolbar actions sit left of the resident controls.** Random's Shuffle stood in
+the sort control's slot — defensible, since Random has no sort — but that put it
+between the search box and the layout buttons. The residents are furniture whose
+positions are worth learning, so an action appearing among them shifts all of
+them. Actions now go immediately after the spacer, which is where the File
+Browser's Add Files Here / New Folder and Trash's Empty Trash… already were, and
+Random simply omits the sort control. A test pins the order and was verified
+failing against the old placement.
+
+**⌘H hides the app.** The shell builds its whole menu bar from
+`apps/web/src/platform/keymap.json`, and that table's App menu was About /
+Settings / Quit. On macOS the Hide *menu item* is where ⌘H comes from, so with no
+such item the combo was simply dead — nothing was intercepting it. Added the
+standard trio (`hide`, `hide-others`, `show-all`) with their arms in
+`app_menu.rs`. **Not target-gated:** Tauri and muda expose all three on every
+platform and they no-op where the concept does not exist, checked against
+`muda-0.19.3`'s source rather than assumed, so the Ubuntu Rust-only job is
+unaffected and no `#[cfg]` module was needed (AGENTS.md §gates).
+
+Two guards, because that table is edited from the web app's side too: every
+`predefined` name in it must be one `app_menu.rs` can build (an unknown one
+panics when the menu is built, i.e. at startup in a packaged build), and the App
+menu must still carry the hide family. ⌘H and ⌘⌥H joined the keymap test's
+`IMPLICIT` list so a future explicit accelerator cannot shadow them.
+
+Gates for this round: `apps/web` lint / format / typecheck / **903 tests** /
+build, and `apps/desktop/src-tauri` cargo fmt --check, clippy
+`--all-targets -D warnings`, and `cargo test` — **117 passed**, 2 of them new.
+**`npm run tauri build` was not run**: the change is a menu-table edit that
+clippy and the tests already cover on every target, the packaged build adds no
+check it could fail, and it would have held the cargo build lock against the
+owner's live `tauri dev` for minutes. That dev session did rebuild and restart on
+the Rust edit, so ⌘H is testable in the app already open — **the runtime
+confirmation is the owner's**, since reading a native menu bar here needs
+accessibility permission this session does not have.
+
+### Reveal in Finder was there, and invisible (2026-08-23)
+
+Owner: "I need a way to reveal a file in Finder… map to command-enter", then
+"What? I don't see it" when told it existed.
+
+It did exist, on three context menus (bundle card, a bundle's file rows, File
+Browser rows) — but `hostFileMenuEntries` **omits** the entries rather than
+disabling them, and the callers gate them on several things at once. Any of these
+removes the action with no trace:
+
+- more than one bundle selected (the card menu passes a path only when `n === 1`);
+- a bundle whose current file is missing **or of an unsupported format**, because
+  the card menu gates on `resume_relative_path`, which `_summarize` fills only
+  when `is_openable` — `AVAILABLE and is_supported`;
+- a library with no local mapping (`libraryMapped`), which is also what silences
+  Open and drag-out.
+
+Checked the owner's own store: `cairndex-settings.json` holds five
+`libraryMappings`, so the mapping gate was probably *not* the cause for them —
+the likelier one is the second, since the Missing Files view is entirely made of
+bundles with no openable current file.
+
+**The fix is a menu-bar item**, `File ▸ Reveal in Finder` on ⌘↩, because the menu
+bar is the one surface that can always be looked at. It is gated on the existing
+`library` group so it is always shown, and every refusal explains itself through
+the flash rather than vanishing: nothing selected, a folder selected, or the
+library needing to be located on this computer.
+
+`app/revealTarget.ts` resolves the target from the **visible surface** rather
+than a priority chain — File Browser entry; or, in the Bundle Browser, the file
+selected inside an open bundle, else the selected bundle's playback file. All
+Tags resolves to nothing, because it shows no files and a bundle selection
+carried over from the grid is off screen. The viewer is deliberately not a
+source: its current file lives in its own state, and an accelerator is handled by
+the OS before the webview sees it, so wiring it would mean publishing the
+viewer's position upward for a case the context menus already cover.
+
+The label is macOS wording by decision, recorded in the table's own comment: the
+shell is macOS-only (ADR-0012), and the per-platform strings the context menus
+use are `hostLabels.revealFile` in `platform/index.ts`. A second desktop platform
+would need to set this item's text at runtime from those.
+
+**Then the owner sent a screenshot** of a bundle file-row menu with four items
+and neither host action, and added that Open in Default App was missing too.
+Which located the real fault: `hostFileMenuEntries` **omits** the pair whenever
+its callbacks are absent, and App withholds both for a library with no local
+mapping — so a library on a network mount comes up two items short on all four
+menus with nothing to say why. Verified on the owner's machine: of the two
+libraries their shell knows, the **network-mounted one has no entry in
+`libraryMappings`** while the local one does. Two silently absent actions read as
+two features that were never built.
+
+A first attempt rendered the pair **disabled** in the context menus with
+**Locate on This Mac…** beside them. **The owner rejected that** — "Do not put
+this in context menu" — and it was withdrawn, along with the two fields it had
+threaded through the inspector-actions context, the album grid, the File Browser
+and the file-row menu. `hostFileMenuEntries` is back to leaving the pair out.
+The right conclusion in hindsight: with the local server's path now adopted
+automatically (below), the case those rows explained does not arise in normal
+use, and the menu bar is where an explanation belongs anyway.
+
+The menu-bar items are greyed out when nothing is actionable, as asked: both sit
+in a `host-file` enablement group behind `set_host_file_menu_enabled`, published
+from the SPA as the selection moves. Sitting in `library` would have made them
+live and then apologetic. One group for both because they need the same thing — a
+resolvable local path for the selected file — and one handler, since they differ
+only in which handoff runs.
+
+**Open in Default App joined it on ⇧↩** (owner, 2026-08-24).
+`revealTarget.ts` became `hostFileTarget.ts`, since one resolver now serves both.
+
+It was first bound to ⇧⌘↩ on the reasoning that a bare ⇧↩ would "take the soft
+line break out of every note box". **The owner asked who had taken ⇧↩, and the
+answer was nobody** — and the stated cost was wrong: the note box has no keydown
+handler at all, so its line break comes from *plain* Enter, which an accelerator
+on ⇧↩ does not touch. Rebound as asked. The keymap table's own comment now
+records ⇧↩ as the one Shift-only accelerator, what was checked before agreeing to
+it, and the cost that does remain: Shift held over from typing turns the next
+Enter into a file launch rather than a newline. **The lesson is the general one —
+"a text field wants that key" is a claim to verify against the handlers, not a
+reflex.**
+
+Threading the two new fields through the inspector-actions interface made
+`Inspector.parity.test.tsx` fail until the shell fixture supplied them — the
+drift that test was built to catch, working.
+
+**Then the owner asked the question that mattered:** "Why do we need locate on
+this mac? library is on a mounted disk and can be directly opened." Right, for
+their case — and it is now automatic.
+
+The ceremony exists for a *remote* server, whose `root_path` names a directory on
+that machine (`/volume1/media`), which Finder cannot open here; the shell cannot
+derive a local path, so it asks, and proves the pick with the folder's
+`.cairndex` marker. None of that describes the local sidecar: this shell spawned
+it, its `root_path` is a path on this Mac, and the SPA already receives it on
+every `LibraryRead`. The app was asking the owner to locate a folder it had open.
+
+`mappings::adopt_library_mapping` records it with no picker, through the **same**
+`validate_library_root` the pick uses — the folder must exist here and carry a
+marker whose uuid matches. That check is what makes accepting a server-named path
+safe rather than a breach of "never trust a client-supplied absolute path": the
+path is validated, not believed. The caller restricts it to `kind: 'local'`
+connections regardless, because for a remote server a coincidentally-present
+local **copy** of the library would satisfy the marker and then reveal the wrong
+files — that is the one hazard the ceremony still earns its keep against.
+
+Three Rust tests pin the seam: the folder that is this library is accepted, one
+holding a different library is refused as `LibraryMismatch`, and a path absent
+from this machine is refused as `VolumeNotMounted` — which is what a remote root
+looks like from here, and is indistinguishable from a detached volume, so the
+same class is the honest answer.
+
+**Known and not fixed** (spawned as follow-up work): a bundle card whose current
+file is missing or unsupported still has no reveal target on either the menu or
+the shortcut, for the `resume_relative_path` reason above. Revealing an
+*unsupported* file is one of the better reasons to want Finder, so this is worth
+correcting; revealing a *missing* one should be refused with a reason.
+
+Gates: `apps/web` lint / format / typecheck / **918 tests** / build;
+`apps/desktop/src-tauri` fmt / clippy `-D warnings` / **117 tests**. ⌘↩ itself is
+**not verified here** — an accelerator only exists inside the shell, and driving
+the native menu bar needs accessibility permission this session does not have.
+The owner's `tauri dev` rebuilds on the keymap edit, so it is testable in the app
+they have open.
+
+### The bundle layouts: black frames, one name, one range (2026-08-23)
+
+Four reports about the two grid layouts.
+
+**The Card layout's cover frame was 1.61:1**, which is not a shape any camera
+produces. Its height was whatever remained after the title block, so the frame's
+real proportions were a by-product of the meta's font metrics and the card's 1px
+border — the `META_HEIGHT = 44` constant was 5px off the meta's actual 39, and
+the border took 2 more. Measured in the app it came out **1.716** against an
+intended 1.778, so every 16:9 cover — nearly all of them — kept a thin letterbox.
+Fixed by moving the shape into CSS (`.card--framed .card__thumb`,
+`aspect-ratio: 16 / 9`) so it cannot be a by-product of anything;
+`computeRows` now only has to reserve enough height, and `META_HEIGHT` is
+documented as a reservation rather than a measurement. Measured after: **1.7778**
+at zoom 120, 200 and 480, with ~4px of card surface below the text as slack.
+
+**The Justified layout shaped each tile from the wrong file.** `aspect()` read
+`width`/`height`, which describe the file under the playback *cursor* — what
+plays. The cover follows its own rule (selected → first image → first video), so
+any bundle where the two differ got a tile shaped for one file and a cover from
+another. That is the black frame the owner saw, and it is why it was worse here
+than in Card: the layout looked precise and was precisely wrong. The browse
+summary now carries `cover_width`/`cover_height` (no extra query — `_summarize`
+had already resolved the cover), and `aspect()` prefers them, falling back to the
+cursor file and then to 16:9.
+
+**Follow-up on the same day: Justified was still too small, and its last row was
+strange.** Both came out of one packing rule. It always broke a row *after* the
+tile that overflowed it, so a wide cover arriving at the end dragged the whole
+row down; measured on a four-shape fixture, rows landed at 101–130px against a
+140px target — **every row under it, the worst 27% under**. The target was never
+actually reached, which is why pushing the slider never fixed the feeling. The
+rule now breaks on whichever side of the target is closer: the same fixture comes
+out within 2.3%, and in the running app 116–153px around a 140px target.
+
+Separately, a short last row was allowed `targetH * 1.3` while full rows
+undershot, so the final row — a single bundle, often — was nearly twice its
+neighbour. Capped at the row above's own height rather than at the target,
+because a single-shape library packs its full rows a little under the target and
+a last row sitting *at* it would still stand out. Verified at zoom 200 (last row
+127.9 against 127.9 above) and 640 (448 against 448.9).
+
+The shared slider moved again, 120–480 → **140–640**, and a Justified row now
+aims at **0.7** of the slider value rather than 0.6. The two layouts are judged
+separately and Justified was the one still reading small: it carries no title
+block under each tile, so the same height has less presence. Worth remembering if
+this is revisited — the Card cover's height is 9/16 of the slider value, so 0.7
+deliberately makes a Justified row *taller* than a Card cover at the same
+setting.
+
+**Also: the layout buttons got real icons.** Card and Justified were `▦` and
+`▥`, which are near indistinguishable at 15px and describe nothing. Three inline
+SVGs in `icons.tsx`'s existing Lucide line style: **Card** a single card (cover
+above, title below), **Justified** rows of unequal widths flush to both edges,
+**List** a thumbnail beside its text. All three were converted, not just the two
+named — a text glyph between two SVGs in one segmented control sits at a
+different weight and baseline. The File Browser's buttons share them.
+
+Checked at 96/24/16px in the running app. The justified split was widened to 11:5
+after the first pass read as a *misdrawn* grid rather than a deliberately uneven
+one. Card went through four candidates rendered side by side for the owner (a
+2×2 of tiles, two cards with captions, a 3×2 of tiles, and one card); **the owner
+picked the single card**. It draws the tile rather than the arrangement, which is
+the trade — it says nothing about how many there are — but it is unmistakable at
+15px and shares a silhouette with neither neighbour, nor with the sidebar's
+"All" icon, which is itself a 2×2 grid. That last point is what ruled out the
+2×2 candidate that shipped first.
+
+**Known and deliberately not fixed:** a rotated video reports its *coded*
+dimensions, while ffmpeg applies the display matrix when generating the
+thumbnail — so a portrait phone video probed as 1920×1080 still gets a landscape
+tile. Pre-existing, and fixing it means parsing `side_data_list` rotation and
+bumping the probe format.
+
+**"Grid" is now labelled "Card"**; the stored `LayoutMode` value stays `'grid'`
+(a persisted pref and an e2e selector, and only the label was asked for). One
+e2e locator followed the label.
+
+**The size slider spans 120–480 px** instead of 80–360, with stored values
+clamped on read. Worth knowing: the column count still stretches to fill, so at
+the top of the range in a narrow pane you get one very large card per row rather
+than two — that behaviour is unchanged, the new maximum just reaches it sooner.
+
+Gates: `apps/web` lint / format / typecheck / **908 tests** / build, plus the
+`manual-bundling`, `ordering` and `library` e2e specs (**53 passed**);
+`apps/server` ruff / mypy / **1114 passed**. OpenAPI and `schema.d.ts`
+regenerated. Verified in the running app against a synthetic library whose files
+carry assorted dimensions — the geometry is measured, not eyeballed, because
+synthetic bundles have no real cover images to look at.
+
+### Tests run
+
+- `apps/server`: ruff check, ruff format --check, mypy, pytest — **1112 passed,
+  1 skipped**, clean.
+- `apps/web`: lint, format:check, typecheck, `npm run test` — **893 passed** —
+  and `npm run build`.
+- Playwright: `all-tags` suite, **5 passed** (2 of them new), on
+  `CAIRNDEX_PLAYWRIGHT_PORT=5299` so it did not disturb the owner's running dev
+  server. Other e2e specs were not re-run: no file they touch changed.
+- Manual: all four items driven in the browser preview against synthetic
+  libraries (1500 bundles, and a 40-bundle one with 24–30 files each for the
+  playlist cap). No real media was read and no user data left the machine.
+
+### Known issues and next steps
+
+- **Owner verification against the real library is what settles item 1.** The
+  before/after numbers here come from read-only probes of the SMB-mounted
+  library, not from the app running against it.
+- Tag-group membership, and now collection rename, go through a context menu, as
+  tag rename and delete already did. Consistent, but still pointer-first; a
+  keyboard path for these is unclaimed work.
+- The word-selection fix is verified by test and by planting a selection in the
+  preview, not by reproducing the symptom — that needs the desktop shell, since
+  Chromium never made the selection in the first place.
+- Desktop gates were not run — no Rust, Tauri, or `apps/desktop` file changed.
+
 ## Open on branch: the grouping review drew a collection twice (2026-08-23)
 
 Branch `fix/grouping-context-duplicate-root`, off `main` at `2f09f0de`. Owner

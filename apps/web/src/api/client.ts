@@ -1199,6 +1199,25 @@ export const fetchTagDeleteImpact = (id: string, signal?: AbortSignal) =>
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>(`${lib()}/tag-groups`, signal)
 
+// Tag groups are navigational categories over the tag tree, many-to-many with
+// tags and independent of parent/child nesting (ADR-0002). All metadata-only.
+export const createTagGroup = (name: string) =>
+  send<TagGroupRead>(`${lib()}/tag-groups`, 'POST', { name })
+
+export const renameTagGroup = (groupId: string, name: string) =>
+  send<TagGroupRead>(`${lib()}/tag-groups/${groupId}`, 'PATCH', { name })
+
+/** Delete a group. Its memberships go with it; the tags themselves survive. */
+export const deleteTagGroup = (groupId: string) =>
+  send<void>(`${lib()}/tag-groups/${groupId}`, 'DELETE')
+
+/** Replace a group's membership wholesale — the server has no add/remove verb,
+ *  so callers send the full list they want the group to end up with. */
+export const setTagGroupTags = (groupId: string, tagIds: string[]) =>
+  send<{ group_id: string; tag_ids: string[] }>(`${lib()}/tag-groups/${groupId}/tags`, 'PUT', {
+    tag_ids: tagIds,
+  })
+
 export function fetchTagCounts(signal?: AbortSignal): Promise<Record<string, number>> {
   return getJson<{ counts: Record<string, number> }>(`${lib()}/tags/counts`, signal).then(
     (r) => r.counts,

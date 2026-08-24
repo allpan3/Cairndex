@@ -19,6 +19,8 @@ export type DesktopWorkspaceAction =
   | 'zoom-out'
   | 'toggle-sidebar'
   | 'toggle-inspector'
+  | 'reveal-file'
+  | 'open-file'
 
 /** Playback menu items are routed to the open viewer rather than the workspace. */
 export type DesktopPlaybackAction = ViewerCommand

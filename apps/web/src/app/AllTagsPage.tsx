@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react'
 
-import { fetchTagDeleteImpact, type TagRead } from '../api/client'
+import { fetchTagDeleteImpact, type TagGroupRead, type TagRead } from '../api/client'
 import {
+  useCreateTagPath,
   useTagCounts,
   useTagGroupMemberships,
+  useTagGroupMutations,
   useTagGroups,
   useTagMutations,
   useTags,
 } from '../api/hooks'
-import { ConfirmDialog } from './PromptDialog'
+import { ConfirmDialog, PromptDialog } from './PromptDialog'
 import { ContextMenu } from './ContextMenu'
+import { IconPlus } from './icons'
 import { alphaBucket, bucketOrder, usePinyinSearch } from './pinyin'
+import type { MenuEntry } from './useContextMenu'
 import { useContextMenu } from './useContextMenu'
 
 // Chinese-aware ordering: prefer pinyin collation for zh, fall back to a general
@@ -32,7 +36,14 @@ type Panel = 'all' | 'uncategorized' | { groupId: string }
  * a tag onto another to nest it (reparent); drop on empty space to make it
  * top-level — the tree is name-ordered, so there's no manual sibling order.
  * Folded a parent shows its rolled-up subtree count; expanded, its direct count.
- * Double-click a tag to filter; right-click to rename or delete.
+ * Double-click a tag to filter; right-click for the rest.
+ *
+ * It is also where tags and tag groups are *made*, not just tidied: the toolbar
+ * creates a top-level tag and expands/collapses the whole tree, the side rail
+ * creates, renames and deletes groups, and a tag joins or leaves a group from
+ * its context menu or by being dragged onto a group row. Until this existed the
+ * only way to make a tag was to type one into a bundle's tag picker, and there
+ * was no way at all to make a group or put a tag in one (owner, 2026-08-23).
  */
 export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: string) => void }) {
   const { data: tags = [] } = useTags()
@@ -40,6 +51,8 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const { data: memberships = {} } = useTagGroupMemberships()
   const { data: counts = {} } = useTagCounts()
   const { rename, remove, reparent } = useTagMutations()
+  const groupMutations = useTagGroupMutations()
+  const createTagPath = useCreateTagPath()
   // The tag awaiting a delete confirmation, with what the delete would take.
   // The tag awaiting confirmation. `children`/`bundles` are null when the impact
   // lookup failed: the prompt then asks without claiming a cost it does not know.
@@ -48,7 +61,9 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     children: number | null
     bundles: number | null
   } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // A failed write, shown as an acknowledge-only dialog. Carries its own title
+  // because several different operations report through it.
+  const [error, setError] = useState<{ title: string; body: string } | null>(null)
   const menu = useContextMenu()
 
   const [panel, setPanel] = useState<Panel>('all')
@@ -59,6 +74,14 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   // The prospective drop target while dragging: a tag id (nest under it) or
   // ROOT_DROP (make top-level).
   const [dropId, setDropId] = useState<string | null>(null)
+  // The group row a dragged tag is over — dropping there adds it to that group,
+  // which is group membership, not nesting: the tag keeps its parent.
+  const [dropGroupId, setDropGroupId] = useState<string | null>(null)
+  // Pending prompts. `creatingTag.parent` null means a top-level tag.
+  const [creatingTag, setCreatingTag] = useState<{ parent: TagRead | null } | null>(null)
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const [renamingGroup, setRenamingGroup] = useState<TagGroupRead | null>(null)
+  const [deletingGroup, setDeletingGroup] = useState<TagGroupRead | null>(null)
 
   const byId = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const groupedIds = useMemo(() => new Set(Object.values(memberships).flat()), [memberships])
@@ -135,6 +158,83 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
       return next
     })
 
+  // Every tag that has children *in this scope* — the set "Expand all" opens.
+  // Scoped, so expanding inside a group doesn't also unfold branches the panel
+  // isn't showing, and one toggle can report whether the tree is fully open.
+  const parentIds = useMemo(() => [...childrenOf.keys()], [childrenOf])
+  const allExpanded = parentIds.length > 0 && parentIds.every((id) => expanded.has(id))
+
+  // --- Creating tags and groups ---------------------------------------------
+  // `/` nests, so "Studio/Series" makes both in one go; beneath a parent it
+  // nests from there. A tag made while a group panel is open joins that group —
+  // otherwise "new tag" in a group would create something the panel cannot show.
+  const submitNewTag = (path: string) => {
+    const parent = creatingTag?.parent ?? null
+    setCreatingTag(null)
+    createTagPath.mutate(
+      { path, existing: tags, parentId: parent?.id ?? null },
+      {
+        onSuccess: (tag) => {
+          if (parent) setExpanded((prev) => new Set(prev).add(parent.id))
+          if (groupId) groupMutations.addTag.mutate({ groupId, tagId: tag.id })
+        },
+        onError: (err) =>
+          setError({
+            title: 'Could not create tag',
+            body: err instanceof Error ? err.message : 'The tag was not created.',
+          }),
+      },
+    )
+  }
+
+  const submitNewGroup = (name: string) => {
+    setCreatingGroup(false)
+    groupMutations.create.mutate(name, {
+      onSuccess: (group) => setPanel({ groupId: group.id }),
+      onError: (err) =>
+        setError({
+          title: 'Could not create tag group',
+          body: err instanceof Error ? err.message : 'The group was not created.',
+        }),
+    })
+  }
+
+  const submitGroupRename = (name: string) => {
+    const group = renamingGroup
+    setRenamingGroup(null)
+    if (!group || name === group.name) return
+    groupMutations.rename.mutate(
+      { id: group.id, name },
+      {
+        onError: (err) =>
+          setError({
+            title: 'Could not rename tag group',
+            body: err instanceof Error ? err.message : 'The group was not renamed.',
+          }),
+      },
+    )
+  }
+
+  const confirmGroupDelete = () => {
+    const group = deletingGroup
+    if (!group) return
+    groupMutations.remove.mutate(group.id, {
+      onSuccess: () => {
+        setDeletingGroup(null)
+        // The panel showing the group it just deleted has nothing left to scope
+        // to, so fall back to All rather than render an empty unnamed panel.
+        setPanel((cur) => (typeof cur === 'object' && cur.groupId === group.id ? 'all' : cur))
+      },
+      onError: (err) => {
+        setDeletingGroup(null)
+        setError({
+          title: 'Could not delete tag group',
+          body: err instanceof Error ? err.message : 'The group was not deleted.',
+        })
+      },
+    })
+  }
+
   // --- Reparent by drag ------------------------------------------------------
   const isAncestor = (ancestorId: string, nodeId: string): boolean => {
     let cur = byId.get(nodeId)?.parent_id ?? null
@@ -157,6 +257,26 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const endDrag = () => {
     setDragId(null)
     setDropId(null)
+    setDropGroupId(null)
+  }
+  // Dropping a tag on a group row adds it to that group. Refused when it is
+  // already a member, so the row gives no drop cue for a no-op.
+  const canJoinGroup = (id: string | null, group: string): boolean =>
+    id !== null && !(memberships[group] ?? []).includes(id)
+  const doJoinGroup = (group: string) => {
+    const id = dragId
+    endDrag()
+    if (!canJoinGroup(id, group)) return
+    groupMutations.addTag.mutate(
+      { groupId: group, tagId: id as string },
+      {
+        onError: (err) =>
+          setError({
+            title: 'Could not add the tag to that group',
+            body: err instanceof Error ? err.message : 'Group membership is unchanged.',
+          }),
+      },
+    )
   }
   const doReparent = (targetId: string | null) => {
     const id = dragId
@@ -190,7 +310,11 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         remove.mutate(
           { id: tag.id },
           {
-            onError: (err) => setError(err instanceof Error ? err.message : 'Could not delete tag'),
+            onError: (err) =>
+              setError({
+                title: 'Could not delete tag',
+                body: err instanceof Error ? err.message : 'The tag was not deleted.',
+              }),
           },
         )
         return
@@ -214,7 +338,10 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         onSuccess: () => setDeleting(null),
         onError: (err) => {
           setDeleting(null)
-          setError(err instanceof Error ? err.message : 'Could not delete tag')
+          setError({
+            title: 'Could not delete tag',
+            body: err instanceof Error ? err.message : 'The tag was not deleted.',
+          })
         },
       },
     )
@@ -222,10 +349,55 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
 
   const openMenu = (tag: TagRead, e: React.MouseEvent) => {
     e.preventDefault()
+    // One row per group rather than a submenu: this menu has no nesting, and a
+    // membership that reads "Remove from X" when it is already a member says
+    // which way the toggle goes without a checkmark column.
+    const groupRows: MenuEntry[] = groups.map((g) =>
+      (memberships[g.id] ?? []).includes(tag.id)
+        ? {
+            label: `Remove from ${g.name}`,
+            onClick: () => groupMutations.removeTag.mutate({ groupId: g.id, tagId: tag.id }),
+          }
+        : {
+            label: `Add to ${g.name}`,
+            onClick: () => groupMutations.addTag.mutate({ groupId: g.id, tagId: tag.id }),
+          },
+    )
     menu.open(e, [
+      { label: 'New Child Tag', onClick: () => setCreatingTag({ parent: tag }) },
       { label: 'Rename Tag', onClick: () => setRenamingId(tag.id) },
+      ...(groupRows.length > 0 ? [null, ...groupRows] : []),
       null,
       { label: 'Delete Tag', danger: true, onClick: () => startDelete(tag) },
+    ])
+  }
+
+  // Right-click the grid's blank space. "Here" is this panel: at the top level
+  // that is a top-level tag, and in a group panel `submitNewTag` files it into
+  // that group, the same as the toolbar button.
+  const openBackgroundMenu = (e: React.MouseEvent) => {
+    const items: MenuEntry[] = [
+      { label: 'New Tag', onClick: () => setCreatingTag({ parent: null }) },
+    ]
+    // A flat list of search results has no folds to open.
+    if (matches === null) {
+      items.push(null, {
+        label: allExpanded ? 'Collapse All' : 'Expand All',
+        onClick: () => setExpanded(allExpanded ? new Set() : new Set(parentIds)),
+        disabled: parentIds.length === 0,
+      })
+    }
+    menu.open(e, items)
+  }
+
+  const openGroupMenu = (group: TagGroupRead, e: React.MouseEvent) => {
+    e.preventDefault()
+    menu.open(e, [
+      { label: 'Rename Group', onClick: () => setRenamingGroup(group) },
+      null,
+      // Metadata-only: a group is a view over tags, so deleting it takes the
+      // memberships and nothing else. Said plainly in the prompt below.
+      { label: 'Delete Group', danger: true, onClick: () => setDeletingGroup(group) },
     ])
   }
 
@@ -261,8 +433,13 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         <div
           className="tagtile__head"
           onDoubleClick={() => onApplyTagFilter(tag.id)}
-          onContextMenu={(e) => openMenu(tag, e)}
-          title="Double-click to filter · right-click to rename or delete · drag onto a tag to nest it"
+          // Stopped, or this would bubble to the grid's own menu below and the
+          // tag's entries would be replaced by the blank-space ones.
+          onContextMenu={(e) => {
+            e.stopPropagation()
+            openMenu(tag, e)
+          }}
+          title="Double-click to filter · right-click for more · drag onto a tag to nest it"
         >
           {hasKids ? (
             <button
@@ -314,12 +491,41 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
           <span className="alltags__nav-label">Uncategorized</span>
           <span className="alltags__nav-count">{uncategorizedCount}</span>
         </button>
-        {groups.length > 0 && <div className="alltags__side-head">Tag Groups</div>}
+        {/* Always shown, groups or not: with no groups yet this header and its
+            "+" are the only thing that says groups exist at all. */}
+        <div className="alltags__side-head">
+          <span>Tag Groups</span>
+          <button
+            className="alltags__side-add"
+            onClick={() => setCreatingGroup(true)}
+            aria-label="New tag group"
+            title="New tag group"
+          >
+            <IconPlus />
+          </button>
+        </div>
+        {groups.length === 0 && <div className="alltags__side-hint">No groups yet.</div>}
         {groups.map((g) => (
           <button
             key={g.id}
-            className={`alltags__nav${groupId === g.id ? ' is-active' : ''}`}
+            className={`alltags__nav${groupId === g.id ? ' is-active' : ''}${
+              dropGroupId === g.id ? ' alltags__nav--drop' : ''
+            }`}
             onClick={() => setPanel({ groupId: g.id })}
+            onContextMenu={(e) => openGroupMenu(g, e)}
+            title="Right-click to rename or delete · drag a tag here to add it"
+            onDragOver={(e) => {
+              if (!canJoinGroup(dragId, g.id)) return
+              e.preventDefault()
+              e.stopPropagation()
+              if (dropGroupId !== g.id) setDropGroupId(g.id)
+            }}
+            onDragLeave={() => setDropGroupId((cur) => (cur === g.id ? null : cur))}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              doJoinGroup(g.id)
+            }}
           >
             <span className="alltags__nav-label">{g.name}</span>
             <span className="alltags__nav-count">{memberships[g.id]?.length ?? 0}</span>
@@ -336,8 +542,38 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
                 ? 'Uncategorized'
                 : (groups.find((g) => g.id === groupId)?.name ?? 'Group')}
           </span>
-          <span className="alltags__count">{visibleCount} tags</span>
+          <span className="alltags__count">
+            {visibleCount} {visibleCount === 1 ? 'tag' : 'tags'}
+          </span>
           <span className="toolbar__spacer" />
+          {/* Meaningless over a flat search-result list, which has no folds. */}
+          {matches === null && (
+            <button
+              className="btn btn--compact"
+              onClick={() => setExpanded(allExpanded ? new Set() : new Set(parentIds))}
+              disabled={parentIds.length === 0}
+              title={
+                parentIds.length === 0
+                  ? 'No tag here has children'
+                  : allExpanded
+                    ? 'Collapse every tag with children'
+                    : 'Expand every tag with children'
+              }
+            >
+              {allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
+          <button
+            className="btn btn--compact"
+            onClick={() => setCreatingTag({ parent: null })}
+            title={
+              groupId
+                ? 'Create a tag and add it to this group'
+                : 'Create a tag — use / to nest, e.g. Studio/Series'
+            }
+          >
+            New Tag
+          </button>
           <input
             type="search"
             className="edit"
@@ -357,10 +593,13 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
             if (dropId !== ROOT_DROP) setDropId(ROOT_DROP)
           }}
           onDrop={() => doReparent(null)}
+          onContextMenu={openBackgroundMenu}
         >
           {visibleCount === 0 && (
             <div className="state">
-              {tags.length === 0 ? 'No tags yet.' : 'No tags match this filter.'}
+              {tags.length === 0
+                ? 'No tags yet. Use “New Tag” to make one.'
+                : 'No tags match this filter.'}
             </div>
           )}
 
@@ -421,10 +660,62 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         />
       )}
 
+      {creatingTag !== null && (
+        <PromptDialog
+          title={creatingTag.parent ? `New Tag in “${creatingTag.parent.name}”` : 'New Tag'}
+          label={
+            creatingTag.parent
+              ? `Name — use / to nest further under “${creatingTag.parent.name}”`
+              : 'Name — use / to nest, e.g. Studio/Series'
+          }
+          confirmLabel="Create"
+          onCancel={() => setCreatingTag(null)}
+          onConfirm={submitNewTag}
+        />
+      )}
+
+      {creatingGroup && (
+        <PromptDialog
+          title="New Tag Group"
+          label="Name"
+          confirmLabel="Create"
+          onCancel={() => setCreatingGroup(false)}
+          onConfirm={submitNewGroup}
+        />
+      )}
+
+      {renamingGroup !== null && (
+        <PromptDialog
+          title="Rename Tag Group"
+          label="Name"
+          initial={renamingGroup.name}
+          onCancel={() => setRenamingGroup(null)}
+          onConfirm={submitGroupRename}
+        />
+      )}
+
+      {deletingGroup !== null && (
+        <ConfirmDialog
+          title="Delete Tag Group"
+          pending={groupMutations.remove.isPending}
+          onCancel={() => setDeletingGroup(null)}
+          onConfirm={confirmGroupDelete}
+          body={
+            <>
+              Delete the group “{deletingGroup.name}”?{' '}
+              {(memberships[deletingGroup.id]?.length ?? 0) === 1
+                ? 'Its one tag stays'
+                : `Its ${memberships[deletingGroup.id]?.length ?? 0} tags stay`}{' '}
+              — only the grouping is removed.
+            </>
+          }
+        />
+      )}
+
       {error !== null && (
         <ConfirmDialog
-          title="Could not delete tag"
-          body={error}
+          title={error.title}
+          body={error.body}
           confirmLabel="OK"
           danger={false}
           onCancel={() => setError(null)}

@@ -86,6 +86,14 @@ class BundleSummary:
     # the cover selection changes, so the client uses it to bust the browser's
     # image cache on the (otherwise-stable) thumbnail URL.
     cover_key: str | None
+    # Pixel dimensions of the *cover's own* source, which is not always the file
+    # `width`/`height` below describe: the cover follows selected → first image →
+    # first video, while those follow the playback cursor. The justified layout
+    # shapes each tile to this so a cover fills its frame instead of sitting in
+    # black bars (owner, 2026-08-23). None when the cover's source has not been
+    # probed, or when there is no cover.
+    cover_width: int | None
+    cover_height: int | None
     # Hover/open source resolved from the bundle cursor, independent of its cover
     resume_file_id: str | None
     resume_file_updated_at: datetime | None
@@ -360,7 +368,7 @@ def browse_bundles(
     page_stmt = ordered.offset(offset).limit(limit)
     bundles = list(session.scalars(page_stmt))
 
-    summaries = [_summarize(session, bundle) for bundle in bundles]
+    summaries = summarize_page(session, bundles)
     return BundlePage(items=summaries, total=total, offset=offset, limit=limit)
 
 
@@ -526,24 +534,73 @@ def _cover_key(asset_file: AssetFile | None) -> str | None:
     )
 
 
-def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
-    file_rows = list(
-        session.execute(
-            select(AssetFile, PlaybackProgress, BundleCursor.file_id)
-            .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
-            .outerjoin(BundleCursor, BundleCursor.bundle_id == AssetFile.bundle_id)
-            .where(
-                AssetFile.bundle_id == bundle.id,
-                AssetFile.availability != FileAvailability.TRASHED,
-            )
-            .order_by(AssetFile.sequence, AssetFile.id)
+@dataclass(frozen=True)
+class _PageRows:
+    """Everything the summaries of one page of bundles read below the bundle row
+    itself: each bundle's non-trashed files in playback order, watch progress by
+    file id, and the explicit cursor selection by bundle id."""
+
+    files: dict[str, list[AssetFile]]
+    progress: dict[str, PlaybackProgress]
+    cursor_file: dict[str, str]
+
+
+def _load_page_rows(session: Session, bundle_ids: list[str]) -> _PageRows:
+    """Load those rows for a whole page in two statements.
+
+    Summarizing used to issue one query per bundle, which is the shape this
+    library cannot afford: the owner's library is on an SMB share at ~36 ms per
+    round trip, so **statements are the cost, not milliseconds**
+    (docs/STATUS.md, 2026-08-13). A 100-row page meant 100 extra round trips,
+    and the Random view is the worst case by construction — its rows are
+    scattered across the whole table, so not one of those lookups lands on a
+    page some earlier row already warmed. Measured read-only against that
+    library, the per-bundle form takes 185-233 ms warm where the batched form
+    takes 2-4 ms.
+    """
+    if not bundle_ids:
+        return _PageRows({}, {}, {})
+    files: dict[str, list[AssetFile]] = {}
+    progress: dict[str, PlaybackProgress] = {}
+    # Ordered exactly as the per-bundle query was; grouping in Python preserves
+    # each bundle's own (sequence, id) order.
+    for asset_file, file_progress in session.execute(
+        select(AssetFile, PlaybackProgress)
+        .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
+        .where(
+            AssetFile.bundle_id.in_(bundle_ids),
+            AssetFile.availability != FileAvailability.TRASHED,
         )
-    )
-    files = [asset_file for asset_file, _progress, _cursor_file_id in file_rows]
+        .order_by(AssetFile.sequence, AssetFile.id)
+    ):
+        files.setdefault(asset_file.bundle_id, []).append(asset_file)
+        if file_progress is not None:
+            progress[asset_file.id] = file_progress
+    cursor_file = {
+        bundle_id: file_id
+        for bundle_id, file_id in session.execute(
+            select(BundleCursor.bundle_id, BundleCursor.file_id).where(
+                BundleCursor.bundle_id.in_(bundle_ids)
+            )
+        )
+        if file_id is not None
+    }
+    return _PageRows(files, progress, cursor_file)
+
+
+def summarize_page(session: Session, bundles: list[AssetBundle]) -> list[BundleSummary]:
+    """Card-ready summaries for a page of bundles, loading what they all need
+    once. The entry point for any caller holding more than one bundle."""
+    rows = _load_page_rows(session, [bundle.id for bundle in bundles])
+    return [_summarize(bundle, rows) for bundle in bundles]
+
+
+def _summarize(bundle: AssetBundle, rows: _PageRows) -> BundleSummary:
+    files = rows.files.get(bundle.id, [])
     progress_by_file = {
-        asset_file.id: progress
-        for asset_file, progress, _cursor_file_id in file_rows
-        if progress is not None
+        asset_file.id: rows.progress[asset_file.id]
+        for asset_file in files
+        if asset_file.id in rows.progress
     }
     total_size = sum(f.size_bytes or 0 for f in files)
     has_missing = any(f.availability == FileAvailability.MISSING for f in files)
@@ -552,7 +609,8 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     )
     effective_cover = _effective_cover_file(bundle, files)
     cover_key = _cover_key(effective_cover)
-    cursor_file_id = file_rows[0][2] if file_rows else None
+    cover_meta: dict[str, Any] = (effective_cover.tech_metadata or {}) if effective_cover else {}
+    cursor_file_id = rows.cursor_file.get(bundle.id)
     current = select_current_file(files, cursor_file_id, progress_by_file)
     preview = current if current is not None and is_openable(current) else None
     current_progress = progress_by_file.get(current.id) if current else None
@@ -572,6 +630,8 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         has_cover=has_cover,
         openable=any(is_openable(asset_file) for asset_file in files),
         cover_key=cover_key,
+        cover_width=cover_meta.get("width"),
+        cover_height=cover_meta.get("height"),
         resume_file_id=current.id if current else None,
         resume_file_updated_at=preview.updated_at if preview else None,
         resume_media_kind=str(preview.media_kind) if preview else None,

@@ -81,7 +81,9 @@ export function BundleCard({
   )
   return (
     <div
-      className={`card${selected ? ' card--selected' : ''}${fileDropOver ? ' card--file-drop' : ''}`}
+      className={`card${showMeta ? ' card--framed' : ''}${selected ? ' card--selected' : ''}${
+        fileDropOver ? ' card--file-drop' : ''
+      }`}
       // Selection happens on press, not release. A drag that begins on an
       // unselected card swallows the click that would have selected it, so the
       // card departed unselected — and the drag then carried whatever the *old*

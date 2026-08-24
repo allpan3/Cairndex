@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 
 import type { BundleSort, SortOrder } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
-import { IconFilter } from './icons'
+import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SortControl } from './SortControl'
@@ -13,7 +13,7 @@ interface ToolbarProps {
   /** Leading controls before the title — the Back/Forward history buttons. */
   leading?: ReactNode
   /**
-   * Set in the Random view: replaces the sort control with a Reshuffle button —
+   * Set in the Random view: adds a Reshuffle button and drops the sort control —
    * explicit sorting would just un-shuffle the one thing the view is for.
    */
   onReshuffle?: () => void
@@ -38,10 +38,15 @@ interface ToolbarProps {
   facetContext: FacetContext
 }
 
-const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
-  { value: 'grid', icon: '▦', label: 'Grid' },
-  { value: 'justified', icon: '▥', label: 'Justified' },
-  { value: 'list', icon: '☰', label: 'List' },
+// "Card" rather than "Grid" (owner, 2026-08-23): both this and Justified are
+// grids, and what distinguishes this one is that every item is a card of one
+// fixed shape. The stored `LayoutMode` value stays `'grid'` — it is a persisted
+// preference and an e2e selector, and renaming it would buy nothing a label
+// cannot.
+const LAYOUTS: { value: LayoutMode; icon: ReactNode; label: string }[] = [
+  { value: 'grid', icon: <IconLayoutCard />, label: 'Card' },
+  { value: 'justified', icon: <IconLayoutJustified />, label: 'Justified' },
+  { value: 'list', icon: <IconLayoutList />, label: 'List' },
 ]
 
 export function Toolbar({
@@ -85,6 +90,24 @@ export function Toolbar({
         <span className="toolbar__count">{total.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
 
+        {/* Actions sit left of the resident controls, which is where the File
+            Browser and Trash toolbars already put theirs: the residents are
+            furniture the owner learns the position of, so an action appearing
+            or disappearing between them shifts every one of them (owner,
+            2026-08-23). Reshuffle used to occupy the sort control's slot for
+            exactly the reason it replaces it — Random has no sort — but that put
+            it in the middle of the row. */}
+        {onReshuffle && (
+          <button
+            className="seg toolbar__reshuffle"
+            onClick={onReshuffle}
+            aria-label="Reshuffle"
+            title="Reshuffle"
+          >
+            ↺ Shuffle
+          </button>
+        )}
+
         <button
           className={`seg toolbar__filter-toggle${filtersOpen ? ' is-active' : ''}`}
           onClick={() => setFiltersOpen((o) => !o)}
@@ -105,16 +128,9 @@ export function Toolbar({
           title="Search titles, filenames, tags, and collections across the whole library"
         />
 
-        {onReshuffle ? (
-          <button
-            className="seg toolbar__reshuffle"
-            onClick={onReshuffle}
-            aria-label="Reshuffle"
-            title="Reshuffle"
-          >
-            ↺ Shuffle
-          </button>
-        ) : (
+        {/* No sort in Random: explicit sorting would un-shuffle the one thing
+            the view is for. The Reshuffle button above stands in its place. */}
+        {!onReshuffle && (
           <SortControl
             sort={sort}
             order={order}

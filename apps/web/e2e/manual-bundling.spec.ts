@@ -213,7 +213,7 @@ test('File view grid layout supports drag-to-select', async ({ page }) => {
 
   await page.goto('/')
   await page.getByRole('tab', { name: 'Files' }).click()
-  await page.getByRole('button', { name: 'Grid' }).click()
+  await page.getByRole('button', { name: 'Card' }).click()
 
   const cards = page.locator('[data-relpath]')
   await expect(cards).toHaveCount(3)
