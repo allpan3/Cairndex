@@ -22,25 +22,19 @@ function collection(id: string, name: string, parentId: string | null = null): C
 const COLLECTIONS = [collection('c1', 'Films'), collection('c2', 'Nested', 'c1')]
 
 /** Render the sidebar with a collection open, capturing create payloads. */
-function renderSidebar(
-  overrides: {
-    collectionId?: string | null
-    newCollectionRequest?: { parentId: string | null } | null
-    onNewCollectionHandled?: () => void
-  } = {},
-) {
+function renderSidebar(overrides: Overrides = {}) {
   return renderSidebarWith(COLLECTIONS, overrides)
 }
 
+interface Overrides {
+  collectionId?: string | null
+  newCollectionRequest?: { parentId: string | null } | null
+  onNewCollectionHandled?: () => void
+  renameCollectionRequest?: { id: string } | null
+}
+
 /** Same, with an explicit collection set. */
-function renderSidebarWith(
-  collections: CollectionRead[],
-  overrides: {
-    collectionId?: string | null
-    newCollectionRequest?: { parentId: string | null } | null
-    onNewCollectionHandled?: () => void
-  } = {},
-) {
+function renderSidebarWith(collections: CollectionRead[], overrides: Overrides = {}) {
   const onCreateCollection = vi.fn(
     (
       _payload: { name: string; parent_id: string | null },
@@ -74,6 +68,7 @@ function renderSidebarWith(
       onCleanupCollections={() => undefined}
       newCollectionRequest={overrides.newCollectionRequest ?? null}
       onNewCollectionHandled={overrides.onNewCollectionHandled}
+      renameCollectionRequest={overrides.renameCollectionRequest ?? null}
       smartCollections={[]}
       onNewSmartCollection={() => undefined}
       onEditSmartCollection={() => undefined}
@@ -299,4 +294,28 @@ test('a new name avoids colliding with its own siblings only', () => {
     name: 'New Collection',
     parent_id: 'c1',
   })
+})
+
+test('right-clicking a collection opens its rename box', () => {
+  renderSidebar()
+
+  // The inline box existed but nothing reopened it: it appeared once, on a row
+  // the moment it was created, so a collection named by accident stayed that way
+  // (owner, 2026-08-23).
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  fireEvent.contextMenu(screen.getByText('Films'))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename Collection' }))
+
+  expect(screen.getByRole('textbox')).toHaveValue('Films')
+})
+
+test('a rename raised from the grid unfolds the branch it has to reach', () => {
+  // Three deep, so the target's parent is folded by default: a rename box inside
+  // a folded branch is a box the owner cannot type in.
+  renderSidebarWith(
+    [collection('c1', 'Films'), collection('c2', 'Nested', 'c1'), collection('c3', 'Deeper', 'c2')],
+    { collectionId: null, renameCollectionRequest: { id: 'c3' } },
+  )
+
+  expect(screen.getByRole('textbox')).toHaveValue('Deeper')
 })

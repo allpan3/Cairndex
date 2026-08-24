@@ -34,6 +34,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   - **Expand all** / **Collapse all** opens or folds every tag with children in
     the current panel, which is the only practical way through a deep hierarchy
     one chevron at a time.
+  - Right-clicking the page's blank space offers **New Tag** and the same fold
+    toggle — "here" being the open panel, so in a group panel the new tag joins
+    that group. Right-clicking a tag still gets the tag's own menu.
 
 - **HDR video no longer transcodes to a flat, washed-out picture.** A transcode
   ended in 8-bit BT.709 with no colour conversion, so an HDR source's PQ or HLG
@@ -408,6 +411,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   actually charges, the same page goes from roughly 3.7 s of waiting to 0.15 s.
   Continue Watching had the same per-row load and gets the same fix. A test pins
   the statement count so it cannot creep back a row at a time.
+
+- **A collection can be renamed again.** The inline rename box existed but
+  nothing ever reopened it: it appeared once, on a row, in the seconds after
+  that collection was created — so a collection named by accident, or named
+  before the right name was obvious, was stuck with it. **Rename Collection** is
+  now on a sidebar row's context menu and on a folder card's in the grid; both
+  open the same box, unfolding the tree to reach it when the row is inside a
+  folded branch. Only for one collection at a time, since renaming is a single
+  name in a single box.
 
 - **Right-clicking no longer leaves a highlighted word behind.** WebKit selects
   the word under the cursor when a context menu opens — Chromium does not — so in

@@ -147,6 +147,24 @@ test('folder card has a Delete Collection context menu', async ({ page }) => {
   await expect(page.locator('.context-menu__item', { hasText: 'Delete Collection' })).toBeVisible()
 })
 
+test('a folder card renames through the sidebar rename box', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  // Renaming a collection was reachable only in the seconds after creating one
+  // (owner, 2026-08-23). The box itself is the sidebar's, so a rename asked for
+  // in the grid has to unfold the tree and land there — the same route the
+  // grid's "New Collection" already takes.
+  const card = page.locator('.collcard__grid [data-collection-id]').first()
+  const name = await card.locator('.collcard__name').innerText()
+  await card.click({ button: 'right' })
+  await page.locator('.context-menu__item', { hasText: 'Rename Collection' }).click()
+
+  const input = page.getByRole('textbox', { name: `Rename ${name}` })
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue(name)
+})
+
 test('bundle "Clean up…" lives in the empty-space context menu', async ({ page }) => {
   const captured = await mockApi(page)
   await page.goto('/')

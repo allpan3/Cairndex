@@ -205,6 +205,46 @@ tag's menu, **drag a tag onto a group row** (membership, not nesting — the tag
 keeps its parent), and **Expand all / Collapse all**. All metadata-only; no
 server or schema change, so no OpenAPI regeneration.
 
+### Three follow-ups on the same branch (2026-08-23)
+
+Asked for after using the four fixes above.
+
+**Right-click the All Tags blank space → New Tag.** Every create affordance was
+in the toolbar or on a tag's own menu, so the obvious spot for "a new one here"
+did nothing. The blank-space menu offers New Tag plus the fold toggle, mirroring
+the bundle grid's empty-space menu, and "here" is the open panel — in a group
+panel the new tag joins that group. The tile's own handler now stops the event:
+without that the click reached the grid too and the blank-space entries replaced
+the tag's.
+
+**A right-click no longer leaves a highlighted word behind.** WebKit selects the
+word under the cursor when a context menu opens and Chromium does not, so this
+was desktop-only and invisible in a browser check — which is also why it cannot
+be reproduced in the preview: it was verified there by planting a selection
+first, right-clicking, and watching it go. The clear lives in
+`useContextMenu.open`, the single path every custom menu in the app passes
+through, so it covers every such surface without a list to maintain. Surfaces
+with **no** custom menu are deliberately left alone: there the native menu does
+appear, and clearing the selection first would strip its Copy and Look Up
+entries. Skipped inside text fields, which includes the inline rename boxes that
+sit inside rows carrying their own menu.
+
+**Rename Collection.** The inline rename box existed but nothing reopened it —
+it appeared once, on a row, in the seconds after that collection was created —
+so a collection carrying a placeholder name was stuck with it. The entry is now
+on a sidebar row's menu and on a folder card's in the grid. Both land in the one
+box: the card path goes through a `renameCollectionRequest` the sidebar
+consumes, which is the same shape the grid's New Collection already used,
+because the box and the unfolding needed to reach it are the sidebar's state.
+`createCollectionUnder`'s ancestor-unfolding half is factored out as
+`revealCollection` and shared, so a rename asked for on a card three levels deep
+opens a box that is actually on screen. Single selection only.
+
+Tests for the three: 7 new component/unit tests (900 web tests total, up from
+893) and 1 new e2e; `all-tags` (5) and `ordering` + `library` (49 → 50) suites
+green. No server file changed, so the backend gate was not re-run for this
+round.
+
 ### Tests run
 
 - `apps/server`: ruff check, ruff format --check, mypy, pytest — **1112 passed,
@@ -223,9 +263,12 @@ server or schema change, so no OpenAPI regeneration.
 - **Owner verification against the real library is what settles item 1.** The
   before/after numbers here come from read-only probes of the SMB-mounted
   library, not from the app running against it.
-- Tag-group membership from the keyboard goes through the context menu, as tag
-  rename and delete already did on this page. Consistent, but still
-  pointer-first; a keyboard path for the whole page is unclaimed work.
+- Tag-group membership, and now collection rename, go through a context menu, as
+  tag rename and delete already did. Consistent, but still pointer-first; a
+  keyboard path for these is unclaimed work.
+- The word-selection fix is verified by test and by planting a selection in the
+  preview, not by reproducing the symptom — that needs the desktop shell, since
+  Chromium never made the selection in the first place.
 - Desktop gates were not run — no Rust, Tauri, or `apps/desktop` file changed.
 
 ## Open on branch: the grouping review drew a collection twice (2026-08-23)

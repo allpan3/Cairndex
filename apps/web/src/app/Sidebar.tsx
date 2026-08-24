@@ -153,6 +153,14 @@ export interface SidebarProps {
    */
   newCollectionRequest?: { parentId: string | null } | null
   onNewCollectionHandled?: () => void
+  /**
+   * A rename-collection request raised outside the sidebar (a folder card's
+   * menu in the grid). Same reasoning as the create request above: the inline
+   * rename box and the expansion needed to reach it are the sidebar's state, so
+   * a caller elsewhere names the collection and this pane does the rest.
+   */
+  renameCollectionRequest?: { id: string } | null
+  onRenameCollectionHandled?: () => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -230,6 +238,8 @@ export function Sidebar({
   onBackgroundClick,
   newCollectionRequest = null,
   onNewCollectionHandled,
+  renameCollectionRequest = null,
+  onRenameCollectionHandled,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -357,15 +367,34 @@ export function Sidebar({
   // collection → New Subcollection). Inferring it from what happened to be open
   // meant the same button did two different things with no way to ask for the
   // first one while browsing a collection.
+  // Unfold whatever hides `id`: the Collections section itself, and every
+  // ancestor of the row. An inline rename box inside a folded branch leaves the
+  // owner with a collection they were asked to name and no box to type it in —
+  // which matters most for a request raised from the grid, where they are not
+  // even looking at this pane.
+  const revealCollection = useCallback(
+    (id: string | null) => {
+      setCollectionsCollapsed(false)
+      if (id === null) return
+      const ancestors = new Set<string>()
+      let cur: string | null = id
+      while (cur) {
+        ancestors.add(cur)
+        cur = collections.find((c) => c.id === cur)?.parent_id ?? null
+      }
+      setExpandedOverride((prev) => new Set([...prev, ...ancestors]))
+      setCollapsedOverride((prev) => {
+        const next = new Set(prev)
+        for (const ancestor of ancestors) next.delete(ancestor)
+        return next
+      })
+    },
+    [collections, setCollectionsCollapsed],
+  )
+
   const createCollectionUnder = useCallback(
     (parentId: string | null) => {
       setCreateError(null)
-      // The new row lands in the inline rename box, which a folded section would
-      // hide — leaving a collection created, named "New Collection", with no
-      // visible way to type the name that was the point of creating it. This
-      // matters most for a request raised from the grid, where the user is not
-      // even looking at the sidebar.
-      setCollectionsCollapsed(false)
       const siblingNames = new Set(
         collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
       )
@@ -376,27 +405,23 @@ export function Sidebar({
         { name, parent_id: parentId },
         {
           onSuccess: (created) => {
-            if (parentId) {
-              const ancestors = new Set<string>()
-              let cur: string | null = parentId
-              while (cur) {
-                ancestors.add(cur)
-                cur = collections.find((c) => c.id === cur)?.parent_id ?? null
-              }
-              setExpandedOverride((prev) => new Set([...prev, ...ancestors]))
-              setCollapsedOverride((prev) => {
-                const s = new Set(prev)
-                for (const id of ancestors) s.delete(id)
-                return s
-              })
-            }
+            revealCollection(parentId)
             setEditingId(created.id)
           },
           onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
         },
       )
     },
-    [collections, onCreateCollection, setCollectionsCollapsed],
+    [collections, onCreateCollection, revealCollection],
+  )
+
+  /** Put a collection's row into its inline rename box, unfolding to reach it. */
+  const renameCollection = useCallback(
+    (id: string) => {
+      revealCollection(collections.find((c) => c.id === id)?.parent_id ?? null)
+      setEditingId(id)
+    },
+    [collections, revealCollection],
   )
 
   // A request from outside the sidebar (the grid's empty-space menu, the native
@@ -418,12 +443,25 @@ export function Sidebar({
     onNewCollectionHandled?.()
   }, [newCollectionRequest, onNewCollectionHandled, createCollectionUnder])
 
+  // Same shape for a rename raised from a folder card's menu in the grid.
+  const consumedRenameRef = useRef<{ id: string } | null>(null)
+  useEffect(() => {
+    if (!renameCollectionRequest || consumedRenameRef.current === renameCollectionRequest) return
+    consumedRenameRef.current = renameCollectionRequest
+    renameCollection(renameCollectionRequest.id)
+    onRenameCollectionHandled?.()
+  }, [renameCollectionRequest, onRenameCollectionHandled, renameCollection])
+
   const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
     menu.open(e, [
       {
         label: 'New Subcollection',
         onClick: () => createCollectionUnder(collection.id),
       },
+      // Renaming was reachable only in the seconds after creating a collection —
+      // the inline box opened once, on the new row, and nothing reopened it
+      // (owner, 2026-08-23). Same entry, and same box, as a tag's Rename.
+      { label: 'Rename Collection', onClick: () => renameCollection(collection.id) },
       null,
       { label: 'Delete Collection', danger: true, onClick: () => onDeleteCollection(collection) },
     ])
