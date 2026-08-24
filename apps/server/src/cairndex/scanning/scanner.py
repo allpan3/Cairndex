@@ -41,7 +41,8 @@ from cairndex.domain.enums import (
 )
 from cairndex.domain.file_names import display_title_after_move
 from cairndex.persistence.models import AssetBundle, AssetFile
-from cairndex.scanning.fingerprint import quick_fingerprint
+from cairndex.scanning import staging_cleanup
+from cairndex.scanning.fingerprint import quick_fingerprint, sqlite_filesystem_identity
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
 # Version of the scan-time provisional-bundling rule recorded on bundles staged
@@ -50,8 +51,6 @@ from cairndex.scanning.media_types import classify, is_hidden_relative_path
 # separate reviewable plan after scan completes.
 SCAN_GROUPING_RULE_VERSION = 1
 
-_SQLITE_INT64_MAX = (1 << 63) - 1
-_UINT64_MODULUS = 1 << 64
 
 # Called after each committed batch with (processed, total). May raise to abort
 # the scan (the job handler passes a checkpoint that raises on cancellation);
@@ -71,6 +70,10 @@ class ScanSummary:
     missing: int
     missing_total: int
     repaired: int = 0
+    # Staging rows dropped because this scan proved their files are gone (see
+    # ``staging_cleanup``). Counted separately from ``missing``: a file staged,
+    # deleted, and forgotten in one pass is honestly both.
+    forgotten: int = 0
 
 
 @dataclass(frozen=True)
@@ -89,19 +92,6 @@ class _Observed:
     role: FileRole
 
 
-# Encode an unsigned filesystem identifier as the same 64 bits in SQLite
-def _sqlite_filesystem_identity(value: int) -> int:
-    """Return a signed 64-bit representation suitable for SQLite INTEGER.
-
-    ``st_dev`` and ``st_ino`` may be unsigned 64-bit values on network
-    filesystems. SQLite integers are signed, so preserve the bits using their
-    two's-complement representation; equality matching remains exact.
-    """
-    if not 0 <= value < _UINT64_MODULUS:
-        raise ValueError("filesystem identity is outside the unsigned 64-bit range")
-    return value if value <= _SQLITE_INT64_MAX else value - _UINT64_MODULUS
-
-
 # How many directories to list at once. A library on a network share answers each
 # listing in a round trip, and those round trips are latency, not work — so
 # overlapping them is nearly free and collapses the walk. Listing the owner's
@@ -111,20 +101,26 @@ def _sqlite_filesystem_identity(value: int) -> int:
 _LISTING_THREADS = 16
 
 
-def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]]:
+def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]], bool]:
     """One directory's visible subdirectories and its classifiable media entries.
 
     Returns ``DirEntry`` objects rather than paths so their ``stat`` can be reused:
     a fresh ``Path.stat()`` re-resolves every path component, which over SMB costs
     a round trip per file. Same walk, 2.5 s of ``Path.stat()`` against 76 ms of
     ``DirEntry.stat()`` on the owner's library (measured 2026-08-14).
+
+    The third element is False when the directory could not be listed at all.
+    That failure used to be swallowed here, which left an unreadable directory
+    indistinguishable from an empty one downstream — and telling those apart is
+    the whole basis on which ``staging_cleanup`` may drop a row (owner,
+    2026-08-24).
     """
     subdirectories: list[Path] = []
     entries: list[os.DirEntry[str]] = []
     try:
         listing = list(os.scandir(directory))
     except OSError:
-        return subdirectories, entries  # vanished or unreadable; nothing to report
+        return subdirectories, entries, False  # vanished or unreadable
     for entry in listing:
         if is_hidden_relative_path(entry.name):
             continue
@@ -143,21 +139,41 @@ def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]
                 entries.append(entry)
         except OSError:
             continue
-    return subdirectories, entries
+    return subdirectories, entries, True
 
 
-def _iter_media_entries(root_path: Path) -> Iterator[os.DirEntry[str]]:
+@dataclass
+class WalkStatus:
+    """Whether one walk read every directory it tried.
+
+    A directory that could not be listed means the tree the walk saw is not the
+    whole tree, so "not seen" stops meaning "not there" — the distinction a
+    dropped mount turns on. Mutated as the walk proceeds; read it once the
+    iterator is exhausted.
+    """
+
+    complete: bool = True
+
+
+def _iter_media_entries(
+    root_path: Path, status: WalkStatus | None = None
+) -> Iterator[os.DirEntry[str]]:
     """Walk the library once, listing directories a level at a time in parallel.
 
     Breadth-first rather than depth-first purely so each level is a batch wide
-    enough to be worth handing to the pool.
+    enough to be worth handing to the pool. ``status``, when given, records
+    whether every directory could be read. Per-entry failures are not counted: a
+    file vanishing mid-walk is what the missing pass is for, while a directory
+    that will not list is the signal that matters here.
     """
     pending = [root_path]
     with ThreadPoolExecutor(max_workers=_LISTING_THREADS) as pool:
         while pending:
             level = list(pool.map(_list_directory, pending))
             pending = []
-            for subdirectories, entries in level:
+            for subdirectories, entries, listed in level:
+                if not listed and status is not None:
+                    status.complete = False
                 pending.extend(subdirectories)
                 yield from entries
 
@@ -201,8 +217,8 @@ def _observe(entry: os.DirEntry[str], root_path: Path) -> _Observed | None:
         size=stat.st_size,
         mtime=datetime.fromtimestamp(stat.st_mtime, UTC),
         fingerprint=quick_fingerprint(stat.st_size, stat.st_mtime_ns),
-        device=_sqlite_filesystem_identity(stat.st_dev),
-        inode=_sqlite_filesystem_identity(stat.st_ino),
+        device=sqlite_filesystem_identity(stat.st_dev),
+        inode=sqlite_filesystem_identity(stat.st_ino),
         identity_available=identity_available,
         kind=kind,
         role=role,
@@ -334,12 +350,15 @@ def scan_library(
     # indeterminate, which is truthful, where a total that equalled the count so far
     # would have sat at a permanent 100%.
     total = len(existing) or None
+    # Read after the walk: whether every directory answered decides if this scan
+    # may conclude anything from a file not being seen.
+    walk = WalkStatus()
     seen: set[str] = set()
     new_obs: list[_Observed] = []  # bounded: one lightweight record per new path
     processed = updated = 0
 
     # Pass 1: update same-path rows in place; collect appeared paths for repair.
-    for entry in _iter_media_entries(root_path):
+    for entry in _iter_media_entries(root_path, walk):
         obs = _observe(entry, root_path)
         if obs is None:
             continue
@@ -435,6 +454,11 @@ def scan_library(
     if on_progress is not None:
         on_progress(processed, max(total, processed) if total else None)
 
+    # After repair, so a file that moved was rescued rather than forgotten.
+    forgotten = staging_cleanup.forget_vanished_staging(
+        session, root_path, walk_complete=walk.complete
+    )
+
     return ScanSummary(
         discovered=processed,
         created=created,
@@ -442,6 +466,7 @@ def scan_library(
         missing=missing,
         missing_total=_missing_total(session),
         repaired=len(repairs),
+        forgotten=forgotten,
     )
 
 

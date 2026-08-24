@@ -410,14 +410,34 @@ def test_unbundled_files_hidden_from_normal_views(session: Session) -> None:
     assert counts["unbundled"] == 2
 
 
-def test_missing_view_includes_a_stale_provisional_bundle(session: Session) -> None:
+def test_missing_view_excludes_a_stale_provisional_bundle(session: Session) -> None:
+    """Missing Files is for *registered* bundles.
+
+    It used to include staged rows, on the reasoning that a stale one wants a
+    repair surface. An unbundled file is not registered in the library yet, so
+    its disappearance is not a loss to report — and a library used partly as a
+    file browser filled the view with files the owner had deleted on purpose
+    (owner, 2026-08-24). The scan drops those rows once it can prove they are
+    gone; the view stops reporting them either way.
+    """
     stale = _unbundled(session, "loose/gone.mp4", title="gone")
     stale.files[0].availability = FileAvailability.MISSING
+    registered = bundle_service.create_bundle(session, title="kept")
+    lost = bundle_service.add_file(
+        session,
+        registered.id,
+        relative_path="kept/clip.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    lost.availability = FileAvailability.MISSING
     session.commit()
 
     missing = browse_bundles(session, view=SystemView.MISSING)
-    assert missing.total == 1 and missing.items[0].id == stale.id
+    assert [item.id for item in missing.items] == [registered.id]
     counts = view_counts(session)
+    # The badge counts what the view shows, which is what made it a warning about
+    # files the owner had already dealt with.
     assert counts["missing"] == 1 and counts["unbundled"] == 1
 
 
