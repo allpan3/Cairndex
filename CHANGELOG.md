@@ -10,6 +10,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Tags and tag groups can be made from the All Tags page.** It could rename,
+  nest and delete what already existed, but there was no way to *create* a tag
+  there at all — the only route was typing one into a bundle's tag picker — and
+  tag groups could not be created, renamed, deleted, or have anything put in
+  them from the UI, despite the API having supported all four since the taxonomy
+  went in. The page now covers the whole lifecycle:
+
+  - **New Tag** in the toolbar creates a top-level tag, reading `/` as a
+    hierarchy divider, so `Studio/Series` makes both in one pass and reuses
+    either if it is already there. Created while a group panel is open, the tag
+    joins that group — otherwise "new tag" in a group would make something the
+    panel cannot show.
+  - **New Child Tag** on a tag's context menu creates beneath that tag, and
+    unfolds it so the new child is visible rather than hidden in a folded branch.
+  - The side rail's **Tag Groups** header has a **+** for a new group, and each
+    group row right-clicks to **Rename Group** or **Delete Group**. Deleting one
+    is metadata-only and says so: the tags stay, only the grouping goes.
+  - A tag joins or leaves a group from its own context menu (**Add to …** /
+    **Remove from …**), or by being **dragged onto a group row** — which is
+    membership, not nesting, so the tag keeps its parent. A row it already holds
+    offers no drop cue.
+  - **Expand all** / **Collapse all** opens or folds every tag with children in
+    the current panel, which is the only practical way through a deep hierarchy
+    one chevron at a time.
+
 - **HDR video no longer transcodes to a flat, washed-out picture.** A transcode
   ended in 8-bit BT.709 with no colour conversion, so an HDR source's PQ or HLG
   code values were read as ordinary gamma — correct for SDR, wrong for
