@@ -45,10 +45,15 @@
 > reported 30-second stall; if it recurs, that entry records what was and was not
 > measured.
 
-> **Current position:** PR numbers below refer to `allpan3/Cairndex-archive`; the
-> live repository has none (see the repository note above). Plan 4 write mode is
-> **merged** (PR #30), as are the
-> post-merge interaction fixes (PR #31) and the File Browser's move onto the
+> **Current position:** PR numbers below belong to **two different series**, and
+> the entries do not say which. Anything numbered above #30 is
+> `allpan3/Cairndex-archive`, whose numbering the recreation could not carry
+> over; the live repository started again at #1 and is up to **#9**
+> (`fix/tag-management-and-panel-sizing`, merged 2026-08-24). Where it matters,
+> the merge commit on `main` is the unambiguous reference, not the number.
+>
+> Plan 4 write mode is **merged** (PR #30), as are the post-merge interaction
+> fixes (PR #31) and the File Browser's move onto the
 > app's real media viewer (PR #32) and the collection-creation affordances
 > (owner-reported: the sidebar "+" nested instead of creating at the top level,
 > and creating one was unreachable from the grid and the shell menu). Plan 4 W6
@@ -118,7 +123,7 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
+## Merged: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
 
 Branch `fix/tag-management-and-panel-sizing`, off `main` at `47e2b34a`; the last
 code commit is `7d637310`. Four reports from using the app, in the order they
@@ -524,7 +529,7 @@ synthetic bundles have no real cover images to look at.
   Chromium never made the selection in the first place.
 - Desktop gates were not run — no Rust, Tauri, or `apps/desktop` file changed.
 
-## Open on branch: the grouping review drew a collection twice (2026-08-23)
+## Merged: the grouping review drew a collection twice (2026-08-23)
 
 Branch `fix/grouping-context-duplicate-root`, off `main` at `2f09f0de`. Owner
 report: placing a new collection suggestion into an existing collection made the
@@ -601,7 +606,7 @@ desktop, or e2e file changed — the placement e2e is fully mocked — so those 
 were not re-run. Next: owner verification against the real library, since both
 shapes were reproduced from the reports rather than from their data.
 
-## Open on branch: Add Files to Library (2026-08-23)
+## Merged: Add Files to Library (2026-08-23)
 
 Branch `feat/add-files-to-library`, off `main` at `ea3f12a7`. `File ▸ Add Files
 to Library…` (⇧⌘A) picks files, asks for a destination, and copies them in. Most
@@ -642,7 +647,7 @@ thing that turns a guess into proof, and as a deliberate pass rather than an
 inline request-path check it is not bound by the no-full-hashing rule. Do not
 add the heuristic in the meantime.
 
-## Open on branch: `hev1` HEVC off HLS entirely, and playback you can see (2026-08-16)
+## Merged: `hev1` HEVC off HLS entirely, and playback you can see (2026-08-16)
 
 Branch `fix/hevc-direct-play-and-playback-resilience` (renamed from
 `fix/desktop-relay-and-stall-watchdog` as its scope grew), off `main` at
@@ -806,7 +811,7 @@ Verified against a real session afterwards: the last segment (28) and a mid-file
 one (14) each serve in 0.1 s from a cold far seek, and the first index past the end
 is a clean 404. If a far seek misbehaves again, suspect the client, not this.
 
-## Open on branch: the frozen player, and the relay that 404'd its sessions (2026-08-16)
+## Merged: the frozen player, and the relay that 404'd its sessions (2026-08-16)
 
 The first commit of the branch recorded above, under its original name. One
 commit. Owner-reported live, while testing on `claude/export-watermark-settings-41db44`
@@ -870,7 +875,7 @@ the element.
 session when HLS segments fail` fails on this machine and on unmodified `main`,
 and passes in CI.
 
-## Open on branch: library setup and the videos that would not play (2026-08-16)
+## Merged: library setup and the videos that would not play (2026-08-16)
 
 Branch `claude/library-setup-scan-issues-db7786`, off `main` at `a8e077a4`.
 Three owner reports from using the app on a newly created library, plus one
@@ -972,7 +977,7 @@ records the statements the write emits and asserts there is exactly one and it
 carries `ON CONFLICT`. Verified to fail on the old code, printing the very
 SELECT/INSERT pair that is the bug. Do not "improve" it into a threaded test.
 
-## Open on branch: HDR tone mapping (2026-08-23)
+## Merged: HDR tone mapping (2026-08-23)
 
 Branch `feat/hdr-tone-mapping`, off `main` at `ea3f12a7`. Built from the scoping
 below, which held up except on one point that mattered.
@@ -1065,7 +1070,7 @@ transcode may not keep up.
 **Next.** Owner pass on a real library: confirm the previously-failing files now
 play, and confirm "Scan new files" no longer opens the grouping pane.
 
-## Open on branch: the clip strip's play control (2026-08-16)
+## Merged: the clip strip's play control (2026-08-16)
 
 On the export-watermark branch by the owner's leave, though unrelated to it.
 
@@ -1096,7 +1101,7 @@ out-point at all.
 real libraries instead of the throwaway one, so it was stopped rather than
 continued; the e2e in real Chromium is the standing evidence.
 
-## Open on branch: the export watermark (2026-08-15)
+## Merged: the export watermark (2026-08-15)
 
 Branch `claude/export-watermark-settings-41db44`, rebased onto `main` at
 `a8e077a4` (the drag-and-drop merge); cut from the GIF export merge, which it
@@ -1257,7 +1262,7 @@ no e2e Playwright spec for the setting. A **moving**
 mark remains unbuilt, but is now a known-cheap option rather than an open
 question — see the measurements above.
 
-## Open on branch: drag-and-drop between collections (2026-08-15)
+## Merged: drag-and-drop between collections (2026-08-15)
 
 Branch `claude/drag-and-drop-fix-36cb63`, rebased onto `main` at `9853bb9` (the
 clip-range/GIF-export merge). Seven commits, ending in ADR-0023 and the native
@@ -2049,7 +2054,7 @@ Not done, deliberately: the destination is still per row. Two bundles from one
 folder can be filed into different collections, and moving the picker onto the
 header would remove that to fix repetition that is only cosmetic.
 
-## Open on branch: grouping suggestion review (2026-08-10)
+## Merged: grouping suggestion review (2026-08-10)
 
 Branch `feat/grouping-suggestion-review` off `main` at `6523fec8` (renamed from
 `feat/grouping-review-triage` once it grew past the triage slice). **Not merged, no PR.**
