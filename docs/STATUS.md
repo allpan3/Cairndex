@@ -118,6 +118,116 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
+
+Branch `fix/tag-management-and-panel-sizing`, off `main` at `47e2b34a`; the last
+code commit is `7d637310`. Four reports from using the app, in the order they
+were given.
+
+### 1. "Opening Random takes almost 10 seconds. It shows loading library"
+
+**The shuffle is not the cause, and this was measured before anything was
+changed.** `RANDOM` and `ALL` compile to the same plan (`SCAN asset_bundles` +
+`USE TEMP B-TREE FOR ORDER BY` for both — the `_visible_file_exists` OR
+predicate already denies either an index walk) and cost the same:
+
+| one browse page, before                    | statements | time         |
+| ------------------------------------------ | ---------- | ------------ |
+| ALL, network-mounted library               | 56         | 145–185 ms   |
+| RANDOM, same library, same page size       | 56         | 178–184 ms   |
+| ALL, local synthetic, 1500 bundles         | 102        | 12.7 ms      |
+| RANDOM, same                               | 102        | 12.9 ms      |
+
+**What it was: the summarizer ran one query per bundle.** Which is the exact
+shape the 2026-08-13 diagnosis below says this deployment cannot afford — the
+owner's library is on SMB at ~36 ms a round trip, so *count statements, not
+milliseconds*. That finding fixed the grouping code; it should have been read as
+a constraint on the whole read path. A 100-row page was 100 extra round trips
+(~3.7 s cold, on top of the page and its count).
+
+Every view paid it. **Random paid it worst**, for two reasons that are both
+structural rather than incidental: its rows are scattered across the table by
+design, so no per-row lookup lands on a page an earlier row already warmed; and
+it is the one view a session can never arrive at already cached, because a fresh
+seed is a fresh query key and every Reshuffle re-pays the whole cost.
+
+`browse._load_page_rows` now loads the page's files (with progress, via the same
+outer join) and its cursor rows in two statements, so a page is **four
+statements regardless of its size**. Measured read-only against the owner's
+library: **56 statements / 145–185 ms → 4 / 13 ms**; local synthetic, 102 / 13 ms
+→ 4 / 5 ms. `continue_watching` had the identical per-row load and now shares
+`summarize_page`. A test pins the statement count (verified failing at 8 with the
+per-row form restored) and `browse_random_first_page` was added to the query
+benchmark.
+
+**Not claimed: that this fully accounts for ten seconds.** 4 statements at 36 ms
+is ~0.15 s, and the page/count scans on a larger library are still O(bundles)
+page reads over the share. The other candidate mechanism was *not* reproduced and
+is recorded here rather than acted on: cover thumbnails are generated
+synchronously on the request path (`GET /bundles/{id}/thumbnail` →
+`thumbnails.generate_for_bundle`, no concurrency bound), and a Random page is by
+construction ~a screenful of covers that have never been generated. Over HTTP/1.1
+those occupy the browser's six connections, and each is an ffmpeg seek into a
+multi-gigabyte file over SMB. If the owner still sees a multi-second Random after
+this branch, that is where to look next — and the discriminating observation is
+whether the previous view's thumbnails are still filling in when Random says
+"Loading library…".
+
+### 2. The bundle note box could not be dragged smaller
+
+Reproduced in the running app, and the cause is not the drag. A drag on the grip
+is also a press-and-release on the same element, so the browser counts it as a
+click; two drags in quick succession synthesise a `dblclick`, which was bound to
+fit-to-text. Bringing a tall note down takes several short drags, so the second
+one always sprang it back to full height and the box read as un-shrinkable.
+
+Fixed by recording whether each of the last two gestures on the grip moved the
+box and fitting only when neither did. **Gestures rather than a timeout**: a
+700 ms guard was written first and measured losing to a slow double-click in the
+running app, because the double-click threshold is a system setting — no fixed
+window is reliably longer than it.
+
+### 3. The viewer's info panel ran the full height of the window
+
+Its file list had no cap, so a bundle with two dozen files pushed the panel to
+the bottom of the screen and buried the metadata above it. Capped at 50vh with
+its own scrollbar; verified against a 28-file bundle (`scrollHeight` 796 px
+clamped to 450 px, panel 646 px against its 730 px max).
+
+### 4. All Tags could not create a tag, or do anything at all with tag groups
+
+Correct as reported, and the API had supported every missing operation since the
+taxonomy went in — the page just never grew the affordances. Added: **New Tag**
+(with `/` as a hierarchy divider, joining the open group panel's group), **New
+Child Tag** on a tag's menu, a **+** on the side rail's Tag Groups header,
+**Rename/Delete Group** on a group row, **Add to / Remove from** a group on a
+tag's menu, **drag a tag onto a group row** (membership, not nesting — the tag
+keeps its parent), and **Expand all / Collapse all**. All metadata-only; no
+server or schema change, so no OpenAPI regeneration.
+
+### Tests run
+
+- `apps/server`: ruff check, ruff format --check, mypy, pytest — **1112 passed,
+  1 skipped**, clean.
+- `apps/web`: lint, format:check, typecheck, `npm run test` — **893 passed** —
+  and `npm run build`.
+- Playwright: `all-tags` suite, **5 passed** (2 of them new), on
+  `CAIRNDEX_PLAYWRIGHT_PORT=5299` so it did not disturb the owner's running dev
+  server. Other e2e specs were not re-run: no file they touch changed.
+- Manual: all four items driven in the browser preview against synthetic
+  libraries (1500 bundles, and a 40-bundle one with 24–30 files each for the
+  playlist cap). No real media was read and no user data left the machine.
+
+### Known issues and next steps
+
+- **Owner verification against the real library is what settles item 1.** The
+  before/after numbers here come from read-only probes of the SMB-mounted
+  library, not from the app running against it.
+- Tag-group membership from the keyboard goes through the context menu, as tag
+  rename and delete already did on this page. Consistent, but still
+  pointer-first; a keyboard path for the whole page is unclaimed work.
+- Desktop gates were not run — no Rust, Tauri, or `apps/desktop` file changed.
+
 ## Open on branch: the grouping review drew a collection twice (2026-08-23)
 
 Branch `fix/grouping-context-duplicate-root`, off `main` at `2f09f0de`. Owner

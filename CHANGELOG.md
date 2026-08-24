@@ -390,6 +390,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Opening the Random tab is no longer the slowest thing in the app.** A page
+  of the bundle grid summarized one bundle at a time — a query per row, so a
+  100-row page cost 100 extra round trips on top of the two that fetched it.
+  That is the shape this library cannot afford: the owner's library is on an SMB
+  share at ~36 ms a round trip, where **statements are the cost, not
+  milliseconds** (the 2026-08-13 finding, which fixed the grouping code and
+  should have been read as a constraint on the whole read path). Every view paid
+  it, but Random paid it worst: its rows are scattered across the table by
+  design, so not one of those per-row lookups lands on a page an earlier row
+  already warmed, and it is the one view a session cannot arrive at pre-warmed.
+
+  A page now loads its files, watch progress and cursor selections once, so it
+  costs **four statements regardless of how many bundles are on it**. Measured
+  read-only against the owner's library: **56 statements and 145–185 ms → 4
+  statements and 13 ms**, warm; cold, at the 36 ms round trip the share
+  actually charges, the same page goes from roughly 3.7 s of waiting to 0.15 s.
+  Continue Watching had the same per-row load and gets the same fix. A test pins
+  the statement count so it cannot creep back a row at a time.
+
 - **A bundle's note box can be dragged smaller again.** Bringing a tall note
   down takes several short drags of its grip, and the second one always sprang
   it back to full height: a drag is also a press and release on the same spot,

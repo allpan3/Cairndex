@@ -1,6 +1,7 @@
 """Bundle browse: system views, sorting, pagination, summaries, counts."""
 
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import (
@@ -647,3 +648,79 @@ def test_random_view_ignores_the_sort_params(session: Session) -> None:
 
     # The shuffle is the order; sort params must not be a back door out of it.
     assert [s.id for s in by_title.items] == [s.id for s in by_date.items]
+
+
+def test_a_browse_page_costs_the_same_statements_whatever_its_size(session: Session) -> None:
+    """The owner's library is on SMB at ~36 ms a round trip, so a page's cost is
+    its statement count (docs/STATUS.md, 2026-08-13). Summarizing once ran a
+    query per bundle: a 100-row page was 100 extra round trips, worst of all in
+    the Random view, whose rows are scattered so none of those lookups reuses a
+    warmed page. Pin the count so it cannot creep back per-row."""
+    statements: list[str] = []
+
+    @event.listens_for(session.get_bind(), "before_cursor_execute")
+    def _record(
+        conn: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    try:
+        for i in range(3):
+            bundle = _confirmed(session, f"small{i}")
+            bundle_service.add_file(
+                session,
+                bundle.id,
+                relative_path=f"small{i}/extra.mp4",
+                role=FileRole.PRIMARY_VIDEO,
+                media_kind=MediaKind.VIDEO,
+            )
+        session.commit()
+
+        statements.clear()
+        small = browse_bundles(session)
+        small_statements = len(statements)
+
+        for i in range(20):
+            _confirmed(session, f"many{i}")
+        session.commit()
+
+        statements.clear()
+        large = browse_bundles(session)
+        large_statements = len(statements)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", _record)
+
+    assert len(small.items) == 3 and len(large.items) == 23
+    # The page query, its total, the page's files, the page's cursors.
+    assert small_statements == 4
+    assert large_statements == small_statements
+
+
+def test_random_pages_summarize_every_bundle_the_same_as_the_all_view(session: Session) -> None:
+    """The batched load must not depend on the page's order: Random scatters the
+    rows it returns, which is exactly the case the per-bundle version handled by
+    accident."""
+    for i in range(6):
+        bundle = _confirmed(session, f"r{i}")
+        asset_file = bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=f"r{i}/clip.mp4",
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+        )
+        asset_file.size_bytes = 100 + i
+        cursor_service.set_cursor(session, bundle.id, asset_file.id)
+    session.commit()
+
+    by_id = {s.id: s for s in browse_bundles(session).items}
+    shuffled = browse_bundles(session, view=SystemView.RANDOM, seed=99)
+
+    assert len(shuffled.items) == 6
+    for summary in shuffled.items:
+        assert summary == by_id[summary.id]
