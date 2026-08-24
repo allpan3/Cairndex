@@ -344,6 +344,44 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Placing a grouping suggestion inside an existing collection no longer draws
+  that collection's parent a second time.** Choosing a destination materializes
+  the destination's ancestry as read-only "Existing" rows, and it built that path
+  from scratch every time — so a plan whose own top-level row is a folder called
+  `Archive`, placed into the existing `Archive ▸ Talent`, grew a *second*
+  top-level `Archive` beside the first, and the review appeared to be inventing a
+  hierarchy it was already showing. The path now stops where the plan already
+  speaks for the same collection: the row on screen is adopted as the branch head
+  and pinned to that collection, staying editable — its title, its stem dial and
+  its own placement are untouched — and only the levels below it are added. Apply
+  was never wrong here (an unlinked collection suggestion resolves to the
+  existing collection of the same name under the same parent, so both rows always
+  led to the one collection); the tree was.
+
+  Two smaller consequences of the pin. A row that stands for a collection is now
+  **refused as a destination for itself** — it would have become its own parent,
+  and a self-parented row leaves the tree altogether. And a pinned row keeps the
+  title the owner typed: refreshing the structural snapshot from the live
+  collection tree, which is right for an "Existing" row, would have quietly
+  reverted a rename on an editable one.
+
+- **Narrow and Widen no longer reset the folder they sit on.** The dial re-suggests
+  one folder's grouping, and it did that by replacing every row for that folder —
+  the folder's own row included. So renaming a collection suggestion, placing it
+  inside an existing collection, and then nudging the dial silently undid both:
+  the row came back with the folder's name and the suggester's parent, and the
+  "Existing" path the placement had built was pruned for leading nowhere. The
+  folder's row is kept now, and the re-suggested bundles hang under it. Only what
+  is *inside* the collection is redone, which is all the dial ever claimed to do.
+
+  Two folds of the same rule. A collection *inside* the folder — one the owner made
+  with "convert to collection" from a bundle there — is still grouping, so the dial
+  still redoes it. And a folder the suggester insists is a single bundle, made a
+  collection by hand, keeps that collection: its one re-suggested bundle now goes
+  inside the row instead of beside it, where it used to leave the row childless and
+  delete it — so a control that could not regroup that folder at all was dissolving
+  the conversion.
+
 - **A GIF export saved from the desktop app no longer fails with a 404.** The
   finished artifact is fetched through the shell's loopback media relay, the
   same way a contact sheet is, so that the bearer never has to travel in a URL —

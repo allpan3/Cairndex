@@ -118,6 +118,83 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: the grouping review drew a collection twice (2026-08-23)
+
+Branch `fix/grouping-context-duplicate-root`, off `main` at `2f09f0de`. Owner
+report: placing a new collection suggestion into an existing collection made the
+panel "generate a new listing with the hierarchy I selected", even though the
+selected parent's own parent was already a top-level row in the same listing.
+
+**Cause.** `plan_store._materialize_collection_context` built the destination's
+ancestry from the live collection tree unconditionally, deduplicating only
+against proposals already carrying that `target_collection_id`. A suggester
+folder container named after the collection carries none — plan generation links
+them (`service._proposed_collection_paths`), but only for collections some bundle
+proposal matched, and in a library where every bundle sits inside a proposed
+folder container that matching never runs (`_with_collection_context` returns
+early with `chosen` empty). So the same collection was drawn twice: once as the
+plan's editable top-level row, once as the head of a fresh "Existing" path.
+
+**Fix.** `_adoptable_container` looks for the editable collection suggestion that
+already stands for each level — same title, under the level resolved so far, not
+pinned elsewhere, and neither the row being moved nor one of its descendants —
+and the walk adopts it instead of creating a context node. Adopting **pins**
+`target_collection_id` on it, which is required rather than cosmetic: apply
+rejects a read-only context child whose parent has no target ("an existing
+collection cannot be nested under a new collection suggestion").
+
+**Apply was already correct**, before and after: `_ensure_collection` resolves an
+unlinked container to the existing collection of the same name under the same
+parent, so both rows always fed the one collection. Verified on the repro —
+`collections_created: 0`, no conflicts, the moved bundle in the child collection
+and its sibling still in the parent. This was a structural-display bug only.
+
+**Two consequences of the pin, both covered by tests.** A row that stands for a
+collection is refused as a destination for itself (it would become its own
+parent, and a self-parented row leaves the tree); and the structural refresh of
+title/reason is now limited to actual context rows, so a pinned editable row
+keeps an owner rename instead of having it reverted on the next placement edit.
+
+**Known, pre-existing, deliberately not changed:** a pinned container's title is
+ignored by apply, which reuses the collection the pin names. That has been true
+of generation-time links since they were introduced (see the `suggester`
+docstring on `is_collection_context`); adoption widens the cases in which it can
+be reached. Renaming such a row is therefore visible in the panel but not in the
+result. Fixing it properly means deciding what renaming an existing collection
+from the grouping panel should mean, which is a product question, not a bug.
+
+### Second report on the same branch: the dial reset the row it sits on
+
+Renaming a folder's collection suggestion, placing it in an existing collection,
+then nudging Narrow/Widen undid both — and pruned the "Existing" path the
+placement had built, since it then led nowhere.
+
+`set_directory_stem_level` splices one directory by deleting every row whose
+`directory` is that folder and re-inserting the suggester's output for it. That
+set included the folder's **own** row, which is where the dial lives and where its
+title and placement live. `_folder_header` now picks that row out — the outermost
+non-context container for the directory, so a collection the owner converted
+*inside* the folder is still grouping and still redone — and the splice keeps it,
+skips the fresh container, and hangs the fresh bundles under it.
+
+One further fold, found while testing rather than reported: a folder the suggester
+insists is one bundle (`owns_directory`, e.g. explicit multipart names) proposes
+that bundle with the folder's *parent* as its parent. Kept header or not, that row
+landed beside the folder's row rather than inside it, so a hand-made conversion
+went childless and was deleted — the dial dissolving a collection on a folder it
+cannot regroup at all. Fresh rows for a non-root directory now always go inside
+the kept header.
+
+Behaviour deliberately changed, and the two tests that asserted the old shape were
+updated with it: the folder's row keeps its id across a splice (it was asserted to
+be replaced), and its subdirectory children stay attached rather than being
+re-linked to a successor. The re-link is still there for the no-header case.
+
+Tests: `just check-server` clean (1089 passed, ruff format/check, mypy). No web,
+desktop, or e2e file changed — the placement e2e is fully mocked — so those gates
+were not re-run. Next: owner verification against the real library, since both
+shapes were reproduced from the reports rather than from their data.
+
 ## Open on branch: Add Files to Library (2026-08-23)
 
 Branch `feat/add-files-to-library`, off `main` at `ea3f12a7`. `File ▸ Add Files
