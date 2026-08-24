@@ -4,6 +4,7 @@ import { expect, test, vi } from 'vitest'
 
 import { ContextMenu } from './ContextMenu'
 import type { MenuEntry, MenuState } from './useContextMenu'
+import { useContextMenu } from './useContextMenu'
 
 function renderMenu(items: MenuEntry[], onClose = vi.fn()) {
   render(<ContextMenu state={{ x: 10, y: 10, items }} onClose={onClose} />)
@@ -108,4 +109,32 @@ test('a later click, after the gesture is over, is left alone', async () => {
   } finally {
     document.body.removeEventListener('click', underneath)
   }
+})
+
+test('opening a menu drops the text selection the right-click made', () => {
+  const removeAllRanges = vi.fn()
+  vi.spyOn(globalThis, 'getSelection').mockReturnValue({
+    removeAllRanges,
+  } as unknown as Selection)
+
+  // The wiring, not the helper: every surface in the app opens its menu through
+  // this hook, which is why one call here covers all of them.
+  function Surface() {
+    const menu = useContextMenu()
+    return (
+      <>
+        <div onContextMenu={(e) => menu.open(e, [{ label: 'Delete', onClick: vi.fn() }])}>
+          a title with words in it
+        </div>
+        <ContextMenu state={menu.state} onClose={menu.close} />
+      </>
+    )
+  }
+  render(<Surface />)
+
+  fireEvent.contextMenu(screen.getByText('a title with words in it'))
+
+  expect(removeAllRanges).toHaveBeenCalledOnce()
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+  vi.restoreAllMocks()
 })
