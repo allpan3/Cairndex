@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 
 import type { BundleSort, SortOrder } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
-import { IconFilter } from './icons'
+import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SortControl } from './SortControl'
@@ -43,10 +43,10 @@ interface ToolbarProps {
 // fixed shape. The stored `LayoutMode` value stays `'grid'` — it is a persisted
 // preference and an e2e selector, and renaming it would buy nothing a label
 // cannot.
-const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
-  { value: 'grid', icon: '▦', label: 'Card' },
-  { value: 'justified', icon: '▥', label: 'Justified' },
-  { value: 'list', icon: '☰', label: 'List' },
+const LAYOUTS: { value: LayoutMode; icon: ReactNode; label: string }[] = [
+  { value: 'grid', icon: <IconLayoutCard />, label: 'Card' },
+  { value: 'justified', icon: <IconLayoutJustified />, label: 'Justified' },
+  { value: 'list', icon: <IconLayoutList />, label: 'List' },
 ]
 
 export function Toolbar({

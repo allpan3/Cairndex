@@ -317,3 +317,49 @@ export const IconLayers = () => (
 )
 
 /** Three dots (Lucide "more-horizontal") — a row's named overflow actions. */
+
+/* --- Browsing layouts ------------------------------------------------------
+   One icon per layout, replacing the box-drawing glyphs ▦ ▥ ☰: the first two
+   are near indistinguishable at 15px and neither means anything in particular
+   (owner, 2026-08-23). What matters as much as each icon alone is that the
+   three are told apart *from each other* at 15px, since they sit in one
+   segmented control — so Card draws a single card while Justified and List
+   both draw arrangements, and no two share a silhouette. */
+
+/** Card layout: one card, cover above and title below.
+ *
+ * A single card rather than a grid of them (owner's pick from four candidates,
+ * 2026-08-23). It draws the tile instead of the arrangement, which is the
+ * trade: it says nothing about how many there are, but it is unmistakable at
+ * 16px and cannot be confused with either neighbour in the control — or with
+ * the sidebar's "All" icon, which is itself a 2x2 grid. */
+export const IconLayoutCard = () => (
+  <Svg>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <line x1="4" y1="14" x2="20" y2="14" />
+    <line x1="7.5" y1="17.5" x2="16.5" y2="17.5" />
+  </Svg>
+)
+
+/** Justified layout: rows of unequal widths, each row flush to both edges —
+ *  which is exactly what the layout does and what separates it from Card. The
+ *  two rows put their wide tile on opposite sides so the unevenness reads as
+ *  deliberate rather than as a misdrawn grid. */
+export const IconLayoutJustified = () => (
+  <Svg>
+    <rect x="3" y="4" width="11" height="6" rx="1" />
+    <rect x="16" y="4" width="5" height="6" rx="1" />
+    <rect x="3" y="14" width="5" height="6" rx="1" />
+    <rect x="10" y="14" width="11" height="6" rx="1" />
+  </Svg>
+)
+
+/** List layout: rows of a thumbnail and its line of text. */
+export const IconLayoutList = () => (
+  <Svg>
+    <rect x="3" y="5" width="5" height="5" rx="1" />
+    <line x1="11" y1="7.5" x2="21" y2="7.5" />
+    <rect x="3" y="14" width="5" height="5" rx="1" />
+    <line x1="11" y1="16.5" x2="21" y2="16.5" />
+  </Svg>
+)

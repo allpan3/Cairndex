@@ -333,6 +333,24 @@ this is revisited — the Card cover's height is 9/16 of the slider value, so 0.
 deliberately makes a Justified row *taller* than a Card cover at the same
 setting.
 
+**Also: the layout buttons got real icons.** Card and Justified were `▦` and
+`▥`, which are near indistinguishable at 15px and describe nothing. Three inline
+SVGs in `icons.tsx`'s existing Lucide line style: **Card** a single card (cover
+above, title below), **Justified** rows of unequal widths flush to both edges,
+**List** a thumbnail beside its text. All three were converted, not just the two
+named — a text glyph between two SVGs in one segmented control sits at a
+different weight and baseline. The File Browser's buttons share them.
+
+Checked at 96/24/16px in the running app. The justified split was widened to 11:5
+after the first pass read as a *misdrawn* grid rather than a deliberately uneven
+one. Card went through four candidates rendered side by side for the owner (a
+2×2 of tiles, two cards with captions, a 3×2 of tiles, and one card); **the owner
+picked the single card**. It draws the tile rather than the arrangement, which is
+the trade — it says nothing about how many there are — but it is unmistakable at
+15px and shares a silhouette with neither neighbour, nor with the sidebar's
+"All" icon, which is itself a 2×2 grid. That last point is what ruled out the
+2×2 candidate that shipped first.
+
 **Known and deliberately not fixed:** a rotated video reports its *coded*
 dimensions, while ffmpeg applies the display matrix when generating the
 thumbnail — so a portrait phone video probed as 1920×1080 still gets a landscape

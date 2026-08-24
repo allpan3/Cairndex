@@ -229,6 +229,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The layout buttons have icons that mean something.** Card and Justified were
+  `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
+  say nothing about the layout they select. Each is now a drawn icon: **Card** is
+  a single card, cover above and title below; **Justified** is rows of unequal
+  widths flush to both edges; **List** is a thumbnail beside its line of text. No
+  two share a silhouette, which matters more than any one of them being clever —
+  they sit in one segmented control at 15px. The File Browser's two share them,
+  so the same control means the same thing on both surfaces.
+
 - **The "Grid" layout is now called "Card".** Both it and Justified are grids;
   what distinguishes this one is that every item is a card of one fixed shape.
   The stored preference value is unchanged, so nothing needs migrating.
