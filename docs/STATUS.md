@@ -114,10 +114,10 @@
 > and ADR-0021; the residual unclean-shutdown risk was accepted by the owner
 > deliberately.
 >
-> **Open on branch (2026-08-24):** `fix/card-host-actions-primary-file` — a bundle
-> card's Open/Reveal entries no longer depend on the web viewer being able to play
-> the file, which had removed them from every card in Missing Files and from any
-> unsupported format. See the first section below.
+> **Merged (2026-08-24):** a bundle card's Open/Reveal entries no longer depend on
+> the web viewer being able to play the file, which had removed them from every
+> card in Missing Files and from any unsupported format. Confirmed in the app by
+> the owner. See the first section below.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -128,10 +128,11 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: a bundle card's file on disk (2026-08-24)
+## Merged: a bundle card's file on disk (2026-08-24)
 
-Branch `fix/card-host-actions-primary-file`, off `main` at `df9b9c72`. The
-follow-up the ⌘↩/⇧↩ work recorded as known and not fixed (section below).
+Branch `fix/card-host-actions-primary-file`, off `main` at `df9b9c72`,
+fast-forwarded onto `main` as `d4184223` at the owner's request. The follow-up the
+⌘↩/⇧↩ work recorded as known and not fixed (section below).
 
 Owner: "whether [the] file format is supported … should not dictate whether we
 can open with default app or reveal in Finder. Those buttons should exist either
@@ -181,14 +182,20 @@ Gates: `apps/server` ruff / ruff format / mypy / **1117 tests** (3 new);
 gates not run — nothing under `apps/desktop` changed, and the shell's own path
 resolution and its `PathNotFound` test are untouched.
 
-**Not verified here, and the reason is structural:** the card menu cannot be
-exercised in either test harness. jsdom has no layout, so the virtualized grid
-renders no cards (`App.test.tsx` says so at the top), and a browser has no host
-actions at all, so Playwright would assert two rows that never render there. The
-runtime confirmation is the owner's, in the desktop app: right-click a card in
-Missing Files, and a card whose file is a format the viewer cannot show.
+**Not verifiable in either test harness, and the reason is structural:** jsdom has
+no layout, so the virtualized grid renders no cards (`App.test.tsx` says so at the
+top), and a browser has no host actions at all, so Playwright would assert two
+rows that never render there. **The owner confirmed it in the desktop app**: a
+card in Missing Files now carries both entries, and clicking one raises the
+refusal toast rather than doing nothing.
 
-Next: nothing queued on this branch.
+They also asked the obvious question of the screenshot — the rows are not greyed
+out. That is the design: `availability` is a snapshot from the last scan, so a
+greyed row would refuse a file that a remount or a restore has already brought
+back, while the shell's check is current at the moment of the click. The badge
+says what the library last knew; the toast says what the filesystem says now.
+
+Next: nothing queued.
 
 ## Merged: four owner reports — Random, notes, the playlist, tag management (2026-08-23)
 
