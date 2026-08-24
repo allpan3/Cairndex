@@ -267,6 +267,34 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **A file that was never bundled is never "missing".** Unbundled is the pending
+  zone — a scan stages every file it finds there, and bundling is what registers
+  a file in the library. So a staged file deleted outside Cairndex was reported
+  as a loss it made no sense to report: Missing Files filled with files the owner
+  had deleted on purpose, and the sidebar badge counted them, which for a library
+  used partly as a file browser is a permanent warning about nothing (owner,
+  2026-08-24).
+
+  Missing Files and its badge now cover **registered bundles only**, and a scan
+  drops the staging rows of files it can prove are gone. Two things have to hold
+  before anything is dropped, both read off that scan:
+
+  - **it read every directory it tried.** A listing that fails is a mount that
+    dropped, not a folder that emptied — and that failure used to be discarded.
+  - **the file's own filesystem is still the one mounted where it was.** A
+    dropped SMB mount takes its mountpoint directory with it, so a vanished
+    folder proves nothing by itself; but the ancestor that survives is then on
+    the outer filesystem, whose device id is not the one the file was last seen
+    on. An unmounted mountpoint left behind as an empty folder fails the same
+    check.
+
+  Nothing waits, counts scans, or keeps a timestamp: proof is what licenses the
+  delete, and where it is missing the row simply stays. A **registered** bundle's
+  missing file is never touched, nor is any staged row carrying something the
+  owner made — a tag, rating, note, source, collection, watch position, chosen
+  cover frame, or a cover/subtitle reference. Those stay, and Forget clears them
+  by hand. The scan result reports how many rows it dropped.
+
 - **The layout buttons have icons that mean something.** Card and Justified were
   `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
   say nothing about the layout they select. Each is now a drawn icon: **Card** is

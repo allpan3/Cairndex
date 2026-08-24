@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileAvailability
+from cairndex.domain.enums import FileAvailability, GroupingState
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress, SubtitleTrack
 from cairndex.scanning import scanner
 from cairndex.scanning.repair import find_repair_candidate, repair_file
@@ -26,6 +26,20 @@ def _only_file(session: Session) -> AssetFile:
     f = session.scalar(select(AssetFile))
     assert f is not None
     return f
+
+
+def _register(session: Session, bundle_id: str) -> None:
+    """Confirm a staged bundle, i.e. register it in the library.
+
+    Repair is for a file the owner has committed to. An unregistered staging row
+    whose file disappears is dropped by the scan instead (``staging_cleanup``),
+    so a test about repair has to be about a registered bundle to be about
+    anything.
+    """
+    bundle = session.get(AssetBundle, bundle_id)
+    assert bundle is not None
+    bundle.grouping_state = GroupingState.CONFIRMED
+    session.commit()
 
 
 def test_same_volume_move_repairs_in_place(session: Session, library_root: Path) -> None:
@@ -202,7 +216,9 @@ def test_copy_does_not_merge_or_repair(session: Session, library_root: Path) -> 
 def test_missing_file_stays_visible_when_no_match(session: Session, library_root: Path) -> None:
     (library_root / "gone.mp4").write_text("bytes")
     scan_library(session, library_root)
-    original_id = _only_file(session).id
+    original = _only_file(session)
+    original_id = original.id
+    _register(session, original.bundle_id)
 
     (library_root / "gone.mp4").unlink()
     summary = scan_library(session, library_root)
@@ -319,6 +335,7 @@ def test_repair_api_exposes_and_applies_the_unique_candidate(
     old_path.write_text("same bytes")
     scan_library(session, library_root)
     missing = _only_file(session)
+    _register(session, missing.bundle_id)
     old_path.rename(library_root / "new-name.mp4")
 
     def changed_inode(entry):

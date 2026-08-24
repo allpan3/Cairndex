@@ -70,6 +70,8 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         "missing": summary.missing,
         "missing_total": summary.missing_total,
         "repaired": summary.repaired,
+        # Staging rows for files this scan proved are gone (staging_cleanup).
+        "forgotten": summary.forgotten,
         # Null on a scan-only pass. The client opens grouping review off these
         # two keys, so a scan that was not asked to suggest must not report a
         # plan — not even an older open one it happened to leave alone.

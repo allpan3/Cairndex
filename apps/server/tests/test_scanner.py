@@ -1,7 +1,9 @@
 """Scanner: idempotency, missing-file state, no full-hashing, cancellation."""
 
+import os
 from pathlib import Path
 
+import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -68,15 +70,28 @@ def test_scan_does_not_full_hash(session: Session, library_root: Path) -> None:
     assert all(f.quick_fingerprint is not None for f in files)
 
 
-def test_missing_file_is_marked_not_deleted(session: Session, library_root: Path) -> None:
+def _register_all(session: Session) -> None:
+    """Confirm every staged bundle: registering a file in the library is what
+    bundling means, and only a registered file's disappearance is news
+    (``scanning.staging_cleanup``)."""
+    for bundle in session.scalars(select(AssetBundle)):
+        bundle.grouping_state = GroupingState.CONFIRMED
+    session.commit()
+
+
+def test_a_registered_missing_file_is_marked_not_deleted(
+    session: Session, library_root: Path
+) -> None:
     _make_media(library_root)
     scan_library(session, library_root)
+    _register_all(session)
 
     (library_root / "Show" / "S01" / "ep2.mkv").unlink()
     summary = scan_library(session, library_root)
 
     assert summary.missing == 1
     assert summary.missing_total == 1
+    assert summary.forgotten == 0  # a registered bundle is never swept
     assert _file_count(session) == 4  # row preserved, not deleted
     gone = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
     assert gone is not None
@@ -87,9 +102,125 @@ def test_missing_file_is_marked_not_deleted(session: Session, library_root: Path
     assert second.missing_total == 1  # still linked and missing overall
 
 
-def test_returning_file_becomes_available_again(session: Session, library_root: Path) -> None:
+def test_an_unregistered_missing_file_is_forgotten(session: Session, library_root: Path) -> None:
+    """Unbundled is the pending zone, so a staged file that is gone from disk is
+    not pending anything and its row goes with it.
+
+    The scan proved it: it read every directory, and the file's own filesystem is
+    the one still mounted where it used to be. Nothing waits for a second pass —
+    the proof is what licenses the delete, not the passage of time.
+    """
     _make_media(library_root)
     scan_library(session, library_root)
+
+    (library_root / "Show" / "S01" / "ep2.mkv").unlink()
+    summary = scan_library(session, library_root)
+
+    assert summary.forgotten == 1
+    assert summary.missing_total == 0  # nothing left to report as missing
+    assert _file_count(session) == 3
+    assert (
+        session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
+        is None
+    )
+    # Its one-file staging bundle went too, rather than lingering as an empty one.
+    assert session.scalar(select(func.count()).select_from(AssetBundle)) == 3
+
+
+def test_a_whole_folder_deleted_is_still_proof_enough(session: Session, library_root: Path) -> None:
+    """The folder going with the files is the ordinary case: its parent listed
+    fine without it, so the walk saw everything there was to see."""
+    _make_media(library_root)
+    scan_library(session, library_root)
+
+    for child in (library_root / "Show" / "S01").iterdir():
+        child.unlink()
+    (library_root / "Show" / "S01").rmdir()
+    summary = scan_library(session, library_root)
+
+    assert summary.forgotten == 2
+    assert _file_count(session) == 2
+
+
+def test_an_unreadable_directory_stops_the_scan_forgetting_anything(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory that will not list is a mount that dropped, not a folder that
+    emptied — and on macOS a dropped SMB mount takes its mountpoint with it, so
+    the absence alone proves nothing (owner, 2026-08-24). One failed listing
+    anywhere disqualifies the whole sweep."""
+    _make_media(library_root)
+    scan_library(session, library_root)
+
+    real_scandir = os.scandir
+
+    def refuse_one(path: object) -> object:
+        if str(path).endswith("S01"):
+            raise OSError("simulated unreadable directory")
+        return real_scandir(path)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "scandir", refuse_one)
+    summary = scan_library(session, library_root)
+
+    # Its files are unseen, so they are marked missing — but not forgotten.
+    assert summary.missing == 2
+    assert summary.forgotten == 0
+    assert _file_count(session) == 4
+
+
+def test_a_file_from_another_filesystem_is_not_forgotten(
+    session: Session, library_root: Path
+) -> None:
+    """The nested-mount case: a mount inside the library root drops, taking its
+    mountpoint directory with it. The surviving ancestor is then on the *outer*
+    filesystem, whose device id is not the one the file was last seen on — which
+    is the only thing left that can tell this from a deletion."""
+    _make_media(library_root)
+    scan_library(session, library_root)
+    staged = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
+    assert staged is not None
+    # As if it had been seen on a different volume mounted at Show/S01.
+    staged.filesystem_device = (staged.filesystem_device or 0) + 1
+    session.commit()
+
+    for child in (library_root / "Show" / "S01").iterdir():
+        child.unlink()
+    (library_root / "Show" / "S01").rmdir()
+    summary = scan_library(session, library_root)
+
+    # Its sibling, recorded on the library's own filesystem, is genuinely gone.
+    assert summary.forgotten == 1
+    kept = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
+    assert kept is not None
+    assert kept.availability == FileAvailability.MISSING
+
+
+def test_owner_authored_staging_rows_are_kept(session: Session, library_root: Path) -> None:
+    """A rating on a staged file is still a decision about it, and a decision
+    outlives the bytes. Those rows stay visible, for the manual forget."""
+    _make_media(library_root)
+    scan_library(session, library_root)
+    staged = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
+    assert staged is not None
+    rated = session.get(AssetBundle, staged.bundle_id)
+    assert rated is not None
+    rated.rating = 4.0
+    session.commit()
+
+    (library_root / "Show" / "S01" / "ep2.mkv").unlink()
+    summary = scan_library(session, library_root)
+
+    assert summary.forgotten == 0
+    assert summary.missing_total == 1
+
+
+def test_returning_file_becomes_available_again(session: Session, library_root: Path) -> None:
+    # Registered, so the row survives the absence to be flipped back — which is
+    # what this is about. An unregistered one is forgotten and then re-staged
+    # under a new id, covered separately below.
+    _make_media(library_root)
+    scan_library(session, library_root)
+    _register_all(session)
     target = library_root / "Show" / "S01" / "ep2.mkv"
     target.unlink()
     scan_library(session, library_root)
