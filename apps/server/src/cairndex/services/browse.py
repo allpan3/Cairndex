@@ -86,6 +86,14 @@ class BundleSummary:
     # the cover selection changes, so the client uses it to bust the browser's
     # image cache on the (otherwise-stable) thumbnail URL.
     cover_key: str | None
+    # Pixel dimensions of the *cover's own* source, which is not always the file
+    # `width`/`height` below describe: the cover follows selected → first image →
+    # first video, while those follow the playback cursor. The justified layout
+    # shapes each tile to this so a cover fills its frame instead of sitting in
+    # black bars (owner, 2026-08-23). None when the cover's source has not been
+    # probed, or when there is no cover.
+    cover_width: int | None
+    cover_height: int | None
     # Hover/open source resolved from the bundle cursor, independent of its cover
     resume_file_id: str | None
     resume_file_updated_at: datetime | None
@@ -601,6 +609,7 @@ def _summarize(bundle: AssetBundle, rows: _PageRows) -> BundleSummary:
     )
     effective_cover = _effective_cover_file(bundle, files)
     cover_key = _cover_key(effective_cover)
+    cover_meta: dict[str, Any] = (effective_cover.tech_metadata or {}) if effective_cover else {}
     cursor_file_id = rows.cursor_file.get(bundle.id)
     current = select_current_file(files, cursor_file_id, progress_by_file)
     preview = current if current is not None and is_openable(current) else None
@@ -621,6 +630,8 @@ def _summarize(bundle: AssetBundle, rows: _PageRows) -> BundleSummary:
         has_cover=has_cover,
         openable=any(is_openable(asset_file) for asset_file in files),
         cover_key=cover_key,
+        cover_width=cover_meta.get("width"),
+        cover_height=cover_meta.get("height"),
         resume_file_id=current.id if current else None,
         resume_file_updated_at=preview.updated_at if preview else None,
         resume_media_kind=str(preview.media_kind) if preview else None,

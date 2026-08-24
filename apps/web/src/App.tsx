@@ -719,11 +719,15 @@ function Workspace({
     debounceMs: 300,
   })
   // Merge in defaults so prefs persisted before newer fields existed
-  // (sortScope/collectionSorts) don't read back as undefined.
+  // (sortScope/collectionSorts) don't read back as undefined. The zoom is also
+  // clamped, because the slider's range has moved before and will again: a value
+  // saved outside the current bounds would render cards the slider can no longer
+  // express, and the thumb would sit at an end that does not match them.
   const prefs = useMemo(
     () => ({
       ...DEFAULT_PREFS,
       ...storedPrefs,
+      zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, storedPrefs.zoom ?? DEFAULT_PREFS.zoom)),
       player: { ...DEFAULT_PREFS.player, ...storedPrefs.player },
     }),
     [storedPrefs],

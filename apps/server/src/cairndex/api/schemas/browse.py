@@ -18,6 +18,11 @@ class BundleSummary(BaseModel):
     # Cache-busting key for the thumbnail URL: the id of the file the cover is
     # derived from. Changes when the cover changes so the client re-fetches.
     cover_key: str | None
+    # The cover source's own pixel dimensions — not necessarily `width`/`height`
+    # below, which describe the file under the playback cursor. The justified
+    # layout shapes each tile to these so the cover fills it without black bars.
+    cover_width: int | None
+    cover_height: int | None
     # Hover/open source resolved from the bundle cursor, independent of its cover
     resume_file_id: str | None
     resume_file_updated_at: datetime | None
