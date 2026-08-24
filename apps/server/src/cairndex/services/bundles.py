@@ -10,7 +10,7 @@ client input can escape the library root.
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -174,6 +174,32 @@ def _restage_file(session: Session, asset_file: AssetFile) -> AssetBundle:
     return staged
 
 
+def _forget_file(session: Session, asset_file: AssetFile) -> None:
+    """Drop a file's metadata row, and the bundle if that was its last file.
+
+    For a file that is no longer on disk. Re-staging it into the Unbundled
+    pending zone — what removing a *present* file does — would be a lie: that
+    zone is for files awaiting registration in the library, and this one cannot
+    be registered or repaired. Metadata-only, as ever; there is nothing on disk
+    left to touch. Mirrors what emptying the trash does to a bundle it empties
+    (``file_ops.operations._drop_bundles_emptied_of_files``).
+    """
+    bundle_id = asset_file.bundle_id
+    session.delete(asset_file)
+    session.flush()
+    remaining = (
+        session.scalar(
+            select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle_id)
+        )
+        or 0
+    )
+    if remaining == 0:
+        emptied = session.get(AssetBundle, bundle_id)
+        if emptied is not None:
+            session.delete(emptied)
+    session.flush()
+
+
 def delete_bundle(session: Session, bundle_id: str) -> None:
     """Delete a bundle (metadata only; the files on disk are never touched,
     AGENTS.md §3).
@@ -184,6 +210,11 @@ def delete_bundle(session: Session, bundle_id: str) -> None:
     emptied original bundle (and its bundle-level tags, collections, cover/primary,
     and subtitle links) is then removed.
 
+    A **missing** member is not re-staged. It has nothing on disk to fall back
+    with, so staging it produced a fresh one-file bundle that reappeared in
+    Missing Files under a new id — the card survived the delete and took a second
+    one to shift (owner, 2026-08-24). Left attached, it goes with the bundle.
+
     Deleting an already-unbundled (provisional) bundle, or an empty bundle, just
     removes its rows — that is how a loose file is dropped from the library.
     """
@@ -191,6 +222,8 @@ def delete_bundle(session: Session, bundle_id: str) -> None:
     files = list(bundle.files)
     if bundle.grouping_state is GroupingState.CONFIRMED and files:
         for f in files:
+            if f.availability is FileAvailability.MISSING:
+                continue
             _restage_file(session, f)
         session.flush()
         # The files' FK now points at the staged bundles, so drop the stale
@@ -336,7 +369,10 @@ def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     falls back into the **Unbundled** view rather than being dropped, mirroring
     what deleting its bundle does. ``AssetFile.id`` is preserved. If the file was
     the source bundle's cover, that reference is cleared (DB SET NULL
-    once the FK moves away)."""
+    once the FK moves away).
+
+    A **missing** file is dropped instead of staged, for the reason
+    ``_forget_file`` gives: the pending zone is for files that exist."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None or asset_file.bundle_id != bundle_id:
         raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
@@ -345,6 +381,9 @@ def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     if source.cover_file_id == file_id:
         source.cover_file_id = None
     session.flush()
+    if asset_file.availability is FileAvailability.MISSING:
+        _forget_file(session, asset_file)
+        return
     _restage_file(session, asset_file)
     session.flush()
 

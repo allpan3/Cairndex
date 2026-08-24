@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ValidationError
 from cairndex.domain.enums import (
+    FileAvailability,
     FileRole,
     GroupingSource,
     GroupingState,
@@ -499,6 +500,87 @@ def test_removing_a_file_from_a_bundle_restages_it_as_unbundled(session: Session
     parent = row.bundle
     assert parent.grouping_state is GroupingState.PROVISIONAL
     assert parent.grouping_source is GroupingSource.SCAN_SUGGESTION
+
+
+def test_deleting_a_bundle_does_not_restage_its_missing_file(session: Session) -> None:
+    """A missing member goes with the bundle instead of becoming a new one.
+
+    Staging it produced a fresh provisional one-file bundle, which the Missing
+    Files view shows — so the card reappeared under a new id and deleting it took
+    a second pass (owner, 2026-08-24). There is nothing on disk for it to fall
+    back with; the pending zone is for files awaiting registration.
+    """
+    video = _unbundled(session, "movie/feature.mp4")
+    gone = _unbundled(session, "movie/extra.mp4")
+    result = apply_service.create_bundle_from_unbundled(
+        session, [video.id, gone.id], title="Feature"
+    )
+    session.commit()
+    bundle_id = result.bundle_id
+    gone.availability = FileAvailability.MISSING
+    session.commit()
+    # Read before the delete: a deleted row's own attributes are unreachable
+    # once the shared session is expired.
+    video_id, gone_id = video.id, gone.id
+
+    bundle_service.delete_bundle(session, bundle_id)
+    session.commit()
+    session.expire_all()  # the shared test session keeps rows unexpired on commit
+
+    assert session.get(AssetBundle, bundle_id) is None
+    # The live file still falls back to Unbundled, id preserved.
+    live = session.get(AssetFile, video_id)
+    assert live is not None
+    assert live.bundle.grouping_state is GroupingState.PROVISIONAL
+    # The missing one is gone, and left no staging bundle behind.
+    assert session.get(AssetFile, gone_id) is None
+    staged = session.scalars(select(AssetBundle)).all()
+    assert [b.id for b in staged] == [live.bundle_id]
+
+
+def test_removing_a_missing_file_drops_it_and_the_bundle_it_emptied(
+    session: Session,
+) -> None:
+    """Removing a missing file drops the row rather than staging it, and takes
+    the bundle with it when that was its last file — otherwise the empty bundle
+    would itself sit in Unbundled, which is the same ghost one level up."""
+    gone = _unbundled(session, "loose/clip.mp4")
+    session.commit()
+    bundle_id = gone.bundle_id
+    gone.availability = FileAvailability.MISSING
+    session.commit()
+
+    bundle_service.remove_file(session, bundle_id, gone.id)
+    session.commit()
+
+    assert session.get(AssetFile, gone.id) is None
+    assert session.get(AssetBundle, bundle_id) is None
+
+
+def test_removing_a_missing_file_keeps_a_bundle_that_still_has_files(
+    session: Session,
+) -> None:
+    """The bundle only goes when the removal emptied it."""
+    video = _unbundled(session, "clip/main.mp4")
+    gone = _unbundled(session, "clip/extra.jpg")
+    result = apply_service.create_bundle_from_unbundled(session, [video.id, gone.id], title="Clip")
+    session.commit()
+    bundle_id = result.bundle_id
+    bundle_service.update_bundle(session, bundle_id, {"cover_file_id": gone.id})
+    gone.availability = FileAvailability.MISSING
+    session.commit()
+
+    video_id, gone_id = video.id, gone.id
+
+    bundle_service.remove_file(session, bundle_id, gone_id)
+    session.commit()
+    session.expire_all()
+
+    source = session.get(AssetBundle, bundle_id)
+    assert source is not None
+    assert source.cover_file_id is None  # the dangling cover pointer was cleared
+    assert {f.id for f in source.files} == {video_id}
+    assert session.get(AssetFile, gone_id) is None
 
 
 # --- suggestions -------------------------------------------------------------

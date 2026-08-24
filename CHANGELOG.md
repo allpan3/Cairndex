@@ -440,6 +440,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Deleting a bundle that holds a missing file no longer leaves the file
+  behind as a new card.** Dissolving a bundle returns each of its files to
+  Unbundled as a fresh one-file bundle — which it was doing for *missing* files
+  too, so the card you deleted came straight back under a new id, in Missing
+  Files, and took a second delete to shift. A missing file has nothing on disk
+  to fall back with, so it now goes with the bundle. Removing a missing file
+  from a bundle drops it the same way, and takes the bundle with it if that was
+  its last file, rather than leaving an empty one to sit in Unbundled.
+
 - **Open in Default App and Reveal in Finder are on every bundle card, whatever
   format its file is.** Both were absent from a card's menu whenever the web
   viewer could not stage that card's file — a present file in a format Cairndex
