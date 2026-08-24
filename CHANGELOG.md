@@ -229,6 +229,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The "Grid" layout is now called "Card".** Both it and Justified are grids;
+  what distinguishes this one is that every item is a card of one fixed shape.
+  The stored preference value is unchanged, so nothing needs migrating.
+
+- **The card-size slider reaches further at both ends** — 140–640 px instead of
+  80–360. The smallest cards were too small to read and the largest not large
+  enough to look at. Justified rows also aim higher within that range (0.7 of the
+  slider value rather than 0.6): the two layouts are judged separately, and
+  Justified was the one still reading small, having no title block under each
+  tile to give it weight. A zoom saved outside the range is clamped on read,
+  since a value the slider cannot express would leave the thumb at one end
+  showing cards from somewhere else.
+
 - **Snapshot and GIF watermarks sit closer to the corner.** The inset was wide
   enough that the mark read as floating in the bottom-right rather than sitting
   in it; it is now near 1% of the export's width — a corner inset rather than a
@@ -419,6 +432,30 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Show All. Their accelerators belong to the OS rather than the table, so the
   test that stops an app shortcut shadowing a built-in one knows about them now
   too.
+
+- **The Justified layout's rows are the size they claim to be, and its last row
+  no longer towers over the rest.** Two faults in one packing rule. It always
+  broke a row *after* the tile that overflowed it, so a wide cover arriving at
+  the end dragged the whole row down — measured at 74–100% of the target height,
+  every row under it, which is why the view read as too small however far the
+  size slider went. It now breaks on whichever side of the target is closer, and
+  measured on the same content lands within 10% of it. And a short last row was
+  allowed 1.3× the target while full rows undershot, so the final row — a single
+  bundle, often — could be nearly twice the height of the row above it. It is
+  now capped at that row's own height, and simply stops short of the right edge
+  the way a justified gallery should.
+
+- **Covers no longer sit in a black frame.** Two separate causes, one per
+  layout. The **Card** layout's cover frame was 1.61:1 — not a shape any camera
+  produces — because its height was whatever remained after the title block, so
+  the frame's real proportions depended on the meta's font metrics and the card's
+  border. It is now exactly **16:9**, declared in CSS rather than arrived at by
+  arithmetic, so a 16:9 cover fills it and only a genuinely different cover
+  letterboxes. The **Justified** layout shaped each tile from the file under the
+  playback cursor, which is the file that *plays*, not the one the cover comes
+  from — those follow different rules, so a chosen cover or an image leading a
+  video bundle put the cover in bars. Tiles now take the shape of their own
+  cover, which the browse response reports as `cover_width`/`cover_height`.
 
 - **A toolbar action no longer sits in the middle of the row.** Random's
   **Shuffle** button occupied the sort control's slot — for a good reason, since

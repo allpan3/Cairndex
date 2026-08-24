@@ -283,6 +283,78 @@ the Rust edit, so ⌘H is testable in the app already open — **the runtime
 confirmation is the owner's**, since reading a native menu bar here needs
 accessibility permission this session does not have.
 
+### The bundle layouts: black frames, one name, one range (2026-08-23)
+
+Four reports about the two grid layouts.
+
+**The Card layout's cover frame was 1.61:1**, which is not a shape any camera
+produces. Its height was whatever remained after the title block, so the frame's
+real proportions were a by-product of the meta's font metrics and the card's 1px
+border — the `META_HEIGHT = 44` constant was 5px off the meta's actual 39, and
+the border took 2 more. Measured in the app it came out **1.716** against an
+intended 1.778, so every 16:9 cover — nearly all of them — kept a thin letterbox.
+Fixed by moving the shape into CSS (`.card--framed .card__thumb`,
+`aspect-ratio: 16 / 9`) so it cannot be a by-product of anything;
+`computeRows` now only has to reserve enough height, and `META_HEIGHT` is
+documented as a reservation rather than a measurement. Measured after: **1.7778**
+at zoom 120, 200 and 480, with ~4px of card surface below the text as slack.
+
+**The Justified layout shaped each tile from the wrong file.** `aspect()` read
+`width`/`height`, which describe the file under the playback *cursor* — what
+plays. The cover follows its own rule (selected → first image → first video), so
+any bundle where the two differ got a tile shaped for one file and a cover from
+another. That is the black frame the owner saw, and it is why it was worse here
+than in Card: the layout looked precise and was precisely wrong. The browse
+summary now carries `cover_width`/`cover_height` (no extra query — `_summarize`
+had already resolved the cover), and `aspect()` prefers them, falling back to the
+cursor file and then to 16:9.
+
+**Follow-up on the same day: Justified was still too small, and its last row was
+strange.** Both came out of one packing rule. It always broke a row *after* the
+tile that overflowed it, so a wide cover arriving at the end dragged the whole
+row down; measured on a four-shape fixture, rows landed at 101–130px against a
+140px target — **every row under it, the worst 27% under**. The target was never
+actually reached, which is why pushing the slider never fixed the feeling. The
+rule now breaks on whichever side of the target is closer: the same fixture comes
+out within 2.3%, and in the running app 116–153px around a 140px target.
+
+Separately, a short last row was allowed `targetH * 1.3` while full rows
+undershot, so the final row — a single bundle, often — was nearly twice its
+neighbour. Capped at the row above's own height rather than at the target,
+because a single-shape library packs its full rows a little under the target and
+a last row sitting *at* it would still stand out. Verified at zoom 200 (last row
+127.9 against 127.9 above) and 640 (448 against 448.9).
+
+The shared slider moved again, 120–480 → **140–640**, and a Justified row now
+aims at **0.7** of the slider value rather than 0.6. The two layouts are judged
+separately and Justified was the one still reading small: it carries no title
+block under each tile, so the same height has less presence. Worth remembering if
+this is revisited — the Card cover's height is 9/16 of the slider value, so 0.7
+deliberately makes a Justified row *taller* than a Card cover at the same
+setting.
+
+**Known and deliberately not fixed:** a rotated video reports its *coded*
+dimensions, while ffmpeg applies the display matrix when generating the
+thumbnail — so a portrait phone video probed as 1920×1080 still gets a landscape
+tile. Pre-existing, and fixing it means parsing `side_data_list` rotation and
+bumping the probe format.
+
+**"Grid" is now labelled "Card"**; the stored `LayoutMode` value stays `'grid'`
+(a persisted pref and an e2e selector, and only the label was asked for). One
+e2e locator followed the label.
+
+**The size slider spans 120–480 px** instead of 80–360, with stored values
+clamped on read. Worth knowing: the column count still stretches to fill, so at
+the top of the range in a narrow pane you get one very large card per row rather
+than two — that behaviour is unchanged, the new maximum just reaches it sooner.
+
+Gates: `apps/web` lint / format / typecheck / **908 tests** / build, plus the
+`manual-bundling`, `ordering` and `library` e2e specs (**53 passed**);
+`apps/server` ruff / mypy / **1114 passed**. OpenAPI and `schema.d.ts`
+regenerated. Verified in the running app against a synthetic library whose files
+carry assorted dimensions — the geometry is measured, not eyeballed, because
+synthetic bundles have no real cover images to look at.
+
 ### Tests run
 
 - `apps/server`: ruff check, ruff format --check, mypy, pytest — **1112 passed,

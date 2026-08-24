@@ -2773,8 +2773,12 @@ export interface components {
         BundleSort: "date_added" | "date_modified" | "date_opened" | "title" | "rating" | "size" | "file_count" | "manual";
         /** BundleSummary */
         BundleSummary: {
+            /** Cover Height */
+            cover_height: number | null;
             /** Cover Key */
             cover_key: string | null;
+            /** Cover Width */
+            cover_width: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -3033,8 +3037,12 @@ export interface components {
         ConflictPolicy: "fail" | "skip" | "suffix" | "replace";
         /** ContinueWatchingItem */
         ContinueWatchingItem: {
+            /** Cover Height */
+            cover_height: number | null;
             /** Cover Key */
             cover_key: string | null;
+            /** Cover Width */
+            cover_width: number | null;
             /**
              * Date Added
              * Format: date-time

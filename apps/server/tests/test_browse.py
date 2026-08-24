@@ -177,6 +177,64 @@ def test_summary_cover_key_tracks_the_selected_cover(session: Session) -> None:
     assert browse_bundles(session).items[0].cover_key == second.id
 
 
+def test_summary_reports_the_covers_own_dimensions(session: Session) -> None:
+    """The cover's size is its own, not the cursor file's.
+
+    The two follow different rules — the cover is selected → first image → first
+    video, the cursor is what plays — so a bundle can perfectly well show a 4:3
+    cover over a 16:9 video. The justified layout shapes each tile from these, so
+    reading the cursor file's numbers there is what put the cover in black bars
+    (owner, 2026-08-23).
+    """
+    bundle = bundle_service.create_bundle(session, title="Mixed")
+    cover = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="m/still.jpg",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    cover.tech_metadata = {"width": 1024, "height": 768}
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="m/clip.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    video.tech_metadata = {"width": 1920, "height": 1080}
+    cursor_service.set_cursor(session, bundle.id, video.id)
+    session.commit()
+
+    summary = browse_bundles(session).items[0]
+    assert (summary.cover_width, summary.cover_height) == (1024, 768)
+    # The cursor file's own numbers are unchanged — they describe what plays.
+    assert (summary.width, summary.height) == (1920, 1080)
+
+    # Choosing the video as the cover moves them onto it.
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": video.id})
+    session.commit()
+    moved = browse_bundles(session).items[0]
+    assert (moved.cover_width, moved.cover_height) == (1920, 1080)
+
+
+def test_summary_cover_dimensions_are_absent_without_a_probe(session: Session) -> None:
+    """An unprobed cover reports nothing rather than a guess, so the client can
+    choose its own fallback."""
+    bundle = bundle_service.create_bundle(session, title="Fresh")
+    bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="f/clip.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    summary = browse_bundles(session).items[0]
+    assert summary.cover_width is None and summary.cover_height is None
+
+
 def test_system_views_filter(session: Session) -> None:
     collection = collection_service.create_collection(session, name="F")
 

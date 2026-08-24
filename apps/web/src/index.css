@@ -1254,6 +1254,17 @@ button {
   position: relative;
   min-height: 0;
 }
+/* The Card layout's cover frame, shaped here rather than left to arithmetic.
+   Its height used to be whatever was left after the meta block, so the frame's
+   real shape depended on the meta's font metrics and the card's border — it
+   came out 1.72:1 against an intended 1.78:1, and a 16:9 cover still sat in a
+   thin letterbox (owner, 2026-08-23). `aspect-ratio` makes the frame exact and
+   `computeRows` only has to reserve enough room for it. The Justified layout
+   keeps `flex: 1`: there the tile is already the cover's own shape. */
+.card--framed .card__thumb {
+  flex: 0 0 auto;
+  aspect-ratio: 16 / 9;
+}
 .hover-preview--media {
   background-color: #050609;
   background-size: contain;

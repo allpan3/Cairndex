@@ -764,8 +764,8 @@ function FileList({
           <button
             className={prefs.layout === 'grid' ? 'is-active' : ''}
             onClick={() => setPrefs({ ...prefs, layout: 'grid' })}
-            title="Grid"
-            aria-label="Grid"
+            title="Card"
+            aria-label="Card"
             aria-pressed={prefs.layout === 'grid'}
           >
             ▦

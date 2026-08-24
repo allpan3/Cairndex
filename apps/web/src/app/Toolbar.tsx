@@ -38,8 +38,13 @@ interface ToolbarProps {
   facetContext: FacetContext
 }
 
+// "Card" rather than "Grid" (owner, 2026-08-23): both this and Justified are
+// grids, and what distinguishes this one is that every item is a card of one
+// fixed shape. The stored `LayoutMode` value stays `'grid'` — it is a persisted
+// preference and an e2e selector, and renaming it would buy nothing a label
+// cannot.
 const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
-  { value: 'grid', icon: '▦', label: 'Grid' },
+  { value: 'grid', icon: '▦', label: 'Card' },
   { value: 'justified', icon: '▥', label: 'Justified' },
   { value: 'list', icon: '☰', label: 'List' },
 ]
