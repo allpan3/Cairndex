@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
   files: [] as unknown[],
   reorder: { mutate: vi.fn() },
   remove: { mutate: vi.fn() },
+  forgetMissing: { mutate: vi.fn() },
   update: { mutate: vi.fn(), error: null },
 }))
 
@@ -25,6 +26,7 @@ vi.mock('../api/hooks', () => ({
   useBundleFiles: () => ({ data: hooks.files }),
   useFileMutations: () => ({ reorder: hooks.reorder, remove: hooks.remove }),
   useFileRepairCandidate: vi.fn(),
+  useForgetMissingFiles: () => hooks.forgetMissing,
   useRepairFile: vi.fn(),
   useUpdateBundle: () => hooks.update,
 }))

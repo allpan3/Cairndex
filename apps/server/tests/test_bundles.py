@@ -13,7 +13,8 @@ from pytest import MonkeyPatch
 from sqlalchemy.orm import Session
 
 from cairndex.api.v1 import bundles as bundle_routes
-from cairndex.persistence.models import AssetBundle
+from cairndex.domain.enums import FileAvailability
+from cairndex.persistence.models import AssetBundle, AssetFile
 
 
 def _make_media_tree(library_root: Path) -> None:
@@ -107,6 +108,43 @@ def test_full_bundle_acceptance_flow(
     assert client.get(f"{base}/bundles/{bundle_id}").status_code == 404
     for name in ("part1.mp4", "part2.mp4", "cover.jpg", "movie.srt"):
         assert (library_root / "movie" / name).exists()
+
+
+def test_forget_missing_files_endpoint_is_metadata_only(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Forgetting drops the row of a file that is gone and nothing else — not the
+    bundle around it, and never anything on disk."""
+    _make_media_tree(library_root)
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
+    live = _link(client, base, bundle_id, "movie/part1.mp4", "primary_video", "video")
+    dead = _link(client, base, bundle_id, "movie/part2.mp4", "video_part", "video")
+
+    # The state a scan leaves behind for a file deleted outside the app. Its bytes
+    # stay in the fixture, so the metadata-only guarantee below is a real check.
+    row = session.get(AssetFile, dead["id"])
+    assert row is not None
+    row.availability = FileAvailability.MISSING
+    session.commit()
+
+    # A file that is still there cannot be forgotten.
+    refused = client.post(
+        f"{base}/bundles/{bundle_id}/files/forget-missing",
+        json={"file_ids": [live["id"]]},
+    )
+    assert refused.status_code == 422, refused.text
+
+    resp = client.post(
+        f"{base}/bundles/{bundle_id}/files/forget-missing",
+        json={"file_ids": [dead["id"]]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"forgotten": 1, "bundle_deleted": False}
+
+    remaining = client.get(f"{base}/bundles/{bundle_id}/files").json()
+    assert [f["id"] for f in remaining] == [live["id"]]
+    assert (library_root / "movie" / "part2.mp4").read_text() == "video-2"
 
 
 def test_add_file_rejects_path_traversal(client: TestClient, library_id: str) -> None:

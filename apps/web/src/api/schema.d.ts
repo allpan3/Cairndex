@@ -608,6 +608,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/forget-missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forget Missing Files
+         * @description Drop the rows of files that are gone from disk (metadata only, ADR-0002).
+         */
+        post: operations["forget_missing_files_api_v1_libraries__library_id__bundles__bundle_id__files_forget_missing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/order": {
         parameters: {
             query?: never;
@@ -3586,6 +3606,22 @@ export interface components {
             count: number;
         };
         /**
+         * ForgetMissingRequest
+         * @description Which missing files to drop. ``None`` means every missing file in the
+         *     bundle, which is what the card-level action sends.
+         */
+        ForgetMissingRequest: {
+            /** File Ids */
+            file_ids?: string[] | null;
+        };
+        /** ForgetMissingResult */
+        ForgetMissingResult: {
+            /** Bundle Deleted */
+            bundle_deleted: boolean;
+            /** Forgotten */
+            forgotten: number;
+        };
+        /**
          * Grouping
          * @description How fast-add groups selected files into bundles.
          * @enum {string}
@@ -5928,6 +5964,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_missing_files_api_v1_libraries__library_id__bundles__bundle_id__files_forget_missing_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgetMissingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetMissingResult"];
                 };
             };
             /** @description Validation Error */

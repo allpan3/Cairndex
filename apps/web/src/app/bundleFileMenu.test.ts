@@ -43,3 +43,46 @@ test('orders native, write, bundle, and export sections', () => {
     'Save Contact Sheet…',
   ])
 })
+
+const missing = { ...video, id: 'file-gone', availability: 'missing' } as FileRead
+
+test('a file that is gone offers Forget in place of Remove from Bundle', () => {
+  // Detaching a dead file drops it too, so offering both would be one action
+  // under two names — and only one of the names describes what happens.
+  const onForgetMissing = vi.fn()
+  const entries = bundleFileMenuEntries({
+    targets: [missing],
+    onRemoveFromBundle: vi.fn(),
+    onForgetMissing,
+  })
+
+  expect(entries.map((entry) => entry?.label ?? null)).toEqual(['Forget Missing File'])
+  entries[0]?.onClick()
+  expect(onForgetMissing).toHaveBeenCalledWith([missing])
+})
+
+test('a selection that is not entirely gone keeps Remove from Bundle', () => {
+  const entries = bundleFileMenuEntries({
+    targets: [video, missing],
+    onRemoveFromBundle: vi.fn(),
+    onForgetMissing: vi.fn(),
+  })
+
+  expect(entries.map((entry) => entry?.label ?? null)).toEqual(['Remove 2 Files from Bundle'])
+})
+
+test('several gone files are forgotten together', () => {
+  const entries = bundleFileMenuEntries({
+    targets: [missing, { ...missing, id: 'file-gone-two' } as FileRead],
+    onForgetMissing: vi.fn(),
+  })
+
+  expect(entries.map((entry) => entry?.label ?? null)).toEqual(['Forget 2 Missing Files'])
+})
+
+test('a host that cannot forget still offers the detach it has', () => {
+  // No dead end: the row that exists keeps working, it just reads less exactly.
+  const entries = bundleFileMenuEntries({ targets: [missing], onRemoveFromBundle: vi.fn() })
+
+  expect(entries.map((entry) => entry?.label ?? null)).toEqual(['Remove from Bundle'])
+})

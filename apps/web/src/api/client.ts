@@ -13,6 +13,7 @@ import type { components } from './schema'
 
 export type HealthStatus = components['schemas']['HealthStatus']
 export type BundleSummary = components['schemas']['BundleSummary']
+export type ForgetMissingResult = components['schemas']['ForgetMissingResult']
 export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
 export type CollectionRead = components['schemas']['CollectionRead']
@@ -1286,6 +1287,14 @@ export const cleanupBundleOrder = (
 
 export const removeFile = (bundleId: string, fileId: string) =>
   send<void>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'DELETE')
+
+// Drop the rows of files that are gone from disk. Metadata-only, like every
+// other unlink here: there is nothing left on disk to touch. `fileIds` omitted
+// means every missing file in the bundle, which is what the card action sends.
+export const forgetMissingFiles = (bundleId: string, fileIds?: string[]) =>
+  send<ForgetMissingResult>(`${lib()}/bundles/${bundleId}/files/forget-missing`, 'POST', {
+    file_ids: fileIds ?? null,
+  })
 
 export const repairFile = (bundleId: string, fileId: string, replacementFileId: string) =>
   send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}/repair`, 'PUT', {

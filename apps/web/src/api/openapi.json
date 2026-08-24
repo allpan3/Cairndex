@@ -3384,6 +3384,45 @@
         "title": "FilterPreviewResponse",
         "type": "object"
       },
+      "ForgetMissingRequest": {
+        "description": "Which missing files to drop. ``None`` means every missing file in the\nbundle, which is what the card-level action sends.",
+        "properties": {
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Ids"
+          }
+        },
+        "title": "ForgetMissingRequest",
+        "type": "object"
+      },
+      "ForgetMissingResult": {
+        "properties": {
+          "bundle_deleted": {
+            "title": "Bundle Deleted",
+            "type": "boolean"
+          },
+          "forgotten": {
+            "title": "Forgotten",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "forgotten",
+          "bundle_deleted"
+        ],
+        "title": "ForgetMissingResult",
+        "type": "object"
+      },
       "Grouping": {
         "description": "How fast-add groups selected files into bundles.",
         "enum": [
@@ -8960,6 +8999,100 @@
           }
         },
         "summary": "Add File",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/forget-missing": {
+      "post": {
+        "description": "Drop the rows of files that are gone from disk (metadata only, ADR-0002).",
+        "operationId": "forget_missing_files_api_v1_libraries__library_id__bundles__bundle_id__files_forget_missing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgetMissingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetMissingResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forget Missing Files",
         "tags": [
           "bundles"
         ]

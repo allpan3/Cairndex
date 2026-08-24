@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ValidationError
+from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
@@ -581,6 +581,85 @@ def test_removing_a_missing_file_keeps_a_bundle_that_still_has_files(
     assert source.cover_file_id is None  # the dangling cover pointer was cleared
     assert {f.id for f in source.files} == {video_id}
     assert session.get(AssetFile, gone_id) is None
+
+
+# --- forget a file that is gone ----------------------------------------------
+def test_forgetting_a_missing_file_leaves_the_bundle_and_its_live_files(
+    session: Session,
+) -> None:
+    """The point of the action: shed one dead member without dissolving the
+    grouping, which deleting the bundle would have done."""
+    video = _unbundled(session, "show/ep01.mp4")
+    gone = _unbundled(session, "show/ep02.mp4")
+    result = apply_service.create_bundle_from_unbundled(session, [video.id, gone.id], title="Show")
+    session.commit()
+    bundle_id = result.bundle_id
+    gone.availability = FileAvailability.MISSING
+    session.commit()
+    video_id, gone_id = video.id, gone.id
+
+    forgotten = bundle_service.forget_missing_files(session, bundle_id, file_ids=[gone_id])
+    session.commit()
+    session.expire_all()
+
+    assert (forgotten.forgotten, forgotten.bundle_deleted) == (1, False)
+    bundle = session.get(AssetBundle, bundle_id)
+    assert bundle is not None
+    assert {f.id for f in bundle.files} == {video_id}
+    assert bundle.grouping_state is GroupingState.CONFIRMED  # still the same grouping
+    assert session.get(AssetFile, gone_id) is None
+
+
+def test_forgetting_every_missing_file_takes_the_emptied_bundle_with_it(
+    session: Session,
+) -> None:
+    """No file_ids means every missing file in the bundle — the card-level action.
+    A bundle with nothing left is removed rather than kept as an empty shell."""
+    first = _unbundled(session, "set/a.mp4")
+    second = _unbundled(session, "set/b.mp4")
+    result = apply_service.create_bundle_from_unbundled(session, [first.id, second.id], title="Set")
+    session.commit()
+    bundle_id = result.bundle_id
+    first.availability = FileAvailability.MISSING
+    second.availability = FileAvailability.MISSING
+    session.commit()
+
+    forgotten = bundle_service.forget_missing_files(session, bundle_id)
+    session.commit()
+
+    assert (forgotten.forgotten, forgotten.bundle_deleted) == (2, True)
+    assert session.get(AssetBundle, bundle_id) is None
+
+
+def test_forgetting_refuses_a_file_that_is_still_there(session: Session) -> None:
+    """Only a dead row can be forgotten. A present file is removed or trashed —
+    both of which mean something else — and a trashed one is recoverable, so it
+    is not dead either."""
+    live = _unbundled(session, "keep/clip.mp4")
+    session.commit()
+    bundle_id, live_id = live.bundle_id, live.id
+
+    with pytest.raises(ValidationError):
+        bundle_service.forget_missing_files(session, bundle_id, file_ids=[live_id])
+
+    live.availability = FileAvailability.TRASHED
+    session.commit()
+    with pytest.raises(ValidationError):
+        bundle_service.forget_missing_files(session, bundle_id, file_ids=[live_id])
+    # Asking for nothing in particular finds nothing to forget, and says so.
+    session.rollback()
+    assert bundle_service.forget_missing_files(session, bundle_id).forgotten == 0
+
+
+def test_forgetting_rejects_a_file_from_another_bundle(session: Session) -> None:
+    mine = _unbundled(session, "mine/clip.mp4")
+    theirs = _unbundled(session, "theirs/clip.mp4")
+    session.commit()
+    mine.availability = FileAvailability.MISSING
+    session.commit()
+
+    with pytest.raises(NotFoundError):
+        bundle_service.forget_missing_files(session, mine.bundle_id, file_ids=[theirs.id])
 
 
 # --- suggestions -------------------------------------------------------------
