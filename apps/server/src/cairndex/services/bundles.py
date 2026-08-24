@@ -7,6 +7,7 @@ library-relative path (ADR-0008) and validated through ``core.paths`` so no
 client input can escape the library root.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -198,6 +199,52 @@ def _forget_file(session: Session, asset_file: AssetFile) -> None:
         if emptied is not None:
             session.delete(emptied)
     session.flush()
+
+
+@dataclass(frozen=True)
+class ForgetResult:
+    """What one forget call dropped, and whether it emptied the bundle away."""
+
+    forgotten: int
+    bundle_deleted: bool
+
+
+def forget_missing_files(
+    session: Session, bundle_id: str, *, file_ids: list[str] | None = None
+) -> ForgetResult:
+    """Drop the rows of files that are no longer on disk (metadata only).
+
+    The owner's answer to a file they deleted outside Cairndex and do not intend
+    to restore: the alternative was deleting the whole bundle, which dissolves a
+    grouping to shed one dead member (owner, 2026-08-24). Repair stays the answer
+    when the file *moved*; this is for when it is simply gone.
+
+    ``file_ids`` selects rows explicitly; ``None`` takes every missing file in the
+    bundle. Only a ``MISSING`` row can be forgotten — a present file is removed
+    or trashed, both of which have their own meaning, and a trashed one is
+    recoverable from the trash rather than dead (ADR-0013 §3.2).
+    """
+    get_bundle(session, bundle_id)
+    rows = list_files(session, bundle_id)
+    if file_ids is None:
+        selected = [row for row in rows if row.availability is FileAvailability.MISSING]
+    else:
+        by_id = {row.id: row for row in rows}
+        unknown = [file_id for file_id in file_ids if file_id not in by_id]
+        if unknown:
+            raise NotFoundError(f"file {unknown[0]!r} is not part of bundle {bundle_id!r}")
+        selected = [by_id[file_id] for file_id in file_ids]
+        present = [row for row in selected if row.availability is not FileAvailability.MISSING]
+        if present:
+            raise ValidationError(
+                f"file {present[0].id!r} is not missing; only a missing file can be forgotten"
+            )
+    for row in selected:
+        _forget_file(session, row)
+    return ForgetResult(
+        forgotten=len(selected),
+        bundle_deleted=session.get(AssetBundle, bundle_id) is None,
+    )
 
 
 def delete_bundle(session: Session, bundle_id: str) -> None:

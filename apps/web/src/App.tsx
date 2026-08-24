@@ -27,6 +27,7 @@ import {
   useCleanupCollectionOrder,
   useCreateCollection,
   useDeleteBundles,
+  useForgetMissingFiles,
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
@@ -1248,6 +1249,10 @@ function Workspace({
   const probe = useProbe({ onProgress: setActiveJob })
   const storyboards = useStoryboards({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
+  // Shedding a dead member without dissolving the bundle around it — the answer
+  // to "the only way to dismiss a missing file is to delete the bundle" (owner,
+  // 2026-08-24).
+  const forgetMissing = useForgetMissingFiles()
   const deleteCollection = useDeleteCollection()
   const createCollection = useCreateCollection()
   const renameCollection = useRenameCollection()
@@ -1774,6 +1779,32 @@ function Workspace({
             batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
         })
       }
+      // Only for a bundle that has one: the point is dismissing a file that is
+      // gone without dissolving the grouping to do it.
+      if (n === 1 && filtered.find((item) => item.id === id)?.has_missing) {
+        items.push(null, {
+          label: 'Forget Missing Files',
+          onClick: () =>
+            forgetMissing.mutate(
+              { bundleId: id },
+              {
+                onSuccess: (result) => {
+                  if (result.bundle_deleted) {
+                    if (openBundleId === id) setOpenBundleId(null)
+                    setFlash('Forgot the missing files, and the bundle they emptied.')
+                    return
+                  }
+                  setFlash(
+                    result.forgotten === 1
+                      ? 'Forgot 1 missing file.'
+                      : `Forgot ${result.forgotten} missing files.`,
+                  )
+                },
+                onError: () => setFlash('Those files could not be forgotten.'),
+              },
+            ),
+        })
+      }
       items.push(null, {
         label: n > 1 ? `Delete ${n} Bundles` : 'Delete Bundle',
         danger: true,
@@ -1794,6 +1825,8 @@ function Workspace({
       hostFileActions,
       platform.kind,
       libraryId,
+      forgetMissing,
+      openBundleId,
     ],
   )
 

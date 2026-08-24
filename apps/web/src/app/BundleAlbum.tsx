@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { type FileRead, fileThumbnailUrl } from '../api/client'
-import { useBundle, useBundleFiles, useFileMutations, useFileOperations } from '../api/hooks'
+import {
+  useBundle,
+  useBundleFiles,
+  useFileMutations,
+  useFileOperations,
+  useForgetMissingFiles,
+} from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { ContextMenu } from './ContextMenu'
@@ -70,6 +76,8 @@ export function BundleAlbum({
   const { data: bundle } = useBundle(bundleId)
   const { data: files = [], isLoading } = useBundleFiles(bundleId)
   const fileMutations = useFileMutations(bundleId)
+  // Dropping the record of a file that is gone; see `useForgetMissingFiles`.
+  const forgetMissing = useForgetMissingFiles()
   const fileOps = useFileOperations()
   const [viewing, setViewing] = useState<number | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -141,6 +149,8 @@ export function BundleAlbum({
         onRevealFile,
         onLocateFile,
         onRemoveFromBundle: (files) => files.forEach((f) => fileMutations.remove.mutate(f.id)),
+        onForgetMissing: (files) =>
+          forgetMissing.mutate({ bundleId, fileIds: files.map((f) => f.id) }),
         onTrash: writeMode
           ? (files) => fileOps.trash.mutate(files.map((f) => f.relative_path))
           : undefined,

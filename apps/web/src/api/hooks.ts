@@ -62,6 +62,7 @@ import {
   createSmartCollection,
   deleteBundle,
   deleteBundleWithFiles,
+  forgetMissingFiles,
   deleteCollection,
   deleteLibrary,
   deleteSmartCollection,
@@ -2104,6 +2105,37 @@ export function useDeleteBundles() {
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
       // Unbundled list + File Browser badges must refresh too.
+      for (const key of [
+        'browse',
+        'view-counts',
+        'collection-counts',
+        'collection-stats',
+        'tag-counts',
+        'unbundled-files',
+        'file-browser',
+        'bundle',
+        'bundle-files',
+        'continue-watching',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
+}
+
+/**
+ * Forget files that are gone from disk (metadata only).
+ *
+ * The dismissal that is not "delete the bundle": a dead member goes and the
+ * grouping around it survives. `fileIds` omitted forgets every missing file in
+ * the bundle. Invalidates what deleting a bundle does, because the last one
+ * forgotten takes the bundle with it.
+ */
+export function useForgetMissingFiles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bundleId, fileIds }: { bundleId: string; fileIds?: string[] }) =>
+      forgetMissingFiles(bundleId, fileIds),
+    onSuccess: () => {
       for (const key of [
         'browse',
         'view-counts',

@@ -15,6 +15,7 @@ vi.mock('../api/hooks', () => ({
   useBundle: vi.fn(),
   useBundleFiles: () => ({ data: hooks.files }),
   useFileMutations: () => ({ reorder: hooks.reorder, remove: hooks.remove }),
+  useForgetMissingFiles: () => ({ mutate: vi.fn() }),
   useFileRepairCandidate: vi.fn(),
   useRepairFile: vi.fn(),
   useUpdateBundle: () => hooks.update,

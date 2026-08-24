@@ -22,6 +22,7 @@ import {
   useBundleFiles,
   useFileMutations,
   useFileRepairCandidate,
+  useForgetMissingFiles,
   useRepairFile,
   useUpdateBundle,
 } from '../api/hooks'
@@ -584,6 +585,8 @@ export function FileList({
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
+  // Dropping the record of a file that is gone; see `useForgetMissingFiles`.
+  const forgetMissing = useForgetMissingFiles()
   const missingCount = files.filter((file) => file.availability !== 'available').length
   // How much of each name is shared with a sibling and safe to collapse, so a
   // narrow rail truncates what the rows have in common instead of the ending
@@ -712,6 +715,8 @@ export function FileList({
                       ? (files) => onTrashFiles(files.map((file) => file.relative_path))
                       : undefined,
                     onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
+                    onForgetMissing: (files) =>
+                      forgetMissing.mutate({ bundleId, fileIds: files.map((file) => file.id) }),
                     onContactSheet: setSheetTarget,
                   }),
                 )

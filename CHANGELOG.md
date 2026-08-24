@@ -10,6 +10,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Forget a file that is gone.** A file deleted outside Cairndex could only be
+  dismissed by deleting the whole bundle around it — which dissolved the
+  grouping, scattered the surviving files back into Unbundled, and (until the
+  fix below) left the dead file behind anyway. **Forget Missing File** on a
+  file's own menu drops just that record; **Forget Missing Files** on a bundle
+  card drops every dead member and keeps the bundle, unless they were all it
+  had. Metadata-only: there is nothing on disk left to touch, and repair is
+  still the answer when a file *moved* rather than went.
+
+  A file that is gone no longer offers "Remove from Bundle" beside it. Removing
+  it drops the record too, so the two were one action under two names, and only
+  one of the names said so.
+
 - **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
   both are in the menu bar under `File` — greyed out when there is nothing they
   could act on, so the answer is visible before the keystroke.
