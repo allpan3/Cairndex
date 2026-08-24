@@ -250,6 +250,13 @@ mod tests {
     fn enablement_groups_are_populated() {
         assert!(!items_requiring("library").is_empty());
         assert!(!items_requiring("server").is_empty());
+        assert_eq!(
+            items_requiring("host-file")
+                .iter()
+                .map(|(_, id)| *id)
+                .collect::<Vec<_>>(),
+            vec!["open-file", "reveal-file"]
+        );
         // Split groups: an image bundle enables `viewer` only, since the rest need
         // a PlayerController that image playback never creates.
         assert_eq!(

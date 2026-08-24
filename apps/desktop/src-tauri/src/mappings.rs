@@ -573,6 +573,44 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
     Ok(Some(root_text))
 }
 
+/// Adopts the local server's own path for a library, with no folder picker.
+///
+/// The ceremony above exists for a *remote* server, whose `root_path` names a
+/// directory on that machine and means nothing here — Finder cannot open
+/// `/volume1/media`. The sidecar is not that: this shell spawned it, and the
+/// path it reports is a path on this Mac that it is actively reading from. So
+/// asking the owner to locate that folder is asking them to point at one the app
+/// already has open, and it left Open in Default App and Reveal in Finder
+/// disabled for want of an answer the shell already had (owner, 2026-08-24).
+///
+/// Validated, not trusted. `validate_library_root` requires the folder to exist
+/// here *and* to carry a `.cairndex` marker whose uuid matches this library, so a
+/// path that is not this library on this machine is refused rather than stored —
+/// which is what makes accepting a server-supplied path safe at all. The caller
+/// still restricts this to the local sidecar: for a remote server a
+/// coincidentally-present local *copy* of the library would match the marker,
+/// and mapping a copy would quietly reveal the wrong files.
+#[tauri::command]
+pub(crate) async fn adopt_library_mapping<R: Runtime>(
+    app: AppHandle<R>,
+    library_id: String,
+    library_uuid: String,
+    local_root: String,
+) -> Result<Option<String>, MappingError> {
+    validate_library_id(&library_id)?;
+    async_runtime::spawn_blocking(move || {
+        remember_mapping(&app, &library_id, &library_uuid, Path::new(&local_root))?;
+        // Report the canonical form, which is what was stored.
+        Ok(Some(
+            validate_library_root(Path::new(&local_root), &library_uuid)?
+                .to_string_lossy()
+                .into_owned(),
+        ))
+    })
+    .await
+    .map_err(|_| MappingError::store_task_failed())?
+}
+
 // Removes one local mapping without touching the server library or its files
 #[tauri::command]
 pub(crate) async fn clear_library_mapping<R: Runtime>(
@@ -973,6 +1011,47 @@ mod tests {
             .expect_err("swapped library");
 
         assert_eq!(error.code, MappingErrorCode::LibraryMismatch);
+    }
+
+    // --- adopting the local server's own path (no picker) --------------------
+    // `adopt_library_mapping` takes a path the *server* named, which is only
+    // safe because this validation stands between the two. These are that seam.
+
+    #[test]
+    fn adopting_accepts_the_folder_that_really_is_this_library() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+
+        let verified = validate_library_root(root.path(), "library-one").expect("this library");
+
+        assert_eq!(verified, fs::canonicalize(root.path()).expect("canonical"));
+    }
+
+    #[test]
+    fn adopting_refuses_a_folder_holding_a_different_library() {
+        // The hazard behind restricting adoption to the local sidecar: some other
+        // library sitting at a path a server named is not this one, and mapping
+        // it would reveal the wrong files under this library's name.
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-two");
+
+        let error = validate_library_root(root.path(), "library-one").expect_err("other library");
+
+        assert_eq!(error.code, MappingErrorCode::LibraryMismatch);
+    }
+
+    #[test]
+    fn adopting_refuses_a_path_that_does_not_exist_on_this_machine() {
+        // A remote server's own root — `/volume1/media` and the like. Nothing to
+        // canonicalize, so the marker is never even consulted. It reports the
+        // same "not mounted" class a detached volume does, which is the right
+        // reading: from here the two are indistinguishable.
+        let root = TestDir::new();
+        let elsewhere = root.path().join("not-mounted-here");
+
+        let error = validate_library_root(&elsewhere, "library-one").expect_err("absent path");
+
+        assert_eq!(error.code, MappingErrorCode::VolumeNotMounted);
     }
 
     // --- picking a folder to add (unified add-library flow) ------------------

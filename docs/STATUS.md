@@ -283,6 +283,131 @@ the Rust edit, so ⌘H is testable in the app already open — **the runtime
 confirmation is the owner's**, since reading a native menu bar here needs
 accessibility permission this session does not have.
 
+### Reveal in Finder was there, and invisible (2026-08-23)
+
+Owner: "I need a way to reveal a file in Finder… map to command-enter", then
+"What? I don't see it" when told it existed.
+
+It did exist, on three context menus (bundle card, a bundle's file rows, File
+Browser rows) — but `hostFileMenuEntries` **omits** the entries rather than
+disabling them, and the callers gate them on several things at once. Any of these
+removes the action with no trace:
+
+- more than one bundle selected (the card menu passes a path only when `n === 1`);
+- a bundle whose current file is missing **or of an unsupported format**, because
+  the card menu gates on `resume_relative_path`, which `_summarize` fills only
+  when `is_openable` — `AVAILABLE and is_supported`;
+- a library with no local mapping (`libraryMapped`), which is also what silences
+  Open and drag-out.
+
+Checked the owner's own store: `cairndex-settings.json` holds five
+`libraryMappings`, so the mapping gate was probably *not* the cause for them —
+the likelier one is the second, since the Missing Files view is entirely made of
+bundles with no openable current file.
+
+**The fix is a menu-bar item**, `File ▸ Reveal in Finder` on ⌘↩, because the menu
+bar is the one surface that can always be looked at. It is gated on the existing
+`library` group so it is always shown, and every refusal explains itself through
+the flash rather than vanishing: nothing selected, a folder selected, or the
+library needing to be located on this computer.
+
+`app/revealTarget.ts` resolves the target from the **visible surface** rather
+than a priority chain — File Browser entry; or, in the Bundle Browser, the file
+selected inside an open bundle, else the selected bundle's playback file. All
+Tags resolves to nothing, because it shows no files and a bundle selection
+carried over from the grid is off screen. The viewer is deliberately not a
+source: its current file lives in its own state, and an accelerator is handled by
+the OS before the webview sees it, so wiring it would mean publishing the
+viewer's position upward for a case the context menus already cover.
+
+The label is macOS wording by decision, recorded in the table's own comment: the
+shell is macOS-only (ADR-0012), and the per-platform strings the context menus
+use are `hostLabels.revealFile` in `platform/index.ts`. A second desktop platform
+would need to set this item's text at runtime from those.
+
+**Then the owner sent a screenshot** of a bundle file-row menu with four items
+and neither host action, and added that Open in Default App was missing too.
+Which located the real fault: `hostFileMenuEntries` **omits** the pair whenever
+its callbacks are absent, and App withholds both for a library with no local
+mapping — so a library on a network mount comes up two items short on all four
+menus with nothing to say why. Verified on the owner's machine: of the two
+libraries their shell knows, the **network-mounted one has no entry in
+`libraryMappings`** while the local one does. Two silently absent actions read as
+two features that were never built.
+
+A first attempt rendered the pair **disabled** in the context menus with
+**Locate on This Mac…** beside them. **The owner rejected that** — "Do not put
+this in context menu" — and it was withdrawn, along with the two fields it had
+threaded through the inspector-actions context, the album grid, the File Browser
+and the file-row menu. `hostFileMenuEntries` is back to leaving the pair out.
+The right conclusion in hindsight: with the local server's path now adopted
+automatically (below), the case those rows explained does not arise in normal
+use, and the menu bar is where an explanation belongs anyway.
+
+The menu-bar items are greyed out when nothing is actionable, as asked: both sit
+in a `host-file` enablement group behind `set_host_file_menu_enabled`, published
+from the SPA as the selection moves. Sitting in `library` would have made them
+live and then apologetic. One group for both because they need the same thing — a
+resolvable local path for the selected file — and one handler, since they differ
+only in which handoff runs.
+
+**Open in Default App joined it on ⇧↩** (owner, 2026-08-24).
+`revealTarget.ts` became `hostFileTarget.ts`, since one resolver now serves both.
+
+It was first bound to ⇧⌘↩ on the reasoning that a bare ⇧↩ would "take the soft
+line break out of every note box". **The owner asked who had taken ⇧↩, and the
+answer was nobody** — and the stated cost was wrong: the note box has no keydown
+handler at all, so its line break comes from *plain* Enter, which an accelerator
+on ⇧↩ does not touch. Rebound as asked. The keymap table's own comment now
+records ⇧↩ as the one Shift-only accelerator, what was checked before agreeing to
+it, and the cost that does remain: Shift held over from typing turns the next
+Enter into a file launch rather than a newline. **The lesson is the general one —
+"a text field wants that key" is a claim to verify against the handlers, not a
+reflex.**
+
+Threading the two new fields through the inspector-actions interface made
+`Inspector.parity.test.tsx` fail until the shell fixture supplied them — the
+drift that test was built to catch, working.
+
+**Then the owner asked the question that mattered:** "Why do we need locate on
+this mac? library is on a mounted disk and can be directly opened." Right, for
+their case — and it is now automatic.
+
+The ceremony exists for a *remote* server, whose `root_path` names a directory on
+that machine (`/volume1/media`), which Finder cannot open here; the shell cannot
+derive a local path, so it asks, and proves the pick with the folder's
+`.cairndex` marker. None of that describes the local sidecar: this shell spawned
+it, its `root_path` is a path on this Mac, and the SPA already receives it on
+every `LibraryRead`. The app was asking the owner to locate a folder it had open.
+
+`mappings::adopt_library_mapping` records it with no picker, through the **same**
+`validate_library_root` the pick uses — the folder must exist here and carry a
+marker whose uuid matches. That check is what makes accepting a server-named path
+safe rather than a breach of "never trust a client-supplied absolute path": the
+path is validated, not believed. The caller restricts it to `kind: 'local'`
+connections regardless, because for a remote server a coincidentally-present
+local **copy** of the library would satisfy the marker and then reveal the wrong
+files — that is the one hazard the ceremony still earns its keep against.
+
+Three Rust tests pin the seam: the folder that is this library is accepted, one
+holding a different library is refused as `LibraryMismatch`, and a path absent
+from this machine is refused as `VolumeNotMounted` — which is what a remote root
+looks like from here, and is indistinguishable from a detached volume, so the
+same class is the honest answer.
+
+**Known and not fixed** (spawned as follow-up work): a bundle card whose current
+file is missing or unsupported still has no reveal target on either the menu or
+the shortcut, for the `resume_relative_path` reason above. Revealing an
+*unsupported* file is one of the better reasons to want Finder, so this is worth
+correcting; revealing a *missing* one should be refused with a reason.
+
+Gates: `apps/web` lint / format / typecheck / **918 tests** / build;
+`apps/desktop/src-tauri` fmt / clippy `-D warnings` / **117 tests**. ⌘↩ itself is
+**not verified here** — an accelerator only exists inside the shell, and driving
+the native menu bar needs accessibility permission this session does not have.
+The owner's `tauri dev` rebuilds on the keymap edit, so it is testable in the app
+they have open.
+
 ### The bundle layouts: black frames, one name, one range (2026-08-23)
 
 Four reports about the two grid layouts.
