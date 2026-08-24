@@ -4566,10 +4566,30 @@ code {
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+/* The playlist is capped at roughly half the player and scrolls inside that
+   cap. Uncapped it grew one row per file until the panel ran the full height of
+   the window, which buried the metadata above it and left the whole side of the
+   picture covered (owner, 2026-08-23). The panel's own `max-height` still
+   applies, so a short window clips nothing — it just scrolls the panel too. */
 .mv-info__files {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.mv-info__files::-webkit-scrollbar {
+  width: 5px;
+}
+.mv-info__files::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mv-info__files::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+}
+.mv-info__files::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.36);
 }
 .mv-info__file {
   display: flex;
