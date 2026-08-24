@@ -52,7 +52,11 @@ import {
   createEmptyBundle,
   createLibrary,
   createTag,
+  createTagGroup,
   deleteTag,
+  deleteTagGroup,
+  renameTagGroup,
+  setTagGroupTags,
   updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
@@ -1241,6 +1245,9 @@ export function useCreateTag() {
  * Existing segments are matched case-insensitively against `existing` — the tag
  * list the caller is already rendering from — so typing a parent that exists
  * nests under it rather than erroring on the sibling-name constraint.
+ *
+ * `parentId` roots the path somewhere other than the top level, which is what
+ * "New Child Tag" on the All Tags page needs; the slash still nests from there.
  */
 export function useCreateTagPath() {
   const qc = useQueryClient()
@@ -1248,9 +1255,12 @@ export function useCreateTagPath() {
     mutationFn: async ({
       path,
       existing,
+      parentId: startParentId = null,
     }: {
       path: string
       existing: TagRead[]
+      /** Create beneath this tag instead of at the top level. */
+      parentId?: string | null
     }): Promise<TagRead> => {
       const segments = path
         .split('/')
@@ -1258,7 +1268,7 @@ export function useCreateTagPath() {
         .filter(Boolean)
       if (segments.length === 0) throw new Error('tag name must not be empty')
       const known = [...existing]
-      let parentId: string | null = null
+      let parentId: string | null = startParentId
       let leaf: TagRead | null = null
       for (const name of segments) {
         const found = known.find(
@@ -1345,6 +1355,64 @@ export function useTagCounts() {
     queryKey: ['tag-counts'],
     queryFn: ({ signal }) => fetchTagCounts(signal),
   })
+}
+
+/** Create/rename/delete tag groups, and move a tag in or out of one.
+ *
+ * The server replaces a group's membership wholesale (there is no add/remove
+ * verb), so `addTag`/`removeTag` read the group's current members from the
+ * `tag-group-memberships` cache the page already renders from and send the
+ * amended list. A group whose membership has not been fetched yet is read from
+ * the network first rather than assumed empty — sending a short list would
+ * silently drop every other tag in the group. */
+export function useTagGroupMutations() {
+  const qc = useQueryClient()
+  // Group membership changes what the All Tags panels and the picker's group
+  // tabs list; the tags themselves and their counts are untouched.
+  const invalidate = () => {
+    for (const key of ['tag-groups', 'tag-group-memberships'])
+      qc.invalidateQueries({ queryKey: [key] })
+  }
+  const membersOf = async (groupId: string): Promise<string[]> => {
+    const cached = qc
+      .getQueriesData<Record<string, string[]>>({ queryKey: ['tag-group-memberships'] })
+      .map(([, data]) => data?.[groupId])
+      .find((ids) => ids !== undefined)
+    return cached ?? (await fetchTagGroupTags(groupId))
+  }
+  return {
+    create: useMutation({
+      mutationFn: (name: string) => createTagGroup(name),
+      onSuccess: invalidate,
+    }),
+    rename: useMutation({
+      mutationFn: ({ id, name }: { id: string; name: string }) => renameTagGroup(id, name),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteTagGroup(id),
+      onSuccess: invalidate,
+    }),
+    addTag: useMutation({
+      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
+        const current = await membersOf(groupId)
+        if (current.includes(tagId)) return
+        await setTagGroupTags(groupId, [...current, tagId])
+      },
+      onSuccess: invalidate,
+    }),
+    removeTag: useMutation({
+      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
+        const current = await membersOf(groupId)
+        if (!current.includes(tagId)) return
+        await setTagGroupTags(
+          groupId,
+          current.filter((id) => id !== tagId),
+        )
+      },
+      onSuccess: invalidate,
+    }),
+  }
 }
 
 /** Map of tag-group id → its member tag ids, for the tag picker's group tabs. */

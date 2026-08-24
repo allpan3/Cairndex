@@ -467,6 +467,16 @@ function NoteBox({
     return () => ro.disconnect()
   }, [height])
 
+  // Whether each of the last two gestures on the grip moved the box, oldest
+  // first. A drag is also a press-and-release on the same element, so the
+  // browser counts it as a click, and two drags in quick succession synthesise
+  // a `dblclick` — which is bound to fit-to-text. Bringing a tall note down
+  // takes several small drags, so the second one sprang it straight back to
+  // full height and the box read as simply not shrinkable (owner, 2026-08-23).
+  // Tracked as gestures rather than elapsed time because the double-click
+  // threshold is a system setting, so no timeout is reliably longer than it.
+  const gestures = useRef<[boolean, boolean]>([false, false])
+
   const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = ref.current
     if (!el) return
@@ -485,6 +495,7 @@ function NoteBox({
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      gestures.current = [gestures.current[1], dragged]
       if (dragged) {
         onResize(el.offsetHeight) // persist the chosen height (switches to fixed)
       } else if (height == null) {
@@ -493,6 +504,14 @@ function NoteBox({
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+  }
+
+  // Fit only when *neither* half of the double-click moved the box: a
+  // double-click whose halves were drags is an adjustment, not a request to
+  // undo one.
+  const fitToText = () => {
+    if (gestures.current[0] || gestures.current[1]) return
+    onResize(null)
   }
 
   return (
@@ -521,7 +540,7 @@ function NoteBox({
       <div
         className="note-resize"
         onPointerDown={startResize}
-        onDoubleClick={() => onResize(null)}
+        onDoubleClick={fitToText}
         title="Drag to resize · double-click to fit"
         aria-hidden="true"
       />

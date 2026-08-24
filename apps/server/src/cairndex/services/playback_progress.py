@@ -168,7 +168,7 @@ def progress_for_files(session: Session, file_ids: list[str]) -> dict[str, Progr
 
 # Return bundle summaries with an unfinished progress row, newest progress first
 def continue_watching(session: Session, *, offset: int, limit: int) -> ContinueWatchingPage:
-    from cairndex.services.browse import _summarize
+    from cairndex.services.browse import summarize_page
 
     ranked = (
         select(
@@ -206,10 +206,12 @@ def continue_watching(session: Session, *, offset: int, limit: int) -> ContinueW
     if not bundle_ids:
         return ContinueWatchingPage(items=[], total=total, offset=offset, limit=limit)
     bundles = list(session.scalars(select(AssetBundle).where(AssetBundle.id.in_(bundle_ids))))
-    by_id = {bundle.id: bundle for bundle in bundles}
+    # One load for the whole page rather than one per row: same reason as the
+    # browse grid (see `browse._load_page_rows`).
+    summary_by_id = {summary.id: summary for summary in summarize_page(session, bundles)}
     items = [
         ContinueWatchingItem(
-            bundle=_summarize(session, by_id[bundle_id]),
+            bundle=summary_by_id[bundle_id],
             progress=ProgressValue(
                 file_id=file_id,
                 bundle_id=bundle_id,

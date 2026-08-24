@@ -108,6 +108,15 @@ def build_benchmarks(session: Session, total_bundles: int) -> list[tuple[str, Ca
             "browse_deep_pagination",
             lambda: browse_service.browse_bundles(session, offset=deep_offset, limit=100),
         ),
+        # The Random view's page is scattered across the table by design, so it
+        # is the browse case with the least page-cache reuse — the one to watch
+        # on a network-mounted library.
+        (
+            "browse_random_first_page",
+            lambda: browse_service.browse_bundles(
+                session, view=browse_service.SystemView.RANDOM, seed=1234, limit=100
+            ),
+        ),
         ("view_counts", lambda: browse_service.view_counts(session)),
         ("collection_counts", lambda: browse_service.collection_counts(session)),
         ("tag_counts", lambda: browse_service.tag_counts(session)),

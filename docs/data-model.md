@@ -222,6 +222,12 @@ by `sort_order`, and its drag gesture **reparents** a tag (sets `parent_id`, via
 the manual sibling-reorder endpoint (`PUT /tags/reorder`) was removed once the UI
 switched to name ordering + reparent-by-drag.
 
+The page is also where tags are **created**: `POST /tags` from its toolbar for a
+top-level tag or from a tag's context menu for a child, reading `/` in the typed
+name as a hierarchy divider (each segment reused if a sibling of that name
+already exists, else created — the same rule the bundle tag picker uses). A tag
+created while a group panel is open is also added to that group.
+
 **Tag deletion (safe-delete):** the delete service blocks a tag that still has
 child tags (a friendly 409, no cascade) so the owner deletes or moves the
 children first. A *leaf* tag deletes outright; its bundle/tag assignments and
@@ -243,6 +249,16 @@ order and `GET /tag-groups/{id}/tags` returns member ids in that order (the
 dedicated `PUT /tag-groups/{id}/tags/order` reorder endpoint was removed with the
 tag-reorder cleanup). Group membership never changes a tag's hierarchy
 `parent_id`.
+
+Groups are created, renamed and deleted from the All Tags side rail, and a tag
+joins or leaves one from its context menu or by being dragged onto a group row —
+a gesture deliberately distinct from the drag-onto-a-tag reparent above, and one
+that leaves `parent_id` alone. Because the API replaces a group's membership
+wholesale (`PUT /tag-groups/{id}/tags`), the client sends the amended full list,
+reading the current members from the cache it already renders from and falling
+back to `GET /tag-groups/{id}/tags` for a group it has not fetched — sending a
+short list would silently drop the rest of the group. Deleting a group is
+metadata-only: memberships cascade, the tags themselves are untouched.
 
 ### `collections`
 

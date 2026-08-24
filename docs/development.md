@@ -250,6 +250,14 @@ between the two consumers; the SPA reads the same file through
 `platform/keymap.ts` for action typing and the shortcut reference. Edit the
 table, not `app_menu.rs`.
 
+A `predefined` entry names a Tauri built-in (`hide`, `undo`, `minimize`, …).
+Adding a *new* name is the one case that also needs a line in `app_menu.rs`,
+because the shell has to know which builder call it means; a test walks the table
+against the list it knows, so a typo fails there rather than panicking at
+startup. The App menu's `hide` / `hide-others` / `show-all` trio is where macOS's
+⌘H and ⌘⌥H come from — a fully custom menu bar that omits them leaves those
+combos dead, which is what the shell shipped with until 2026-08-23.
+
 Table fields: `accelerator` is the OS-level binding (always modifier-based, so
 it can never swallow a keystroke meant for a text field — a test enforces this);
 `keys` lists the bare-key bindings the web app handles itself in the focused

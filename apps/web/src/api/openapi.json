@@ -815,6 +815,17 @@
       },
       "BundleSummary": {
         "properties": {
+          "cover_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Height"
+          },
           "cover_key": {
             "anyOf": [
               {
@@ -825,6 +836,17 @@
               }
             ],
             "title": "Cover Key"
+          },
+          "cover_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Width"
           },
           "date_added": {
             "format": "date-time",
@@ -1068,6 +1090,8 @@
           "has_cover",
           "openable",
           "cover_key",
+          "cover_width",
+          "cover_height",
           "resume_file_id",
           "resume_file_updated_at",
           "resume_media_kind",
@@ -1614,6 +1638,17 @@
       },
       "ContinueWatchingItem": {
         "properties": {
+          "cover_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Height"
+          },
           "cover_key": {
             "anyOf": [
               {
@@ -1624,6 +1659,17 @@
               }
             ],
             "title": "Cover Key"
+          },
+          "cover_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Width"
           },
           "date_added": {
             "format": "date-time",
@@ -1870,6 +1916,8 @@
           "has_cover",
           "openable",
           "cover_key",
+          "cover_width",
+          "cover_height",
           "resume_file_id",
           "resume_file_updated_at",
           "resume_media_kind",

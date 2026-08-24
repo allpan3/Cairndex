@@ -171,7 +171,18 @@ interface PlatformRuntime {
   saveServerUrl(serverUrl: string): Promise<void>
   normalizeServerUrl(value: string): Promise<string>
   listenMenu(handler: (action: DesktopMenuAction) => void): Promise<() => void>
+  /**
+   * Record the local server's own path for a library without a folder picker,
+   * returning the stored root, or null where no host can do it. Only meaningful
+   * for the local sidecar — see the Rust command's own note.
+   */
+  adoptLibraryMapping(
+    libraryId: string,
+    libraryUuid: string,
+    localRoot: string,
+  ): Promise<string | null>
   setLibraryAvailable(enabled: boolean): Promise<void>
+  setHostFileActionsAvailable(enabled: boolean): Promise<void>
   setServerAvailable(enabled: boolean): Promise<void>
   setViewerMenuAvailable(viewer: boolean, video: boolean): Promise<void>
   toggleWindowFullscreen(): Promise<boolean>
@@ -279,7 +290,9 @@ const webRuntime: PlatformRuntime = {
   saveServerUrl: async () => undefined,
   normalizeServerUrl: async (value) => value,
   listenMenu: async () => () => undefined,
+  adoptLibraryMapping: async () => null,
   setLibraryAvailable: async () => undefined,
+  setHostFileActionsAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
   setViewerMenuAvailable: async () => undefined,
   // The browser has no native window fullscreen; the viewer keeps using the
@@ -447,8 +460,22 @@ export const normalizeHostServerUrl = (value: string): Promise<string> =>
   runtime.normalizeServerUrl(value)
 export const listenHostMenu = (handler: (action: DesktopMenuAction) => void): Promise<() => void> =>
   runtime.listenMenu(handler)
+// Adopts the local server's own library path, so a library this Mac is already
+// serving needs no "locate" ceremony to gain its host actions.
+export const adoptHostLibraryMapping = (
+  libraryId: string,
+  libraryUuid: string,
+  localRoot: string,
+): Promise<string | null> => runtime.adoptLibraryMapping(libraryId, libraryUuid, localRoot)
+
 export const setHostLibraryAvailable = (enabled: boolean): Promise<void> =>
   runtime.setLibraryAvailable(enabled)
+
+// Greys out Open in Default App and Reveal in Finder when there is nothing they
+// could act on, so the menu bar answers the question before it is pressed
+// (owner, 2026-08-23).
+export const setHostFileActionsAvailable = (enabled: boolean): Promise<void> =>
+  runtime.setHostFileActionsAvailable(enabled)
 export const setHostServerAvailable = (enabled: boolean): Promise<void> =>
   runtime.setServerAvailable(enabled)
 
