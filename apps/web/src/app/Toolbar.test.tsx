@@ -76,3 +76,17 @@ test('every other view keeps its sort control and shows no action', () => {
   expect(order.indexOf('Filters')).toBeLessThan(order.indexOf('Search'))
   expect(order.indexOf('Search')).toBeLessThan(order.indexOf('Layout'))
 })
+
+test('each layout offers a drawn icon rather than a box-drawing glyph', () => {
+  renderToolbar()
+
+  // ▦ and ▥ stood for Card and Justified, and at 15px they were near
+  // indistinguishable — neither said anything about the layout it selected
+  // (owner, 2026-08-23). The icons draw what each layout does, so the pair reads
+  // as a contrast: equal tiles against variable-width ones.
+  for (const name of ['Card', 'Justified', 'List']) {
+    const button = screen.getByRole('button', { name })
+    expect(button.querySelector('svg'), name).not.toBeNull()
+    expect(button.textContent, name).toBe('')
+  }
+})

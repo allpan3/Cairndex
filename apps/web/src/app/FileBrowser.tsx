@@ -19,7 +19,16 @@ import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './Fil
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
-import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
+import {
+  IconCaptions,
+  IconFile,
+  IconFilm,
+  IconFolder,
+  IconImage,
+  IconLayoutCard,
+  IconLayoutList,
+  IconMusic,
+} from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
 import { selectionTargets, suppressShiftSelection } from './selection'
@@ -768,7 +777,7 @@ function FileList({
             aria-label="Card"
             aria-pressed={prefs.layout === 'grid'}
           >
-            ▦
+            <IconLayoutCard />
           </button>
           <button
             className={prefs.layout === 'list' ? 'is-active' : ''}
@@ -777,7 +786,7 @@ function FileList({
             aria-label="List"
             aria-pressed={prefs.layout === 'list'}
           >
-            ☰
+            <IconLayoutList />
           </button>
         </div>
 
