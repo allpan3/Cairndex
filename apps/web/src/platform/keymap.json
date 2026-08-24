@@ -30,7 +30,11 @@
     "always enabled.",
     "",
     "'predefined' selects a Tauri built-in menu item (OS-localized, native behavior);",
-    "such entries carry no id/accelerator of their own."
+    "such entries carry no id/accelerator of their own. The App menu's hide/hide-others/",
+    "show-all trio is where macOS's Cmd-H and Cmd-Opt-H come from: a fully custom menu",
+    "bar with no Hide item leaves those combos dead, which is what happened (owner,",
+    "2026-08-23). Their accelerators are the OS's, not this table's, so the keymap test's",
+    "IMPLICIT list is what keeps a future explicit item from shadowing them."
   ],
   "menus": [
     {
@@ -50,6 +54,18 @@
           "browserReserved": false,
           "requires": null,
           "keys": []
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "hide"
+        },
+        {
+          "predefined": "hide-others"
+        },
+        {
+          "predefined": "show-all"
         },
         {
           "separator": true

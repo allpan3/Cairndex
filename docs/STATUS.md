@@ -245,6 +245,44 @@ Tests for the three: 7 new component/unit tests (900 web tests total, up from
 green. No server file changed, so the backend gate was not re-run for this
 round.
 
+### Two more, one of them the first desktop-shell change (2026-08-23)
+
+**Toolbar actions sit left of the resident controls.** Random's Shuffle stood in
+the sort control's slot — defensible, since Random has no sort — but that put it
+between the search box and the layout buttons. The residents are furniture whose
+positions are worth learning, so an action appearing among them shifts all of
+them. Actions now go immediately after the spacer, which is where the File
+Browser's Add Files Here / New Folder and Trash's Empty Trash… already were, and
+Random simply omits the sort control. A test pins the order and was verified
+failing against the old placement.
+
+**⌘H hides the app.** The shell builds its whole menu bar from
+`apps/web/src/platform/keymap.json`, and that table's App menu was About /
+Settings / Quit. On macOS the Hide *menu item* is where ⌘H comes from, so with no
+such item the combo was simply dead — nothing was intercepting it. Added the
+standard trio (`hide`, `hide-others`, `show-all`) with their arms in
+`app_menu.rs`. **Not target-gated:** Tauri and muda expose all three on every
+platform and they no-op where the concept does not exist, checked against
+`muda-0.19.3`'s source rather than assumed, so the Ubuntu Rust-only job is
+unaffected and no `#[cfg]` module was needed (AGENTS.md §gates).
+
+Two guards, because that table is edited from the web app's side too: every
+`predefined` name in it must be one `app_menu.rs` can build (an unknown one
+panics when the menu is built, i.e. at startup in a packaged build), and the App
+menu must still carry the hide family. ⌘H and ⌘⌥H joined the keymap test's
+`IMPLICIT` list so a future explicit accelerator cannot shadow them.
+
+Gates for this round: `apps/web` lint / format / typecheck / **903 tests** /
+build, and `apps/desktop/src-tauri` cargo fmt --check, clippy
+`--all-targets -D warnings`, and `cargo test` — **117 passed**, 2 of them new.
+**`npm run tauri build` was not run**: the change is a menu-table edit that
+clippy and the tests already cover on every target, the packaged build adds no
+check it could fail, and it would have held the cargo build lock against the
+owner's live `tauri dev` for minutes. That dev session did rebuild and restart on
+the Rust edit, so ⌘H is testable in the app already open — **the runtime
+confirmation is the owner's**, since reading a native menu bar here needs
+accessibility permission this session does not have.
+
 ### Tests run
 
 - `apps/server`: ruff check, ruff format --check, mypy, pytest — **1112 passed,

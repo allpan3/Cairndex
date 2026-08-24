@@ -412,6 +412,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Continue Watching had the same per-row load and gets the same fix. A test pins
   the statement count so it cannot creep back a row at a time.
 
+- **⌘H hides the desktop app.** It did nothing, because the shell builds its
+  whole menu bar from the shared keymap table and that table's App menu had no
+  **Hide** item — and on macOS the Hide item *is* where ⌘H comes from. The App
+  menu now carries the standard trio: Hide Cairndex (⌘H), Hide Others (⌘⌥H) and
+  Show All. Their accelerators belong to the OS rather than the table, so the
+  test that stops an app shortcut shadowing a built-in one knows about them now
+  too.
+
+- **A toolbar action no longer sits in the middle of the row.** Random's
+  **Shuffle** button occupied the sort control's slot — for a good reason, since
+  Random has no sort — which put it between the search box and the layout
+  buttons. The residents (filter, search, sort, layout, zoom) are furniture whose
+  positions are worth learning, so an action appearing among them shifts the lot.
+  Actions now sit immediately left of the residents, which is where the File
+  Browser's **Add Files Here** / **New Folder** and Trash's **Empty Trash…**
+  already were.
+
 - **A collection can be renamed again.** The inline rename box existed but
   nothing ever reopened it: it appeared once, on a row, in the seconds after
   that collection was created — so a collection named by accident, or named

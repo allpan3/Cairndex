@@ -13,7 +13,7 @@ interface ToolbarProps {
   /** Leading controls before the title — the Back/Forward history buttons. */
   leading?: ReactNode
   /**
-   * Set in the Random view: replaces the sort control with a Reshuffle button —
+   * Set in the Random view: adds a Reshuffle button and drops the sort control —
    * explicit sorting would just un-shuffle the one thing the view is for.
    */
   onReshuffle?: () => void
@@ -85,6 +85,24 @@ export function Toolbar({
         <span className="toolbar__count">{total.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
 
+        {/* Actions sit left of the resident controls, which is where the File
+            Browser and Trash toolbars already put theirs: the residents are
+            furniture the owner learns the position of, so an action appearing
+            or disappearing between them shifts every one of them (owner,
+            2026-08-23). Reshuffle used to occupy the sort control's slot for
+            exactly the reason it replaces it — Random has no sort — but that put
+            it in the middle of the row. */}
+        {onReshuffle && (
+          <button
+            className="seg toolbar__reshuffle"
+            onClick={onReshuffle}
+            aria-label="Reshuffle"
+            title="Reshuffle"
+          >
+            ↺ Shuffle
+          </button>
+        )}
+
         <button
           className={`seg toolbar__filter-toggle${filtersOpen ? ' is-active' : ''}`}
           onClick={() => setFiltersOpen((o) => !o)}
@@ -105,16 +123,9 @@ export function Toolbar({
           title="Search titles, filenames, tags, and collections across the whole library"
         />
 
-        {onReshuffle ? (
-          <button
-            className="seg toolbar__reshuffle"
-            onClick={onReshuffle}
-            aria-label="Reshuffle"
-            title="Reshuffle"
-          >
-            ↺ Shuffle
-          </button>
-        ) : (
+        {/* No sort in Random: explicit sorting would un-shuffle the one thing
+            the view is for. The Reshuffle button above stands in its place. */}
+        {!onReshuffle && (
           <SortControl
             sort={sort}
             order={order}

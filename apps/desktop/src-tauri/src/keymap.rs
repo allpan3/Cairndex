@@ -192,6 +192,8 @@ mod tests {
             "CmdOrCtrl+C",       // copy
             "CmdOrCtrl+V",       // paste
             "CmdOrCtrl+A",       // select all
+            "CmdOrCtrl+H",       // hide
+            "CmdOrCtrl+Alt+H",   // hide others
             "CmdOrCtrl+M",       // minimize
             "CmdOrCtrl+W",       // close window
         ];
