@@ -5882,6 +5882,31 @@ code {
   font-size: 12px;
 }
 
+/* The optional "and add it to a bundle" offer, below the folder list. Reuses the
+   bundling dialogs' own row so a suggestion reads the same wherever it appears
+   — same title/reason stack, same hover — rather than inventing a second look
+   for the same idea. */
+.dir-picker__bundles {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.dir-picker__bundles-head {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dir-picker__bundle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 168px;
+  overflow: auto;
+}
+
 /* --- Copy files in (ADR-0013 §7) ------------------------------------------ */
 /* The whole listing is the drop target, not a separate zone: the folder being
    browsed is where the files go, so the folder's own body is the honest edge. */

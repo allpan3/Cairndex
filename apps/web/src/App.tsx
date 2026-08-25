@@ -17,6 +17,7 @@ import {
   type FileRead,
   setActiveLibraryId,
   setBundleTags,
+  suggestTargetBundles,
 } from './api/client'
 import {
   useBatchUpdate,
@@ -96,6 +97,7 @@ import {
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
+import { announceImport } from './app/importBundleOffer'
 import type { DragItem } from './app/dnd'
 import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
@@ -157,6 +159,12 @@ import {
 interface EditorState {
   existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
+}
+
+/** One button a toast can carry beside its message. */
+interface FlashAction {
+  label: string
+  run: () => void
 }
 
 /** `rootId` plus every collection nested beneath it (used to clear a stale
@@ -820,26 +828,27 @@ function Workspace({
   const [deletingSmart, setDeletingSmart] = useState<SmartCollectionRead | null>(null)
   // Transient success banner after a manual bundling action.
   const [flash, setFlash] = useState<string | null>(null)
-  // The Undo behind a completed file operation (ADR-0013 §3.1), when the toast
-  // has one. Cleared with the message it belongs to, so an expired toast can
-  // never leave a stale inverse behind a button.
-  const [flashUndo, setFlashUndo] = useState<(() => void) | null>(null)
+  // What the toast can offer alongside its message: the Undo behind a completed
+  // file operation (ADR-0013 §3.1), and — after an import — the bundle the
+  // landed file most likely joins. Both are cleared with the message they belong
+  // to, so an expired toast can never leave a stale action behind a button.
+  const [flashActions, setFlashActions] = useState<FlashAction[]>([])
   useEffect(() => {
     if (flash === null) return
     // A message ending in an ellipsis reports work still in flight — building a
     // contact sheet takes a few seconds — so it stays until the result replaces
     // it. Anything else is a conclusion and expires on its own.
     if (flash.endsWith('…')) return
-    // An offer to undo is worth reading twice; a plain confirmation is not.
+    // An offer to act is worth reading twice; a plain confirmation is not.
     const t = setTimeout(
       () => {
         setFlash(null)
-        setFlashUndo(null)
+        setFlashActions([])
       },
-      flashUndo ? 8000 : 4000,
+      flashActions.length > 0 ? 8000 : 4000,
     )
     return () => clearTimeout(t)
-  }, [flash, flashUndo])
+  }, [flash, flashActions])
 
   // Show a message, optionally with the action that reverses what it reports.
   // The webview must never navigate to a dropped file. With the shell's Tauri
@@ -862,7 +871,7 @@ function Workspace({
       e.preventDefault()
       if (!consumeHtmlFileDropHandled()) {
         setFlash('To add files, drop them into the File Browser or onto a bundle.')
-        setFlashUndo(null)
+        setFlashActions([])
       }
     }
     window.addEventListener('dragover', onDragOver)
@@ -873,11 +882,14 @@ function Workspace({
     }
   }, [])
 
-  const showFlash = useCallback((message: string, undo?: () => void) => {
+  const showFlash = useCallback((message: string, undo?: () => void, offer?: FlashAction) => {
     setFlash(message)
-    // Stored as a thunk: `setState` calls a bare function argument instead of
-    // storing it, which would fire the undo the moment it was offered.
-    setFlashUndo(undo ? () => undo : null)
+    // The offer sits left of Undo, which keeps Undo in the rightmost position it
+    // has always had — the one place muscle memory reaches for after a write.
+    const actions: FlashAction[] = []
+    if (offer) actions.push(offer)
+    if (undo) actions.push({ label: 'Undo', run: undo })
+    setFlashActions(actions)
   }, [])
 
   // What the scan has to say for itself: the total still missing after
@@ -1856,6 +1868,44 @@ function Workspace({
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const webImports = useWebImports({ onFlash: showFlash })
+
+  // Files added through the File Browser — dragged in, or picked with Add Files
+  // Here — land in the folder on screen and join nothing, which is the whole gap
+  // the owner asked to close (2026-08-25): the file is in the library but
+  // invisible to the Bundle Browser until the next scan stages it.
+  //
+  // So the toast that reports the import also offers the bundle that folder says
+  // it belongs to. An offer rather than an action: the file has already landed
+  // where it was told to, Undo still reverses that, and the full ranked list
+  // stays under Add to Bundle… for anything this declines to guess at.
+  const importIntoFileBrowser = useCallback(
+    (files: File[], destDir: string) =>
+      webImports.copyIn(files, destDir, {
+        onSettled: async (result) => {
+          invalidateAfterFileOperation(queryClient)
+          await announceImport(
+            result.imported.map((item) => ({ path: item.path, operationId: item.operation.id })),
+            destDir,
+            {
+              suggest: (relativePaths) => suggestTargetBundles({ relativePaths }),
+              addToBundle: (bundleId, relativePaths) =>
+                addUnbundledFilesToBundle(bundleId, { relativePaths }),
+              undoOperation: (operationId) =>
+                fileOperations.undo.mutate(operationId, {
+                  onError: (error) =>
+                    showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+                }),
+              show: showFlash,
+              onLinked: (bundleId) => {
+                invalidateAfterFileOperation(queryClient)
+                queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
+              },
+            },
+          )
+        },
+      }),
+    [fileOperations, queryClient, showFlash, webImports],
+  )
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
   // the landed paths into that bundle. Only offered with write mode on — without
@@ -1866,20 +1916,33 @@ function Workspace({
   // root, which is almost never where the bundle's own files live, so a drop
   // filed the copy in the wrong folder and left the owner to move it (owner
   // report, 2026-07-30). The picker defaults to the bundle's own folder.
-  // Copy the chosen files into the directory the picker settled on. No bundle is
-  // linked: the owner asked for the file to land in the library, and deciding
-  // which bundle it belongs to is a separate step by design.
+  // Copy the chosen files into the directory the picker settled on, and — if the
+  // picker also offered a bundle and the owner took it — link what landed into
+  // that bundle. Deciding the bundle was a separate step by design until the
+  // owner asked for it here (2026-08-25): the destination folder is already the
+  // strongest hint about which bundle a file joins, so asking both questions in
+  // the one dialog costs a click rather than a second trip through Unbundled.
   const importChosenFiles = useCallback(
-    (destDir: string) => {
+    (destDir: string, bundleId?: string | null) => {
       const files = pendingAddFiles
       if (!files) return
-      // No options: this behaves exactly like the File Browser's own Add Files
+      // Otherwise this behaves exactly like the File Browser's own Add Files
       // Here, which is the point — the only difference is being asked where.
       // That keeps the per-file Undo notice (the way back from an accidental
       // add) and lets a name collision raise the ordinary Replace / Skip /
       // Keep both prompt rather than silently suffixing.
       const accepted = webImports.copyIn(files, destDir, {
-        onSettled: () => invalidateAfterFileOperation(queryClient),
+        onSettled: async (result) => {
+          // Only what actually landed: a skipped collision or a failed upload
+          // has no path to link, and linking the name it *would* have had would
+          // put a row in the bundle for a file that is not there.
+          const landed = result.imported.map((item) => item.path)
+          if (bundleId && landed.length > 0) {
+            await addUnbundledFilesToBundle(bundleId, { relativePaths: landed })
+            queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
+          }
+          invalidateAfterFileOperation(queryClient)
+        },
       })
       // Same as the bundle drop: clear only once the batch is owned elsewhere,
       // so a refused import leaves the dialog up rather than losing the choice.
@@ -2485,7 +2548,7 @@ function Workspace({
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
-            onImportFiles={webImports.copyIn}
+            onImportFiles={importIntoFileBrowser}
             playerPrefs={prefs.player}
             onPlayerPrefs={setPlayerPrefs}
           />
@@ -2906,6 +2969,9 @@ function Workspace({
           }
           confirmLabel={(where) => `Add to ${where}`}
           allowNewFolder
+          // The picker asks which bundle as well, using the folder on screen: a
+          // file is nearly always added next to, or under, the bundle it joins.
+          suggestBundleFor={pendingAddFiles.map((file) => file.name)}
           onChoose={importChosenFiles}
           onCancel={() => setPendingAddFiles(null)}
           busy={false}
@@ -2950,18 +3016,19 @@ function Workspace({
       {flash && (
         <div className="mb-toast" role="status">
           {flash}
-          {flashUndo && (
+          {flashActions.map((action) => (
             <button
+              key={action.label}
               className="btn btn--sm mb-toast__action"
               onClick={() => {
-                flashUndo()
+                action.run()
                 setFlash(null)
-                setFlashUndo(null)
+                setFlashActions([])
               }}
             >
-              Undo
+              {action.label}
             </button>
-          )}
+          ))}
         </div>
       )}
 

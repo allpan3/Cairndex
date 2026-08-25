@@ -133,6 +133,87 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: `feat/suggest-bundle-on-import` (2026-08-25)
+
+Off `main` at `21619138`. Three commits, unreviewed, **no PR** (owner-triggered).
+
+**What the owner asked for.** Not the refactor it started as. The opening request
+was "a bundle identifies one root directory, its files must live in that
+directory or below", then narrowed to the goal behind it: *quickly assign a file
+to a bundle while importing it*, through either route — the File Browser's
+drag-in/Add Files Here, or the Bundle Browser's `Add Files to Library…` — with
+good performance on a large library and **no live scan**. The owner explicitly
+dropped the root-directory concept: "we may not even need to explicitly record a
+root for each bundle. It doesn't necessarily have to be a concept."
+
+That turned out to be right, and it is the design note worth keeping: **the root
+dissolves into an indexed query.** "Which bundles could a file landing here
+join?" is "bundles with a file in this folder or a folder enclosing it", which is
+a bounded set of equality probes on `asset_files.directory_path`. No column, no
+migration, no invariant to maintain, and nothing to keep in step with a file that
+moves. `product-brief.md:124` still stands unamended.
+
+**A full table scan was found and fixed on the way.** Candidate gathering in
+`manual_bundling/suggest.py` matched `relative_path LIKE 'folder/%' ESCAPE '\'`.
+SQLite cannot use an index for that — its default case-insensitive `LIKE` rules
+it out, and an `ESCAPE` clause disables the `LIKE` optimization outright — so
+each distinct folder in a selection cost one full read of `asset_files`, on
+dialog open, and paid it in full even when the folder matched nothing. Measured
+on a synthetic 100k-file library: **5.00 ms per folder against 0.06 ms** for the
+indexed form; ~4.84 ms even for a folder with no matches. Worse on
+network-mounted storage, where it is a whole-table read versus a few index pages.
+
+Both directions of the relation are now indexed:
+
+- *bundles enclosing a file* — `directory_path IN (folder, …ancestors)`, one
+  probe per level, bounded to three levels up;
+- *files within a bundle's folder* — a half-open range, `>= dir + '/'` and
+  `< dir + '0'`, since `'/'` is 0x2F and `'0'` is the next byte, which bounds the
+  subtree exactly (`Set1-old` sorts below it, `Set1x` above). Verified against
+  both sibling-prefix shapes.
+
+The library root is excluded from the walk in both directions: it encloses
+everything, so matching on it is evidence of nothing, and its subtree is the
+whole library.
+
+**The plan test asserts the index by name, not the absence of a scan.** Reverting
+to `LIKE` does *not* reliably produce `SCAN asset_files` — the planner may drive
+from `asset_bundles` and test each bundle's files instead, which is just as slow
+and reads as innocent. The first version of that test passed against the old
+spelling; it was rewritten and then confirmed to fail against it and pass once
+restored.
+
+**Two cases deliberately stay quiet** rather than guess, both in
+`app/importBundleOffer.ts`: a suggestion below 0.4 confidence, and a leader less
+than 0.05 ahead of the runner-up. The second is the owner's original worry —
+"a file system directory can contain multiple bundles so the path is not unique
+to a bundle" — and it is real: two bundles in one folder score *identically*, so
+naming one in a toast would present a coin flip as a recommendation. Both cases
+remain available under **Add to Bundle…**, which applies no threshold.
+
+**Verified end to end in a browser**, against a throwaway library on a scratch
+`CAIRNDEX_DATA_DIR` (never the owner's own; no lease of a real library was
+touched). Dropping `reel-behind.mp4` into a folder holding two bundles offered
+*Add to "Alpha Reel"* beside *Undo*; taking it linked the file as `video_part`;
+dropping a neutrally-named `IMG_4021.mp4` into the same folder offered nothing
+but Undo. All five imports 201, all five `suggest-targets` 200, the `add-files`
+200, `link=false` unchanged on every import.
+
+**Gates:** `ruff check`, `ruff format --check`, `mypy src packaging`, and
+**1137 backend tests** green; `npm run lint`, `format:check`, `typecheck`,
+**951 frontend tests**, and `build` green. **Not run:** Playwright e2e, and the
+desktop Rust/Tauri gates — no e2e spec, Rust, or Tauri file changed.
+
+**Known gap, not a regression.** The picker half is reachable only from the
+desktop menu bar (`File ▸ Add Files to Library…`; `useDesktopMenu` early-returns
+off a desktop host), so a browser cannot exercise it — the same coverage gap
+recorded under *Add Files to Library* below. It is covered by component tests;
+its appearance in the packaged app is unverified.
+
+**Next:** owner verification in the desktop app, particularly whether 0.4/0.05
+are the right bars against a real library, and whether the picker's offer wants
+the confidence pill the bundling dialogs show.
+
 ## Merged: an unbundled file is never "missing" (2026-08-24, PR #10)
 
 Branch `fix/unregistered-files-never-missing`, off `main` at `3a96d255`, **merged

@@ -76,6 +76,9 @@ vi.mock('../api/hooks', () => ({
     trash: { mutate: trashMutate, isPending: false },
     move: { mutate: moveMutate, isPending: false },
   }),
+  // Move to… never asks for one; the picker calls the hook unconditionally and
+  // gates it with `enabled`, so this stands in for "not asked".
+  useTargetSuggestions: () => ({ data: undefined, isLoading: false }),
 }))
 
 let flashes: { message: string; undo?: () => void }[]
