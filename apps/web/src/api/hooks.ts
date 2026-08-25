@@ -62,6 +62,7 @@ import {
   createSmartCollection,
   deleteBundle,
   deleteBundleWithFiles,
+  forgetMissingFiles,
   deleteCollection,
   deleteLibrary,
   deleteSmartCollection,
@@ -89,6 +90,7 @@ import {
   fetchBundle,
   fetchBundleCollections,
   fetchBundleFiles,
+  isNotFoundError,
   fetchBundleTags,
   fetchCollectionCounts,
   fetchFacets,
@@ -154,6 +156,7 @@ import {
   listingHoldsBundle,
   nextMembership,
 } from './counts'
+import { type ScanOutcome, scanOutcome } from '../app/scanSummary'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
 
@@ -727,13 +730,6 @@ function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => v
   }
 }
 
-// Read the post-reconciliation linked-missing total from a completed scan
-function scanMissingTotal(job: JobRead): number {
-  const result = job.result as Record<string, unknown> | null
-  const count = Number(result?.missing_total ?? 0)
-  return Number.isSafeInteger(count) && count >= 0 ? count : 0
-}
-
 /** Jobs already running or queued for the active library.
  *
  * Job progress otherwise lives only inside the mutation that started the job,
@@ -782,7 +778,7 @@ export function useCancelJob() {
 /** Callbacks shared by the scan and combined Update maintenance flows */
 interface MaintenanceOptions {
   onGroupingPlan?: (planId: string) => void
-  onScanComplete?: (missingTotal: number) => void
+  onScanComplete?: (outcome: ScanOutcome) => void
   // Receives each polled job snapshot (and null when the run settles) so the
   // sidebar can render a live progress bar with phase/message.
   onProgress?: JobProgressFn
@@ -818,7 +814,7 @@ export function useScan(options: MaintenanceOptions = {}) {
         await enqueueScan({ suggestGrouping: false }),
         options.onProgress,
       )
-      options.onScanComplete?.(scanMissingTotal(scanJob))
+      options.onScanComplete?.(scanOutcome(scanJob))
       return scanJob
     },
     onSuccess: () => invalidateLibraryContent(qc),
@@ -869,7 +865,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
-      options.onScanComplete?.(scanMissingTotal(scanJob))
+      options.onScanComplete?.(scanOutcome(scanJob))
       return scanJob
     },
     onSuccess: (job) => {
@@ -1431,10 +1427,30 @@ export function useTagGroupMemberships() {
   })
 }
 
+/** Resolve a request for something that may have been deleted.
+ *
+ * A 404 here is not a fault: a bundle can be forgotten, swept by a scan, or
+ * deleted in another window while a pane still points at it. Returning `absent`
+ * rather than throwing lets each surface say "gone" instead of showing its
+ * last-known state, which is what the inspector was doing — a deleted bundle
+ * kept its whole panel, missing badge and all (owner, 2026-08-24). It also stops
+ * react-query retrying a 404 three times over.
+ */
+async function orAbsent<T, A>(load: Promise<T>, absent: A): Promise<T | A> {
+  try {
+    return await load
+  } catch (error) {
+    if (isNotFoundError(error)) return absent
+    throw error
+  }
+}
+
 export function useBundle(id: string | null) {
   return useQuery({
     queryKey: ['bundle', id],
-    queryFn: ({ signal }) => fetchBundle(id as string, signal),
+    // `null` means gone, `undefined` means not loaded yet — the two readings the
+    // inspector needs to keep apart.
+    queryFn: ({ signal }) => orAbsent(fetchBundle(id as string, signal), null),
     enabled: id !== null,
   })
 }
@@ -1442,7 +1458,7 @@ export function useBundle(id: string | null) {
 export function useBundleFiles(id: string | null) {
   return useQuery({
     queryKey: ['bundle-files', id],
-    queryFn: ({ signal }) => fetchBundleFiles(id as string, signal),
+    queryFn: ({ signal }) => orAbsent(fetchBundleFiles(id as string, signal), []),
     enabled: id !== null,
   })
 }
@@ -2104,6 +2120,37 @@ export function useDeleteBundles() {
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
       // Unbundled list + File Browser badges must refresh too.
+      for (const key of [
+        'browse',
+        'view-counts',
+        'collection-counts',
+        'collection-stats',
+        'tag-counts',
+        'unbundled-files',
+        'file-browser',
+        'bundle',
+        'bundle-files',
+        'continue-watching',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
+}
+
+/**
+ * Forget files that are gone from disk (metadata only).
+ *
+ * The dismissal that is not "delete the bundle": a dead member goes and the
+ * grouping around it survives. `fileIds` omitted forgets every missing file in
+ * the bundle. Invalidates what deleting a bundle does, because the last one
+ * forgotten takes the bundle with it.
+ */
+export function useForgetMissingFiles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bundleId, fileIds }: { bundleId: string; fileIds?: string[] }) =>
+      forgetMissingFiles(bundleId, fileIds),
+    onSuccess: () => {
       for (const key of [
         'browse',
         'view-counts',

@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
   files: [] as unknown[],
   reorder: { mutate: vi.fn() },
   remove: { mutate: vi.fn() },
+  forgetMissing: { mutate: vi.fn() },
   update: { mutate: vi.fn(), error: null },
 }))
 
@@ -25,6 +26,7 @@ vi.mock('../api/hooks', () => ({
   useBundleFiles: () => ({ data: hooks.files }),
   useFileMutations: () => ({ reorder: hooks.reorder, remove: hooks.remove }),
   useFileRepairCandidate: vi.fn(),
+  useForgetMissingFiles: () => hooks.forgetMissing,
   useRepairFile: vi.fn(),
   useUpdateBundle: () => hooks.update,
 }))
@@ -251,4 +253,35 @@ test('an inspector with no actions in scope loses the handler-gated entries', ()
   expect(labels).not.toContain('Locate in File Browser')
   expect(labels).not.toContain('Reveal in Finder')
   expect(labels).not.toContain('Move to Trash')
+})
+
+test('a bundle that is gone empties the inspector instead of describing it', () => {
+  // Forget or a scan sweep can remove the bundle a pane is pointed at. The panel
+  // used to keep its whole last-known state — title, file rows, missing badge —
+  // which read as if the bundle were still there (owner, 2026-08-24).
+  hooks.bundle = null
+  hooks.files = []
+
+  render(
+    <BundleInspectorActionsContext value={shellActions}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+
+  expect(screen.getByText('That bundle is no longer in the library.')).toBeTruthy()
+  expect(screen.queryByText('Loading…')).toBeNull()
+})
+
+test('a bundle that has not loaded yet still says so', () => {
+  // The other reading of an absent bundle, which must stay distinguishable.
+  hooks.bundle = undefined
+  hooks.files = []
+
+  render(
+    <BundleInspectorActionsContext value={shellActions}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+
+  expect(screen.getByText('Loading…')).toBeTruthy()
 })

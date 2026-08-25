@@ -22,6 +22,7 @@ import {
   useBundleFiles,
   useFileMutations,
   useFileRepairCandidate,
+  useForgetMissingFiles,
   useRepairFile,
   useUpdateBundle,
 } from '../api/hooks'
@@ -141,6 +142,17 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
     return (
       <aside className="inspector" data-tauri-drag-region>
         <div className="state">Select a bundle or collection to see its details.</div>
+      </aside>
+    )
+  }
+  // `null` is the server saying the bundle is gone — forgotten, swept by a scan,
+  // or deleted elsewhere. Saying "Loading…" for that would be waiting forever;
+  // worse, before `useBundle` reported absence at all, the whole panel stayed on
+  // screen with its stale files and missing badge (owner, 2026-08-24).
+  if (bundle === null) {
+    return (
+      <aside className="inspector" data-tauri-drag-region>
+        <div className="state">That bundle is no longer in the library.</div>
       </aside>
     )
   }
@@ -584,6 +596,8 @@ export function FileList({
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
+  // Dropping the record of a file that is gone; see `useForgetMissingFiles`.
+  const forgetMissing = useForgetMissingFiles()
   const missingCount = files.filter((file) => file.availability !== 'available').length
   // How much of each name is shared with a sibling and safe to collapse, so a
   // narrow rail truncates what the rows have in common instead of the ending
@@ -712,6 +726,8 @@ export function FileList({
                       ? (files) => onTrashFiles(files.map((file) => file.relative_path))
                       : undefined,
                     onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
+                    onForgetMissing: (files) =>
+                      forgetMissing.mutate({ bundleId, fileIds: files.map((file) => file.id) }),
                     onContactSheet: setSheetTarget,
                   }),
                 )

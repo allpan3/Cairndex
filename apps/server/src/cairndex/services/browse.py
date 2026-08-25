@@ -241,11 +241,17 @@ def apply_scope(
     search) to any ``select`` over ``AssetBundle``. Shared by the browse grid, its
     counts, and the facet-count endpoint so all three scope identically."""
     stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
-    # Missing includes stale provisional rows so they have a repair surface;
-    # every other normal view hides them until they are confirmed.
+    # Every normal view hides provisional rows until they are confirmed —
+    # **including Missing**. Missing Files used to show them, on the reasoning
+    # that a stale staged row wants a repair surface. It does not: an unbundled
+    # file is not registered in the library yet, so its disappearance is not a
+    # loss to report, and a library used partly as a file browser filled the view
+    # with files the owner had deleted on purpose (owner, 2026-08-24). The scan
+    # drops those rows outright once it can prove they are gone
+    # (``scanning.staging_cleanup``); this keeps them out of sight until it does.
     if view is SystemView.UNBUNDLED and collection_id is None:
         stmt = stmt.where(_unbundled_predicate())
-    elif view is not SystemView.MISSING or collection_id is not None:
+    else:
         stmt = stmt.where(not_(_unbundled_predicate()))
     if predicate is not None:
         stmt = stmt.where(predicate)
@@ -688,12 +694,13 @@ def view_counts(session: Session) -> dict[str, int]:
     total = _count()
     uncategorized = _count(~exists().where(asset_bundle_collections.c.bundle_id == AssetBundle.id))
     untagged = _count(~exists().where(asset_bundle_tags.c.bundle_id == AssetBundle.id))
+    # Registered bundles only, matching the view: the badge was the "warning"
+    # about deleted-on-purpose staging rows (owner, 2026-08-24).
     missing = _count(
         exists().where(
             (AssetFile.bundle_id == AssetBundle.id)
             & (AssetFile.availability == FileAvailability.MISSING)
-        ),
-        include_all_grouping_states=True,
+        )
     )
     unbundled = _count(include_unbundled=True)
     return {
