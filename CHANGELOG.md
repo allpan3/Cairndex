@@ -485,6 +485,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A bundle that is gone empties the inspector instead of describing it.** After
+  a Forget — or a scan dropping a staged row — the right-hand panel kept the
+  bundle it had been showing: title, file rows, missing badge and all, for
+  something no longer in the library (owner, 2026-08-24). A detail request that
+  comes back "not found" is now a normal answer rather than an error, so the
+  panel says *"That bundle is no longer in the library."* — still distinct from
+  "Loading…", which is what an unloaded bundle says. Forgetting a bundle's last
+  file also clears the selection and closes its album view, the way deleting a
+  bundle already did.
+
 - **Deleting a bundle that holds a missing file no longer leaves the file
   behind as a new card.** Dissolving a bundle returns each of its files to
   Unbundled as a fresh one-file bundle — which it was doing for *missing* files

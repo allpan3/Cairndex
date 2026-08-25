@@ -1,16 +1,23 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { BundleRead } from './client'
-import { useUpdateBundle } from './hooks'
+import { HttpError } from './client'
+import { useBundle, useBundleFiles, useUpdateBundle } from './hooks'
 
-const api = vi.hoisted(() => ({ updateBundle: vi.fn() }))
+const api = vi.hoisted(() => ({
+  updateBundle: vi.fn(),
+  fetchBundle: vi.fn(),
+  fetchBundleFiles: vi.fn(),
+}))
 
 vi.mock('./client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./client')>()),
   updateBundle: api.updateBundle,
+  fetchBundle: api.fetchBundle,
+  fetchBundleFiles: api.fetchBundleFiles,
 }))
 
 // Minimal bundle state for metadata-mutation cache tests
@@ -39,7 +46,11 @@ function wrapper(client: QueryClient) {
   }
 }
 
-beforeEach(() => api.updateBundle.mockReset())
+beforeEach(() => {
+  api.updateBundle.mockReset()
+  api.fetchBundle.mockReset()
+  api.fetchBundleFiles.mockReset()
+})
 
 test('optimistically updates the cover and adopts the PATCH response without refetching detail', async () => {
   const client = new QueryClient({
@@ -62,4 +73,32 @@ test('optimistically updates the cover and adopts the PATCH response without ref
   expect(client.getQueryData(['bundle', 'bundle'])).toEqual(updated)
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['browse'] })
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['bundle', 'bundle'] })
+})
+
+test('a bundle the server no longer has resolves to gone, not to an error', async () => {
+  // Forgotten, swept by a scan, or deleted in another window: the pane pointing
+  // at it must be able to say so rather than keep its last-known state (owner,
+  // 2026-08-24). `null` is that answer; `undefined` still means "not loaded".
+  api.fetchBundle.mockRejectedValue(new HttpError(404, 'bundle not found'))
+  api.fetchBundleFiles.mockRejectedValue(new HttpError(404, 'bundle not found'))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  const bundle = renderHook(() => useBundle('gone'), { wrapper: wrapper(client) })
+  const files = renderHook(() => useBundleFiles('gone'), { wrapper: wrapper(client) })
+
+  await waitFor(() => expect(bundle.result.current.isSuccess).toBe(true))
+  await waitFor(() => expect(files.result.current.isSuccess).toBe(true))
+  expect(bundle.result.current.data).toBeNull()
+  expect(bundle.result.current.error).toBeNull()
+  expect(files.result.current.data).toEqual([])
+})
+
+test('any other failure is still a failure', async () => {
+  api.fetchBundle.mockRejectedValue(new HttpError(500, 'server on fire'))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  const bundle = renderHook(() => useBundle('b1'), { wrapper: wrapper(client) })
+
+  await waitFor(() => expect(bundle.result.current.isError).toBe(true))
+  expect(bundle.result.current.data).toBeUndefined()
 })

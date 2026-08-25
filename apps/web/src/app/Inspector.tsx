@@ -145,6 +145,17 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
       </aside>
     )
   }
+  // `null` is the server saying the bundle is gone — forgotten, swept by a scan,
+  // or deleted elsewhere. Saying "Loading…" for that would be waiting forever;
+  // worse, before `useBundle` reported absence at all, the whole panel stayed on
+  // screen with its stale files and missing badge (owner, 2026-08-24).
+  if (bundle === null) {
+    return (
+      <aside className="inspector" data-tauri-drag-region>
+        <div className="state">That bundle is no longer in the library.</div>
+      </aside>
+    )
+  }
   if (!bundle) {
     return (
       <aside className="inspector" data-tauri-drag-region>

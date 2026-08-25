@@ -254,3 +254,34 @@ test('an inspector with no actions in scope loses the handler-gated entries', ()
   expect(labels).not.toContain('Reveal in Finder')
   expect(labels).not.toContain('Move to Trash')
 })
+
+test('a bundle that is gone empties the inspector instead of describing it', () => {
+  // Forget or a scan sweep can remove the bundle a pane is pointed at. The panel
+  // used to keep its whole last-known state — title, file rows, missing badge —
+  // which read as if the bundle were still there (owner, 2026-08-24).
+  hooks.bundle = null
+  hooks.files = []
+
+  render(
+    <BundleInspectorActionsContext value={shellActions}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+
+  expect(screen.getByText('That bundle is no longer in the library.')).toBeTruthy()
+  expect(screen.queryByText('Loading…')).toBeNull()
+})
+
+test('a bundle that has not loaded yet still says so', () => {
+  // The other reading of an absent bundle, which must stay distinguishable.
+  hooks.bundle = undefined
+  hooks.files = []
+
+  render(
+    <BundleInspectorActionsContext value={shellActions}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+
+  expect(screen.getByText('Loading…')).toBeTruthy()
+})

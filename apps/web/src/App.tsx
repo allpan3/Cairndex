@@ -1793,7 +1793,12 @@ function Workspace({
               {
                 onSuccess: (result) => {
                   if (result.bundle_deleted) {
+                    // Same tidy-up as deleting a bundle: a selection pointing at
+                    // one that no longer exists leaves the inspector describing
+                    // it (owner, 2026-08-24).
+                    clearSelection()
                     if (openBundleId === id) setOpenBundleId(null)
+                    if (viewerTarget?.bundleId === id) setViewerTarget(null)
                     setFlash('Forgot the missing files, and the bundle they emptied.')
                     return
                   }
@@ -1830,6 +1835,8 @@ function Workspace({
       libraryId,
       forgetMissing,
       openBundleId,
+      clearSelection,
+      viewerTarget,
     ],
   )
 
