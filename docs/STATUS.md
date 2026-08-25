@@ -114,6 +114,11 @@
 > and ADR-0021; the residual unclean-shutdown risk was accepted by the owner
 > deliberately.
 >
+> **Merged (2026-08-24, PR #10):** an unbundled file is never "missing" — the
+> Missing view and its badge are registered bundles only, a scan drops staging
+> rows for files it can prove are gone, and **Forget** dismisses a dead member
+> without dissolving the bundle around it. See the first section below.
+>
 > **Merged (2026-08-24):** a bundle card's Open/Reveal entries no longer depend on
 > the web viewer being able to play the file, which had removed them from every
 > card in Missing Files and from any unsupported format. Confirmed in the app by
@@ -128,11 +133,13 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: an unbundled file is never "missing" (2026-08-24)
+## Merged: an unbundled file is never "missing" (2026-08-24, PR #10)
 
-Branch `fix/unregistered-files-never-missing`, off `main` at `3a96d255`; three
-commits, `9e026844` → `1aaa3bbf`. Started from an owner report while testing the
-card-menu fix below.
+Branch `fix/unregistered-files-never-missing`, off `main` at `3a96d255`, **merged
+through PR #10** (`f82869da`) with all seven CI checks green — including the
+full-stack e2e and the packaged-sidecar smoke test. Five code commits,
+`907b7dda` → `13371bf4`; the four incremental status notes were squashed into one
+before merge. Started from an owner report while testing the card-menu fix below.
 
 Owner: "Why are deleted files put into its own bundle and show up in Missing
 Files? Now the only way to dismiss them is to delete the bundle." Then, after the
@@ -269,7 +276,9 @@ and a second server would have contended for the library lease. The card menu
 cannot render in jsdom either (no layout, so no cards), so the menu wiring rests on
 its unit tests.
 
-Next: nothing queued.
+Next: nothing queued. Two follow-ups are recorded in PR #10 and deliberately not
+done: a Forget entry in the Unbundled list for a kept staging row, and an effect
+backing the album view out when a scan sweeps the bundle it is showing.
 
 ## Merged: a bundle card's file on disk (2026-08-24)
 
