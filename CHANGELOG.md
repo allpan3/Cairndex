@@ -10,6 +10,29 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Adding a file offers the bundle it belongs to.** Both routes into the library
+  put the file on disk and stopped there — it was in the library but invisible to
+  the Bundle Browser until the next scan staged it, and bundling was a separate
+  trip through Unbundled. The destination folder is the strongest signal about
+  which bundle a file joins, so both routes now use it:
+
+  - `File ▸ Add Files to Library…` asks which bundle alongside where. Nothing is
+    preselected, there is an explicit **Don't add to a bundle** row rather than an
+    implied one, and the confirm button names the bundle it will file into, so
+    joining one cannot happen unnoticed. Choosing a bundle in one folder and then
+    browsing to another drops the choice, since it belonged to the folder you
+    left. *Move to…* is unchanged — it shares the dialog but not the question.
+  - **The File Browser's drag-in and Add Files Here** report the import in a
+    toast that now carries the offer beside Undo. Undo reverses the whole batch,
+    not only the last file, because each import is its own journal operation.
+
+  An offer, never an action: the file has already landed where it was told to,
+  and everything is metadata-only from there. Two cases deliberately stay quiet
+  rather than guess — a weak match, and **a folder holding several bundles that
+  the path cannot choose between** (two bundles in one folder score identically,
+  and naming one would dress a coin flip as a recommendation). Both are still one
+  right-click away under **Add to Bundle…**, which lists every candidate ranked.
+
 - **Forget a file that is gone.** A file deleted outside Cairndex could only be
   dismissed by deleting the whole bundle around it — which dissolved the
   grouping, scattered the surviving files back into Unbundled, and (until the

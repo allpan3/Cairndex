@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { useBundleFiles, useFileBrowser, useFileOperations } from '../api/hooks'
+import {
+  useBundleFiles,
+  useFileBrowser,
+  useFileOperations,
+  useTargetSuggestions,
+} from '../api/hooks'
 import { focusRenameInput } from './renameSelection'
 
 /**
@@ -177,10 +182,11 @@ export function DirectoryPicker({
   heading,
   confirmLabel,
   allowNewFolder = false,
+  suggestBundleFor,
 }: {
   /** Library-relative paths being moved, excluded from the tree. */
   moving?: string[]
-  onChoose: (destDir: string) => void
+  onChoose: (destDir: string, bundleId?: string | null) => void
   onCancel: () => void
   busy: boolean
   /** Library-relative directory to open in; '' is the library root. */
@@ -196,13 +202,42 @@ export function DirectoryPicker({
    * dialog is shared with Move to…, which should not change silently.
    */
   allowNewFolder?: boolean
+  /**
+   * The filenames about to be added, which turns on the "and add it to a bundle"
+   * offer: the picker asks which confirmed bundles suit `<folder>/<name>` and
+   * hands the chosen one back alongside the destination.
+   *
+   * Opt-in for the same reason as `allowNewFolder`. Move to… asks where bytes
+   * should live, which is a different question from what they belong to, and it
+   * must not grow a second one silently.
+   */
+  suggestBundleFor?: string[]
 }) {
   const [here, setHere] = useState(startIn)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [folderName, setFolderName] = useState('')
+  const [pickedBundle, setPickedBundle] = useState<string | null>(null)
   const { mkdir } = useFileOperations()
   const { data, isLoading } = useFileBrowser(here || null)
   const excluded = new Set(moving)
+
+  // Where each file *would* land, which is the whole question the suggestion
+  // answers — asked before any bytes exist, so there is nothing to undo if the
+  // answer is unconvincing.
+  const naming = suggestBundleFor ?? []
+  const landing = naming.map((name) => (here ? `${here}/${name}` : name))
+  const { data: suggestions, isLoading: suggesting } = useTargetSuggestions(
+    { relativePaths: landing },
+    naming.length > 0,
+  )
+  const offered = suggestions ?? []
+  // A bundle chosen in one folder must not survive navigating to another, where
+  // it may not be offered at all — so the choice counts only while it is still
+  // in the current folder's list. Derived rather than cleared on navigation,
+  // because `setHere` is called from four places and one of them forgetting
+  // would file the files into a bundle the owner is no longer looking at.
+  const picked = offered.some((s) => s.bundle_id === pickedBundle) ? pickedBundle : null
+  const pickedTitle = offered.find((s) => s.bundle_id === picked)?.title
   const subdirs = (data?.entries ?? [])
     .filter((entry) => entry.kind === 'directory' && !excluded.has(entry.relative_path))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -351,6 +386,60 @@ export function DirectoryPicker({
             ))
           )}
         </ul>
+        {naming.length > 0 && (
+          <div className="dir-picker__bundles">
+            <h3 className="dir-picker__bundles-head">Add to a bundle</h3>
+            {suggesting ? (
+              <p className="dir-picker__empty">Looking…</p>
+            ) : offered.length === 0 ? (
+              // Not an error, and not worth a spinner's worth of attention: most
+              // folders hold no bundle this file plausibly joins, and the file
+              // still lands where it was told to.
+              <p className="dir-picker__empty">No bundle here suits these files.</p>
+            ) : (
+              <ul className="dir-picker__bundle-list">
+                {offered.map((suggestion) => (
+                  <li key={suggestion.bundle_id}>
+                    <label className="mb-row">
+                      <input
+                        type="radio"
+                        name="dir-picker-bundle"
+                        checked={picked === suggestion.bundle_id}
+                        onChange={() => setPickedBundle(suggestion.bundle_id)}
+                        disabled={busy}
+                      />
+                      <span className="mb-row__main">
+                        <span className="mb-row__name">
+                          {suggestion.title ?? 'Untitled bundle'}
+                        </span>
+                        <span className="mb-row__reason">{suggestion.reason}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+                <li>
+                  {/* The default, and stated rather than implied: an import that
+                      joins no bundle is the behaviour every other add has, so
+                      the owner should be able to see that is what will happen
+                      rather than infer it from nothing being selected. */}
+                  <label className="mb-row">
+                    <input
+                      type="radio"
+                      name="dir-picker-bundle"
+                      checked={picked === null}
+                      onChange={() => setPickedBundle(null)}
+                      disabled={busy}
+                    />
+                    <span className="mb-row__main">
+                      <span className="mb-row__name">Don’t add to a bundle</span>
+                      <span className="mb-row__reason">the file just lands in the folder</span>
+                    </span>
+                  </label>
+                </li>
+              </ul>
+            )}
+          </div>
+        )}
         <div className="modal__actions">
           <span className="toolbar__spacer" />
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>
@@ -359,14 +448,19 @@ export function DirectoryPicker({
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => onChoose(here)}
+            onClick={() => onChoose(here, picked)}
             disabled={busy}
           >
-            {confirmLabel
-              ? confirmLabel(here ? (here.split('/').pop() as string) : 'Library root')
-              : here
-                ? `Move here`
-                : 'Move to Library root'}
+            {/* Naming the bundle here is what makes a preselected-looking radio
+                impossible to act on by accident: the button says what will
+                happen, not just where. */}
+            {picked !== null
+              ? `Add to “${pickedTitle ?? 'bundle'}”`
+              : confirmLabel
+                ? confirmLabel(here ? (here.split('/').pop() as string) : 'Library root')
+                : here
+                  ? `Move here`
+                  : 'Move to Library root'}
           </button>
         </div>
       </div>
