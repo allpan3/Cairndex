@@ -155,6 +155,7 @@ import {
   listingHoldsBundle,
   nextMembership,
 } from './counts'
+import { type ScanOutcome, scanOutcome } from '../app/scanSummary'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
 
@@ -728,13 +729,6 @@ function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => v
   }
 }
 
-// Read the post-reconciliation linked-missing total from a completed scan
-function scanMissingTotal(job: JobRead): number {
-  const result = job.result as Record<string, unknown> | null
-  const count = Number(result?.missing_total ?? 0)
-  return Number.isSafeInteger(count) && count >= 0 ? count : 0
-}
-
 /** Jobs already running or queued for the active library.
  *
  * Job progress otherwise lives only inside the mutation that started the job,
@@ -783,7 +777,7 @@ export function useCancelJob() {
 /** Callbacks shared by the scan and combined Update maintenance flows */
 interface MaintenanceOptions {
   onGroupingPlan?: (planId: string) => void
-  onScanComplete?: (missingTotal: number) => void
+  onScanComplete?: (outcome: ScanOutcome) => void
   // Receives each polled job snapshot (and null when the run settles) so the
   // sidebar can render a live progress bar with phase/message.
   onProgress?: JobProgressFn
@@ -819,7 +813,7 @@ export function useScan(options: MaintenanceOptions = {}) {
         await enqueueScan({ suggestGrouping: false }),
         options.onProgress,
       )
-      options.onScanComplete?.(scanMissingTotal(scanJob))
+      options.onScanComplete?.(scanOutcome(scanJob))
       return scanJob
     },
     onSuccess: () => invalidateLibraryContent(qc),
@@ -870,7 +864,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
-      options.onScanComplete?.(scanMissingTotal(scanJob))
+      options.onScanComplete?.(scanOutcome(scanJob))
       return scanJob
     },
     onSuccess: (job) => {

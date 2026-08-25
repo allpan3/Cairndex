@@ -293,7 +293,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   missing file is never touched, nor is any staged row carrying something the
   owner made — a tag, rating, note, source, collection, watch position, chosen
   cover frame, or a cover/subtitle reference. Those stay, and Forget clears them
-  by hand. The scan result reports how many rows it dropped.
+  by hand.
+
+  The scan-complete message says how many it dropped — *"Scan complete: 0 linked
+  files are missing. Forgot 2 unbundled files that are gone."* — and says nothing
+  about forgetting when there was nothing to forget.
 
 - **The layout buttons have icons that mean something.** Card and Justified were
   `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
