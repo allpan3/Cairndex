@@ -124,6 +124,20 @@ class FileRepairCandidateRead(BaseModel):
     display_title: str
 
 
+class ForgetMissingRequest(BaseModel):
+    """Which missing files to drop. ``None`` means every missing file in the
+    bundle, which is what the card-level action sends."""
+
+    file_ids: list[str] | None = None
+
+
+class ForgetMissingResult(BaseModel):
+    # ``bundle_deleted`` when the last file went with them, so the client knows to
+    # leave the album view rather than refetch a bundle that is gone.
+    forgotten: int
+    bundle_deleted: bool
+
+
 class BundleReorder(BaseModel):
     """Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
     order to a collection's membership; null = the global All/system-view order.

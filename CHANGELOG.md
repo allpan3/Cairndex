@@ -10,6 +10,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Forget a file that is gone.** A file deleted outside Cairndex could only be
+  dismissed by deleting the whole bundle around it — which dissolved the
+  grouping, scattered the surviving files back into Unbundled, and (until the
+  fix below) left the dead file behind anyway. **Forget Missing File** on a
+  file's own menu drops just that record; **Forget Missing Files** on a bundle
+  card drops every dead member and keeps the bundle, unless they were all it
+  had. Metadata-only: there is nothing on disk left to touch, and repair is
+  still the answer when a file *moved* rather than went.
+
+  A file that is gone no longer offers "Remove from Bundle" beside it. Removing
+  it drops the record too, so the two were one action under two names, and only
+  one of the names said so.
+
 - **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
   both are in the menu bar under `File` — greyed out when there is nothing they
   could act on, so the answer is visible before the keystroke.
@@ -254,6 +267,38 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **A file that was never bundled is never "missing".** Unbundled is the pending
+  zone — a scan stages every file it finds there, and bundling is what registers
+  a file in the library. So a staged file deleted outside Cairndex was reported
+  as a loss it made no sense to report: Missing Files filled with files the owner
+  had deleted on purpose, and the sidebar badge counted them, which for a library
+  used partly as a file browser is a permanent warning about nothing (owner,
+  2026-08-24).
+
+  Missing Files and its badge now cover **registered bundles only**, and a scan
+  drops the staging rows of files it can prove are gone. Two things have to hold
+  before anything is dropped, both read off that scan:
+
+  - **it read every directory it tried.** A listing that fails is a mount that
+    dropped, not a folder that emptied — and that failure used to be discarded.
+  - **the file's own filesystem is still the one mounted where it was.** A
+    dropped SMB mount takes its mountpoint directory with it, so a vanished
+    folder proves nothing by itself; but the ancestor that survives is then on
+    the outer filesystem, whose device id is not the one the file was last seen
+    on. An unmounted mountpoint left behind as an empty folder fails the same
+    check.
+
+  Nothing waits, counts scans, or keeps a timestamp: proof is what licenses the
+  delete, and where it is missing the row simply stays. A **registered** bundle's
+  missing file is never touched, nor is any staged row carrying something the
+  owner made — a tag, rating, note, source, collection, watch position, chosen
+  cover frame, or a cover/subtitle reference. Those stay, and Forget clears them
+  by hand.
+
+  The scan-complete message says how many it dropped — *"Scan complete: 0 linked
+  files are missing. Forgot 2 unbundled files that are gone."* — and says nothing
+  about forgetting when there was nothing to forget.
+
 - **The layout buttons have icons that mean something.** Card and Justified were
   `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
   say nothing about the layout they select. Each is now a drawn icon: **Card** is
@@ -439,6 +484,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sheets rather than leaving a library holding a mix of two qualities.
 
 ### Fixed
+
+- **A bundle that is gone empties the inspector instead of describing it.** After
+  a Forget — or a scan dropping a staged row — the right-hand panel kept the
+  bundle it had been showing: title, file rows, missing badge and all, for
+  something no longer in the library (owner, 2026-08-24). A detail request that
+  comes back "not found" is now a normal answer rather than an error, so the
+  panel says *"That bundle is no longer in the library."* — still distinct from
+  "Loading…", which is what an unloaded bundle says. Forgetting a bundle's last
+  file also clears the selection and closes its album view, the way deleting a
+  bundle already did.
+
+- **Deleting a bundle that holds a missing file no longer leaves the file
+  behind as a new card.** Dissolving a bundle returns each of its files to
+  Unbundled as a fresh one-file bundle — which it was doing for *missing* files
+  too, so the card you deleted came straight back under a new id, in Missing
+  Files, and took a second delete to shift. A missing file has nothing on disk
+  to fall back with, so it now goes with the bundle. Removing a missing file
+  from a bundle drops it the same way, and takes the bundle with it if that was
+  its last file, rather than leaving an empty one to sit in Unbundled.
 
 - **Open in Default App and Reveal in Finder are on every bundle card, whatever
   format its file is.** Both were absent from a card's menu whenever the web

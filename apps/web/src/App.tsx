@@ -27,6 +27,7 @@ import {
   useCleanupCollectionOrder,
   useCreateCollection,
   useDeleteBundles,
+  useForgetMissingFiles,
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
@@ -70,6 +71,7 @@ import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
 import { hostFileMenuEntries } from './app/hostActions'
 import { bundleHostPath, hostFileTargetFor } from './app/hostFileTarget'
+import { type ScanOutcome, scanCompleteMessage } from './app/scanSummary'
 import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
@@ -878,10 +880,12 @@ function Workspace({
     setFlashUndo(undo ? () => undo : null)
   }, [])
 
-  // Report the total still missing after scan reconciliation, including old misses
-  const reportScanComplete = useCallback((missingTotal: number) => {
-    const files = missingTotal === 1 ? 'file is' : 'files are'
-    setFlash(`Scan complete: ${missingTotal} linked ${files} missing.`)
+  // What the scan has to say for itself: the total still missing after
+  // reconciliation (old misses included), and how many staging rows it dropped
+  // for files it proved are gone. The second number lived only in the job's
+  // result payload, which is to say nowhere (owner, 2026-08-24).
+  const reportScanComplete = useCallback((outcome: ScanOutcome) => {
+    setFlash(scanCompleteMessage(outcome))
   }, [])
 
   const [mode, setMode] = useState<AppMode>('collection')
@@ -1248,6 +1252,10 @@ function Workspace({
   const probe = useProbe({ onProgress: setActiveJob })
   const storyboards = useStoryboards({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
+  // Shedding a dead member without dissolving the bundle around it — the answer
+  // to "the only way to dismiss a missing file is to delete the bundle" (owner,
+  // 2026-08-24).
+  const forgetMissing = useForgetMissingFiles()
   const deleteCollection = useDeleteCollection()
   const createCollection = useCreateCollection()
   const renameCollection = useRenameCollection()
@@ -1774,6 +1782,37 @@ function Workspace({
             batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
         })
       }
+      // Only for a bundle that has one: the point is dismissing a file that is
+      // gone without dissolving the grouping to do it.
+      if (n === 1 && filtered.find((item) => item.id === id)?.has_missing) {
+        items.push(null, {
+          label: 'Forget Missing Files',
+          onClick: () =>
+            forgetMissing.mutate(
+              { bundleId: id },
+              {
+                onSuccess: (result) => {
+                  if (result.bundle_deleted) {
+                    // Same tidy-up as deleting a bundle: a selection pointing at
+                    // one that no longer exists leaves the inspector describing
+                    // it (owner, 2026-08-24).
+                    clearSelection()
+                    if (openBundleId === id) setOpenBundleId(null)
+                    if (viewerTarget?.bundleId === id) setViewerTarget(null)
+                    setFlash('Forgot the missing files, and the bundle they emptied.')
+                    return
+                  }
+                  setFlash(
+                    result.forgotten === 1
+                      ? 'Forgot 1 missing file.'
+                      : `Forgot ${result.forgotten} missing files.`,
+                  )
+                },
+                onError: () => setFlash('Those files could not be forgotten.'),
+              },
+            ),
+        })
+      }
       items.push(null, {
         label: n > 1 ? `Delete ${n} Bundles` : 'Delete Bundle',
         danger: true,
@@ -1794,6 +1833,10 @@ function Workspace({
       hostFileActions,
       platform.kind,
       libraryId,
+      forgetMissing,
+      openBundleId,
+      clearSelection,
+      viewerTarget,
     ],
   )
 

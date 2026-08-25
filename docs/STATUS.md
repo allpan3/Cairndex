@@ -128,6 +128,149 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: an unbundled file is never "missing" (2026-08-24)
+
+Branch `fix/unregistered-files-never-missing`, off `main` at `3a96d255`; three
+commits, `9e026844` → `1aaa3bbf`. Started from an owner report while testing the
+card-menu fix below.
+
+Owner: "Why are deleted files put into its own bundle and show up in Missing
+Files? Now the only way to dismiss them is to delete the bundle." Then, after the
+mechanism came out: "if a file is never bundled, I don't think it should ever be
+*missing*… I treat a bundle to be formally registered in the library. Unbundled is
+the pending zone waiting to be registered."
+
+**That model is the fix, and it is better than what was being designed.** Two
+rounds of guard design (a `missing_since` column, a grace window, a
+survive-one-scan rule, a 10% ratio, a batch cap) existed only because the scan
+could not tell a deletion from an outage. Given the distinction, all of it goes.
+
+### 1. Deleting a bundle re-staged its dead members (`9e026844`)
+
+Verified before touching anything: a two-file bundle with one missing member left
+`MISSING` at **1** after Delete Bundle, as a fresh one-file provisional bundle
+titled after the dead file. `_restage_file` had no availability test, and the
+Missing view included provisional rows, so the card came back under a new id and
+took a second delete to shift — while the first delete had already dissolved the
+grouping. `delete_bundle` now leaves a missing member attached so it goes with the
+bundle; `remove_file` drops it through a new `_forget_file`, which also takes a
+bundle the removal emptied.
+
+### 2. Forget (`ec3b345f`)
+
+`forget_missing_files(session, bundle_id, file_ids=None)` +
+`POST /bundles/{id}/files/forget-missing`, reporting `{forgotten, bundle_deleted}`
+so the client can leave an album view rather than refetch a bundle that is gone.
+Refuses anything not `MISSING`: a present file is removed or trashed, and a
+trashed one is recoverable rather than dead (ADR-0013 §3.2).
+
+In the file-row menu it **replaces** Remove from Bundle when every target is
+missing — post-fix-1 those do the same thing, and only one of the names says so.
+A caller that has not wired forget keeps the detach rather than losing the row.
+The card menu offers it for a bundle with `has_missing`, single selection only.
+
+### 3. The scan drops what it can prove is gone (`1aaa3bbf`)
+
+Missing Files and its badge cover **registered bundles only**, which clears the
+existing ghosts without waiting for a scan. Then `scanning/staging_cleanup.py`
+drops the rows, on two conditions read off the scan that finds them:
+
+- **the walk read every directory it tried.** `_list_directory` swallowed
+  `scandir` failures ("vanished or unreadable; nothing to report"), which is
+  exactly the distinction the delete rests on. It reports now, and one failure
+  anywhere disqualifies the sweep.
+- **the file's recorded filesystem is still mounted where it was.** The owner's
+  correction, and the one that killed the previous draft: *"whenever the volumes
+  that I mounted on SMB dropped, the folder will be gone"* — so a vanished folder
+  is not proof. The surviving ancestor is then on the outer filesystem, and
+  `AssetFile.filesystem_device` (recorded every scan since D2) does not match it.
+  An unmounted mountpoint left behind as an empty directory fails the same check,
+  since it reverts to its parent's device. `sqlite_filesystem_identity` moved to
+  `scanning.fingerprint` so both sides encode the comparison identically.
+
+Never swept: registered bundles, and any staging row carrying something
+owner-made — tag, rating, note, source, collection, watch position, cover frame,
+cover or subtitle reference. `ScanSummary.forgotten` and the job result report the
+count. `missing_total` was deliberately **left raw**: after the sweep the only
+rows it can still count are a genuinely unreachable mount or an owner-decided
+staging row, and both are worth the scan-complete flash saying so.
+
+**Residual, accepted:** a nested mount that is *remounted* between scans gets a
+new device number, so anything deleted in that window is refused permanently and
+lingers until Forget clears it. Fails toward keeping rows, and the blast radius is
+unregistered staging rows, so the worst case of any wrong call is a re-probe and
+re-thumbnail of files that come back — never lost data.
+
+### 4. The count was reported nowhere (`9acb7333`)
+
+Owner, immediately: *"where do I see forgotten? They don't show up anywhere
+right?"* — correct. `ScanSummary.forgotten` reached the job's result payload and
+stopped there, which is not a surface. The scan-complete flash now reports both
+counts (*"Scan complete: 0 linked files are missing. Forgot 2 unbundled files that
+are gone."*), built by `scanCompleteMessage` in `app/scanSummary.ts` so the copy is
+testable and the payload reading is defensive — a cancelled run or an older server
+carries neither key and reads as zero. The forgotten clause is omitted entirely
+when nothing was forgotten.
+
+### 5. The inspector kept describing what was gone (`c5c0fc31`)
+
+Owner, testing: *"after a bundle/file is deleted/forgot, the inspector still shows
+the information"* — with a screenshot of a single-file bundle's panel, MISSING
+badge and Relink Unavailable, for a bundle that had just been forgotten.
+
+Two causes, both fixed. The detail request 404s and react-query keeps the last
+successful data on error, so the panel had something to render and no reason to
+stop — and `getJson` threw a bare `Error`, so nothing could tell "gone" from
+"failed". GETs now throw the status-bearing `HttpError` the module already had
+(same message, so every existing catch is unaffected), and
+`useBundle`/`useBundleFiles` resolve a 404 to `null`/`[]`: absence is a normal
+outcome for a row that can be forgotten, swept, or deleted in another window, and
+a 404 stops being retried three times. The inspector reads `null` as gone and says
+so, still distinct from `undefined` — not loaded. Second cause: the forget path
+left the selection on a bundle it had just deleted, so it now clears the selection
+and closes the open bundle and viewer as deleting a bundle already did, and the
+album view backs out when forgetting takes the bundle it was showing.
+
+Not done, and deliberately: an effect backing the album view out when a *scan*
+sweeps the bundle it is showing. There is no BundleAlbum test harness to pin it,
+and the inspector already says gone; the forget path — the one that actually
+happens — backs out explicitly.
+
+### Tests and gates
+
+Server: three tests for fix 1, four for Forget (including a route-level one that
+asserts the bytes survive), six for the sweep — the plain case, a whole folder
+deleted, both guards, an owner-rated row that survives — and the Missing view
+inverted. Four existing tests were **re-based on the model rather than deleted**:
+repair and missing-not-deleted now register their bundle first, because repair is
+for a file the owner committed to and an unregistered row has nothing to preserve.
+Web: four for the menu entry, four for the scan-complete copy, three for absence
+(a 404 resolving to gone for both hooks, and any other status still failing), two
+for the inspector's gone-versus-loading states, and the new hook added to three
+Inspector mocks (the parity test caught that drift, again).
+
+`apps/server` ruff / ruff format / mypy / **1130 tests**; `apps/web` lint /
+format / typecheck / **934 tests** / build. Desktop untouched.
+
+**Rehearsed end to end on real media, outside the test suite.** A generated
+scratch library — half a megabyte of ffmpeg `testsrc` clips under invented names,
+two of its folders confirmed as bundles and one staged file rated — walked the
+whole flow: a staged file deleted → `forgotten=1`, row and bundle
+gone, Missing Files still empty; a whole folder → 2; the rated staged file →
+`forgotten=0`, kept; a registered bundle's member → in Missing Files, then Forget
+leaves the bundle with its other three files; the single-file bundle → Forget takes
+the bundle. **The nested-mount guard was verified against a real disk image**
+mounted inside the library root (distinct device id): dropped with its mountpoint
+left behind *and* with the mountpoint removed, both refused to forget, and
+re-attaching returned the row to available with no re-probe.
+
+Not verified in a browser: the owner's `tauri dev` was live on the same registry,
+and a second server would have contended for the library lease. The card menu
+cannot render in jsdom either (no layout, so no cards), so the menu wiring rests on
+its unit tests.
+
+Next: nothing queued.
+
 ## Merged: a bundle card's file on disk (2026-08-24)
 
 Branch `fix/card-host-actions-primary-file`, off `main` at `df9b9c72`,

@@ -13,6 +13,7 @@ import type { components } from './schema'
 
 export type HealthStatus = components['schemas']['HealthStatus']
 export type BundleSummary = components['schemas']['BundleSummary']
+export type ForgetMissingResult = components['schemas']['ForgetMissingResult']
 export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
 export type CollectionRead = components['schemas']['CollectionRead']
@@ -176,7 +177,12 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     } catch {
       /* non-JSON body */
     }
-    throw new Error(detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`)
+    // Status-bearing, so a caller can tell "this is gone" from "this failed".
+    // The message is unchanged, which is what everything catching these reads.
+    throw new HttpError(
+      response.status,
+      detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
+    )
   }
   return (await response.json()) as T
 }
@@ -247,6 +253,15 @@ async function sendSignal<T>(
 }
 
 /** Carries the HTTP status so callers can branch (e.g. retry a 429). */
+/** True when a request failed because the thing is not there.
+ *
+ * A resource the client still remembers but the server has dropped is a normal
+ * outcome here, not a fault: a bundle can be forgotten, swept by a scan, or
+ * deleted in another window while a pane is still pointed at it. */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof HttpError && error.status === 404
+}
+
 export class HttpError extends Error {
   readonly status: number
   constructor(status: number, message: string) {
@@ -1286,6 +1301,14 @@ export const cleanupBundleOrder = (
 
 export const removeFile = (bundleId: string, fileId: string) =>
   send<void>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'DELETE')
+
+// Drop the rows of files that are gone from disk. Metadata-only, like every
+// other unlink here: there is nothing left on disk to touch. `fileIds` omitted
+// means every missing file in the bundle, which is what the card action sends.
+export const forgetMissingFiles = (bundleId: string, fileIds?: string[]) =>
+  send<ForgetMissingResult>(`${lib()}/bundles/${bundleId}/files/forget-missing`, 'POST', {
+    file_ids: fileIds ?? null,
+  })
 
 export const repairFile = (bundleId: string, fileId: string, replacementFileId: string) =>
   send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}/repair`, 'PUT', {

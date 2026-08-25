@@ -33,6 +33,8 @@ from cairndex.api.schemas.bundles import (
     FileRepairCandidateRead,
     FileRepairRequest,
     FileUpdate,
+    ForgetMissingRequest,
+    ForgetMissingResult,
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
@@ -413,6 +415,15 @@ def repair_file(
 @router.delete("/{bundle_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_file(bundle_id: str, file_id: str, db: LibrarySession) -> None:
     service.remove_file(db, bundle_id, file_id)
+
+
+@router.post("/{bundle_id}/files/forget-missing", response_model=ForgetMissingResult)
+def forget_missing_files(
+    bundle_id: str, payload: ForgetMissingRequest, db: LibrarySession
+) -> ForgetMissingResult:
+    """Drop the rows of files that are gone from disk (metadata only, ADR-0002)."""
+    result = service.forget_missing_files(db, bundle_id, file_ids=payload.file_ids)
+    return ForgetMissingResult(**vars(result))
 
 
 # --- Tag / collection assignment ---------------------------------------------

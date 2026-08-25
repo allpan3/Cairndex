@@ -25,6 +25,13 @@ export interface BundleFileMenuOptions {
   onLocateFile?: (relativePath: string) => void
   /** Detach from the bundle (metadata only); undefined hides the row. */
   onRemoveFromBundle?: (files: FileRead[]) => void
+  /**
+   * Drop the rows of files that are gone from disk; undefined hides the row.
+   * Offered *instead of* Remove from Bundle when every target is missing —
+   * detaching a dead file drops it too, so two rows would do one thing under
+   * two names, and only one of the names is honest about it.
+   */
+  onForgetMissing?: (files: FileRead[]) => void
   /** Move to trash; undefined hides the row (no write mode). */
   onTrash?: (files: FileRead[]) => void
   /** Open the contact-sheet dialog; undefined hides the row. */
@@ -81,7 +88,17 @@ export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry
   }
 
   const bundleItems: MenuEntry[] = []
-  if (onRemoveFromBundle) {
+  // A file that is no longer on disk cannot be detached into the Unbundled
+  // pending zone — that zone is for files awaiting registration — so for those
+  // the row says what actually happens: the record goes.
+  const allMissing = targets.every((file) => file.availability === 'missing')
+  const onForget = allMissing ? options.onForgetMissing : undefined
+  if (onForget) {
+    bundleItems.push({
+      label: n > 1 ? `Forget ${n} Missing Files` : 'Forget Missing File',
+      onClick: () => onForget(targets),
+    })
+  } else if (onRemoveFromBundle) {
     bundleItems.push({
       // Metadata-only: the file falls back into Unbundled as its own provisional
       // bundle, exactly as deleting the whole bundle would have staged it.
