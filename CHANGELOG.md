@@ -485,6 +485,33 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Bundle suggestions no longer read the whole file table to find a folder.**
+  Every candidate lookup behind the bundling dialogs matched `relative_path LIKE
+  'folder/%'`, and SQLite cannot use an index for `LIKE` under its default
+  case-insensitive rules — nor with the `ESCAPE` clause that spelling carried,
+  which disables the optimization outright. So each distinct folder in the
+  selection cost one full read of `asset_files`, paid on dialog open, and paid in
+  full even when the folder matched nothing. On a synthetic 100k-file library
+  that was 5.0 ms per folder against 0.06 ms for the indexed form — and far worse
+  on network-mounted storage, where the difference is a whole-table read versus a
+  few index pages.
+
+  Both directions now resolve through the existing `asset_files.directory_path`
+  index: an equality probe per enclosing folder, and a half-open range per
+  subtree. A test asserts the query plan names that index, because a regression
+  here does not necessarily show up as a scan of `asset_files` — the planner may
+  drive from `asset_bundles` instead and test each bundle's files, which is
+  equally slow and reads as innocent.
+
+- **A file added below a bundle's folder now finds that bundle.** Folder locality
+  was an exact-match test, so a file landing in a subfolder of where a bundle
+  lives earned no locality credit at all and surfaced only if the filenames
+  happened to overlap. Suggestions now walk up to three enclosing folders,
+  scoring closer folders higher, with the folder distance named in the reason
+  ("same folder", "parent folder", "2 folders up"). The library root is
+  deliberately excluded: it encloses every path, so matching on it is evidence of
+  nothing.
+
 - **A bundle that is gone empties the inspector instead of describing it.** After
   a Forget — or a scan dropping a staged row — the right-hand panel kept the
   bundle it had been showing: title, file rows, missing badge and all, for
