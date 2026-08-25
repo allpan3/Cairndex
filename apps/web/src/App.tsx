@@ -71,6 +71,7 @@ import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
 import { hostFileMenuEntries } from './app/hostActions'
 import { bundleHostPath, hostFileTargetFor } from './app/hostFileTarget'
+import { type ScanOutcome, scanCompleteMessage } from './app/scanSummary'
 import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
@@ -879,10 +880,12 @@ function Workspace({
     setFlashUndo(undo ? () => undo : null)
   }, [])
 
-  // Report the total still missing after scan reconciliation, including old misses
-  const reportScanComplete = useCallback((missingTotal: number) => {
-    const files = missingTotal === 1 ? 'file is' : 'files are'
-    setFlash(`Scan complete: ${missingTotal} linked ${files} missing.`)
+  // What the scan has to say for itself: the total still missing after
+  // reconciliation (old misses included), and how many staging rows it dropped
+  // for files it proved are gone. The second number lived only in the job's
+  // result payload, which is to say nowhere (owner, 2026-08-24).
+  const reportScanComplete = useCallback((outcome: ScanOutcome) => {
+    setFlash(scanCompleteMessage(outcome))
   }, [])
 
   const [mode, setMode] = useState<AppMode>('collection')
