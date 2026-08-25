@@ -11,9 +11,17 @@ manual suggestion matches what scan-time grouping would have produced:
 - :func:`suggest_bundle_from_files` — for a seed selection, a proposed
   title/roles plus nearby unbundled files worth including.
 
-Scoring leads with content locality (same folder, shared subject prefix) and
+Scoring leads with content locality (folder proximity, shared subject prefix) and
 falls back to token overlap, mirroring the grouping heuristic's stance: every
 suggestion carries a human-readable reason, and nothing is auto-applied.
+
+Locality is a *containment* relation, read in whichever direction the generator
+needs: a bundle is a candidate home for a file when the bundle's folder encloses
+(or is) the file's, and an unbundled file is a candidate member when it sits in
+the bundle's folder or beneath it. Both directions resolve through the indexed
+``asset_files.directory_path`` — an equality probe per enclosing directory, a
+range probe per subtree — because these generators run on dialog open, on
+libraries with millions of rows.
 """
 
 from __future__ import annotations
@@ -22,8 +30,9 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
@@ -48,6 +57,14 @@ from cairndex.search import matching_ids_select, to_match_query
 # table scan.
 _CANDIDATE_CAP = 200
 _MAX_MATCH_TERMS = 16
+
+# How far up the tree a bundle may sit and still be offered for a file landing
+# beneath it. Bounded for two reasons: it fixes the number of indexed probes per
+# lookup, and past a few levels the signal is noise — every import into a deep
+# tree would otherwise match whatever bundle happens to live near the library
+# root. Three levels covers the shapes that occur (a file added into a bundle's
+# own folder, or one or two folders below it).
+_MAX_ANCESTOR_LEVELS = 3
 
 _TOKEN = re.compile(r"[^a-z0-9]+")
 
@@ -122,6 +139,43 @@ def _file_context(rows: list[tuple[str, MediaKind]], *, title: str | None = None
     return _Context(frozenset(tokens), frozenset(dirs), frozenset(prefixes))
 
 
+def _ancestors(directory: str, *, levels: int = _MAX_ANCESTOR_LEVELS) -> list[str]:
+    """``directory`` and up to ``levels`` enclosing directories, nearest first.
+
+    The library root (``""``) is deliberately **not** in the chain. It encloses
+    every path in the library, so matching on it is not evidence of anything: it
+    would make every root-level bundle a candidate for every import, and give
+    every bundle the same locality credit on a library that keeps its files at
+    the top. Name signals are the only meaningful ones there, and they still run.
+    """
+    chain = [directory] if directory else []
+    current = directory
+    for _ in range(levels):
+        current = _dirname(current)
+        if not current:
+            break
+        chain.append(current)
+    return chain
+
+
+def _enclosing_distance(directory: str, ctx_dirs: frozenset[str]) -> int | None:
+    """How far above ``directory`` the nearest context directory sits: 0 when one
+    of them *is* it, 1 for its parent, and so on. ``None`` when none encloses it
+    within the bounded walk."""
+    for distance, ancestor in enumerate(_ancestors(directory)):
+        if ancestor in ctx_dirs:
+            return distance
+    return None
+
+
+def _proximity_reason(distance: int) -> str:
+    if distance == 0:
+        return "same folder"
+    if distance == 1:
+        return "parent folder"
+    return f"{distance} folders up"
+
+
 def _score(relative_path: str, media_kind: MediaKind, ctx: _Context) -> tuple[float, str] | None:
     """Score one candidate file against a target context. Returns a (confidence,
     reason) pair, or ``None`` when there is no meaningful signal."""
@@ -130,9 +184,15 @@ def _score(relative_path: str, media_kind: MediaKind, ctx: _Context) -> tuple[fl
     candidate_dir = _dirname(relative_path)
     candidate_prefix = _subject_prefix(relative_path)
 
-    if candidate_dir and candidate_dir in ctx.dirs:
-        score += 0.5
-        reasons.append("same folder")
+    # Folder proximity, decaying with distance: sharing a folder is the strongest
+    # single signal there is, a folder or two below it is a real but weaker one.
+    # Deliberately blended with the name terms rather than dominating them — an
+    # exact name match one folder up beats an unrelated bundle in the same folder,
+    # which is the ordering the owner would pick by hand.
+    distance = _enclosing_distance(candidate_dir, ctx.dirs)
+    if distance is not None:
+        score += 0.5 / (distance + 1)
+        reasons.append(_proximity_reason(distance))
     if candidate_prefix and candidate_prefix in ctx.prefixes:
         score += 0.3
         reasons.append(f"shares name “{candidate_prefix}”")
@@ -164,11 +224,6 @@ def _score(relative_path: str, media_kind: MediaKind, ctx: _Context) -> tuple[fl
 # --- candidate gathering (bounded DB/FTS lookups) ----------------------------
 
 
-def _like_prefix(directory: str) -> str:
-    escaped = directory.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"{escaped}/%"
-
-
 def _or_match(tokens: frozenset[str]) -> str | None:
     """An FTS5 OR of prefix terms, e.g. ``"cosmos"* OR "ep"*``. ``to_match_query``
     sanitizes each token (they are already ``[a-z0-9]``) into a safe quoted term."""
@@ -178,25 +233,71 @@ def _or_match(tokens: frozenset[str]) -> str | None:
     return " OR ".join(usable) if usable else None
 
 
-def _dir_bundle_ids(
+def _bundle_ids_where(
+    session: Session, locality: ColumnElement[bool], *, confirmed: bool, cap: int
+) -> set[str]:
+    """Bundle ids in the requested grouping state whose files satisfy ``locality``."""
+    state = GroupingState.CONFIRMED if confirmed else GroupingState.PROVISIONAL
+    stmt: Select[tuple[str]] = (
+        select(AssetFile.bundle_id)
+        .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        .where(AssetBundle.grouping_state == state)
+        .where(locality)
+        .limit(cap)
+    )
+    if not confirmed:
+        stmt = stmt.where(AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION)
+    return set(session.scalars(stmt).all())
+
+
+def _enclosing_bundle_ids(
     session: Session, dirs: frozenset[str], *, confirmed: bool, cap: int
 ) -> set[str]:
-    state = GroupingState.CONFIRMED if confirmed else GroupingState.PROVISIONAL
-    ids: set[str] = set()
-    for directory in dirs:
-        if not directory or len(ids) >= cap:
-            continue
-        stmt: Select[tuple[str]] = (
-            select(AssetFile.bundle_id)
-            .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
-            .where(AssetBundle.grouping_state == state)
-            .where(AssetFile.relative_path.like(_like_prefix(directory), escape="\\"))
-            .limit(cap)
+    """Bundles holding a file in one of ``dirs`` or in a directory enclosing it.
+
+    One indexed equality probe per distinct directory in the bounded ancestor
+    walk, folded into a single ``IN``. This is the direction the import question
+    needs: a file landing in a subfolder should find the bundle that lives above
+    it.
+    """
+    wanted = {ancestor for directory in dirs for ancestor in _ancestors(directory)}
+    if not wanted:
+        return set()
+    return _bundle_ids_where(
+        session, AssetFile.directory_path.in_(sorted(wanted)), confirmed=confirmed, cap=cap
+    )
+
+
+def _within_bundle_ids(
+    session: Session, dirs: frozenset[str], *, confirmed: bool, cap: int
+) -> set[str]:
+    """Bundles holding a file in one of ``dirs`` or in any directory beneath it.
+
+    The subtree test is a half-open range on the indexed ``directory_path`` rather
+    than a ``LIKE`` prefix, because SQLite cannot use an index for ``LIKE`` at all
+    under its default case-insensitive rules — that spelling read the whole
+    ``asset_files`` table once per directory, on dialog open. ``"/"`` is 0x2F, so
+    ``"0"`` is the next byte and bounds the subtree exactly: every descendant
+    starts with ``dir + "/"``, and nothing else falls in the range (a sibling like
+    ``Set1-old`` sorts below it, ``Set1x`` above).
+
+    The library root is skipped: its subtree is the entire library, which is both
+    a table scan and evidence of nothing.
+    """
+    clauses = [
+        or_(
+            AssetFile.directory_path == directory,
+            and_(
+                AssetFile.directory_path >= f"{directory}/",
+                AssetFile.directory_path < f"{directory}0",
+            ),
         )
-        if not confirmed:
-            stmt = stmt.where(AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION)
-        ids.update(session.scalars(stmt).all())
-    return ids
+        for directory in sorted(dirs)
+        if directory
+    ]
+    if not clauses:
+        return set()
+    return _bundle_ids_where(session, or_(*clauses), confirmed=confirmed, cap=cap)
 
 
 def _fts_bundle_ids(
@@ -222,7 +323,9 @@ def _fts_bundle_ids(
 def _unbundled_files_for(
     session: Session, ctx: _Context, *, exclude: set[str], cap: int
 ) -> list[AssetFile]:
-    ids = _dir_bundle_ids(session, ctx.dirs, confirmed=False, cap=cap)
+    # Read the other way round: unbundled files worth folding in are the ones
+    # sitting in the target's folder or under it.
+    ids = _within_bundle_ids(session, ctx.dirs, confirmed=False, cap=cap)
     ids |= _fts_bundle_ids(session, ctx.tokens, confirmed=False, cap=cap)
     if not ids:
         return []
@@ -295,7 +398,9 @@ def suggest_target_bundles(
         return []
     selected_ctx = _file_context([(s.relative_path, s.media_kind) for s in selected])
 
-    candidate_ids = _dir_bundle_ids(session, selected_ctx.dirs, confirmed=True, cap=_CANDIDATE_CAP)
+    candidate_ids = _enclosing_bundle_ids(
+        session, selected_ctx.dirs, confirmed=True, cap=_CANDIDATE_CAP
+    )
     candidate_ids |= _fts_bundle_ids(
         session, selected_ctx.tokens, confirmed=True, cap=_CANDIDATE_CAP
     )
