@@ -150,7 +150,16 @@ export function BundleAlbum({
         onLocateFile,
         onRemoveFromBundle: (files) => files.forEach((f) => fileMutations.remove.mutate(f.id)),
         onForgetMissing: (files) =>
-          forgetMissing.mutate({ bundleId, fileIds: files.map((f) => f.id) }),
+          forgetMissing.mutate(
+            { bundleId, fileIds: files.map((f) => f.id) },
+            {
+              // Forgetting the last file takes the bundle with it, and an album
+              // view of a bundle that no longer exists is nothing to look at.
+              onSuccess: (result) => {
+                if (result.bundle_deleted) onBack()
+              },
+            },
+          ),
         onTrash: writeMode
           ? (files) => fileOps.trash.mutate(files.map((f) => f.relative_path))
           : undefined,

@@ -90,6 +90,7 @@ import {
   fetchBundle,
   fetchBundleCollections,
   fetchBundleFiles,
+  isNotFoundError,
   fetchBundleTags,
   fetchCollectionCounts,
   fetchFacets,
@@ -1426,10 +1427,30 @@ export function useTagGroupMemberships() {
   })
 }
 
+/** Resolve a request for something that may have been deleted.
+ *
+ * A 404 here is not a fault: a bundle can be forgotten, swept by a scan, or
+ * deleted in another window while a pane still points at it. Returning `absent`
+ * rather than throwing lets each surface say "gone" instead of showing its
+ * last-known state, which is what the inspector was doing — a deleted bundle
+ * kept its whole panel, missing badge and all (owner, 2026-08-24). It also stops
+ * react-query retrying a 404 three times over.
+ */
+async function orAbsent<T, A>(load: Promise<T>, absent: A): Promise<T | A> {
+  try {
+    return await load
+  } catch (error) {
+    if (isNotFoundError(error)) return absent
+    throw error
+  }
+}
+
 export function useBundle(id: string | null) {
   return useQuery({
     queryKey: ['bundle', id],
-    queryFn: ({ signal }) => fetchBundle(id as string, signal),
+    // `null` means gone, `undefined` means not loaded yet — the two readings the
+    // inspector needs to keep apart.
+    queryFn: ({ signal }) => orAbsent(fetchBundle(id as string, signal), null),
     enabled: id !== null,
   })
 }
@@ -1437,7 +1458,7 @@ export function useBundle(id: string | null) {
 export function useBundleFiles(id: string | null) {
   return useQuery({
     queryKey: ['bundle-files', id],
-    queryFn: ({ signal }) => fetchBundleFiles(id as string, signal),
+    queryFn: ({ signal }) => orAbsent(fetchBundleFiles(id as string, signal), []),
     enabled: id !== null,
   })
 }
