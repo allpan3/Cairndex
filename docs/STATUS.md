@@ -210,6 +210,48 @@ off a desktop host), so a browser cannot exercise it — the same coverage gap
 recorded under *Add Files to Library* below. It is covered by component tests;
 its appearance in the packaged app is unverified.
 
+**Two owner reports on this branch (2026-08-26), both fixed.**
+
+*"Right now it doesn't seem to suggest a bundle"* when dropping into a File
+Browser folder. Correct, and a gap in the work rather than a tuning problem: a
+Finder drag-in **on the desktop** goes through the shell's own importer
+(`useDesktopFileDrop` → `hostImports.copyIn` → `useHostImports`), which is
+separate machinery from the browser upload (`useWebImports.copyIn`) all the way
+down. Only the second had been wired, so the offer existed on the web and was
+silently absent in the packaged app. `useHostImports` now accumulates what
+reached disk and reports it once the batch settles — deliberately a batch-level
+callback, because `onImported` fires per file and knows only an operation id,
+while the offer needs the landed *paths* and has to wait until nothing more can
+join them. Called before the stopped-batch summary flash, so that summary still
+wins the toast, matching the web path's precedence.
+
+Worth keeping straight, since it decides where to look next time: **Add Files
+Here** and the toolbar picker always worked — they are `<input type=file>` and go
+through the web path even inside the desktop app. Only the Finder *drag* differed.
+
+*Locate a bundle in the File Browser.* Its context menu now opens the folder the
+bundle's own file sits in, with that file highlighted, reusing
+`locateFileInBrowser` and `bundleHostPath` so the three card actions agree on
+what "this bundle's file" means. Placed above Open/Reveal and offered on the web
+too, since it navigates inside Cairndex.
+
+It opens the **primary file's folder, not the common ancestor** of every member.
+For the ordinary single-folder bundle these are the same; for one spanning
+sibling folders the ancestor contains none of its files, so it would open a
+folder showing nothing you were looking for — and landing on the file the card
+stands for is what lets it be highlighted.
+
+**A debugging note worth not repeating.** The new e2e test failed on its
+highlight assertion, and the cause was the test's own fixture: a scripted
+edit that pointed the bundle at `Show/clip.mkv` while the mocked folder held
+`clip.mp4` had silently not applied, because that one `str.replace` was written
+without asserting the match count while its neighbours had one. The feature was
+correct throughout. Assert the count on every scripted source edit.
+
+**Gates re-run for these two:** `lint`, `format:check`, `typecheck`, **955
+frontend tests**, and the full **137-test Playwright suite** green. The backend
+gate was **not** re-run — no server file changed in this round.
+
 **Next:** owner verification in the desktop app, particularly whether 0.4/0.05
 are the right bars against a real library, and whether the picker's offer wants
 the confidence pill the bundling dialogs show.

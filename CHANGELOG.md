@@ -25,6 +25,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   - **The File Browser's drag-in and Add Files Here** report the import in a
     toast that now carries the offer beside Undo. Undo reverses the whole batch,
     not only the last file, because each import is its own journal operation.
+    This covers both ways files arrive there — a browser upload and the desktop
+    shell's own Finder drop are separate machinery end to end, and the offer has
+    to be asked for on each.
 
   An offer, never an action: the file has already landed where it was told to,
   and everything is metadata-only from there. Two cases deliberately stay quiet
@@ -45,6 +48,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   A file that is gone no longer offers "Remove from Bundle" beside it. Removing
   it drops the record too, so the two were one action under two names, and only
   one of the names said so.
+
+- **Locate in File Browser, on a bundle.** The File Browser could jump to a
+  file's owning bundle, but nothing went the other way: finding where a bundle
+  actually lives on disk meant reading its path and navigating by hand. A
+  bundle's context menu now opens the folder its own file sits in, with that file
+  highlighted. Like *Locate in Bundle Browser* — and unlike Open in Default App
+  and Reveal in Finder, which it sits above — this navigates inside Cairndex, so
+  it works in a browser too.
 
 - **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
   both are in the menu bar under `File` — greyed out when there is nothing they
