@@ -248,9 +248,54 @@ edit that pointed the bundle at `Show/clip.mkv` while the mocked folder held
 without asserting the match count while its neighbours had one. The feature was
 correct throughout. Assert the count on every scripted source edit.
 
-**Gates re-run for these two:** `lint`, `format:check`, `typecheck`, **955
-frontend tests**, and the full **137-test Playwright suite** green. The backend
-gate was **not** re-run — no server file changed in this round.
+**Third report, same day: "Add Files Here still does not work", in the desktop
+app.** That path was *not* broken — driving the real hidden `<input type=file>`
+against a live server produced `Add to "Alpha Reel"` + `Undo`, and
+`useWebImports` has no host-specific branch, so the desktop app takes the same
+code. What was wrong is that **withholding the offer looked identical to the
+feature not working.** The toast said nothing whenever the leader was below 0.4
+or within 0.05 of the runner-up — and one of those, two bundles in one folder,
+is common.
+
+So there is now *always* an action: an unconvincing guess degrades to **Add to
+Bundle…** on the same toast, opening the full ranked list plus a search over
+every confirmed bundle. A failed suggestion lookup lands there too, rather than
+being swallowed. Verified live: the neutral-name tie case that produced silence
+now offers the picker, and taking it opens the dialog with both tied candidates
+listed.
+
+**Resolved (2026-08-26), and it was discoverability.** The offer had been there
+the whole time: *"it looks like I have to explicitly click on the button in the
+toast to bring it up, so I didn't know about that."* Nothing was broken in either
+build. Worth keeping as the lesson: a toast action is easy to miss, and three
+rounds went into diagnosing a feature that worked.
+
+The owner's read on that round — *"maybe all the fixes you've done in the latest
+rounds are not necessary"* — is half right. **Locate in File Browser** was its own
+request and stands; the **desktop Finder-drag** wiring was a genuine gap, since
+that path offered nothing at all; the **always-an-action** change was motivated by
+a misread but still fixes the tie case, and now composes with the work below.
+
+**The actual need, once the misunderstanding cleared:** *"a way to create a
+bundle along with the add to a bundle."* The suggester can only ever propose
+joining an existing bundle, and a file arriving in the library is at least as
+likely to be a new one. **New Bundle…** now sits beside the add-to action on
+every import toast, opening the same `CreateBundleDialog` the File Browser's
+Create Bundle… uses — title proposed from the filename, nearby files offered.
+
+Put in the toast rather than in `DirectoryPicker`, because the toast is the one
+place every import route converges; the picker stays a question about *where*.
+The picker's "Don't add to a bundle" now falls through to that toast, so
+answering it is a *not yet* rather than a no.
+
+Verified live end to end: the toast shows `Add to "Alpha Reel"` / `New Bundle…` /
+`Undo`; taking the second opens the dialog titled `reel-featurette` from the
+filename; completing it reports *"Created a bundle from 1 file."* and the API
+confirms a third bundle holding that path.
+
+**Gates re-run:** `lint`, `format:check`, `typecheck`, **956 frontend tests**,
+and the full **137-test Playwright suite** green. The backend gate was **not**
+re-run — no server file changed in this round.
 
 **Next:** owner verification in the desktop app, particularly whether 0.4/0.05
 are the right bars against a real library, and whether the picker's offer wants
