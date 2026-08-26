@@ -5907,6 +5907,20 @@ code {
   overflow: auto;
 }
 
+/* A listing still showing the folder just left while the next one loads. Dimming
+   rather than blanking is the point: the box keeps its height and stops flashing
+   on every click into a folder. */
+.listing--stale {
+  opacity: 0.55;
+}
+/* For rows that cannot be disabled by attribute — divs carrying click,
+   double-click, context-menu and drag handlers. Without this the held rows are
+   fully interactive under a breadcrumb that already reads the next folder, so a
+   click would select, rename, or trash a file from the one just left. */
+.listing--inert {
+  pointer-events: none;
+}
+
 /* --- Copy files in (ADR-0013 §7) ------------------------------------------ */
 /* The whole listing is the drop target, not a separate zone: the folder being
    browsed is where the files go, so the folder's own body is the honest edge. */

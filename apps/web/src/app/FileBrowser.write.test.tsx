@@ -53,6 +53,10 @@ const FILE: FileBrowserEntry = {
   linked: true,
 }
 
+// True while the rows on screen are the previous folder's, held so the listing
+// does not blank on every step into a folder.
+let listingIsStale = false
+
 vi.mock('../api/hooks', () => ({
   useFileBrowser: () => ({
     data: { entries: [FOLDER, FILE], missing_files_updated: 0, path: 'Show' },
@@ -60,6 +64,7 @@ vi.mock('../api/hooks', () => ({
     error: null,
     isError: false,
     isLoading: false,
+    isPlaceholderData: listingIsStale,
   }),
   useUnbundledFiles: () => ({
     data: { pages: [] },
@@ -83,7 +88,7 @@ vi.mock('../api/hooks', () => ({
 
 let flashes: { message: string; undo?: () => void }[]
 
-function renderBrowser(writeMode = true) {
+function renderBrowser(writeMode = true, onSelectEntry: () => void = () => undefined) {
   flashes = []
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -94,7 +99,7 @@ function renderBrowser(writeMode = true) {
         path="Show"
         selectedPath={null}
         onNavigate={() => undefined}
-        onSelectEntry={() => undefined}
+        onSelectEntry={onSelectEntry}
         playerPrefs={DEFAULT_PLAYER_PREFS}
         onPlayerPrefs={() => undefined}
         onAddToBundle={() => undefined}
@@ -112,6 +117,7 @@ const row = (name: string) => screen.getByText(name).closest('[data-relpath]') a
 
 beforeEach(() => {
   vi.clearAllMocks()
+  listingIsStale = false
 })
 
 test('a read-only library looks exactly as it did before write mode existed', () => {
@@ -522,4 +528,38 @@ test('a read-only library offers no way to move', () => {
 
   fireEvent.contextMenu(row('ep1.mkv'))
   expect(screen.queryByText('Move to…')).toBeNull()
+})
+
+// --- a listing held while the next folder loads -------------------------------
+// Stepping into a folder used to replace the whole list with "Loading…", so the
+// view flashed on every click (owner, 2026-08-26). The rows are now held — which
+// means they must not be *acted* on, because the breadcrumb already reads the
+// folder being navigated to while these rows belong to the one just left.
+test('a held listing is marked pending and cannot be acted on', () => {
+  listingIsStale = true
+  const onSelectEntry = vi.fn()
+  renderBrowser(true, onSelectEntry)
+
+  // Marked for anyone reading the DOM or listening with a screen reader.
+  const wrapper = document.querySelector('.file-browser__wrapper') as HTMLElement
+  expect(wrapper).toHaveAttribute('aria-busy', 'true')
+  expect(wrapper.className).toContain('listing--inert')
+
+  // Guarded in JS as well as CSS: jsdom does no hit testing, so `pointer-events`
+  // alone would let every one of these through — and what they reach is Rename,
+  // Move to… and Move to Trash.
+  fireEvent.click(row('ep1.mkv'))
+  fireEvent.doubleClick(row('Season 1'))
+  fireEvent.contextMenu(row('ep1.mkv'))
+
+  expect(onSelectEntry).not.toHaveBeenCalled()
+  expect(document.querySelector('.context-menu')).toBeNull()
+})
+
+test('a settled listing is interactive as before', () => {
+  const onSelectEntry = vi.fn()
+  renderBrowser(true, onSelectEntry)
+
+  fireEvent.click(row('ep1.mkv'))
+  expect(onSelectEntry).toHaveBeenCalled()
 })

@@ -216,9 +216,18 @@ export function DirectoryPicker({
   const [here, setHere] = useState(startIn)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [folderName, setFolderName] = useState('')
-  const [pickedBundle, setPickedBundle] = useState<string | null>(null)
+  // The chosen bundle *and* the folder it was chosen in. Paired deliberately —
+  // see `picked` below.
+  const [pickedBundle, setPickedBundle] = useState<{
+    folder: string
+    id: string
+    title: string | null
+  } | null>(null)
   const { mkdir } = useFileOperations()
-  const { data, isLoading } = useFileBrowser(here || null)
+  // `keepPrevious`: hold the last listing while the next folder loads, so the
+  // dialog does not flash on every click. The rows are disabled while that
+  // placeholder is showing — see the guard on `stale` below.
+  const { data, isLoading, isPlaceholderData: stale } = useFileBrowser(here || null, true, true)
   const excluded = new Set(moving)
 
   // Where each file *would* land, which is the whole question the suggestion
@@ -232,12 +241,22 @@ export function DirectoryPicker({
   )
   const offered = suggestions ?? []
   // A bundle chosen in one folder must not survive navigating to another, where
-  // it may not be offered at all — so the choice counts only while it is still
-  // in the current folder's list. Derived rather than cleared on navigation,
-  // because `setHere` is called from four places and one of them forgetting
-  // would file the files into a bundle the owner is no longer looking at.
-  const picked = offered.some((s) => s.bundle_id === pickedBundle) ? pickedBundle : null
-  const pickedTitle = offered.find((s) => s.bundle_id === picked)?.title
+  // it may not be offered at all. Still derived rather than cleared on
+  // navigation — `setHere` is called from four places and one of them forgetting
+  // would file the files into a bundle the owner is no longer looking at — but
+  // keyed on the *folder*, not on whether the id is still in the fetched list.
+  //
+  // That earlier spelling tied a correctness rule to a network state. It held
+  // only because TanStack retains `data` across a refetch; any moment the list
+  // was momentarily empty for the same folder — a failed first load, an
+  // eviction, or the `placeholderData` above — would have silently dropped an
+  // explicit choice and imported the file unbundled.
+  const active = pickedBundle?.folder === here ? pickedBundle : null
+  const picked = active?.id ?? null
+  // The title is remembered with the choice rather than looked back up, for the
+  // same reason: the confirm button must say what it will do even in a render
+  // where the suggestion list has not arrived.
+  const pickedTitle = active?.title ?? null
   const subdirs = (data?.entries ?? [])
     .filter((entry) => entry.kind === 'directory' && !excluded.has(entry.relative_path))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -366,7 +385,7 @@ export function DirectoryPicker({
             )}
           </div>
         )}
-        <ul className="dir-picker__list">
+        <ul className={`dir-picker__list${stale ? ' listing--stale' : ''}`} aria-busy={stale}>
           {isLoading ? (
             <li className="dir-picker__empty">Loading…</li>
           ) : subdirs.length === 0 ? (
@@ -378,7 +397,10 @@ export function DirectoryPicker({
                   type="button"
                   className="dir-picker__row"
                   onClick={() => setHere(entry.relative_path)}
-                  disabled={busy}
+                  // While `stale`, these rows are the previous folder's under
+                  // the new breadcrumb; clicking one would navigate somewhere
+                  // that need not exist.
+                  disabled={busy || stale}
                 >
                   {entry.name}
                 </button>
@@ -405,7 +427,13 @@ export function DirectoryPicker({
                         type="radio"
                         name="dir-picker-bundle"
                         checked={picked === suggestion.bundle_id}
-                        onChange={() => setPickedBundle(suggestion.bundle_id)}
+                        onChange={() =>
+                          setPickedBundle({
+                            folder: here,
+                            id: suggestion.bundle_id,
+                            title: suggestion.title,
+                          })
+                        }
                         disabled={busy}
                       />
                       <span className="mb-row__main">

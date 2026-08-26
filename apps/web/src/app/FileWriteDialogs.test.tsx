@@ -23,6 +23,14 @@ let bundleSuggestions: Record<string, TargetSuggestion[]> = {}
 // the answers: they are what tells the server *where the file would land*.
 const suggestionQueries: string[][] = []
 
+// True while the listing on screen belongs to the folder just left (TanStack's
+// placeholder data), which is when the picker must not let a row be clicked.
+let listingIsStale = false
+// Suggestion lookups after this many calls return nothing, standing in for the
+// list blinking empty for a folder the owner has already chosen a bundle in.
+let blinkSuggestionsAfter: number | null = null
+let suggestionCalls = 0
+
 vi.mock('../api/hooks', () => ({
   useFileOperations: () => ({ mkdir }),
   useBundleFiles: () => ({ data: bundleFiles, isLoading: false }),
@@ -35,11 +43,16 @@ vi.mock('../api/hooks', () => ({
       })),
     },
     isLoading: false,
+    isPlaceholderData: listingIsStale,
   }),
   useTargetSuggestions: (sel: { relativePaths?: string[] }, enabled: boolean) => {
     const paths = sel.relativePaths ?? []
     if (!enabled || paths.length === 0) return { data: undefined, isLoading: false }
     suggestionQueries.push(paths)
+    suggestionCalls += 1
+    if (blinkSuggestionsAfter !== null && suggestionCalls > blinkSuggestionsAfter) {
+      return { data: [], isLoading: false }
+    }
     const folder = (paths[0] as string).split('/').slice(0, -1).join('/')
     return { data: bundleSuggestions[folder] ?? [], isLoading: false }
   },
@@ -57,6 +70,9 @@ beforeEach(() => {
   mkdir.error = null
   bundleSuggestions = {}
   suggestionQueries.length = 0
+  listingIsStale = false
+  blinkSuggestionsAfter = null
+  suggestionCalls = 0
 })
 
 test('a drop onto a bundle opens where the bundle’s first file lives', () => {
@@ -363,4 +379,47 @@ test('a folder with no plausible bundle says so, and still adds the file', () =>
   expect(screen.getByText('No bundle here suits these files.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Add to Studios' }))
   expect(onChoose).toHaveBeenCalledWith('Studios', null)
+})
+
+test('a chosen bundle survives the suggestion list blinking empty', () => {
+  // The rule is "forget the choice when you leave the folder". It used to be
+  // implemented as "forget it when the id is no longer in the fetched list",
+  // which tied a correctness rule to a network state: any render where that list
+  // was momentarily empty for the *same* folder silently dropped an explicit
+  // choice, and the import then landed unbundled.
+  bundleSuggestions = { Studios: [suggestion('b1', 'Alpha Reel', 'same folder')] }
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  // Choosing re-renders, and from here the mock answers with nothing.
+  blinkSuggestionsAfter = suggestionCalls
+  fireEvent.click(screen.getByRole('radio', { name: /Alpha Reel/ }))
+
+  // The button still names the bundle: the title is remembered with the choice
+  // rather than looked back up in a list that may not have arrived.
+  const confirm = screen.getByRole('button', { name: 'Add to “Alpha Reel”' })
+  fireEvent.click(confirm)
+  expect(onChoose).toHaveBeenCalledWith('Studios', 'b1')
+})
+
+test('a stale listing cannot be clicked into', () => {
+  // Holding the previous folder's rows stops the dialog flashing, but they sit
+  // under the *new* breadcrumb — so clicking one would navigate somewhere that
+  // need not exist. Cosmetic fix, real hazard, hence the guard.
+  listingIsStale = true
+  renderPicker({ startIn: 'Studios' })
+
+  expect(screen.getByRole('button', { name: 'Alpha' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Beta' })).toBeDisabled()
+})
+
+test('a settled listing is navigable as usual', () => {
+  const onChoose = renderPicker({ startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Move here' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios/Beta', null)
 })

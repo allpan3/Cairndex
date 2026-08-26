@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 
 import {
   type InfiniteData,
+  keepPreviousData,
   type QueryClient,
   type QueryKey,
   useInfiniteQuery,
@@ -1198,11 +1199,22 @@ export function useManualBundling() {
 }
 
 /** List directory entries for a library-relative path (null = library root). */
-export function useFileBrowser(path: string | null, enabled = true) {
+export function useFileBrowser(path: string | null, enabled = true, keepPrevious = false) {
   return useQuery({
     queryKey: ['file-browser', path ?? ''],
     queryFn: ({ signal }) => fetchFileBrowserEntries(path, signal),
     enabled,
+    // Opt-in, for pickers: stepping into a folder is a *new* query key with
+    // nothing cached, so the list is replaced by "Loading…" and the dialog
+    // visibly flashes on every click (owner, 2026-08-26). Holding the previous
+    // listing keeps the box steady.
+    //
+    // A caller that opts in **must** dim and disable the rows while
+    // `isPlaceholderData` is true. What is on screen then belongs to the folder
+    // you just left while the breadcrumb already reads the new one, so a click
+    // landing on a stale row would navigate somewhere that may not exist —
+    // trading a cosmetic flash for a real misnavigation.
+    ...(keepPrevious ? { placeholderData: keepPreviousData } : {}),
   })
 }
 
