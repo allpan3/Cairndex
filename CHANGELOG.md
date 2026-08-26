@@ -57,6 +57,39 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   it drops the record too, so the two were one action under two names, and only
   one of the names said so.
 
+- **The destination picker stops flashing on every click.** Stepping into a folder
+  fetched a listing under a new cache key, so the list was replaced by "Loading…"
+  and the dialog visibly blinked each time. It now holds the previous listing
+  while the next arrives — dimmed, with its rows disabled, because those rows
+  belong to the folder you just left while the breadcrumb already reads the new
+  one, and clicking one would navigate somewhere that need not exist.
+
+  **The File Browser itself does the same**, where the stakes are higher: its
+  rows feed Rename, Move to… and Move to Trash, so a click landing on a held row
+  could have targeted a file from the folder just left. There the held listing is
+  dimmed, marked `aria-busy`, made inert in CSS *and* guarded in the click,
+  double-click and context-menu handlers — belt and braces, because a CSS-only
+  guard depends on a stylesheet having loaded. Band-select and arrow keys are
+  suspended for the same window. Affordances keyed on the *path* rather than a
+  row — dropping files in, New Folder, the background menu — stay live, since the
+  path is already the folder being navigated to.
+
+  Still opt-in per caller rather than a default on the shared listing hook: any
+  caller holding a stale listing has to guard against acting on it, and that
+  guard is specific to what its rows do. The remaining pickers need no change —
+  the collection picker reads one non-navigable query, and the bundle-drop
+  destination wraps this same directory picker.
+
+- **Fixed: a bundle chosen in the destination picker could be silently dropped.**
+  The rule is "forget the choice when you leave the folder", but it was
+  implemented as "forget it when the id is no longer in the fetched suggestion
+  list" — a correctness rule keyed on a network state. It held only because
+  TanStack retains data across a refetch; any render where that list was
+  momentarily empty for the *same* folder would have discarded an explicit choice
+  and imported the file unbundled. The choice is now keyed on the folder it was
+  made in, and remembers its own title so the confirm button says what it will do
+  even before the list arrives.
+
 - **Locate in File Browser, on a bundle.** The File Browser could jump to a
   file's owning bundle, but nothing went the other way: finding where a bundle
   actually lives on disk meant reading its path and navigating by hand. A

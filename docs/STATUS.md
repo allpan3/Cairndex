@@ -293,9 +293,48 @@ Verified live end to end: the toast shows `Add to "Alpha Reel"` / `New Bundle…
 filename; completing it reports *"Created a bundle from 1 file."* and the API
 confirms a third bundle holding that path.
 
-**Gates re-run:** `lint`, `format:check`, `typecheck`, **956 frontend tests**,
-and the full **137-test Playwright suite** green. The backend gate was **not**
-re-run — no server file changed in this round.
+**The picker flash, and what it was hiding (2026-08-26).** The owner noticed the
+destination picker reloading on every folder click, and asked the better
+question: *"does this mean it will potentially produce wrong behavior?"*
+
+The flash was cosmetic — a new cache key with nothing stored, so the list was
+replaced by "Loading…". But it sat on top of a real defect, and the obvious fix
+would have activated it. The rule *"forget the chosen bundle when you leave the
+folder"* had been implemented as *"forget it when the id is no longer in the
+fetched suggestion list"* — a correctness rule keyed on a network state, which
+held only because TanStack retains `data` across a refetch. Any render where that
+list was momentarily empty for the **same** folder would have discarded an
+explicit choice and imported the file unbundled, and `placeholderData` is exactly
+the change that produces such a render. It is now keyed on the folder the choice
+was made in, and carries its own title so the confirm button can say what it will
+do before any list arrives.
+
+Then extended to the File Browser at the owner's request. Higher stakes there:
+its rows feed Rename, Move to… and Move to Trash, so a click on a held row could
+target a file from the folder just left. Held rows are dimmed, `aria-busy`, inert
+in CSS **and** guarded in the click / double-click / context-menu handlers —
+jsdom does no hit testing, so a CSS-only guard is both untestable and dependent
+on a stylesheet having loaded. Band-select and arrow keys are suspended for the
+same window; path-keyed affordances (drop, New Folder, background menu) stay
+live, because `path` is already the destination.
+
+`keepPrevious` stays **opt-in** on `useFileBrowser` rather than becoming its
+default: any caller holding a stale listing must guard against acting on it, and
+that guard depends on what its rows do. No other caller needs it — the only two
+consumers are these, the collection picker reads one non-navigable query, and the
+bundle-drop destination wraps the same directory picker.
+
+Both fixes have regression tests verified to fail against the previous code.
+
+**Not reproduced:** the flash the owner also sees on window resize. With
+`refetchOnWindowFocus: false` and a 30s `staleTime`, a resize should not refetch
+at all, so that may be a layout reflow rather than a reload.
+
+**Gates re-run:** `lint`, `format:check`, `typecheck`, **963 frontend tests**
+green. Playwright is **137/137 with `--workers=1`**; parallel runs flake between
+zero and two failures, always in `player.spec.ts` media timing and once in
+`libraries.spec.ts`, each passing alone. Pre-existing and unrelated to these
+changes. The backend gate was **not** re-run — no server file changed.
 
 **Next:** owner verification in the desktop app, particularly whether 0.4/0.05
 are the right bars against a real library, and whether the picker's offer wants
