@@ -97,7 +97,7 @@ import {
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
-import { announceImport } from './app/importBundleOffer'
+import { announceImport, type ImportOfferDeps } from './app/importBundleOffer'
 import type { DragItem } from './app/dnd'
 import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
@@ -1777,8 +1777,22 @@ function Workspace({
       // multi-selection has no single file to hand over.
       const hostPath = n === 1 ? bundleHostPath(filtered.find((item) => item.id === id)) : null
       if (hostPath) {
+        // The inverse of the File Browser's own "Locate in Bundle Browser", and
+        // listed before Open/Reveal because unlike those it navigates *inside*
+        // Cairndex and so works on the web too.
+        //
+        // It opens the folder the bundle's own file sits in, which for a bundle
+        // whose files share a folder is that folder. Deliberately not the common
+        // ancestor of every member: for the rare bundle spanning sibling folders
+        // that ancestor contains none of its files, so it would open a folder
+        // showing nothing you were looking for. Landing on the file the card
+        // stands for also lets it be highlighted on arrival.
+        items.push(null, {
+          label: 'Locate in File Browser',
+          onClick: () => locateFileInBrowser(hostPath),
+        })
         const hostItems = hostFileMenuEntries(hostLabels, hostFileActions, hostPath)
-        if (hostItems.length > 0) items.push(null, ...hostItems)
+        if (hostItems.length > 0) items.push(...hostItems)
       }
       if (selection.collectionId) {
         const collectionId = selection.collectionId
@@ -1833,6 +1847,7 @@ function Workspace({
       menu.open(e, items)
     },
     [
+      locateFileInBrowser,
       selectedIds,
       selection.collectionId,
       open,
@@ -1878,6 +1893,30 @@ function Workspace({
   // it belongs to. An offer rather than an action: the file has already landed
   // where it was told to, Undo still reverses that, and the full ranked list
   // stays under Add to Bundle… for anything this declines to guess at.
+  //
+  // Shared by *both* ways a file arrives here — the web upload and the desktop
+  // shell's Finder drop, which are separate machinery all the way down. Having
+  // wired only the first, a Finder drag-in on the desktop silently offered
+  // nothing (owner, 2026-08-26).
+  const bundleOfferDeps: ImportOfferDeps = useMemo(
+    () => ({
+      suggest: (relativePaths) => suggestTargetBundles({ relativePaths }),
+      addToBundle: (bundleId, relativePaths) =>
+        addUnbundledFilesToBundle(bundleId, { relativePaths }),
+      undoOperation: (operationId) =>
+        fileOperations.undo.mutate(operationId, {
+          onError: (error) =>
+            showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+        }),
+      show: showFlash,
+      onLinked: (bundleId) => {
+        invalidateAfterFileOperation(queryClient)
+        queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
+      },
+    }),
+    [fileOperations, queryClient, showFlash],
+  )
+
   const importIntoFileBrowser = useCallback(
     (files: File[], destDir: string) =>
       webImports.copyIn(files, destDir, {
@@ -1886,25 +1925,11 @@ function Workspace({
           await announceImport(
             result.imported.map((item) => ({ path: item.path, operationId: item.operation.id })),
             destDir,
-            {
-              suggest: (relativePaths) => suggestTargetBundles({ relativePaths }),
-              addToBundle: (bundleId, relativePaths) =>
-                addUnbundledFilesToBundle(bundleId, { relativePaths }),
-              undoOperation: (operationId) =>
-                fileOperations.undo.mutate(operationId, {
-                  onError: (error) =>
-                    showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
-                }),
-              show: showFlash,
-              onLinked: (bundleId) => {
-                invalidateAfterFileOperation(queryClient)
-                queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
-              },
-            },
+            bundleOfferDeps,
           )
         },
       }),
-    [fileOperations, queryClient, showFlash, webImports],
+    [bundleOfferDeps, queryClient, webImports],
   )
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
@@ -1982,13 +2007,18 @@ function Workspace({
     [pendingBundleDrop, queryClient, showFlash, webImports],
   )
 
+  const hostDestDir = mode === 'file' && fileScope === 'browse' ? filePath : ''
   const hostImports = useHostImports({
     libraryId,
     // Where a drop lands: the folder on screen when the Files surface is open,
     // the library root otherwise. Dropping onto a view of a folder and having
     // the file appear somewhere else would be the wrong kind of surprise.
-    destDir: mode === 'file' && fileScope === 'browse' ? filePath : '',
+    destDir: hostDestDir,
     onFlash: showFlash,
+    // Same bundle offer the web upload path makes. A Finder drop and a browser
+    // upload are separate machinery end to end, so this has to be asked for
+    // twice or one of them silently does nothing (owner, 2026-08-26).
+    onSettled: (landed) => announceImport(landed, hostDestDir, bundleOfferDeps),
     onImported: (operationId) => {
       // The file landed on disk through the shell, not the import *mutation*, so
       // nothing has invalidated the browser — do it here, the same refresh a
