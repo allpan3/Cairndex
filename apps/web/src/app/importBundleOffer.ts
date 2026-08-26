@@ -45,6 +45,12 @@ export const OFFER_BUNDLE_ABOVE = 0.4
  */
 export const OFFER_MARGIN = 0.05
 
+/** A button the import toast can carry beside its message. */
+export interface ToastOffer {
+  label: string
+  run: () => void
+}
+
 /** One file that actually made it onto disk, with the operation that put it there. */
 export interface LandedFile {
   path: string
@@ -58,8 +64,21 @@ export interface ImportOfferDeps {
   addToBundle: (bundleId: string, relativePaths: string[]) => Promise<unknown>
   /** Reverse one import operation (ADR-0013 §3.1). */
   undoOperation: (operationId: string) => void
-  /** Show the result, optionally with an Undo and an offer. */
-  show: (message: string, undo?: () => void, offer?: { label: string; run: () => void }) => void
+  /**
+   * Open Add to Bundle… for these paths — the fallback when this cannot name a
+   * winner, and the reason the toast is never silent.
+   */
+  openPicker: (relativePaths: string[]) => void
+  /**
+   * Open Create Bundle… for these paths.
+   *
+   * Always offered beside the add-to action, because a file arriving in the
+   * library is at least as likely to *be* a new bundle as to join one, and the
+   * suggester can only ever propose the second (owner, 2026-08-26).
+   */
+  openCreate: (relativePaths: string[]) => void
+  /** Show the result, optionally with an Undo and any number of offers. */
+  show: (message: string, undo?: () => void, offers?: ToastOffer[]) => void
   /** Refresh caches after a successful link. */
   onLinked?: (bundleId: string) => void
 }
@@ -121,27 +140,46 @@ export async function announceImport(
     best = offerableBundle(await deps.suggest(paths))
   } catch {
     // A suggestion is a convenience. Failing to fetch one must not make a
-    // successful import read as a failure.
-  }
-  if (best === null) {
-    deps.show(message, undoAll)
-    return
+    // successful import read as a failure — it falls through to the picker,
+    // which is reachable whether or not this lookup answered.
   }
 
-  const bundleId = best.bundle_id
-  const title = best.title ?? 'that bundle'
-  deps.show(message, undoAll, {
-    label: `Add to “${title}”`,
-    run: () => {
-      void deps
-        .addToBundle(bundleId, paths)
-        .then(() => {
-          deps.onLinked?.(bundleId)
-          deps.show(`Added to “${title}”.`)
-        })
-        .catch((error: unknown) =>
-          deps.show(error instanceof Error ? error.message : 'That could not be added.'),
-        )
-    },
-  })
+  // Two things can be done with what just landed, and the suggester can only
+  // ever propose one of them: a new file is at least as likely to *be* a bundle
+  // as to join one (owner, 2026-08-26). So the toast carries both.
+  const offers: ToastOffer[] = []
+
+  if (best === null) {
+    // Withholding the *named* offer is a judgement about confidence, not about
+    // whether the owner wants to bundle what they added — and a toast that goes
+    // quiet is indistinguishable from a feature that is not working. So an
+    // unconvincing guess degrades to the full ranked list plus a search over
+    // every confirmed bundle, rather than to nothing.
+    offers.push({ label: 'Add to Bundle', run: () => deps.openPicker(paths) })
+  } else {
+    const bundleId = best.bundle_id
+    const title = best.title ?? 'that bundle'
+    offers.push({
+      label: `Add to “${title}”`,
+      run: () => {
+        void deps
+          .addToBundle(bundleId, paths)
+          .then(() => {
+            deps.onLinked?.(bundleId)
+            deps.show(`Added to “${title}”.`)
+          })
+          .catch((error: unknown) =>
+            deps.show(error instanceof Error ? error.message : 'That could not be added.'),
+          )
+      },
+    })
+  }
+
+  // No ellipsis on either label, though both open a dialog and the menus spell
+  // that with one (Move to…, Rename…). The owner asked for them gone here
+  // (2026-08-26), and a toast chip is not a menu row: three of them side by side
+  // with trailing dots is visual noise, and nothing on a toast is instantaneous
+  // enough for the distinction to be earning its keep.
+  offers.push({ label: 'New Bundle', run: () => deps.openCreate(paths) })
+  deps.show(message, undoAll, offers)
 }

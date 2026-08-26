@@ -12,9 +12,18 @@ const suggest = vi.fn<(paths: string[]) => Promise<TargetSuggestion[]>>()
 const addToBundle = vi.fn<(bundleId: string, paths: string[]) => Promise<unknown>>()
 const undoOperation = vi.fn<(operationId: string) => void>()
 const onLinked = vi.fn<(bundleId: string) => void>()
+const openPicker = vi.fn<(paths: string[]) => void>()
+const openCreate = vi.fn<(paths: string[]) => void>()
 
 /** Every toast the announcement asked for, in order. */
-let shown: { message: string; undo?: () => void; offer?: { label: string; run: () => void } }[] = []
+interface Shown {
+  message: string
+  undo?: () => void
+  offers: { label: string; run: () => void }[]
+}
+let shown: Shown[] = []
+/** The offer with this label, for asserting one action without index juggling. */
+const offer = (index: number, label: string) => shown[index]?.offers.find((o) => o.label === label)
 
 function deps() {
   return {
@@ -22,12 +31,14 @@ function deps() {
     addToBundle,
     undoOperation,
     onLinked,
+    openPicker,
+    openCreate,
     show: (
       message: string,
       undo?: () => void,
-      offer?: { label: string; run: () => void },
+      offers?: { label: string; run: () => void }[],
     ): void => {
-      shown.push({ message, undo, offer })
+      shown.push({ message, undo, offers: offers ?? [] })
     },
   }
 }
@@ -78,7 +89,7 @@ test('the strongest suggestion above the bar is the one offered', () => {
 test('two bundles in one folder are not guessed between', () => {
   // The case a destination path genuinely cannot answer: same folder, same
   // score, order decided by their titles. Naming one would dress a coin flip up
-  // as a recommendation — so nothing is offered and Add to Bundle… lists both.
+  // as a recommendation — so nothing is offered and Add to Bundle lists both.
   expect(
     offerableBundle(ranked(['b1', 'Alpha Reel', 0.6], ['b2', 'Second Feature', 0.6])),
   ).toBeNull()
@@ -113,11 +124,11 @@ test('a confident suggestion is offered, and applied only when taken', async () 
 
   expect(shown).toHaveLength(1)
   expect(shown[0]?.message).toBe('Added “behind.mp4” to Studios.')
-  expect(shown[0]?.offer?.label).toBe('Add to “Alpha Reel”')
+  expect(offer(0, 'Add to “Alpha Reel”')).toBeDefined()
   // Offered, not done: the toast can expire without anything being linked.
   expect(addToBundle).not.toHaveBeenCalled()
 
-  shown[0]?.offer?.run()
+  offer(0, 'Add to “Alpha Reel”')?.run()
   expect(addToBundle).toHaveBeenCalledWith('b1', ['Studios/behind.mp4'])
   await vi.waitFor(() => expect(onLinked).toHaveBeenCalledWith('b1'))
   expect(shown[1]?.message).toBe('Added to “Alpha Reel”.')
@@ -129,7 +140,7 @@ test('an untitled bundle is still offerable', async () => {
   ])
   await announceImport(landed('Studios/behind.mp4'), 'Studios', deps())
 
-  expect(shown[0]?.offer?.label).toBe('Add to “that bundle”')
+  expect(offer(0, 'Add to “that bundle”')).toBeDefined()
 })
 
 test('Undo reverses every import in the batch, not just the last', async () => {
@@ -141,16 +152,38 @@ test('Undo reverses every import in the batch, not just the last', async () => {
   expect(undoOperation.mock.calls).toEqual([['op-1'], ['op-2']])
 })
 
-test('a failed suggestion lookup still reports the import', async () => {
+test('a failed suggestion lookup still reports the import, and still offers the picker', async () => {
   // The bytes are on disk. A convenience that could not be fetched must not make
-  // a successful import read as a failure.
+  // a successful import read as a failure — nor leave it with no way forward.
   suggest.mockRejectedValue(new Error('offline'))
   await announceImport(landed('Studios/behind.mp4'), 'Studios', deps())
 
   expect(shown).toHaveLength(1)
   expect(shown[0]?.message).toBe('Added “behind.mp4” to Studios.')
-  expect(shown[0]?.offer).toBeUndefined()
+  expect(offer(0, 'Add to Bundle')).toBeDefined()
   expect(shown[0]?.undo).toBeTypeOf('function')
+})
+
+test('an import always offers a way to bundle what just landed', async () => {
+  // A toast that goes quiet is indistinguishable from a broken feature, which is
+  // how the withheld guess read from the outside (owner, 2026-08-26). Every case
+  // that declines to *name* a bundle still opens the picker.
+  for (const ranking of [
+    [] as ReturnType<typeof ranked>,
+    ranked(['b1', 'Alpha', 0.2]), // too weak to name
+    ranked(['b1', 'Alpha', 0.6], ['b2', 'Beta', 0.6]), // a tie the path cannot break
+  ]) {
+    shown.length = 0
+    openPicker.mockClear()
+    suggest.mockResolvedValue(ranking)
+    await announceImport(landed('Studios/clip.mp4'), 'Studios', deps())
+
+    expect(offer(0, 'Add to Bundle')).toBeDefined()
+    offer(0, 'Add to Bundle')?.run()
+    expect(openPicker).toHaveBeenCalledWith(['Studios/clip.mp4'])
+    // Still nothing linked without a further, explicit choice in the dialog.
+    expect(addToBundle).not.toHaveBeenCalled()
+  }
 })
 
 test('a failed link says why, and does not claim success', async () => {
@@ -158,8 +191,30 @@ test('a failed link says why, and does not claim success', async () => {
   addToBundle.mockRejectedValue(new Error('That bundle is no longer in the library.'))
   await announceImport(landed('Studios/behind.mp4'), 'Studios', deps())
 
-  shown[0]?.offer?.run()
+  offer(0, 'Add to “Alpha Reel”')?.run()
   await vi.waitFor(() => expect(shown).toHaveLength(2))
   expect(shown[1]?.message).toBe('That bundle is no longer in the library.')
   expect(onLinked).not.toHaveBeenCalled()
+})
+
+// --- creating a bundle, beside adding to one ---------------------------------
+test('every import also offers to make a new bundle from what landed', async () => {
+  // The suggester can only ever propose joining an *existing* bundle, but a file
+  // arriving in the library is at least as likely to be a new one (owner,
+  // 2026-08-26). Offered next to a confident suggestion, not instead of it.
+  suggest.mockResolvedValue(ranked(['b1', 'Alpha Reel', 0.7]))
+  await announceImport(landed('Studios/behind.mp4'), 'Studios', deps())
+
+  expect(shown[0]?.offers.map((o) => o.label)).toEqual(['Add to “Alpha Reel”', 'New Bundle'])
+  offer(0, 'New Bundle')?.run()
+  expect(openCreate).toHaveBeenCalledWith(['Studios/behind.mp4'])
+  // Creating is a dialog, not a silent write: nothing is bundled by the click.
+  expect(addToBundle).not.toHaveBeenCalled()
+})
+
+test('an ambiguous folder offers both routes, neither of them a guess', async () => {
+  suggest.mockResolvedValue(ranked(['b1', 'Alpha', 0.6], ['b2', 'Beta', 0.6]))
+  await announceImport(landed('Studios/clip.mp4'), 'Studios', deps())
+
+  expect(shown[0]?.offers.map((o) => o.label)).toEqual(['Add to Bundle', 'New Bundle'])
 })

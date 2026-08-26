@@ -882,12 +882,11 @@ function Workspace({
     }
   }, [])
 
-  const showFlash = useCallback((message: string, undo?: () => void, offer?: FlashAction) => {
+  const showFlash = useCallback((message: string, undo?: () => void, offers?: FlashAction[]) => {
     setFlash(message)
-    // The offer sits left of Undo, which keeps Undo in the rightmost position it
+    // Offers sit left of Undo, which keeps Undo in the rightmost position it
     // has always had — the one place muscle memory reaches for after a write.
-    const actions: FlashAction[] = []
-    if (offer) actions.push(offer)
+    const actions: FlashAction[] = [...(offers ?? [])]
     if (undo) actions.push({ label: 'Undo', run: undo })
     setFlashActions(actions)
   }, [])
@@ -1909,6 +1908,12 @@ function Workspace({
             showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
         }),
       show: showFlash,
+      // The fallback when no single bundle is a confident answer: the dialog
+      // lists every candidate ranked, with a search over all confirmed bundles.
+      openPicker: (relativePaths) => setAddingToBundle({ relativePaths }),
+      // Proposes a title and the nearby files worth including, the same dialog
+      // the File Browser's own Create Bundle… opens.
+      openCreate: (relativePaths) => setCreatingBundle({ relativePaths }),
       onLinked: (bundleId) => {
         invalidateAfterFileOperation(queryClient)
         queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
@@ -1967,13 +1972,26 @@ function Workspace({
             queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
           }
           invalidateAfterFileOperation(queryClient)
+          // Answered "don't add to a bundle" in the picker? That is a *not yet*,
+          // not a no — so the ordinary import toast follows, with the same
+          // Add to Bundle… / New Bundle… it offers every other route.
+          if (!bundleId) {
+            await announceImport(
+              result.imported.map((item) => ({
+                path: item.path,
+                operationId: item.operation.id,
+              })),
+              destDir,
+              bundleOfferDeps,
+            )
+          }
         },
       })
       // Same as the bundle drop: clear only once the batch is owned elsewhere,
       // so a refused import leaves the dialog up rather than losing the choice.
       if (accepted) setPendingAddFiles(null)
     },
-    [pendingAddFiles, queryClient, webImports],
+    [bundleOfferDeps, pendingAddFiles, queryClient, webImports],
   )
 
   const importDroppedFiles = useCallback(

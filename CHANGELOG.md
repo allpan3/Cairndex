@@ -29,12 +29,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
     shell's own Finder drop are separate machinery end to end, and the offer has
     to be asked for on each.
 
+  **New Bundle sits beside the add-to action on every import**, because a file
+  arriving in the library is at least as likely to *be* a bundle as to join one,
+  and a suggester can only ever propose the second. It opens the same dialog the
+  File Browser's Create Bundle… does, with a title proposed from the filename.
+
   An offer, never an action: the file has already landed where it was told to,
-  and everything is metadata-only from there. Two cases deliberately stay quiet
-  rather than guess — a weak match, and **a folder holding several bundles that
-  the path cannot choose between** (two bundles in one folder score identically,
-  and naming one would dress a coin flip as a recommendation). Both are still one
-  right-click away under **Add to Bundle…**, which lists every candidate ranked.
+  and everything is metadata-only from there. Two cases decline to *name* a
+  bundle — a weak match, and **a folder holding several bundles that the path
+  cannot choose between** (two bundles in one folder score identically, and
+  naming one would dress a coin flip as a recommendation). Neither goes quiet:
+  both degrade to **Add to Bundle**, which opens every candidate ranked plus a
+  search over all confirmed bundles. Answering "Don't add to a bundle" in the
+  destination picker leads to the same toast, since that is a *not yet* rather
+  than a no. So an import always offers both ways to bundle what just landed.
 
 - **Forget a file that is gone.** A file deleted outside Cairndex could only be
   dismissed by deleting the whole bundle around it — which dissolved the
