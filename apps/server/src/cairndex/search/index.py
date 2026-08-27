@@ -14,6 +14,15 @@ _SOURCE_VIEW = "bundle_search_source"
 # search field). Keep this list in sync with the view + INSERT column lists.
 _COLUMNS = ("bundle_id", "title", "notes", "files", "tags", "collections")
 _INDEXED = _COLUMNS[1:]
+# The FTS row's `rowid` is the owning bundle's own integer rowid (`asset_bundles`
+# has a TEXT primary key, so it is an ordinary rowid table). That is the only key
+# an FTS5 table can look a row up by: `bundle_id` is UNINDEXED and FTS5 supports
+# no secondary indexes, so `WHERE bundle_id = ?` is a full scan of the index —
+# 8.5 ms on a 60k-bundle library against 0.0 ms by rowid, and every maintenance
+# trigger below did exactly that, twice for a file move. Measured on a synthetic
+# 60k library: one create_bundle cost 94 ms with these triggers and 6 ms without
+# (owner: "creating a bundle takes about 5 seconds", 2026-08-26).
+_VIEW_ROWID = "bundle_rowid"
 
 # A lightweight core Table (its own MetaData so create_all never tries to build
 # this virtual table) used only to compose the MATCH subquery in browse.
@@ -25,6 +34,7 @@ _fts_table = Table(FTS_TABLE, _fts_meta, Column("bundle_id", Text))
 _CREATE_VIEW = f"""
 CREATE VIEW IF NOT EXISTS {_SOURCE_VIEW} AS
 SELECT
+  b.rowid AS bundle_rowid,
   b.id AS bundle_id,
   coalesce(b.title, '') AS title,
   -- All of the bundle's notes (a JSON array of strings) concatenated into one
@@ -54,77 +64,111 @@ _CREATE_TABLE = (
 )
 
 _INSERT_COLS = ", ".join(_COLUMNS)
-# Recompute one bundle's row from the view. Used by every maintenance trigger and
-# by rebuild; kept as one statement pair (delete-then-insert) so it is an upsert.
+# Both writes are keyed on rowid. The insert carries it explicitly so the FTS row
+# and its bundle stay addressable by the same integer for the row's whole life.
 _REINDEX_ONE = (
-    f"INSERT INTO {FTS_TABLE}({_INSERT_COLS}) "
-    f"SELECT {_INSERT_COLS} FROM {_SOURCE_VIEW} WHERE bundle_id = "
+    f"INSERT INTO {FTS_TABLE}(rowid, {_INSERT_COLS}) "
+    f"SELECT {_VIEW_ROWID}, {_INSERT_COLS} FROM {_SOURCE_VIEW} WHERE {_VIEW_ROWID} = "
 )
+# For triggers that know only a bundle id: one indexed primary-key lookup.
+_ROWID_OF = "(SELECT rowid FROM asset_bundles WHERE id = %s)"
 
 
-def _reindex(key_expr: str) -> str:
-    """A ``DELETE + INSERT`` recompute for the bundle identified by ``key_expr``
-    (e.g. ``NEW.id`` or ``OLD.bundle_id``)."""
-    return f"DELETE FROM {FTS_TABLE} WHERE bundle_id = {key_expr}; {_REINDEX_ONE}{key_expr};"
+def _reindex(rowid_expr: str) -> str:
+    """A ``DELETE + INSERT`` recompute of the FTS row whose rowid is
+    ``rowid_expr`` — ``NEW.rowid`` on an ``asset_bundles`` trigger, or
+    :data:`_ROWID_OF` for one that knows only a bundle id.
+
+    Both halves key on rowid, never on ``bundle_id``: see :data:`_VIEW_ROWID`.
+    """
+    return f"DELETE FROM {FTS_TABLE} WHERE rowid = {rowid_expr}; {_REINDEX_ONE}{rowid_expr};"
+
+
+def _reindex_by_bundle(bundle_id_expr: str) -> str:
+    """Recompute the FTS row for the bundle ``bundle_id_expr`` names."""
+    return _reindex(_ROWID_OF % bundle_id_expr)
+
+
+def _bundle_rowids(link_table: str, key_column: str) -> str:
+    """Rowids of every bundle joined to the renamed tag/collection (``NEW.id``)."""
+    return (
+        f"(SELECT b.rowid FROM asset_bundles b "
+        f"JOIN {link_table} x ON x.bundle_id = b.id WHERE x.{key_column} = NEW.id)"
+    )
+
+
+def _reindex_many(rowids_sql: str) -> str:
+    """A ``DELETE + INSERT`` recompute of every FTS row in ``rowids_sql``."""
+    return (
+        f"DELETE FROM {FTS_TABLE} WHERE rowid IN {rowids_sql}; "
+        f"INSERT INTO {FTS_TABLE}(rowid, {_INSERT_COLS}) "
+        f"SELECT {_VIEW_ROWID}, {_INSERT_COLS} FROM {_SOURCE_VIEW} "
+        f"WHERE {_VIEW_ROWID} IN {rowids_sql};"
+    )
 
 
 # Triggers keep the index fresh across every write path. Each recomputes the
 # affected bundle(s) from the source view. Renames of a tag/collection recompute
 # every bundle that references it (rare, so the fan-out is acceptable).
 _TRIGGERS: tuple[tuple[str, str], ...] = (
-    ("bundle_search_bundle_ai", f"AFTER INSERT ON asset_bundles BEGIN {_reindex('NEW.id')} END"),
+    (
+        "bundle_search_bundle_ai",
+        f"AFTER INSERT ON asset_bundles BEGIN {_reindex('NEW.rowid')} END",
+    ),
     (
         "bundle_search_bundle_au",
-        f"AFTER UPDATE ON asset_bundles BEGIN {_reindex('NEW.id')} END",
+        f"AFTER UPDATE ON asset_bundles BEGIN {_reindex('NEW.rowid')} END",
     ),
     (
+        # OLD.rowid, not a lookup by id: the bundle row is already gone by the
+        # time this fires, so resolving its rowid through `asset_bundles` would
+        # find nothing and leave the FTS row behind forever.
         "bundle_search_bundle_ad",
-        f"AFTER DELETE ON asset_bundles BEGIN DELETE FROM {FTS_TABLE} "
-        "WHERE bundle_id = OLD.id; END",
+        f"AFTER DELETE ON asset_bundles BEGIN DELETE FROM {FTS_TABLE} WHERE rowid = OLD.rowid; END",
     ),
-    ("bundle_search_file_ai", f"AFTER INSERT ON asset_files BEGIN {_reindex('NEW.bundle_id')} END"),
+    (
+        "bundle_search_file_ai",
+        f"AFTER INSERT ON asset_files BEGIN {_reindex_by_bundle('NEW.bundle_id')} END",
+    ),
     (
         "bundle_search_file_au",
         # A file can move between bundles (grouping apply), so recompute both.
-        f"AFTER UPDATE ON asset_files BEGIN {_reindex('OLD.bundle_id')} "
-        f"{_reindex('NEW.bundle_id')} END",
+        f"AFTER UPDATE ON asset_files BEGIN {_reindex_by_bundle('OLD.bundle_id')} "
+        f"{_reindex_by_bundle('NEW.bundle_id')} END",
     ),
     (
         "bundle_search_file_ad",
-        f"AFTER DELETE ON asset_files BEGIN {_reindex('OLD.bundle_id')} END",
+        f"AFTER DELETE ON asset_files BEGIN {_reindex_by_bundle('OLD.bundle_id')} END",
     ),
     (
         "bundle_search_tag_ai",
-        f"AFTER INSERT ON asset_bundle_tags BEGIN {_reindex('NEW.bundle_id')} END",
+        f"AFTER INSERT ON asset_bundle_tags BEGIN {_reindex_by_bundle('NEW.bundle_id')} END",
     ),
     (
         "bundle_search_tag_ad",
-        f"AFTER DELETE ON asset_bundle_tags BEGIN {_reindex('OLD.bundle_id')} END",
+        f"AFTER DELETE ON asset_bundle_tags BEGIN {_reindex_by_bundle('OLD.bundle_id')} END",
     ),
     (
         "bundle_search_coll_ai",
-        f"AFTER INSERT ON asset_bundle_collections BEGIN {_reindex('NEW.bundle_id')} END",
+        f"AFTER INSERT ON asset_bundle_collections BEGIN {_reindex_by_bundle('NEW.bundle_id')} END",
     ),
     (
         "bundle_search_coll_ad",
-        f"AFTER DELETE ON asset_bundle_collections BEGIN {_reindex('OLD.bundle_id')} END",
+        f"AFTER DELETE ON asset_bundle_collections BEGIN {_reindex_by_bundle('OLD.bundle_id')} END",
     ),
+    # A rename fans out over every bundle referencing the tag/collection. Rare,
+    # so the fan-out is acceptable — but it is now a rowid set rather than a
+    # `bundle_id IN (…)` match, which scanned the whole index however few bundles
+    # actually carried the tag.
     (
         "bundle_search_tagname_au",
-        "AFTER UPDATE OF name ON tags BEGIN "
-        f"DELETE FROM {FTS_TABLE} WHERE bundle_id IN "
-        "(SELECT bundle_id FROM asset_bundle_tags WHERE tag_id = NEW.id); "
-        f"INSERT INTO {FTS_TABLE}({_INSERT_COLS}) SELECT {_INSERT_COLS} FROM {_SOURCE_VIEW} "
-        "WHERE bundle_id IN (SELECT bundle_id FROM asset_bundle_tags WHERE tag_id = NEW.id); END",
+        f"AFTER UPDATE OF name ON tags BEGIN "
+        f"{_reindex_many(_bundle_rowids('asset_bundle_tags', 'tag_id'))} END",
     ),
     (
         "bundle_search_collname_au",
-        "AFTER UPDATE OF name ON collections BEGIN "
-        f"DELETE FROM {FTS_TABLE} WHERE bundle_id IN "
-        "(SELECT bundle_id FROM asset_bundle_collections WHERE collection_id = NEW.id); "
-        f"INSERT INTO {FTS_TABLE}({_INSERT_COLS}) SELECT {_INSERT_COLS} FROM {_SOURCE_VIEW} "
-        "WHERE bundle_id IN "
-        "(SELECT bundle_id FROM asset_bundle_collections WHERE collection_id = NEW.id); END",
+        f"AFTER UPDATE OF name ON collections BEGIN "
+        f"{_reindex_many(_bundle_rowids('asset_bundle_collections', 'collection_id'))} END",
     ),
 )
 
@@ -144,6 +188,19 @@ def ensure_search_schema(engine: Engine) -> None:
     stale = table_exists and {col["name"] for col in inspector.get_columns(FTS_TABLE)} != set(
         _COLUMNS
     )
+    # An index built before the reindex was keyed on rowid holds auto-assigned
+    # rowids unrelated to `asset_bundles.rowid`, so the new triggers would delete
+    # the wrong row — or none at all. The installed trigger body is the marker:
+    # it mentions `rowid` only under the new scheme. Rebuilding is lossless (the
+    # index is a derived cache of the source view) and happens once, on the first
+    # open after this change.
+    if table_exists and not stale:
+        with engine.connect() as conn:
+            body = conn.exec_driver_sql(
+                "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                ("bundle_search_bundle_ai",),
+            ).scalar()
+        stale = body is None or "rowid" not in body
     with engine.begin() as conn:
         # Recreate the source view so a library opened after the view definition
         # changed picks up the new SELECT. Cheap: a view has no stored data and
@@ -161,7 +218,8 @@ def ensure_search_schema(engine: Engine) -> None:
             conn.exec_driver_sql(f"CREATE TRIGGER IF NOT EXISTS {name} {body}")
         if not table_exists:
             conn.exec_driver_sql(
-                f"INSERT INTO {FTS_TABLE}({_INSERT_COLS}) SELECT {_INSERT_COLS} FROM {_SOURCE_VIEW}"
+                f"INSERT INTO {FTS_TABLE}(rowid, {_INSERT_COLS}) "
+                f"SELECT {_VIEW_ROWID}, {_INSERT_COLS} FROM {_SOURCE_VIEW}"
             )
 
 
@@ -169,13 +227,17 @@ def drop_maintenance_triggers(session: Session) -> None:
     """Drop all FTS maintenance triggers (leaves the table/view intact).
 
     For bulk-loading tools only (e.g. ``devtools.synthetic_library``): the
-    triggers recompute one bundle's FTS row per write via a correlated view,
-    which is fine for normal interactive/scan writes but pathological under a
-    tight bulk-insert loop — SQLite trigger firing is per row even inside an
-    ``executemany``-style batch, and many small FTS5 DELETE+INSERT operations
-    fragment the index and get progressively slower as it grows. Callers must
-    call :func:`ensure_search_schema` + :func:`rebuild` afterward to restore
-    normal maintenance and repopulate the index in one efficient pass.
+    triggers recompute one bundle's FTS row per write, and SQLite fires them per
+    row even inside an ``executemany``-style batch, so a tight bulk-insert loop
+    pays for one DELETE+INSERT per row. Callers must call
+    :func:`ensure_search_schema` + :func:`rebuild` afterward to restore normal
+    maintenance and repopulate the index in one efficient pass.
+
+    This docstring used to blame "a correlated view" for the cost, which sent the
+    2026-08-26 investigation down the wrong path. Measured on a 60k-bundle
+    library, the view side of a reindex is 2.1 ms; the DELETE was 8.5 ms, because
+    it matched on the UNINDEXED ``bundle_id`` and so scanned the whole index.
+    Both halves are now keyed on rowid — see :data:`_VIEW_ROWID`.
     """
     for name, _ in _TRIGGERS:
         session.execute(text(f"DROP TRIGGER IF EXISTS {name}"))
@@ -186,7 +248,10 @@ def rebuild(session: Session) -> int:
     """Drop and repopulate the whole index from current rows. Returns row count."""
     session.execute(text(f"DELETE FROM {FTS_TABLE}"))
     session.execute(
-        text(f"INSERT INTO {FTS_TABLE}({_INSERT_COLS}) SELECT {_INSERT_COLS} FROM {_SOURCE_VIEW}")
+        text(
+            f"INSERT INTO {FTS_TABLE}(rowid, {_INSERT_COLS}) "
+            f"SELECT {_VIEW_ROWID}, {_INSERT_COLS} FROM {_SOURCE_VIEW}"
+        )
     )
     session.flush()
     count = session.execute(text(f"SELECT count(*) FROM {FTS_TABLE}")).scalar_one()
