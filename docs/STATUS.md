@@ -326,6 +326,51 @@ bundle-drop destination wraps the same directory picker.
 
 Both fixes have regression tests verified to fail against the previous code.
 
+**"Creating a bundle takes about 5 seconds. I expect this to be instant"
+(2026-08-26).** Diagnosed and fixed; almost none of it was the bundle work.
+
+Every FTS maintenance trigger in `search/index.py` located a bundle's index row
+with `WHERE bundle_id = ?`. `bundle_id` is `UNINDEXED` in the FTS5 table and FTS5
+has no secondary indexes, so that is a **full scan of the whole index** — plan
+confirmed, `SCAN bundle_search VIRTUAL TABLE`. A create fires about ten of them
+(an `asset_files` update reindexes both the old and new bundle).
+
+Measured on a synthetic 60k-bundle library:
+
+| | |
+| --- | --- |
+| `create_bundle`, triggers on | **94 ms** |
+| `create_bundle`, triggers dropped | **6 ms** |
+| `DELETE … WHERE bundle_id = ?` | 8.5 ms (full scan) |
+| `DELETE … WHERE rowid = ?` | 0.0 ms |
+| the reindex `INSERT` from the view | 2.1 ms |
+
+So the delete was the cost, and the *view* — which the module's own docstring
+blamed, and which cost me a wrong first hypothesis — was never the problem. That
+docstring is corrected in place.
+
+Every trigger now keys on the bundle's own integer rowid, which its FTS row
+shares (`asset_bundles` has a TEXT primary key, so it is an ordinary rowid
+table): **94 ms → 21 ms**, and flat in library size rather than linear — 15 ms at
+4 bundles against 7 ms at 60k. Two invariants this rests on, both tested:
+`AFTER DELETE ON asset_bundles` must read `OLD.rowid` (the row is gone, so an id
+lookup would orphan the index row forever), and a rebuild must reassign the same
+rowids.
+
+**One-time rebuild on first open**, ~0.5 s for 60k bundles, because rowids
+assigned under the old scheme bear no relation to their bundles.
+`ensure_search_schema` detects the old scheme by its trigger body not mentioning
+`rowid`.
+
+**Two process notes, both mine.** A scripted edit adding the migration was in the
+same script as an assertion that failed, so nothing was written and a later
+script silently re-applied only part of it — the fix ran for two measurements
+before I noticed the trigger was untouched. And the first version of the rowid
+invariant test *passed against the old scheme*, because on a fresh database auto
+rowids and bundle rowids coincidentally agree; it needed an edit first (a reindex
+is delete-then-insert, and the reinserted row took a fresh auto rowid) to bite.
+Both are the same lesson twice: verify the edit landed, and verify the test fails.
+
 **Not reproduced:** the flash the owner also sees on window resize. With
 `refetchOnWindowFocus: false` and a 30s `staleTime`, a resize should not refetch
 at all, so that may be a layout reflow rather than a reload.

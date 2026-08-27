@@ -1,7 +1,7 @@
 """Whole-library FTS5 metadata search: coverage, freshness, escaping, API."""
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, inspect
+from sqlalchemy import Engine, inspect, text
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, MediaKind
@@ -142,3 +142,110 @@ def test_browse_api_q_param(client: TestClient, library_id: str, session: Sessio
     )
     assert posted.status_code == 200
     assert [i["title"] for i in posted.json()["items"]] == ["Other Thing"]
+
+
+# --- the index is keyed on the bundle's rowid ---------------------------------
+# Every maintenance trigger used to locate a bundle's FTS row with
+# ``WHERE bundle_id = ?``. ``bundle_id`` is UNINDEXED and FTS5 supports no
+# secondary indexes, so each of those was a full scan of the index: 8.5 ms on a
+# synthetic 60k-bundle library, against 0.0 ms by rowid, and a create fires ten
+# of them (owner: "creating a bundle takes about 5 seconds", 2026-08-26).
+def _fts_rowids(session: Session) -> dict[int, str]:
+    return {
+        int(rowid): str(bundle_id)
+        for rowid, bundle_id in session.execute(
+            text(f"SELECT rowid, bundle_id FROM {FTS_TABLE}")
+        ).all()
+    }
+
+
+def test_fts_rowid_is_the_bundles_own_rowid(session: Session) -> None:
+    """The invariant the rowid-keyed triggers depend on: an FTS row's rowid is
+    its bundle's rowid. If these ever drift, every trigger silently maintains
+    the wrong row."""
+    a = bundle_service.create_bundle(session, title="Alpha")
+    b = bundle_service.create_bundle(session, title="Beta")
+    session.commit()
+    # The edit matters: a reindex is a delete-then-insert, and under the old
+    # bundle_id-keyed scheme the reinserted row took a *fresh* auto rowid at the
+    # top of the sequence. Without an edit first, auto rowids and bundle rowids
+    # coincidentally agree on a fresh database and this asserts nothing.
+    bundle_service.update_bundle(session, a.id, {"title": "Alphaedited"})
+    session.commit()
+
+    by_rowid = _fts_rowids(session)
+    for bundle in (a, b):
+        own = session.execute(
+            text("SELECT rowid FROM asset_bundles WHERE id = :id"), {"id": bundle.id}
+        ).scalar_one()
+        assert by_rowid[int(own)] == bundle.id
+
+
+def test_deleting_a_bundle_leaves_no_index_row(session: Session) -> None:
+    """The delete trigger has to read ``OLD.rowid``: by the time it fires the
+    bundle row is gone, so resolving the rowid through ``asset_bundles`` would
+    match nothing and orphan the FTS row forever."""
+    keep = bundle_service.create_bundle(session, title="Keeper")
+    doomed = bundle_service.create_bundle(session, title="Doomedmarker")
+    session.commit()
+    assert _titles(session, "doomedmarker") == ["Doomedmarker"]
+
+    bundle_service.delete_bundle(session, doomed.id)
+    session.commit()
+
+    assert _titles(session, "doomedmarker") == []
+    assert set(_fts_rowids(session).values()) == {keep.id}
+
+
+def test_index_survives_a_rebuild_keyed_on_rowid(session: Session) -> None:
+    """A rebuild must reassign the same rowids, or the triggers start
+    maintaining rows that belong to other bundles."""
+    a = bundle_service.create_bundle(session, title="Alpha")
+    bundle_service.create_bundle(session, title="Beta")
+    session.commit()
+    before = _fts_rowids(session)
+
+    rebuild(session)
+    session.commit()
+
+    assert _fts_rowids(session) == before
+    # And the triggers still maintain the right row afterwards.
+    bundle_service.update_bundle(session, a.id, {"title": "Renamedmarker"})
+    session.commit()
+    assert _titles(session, "renamedmarker") == ["Renamedmarker"]
+    assert _titles(session, "beta") == ["Beta"]
+
+
+def test_an_index_predating_rowid_keying_is_rebuilt(engine: Engine, session: Session) -> None:
+    """A library whose triggers still key on ``bundle_id`` is detected and
+    rebuilt on open. Its FTS rowids bear no relation to ``asset_bundles.rowid``,
+    so leaving them would point every trigger at the wrong row."""
+    bundle_service.create_bundle(session, title="Existingmarker")
+    session.commit()
+
+    # Recreate the pre-change state: auto-assigned rowids and a bundle_id-keyed
+    # trigger, exactly as an older library carries them.
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TRIGGER IF EXISTS bundle_search_bundle_ai")
+        conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE}")
+        conn.exec_driver_sql(
+            f"INSERT INTO {FTS_TABLE}(rowid, bundle_id, title, notes, files, tags, collections) "
+            "VALUES (9999, 'stale-id', 'stale', '', '', '', '')"
+        )
+        conn.exec_driver_sql(
+            "CREATE TRIGGER bundle_search_bundle_ai AFTER INSERT ON asset_bundles BEGIN "
+            f"DELETE FROM {FTS_TABLE} WHERE bundle_id = NEW.id; END"
+        )
+
+    ensure_search_schema(engine)
+
+    # Rebuilt from the source view, so the stale row is gone and every real
+    # bundle is indexed at its own rowid.
+    rows = _fts_rowids(session)
+    assert "stale-id" not in rows.values()
+    assert _titles(session, "existingmarker") == ["Existingmarker"]
+    for rowid, bundle_id in rows.items():
+        own = session.execute(
+            text("SELECT rowid FROM asset_bundles WHERE id = :id"), {"id": bundle_id}
+        ).scalar_one()
+        assert int(own) == rowid

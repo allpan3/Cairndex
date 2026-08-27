@@ -560,6 +560,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Creating a bundle no longer slows down as the library grows.** It took about
+  five seconds on the owner's library (2026-08-26). Almost none of that was the
+  bundle: every FTS search-index maintenance trigger located a bundle's row with
+  `WHERE bundle_id = ?`, and `bundle_id` is `UNINDEXED` in an FTS5 table, which
+  supports no secondary indexes — so each one scanned the whole index. A single
+  create fires around ten of them (a file moving between bundles reindexes both).
+
+  Measured on a synthetic 60k-bundle library: one create cost **94 ms** with the
+  triggers and **6 ms** without, and the scan alone was 8.5 ms against 0.0 ms for
+  the same delete keyed by rowid. Every trigger now keys on the bundle's own
+  integer rowid, which the FTS row shares: **94 ms → 21 ms**, and the remaining
+  cost is flat in library size rather than linear (15 ms at 4 bundles, 7 ms at
+  60k). On the first open after this change the index is rebuilt once — about
+  0.5 s for 60k bundles — because rowids assigned by the old scheme bear no
+  relation to their bundles.
+
+  The module's own comment blamed "a correlated view" for trigger cost, which is
+  what sent this investigation the wrong way at first; the view side measures
+  2.1 ms. That comment has been corrected in place.
+
 - **Bundle suggestions no longer read the whole file table to find a folder.**
   Every candidate lookup behind the bundling dialogs matched `relative_path LIKE
   'folder/%'`, and SQLite cannot use an index for `LIKE` under its default
