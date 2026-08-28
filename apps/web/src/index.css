@@ -3129,20 +3129,6 @@ code {
   padding-left: 4px;
   margin-left: -6px;
 }
-.grp-conf {
-  padding: 0 5px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.grp-conf--weak {
-  border-color: rgba(251, 191, 36, 0.5);
-  color: var(--warn, #fbbf24);
-}
 .grp-attention {
   font-size: 11px;
   color: var(--warn, #fbbf24);
