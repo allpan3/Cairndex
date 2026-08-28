@@ -188,6 +188,36 @@ function buildTree(collections: CollectionRead[]): TreeNode[] {
   return make(null)
 }
 
+/** One row of the tree, paired with the depth its fold default depends on. */
+interface TreeRow {
+  node: TreeNode
+  depth: number
+}
+
+/** Every node at or below `nodes` that can be folded at all — the ones with
+ * children. Expand All and Collapse All act on exactly this set, and reading
+ * whether anything *is* expanded has to ask the same question of the same rows:
+ * a leaf has no fold state worth setting and would make "all collapsed" false
+ * forever. */
+function foldableRows(nodes: TreeNode[], depth = 0): TreeRow[] {
+  const rows: TreeRow[] = []
+  for (const node of nodes) {
+    if (node.children.length > 0) rows.push({ node, depth })
+    rows.push(...foldableRows(node.children, depth + 1))
+  }
+  return rows
+}
+
+/** Locate one node in the tree, with its depth. */
+function findRow(nodes: TreeNode[], id: string, depth = 0): TreeRow | null {
+  for (const node of nodes) {
+    if (node.collection.id === id) return { node, depth }
+    const found = findRow(node.children, id, depth + 1)
+    if (found) return found
+  }
+  return null
+}
+
 export function Sidebar({
   mode,
   onMode,
@@ -289,13 +319,11 @@ export function Sidebar({
     setLastDragItem(dragItem)
     if (dragItem) setDropSlot(null)
   }
-  // Fold state for the two sidebar sections (persisted).
+  // Fold state for the Smart Collections section (persisted). The Collections
+  // heading no longer hides its section — it folds the tree instead; see
+  // `toggleAllCollections`.
   const [smartCollapsed, setSmartCollapsed] = usePersistentState(
     'cairndex.sidebar.smartCollapsed',
-    false,
-  )
-  const [collectionsCollapsed, setCollectionsCollapsed] = usePersistentState(
-    'cairndex.sidebar.collectionsCollapsed',
     false,
   )
 
@@ -314,26 +342,52 @@ export function Sidebar({
   const [collapsedOverride, setCollapsedOverride] = useState<Set<string>>(new Set())
   const isExpanded = (id: string, depth: number) =>
     expandedOverride.has(id) ? true : collapsedOverride.has(id) ? false : depth < 1
-  const toggleExpanded = (id: string, depth: number) => {
-    const willExpand = !isExpanded(id, depth)
+  // Set the fold of a whole set of rows at once — one row for a caret click, a
+  // subtree for a collection's menu, every row for the section heading. Both
+  // sets are written because either can be the one holding the current answer.
+  const setExpansion = (ids: readonly string[], expand: boolean) => {
     setExpandedOverride((prev) => {
       const s = new Set(prev)
-      if (willExpand) s.add(id)
-      else s.delete(id)
+      for (const id of ids)
+        if (expand) s.add(id)
+        else s.delete(id)
       return s
     })
     setCollapsedOverride((prev) => {
       const s = new Set(prev)
-      if (willExpand) s.delete(id)
-      else s.add(id)
+      for (const id of ids)
+        if (expand) s.delete(id)
+        else s.add(id)
       return s
     })
   }
+  const toggleExpanded = (id: string, depth: number) => setExpansion([id], !isExpanded(id, depth))
 
   // Every collection in the active library is shown (collections are per-library
   // under ADR-0008), including empty ones — a folder shouldn't vanish just
   // because it has no bundles yet.
   const tree = useMemo(() => buildTree(collections), [collections])
+
+  /** Fold or unfold a set of rows, choosing the direction from what they are
+   * now: anything open means the gesture closes them. Reading the state rather
+   * than keeping a flag is what makes the heading and a row's menu agree after
+   * individual carets have been clicked. */
+  const toggleRows = (rows: readonly TreeRow[]) => {
+    const anyExpanded = rows.some(({ node, depth }) => isExpanded(node.collection.id, depth))
+    setExpansion(
+      rows.map(({ node }) => node.collection.id),
+      !anyExpanded,
+    )
+  }
+
+  // The rows the heading's fold acts on: every collection with children.
+  const foldable = useMemo(() => foldableRows(tree), [tree])
+  const allCollapsed = !foldable.some(({ node, depth }) => isExpanded(node.collection.id, depth))
+  // Clicking the heading folds the *tree*, not the section. Hiding every
+  // collection was the one thing the gesture could do that nobody wants
+  // (owner-reported, 2026-08-28): the section's own rows are the sidebar's main
+  // content, while "show me the top level only" is what a tree heading is for.
+  const toggleAllCollections = () => toggleRows(foldable)
 
   // Cmd toggles; Shift ranges over the rows as currently *visible* (respecting
   // which branches are expanded) — the order the user can actually see. Ctrl is
@@ -372,14 +426,12 @@ export function Sidebar({
   // collection → New Subcollection). Inferring it from what happened to be open
   // meant the same button did two different things with no way to ask for the
   // first one while browsing a collection.
-  // Unfold whatever hides `id`: the Collections section itself, and every
-  // ancestor of the row. An inline rename box inside a folded branch leaves the
-  // owner with a collection they were asked to name and no box to type it in —
-  // which matters most for a request raised from the grid, where they are not
-  // even looking at this pane.
+  // Unfold every ancestor of the row, so nothing folded hides `id`. An inline
+  // rename box inside a folded branch leaves the owner with a collection they
+  // were asked to name and no box to type it in — which matters most for a
+  // request raised from the grid, where they are not even looking at this pane.
   const revealCollection = useCallback(
     (id: string | null) => {
-      setCollectionsCollapsed(false)
       if (id === null) return
       const ancestors = new Set<string>()
       let cur: string | null = id
@@ -394,7 +446,7 @@ export function Sidebar({
         return next
       })
     },
-    [collections, setCollectionsCollapsed],
+    [collections],
   )
 
   const createCollectionUnder = useCallback(
@@ -457,8 +509,8 @@ export function Sidebar({
     onRenameCollectionHandled?.()
   }, [renameCollectionRequest, onRenameCollectionHandled, renameCollection])
 
-  const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
-    menu.open(e, [
+  const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) => {
+    const items: MenuEntry[] = [
       {
         label: 'New Subcollection',
         onClick: () => createCollectionUnder(collection.id),
@@ -467,9 +519,26 @@ export function Sidebar({
       // the inline box opened once, on the new row, and nothing reopened it
       // (owner, 2026-08-23). Same entry, and same box, as a tag's Rename.
       { label: 'Rename Collection', onClick: () => renameCollection(collection.id) },
-      null,
-      { label: 'Delete Collection', danger: true, onClick: () => onDeleteCollection(collection) },
-    ])
+    ]
+    // One branch's worth of what the heading does to the whole tree. Offered
+    // only where it means something: a collection with no subcollections has
+    // nothing to fold, and the row's own caret already covers one level.
+    const found = findRow(tree, collection.id)
+    const rows = found ? foldableRows([found.node], found.depth) : []
+    if (rows.length > 0) {
+      const anyExpanded = rows.some(({ node, depth }) => isExpanded(node.collection.id, depth))
+      items.push(null, {
+        label: anyExpanded ? 'Collapse All Subcollections' : 'Expand All Subcollections',
+        onClick: () => toggleRows(rows),
+      })
+    }
+    items.push(null, {
+      label: 'Delete Collection',
+      danger: true,
+      onClick: () => onDeleteCollection(collection),
+    })
+    menu.open(e, items)
+  }
 
   // Right-clicking the Collections heading or the blank run-out below the list:
   // both mean "here", which at those spots is the top level.
@@ -785,8 +854,13 @@ export function Sidebar({
       >
         <SectionHeading
           label="Collections"
-          collapsed={collectionsCollapsed}
-          onToggle={() => setCollectionsCollapsed(!collectionsCollapsed)}
+          collapsed={allCollapsed}
+          onToggle={toggleAllCollections}
+          // A caret with nothing behind it promises a fold that would do
+          // nothing: every collection is top-level, so they are all already as
+          // unfolded as they get.
+          showCaret={foldable.length > 0}
+          toggleTitle={allCollapsed ? 'Expand all collections' : 'Collapse all collections'}
           onAdd={() => createCollectionUnder(null)}
           addLabel="New collection"
           // Always the top level, whatever is open. Nesting is the collection
@@ -794,60 +868,56 @@ export function Sidebar({
           addTitle="New top-level collection"
           onContextMenu={collectionsBackgroundMenu}
         />
-        {!collectionsCollapsed && (
-          <>
-            {createError && (
-              <div className="sidebar__heading" role="alert">
-                {createError}
-              </div>
-            )}
-            {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
-            {tree.map((node, i) => (
-              <CollectionBranch
-                key={node.collection.id}
-                node={node}
-                depth={0}
-                trail={[]}
-                isLast={i === tree.length - 1}
-                parentId={null}
-                siblingIds={tree.map((n) => n.collection.id)}
-                selection={selection}
-                onSelect={(sel) => {
-                  if (sel.collectionId) rangeAnchorRef.current = sel.collectionId
-                  onSelect(sel)
-                }}
-                multiSelectedIds={multiSelectedIds}
-                onModifierSelect={modifierSelectRow}
-                onContextMenu={collectionMenu}
-                collectionCounts={collectionCounts}
-                isExpanded={isExpanded}
-                onToggle={toggleExpanded}
-                editingId={editingId}
-                onRenameCollection={onRenameCollection}
-                onDoneEditing={() => setEditingId(null)}
-                dragItem={dragItem}
-                onDragItem={onDragItem}
-                dropSlot={dropSlot}
-                onDropSlot={setDropSlot}
-                onReorderCollections={onReorderCollections}
-                onReparentCollections={onReparentCollections}
-                onMoveBundlesInto={onMoveBundlesInto}
-              />
-            ))}
-            {/* A drop target below the last row so a collection can be dropped in
+        {createError && (
+          <div className="sidebar__heading" role="alert">
+            {createError}
+          </div>
+        )}
+        {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
+        {tree.map((node, i) => (
+          <CollectionBranch
+            key={node.collection.id}
+            node={node}
+            depth={0}
+            trail={[]}
+            isLast={i === tree.length - 1}
+            parentId={null}
+            siblingIds={tree.map((n) => n.collection.id)}
+            selection={selection}
+            onSelect={(sel) => {
+              if (sel.collectionId) rangeAnchorRef.current = sel.collectionId
+              onSelect(sel)
+            }}
+            multiSelectedIds={multiSelectedIds}
+            onModifierSelect={modifierSelectRow}
+            onContextMenu={collectionMenu}
+            collectionCounts={collectionCounts}
+            isExpanded={isExpanded}
+            onToggle={toggleExpanded}
+            editingId={editingId}
+            onRenameCollection={onRenameCollection}
+            onDoneEditing={() => setEditingId(null)}
+            dragItem={dragItem}
+            onDragItem={onDragItem}
+            dropSlot={dropSlot}
+            onDropSlot={setDropSlot}
+            onReorderCollections={onReorderCollections}
+            onReparentCollections={onReparentCollections}
+            onMoveBundlesInto={onMoveBundlesInto}
+          />
+        ))}
+        {/* A drop target below the last row so a collection can be dropped in
                 the empty space "behind the last collection" to land at the end of
                 the top level (reordering, or moving a subcollection out). */}
-            {tree.length > 0 && (
-              <CollectionListEnd
-                dragItem={dragItem}
-                onReorderCollections={onReorderCollections}
-                onEndDrag={() => {
-                  onDragItem?.(null)
-                  setDropSlot(null)
-                }}
-              />
-            )}
-          </>
+        {tree.length > 0 && (
+          <CollectionListEnd
+            dragItem={dragItem}
+            onReorderCollections={onReorderCollections}
+            onEndDrag={() => {
+              onDragItem?.(null)
+              setDropSlot(null)
+            }}
+          />
         )}
       </div>
 
@@ -893,14 +963,20 @@ export function Sidebar({
   )
 }
 
-/** A foldable sidebar section heading (Collections / Smart Collections). The
- * whole row toggles the fold and highlights on hover (like a collection row); a
- * caret appears on hover to the right of the label. The "+" add button and an
- * optional right-click menu sit alongside. */
+/** A sidebar section heading with a fold (Collections / Smart Collections). The
+ * whole row toggles and highlights on hover (like a collection row); a caret
+ * appears on hover to the right of the label. The "+" add button and an optional
+ * right-click menu sit alongside.
+ *
+ * What the fold *means* is the caller's: Smart Collections folds the section
+ * away, Collections folds its tree down to the top level. Either way the caret
+ * points at what one more click will do. */
 function SectionHeading({
   label,
   collapsed,
   onToggle,
+  showCaret = true,
+  toggleTitle,
   onAdd,
   addLabel,
   addTitle,
@@ -909,6 +985,8 @@ function SectionHeading({
   label: string
   collapsed: boolean
   onToggle: () => void
+  showCaret?: boolean
+  toggleTitle?: string
   onAdd: () => void
   addLabel: string
   addTitle?: string
@@ -919,11 +997,18 @@ function SectionHeading({
       {/* The label+caret is its own button (the highlighted "text box" that folds
           the section); the "+" add button stays separate so each has a distinct
           accessible name. */}
-      <button className="sidebar__heading-toggle" onClick={onToggle} aria-expanded={!collapsed}>
+      <button
+        className="sidebar__heading-toggle"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        title={toggleTitle}
+      >
         {label}
-        <span className="sidebar__heading-caret">
-          <IconChevron open={!collapsed} className="chevron chevron--lg" />
-        </span>
+        {showCaret && (
+          <span className="sidebar__heading-caret">
+            <IconChevron open={!collapsed} className="chevron chevron--lg" />
+          </span>
+        )}
       </button>
       <button className="sidebar__add" onClick={onAdd} aria-label={addLabel} title={addTitle}>
         +
