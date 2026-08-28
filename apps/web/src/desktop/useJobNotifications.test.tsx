@@ -41,8 +41,17 @@ function job(overrides: Partial<JobRead> = {}): JobRead {
   } as JobRead
 }
 
-function Harness({ activeJob }: { activeJob: JobRead | null }) {
-  useJobNotifications(activeJob)
+/** Stable identity for "nothing running", the way App's memo gives the hook. */
+const IDLE: JobRead[] = []
+
+function Harness({
+  activeJob,
+  activeJobs,
+}: {
+  activeJob?: JobRead | null
+  activeJobs?: JobRead[]
+}) {
+  useJobNotifications(activeJobs ?? (activeJob ? [activeJob] : IDLE))
   return null
 }
 
@@ -183,6 +192,24 @@ describe('notification delivery', () => {
 
     expect(notifyHost).toHaveBeenCalledTimes(1)
     expect(setHostBadgeCount).toHaveBeenCalledWith(1)
+  })
+
+  test('two jobs running at once are still one run and one notification', async () => {
+    // Update pressed while a storyboard pass is going: both are on screen at the
+    // same time, and the run is the stretch of activity, not one of the jobs.
+    const old = new Date(Date.now() - 30_000).toISOString()
+    const storyboard = job({ id: 'sb', job_type: 'storyboard', started_at: old })
+    const scan = job({ id: 'scan', status: 'queued', started_at: old })
+    const view = render(<Harness activeJobs={[storyboard, scan]} />)
+    view.rerender(<Harness activeJobs={[scan]} />)
+    view.rerender(<Harness activeJobs={IDLE} />)
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(notifyHost).toHaveBeenCalledTimes(1)
+    expect(notifyHost).toHaveBeenCalledWith(
+      'Cairndex finished',
+      expect.stringContaining('Storyboards and Scan'),
+    )
   })
 
   test('stays inert in the browser', async () => {

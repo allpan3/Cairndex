@@ -79,10 +79,10 @@ function isAway(): boolean {
  *
  * Inert in the browser.
  */
-export function useJobNotifications(activeJob: JobRead | null): void {
+export function useJobNotifications(activeJobs: readonly JobRead[]): void {
   useEffect(() => {
     if (!isDesktopHost()) return
-    if (activeJob) {
+    if (activeJobs.length > 0) {
       if (state.settleTimer) {
         clearTimeout(state.settleTimer)
         state.settleTimer = null
@@ -95,12 +95,16 @@ export function useJobNotifications(activeJob: JobRead | null): void {
           console.error('Could not request notification permission', error),
         )
       }
-      state.run = accumulateRun(state.run, activeJob, Date.now())
+      // Every job on screen folds into the one run: several overlap (Update
+      // hands metadata and storyboards to background watchers and returns), and
+      // a run is the stretch of activity, not the job that reported last.
+      const now = Date.now()
+      for (const job of activeJobs) state.run = accumulateRun(state.run, job, now)
       return
     }
 
-    // No active job: the run may be over, or the chained Update flow may just be
-    // between stages. Wait out the gap before deciding.
+    // Nothing running: the run may be over, or the chained Update flow may just
+    // be between stages. Wait out the gap before deciding.
     const finished = state.run
     if (!finished || state.settleTimer) return
     state.settleTimer = setTimeout(() => {
@@ -118,7 +122,7 @@ export function useJobNotifications(activeJob: JobRead | null): void {
         console.error('Could not set the dock badge', error),
       )
     }, RUN_SETTLE_MS)
-  }, [activeJob])
+  }, [activeJobs])
 
   // The badge means "something finished while you were away", so returning to the
   // window is exactly what should clear it.
