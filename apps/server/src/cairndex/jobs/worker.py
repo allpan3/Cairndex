@@ -9,6 +9,12 @@ library's own DB; transient queue state stays in the registry.
 A handler is a callable ``(JobContext) -> dict | None``. It reports progress and
 polls for cancellation through ``JobContext``; raising ``JobCancelled`` unwinds
 cleanly to a CANCELLED terminal state.
+
+One job runs at a time, so a long opportunistic pass would otherwise hold the
+queue against work the owner is waiting for. Two things prevent that, both keyed
+on ``registry.jobs.JOB_PRIORITY``: the queue is claimed most-urgent-first, and a
+running job that finds urgent work waiting stands aside at its next checkpoint
+(``JobYielded``) and is put back in the queue rather than finished.
 """
 
 import logging
@@ -46,6 +52,20 @@ class JobCancelled(Exception):
     """Raised inside a handler when cancellation has been requested."""
 
 
+class JobYielded(Exception):
+    """Raised inside a handler when more urgent work is waiting behind it.
+
+    Deliberately *not* a ``JobCancelled``: nothing asked this job to stop and
+    nothing went wrong, so it must not reach a terminal state. The worker
+    catches it, rolls back the in-flight item, and returns the row to the queue
+    (``requeue_after_yield``) to be claimed again once the urgent work is done.
+
+    Only raised from the checkpoint path, so a job stands aside between items
+    rather than mid-ffmpeg: the wait is bounded by one item's work, and an
+    external pass that is already running is left to finish what it started.
+    """
+
+
 class JobOwnershipLost(JobCancelled):
     """Raised inside a handler when this server lost the library's lease.
 
@@ -81,6 +101,7 @@ class JobContext:
         payload: dict[str, Any],
         library_root: Path,
         library_id: str = "",
+        job_type: JobType | None = None,
         owns_library: Callable[[], bool] | None = None,
         progress_min_interval: float = _PROGRESS_MIN_INTERVAL,
     ) -> None:
@@ -90,6 +111,11 @@ class JobContext:
         self.payload = payload
         self.library_root = library_root
         self.library_id = library_id
+        # What class of work this is, which is what decides whether it should
+        # stand aside for something more urgent. ``None`` (a directly-constructed
+        # context: tests, one-off handler runs) never yields, so a handler run
+        # outside the worker behaves exactly as before this check existed.
+        self._job_type = job_type
         # Defaults to "yes" so a directly-constructed context (tests, one-off
         # handler runs) behaves exactly as before this check existed.
         self._owns_library = owns_library or (lambda: True)
@@ -128,7 +154,7 @@ class JobContext:
         self.registry_session.commit()
         self._last_write = time.monotonic()
         self._last_total = None
-        self._raise_if_cancelled()
+        self._raise_if_interrupted()
 
     def progress(self, processed: int, total: int | None = None) -> None:
         """Report progress without committing the content session.
@@ -168,7 +194,7 @@ class JobContext:
         self.registry_session.commit()
         self._last_write = now
         self._last_total = total
-        self._raise_if_cancelled()
+        self._raise_if_interrupted()
 
     def checkpoint(
         self, processed: int, total: int | None = None, *, message: str | None = None
@@ -203,7 +229,7 @@ class JobContext:
             self.registry_session.commit()
             self._last_write = now
             self._last_total = total
-        self._raise_if_cancelled()
+        self._raise_if_interrupted()
 
     def stop_requested(self) -> bool:
         """Whether this job should stop now, as a question rather than a raise.
@@ -223,7 +249,13 @@ class JobContext:
         )
         return self._stop_requested
 
-    def _raise_if_cancelled(self) -> None:
+    def _raise_if_interrupted(self) -> None:
+        """Stop here if this job must not carry on — cancelled, disowned, or
+        holding the single worker thread while more urgent work waits.
+
+        Called only where a progress write actually happened, so the registry
+        reads below run at most twice a second however hot the loop above is.
+        """
         # Ownership first: it is a local lookup, and if we no longer own the
         # library the very next thing this job would do is write to a library
         # another server owns (ADR-0018 §4).
@@ -231,6 +263,14 @@ class JobContext:
             raise JobOwnershipLost
         if job_service.is_cancel_requested(self.registry_session, self.job_id):
             raise JobCancelled
+        # Last, and skipped entirely for the most urgent class of work, which
+        # can have nothing to stand aside for.
+        if (
+            self._job_type is not None
+            and job_service.job_priority(self._job_type) > min(job_service.JOB_PRIORITY.values())
+            and job_service.higher_priority_waiting(self.registry_session, self._job_type)
+        ):
+            raise JobYielded
 
 
 Handler = Callable[[JobContext], dict[str, Any] | None]
@@ -240,7 +280,11 @@ HandlerRegistry = dict[JobType, Handler]
 def execute_job(
     registry_factory: sessionmaker[Session], job_id: str, registry: HandlerRegistry
 ) -> JobStatus:
-    """Run one job to a terminal state. Returns the status."""
+    """Run one job and return where it ended up.
+
+    Normally a terminal status. ``QUEUED`` is the exception: the job stood aside
+    for more urgent work (``JobYielded``) and is waiting to be claimed again.
+    """
     with registry_factory() as reg:
         job = job_service.get_job(reg, job_id)
         handler = registry.get(job.job_type)
@@ -296,6 +340,7 @@ def execute_job(
                 payload=payload,
                 library_root=library_root,
                 library_id=library.id,
+                job_type=job.job_type,
                 owns_library=lambda: lease_manager.holds(library.id, library_root),
             )
             try:
@@ -310,6 +355,15 @@ def execute_job(
                 )
                 reg.commit()
                 return JobStatus.SUCCEEDED
+            except JobYielded:
+                # Everything checkpointed is already committed; only the item in
+                # flight is dropped, and every library-wide pass regenerates one
+                # item far more cheaply than the urgent job waits for it.
+                content.rollback()
+                job_service.requeue_after_yield(reg, job_id, "paused while more urgent work runs")
+                reg.commit()
+                logger.info("job %s stood aside for more urgent work", job_id)
+                return JobStatus.QUEUED
             except JobOwnershipLost:
                 content.rollback()
                 job_service.mark_finished(
@@ -323,7 +377,7 @@ def execute_job(
             except (JobCancelled, OperationAborted) as exc:
                 content.rollback()
                 # An abort raised from inside external work never passed through
-                # `_raise_if_cancelled`, so it cannot say *why* it stopped. Ask
+                # `_raise_if_interrupted`, so it cannot say *why* it stopped. Ask
                 # the lease, rather than reporting a takeover as a user's cancel.
                 took_over = isinstance(exc, OperationAborted) and not lease_manager.holds(
                     library.id, library_root

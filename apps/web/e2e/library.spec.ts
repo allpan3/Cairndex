@@ -793,8 +793,9 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   const selectBar = page.locator('.grp-selectbar')
   await expect(additionTitle).toBeVisible()
   await expect(page.locator('.grp-root-drop')).toHaveCount(0)
-  // A worded confidence band is expected now; a raw percentage is not.
-  await expect(page.locator('.grp-conf')).toHaveCount(1)
+  // No claim about how sure the suggester is — neither a raw percentage nor the
+  // worded band that replaced it (owner, 2026-08-28).
+  await expect(page.locator('.grp-conf')).toHaveCount(0)
   await expect(page.locator('.grp-modal')).not.toContainText(/\d+(\.\d+)?%/)
   await expect(page.locator('.grp-manual')).toHaveCount(0)
   await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)

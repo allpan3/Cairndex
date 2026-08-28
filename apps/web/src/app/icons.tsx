@@ -51,6 +51,21 @@ export const IconPlus = () => (
   </Svg>
 )
 
+/** Drag handle — two columns of dots, the conventional "grab me" texture.
+ * Inline rather than the braille glyph it replaced: U+283F is not in every
+ * platform's default font, and a handle that renders as a tofu box on Linux is
+ * worse than no handle at all. */
+export const IconGrip = () => (
+  <Svg>
+    <circle cx="9" cy="6" r="1" fill="currentColor" />
+    <circle cx="9" cy="12" r="1" fill="currentColor" />
+    <circle cx="9" cy="18" r="1" fill="currentColor" />
+    <circle cx="15" cy="6" r="1" fill="currentColor" />
+    <circle cx="15" cy="12" r="1" fill="currentColor" />
+    <circle cx="15" cy="18" r="1" fill="currentColor" />
+  </Svg>
+)
+
 export const IconGrid = () => (
   <Svg>
     <rect x="3" y="3" width="7" height="7" rx="1" />
