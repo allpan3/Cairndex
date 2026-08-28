@@ -133,18 +133,36 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: `feat/filing-into-bundles-and-collections` (2026-08-28)
+## Merged: filing what you add, into a bundle or a collection (2026-08-28, PR #11)
 
-Off `main` at `21619138`. **Eight commits, rebased for review, unreviewed, no PR**
-(owner-triggered). Renamed from `feat/suggest-bundle-on-import`, which stopped
-describing it several rounds in: the branch is about getting a file you have just
-added into the place it belongs — a bundle, or a collection — plus the indexed
-lookups that made those paths quick enough to use.
+Branch `feat/filing-into-bundles-and-collections`, off `main` at `21619138`,
+**merged through PR #11** (`8c92ba85`) with all seven CI jobs green — backend,
+frontend, full-stack e2e, packaged sidecar, Desktop Rust (Ubuntu), Desktop shell
+(macOS), and Docker. CI was dispatched against the branch head before the PR
+existed (`workflow_dispatch` runs the full matrix on any ref), so the merge
+needed no second run.
+
+Renamed from `feat/suggest-bundle-on-import`, which stopped describing it several
+rounds in: the work is about getting a file you have just added into the place it
+belongs — a bundle, or a collection — plus the indexed lookups that made those
+paths quick enough to use.
+
+**On first open after this, each library rebuilds its FTS search index once**
+(~0.5 s per 60k bundles, lossless). Expect it on the NAS library.
 
 The fourteen commits it was written in were squashed into eight along contiguous
 runs, with no reordering, so each one lands on a state that was green when it was
-made. Verified content-preserving: the tree hash before and after the rebase is
+made. Verified content-preserving: the tree hash before and after the rebase was
 identical (`51ed7fca`).
+
+Checked for user data before the PR went public, since the owner asked and the
+repository is public: no library filenames, folder names, machine paths, or
+library names in the diff, the commit messages, or the PR body; every fixture is
+invented or pre-existing. One near-miss worth recording — the bundle title from
+the owner's screenshot was typed into a *scratchpad* profiling script rather than
+replaced with an invented name, and stayed out of git only because of where that
+file happened to live. Invent the fixture at the point of writing it, not at the
+point of committing.
 
 Sections below are in the order the work happened, which is not the order of the
 commits; the PR description is the summary that reads top to bottom.
