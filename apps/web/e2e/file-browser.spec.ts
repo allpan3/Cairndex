@@ -52,7 +52,35 @@ async function mockApi(page: Page) {
   await page.route('**/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+    r.fulfill({
+      json: {
+        // One bundle, whose file on disk sits in the mocked `Show` folder — the
+        // fixture "Locate in File Browser" navigates to.
+        items: [
+          {
+            id: 'b1',
+            title: 'Bundle One',
+            rating: null,
+            file_count: 1,
+            total_size: 1024,
+            has_missing: false,
+            has_cover: false,
+            cover_key: null,
+            media_kind: 'video',
+            width: null,
+            height: null,
+            duration: null,
+            extension: 'mp4',
+            date_added: '2026-06-25T00:00:00Z',
+            grouping_state: 'confirmed',
+            primary_relative_path: 'Show/clip.mp4',
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      },
+    }),
   )
 
   await page.route('**/file-browser/entries**', (r) => {
@@ -198,4 +226,24 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   const audio = page.getByTestId('media-audio')
   await expect(audio).toBeVisible()
   await expect(audio).toHaveAttribute('src', /file\?path=song\.mp3/)
+})
+
+test('a bundle locates its own folder in the File Browser', async ({ page }) => {
+  // The inverse of the File Browser's "Locate in Bundle Browser", asked for by
+  // the owner (2026-08-26). It navigates inside Cairndex rather than handing the
+  // path to the OS, so unlike Open/Reveal it is offered on the web too.
+  await mockApi(page)
+  await page.goto('/')
+
+  const card = page.locator('[data-bundle-id]').first()
+  await expect(card).toBeVisible()
+  await card.click({ button: 'right' })
+  await page.locator('.context-menu__item', { hasText: 'Locate in File Browser' }).click()
+
+  // Landed on the Files surface, inside the folder holding the bundle's file.
+  await expect(page.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.file-browser__crumbs')).toContainText('Show')
+  // And on the file itself, not merely the folder around it: `locatedPath` feeds
+  // the same selected-row highlight a click produces.
+  await expect(page.locator('.file-row--selected')).toContainText('clip.mp4')
 })

@@ -554,6 +554,27 @@ export const fetchAllCollections = (signal?: AbortSignal) =>
 export const createCollection = (payload: CollectionCreate) =>
   send<CollectionRead>(`${lib()}/collections`, 'POST', payload)
 
+/** How many bundles a folder would contribute, asked before anything is made. */
+export const fetchDirectoryBundleCount = (directory: string, signal?: AbortSignal) =>
+  getJson<{ bundle_count: number }>(
+    `${lib()}/collections/directory-bundle-count?directory=${encodeURIComponent(directory)}`,
+    signal,
+  ).then((r) => r.bundle_count)
+
+/** Make a collection out of a library folder, filing every bundle under it in.
+ *  One request: a collection that exists but never received its members is a
+ *  worse outcome than one that was never created. */
+export const createCollectionFromDirectory = (payload: {
+  directory: string
+  name: string
+  parent_id: string | null
+}) =>
+  send<{ collection: CollectionRead; bundles_added: number }>(
+    `${lib()}/collections/from-directory`,
+    'POST',
+    payload,
+  )
+
 export const renameCollection = (id: string, name: string, version?: number) =>
   send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', { name }, version)
 

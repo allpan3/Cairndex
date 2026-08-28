@@ -53,6 +53,10 @@ const FILE: FileBrowserEntry = {
   linked: true,
 }
 
+// True while the rows on screen are the previous folder's, held so the listing
+// does not blank on every step into a folder.
+let listingIsStale = false
+
 vi.mock('../api/hooks', () => ({
   useFileBrowser: () => ({
     data: { entries: [FOLDER, FILE], missing_files_updated: 0, path: 'Show' },
@@ -60,6 +64,7 @@ vi.mock('../api/hooks', () => ({
     error: null,
     isError: false,
     isLoading: false,
+    isPlaceholderData: listingIsStale,
   }),
   useUnbundledFiles: () => ({
     data: { pages: [] },
@@ -76,11 +81,18 @@ vi.mock('../api/hooks', () => ({
     trash: { mutate: trashMutate, isPending: false },
     move: { mutate: moveMutate, isPending: false },
   }),
+  // Move to… never asks for one; the picker calls the hook unconditionally and
+  // gates it with `enabled`, so this stands in for "not asked".
+  useTargetSuggestions: () => ({ data: undefined, isLoading: false }),
 }))
 
 let flashes: { message: string; undo?: () => void }[]
 
-function renderBrowser(writeMode = true) {
+function renderBrowser(
+  writeMode = true,
+  onSelectEntry: () => void = () => undefined,
+  onCollectionFromFolder?: (directory: string) => void,
+) {
   flashes = []
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -91,7 +103,7 @@ function renderBrowser(writeMode = true) {
         path="Show"
         selectedPath={null}
         onNavigate={() => undefined}
-        onSelectEntry={() => undefined}
+        onSelectEntry={onSelectEntry}
         playerPrefs={DEFAULT_PLAYER_PREFS}
         onPlayerPrefs={() => undefined}
         onAddToBundle={() => undefined}
@@ -100,6 +112,7 @@ function renderBrowser(writeMode = true) {
         writeMode={writeMode}
         onFlash={(message, undoAction) => flashes.push({ message, undo: undoAction })}
         onImportFiles={importFiles}
+        onCollectionFromFolder={onCollectionFromFolder}
       />
     </QueryClientProvider>,
   )
@@ -109,6 +122,7 @@ const row = (name: string) => screen.getByText(name).closest('[data-relpath]') a
 
 beforeEach(() => {
   vi.clearAllMocks()
+  listingIsStale = false
 })
 
 test('a read-only library looks exactly as it did before write mode existed', () => {
@@ -117,9 +131,13 @@ test('a read-only library looks exactly as it did before write mode existed', ()
   expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull()
 
   fireEvent.contextMenu(row('Season 1'))
-  // A directory's context menu only exists because Rename does; without write
-  // mode there is nothing to put in it.
+  // A folder's menu opens read-only now — it carries Copy Path, and New
+  // Collection from Folder when the caller offers it, both metadata-only. What
+  // must stay absent is everything that touches the filesystem.
   expect(screen.queryByText('Rename…')).toBeNull()
+  expect(screen.queryByText('Move to…')).toBeNull()
+  expect(screen.queryByText('Move to Trash')).toBeNull()
+  expect(screen.getByText('Copy Path')).toBeTruthy()
 })
 
 test('renaming a file sends the new name and offers to undo it', async () => {
@@ -519,4 +537,71 @@ test('a read-only library offers no way to move', () => {
 
   fireEvent.contextMenu(row('ep1.mkv'))
   expect(screen.queryByText('Move to…')).toBeNull()
+})
+
+// --- a listing held while the next folder loads -------------------------------
+// Stepping into a folder used to replace the whole list with "Loading…", so the
+// view flashed on every click (owner, 2026-08-26). The rows are now held — which
+// means they must not be *acted* on, because the breadcrumb already reads the
+// folder being navigated to while these rows belong to the one just left.
+test('a held listing is marked pending and cannot be acted on', () => {
+  listingIsStale = true
+  const onSelectEntry = vi.fn()
+  renderBrowser(true, onSelectEntry)
+
+  // Marked for anyone reading the DOM or listening with a screen reader.
+  const wrapper = document.querySelector('.file-browser__wrapper') as HTMLElement
+  expect(wrapper).toHaveAttribute('aria-busy', 'true')
+  expect(wrapper.className).toContain('listing--inert')
+
+  // Guarded in JS as well as CSS: jsdom does no hit testing, so `pointer-events`
+  // alone would let every one of these through — and what they reach is Rename,
+  // Move to… and Move to Trash.
+  fireEvent.click(row('ep1.mkv'))
+  fireEvent.doubleClick(row('Season 1'))
+  fireEvent.contextMenu(row('ep1.mkv'))
+
+  expect(onSelectEntry).not.toHaveBeenCalled()
+  expect(document.querySelector('.context-menu')).toBeNull()
+})
+
+test('a settled listing is interactive as before', () => {
+  const onSelectEntry = vi.fn()
+  renderBrowser(true, onSelectEntry)
+
+  fireEvent.click(row('ep1.mkv'))
+  expect(onSelectEntry).toHaveBeenCalled()
+})
+
+// --- a collection made from a folder ------------------------------------------
+test('a folder offers to become a collection, and hands back its path', () => {
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(true, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('New Collection from Folder…'))
+
+  expect(onCollectionFromFolder).toHaveBeenCalledWith('Show/Season 1')
+})
+
+test('making a collection from a folder needs no write mode', () => {
+  // It is metadata-only — the folder is read to decide which bundles join and
+  // nothing on disk moves — so gating it behind write mode would be wrong. This
+  // is why a folder's menu opens read-only at all.
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(false, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('New Collection from Folder…'))
+
+  expect(onCollectionFromFolder).toHaveBeenCalledWith('Show/Season 1')
+})
+
+test('a file is not offered the folder action', () => {
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(true, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+
+  expect(screen.queryByText('New Collection from Folder…')).toBeNull()
 })

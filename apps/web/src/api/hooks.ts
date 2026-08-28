@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 
 import {
   type InfiniteData,
+  keepPreviousData,
   type QueryClient,
   type QueryKey,
   useInfiniteQuery,
@@ -49,6 +50,8 @@ import {
   browseBundles,
   createBundleFromUnbundled,
   createCollection,
+  createCollectionFromDirectory,
+  fetchDirectoryBundleCount,
   createEmptyBundle,
   createLibrary,
   createTag,
@@ -1198,11 +1201,22 @@ export function useManualBundling() {
 }
 
 /** List directory entries for a library-relative path (null = library root). */
-export function useFileBrowser(path: string | null, enabled = true) {
+export function useFileBrowser(path: string | null, enabled = true, keepPrevious = false) {
   return useQuery({
     queryKey: ['file-browser', path ?? ''],
     queryFn: ({ signal }) => fetchFileBrowserEntries(path, signal),
     enabled,
+    // Opt-in, for pickers: stepping into a folder is a *new* query key with
+    // nothing cached, so the list is replaced by "Loading…" and the dialog
+    // visibly flashes on every click (owner, 2026-08-26). Holding the previous
+    // listing keeps the box steady.
+    //
+    // A caller that opts in **must** dim and disable the rows while
+    // `isPlaceholderData` is true. What is on screen then belongs to the folder
+    // you just left while the breadcrumb already reads the new one, so a click
+    // landing on a stale row would navigate somewhere that may not exist —
+    // trading a cosmetic flash for a real misnavigation.
+    ...(keepPrevious ? { placeholderData: keepPreviousData } : {}),
   })
 }
 
@@ -2201,6 +2215,32 @@ export function useCreateCollection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
       invalidateCollectionCounts(qc)
+    },
+  })
+}
+
+/** How many bundles "Create Collection from Folder…" would file in, so the
+ *  dialog can say what the button will do before it is pressed. */
+export function useDirectoryBundleCount(directory: string | null) {
+  return useQuery({
+    queryKey: ['directory-bundle-count', directory ?? ''],
+    queryFn: ({ signal }) => fetchDirectoryBundleCount(directory as string, signal),
+    enabled: directory !== null && directory !== '',
+  })
+}
+
+/** Make a collection out of a folder and file its bundles into it. Invalidates
+ *  membership-derived surfaces too — the bundles just joined something. */
+export function useCreateCollectionFromDirectory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { directory: string; name: string; parent_id: string | null }) =>
+      createCollectionFromDirectory(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['collections'] })
+      invalidateCollectionCounts(qc)
+      qc.invalidateQueries({ queryKey: ['browse'] })
+      qc.invalidateQueries({ queryKey: ['bundle'] })
     },
   })
 }

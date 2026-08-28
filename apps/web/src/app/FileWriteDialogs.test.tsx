@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
-import type { FileRead } from '../api/client'
+import type { FileRead, TargetSuggestion } from '../api/client'
 import { BundleDropDestination, ConflictDialog, DirectoryPicker } from './FileWriteDialogs'
 
 // The bundle whose files decide where the picker opens.
@@ -16,6 +16,21 @@ const listings: Record<string, string[]> = {
 // The mkdir mutation the picker's New Folder drives.
 const mkdir = { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown }
 
+// Bundle suggestions per destination folder, so a test can prove the offer
+// follows the folder being browsed rather than the one the picker opened in.
+let bundleSuggestions: Record<string, TargetSuggestion[]> = {}
+// Every selection the picker asked about, in order — the paths matter as much as
+// the answers: they are what tells the server *where the file would land*.
+const suggestionQueries: string[][] = []
+
+// True while the listing on screen belongs to the folder just left (TanStack's
+// placeholder data), which is when the picker must not let a row be clicked.
+let listingIsStale = false
+// Suggestion lookups after this many calls return nothing, standing in for the
+// list blinking empty for a folder the owner has already chosen a bundle in.
+let blinkSuggestionsAfter: number | null = null
+let suggestionCalls = 0
+
 vi.mock('../api/hooks', () => ({
   useFileOperations: () => ({ mkdir }),
   useBundleFiles: () => ({ data: bundleFiles, isLoading: false }),
@@ -28,7 +43,19 @@ vi.mock('../api/hooks', () => ({
       })),
     },
     isLoading: false,
+    isPlaceholderData: listingIsStale,
   }),
+  useTargetSuggestions: (sel: { relativePaths?: string[] }, enabled: boolean) => {
+    const paths = sel.relativePaths ?? []
+    if (!enabled || paths.length === 0) return { data: undefined, isLoading: false }
+    suggestionQueries.push(paths)
+    suggestionCalls += 1
+    if (blinkSuggestionsAfter !== null && suggestionCalls > blinkSuggestionsAfter) {
+      return { data: [], isLoading: false }
+    }
+    const folder = (paths[0] as string).split('/').slice(0, -1).join('/')
+    return { data: bundleSuggestions[folder] ?? [], isLoading: false }
+  },
 }))
 
 function fileAt(relativePath: string): FileRead {
@@ -41,6 +68,11 @@ beforeEach(() => {
   mkdir.isPending = false
   mkdir.isError = false
   mkdir.error = null
+  bundleSuggestions = {}
+  suggestionQueries.length = 0
+  listingIsStale = false
+  blinkSuggestionsAfter = null
+  suggestionCalls = 0
 })
 
 test('a drop onto a bundle opens where the bundle’s first file lives', () => {
@@ -63,7 +95,7 @@ test('a drop onto a bundle opens where the bundle’s first file lives', () => {
   expect(screen.getByRole('button', { name: 'Copy into Alpha' })).toBeEnabled()
 
   fireEvent.click(screen.getByRole('button', { name: 'Copy into Alpha' }))
-  expect(onChoose).toHaveBeenCalledWith('Studios/Alpha')
+  expect(onChoose).toHaveBeenCalledWith('Studios/Alpha', null)
 })
 
 test('somewhere else is still one click away', () => {
@@ -83,7 +115,7 @@ test('somewhere else is still one click away', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Studios' }))
   fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
   fireEvent.click(screen.getByRole('button', { name: 'Copy into Beta' }))
-  expect(onChoose).toHaveBeenCalledWith('Studios/Beta')
+  expect(onChoose).toHaveBeenCalledWith('Studios/Beta', null)
 })
 
 test('a bundle whose file sits at the root opens at the root', () => {
@@ -100,7 +132,7 @@ test('a bundle whose file sits at the root opens at the root', () => {
   )
 
   fireEvent.click(screen.getByRole('button', { name: 'Copy into Library root' }))
-  expect(onChoose).toHaveBeenCalledWith('')
+  expect(onChoose).toHaveBeenCalledWith('', null)
 })
 
 // --- New Folder inside the picker --------------------------------------------
@@ -189,7 +221,7 @@ test('the picker steps into the folder it just created', () => {
   act(() => options.onSuccess())
 
   fireEvent.click(screen.getByRole('button', { name: /^Choose|^Move|^Add|Select/ }))
-  expect(onChoose).toHaveBeenCalledWith('Studios/Gamma')
+  expect(onChoose).toHaveBeenCalledWith('Studios/Gamma', null)
 })
 
 test('an empty name cannot be submitted', () => {
@@ -257,4 +289,137 @@ test('the dialog distinguishes Skip from Cancel in words, not just buttons', () 
   // Which one abandons the queue is the whole difference between them.
   expect(screen.getByText(/carries on with the rest/)).toBeTruthy()
   expect(screen.getByText(/does not copy what is left/)).toBeTruthy()
+})
+
+// --- "and add it to a bundle" ------------------------------------------------
+// The destination folder is the strongest hint about which bundle a file joins,
+// so the picker that already asks where can ask what it belongs to as well
+// (owner, 2026-08-25). Opt-in, because Move to… asks a different question.
+function suggestion(bundleId: string, title: string, reason: string): TargetSuggestion {
+  return { bundle_id: bundleId, title, reason, confidence: 0.5 } as TargetSuggestion
+}
+
+test('the picker offers no bundle unless asked', () => {
+  bundleSuggestions = { Studios: [suggestion('b1', 'Alpha Reel', 'same folder')] }
+  renderPicker({ startIn: 'Studios' })
+
+  expect(screen.queryByRole('heading', { name: 'Add to a bundle' })).toBeNull()
+  // And it must not even ask: Move to… has no business generating suggestions.
+  expect(suggestionQueries).toEqual([])
+})
+
+test('the offer asks about the path each file would land on', () => {
+  renderPicker({ startIn: 'Studios', suggestBundleFor: ['behind.mp4', 'poster.jpg'] })
+
+  expect(suggestionQueries[0]).toEqual(['Studios/behind.mp4', 'Studios/poster.jpg'])
+})
+
+test('a suggested bundle is named on the confirm button, not applied silently', () => {
+  bundleSuggestions = { Studios: [suggestion('b1', 'Alpha Reel', 'same folder')] }
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  // Nothing is preselected: the file lands in the folder and joins nothing,
+  // which is what every other add does.
+  expect(screen.getByRole('button', { name: 'Add to Studios' })).toBeEnabled()
+  expect(screen.getByRole('radio', { name: /Don’t add to a bundle/ })).toBeChecked()
+
+  fireEvent.click(screen.getByRole('radio', { name: /Alpha Reel/ }))
+  // The button says what will happen, so a bundle cannot be joined unnoticed.
+  fireEvent.click(screen.getByRole('button', { name: 'Add to “Alpha Reel”' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios', 'b1')
+})
+
+test('declining a bundle hands back the destination alone', () => {
+  bundleSuggestions = { Studios: [suggestion('b1', 'Alpha Reel', 'same folder')] }
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  fireEvent.click(screen.getByRole('radio', { name: /Alpha Reel/ }))
+  fireEvent.click(screen.getByRole('radio', { name: /Don’t add to a bundle/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add to Studios' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios', null)
+})
+
+test('a bundle chosen in one folder does not follow you to another', () => {
+  // The dangerous case: pick a bundle, change your mind about where the file
+  // goes, and confirm. The bundle belonged to the folder you left.
+  bundleSuggestions = {
+    Studios: [suggestion('b1', 'Alpha Reel', 'same folder')],
+    'Studios/Beta': [suggestion('b2', 'Beta Reel', 'same folder')],
+  }
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  fireEvent.click(screen.getByRole('radio', { name: /Alpha Reel/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
+
+  expect(screen.getByRole('radio', { name: /Don’t add to a bundle/ })).toBeChecked()
+  expect(screen.queryByRole('radio', { name: /Alpha Reel/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Add to Beta' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios/Beta', null)
+})
+
+test('a folder with no plausible bundle says so, and still adds the file', () => {
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  expect(screen.getByText('No bundle here suits these files.')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Add to Studios' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios', null)
+})
+
+test('a chosen bundle survives the suggestion list blinking empty', () => {
+  // The rule is "forget the choice when you leave the folder". It used to be
+  // implemented as "forget it when the id is no longer in the fetched list",
+  // which tied a correctness rule to a network state: any render where that list
+  // was momentarily empty for the *same* folder silently dropped an explicit
+  // choice, and the import then landed unbundled.
+  bundleSuggestions = { Studios: [suggestion('b1', 'Alpha Reel', 'same folder')] }
+  const onChoose = renderPicker({
+    startIn: 'Studios',
+    confirmLabel: (where) => `Add to ${where}`,
+    suggestBundleFor: ['behind.mp4'],
+  })
+
+  // Choosing re-renders, and from here the mock answers with nothing.
+  blinkSuggestionsAfter = suggestionCalls
+  fireEvent.click(screen.getByRole('radio', { name: /Alpha Reel/ }))
+
+  // The button still names the bundle: the title is remembered with the choice
+  // rather than looked back up in a list that may not have arrived.
+  const confirm = screen.getByRole('button', { name: 'Add to “Alpha Reel”' })
+  fireEvent.click(confirm)
+  expect(onChoose).toHaveBeenCalledWith('Studios', 'b1')
+})
+
+test('a stale listing cannot be clicked into', () => {
+  // Holding the previous folder's rows stops the dialog flashing, but they sit
+  // under the *new* breadcrumb — so clicking one would navigate somewhere that
+  // need not exist. Cosmetic fix, real hazard, hence the guard.
+  listingIsStale = true
+  renderPicker({ startIn: 'Studios' })
+
+  expect(screen.getByRole('button', { name: 'Alpha' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Beta' })).toBeDisabled()
+})
+
+test('a settled listing is navigable as usual', () => {
+  const onChoose = renderPicker({ startIn: 'Studios' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Move here' }))
+  expect(onChoose).toHaveBeenCalledWith('Studios/Beta', null)
 })

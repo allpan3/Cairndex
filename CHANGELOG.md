@@ -10,6 +10,40 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Adding a file offers the bundle it belongs to.** Both routes into the library
+  put the file on disk and stopped there — it was in the library but invisible to
+  the Bundle Browser until the next scan staged it, and bundling was a separate
+  trip through Unbundled. The destination folder is the strongest signal about
+  which bundle a file joins, so both routes now use it:
+
+  - `File ▸ Add Files to Library…` asks which bundle alongside where. Nothing is
+    preselected, there is an explicit **Don't add to a bundle** row rather than an
+    implied one, and the confirm button names the bundle it will file into, so
+    joining one cannot happen unnoticed. Choosing a bundle in one folder and then
+    browsing to another drops the choice, since it belonged to the folder you
+    left. *Move to…* is unchanged — it shares the dialog but not the question.
+  - **The File Browser's drag-in and Add Files Here** report the import in a
+    toast that now carries the offer beside Undo. Undo reverses the whole batch,
+    not only the last file, because each import is its own journal operation.
+    This covers both ways files arrive there — a browser upload and the desktop
+    shell's own Finder drop are separate machinery end to end, and the offer has
+    to be asked for on each.
+
+  **New Bundle sits beside the add-to action on every import**, because a file
+  arriving in the library is at least as likely to *be* a bundle as to join one,
+  and a suggester can only ever propose the second. It opens the same dialog the
+  File Browser's Create Bundle… does, with a title proposed from the filename.
+
+  An offer, never an action: the file has already landed where it was told to,
+  and everything is metadata-only from there. Two cases decline to *name* a
+  bundle — a weak match, and **a folder holding several bundles that the path
+  cannot choose between** (two bundles in one folder score identically, and
+  naming one would dress a coin flip as a recommendation). Neither goes quiet:
+  both degrade to **Add to Bundle**, which opens every candidate ranked plus a
+  search over all confirmed bundles. Answering "Don't add to a bundle" in the
+  destination picker leads to the same toast, since that is a *not yet* rather
+  than a no. So an import always offers both ways to bundle what just landed.
+
 - **Forget a file that is gone.** A file deleted outside Cairndex could only be
   dismissed by deleting the whole bundle around it — which dissolved the
   grouping, scattered the surviving files back into Unbundled, and (until the
@@ -22,6 +56,67 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   A file that is gone no longer offers "Remove from Bundle" beside it. Removing
   it drops the record too, so the two were one action under two names, and only
   one of the names said so.
+
+- **The destination picker stops flashing on every click.** Stepping into a folder
+  fetched a listing under a new cache key, so the list was replaced by "Loading…"
+  and the dialog visibly blinked each time. It now holds the previous listing
+  while the next arrives — dimmed, with its rows disabled, because those rows
+  belong to the folder you just left while the breadcrumb already reads the new
+  one, and clicking one would navigate somewhere that need not exist.
+
+  **The File Browser itself does the same**, where the stakes are higher: its
+  rows feed Rename, Move to… and Move to Trash, so a click landing on a held row
+  could have targeted a file from the folder just left. There the held listing is
+  dimmed, marked `aria-busy`, made inert in CSS *and* guarded in the click,
+  double-click and context-menu handlers — belt and braces, because a CSS-only
+  guard depends on a stylesheet having loaded. Band-select and arrow keys are
+  suspended for the same window. Affordances keyed on the *path* rather than a
+  row — dropping files in, New Folder, the background menu — stay live, since the
+  path is already the folder being navigated to.
+
+  Still opt-in per caller rather than a default on the shared listing hook: any
+  caller holding a stale listing has to guard against acting on it, and that
+  guard is specific to what its rows do. The remaining pickers need no change —
+  the collection picker reads one non-navigable query, and the bundle-drop
+  destination wraps this same directory picker.
+
+- **Fixed: a bundle chosen in the destination picker could be silently dropped.**
+  The rule is "forget the choice when you leave the folder", but it was
+  implemented as "forget it when the id is no longer in the fetched suggestion
+  list" — a correctness rule keyed on a network state. It held only because
+  TanStack retains data across a refetch; any render where that list was
+  momentarily empty for the *same* folder would have discarded an explicit choice
+  and imported the file unbundled. The choice is now keyed on the folder it was
+  made in, and remembers its own title so the confirm button says what it will do
+  even before the list arrives.
+
+- **New Collection from Folder…**, on a File Browser folder's context menu. Name
+  it (the folder's own name is the default), choose which collection it sits
+  inside from a **foldable, searchable tree**, and every bundle in that folder
+  **and below** is filed into it. The tree rather than a dropdown because a
+  library's collection list has no natural limit: depth is only legible while you
+  can close what you are not looking at. Searching flattens the tree, so a match
+  is never hidden inside a folded branch, and folds survive the search. The
+  dialog says how many that is before you press the button, because the same
+  click may file two bundles or two hundred and only the folder knows which.
+
+  Collections stay logical: the folder is read to decide membership and nothing
+  on disk moves. Provisional scan-staged bundles are left out — browse hides them
+  from collections anyway, so filing them would add rows that cannot be seen. The
+  whole thing is one request, since a collection that exists but never received
+  its members is a worse outcome than one that was never created.
+
+  A folder's context menu now opens **without write mode**, which it did not
+  before: it previously held nothing that worked read-only, and this and Copy
+  Path both do. The entries that touch the filesystem stay gated.
+
+- **Locate in File Browser, on a bundle.** The File Browser could jump to a
+  file's owning bundle, but nothing went the other way: finding where a bundle
+  actually lives on disk meant reading its path and navigating by hand. A
+  bundle's context menu now opens the folder its own file sits in, with that file
+  highlighted. Like *Locate in Bundle Browser* — and unlike Open in Default App
+  and Reveal in Finder, which it sits above — this navigates inside Cairndex, so
+  it works in a browser too.
 
 - **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
   both are in the menu bar under `File` — greyed out when there is nothing they
@@ -484,6 +579,53 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sheets rather than leaving a library holding a mix of two qualities.
 
 ### Fixed
+
+- **Creating a bundle no longer slows down as the library grows.** It took about
+  five seconds on the owner's library (2026-08-26). Almost none of that was the
+  bundle: every FTS search-index maintenance trigger located a bundle's row with
+  `WHERE bundle_id = ?`, and `bundle_id` is `UNINDEXED` in an FTS5 table, which
+  supports no secondary indexes — so each one scanned the whole index. A single
+  create fires around ten of them (a file moving between bundles reindexes both).
+
+  Measured on a synthetic 60k-bundle library: one create cost **94 ms** with the
+  triggers and **6 ms** without, and the scan alone was 8.5 ms against 0.0 ms for
+  the same delete keyed by rowid. Every trigger now keys on the bundle's own
+  integer rowid, which the FTS row shares: **94 ms → 21 ms**, and the remaining
+  cost is flat in library size rather than linear (15 ms at 4 bundles, 7 ms at
+  60k). On the first open after this change the index is rebuilt once — about
+  0.5 s for 60k bundles — because rowids assigned by the old scheme bear no
+  relation to their bundles.
+
+  The module's own comment blamed "a correlated view" for trigger cost, which is
+  what sent this investigation the wrong way at first; the view side measures
+  2.1 ms. That comment has been corrected in place.
+
+- **Bundle suggestions no longer read the whole file table to find a folder.**
+  Every candidate lookup behind the bundling dialogs matched `relative_path LIKE
+  'folder/%'`, and SQLite cannot use an index for `LIKE` under its default
+  case-insensitive rules — nor with the `ESCAPE` clause that spelling carried,
+  which disables the optimization outright. So each distinct folder in the
+  selection cost one full read of `asset_files`, paid on dialog open, and paid in
+  full even when the folder matched nothing. On a synthetic 100k-file library
+  that was 5.0 ms per folder against 0.06 ms for the indexed form — and far worse
+  on network-mounted storage, where the difference is a whole-table read versus a
+  few index pages.
+
+  Both directions now resolve through the existing `asset_files.directory_path`
+  index: an equality probe per enclosing folder, and a half-open range per
+  subtree. A test asserts the query plan names that index, because a regression
+  here does not necessarily show up as a scan of `asset_files` — the planner may
+  drive from `asset_bundles` instead and test each bundle's files, which is
+  equally slow and reads as innocent.
+
+- **A file added below a bundle's folder now finds that bundle.** Folder locality
+  was an exact-match test, so a file landing in a subfolder of where a bundle
+  lives earned no locality credit at all and surfaced only if the filenames
+  happened to overlap. Suggestions now walk up to three enclosing folders,
+  scoring closer folders higher, with the folder distance named in the reason
+  ("same folder", "parent folder", "2 folders up"). The library root is
+  deliberately excluded: it encloses every path, so matching on it is evidence of
+  nothing.
 
 - **A bundle that is gone empties the inspector instead of describing it.** After
   a Forget — or a scan dropping a staged row — the right-hand panel kept the

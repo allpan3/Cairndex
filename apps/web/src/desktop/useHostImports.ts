@@ -8,6 +8,7 @@ import {
   startHostImportBatch,
 } from '../platform'
 import { importStoppedSummary, type ImportActivity } from '../app/importActivity'
+import type { LandedFile } from '../app/importBundleOffer'
 
 /** An import paused on a name that is already taken */
 export interface HostImportConflict {
@@ -25,6 +26,8 @@ interface HostImportBatch {
   stopping: boolean
   inFlight: boolean
   prepared: boolean
+  /** Library-relative paths that reached disk, with the op that put them there. */
+  landed: LandedFile[]
 }
 
 /** Desktop import state and controls exposed to the app shell */
@@ -48,6 +51,7 @@ export function useHostImports({
   destDir,
   onFlash,
   onImported,
+  onSettled,
 }: {
   libraryId: string | null
   /** The folder being browsed, or '' for the library root */
@@ -55,6 +59,14 @@ export function useHostImports({
   onFlash: (message: string, undo?: () => void) => void
   /** Refresh whatever is on screen, and undo one completed import */
   onImported: (operationId: string) => { undo: () => void }
+  /**
+   * The batch finished — here is everything that reached disk.
+   *
+   * Separate from `onImported`, which fires per file and knows only an operation
+   * id. Offering the bundle a drop belongs to needs the whole batch and its
+   * landed *paths*, and it has to wait until there is nothing left to add to it.
+   */
+  onSettled?: (landed: LandedFile[]) => void | Promise<void>
 }): HostImports {
   const [activity, setActivity] = useState<ImportActivity | null>(null)
   const [conflict, setConflict] = useState<HostImportConflict | null>(null)
@@ -127,6 +139,7 @@ export function useHostImports({
       stopping: false,
       inFlight: false,
       prepared: false,
+      landed: [],
     }
     batchRef.current = batch
     setActivity({
@@ -238,6 +251,7 @@ export function useHostImports({
           onFlash(`Skipped “${name}” — something with that name is already here.`)
         } else {
           batch.imported += 1
+          batch.landed.push({ path: outcome.path, operationId: outcome.operationId })
           const { undo } = onImported(outcome.operationId)
           onFlash(`Copied “${nameOf(outcome.path)}” into the library.`, undo)
         }
@@ -290,6 +304,15 @@ export function useHostImports({
     await finishHostImportBatch(batch.id).catch(() => undefined)
     if (!mountedRef.current) return
     setActivity(null)
+    // Before the stopped-summary flash below, so that summary still wins the
+    // toast when a batch was abandoned — same precedence as the web path.
+    if (batch.landed.length > 0) {
+      try {
+        await onSettled?.(batch.landed)
+      } catch (failure) {
+        if (mountedRef.current) onFlash(hostImportMessage(failure, 'this import'))
+      }
+    }
     if (stopped) {
       onFlash(
         importStoppedSummary({

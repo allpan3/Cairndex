@@ -5882,6 +5882,103 @@ code {
   font-size: 12px;
 }
 
+/* The optional "and add it to a bundle" offer, below the folder list. Reuses the
+   bundling dialogs' own row so a suggestion reads the same wherever it appears
+   — same title/reason stack, same hover — rather than inventing a second look
+   for the same idea. */
+.dir-picker__bundles {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.dir-picker__bundles-head {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dir-picker__bundle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 168px;
+  overflow: auto;
+}
+
+/* A listing still showing the folder just left while the next one loads. Dimming
+   rather than blanking is the point: the box keeps its height and stops flashing
+   on every click into a folder. */
+.listing--stale {
+  opacity: 0.55;
+}
+/* For rows that cannot be disabled by attribute — divs carrying click,
+   double-click, context-menu and drag handlers. Without this the held rows are
+   fully interactive under a breadcrumb that already reads the next folder, so a
+   click would select, rename, or trash a file from the one just left. */
+.listing--inert {
+  pointer-events: none;
+}
+
+/* A radio in the same 14px slot as `.pick-row__box`, because only one parent can
+   be chosen — a tick box says "any number of these" and this field means "one of
+   these" (owner, 2026-08-28). Round, and filled with a centre dot rather than a
+   glyph, which is what distinguishes the two at a glance. */
+.pick-row__radio {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+.pick-row__radio--on {
+  border-color: var(--accent);
+}
+.pick-row__radio--on::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* The parent-collection tree in New Collection from Folder…. Bounded and
+   scrollable, because a library's collection list has no natural limit — which
+   is why this is a folding tree rather than a native <select> (owner,
+   2026-08-28). */
+.cff-tree {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  margin-bottom: 4px;
+}
+.cff-tree__row {
+  display: flex;
+  align-items: center;
+}
+/* The rows are buttons so they are focusable and Enter/Space work; these reset
+   the button chrome that `.pick-row` alone does not expect to meet. */
+.cff-tree button.pick-row {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.cff-tree .pick-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* --- Copy files in (ADR-0013 §7) ------------------------------------------ */
 /* The whole listing is the drop target, not a separate zone: the folder being
    browsed is where the files go, so the folder's own body is the honest edge. */

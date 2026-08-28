@@ -4,7 +4,9 @@ Operate on the library DB selected by ``{library_id}`` via ``LibrarySession``,
 so a collection created in one library is invisible to another.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
@@ -13,14 +15,18 @@ from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
     CollectionCleanup,
     CollectionCreate,
+    CollectionFromDirectory,
+    CollectionFromDirectoryResult,
     CollectionRead,
     CollectionReorder,
     CollectionStats,
     CollectionUpdate,
+    DirectoryBundleCount,
 )
 from cairndex.core.errors import NotFoundError
 from cairndex.media import thumbnails
 from cairndex.services import browse as browse_service
+from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as service
 
 router = APIRouter(prefix="/libraries/{library_id}/collections", tags=["library-collections"])
@@ -40,6 +46,50 @@ def collection_counts(db: LibrarySession) -> CollectionCountsResponse:
 def create_collection(payload: CollectionCreate, db: LibrarySession) -> CollectionRead:
     collection = service.create_collection(db, name=payload.name, parent_id=payload.parent_id)
     return CollectionRead.model_validate(collection)
+
+
+@router.get("/directory-bundle-count", response_model=DirectoryBundleCount)
+def directory_bundle_count(
+    db: LibrarySession, directory: Annotated[str, Query(min_length=1)]
+) -> DirectoryBundleCount:
+    """How many bundles making a collection from ``directory`` would file into it.
+
+    Read-only, so the dialog can say what the button will do before it is
+    pressed rather than reporting it afterwards.
+    """
+    return DirectoryBundleCount(bundle_count=len(service.bundle_ids_under_directory(db, directory)))
+
+
+@router.post(
+    "/from-directory",
+    response_model=CollectionFromDirectoryResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_collection_from_directory(
+    payload: CollectionFromDirectory, db: LibrarySession
+) -> CollectionFromDirectoryResult:
+    """Create a collection and file every bundle under a folder into it.
+
+    One operation rather than create-then-assign from the client: a collection
+    that exists but never received its members is a worse outcome than one that
+    was never created, and only the server can make the two atomic.
+
+    Metadata-only, like every collection write — the folder is read to decide
+    membership and nothing on disk is touched (AGENTS.md §4.7).
+    """
+    bundle_ids = service.bundle_ids_under_directory(db, payload.directory)
+    collection = service.create_collection(db, name=payload.name, parent_id=payload.parent_id)
+    added = (
+        bundle_service.batch_update_bundles(
+            db, bundle_ids=bundle_ids, add_collection_ids=[collection.id]
+        )
+        if bundle_ids
+        else 0
+    )
+    db.commit()
+    return CollectionFromDirectoryResult(
+        collection=CollectionRead.model_validate(collection), bundles_added=added
+    )
 
 
 @router.get("", response_model=Page[CollectionRead])
