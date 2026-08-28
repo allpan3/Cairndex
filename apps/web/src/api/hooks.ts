@@ -50,6 +50,8 @@ import {
   browseBundles,
   createBundleFromUnbundled,
   createCollection,
+  createCollectionFromDirectory,
+  fetchDirectoryBundleCount,
   createEmptyBundle,
   createLibrary,
   createTag,
@@ -2213,6 +2215,32 @@ export function useCreateCollection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
       invalidateCollectionCounts(qc)
+    },
+  })
+}
+
+/** How many bundles "Create Collection from Folder…" would file in, so the
+ *  dialog can say what the button will do before it is pressed. */
+export function useDirectoryBundleCount(directory: string | null) {
+  return useQuery({
+    queryKey: ['directory-bundle-count', directory ?? ''],
+    queryFn: ({ signal }) => fetchDirectoryBundleCount(directory as string, signal),
+    enabled: directory !== null && directory !== '',
+  })
+}
+
+/** Make a collection out of a folder and file its bundles into it. Invalidates
+ *  membership-derived surfaces too — the bundles just joined something. */
+export function useCreateCollectionFromDirectory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { directory: string; name: string; parent_id: string | null }) =>
+      createCollectionFromDirectory(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['collections'] })
+      invalidateCollectionCounts(qc)
+      qc.invalidateQueries({ queryKey: ['browse'] })
+      qc.invalidateQueries({ queryKey: ['bundle'] })
     },
   })
 }

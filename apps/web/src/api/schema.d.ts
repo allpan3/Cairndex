@@ -859,6 +859,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/collections/directory-bundle-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Directory Bundle Count
+         * @description How many bundles making a collection from ``directory`` would file into it.
+         *
+         *     Read-only, so the dialog can say what the button will do before it is
+         *     pressed rather than reporting it afterwards.
+         */
+        get: operations["directory_bundle_count_api_v1_libraries__library_id__collections_directory_bundle_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/collections/from-directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Collection From Directory
+         * @description Create a collection and file every bundle under a folder into it.
+         *
+         *     One operation rather than create-then-assign from the client: a collection
+         *     that exists but never received its members is a worse outcome than one that
+         *     was never created, and only the server can make the two atomic.
+         *
+         *     Metadata-only, like every collection write — the folder is read to decide
+         *     membership and nothing on disk is touched (AGENTS.md §4.7).
+         */
+        post: operations["create_collection_from_directory_api_v1_libraries__library_id__collections_from_directory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/collections/reorder": {
         parameters: {
             query?: never;
@@ -2984,6 +3034,29 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /**
+         * CollectionFromDirectory
+         * @description Make a collection out of a library folder (ADR-0008: collections are
+         *     logical, so nothing on disk moves — this only reads the folder to decide
+         *     which bundles join).
+         */
+        CollectionFromDirectory: {
+            /**
+             * Directory
+             * @description Library-relative folder
+             */
+            directory: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+        };
+        /** CollectionFromDirectoryResult */
+        CollectionFromDirectoryResult: {
+            /** Bundles Added */
+            bundles_added: number;
+            collection: components["schemas"]["CollectionRead"];
+        };
         /** CollectionRead */
         CollectionRead: {
             /** Cover Bundle Id */
@@ -3196,6 +3269,15 @@ export interface components {
             name: string;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /**
+         * DirectoryBundleCount
+         * @description How many bundles a folder would contribute, for the dialog to show before
+         *     anything is created.
+         */
+        DirectoryBundleCount: {
+            /** Bundle Count */
+            bundle_count: number;
         };
         /**
          * EmptyTrashRequest
@@ -6568,6 +6650,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionCountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    directory_bundle_count_api_v1_libraries__library_id__collections_directory_bundle_count_get: {
+        parameters: {
+            query: {
+                directory: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryBundleCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_collection_from_directory_api_v1_libraries__library_id__collections_from_directory_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionFromDirectory"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionFromDirectoryResult"];
                 };
             };
             /** @description Validation Error */

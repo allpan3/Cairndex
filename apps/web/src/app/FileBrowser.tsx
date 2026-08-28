@@ -79,6 +79,8 @@ interface FileBrowserProps {
   onOpenFile?: (relativePath: string) => void
   // Jump to this file's owning confirmed bundle in Bundle Browser
   onLocateBundle?: (bundleId: string) => void
+  /** Make a collection out of this folder (its bundles, under a chosen parent). */
+  onCollectionFromFolder?: (directory: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
   onStartFileDrag?: (relativePaths: string[]) => void
   // Whether guarded write operations are permitted for this library right now
@@ -366,6 +368,7 @@ function FileList({
   onRevealFile,
   onOpenFile,
   onLocateBundle,
+  onCollectionFromFolder,
   onStartFileDrag,
   scope,
   path: currentPath,
@@ -483,12 +486,26 @@ function FileList({
     onSelectEntry(entry)
     const items: MenuEntry[] = [
       { label: 'Copy Path', onClick: () => copyPath(entry.relative_path) },
-      null,
-      { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
-      { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
-      // A folder's own delete takes everything inside it, in one operation.
-      { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
     ]
+    // A collection made from this folder: its bundles, under a parent you pick.
+    // Metadata-only, so it is offered whether or not write mode is on — which is
+    // why a folder's menu opens at all now, rather than only when writing is
+    // permitted (it previously held nothing else that worked read-only).
+    if (onCollectionFromFolder) {
+      items.push(null, {
+        label: 'New Collection from Folder…',
+        onClick: () => onCollectionFromFolder(entry.relative_path),
+      })
+    }
+    if (writeMode) {
+      items.push(
+        null,
+        { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
+        { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
+        // A folder's own delete takes everything inside it, in one operation.
+        { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
+      )
+    }
     if (canCreateFolder) items.push({ label: 'New Folder', onClick: write.startNewFolder })
     menu.open(e, items)
   }
@@ -496,7 +513,10 @@ function FileList({
   const contextRow = (entry: FileBrowserEntry, e: React.MouseEvent) => {
     if (stale) return
     if (entry.kind === 'directory') {
-      if (writeMode) contextDirectory(entry, e)
+      // Not write-mode-gated any more: a folder's menu now carries Copy Path and
+      // New Collection from Folder…, both metadata-only. The entries that do
+      // touch the filesystem are gated inside.
+      contextDirectory(entry, e)
       return // bundling acts on files only
     }
     const inSelection = selected.has(entry.relative_path)

@@ -97,6 +97,7 @@ import {
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
+import { CollectionFromFolderDialog } from './app/CollectionFromFolderDialog'
 import { announceImport, type ImportOfferDeps } from './app/importBundleOffer'
 import type { DragItem } from './app/dnd'
 import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
@@ -810,6 +811,8 @@ function Workspace({
   // A pending "new collection" raised from outside the sidebar (the grid's
   // empty-space menu, the native File menu). The sidebar consumes it and clears
   // it, because the new row's inline rename and expansion are its state.
+  // The File Browser folder a new collection is being made from, or null.
+  const [collectionFromFolder, setCollectionFromFolder] = useState<string | null>(null)
   const [newCollectionRequest, setNewCollectionRequest] = useState<{
     parentId: string | null
   } | null>(null)
@@ -2593,6 +2596,7 @@ function Workspace({
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
             onLocateBundle={locateBundleInBrowser}
+            onCollectionFromFolder={setCollectionFromFolder}
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
@@ -2935,6 +2939,28 @@ function Workspace({
           selection={addingToBundle}
           onClose={() => setAddingToBundle(null)}
           onApplied={onManualBundlingApplied}
+        />
+      )}
+
+      {collectionFromFolder !== null && (
+        <CollectionFromFolderDialog
+          directory={collectionFromFolder}
+          onClose={() => setCollectionFromFolder(null)}
+          onCreated={(collection, bundlesAdded) => {
+            setCollectionFromFolder(null)
+            // Show the result rather than describing it: the point of the action
+            // is the collection, so land in it.
+            setMode('collection')
+            setSelection({ view: 'all', collectionId: collection.id })
+            setSelectedIds(new Set())
+            setActiveId(null)
+            setOpenBundleId(null)
+            showFlash(
+              bundlesAdded === 1
+                ? `Created “${collection.name}” with 1 bundle.`
+                : `Created “${collection.name}” with ${bundlesAdded} bundles.`,
+            )
+          }}
         />
       )}
 
