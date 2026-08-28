@@ -37,10 +37,17 @@ import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
-import { IconPlay, IconPlus } from './icons'
+import { IconGrip, IconPlay, IconPlus } from './icons'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
+
+/** Where a dragged note would land: the gap before or after the note at
+ * `index`. Notes have no ids, so a position is all there is to name. */
+interface NoteDropSlot {
+  index: number
+  before: boolean
+}
 
 /** Shown when an edit was rejected because the bundle changed elsewhere
  * (ADR-0008 phase 9). The latest server values are already being refetched. */
@@ -242,10 +249,11 @@ function BundleEditor({
     setNotes(next)
   }
   // Per-note box heights, persisted per bundle and aligned with the notes list
-  // by index (add/remove keep the arrays in step; there is no reorder gesture).
-  // A missing entry means auto-grow to fit content; a number is a fixed height
-  // set by dragging that box's grip. Trailing auto entries are trimmed so the
-  // stored arrays stay small.
+  // by index — add, remove and reorder all keep the arrays in step, or a note
+  // would arrive at its new position wearing the height of whatever used to be
+  // there. A missing entry means auto-grow to fit content; a number is a fixed
+  // height set by dragging that box's grip. Trailing auto entries are trimmed so
+  // the stored arrays stay small.
   // V2 leaves prior fixed heights behind so one-line notes regain the compact
   // default rather than a stale manual value
   const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
@@ -300,6 +308,63 @@ function BundleEditor({
       else delete nextMap[bundleId]
       return nextMap
     })
+  }
+
+  /** Move one note into the gap before or after another, and save the order.
+   *
+   * Notes are a plain list of strings with no ids, so the order is carried
+   * through `moveTo` as indices — two notes can hold identical text (two empty
+   * draft boxes, most obviously), which is exactly the case an id-keyed move
+   * cannot tell apart.
+   */
+  const moveNote = (from: number, over: number, before: boolean) => {
+    const order = notesRef.current.map((_, i) => i)
+    const moved = moveTo(order.map(String), String(from), String(over), before).map(Number)
+    if (moved.every((index, at) => index === at)) return
+    applyNotes(moved.map((index) => notesRef.current[index] ?? ''))
+    setNoteHeights((prev) => {
+      const arr = prev[bundleId]
+      if (!arr) return prev
+      const next = moved.map((index) => arr[index] ?? null)
+      while (next.length > 0 && next[next.length - 1] == null) next.pop()
+      const nextMap = { ...prev }
+      if (next.length > 0) nextMap[bundleId] = next
+      else delete nextMap[bundleId]
+      return nextMap
+    })
+    commitNotes()
+  }
+
+  // Drag-reorder for the note stack. Pointer capture from each box's grip, the
+  // same gesture the file rail below uses — and the reason it cannot simply be
+  // HTML5 dnd on the row: a `draggable` ancestor hijacks text selection inside
+  // the boxes, which is the one thing a note box exists for.
+  const [draggingNote, setDraggingNote] = useState<number | null>(null)
+  const [noteDropSlot, setNoteDropSlot] = useState<NoteDropSlot | null>(null)
+  // Read at pointerup, where a state update from the last move may not have
+  // committed yet — same reason the file rail keeps one.
+  const noteDropRef = useRef<NoteDropSlot | null>(null)
+  const clearNoteDrag = () => {
+    noteDropRef.current = null
+    setDraggingNote(null)
+    setNoteDropSlot(null)
+  }
+  const hoverNoteDrop = (from: number, clientX: number, clientY: number) => {
+    const row = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>('.notes-list .note-row')
+    const over = row ? Number(row.dataset.noteIndex) : NaN
+    if (!Number.isInteger(over) || over === from) {
+      noteDropRef.current = null
+      setNoteDropSlot(null)
+      return
+    }
+    const rect = (row as HTMLElement).getBoundingClientRect()
+    const next = { index: over, before: clientY < rect.top + rect.height / 2 }
+    noteDropRef.current = next
+    setNoteDropSlot((previous) =>
+      previous?.index === next.index && previous.before === next.before ? previous : next,
+    )
   }
 
   // Dragging the cover drags the whole bundle out (= all its files). The shell
@@ -383,19 +448,35 @@ function BundleEditor({
           <IconPlus />
         </button>
       </div>
-      {notes.map((n, i) => (
-        <NoteBox
-          key={i}
-          value={n}
-          index={i}
-          count={notes.length}
-          height={heights[i] ?? null}
-          onChange={(v) => changeNote(i, v)}
-          onCommit={commitNotes}
-          onRemove={() => removeNote(i)}
-          onResize={(h) => setNoteHeight(i, h)}
-        />
-      ))}
+      {/* A wrapper, so a note row can be found under the pointer during a drag
+          without also matching a row in some other inspector pane. */}
+      <div className="notes-list">
+        {notes.map((n, i) => (
+          <NoteBox
+            key={i}
+            value={n}
+            index={i}
+            count={notes.length}
+            height={heights[i] ?? null}
+            onChange={(v) => changeNote(i, v)}
+            onCommit={commitNotes}
+            onRemove={() => removeNote(i)}
+            onResize={(h) => setNoteHeight(i, h)}
+            dragging={draggingNote === i}
+            drop={
+              noteDropSlot?.index === i ? (noteDropSlot.before ? 'before' : 'after') : undefined
+            }
+            onDragStart={() => setDraggingNote(i)}
+            onDragMove={(x, y) => hoverNoteDrop(i, x, y)}
+            onDragEnd={() => {
+              const slot = noteDropRef.current
+              if (slot) moveNote(i, slot.index, slot.before)
+              clearNoteDrag()
+            }}
+            onMoveBy={(delta) => moveNote(i, i + delta, delta < 0)}
+          />
+        ))}
+      </div>
 
       <TagEditor bundleId={bundleId} onFilterByTags={onFilterByTags} />
       <CollectionPicker bundleId={bundleId} />
@@ -434,6 +515,12 @@ function NoteBox({
   onCommit,
   onRemove,
   onResize,
+  dragging,
+  drop,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onMoveBy,
 }: {
   value: string
   index: number
@@ -443,6 +530,15 @@ function NoteBox({
   onCommit: () => void
   onRemove: () => void
   onResize: (height: number | null) => void
+  /** This box is the one being dragged. */
+  dragging: boolean
+  /** Which edge of this box the dragged note would land on. */
+  drop?: 'before' | 'after'
+  onDragStart: () => void
+  onDragMove: (clientX: number, clientY: number) => void
+  onDragEnd: () => void
+  /** Move this note by ±1 (the grip's keyboard equivalent). */
+  onMoveBy: (delta: number) => void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -526,8 +622,44 @@ function NoteBox({
     onResize(null)
   }
 
+  // Reorder drag. The grip captures the pointer, and the move only counts as a
+  // drag once it has travelled a few pixels, so a stray click on the grip never
+  // shuffles the stack.
+  const startReorder = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const grip = event.currentTarget
+    grip.setPointerCapture(event.pointerId)
+    const startX = event.clientX
+    const startY = event.clientY
+    let active = false
+    const onMove = (moved: PointerEvent) => {
+      if (moved.pointerId !== event.pointerId) return
+      if (!active) {
+        if (Math.hypot(moved.clientX - startX, moved.clientY - startY) < 4) return
+        active = true
+        onDragStart()
+      }
+      onDragMove(moved.clientX, moved.clientY)
+    }
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId !== event.pointerId) return
+      grip.removeEventListener('pointermove', onMove)
+      grip.removeEventListener('pointerup', onUp)
+      grip.removeEventListener('pointercancel', onUp)
+      if (active) onDragEnd()
+    }
+    grip.addEventListener('pointermove', onMove)
+    grip.addEventListener('pointerup', onUp)
+    grip.addEventListener('pointercancel', onUp)
+  }
+
   return (
-    <div className="note-row">
+    <div
+      className={`note-row${dragging ? ' note-row--dragging' : ''}`}
+      data-note-index={index}
+      data-drop={drop}
+    >
       <textarea
         ref={ref}
         className="edit edit--note"
@@ -547,6 +679,27 @@ function NoteBox({
           title="Remove note"
         >
           ×
+        </button>
+      )}
+      {/* Only where there is something to reorder. Under the remove button, in
+          the column that button already reserves, so the pair of row controls
+          costs the text no room beyond what × was taking anyway (owner: no
+          gutter of its own on either side, 2026-08-28). */}
+      {count > 1 && (
+        <button
+          type="button"
+          className="note-drag"
+          onPointerDown={startReorder}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+            event.preventDefault()
+            onMoveBy(event.key === 'ArrowUp' ? -1 : 1)
+          }}
+          aria-label={`Reorder note ${index + 1}`}
+          aria-keyshortcuts="ArrowUp ArrowDown"
+          title="Drag to reorder"
+        >
+          <IconGrip />
         </button>
       )}
       <div

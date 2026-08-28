@@ -1786,27 +1786,80 @@ button {
 .note-row + .note-row {
   margin-top: 4px;
 }
+.note-row--dragging {
+  opacity: 0.45;
+}
+/* Insertion line in the gap the dragged note would land in — the same seam the
+   bundle's file rail draws, so one reorder gesture looks like one thing. */
+.note-row[data-drop]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.note-row[data-drop='before']::after {
+  top: -3px;
+}
+.note-row[data-drop='after']::after {
+  bottom: -3px;
+}
 /* Leave room for the remove affordance (right) and the resize grip (bottom) so
    neither overlaps the text. The JS auto-grow / fixed-height controls the box
    height, so no native resizer/scroll-corner box is drawn. */
 .note-row .edit--note {
-  padding-right: 26px;
+  padding-right: 18px;
   padding-bottom: 6px;
   min-height: 34px;
 }
-.note-remove {
+/* The two row controls share one narrow column at the right edge: remove above,
+   reorder grip below, both revealed by hovering the row. That column is what the
+   text gives up on every line, so it is only as wide as the glyphs sitting
+   directly beside the thin scrollbar — 18px, where the remove button alone used
+   to reserve 26 (owner: "do we need this much?", 2026-08-28). Below this the
+   glyphs stop being clickable targets, or start covering the scrollbar.
+
+   The pair also has to fit a one-line box, which at 34px is as short as a note
+   box gets: 3–17px for remove, 17–29px for the grip. */
+.note-remove,
+.note-drag {
   position: absolute;
-  top: 4px;
-  /* Sit left of the (thin) scrollbar so the two never overlap. */
-  right: 10px;
+  /* Exactly the width of the thin scrollbar, so the two never overlap and
+     nothing is spent on a gap that only shows when both are present. */
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  cursor: pointer;
-  font-size: 15px;
   line-height: 1;
-  padding: 2px 4px;
   opacity: 0;
+}
+.note-remove {
+  top: 3px;
+  height: 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.note-drag {
+  top: 17px;
+  height: 12px;
+  cursor: grab;
+  touch-action: none;
+}
+.note-drag .icon {
+  width: 12px;
+  height: 12px;
+}
+.note-row--dragging .note-drag {
+  cursor: grabbing;
 }
 /* Thin scrollbar for a fixed-height (manually resized) note box. */
 .note-row .edit--note::-webkit-scrollbar {
@@ -1823,10 +1876,16 @@ button {
   background: var(--text-muted);
 }
 .note-row:hover .note-remove,
-.note-remove:focus {
+.note-row:hover .note-drag,
+.note-remove:focus,
+.note-drag:focus-visible,
+/* The row being dragged keeps its grip: the pointer has left the row it started
+   on, so :hover no longer holds it up. */
+.note-row--dragging .note-drag {
   opacity: 1;
 }
-.note-remove:hover {
+.note-remove:hover,
+.note-drag:hover {
   color: var(--text-strong);
 }
 /* Custom resize grip (a thin bottom strip). Replaces the native corner resizer
