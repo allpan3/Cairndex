@@ -1447,6 +1447,57 @@
         "title": "CollectionCreate",
         "type": "object"
       },
+      "CollectionFromDirectory": {
+        "description": "Make a collection out of a library folder (ADR-0008: collections are\nlogical, so nothing on disk moves \u2014 this only reads the folder to decide\nwhich bundles join).",
+        "properties": {
+          "directory": {
+            "description": "Library-relative folder",
+            "minLength": 1,
+            "title": "Directory",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "required": [
+          "directory",
+          "name"
+        ],
+        "title": "CollectionFromDirectory",
+        "type": "object"
+      },
+      "CollectionFromDirectoryResult": {
+        "properties": {
+          "bundles_added": {
+            "title": "Bundles Added",
+            "type": "integer"
+          },
+          "collection": {
+            "$ref": "#/components/schemas/CollectionRead"
+          }
+        },
+        "required": [
+          "collection",
+          "bundles_added"
+        ],
+        "title": "CollectionFromDirectoryResult",
+        "type": "object"
+      },
       "CollectionRead": {
         "properties": {
           "cover_bundle_id": {
@@ -2175,6 +2226,20 @@
           "revoked_at"
         ],
         "title": "DeviceRead",
+        "type": "object"
+      },
+      "DirectoryBundleCount": {
+        "description": "How many bundles a folder would contribute, for the dialog to show before\nanything is created.",
+        "properties": {
+          "bundle_count": {
+            "title": "Bundle Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundle_count"
+        ],
+        "title": "DirectoryBundleCount",
         "type": "object"
       },
       "EmptyTrashRequest": {
@@ -10438,6 +10503,176 @@
           }
         },
         "summary": "Collection Counts",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/collections/directory-bundle-count": {
+      "get": {
+        "description": "How many bundles making a collection from ``directory`` would file into it.\n\nRead-only, so the dialog can say what the button will do before it is\npressed rather than reporting it afterwards.",
+        "operationId": "directory_bundle_count_api_v1_libraries__library_id__collections_directory_bundle_count_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "directory",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Directory",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryBundleCount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Directory Bundle Count",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/collections/from-directory": {
+      "post": {
+        "description": "Create a collection and file every bundle under a folder into it.\n\nOne operation rather than create-then-assign from the client: a collection\nthat exists but never received its members is a worse outcome than one that\nwas never created, and only the server can make the two atomic.\n\nMetadata-only, like every collection write \u2014 the folder is read to decide\nmembership and nothing on disk is touched (AGENTS.md \u00a74.7).",
+        "operationId": "create_collection_from_directory_api_v1_libraries__library_id__collections_from_directory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionFromDirectory"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionFromDirectoryResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Collection From Directory",
         "tags": [
           "library-collections"
         ]

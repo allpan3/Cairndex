@@ -133,6 +133,348 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Open on branch: `feat/filing-into-bundles-and-collections` (2026-08-28)
+
+Off `main` at `21619138`. **Eight commits, rebased for review, unreviewed, no PR**
+(owner-triggered). Renamed from `feat/suggest-bundle-on-import`, which stopped
+describing it several rounds in: the branch is about getting a file you have just
+added into the place it belongs — a bundle, or a collection — plus the indexed
+lookups that made those paths quick enough to use.
+
+The fourteen commits it was written in were squashed into eight along contiguous
+runs, with no reordering, so each one lands on a state that was green when it was
+made. Verified content-preserving: the tree hash before and after the rebase is
+identical (`51ed7fca`).
+
+Sections below are in the order the work happened, which is not the order of the
+commits; the PR description is the summary that reads top to bottom.
+
+**What the owner asked for.** Not the refactor it started as. The opening request
+was "a bundle identifies one root directory, its files must live in that
+directory or below", then narrowed to the goal behind it: *quickly assign a file
+to a bundle while importing it*, through either route — the File Browser's
+drag-in/Add Files Here, or the Bundle Browser's `Add Files to Library…` — with
+good performance on a large library and **no live scan**. The owner explicitly
+dropped the root-directory concept: "we may not even need to explicitly record a
+root for each bundle. It doesn't necessarily have to be a concept."
+
+That turned out to be right, and it is the design note worth keeping: **the root
+dissolves into an indexed query.** "Which bundles could a file landing here
+join?" is "bundles with a file in this folder or a folder enclosing it", which is
+a bounded set of equality probes on `asset_files.directory_path`. No column, no
+migration, no invariant to maintain, and nothing to keep in step with a file that
+moves. `product-brief.md:124` still stands unamended.
+
+**A full table scan was found and fixed on the way.** Candidate gathering in
+`manual_bundling/suggest.py` matched `relative_path LIKE 'folder/%' ESCAPE '\'`.
+SQLite cannot use an index for that — its default case-insensitive `LIKE` rules
+it out, and an `ESCAPE` clause disables the `LIKE` optimization outright — so
+each distinct folder in a selection cost one full read of `asset_files`, on
+dialog open, and paid it in full even when the folder matched nothing. Measured
+on a synthetic 100k-file library: **5.00 ms per folder against 0.06 ms** for the
+indexed form; ~4.84 ms even for a folder with no matches. Worse on
+network-mounted storage, where it is a whole-table read versus a few index pages.
+
+Both directions of the relation are now indexed:
+
+- *bundles enclosing a file* — `directory_path IN (folder, …ancestors)`, one
+  probe per level, bounded to three levels up;
+- *files within a bundle's folder* — a half-open range, `>= dir + '/'` and
+  `< dir + '0'`, since `'/'` is 0x2F and `'0'` is the next byte, which bounds the
+  subtree exactly (`Set1-old` sorts below it, `Set1x` above). Verified against
+  both sibling-prefix shapes.
+
+The library root is excluded from the walk in both directions: it encloses
+everything, so matching on it is evidence of nothing, and its subtree is the
+whole library.
+
+**The plan test asserts the index by name, not the absence of a scan.** Reverting
+to `LIKE` does *not* reliably produce `SCAN asset_files` — the planner may drive
+from `asset_bundles` and test each bundle's files instead, which is just as slow
+and reads as innocent. The first version of that test passed against the old
+spelling; it was rewritten and then confirmed to fail against it and pass once
+restored.
+
+**Two cases deliberately stay quiet** rather than guess, both in
+`app/importBundleOffer.ts`: a suggestion below 0.4 confidence, and a leader less
+than 0.05 ahead of the runner-up. The second is the owner's original worry —
+"a file system directory can contain multiple bundles so the path is not unique
+to a bundle" — and it is real: two bundles in one folder score *identically*, so
+naming one in a toast would present a coin flip as a recommendation. Both cases
+remain available under **Add to Bundle…**, which applies no threshold.
+
+**Verified end to end in a browser**, against a throwaway library on a scratch
+`CAIRNDEX_DATA_DIR` (never the owner's own; no lease of a real library was
+touched). Dropping `reel-behind.mp4` into a folder holding two bundles offered
+*Add to "Alpha Reel"* beside *Undo*; taking it linked the file as `video_part`;
+dropping a neutrally-named `IMG_4021.mp4` into the same folder offered nothing
+but Undo. All five imports 201, all five `suggest-targets` 200, the `add-files`
+200, `link=false` unchanged on every import.
+
+**Gates:** `ruff check`, `ruff format --check`, `mypy src packaging`, and
+**1137 backend tests** green; `npm run lint`, `format:check`, `typecheck`,
+**951 frontend tests**, and `build` green. **Not run:** Playwright e2e, and the
+desktop Rust/Tauri gates — no e2e spec, Rust, or Tauri file changed.
+
+**Known gap, not a regression.** The picker half is reachable only from the
+desktop menu bar (`File ▸ Add Files to Library…`; `useDesktopMenu` early-returns
+off a desktop host), so a browser cannot exercise it — the same coverage gap
+recorded under *Add Files to Library* below. It is covered by component tests;
+its appearance in the packaged app is unverified.
+
+**Two owner reports on this branch (2026-08-26), both fixed.**
+
+*"Right now it doesn't seem to suggest a bundle"* when dropping into a File
+Browser folder. Correct, and a gap in the work rather than a tuning problem: a
+Finder drag-in **on the desktop** goes through the shell's own importer
+(`useDesktopFileDrop` → `hostImports.copyIn` → `useHostImports`), which is
+separate machinery from the browser upload (`useWebImports.copyIn`) all the way
+down. Only the second had been wired, so the offer existed on the web and was
+silently absent in the packaged app. `useHostImports` now accumulates what
+reached disk and reports it once the batch settles — deliberately a batch-level
+callback, because `onImported` fires per file and knows only an operation id,
+while the offer needs the landed *paths* and has to wait until nothing more can
+join them. Called before the stopped-batch summary flash, so that summary still
+wins the toast, matching the web path's precedence.
+
+Worth keeping straight, since it decides where to look next time: **Add Files
+Here** and the toolbar picker always worked — they are `<input type=file>` and go
+through the web path even inside the desktop app. Only the Finder *drag* differed.
+
+*Locate a bundle in the File Browser.* Its context menu now opens the folder the
+bundle's own file sits in, with that file highlighted, reusing
+`locateFileInBrowser` and `bundleHostPath` so the three card actions agree on
+what "this bundle's file" means. Placed above Open/Reveal and offered on the web
+too, since it navigates inside Cairndex.
+
+It opens the **primary file's folder, not the common ancestor** of every member.
+For the ordinary single-folder bundle these are the same; for one spanning
+sibling folders the ancestor contains none of its files, so it would open a
+folder showing nothing you were looking for — and landing on the file the card
+stands for is what lets it be highlighted.
+
+**A debugging note worth not repeating.** The new e2e test failed on its
+highlight assertion, and the cause was the test's own fixture: a scripted
+edit that pointed the bundle at `Show/clip.mkv` while the mocked folder held
+`clip.mp4` had silently not applied, because that one `str.replace` was written
+without asserting the match count while its neighbours had one. The feature was
+correct throughout. Assert the count on every scripted source edit.
+
+**Third report, same day: "Add Files Here still does not work", in the desktop
+app.** That path was *not* broken — driving the real hidden `<input type=file>`
+against a live server produced `Add to "Alpha Reel"` + `Undo`, and
+`useWebImports` has no host-specific branch, so the desktop app takes the same
+code. What was wrong is that **withholding the offer looked identical to the
+feature not working.** The toast said nothing whenever the leader was below 0.4
+or within 0.05 of the runner-up — and one of those, two bundles in one folder,
+is common.
+
+So there is now *always* an action: an unconvincing guess degrades to **Add to
+Bundle…** on the same toast, opening the full ranked list plus a search over
+every confirmed bundle. A failed suggestion lookup lands there too, rather than
+being swallowed. Verified live: the neutral-name tie case that produced silence
+now offers the picker, and taking it opens the dialog with both tied candidates
+listed.
+
+**Resolved (2026-08-26), and it was discoverability.** The offer had been there
+the whole time: *"it looks like I have to explicitly click on the button in the
+toast to bring it up, so I didn't know about that."* Nothing was broken in either
+build. Worth keeping as the lesson: a toast action is easy to miss, and three
+rounds went into diagnosing a feature that worked.
+
+The owner's read on that round — *"maybe all the fixes you've done in the latest
+rounds are not necessary"* — is half right. **Locate in File Browser** was its own
+request and stands; the **desktop Finder-drag** wiring was a genuine gap, since
+that path offered nothing at all; the **always-an-action** change was motivated by
+a misread but still fixes the tie case, and now composes with the work below.
+
+**The actual need, once the misunderstanding cleared:** *"a way to create a
+bundle along with the add to a bundle."* The suggester can only ever propose
+joining an existing bundle, and a file arriving in the library is at least as
+likely to be a new one. **New Bundle…** now sits beside the add-to action on
+every import toast, opening the same `CreateBundleDialog` the File Browser's
+Create Bundle… uses — title proposed from the filename, nearby files offered.
+
+Put in the toast rather than in `DirectoryPicker`, because the toast is the one
+place every import route converges; the picker stays a question about *where*.
+The picker's "Don't add to a bundle" now falls through to that toast, so
+answering it is a *not yet* rather than a no.
+
+Verified live end to end: the toast shows `Add to "Alpha Reel"` / `New Bundle…` /
+`Undo`; taking the second opens the dialog titled `reel-featurette` from the
+filename; completing it reports *"Created a bundle from 1 file."* and the API
+confirms a third bundle holding that path.
+
+**The picker flash, and what it was hiding (2026-08-26).** The owner noticed the
+destination picker reloading on every folder click, and asked the better
+question: *"does this mean it will potentially produce wrong behavior?"*
+
+The flash was cosmetic — a new cache key with nothing stored, so the list was
+replaced by "Loading…". But it sat on top of a real defect, and the obvious fix
+would have activated it. The rule *"forget the chosen bundle when you leave the
+folder"* had been implemented as *"forget it when the id is no longer in the
+fetched suggestion list"* — a correctness rule keyed on a network state, which
+held only because TanStack retains `data` across a refetch. Any render where that
+list was momentarily empty for the **same** folder would have discarded an
+explicit choice and imported the file unbundled, and `placeholderData` is exactly
+the change that produces such a render. It is now keyed on the folder the choice
+was made in, and carries its own title so the confirm button can say what it will
+do before any list arrives.
+
+Then extended to the File Browser at the owner's request. Higher stakes there:
+its rows feed Rename, Move to… and Move to Trash, so a click on a held row could
+target a file from the folder just left. Held rows are dimmed, `aria-busy`, inert
+in CSS **and** guarded in the click / double-click / context-menu handlers —
+jsdom does no hit testing, so a CSS-only guard is both untestable and dependent
+on a stylesheet having loaded. Band-select and arrow keys are suspended for the
+same window; path-keyed affordances (drop, New Folder, background menu) stay
+live, because `path` is already the destination.
+
+`keepPrevious` stays **opt-in** on `useFileBrowser` rather than becoming its
+default: any caller holding a stale listing must guard against acting on it, and
+that guard depends on what its rows do. No other caller needs it — the only two
+consumers are these, the collection picker reads one non-navigable query, and the
+bundle-drop destination wraps the same directory picker.
+
+Both fixes have regression tests verified to fail against the previous code.
+
+**"Creating a bundle takes about 5 seconds. I expect this to be instant"
+(2026-08-26).** Diagnosed and fixed; almost none of it was the bundle work.
+
+Every FTS maintenance trigger in `search/index.py` located a bundle's index row
+with `WHERE bundle_id = ?`. `bundle_id` is `UNINDEXED` in the FTS5 table and FTS5
+has no secondary indexes, so that is a **full scan of the whole index** — plan
+confirmed, `SCAN bundle_search VIRTUAL TABLE`. A create fires about ten of them
+(an `asset_files` update reindexes both the old and new bundle).
+
+Measured on a synthetic 60k-bundle library:
+
+| | |
+| --- | --- |
+| `create_bundle`, triggers on | **94 ms** |
+| `create_bundle`, triggers dropped | **6 ms** |
+| `DELETE … WHERE bundle_id = ?` | 8.5 ms (full scan) |
+| `DELETE … WHERE rowid = ?` | 0.0 ms |
+| the reindex `INSERT` from the view | 2.1 ms |
+
+So the delete was the cost, and the *view* — which the module's own docstring
+blamed, and which cost me a wrong first hypothesis — was never the problem. That
+docstring is corrected in place.
+
+Every trigger now keys on the bundle's own integer rowid, which its FTS row
+shares (`asset_bundles` has a TEXT primary key, so it is an ordinary rowid
+table): **94 ms → 21 ms**, and flat in library size rather than linear — 15 ms at
+4 bundles against 7 ms at 60k. Two invariants this rests on, both tested:
+`AFTER DELETE ON asset_bundles` must read `OLD.rowid` (the row is gone, so an id
+lookup would orphan the index row forever), and a rebuild must reassign the same
+rowids.
+
+**One-time rebuild on first open**, ~0.5 s for 60k bundles, because rowids
+assigned under the old scheme bear no relation to their bundles.
+`ensure_search_schema` detects the old scheme by its trigger body not mentioning
+`rowid`.
+
+**Two process notes, both mine.** A scripted edit adding the migration was in the
+same script as an assertion that failed, so nothing was written and a later
+script silently re-applied only part of it — the fix ran for two measurements
+before I noticed the trigger was untouched. And the first version of the rowid
+invariant test *passed against the old scheme*, because on a fresh database auto
+rowids and bundle rowids coincidentally agree; it needed an edit first (a reindex
+is delete-then-insert, and the reinserted row took a fresh auto rowid) to bite.
+Both are the same lesson twice: verify the edit landed, and verify the test fails.
+
+**New Collection from Folder… (2026-08-26).** A folder's context menu can now
+turn it into a collection: name (defaulting to the folder), a parent picker, and
+every bundle in the folder **and below** filed in. `bundle_ids_under_directory`
+reuses the same indexed `directory_path` half-open range as the suggestion work,
+so it is an index seek rather than a `LIKE` scan, and the sibling-prefix cases
+(`Alphax`, `Alpha-old`) are covered by tests.
+
+Three judgement calls worth recording, none of them forced by the request:
+
+- **Subtree, not direct children.** A collection is flat rather than a mirror of
+  the directory tree, so "the collection for this folder" means everything filed
+  under it. The dialog shows the count before the button is pressed, so the
+  choice is visible rather than guessed.
+- **Confirmed bundles only.** Provisional scan rows are guesses the owner has not
+  confirmed, and browse already hides them from every collection.
+- **One request, not create-then-assign.** A collection that exists but never
+  received its members is worse than one that was never created, and only the
+  server can make the two atomic.
+
+**The parent picker is a foldable tree, not a `<select>` (owner, 2026-08-28:
+"native list won't work well once it gets long").** Rows come from the shared
+`visibleHierarchy` in `usePopover.ts`, and **`CollectionPicker`'s near-identical
+local copy has been folded into it** at the owner's request — 25 lines gone.
+
+Neither the shared helper nor `CollectionPicker` had any tests, so the fold was
+done back-to-front on purpose: first a throwaway differential check running both
+walks over 200 pseudo-random forests × three collapse states and comparing row
+for row (identical), then a permanent `usePopover.test.ts` covering the helper
+that now backs three pickers, and only then the deletion. The differential also
+pinned the one input where they disagree — a row whose parent is absent from the
+list, which the retired walk dropped and the shared one re-parents to the top
+level. `CollectionPicker` always passes the complete list, so it cannot occur
+there, and where it can (a filtered subset) keeping the row is the better answer.
+
+Verified live afterwards, since the component still has no tests of its own:
+the picker renders the full hierarchy, folding `By Year` hides exactly its three
+children, and assigning a bundle to `Reference` adds the chip.
+
+Three details that are not obvious from the requirement:
+
+- **Rows are `<button>` elements, not clickable divs.** This is a form field in a
+  modal, so it has to be operable from the keyboard, and a button gets focus,
+  Enter and Space for free. The fold chevron is a *sibling* button, because a
+  button inside a button is invalid HTML and folding is a different action from
+  choosing.
+- **Searching flattens the tree**, so a match is never hidden inside a folded
+  branch — verified live by folding `Archive` and then finding `2025` three
+  levels inside it.
+- **Folds survive a search** and its clearing, so narrowing to find one thing
+  does not throw away how you had arranged the rest.
+
+**The parent rows are radios, not tick boxes (owner, 2026-08-28).** Exactly one
+parent can be chosen, and a tick box reads as "any number of these". Round, with
+a centre dot rather than a glyph, and `role="radio"` inside a `role="radiogroup"`
+so the semantics match the appearance.
+
+**An unexplained intermittent, recorded rather than waved away.** Immediately
+after that change the full frontend suite failed twice in a row on
+`GroupingReview > a long plan opens folded, and Expand all still opens it` — a
+test this branch does not touch. It then passed 5/5 full runs, 2/2 with
+`--no-file-parallelism`, and in isolation; the baseline passed 4/4 under the same
+stress. So it is not a deterministic break from this work, and the likeliest
+story is that adding a test file changes worker scheduling and surfaced existing
+order/timing sensitivity in a fold interaction. Not reproduced, so not fixed —
+if it reappears, that test is where to look and this is the first sighting.
+
+**A folder's context menu is no longer write-mode-only.** It used to open only
+when writing was permitted, because Rename was the only reason it existed. It now
+carries two metadata-only entries (Copy Path, New Collection from Folder…), so it
+opens read-only and the filesystem entries are gated individually.
+
+**Pre-existing quirk found while testing, deliberately not changed:**
+`UNIQUE(parent_id, name)` does not constrain *top-level* collections, because SQL
+treats NULL as distinct from NULL — so two top-level collections may share a
+name, while two siblings under a parent may not. True of every route that creates
+one, including the sidebar's "+". A test now asserts both halves so the
+difference is recorded rather than rediscovered. Worth deciding on separately.
+
+**Not reproduced:** the flash the owner also sees on window resize. With
+`refetchOnWindowFocus: false` and a 30s `staleTime`, a resize should not refetch
+at all, so that may be a layout reflow rather than a reload.
+
+**Gates re-run:** `lint`, `format:check`, `typecheck`, **963 frontend tests**
+green. Playwright is **137/137 with `--workers=1`**; parallel runs flake between
+zero and two failures, always in `player.spec.ts` media timing and once in
+`libraries.spec.ts`, each passing alone. Pre-existing and unrelated to these
+changes. The backend gate was **not** re-run — no server file changed.
+
+**Next:** owner verification in the desktop app, particularly whether 0.4/0.05
+are the right bars against a real library, and whether the picker's offer wants
+the confidence pill the bundling dialogs show.
+
 ## Merged: an unbundled file is never "missing" (2026-08-24, PR #10)
 
 Branch `fix/unregistered-files-never-missing`, off `main` at `3a96d255`, **merged

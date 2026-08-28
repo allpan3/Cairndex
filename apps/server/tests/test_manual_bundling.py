@@ -2,9 +2,10 @@
 confirm mutations (Unbundled staging follow-up to ADR-0009)."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
@@ -677,6 +678,164 @@ def test_suggest_target_bundles_ranks_same_folder_first(session: Session) -> Non
     assert results[0].bundle_id == show.id
     assert results[0].confidence > 0.4
     assert "folder" in results[0].reason
+
+
+def test_suggest_target_bundles_finds_a_bundle_in_an_enclosing_folder(session: Session) -> None:
+    """A file landing *below* a bundle's folder still finds it.
+
+    The import case: the owner adds a file into a subfolder of where the bundle
+    already lives. Names are deliberately disjoint here, so locality is the only
+    signal that can produce this answer.
+    """
+    show = _confirmed_with_video(session, "Reel", "archive/reel.mp4")
+    session.commit()
+    landing = _unbundled(session, "archive/extras/clip.mp4")
+    session.commit()
+
+    results = suggest_service.suggest_target_bundles(session, [landing.id])
+    assert [r.bundle_id for r in results] == [show.id]
+    assert results[0].reason == "parent folder"
+
+
+def test_suggest_target_bundles_prefers_the_closer_folder(session: Session) -> None:
+    """Two equally nameless candidates order by how close their folder is."""
+    near = _confirmed_with_video(session, "Near", "archive/extras/other.mp4")
+    far = _confirmed_with_video(session, "Far", "archive/reel.mp4")
+    session.commit()
+    landing = _unbundled(session, "archive/extras/clip.mp4")
+    session.commit()
+
+    results = suggest_service.suggest_target_bundles(session, [landing.id])
+    assert [r.bundle_id for r in results] == [near.id, far.id]
+    assert results[0].confidence > results[1].confidence
+
+
+def test_suggest_target_bundles_separates_two_bundles_sharing_one_folder(
+    session: Session,
+) -> None:
+    """One folder holding several bundles is the case a path alone cannot answer.
+
+    Both are offered — the answer is a ranked list, never a single pick — but the
+    one whose name the landing file echoes leads.
+    """
+    alpha = _confirmed_with_video(session, "Alpha", "shows/alpha-ep01.mp4")
+    beta = _confirmed_with_video(session, "Beta", "shows/beta-ep01.mp4")
+    session.commit()
+    landing = _unbundled(session, "shows/alpha-ep02.mp4")
+    session.commit()
+
+    results = suggest_service.suggest_target_bundles(session, [landing.id])
+    assert [r.bundle_id for r in results] == [alpha.id, beta.id]
+    assert results[0].confidence > results[1].confidence
+
+
+def test_suggest_target_bundles_answers_for_a_path_that_has_no_row_yet(
+    session: Session,
+) -> None:
+    """The import-time question: where should a file *about to land here* go?
+
+    Asked before the bytes exist, so there is no ``AssetFile`` row and nothing on
+    disk — only a destination folder and a filename.
+    """
+    show = _confirmed_with_video(session, "Reel", "archive/reel.mp4")
+    session.commit()
+
+    results = suggest_service.suggest_target_bundles(
+        session, [], relative_paths=["archive/reel-behind-the-scenes.mp4"]
+    )
+    assert [r.bundle_id for r in results] == [show.id]
+    assert (
+        session.scalar(
+            select(AssetFile).where(AssetFile.relative_path == "archive/reel-behind-the-scenes.mp4")
+        )
+        is None
+    ), "asking must not stage a row"
+
+
+def test_suggest_target_bundles_does_not_treat_the_library_root_as_locality(
+    session: Session,
+) -> None:
+    """A bundle at the top of the library is not near everything.
+
+    The root encloses every path, so matching on it is evidence of nothing — it
+    would offer the same handful of root-level bundles for every import.
+    """
+    _confirmed_with_video(session, "Loose", "stray.mp4")
+    session.commit()
+    landing = _unbundled(session, "archive/extras/clip.mp4")
+    session.commit()
+
+    assert suggest_service.suggest_target_bundles(session, [landing.id]) == []
+
+
+def test_suggest_target_bundles_stops_walking_up_after_a_few_levels(session: Session) -> None:
+    """The ancestor walk is bounded, so a deep import does not reach a far bundle."""
+    show = _confirmed_with_video(session, "Reel", "archive/reel.mp4")
+    session.commit()
+    within = _unbundled(session, "archive/one/two/three/clip.mp4")
+    beyond = _unbundled(session, "archive/one/two/three/four/clip.mp4")
+    session.commit()
+
+    assert [r.bundle_id for r in suggest_service.suggest_target_bundles(session, [within.id])] == [
+        show.id
+    ]
+    assert suggest_service.suggest_target_bundles(session, [beyond.id]) == []
+
+
+def test_locality_lookups_resolve_through_the_directory_index(session: Session) -> None:
+    """Both directions of the locality relation must be index seeks.
+
+    These generators run when a dialog opens, so reading ``asset_files`` whole is
+    a stall the owner feels on a large library — and it is invisible in a test
+    library of four rows, which is why this asserts the query plan rather than a
+    duration.
+
+    The assertion is deliberately *positive* — the plan must name
+    ``ix_asset_files_directory_path`` — rather than "no full scan". A ``LIKE
+    'dir/%'`` prefix cannot use that index under SQLite's default
+    case-insensitive rules (nor with an ``ESCAPE`` clause, which disables the
+    optimization outright), but it does not necessarily show up as ``SCAN
+    asset_files`` either: the planner may drive from ``asset_bundles`` instead and
+    test each bundle's files, which is just as slow and reads as innocent. Naming
+    the index is the only form of this test that fails when the spelling regresses.
+    """
+    bundle = _confirmed_with_video(session, "Reel", "archive/reel.mp4")
+    session.commit()
+    landing = _unbundled(session, "archive/extras/clip.mp4")
+    session.commit()
+
+    engine = session.get_bind()
+    seen: list[tuple[str, Any]] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:  # type: ignore[no-untyped-def]
+        # The two candidate-gathering statements, by shape: bundle ids off
+        # asset_files, joined to asset_bundles for the grouping-state filter.
+        compact = " ".join(statement.split())
+        if compact.startswith("SELECT asset_files.bundle_id FROM asset_files JOIN asset_bundles"):
+            seen.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        # Bundles enclosing a file, then files within a bundle's folder.
+        suggest_service.suggest_target_bundles(session, [landing.id])
+        suggest_service.suggest_unbundled_files_for_bundle(session, bundle.id)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert len(seen) == 2, f"expected one locality lookup per direction, got {len(seen)}"
+    for statement, parameters in seen:
+        plan = [
+            detail
+            for *_, detail in session.connection()
+            .exec_driver_sql(f"EXPLAIN QUERY PLAN {statement}", parameters)
+            .all()
+        ]
+        assert any("ix_asset_files_directory_path" in line for line in plan), (
+            f"locality lookup does not use the directory index:\n{statement}\n{plan}"
+        )
+        assert not [line for line in plan if line.startswith("SCAN ")], (
+            f"full table scan on the suggestion path:\n{statement}\n{plan}"
+        )
 
 
 def test_suggest_unbundled_files_for_bundle(session: Session) -> None:

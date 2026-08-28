@@ -22,16 +22,22 @@ vi.mock('../platform', () => ({
 
 const flashes: { message: string; undo?: () => void }[] = []
 const undone: string[] = []
+/** Every batch-completion report, so a test can see what the shell says landed. */
+const settled: { path: string; operationId: string }[][] = []
 
 function setup(destDir = 'Show') {
   flashes.length = 0
   undone.length = 0
+  settled.length = 0
   return renderHook(() =>
     useHostImports({
       libraryId: 'lib-1',
       destDir,
       onFlash: (message, undo) => flashes.push({ message, undo }),
       onImported: (operationId) => ({ undo: () => undone.push(operationId) }),
+      onSettled: (landed) => {
+        settled.push(landed)
+      },
     }),
   )
 }
@@ -208,4 +214,36 @@ test('a self-import refusal reaches the owner in the shell’s own words', () =>
   // And it is not mistaken for a collision, which would open the Replace prompt
   // — the one answer that would trash the original row.
   expect(conflictName(refusal)).toBeNull()
+})
+
+// --- what landed, reported once at the end -----------------------------------
+// The bundle offer after a Finder drop needs the whole batch and its landed
+// *paths*; `onImported` fires per file and knows only an operation id. Wiring
+// only the web upload path left a desktop drag-in silently offering nothing
+// (owner, 2026-08-26).
+test('a finished batch reports every file that reached disk', async () => {
+  importDroppedFile
+    .mockResolvedValueOnce(outcome('Show/a.mkv', 'op-1'))
+    .mockResolvedValueOnce(outcome('Show/b.mkv', 'op-2'))
+  const { result } = setup()
+
+  act(() => result.current.copyIn(['/outside/a.mkv', '/outside/b.mkv']))
+
+  await waitFor(() => expect(settled).toHaveLength(1))
+  expect(settled[0]).toEqual([
+    { path: 'Show/a.mkv', operationId: 'op-1' },
+    { path: 'Show/b.mkv', operationId: 'op-2' },
+  ])
+})
+
+test('a skipped collision is not reported as landed', async () => {
+  // There is no path to offer: nothing was written for it, and linking the name
+  // it would have had would put a row in a bundle for a file that is not there.
+  importDroppedFile.mockResolvedValue({ ...outcome('Show/clip.mkv'), skipped: true })
+  const { result } = setup()
+
+  act(() => result.current.copyIn(['/outside/clip.mkv']))
+
+  await waitFor(() => expect(flashes.some((f) => f.message.includes('Skipped'))).toBe(true))
+  expect(settled).toEqual([])
 })

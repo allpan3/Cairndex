@@ -79,6 +79,8 @@ interface FileBrowserProps {
   onOpenFile?: (relativePath: string) => void
   // Jump to this file's owning confirmed bundle in Bundle Browser
   onLocateBundle?: (bundleId: string) => void
+  /** Make a collection out of this folder (its bundles, under a chosen parent). */
+  onCollectionFromFolder?: (directory: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
   onStartFileDrag?: (relativePaths: string[]) => void
   // Whether guarded write operations are permitted for this library right now
@@ -240,7 +242,12 @@ export function FileBrowser(props: FileBrowserProps) {
 function BrowseScope(props: FileBrowserProps) {
   const { headerLeading, libraryName, path, onNavigate } = props
   const qc = useQueryClient()
-  const query = useFileBrowser(path)
+  // `keepPrevious`: hold the current folder's rows while the next one loads,
+  // instead of replacing the whole listing with "Loading…" on every step into a
+  // folder (owner, 2026-08-26). `stale` is true for exactly that window, and
+  // everything row-based is inert while it is — see the guards below.
+  const query = useFileBrowser(path, true, true)
+  const stale = query.isPlaceholderData
   const entries = query.data?.entries ?? []
   const missingFilesUpdated = query.data?.missing_files_updated ?? 0
 
@@ -281,6 +288,7 @@ function BrowseScope(props: FileBrowserProps) {
         isError={query.isError}
         errorText={query.error instanceof Error ? query.error.message : undefined}
         emptyText="This folder is empty."
+        stale={stale}
         {...props}
       />
     </div>
@@ -322,6 +330,13 @@ interface FileListProps extends FileBrowserProps {
   isError: boolean
   errorText?: string
   emptyText: string
+  /**
+   * The rows on screen are the previous folder's, held while the next one loads.
+   * They must not be interacted with: the breadcrumb already reads the new
+   * folder, so a click would select — and Rename/Move/Trash would then act on —
+   * a file from the one just left.
+   */
+  stale?: boolean
   hasMore?: boolean
   isFetchingMore?: boolean
   onLoadMore?: () => void
@@ -336,6 +351,7 @@ interface FileListProps extends FileBrowserProps {
 function FileList({
   header,
   entries,
+  stale = false,
   isLoading,
   isError,
   errorText,
@@ -352,6 +368,7 @@ function FileList({
   onRevealFile,
   onOpenFile,
   onLocateBundle,
+  onCollectionFromFolder,
   onStartFileDrag,
   scope,
   path: currentPath,
@@ -420,6 +437,10 @@ function FileList({
   // selects the inclusive range from the anchor. Both directories and files take
   // part (bundling later filters to files). Navigation/opening is double-click.
   const clickEntry = (entry: FileBrowserEntry, e: React.MouseEvent) => {
+    // Belt and braces with the `listing--inert` style: CSS alone would leave the
+    // guard dependent on a stylesheet having loaded, and what it is guarding is
+    // Rename/Move to…/Move to Trash resolving against the previous folder.
+    if (stale) return
     if (e.shiftKey && anchor) {
       const ids = visible.map((v) => v.relative_path)
       const a = ids.indexOf(anchor)
@@ -447,6 +468,7 @@ function FileList({
   }
 
   const openEntry = (entry: FileBrowserEntry) => {
+    if (stale) return
     if (entry.kind === 'directory') {
       onNavigate(entry.relative_path)
       return
@@ -464,19 +486,37 @@ function FileList({
     onSelectEntry(entry)
     const items: MenuEntry[] = [
       { label: 'Copy Path', onClick: () => copyPath(entry.relative_path) },
-      null,
-      { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
-      { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
-      // A folder's own delete takes everything inside it, in one operation.
-      { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
     ]
+    // A collection made from this folder: its bundles, under a parent you pick.
+    // Metadata-only, so it is offered whether or not write mode is on — which is
+    // why a folder's menu opens at all now, rather than only when writing is
+    // permitted (it previously held nothing else that worked read-only).
+    if (onCollectionFromFolder) {
+      items.push(null, {
+        label: 'New Collection from Folder…',
+        onClick: () => onCollectionFromFolder(entry.relative_path),
+      })
+    }
+    if (writeMode) {
+      items.push(
+        null,
+        { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
+        { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
+        // A folder's own delete takes everything inside it, in one operation.
+        { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
+      )
+    }
     if (canCreateFolder) items.push({ label: 'New Folder', onClick: write.startNewFolder })
     menu.open(e, items)
   }
 
   const contextRow = (entry: FileBrowserEntry, e: React.MouseEvent) => {
+    if (stale) return
     if (entry.kind === 'directory') {
-      if (writeMode) contextDirectory(entry, e)
+      // Not write-mode-gated any more: a folder's menu now carries Copy Path and
+      // New Collection from Folder…, both metadata-only. The entries that do
+      // touch the filesystem are gated inside.
+      contextDirectory(entry, e)
       return // bundling acts on files only
     }
     const inSelection = selected.has(entry.relative_path)
@@ -811,9 +851,14 @@ function FileList({
         }`}
         ref={setScrollEl}
         onMouseDownCapture={suppressShiftSelection}
-        onMouseDown={onBackgroundMouseDown}
+        // Row-based interaction is suspended while the listing is stale: a band
+        // select or an arrow key would resolve against the previous folder's
+        // entries. Path-based affordances below (drop, New Folder, the
+        // background menu) stay live — they key off `path`, which is already the
+        // folder being navigated to, so they are correct throughout.
+        onMouseDown={stale ? undefined : onBackgroundMouseDown}
         onContextMenu={contextBackground}
-        onKeyDown={listKeyDown}
+        onKeyDown={stale ? undefined : listKeyDown}
         onDragOver={canCreateFolder ? onDragOverFiles : undefined}
         onDragLeave={canCreateFolder ? () => setDropActive(false) : undefined}
         onDrop={canCreateFolder ? onDropFiles : undefined}
@@ -846,7 +891,11 @@ function FileList({
           <div className="empty">No files match “{search}”.</div>
         ) : (
           <>
-            <div className="file-browser__wrapper" ref={wrapperRef}>
+            <div
+              className={`file-browser__wrapper${stale ? ' listing--stale listing--inert' : ''}`}
+              ref={wrapperRef}
+              aria-busy={stale}
+            >
               {marqueeRect && (
                 <div
                   className="marquee"

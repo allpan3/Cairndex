@@ -13,7 +13,7 @@ import { useBundleInspectorActions } from './bundleInspectorActions'
 import { IconCheckSquare } from './icons'
 import { PickGuides } from './PickGuides'
 import { usePinyinSearch } from './pinyin'
-import { flattenHierarchy, usePopover } from './usePopover'
+import { flattenHierarchy, usePopover, visibleHierarchy } from './usePopover'
 
 interface CollectionRow {
   item: CollectionRead
@@ -22,29 +22,6 @@ interface CollectionRow {
 }
 
 const RECENT_LIMIT = 6
-
-/** Depth-first collection rows (sidebar order), skipping descendants of any
- * collapsed row. */
-function visibleCollectionRows(
-  collections: CollectionRead[],
-  collapsed: Set<string>,
-): CollectionRow[] {
-  const byParent = new Map<string | null, CollectionRead[]>()
-  for (const c of collections) {
-    const key = c.parent_id ?? null
-    byParent.set(key, [...(byParent.get(key) ?? []), c])
-  }
-  const out: CollectionRow[] = []
-  const walk = (parent: string | null, depth: number) => {
-    for (const c of (byParent.get(parent) ?? []).sort((a, b) => a.name.localeCompare(b.name))) {
-      const hasChildren = (byParent.get(c.id) ?? []).length > 0
-      out.push({ item: c, depth, hasChildren })
-      if (hasChildren && !collapsed.has(c.id)) walk(c.id, depth + 1)
-    }
-  }
-  walk(null, 0)
-  return out
-}
 
 export function CollectionPicker({ bundleId }: { bundleId: string }) {
   const { onOpenCollection } = useBundleInspectorActions()
@@ -130,7 +107,7 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
       .filter(({ item }) => assigned.has(item.id))
       .map(({ item }) => ({ item, depth: 0, hasChildren: false }))
   } else {
-    rows = visibleCollectionRows(collections, collapsed)
+    rows = visibleHierarchy(collections, collapsed)
   }
 
   // What Enter will take, decided once and rendered from the same value — the

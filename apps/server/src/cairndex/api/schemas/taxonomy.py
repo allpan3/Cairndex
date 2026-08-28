@@ -46,6 +46,28 @@ class CollectionUpdate(BaseModel):
     cover_bundle_id: str | None = None
 
 
+class CollectionFromDirectory(BaseModel):
+    """Make a collection out of a library folder (ADR-0008: collections are
+    logical, so nothing on disk moves — this only reads the folder to decide
+    which bundles join)."""
+
+    directory: str = Field(min_length=1, description="Library-relative folder")
+    name: str = Field(min_length=1, max_length=255)
+    parent_id: str | None = None
+
+
+class CollectionFromDirectoryResult(BaseModel):
+    collection: "CollectionRead"
+    bundles_added: int
+
+
+class DirectoryBundleCount(BaseModel):
+    """How many bundles a folder would contribute, for the dialog to show before
+    anything is created."""
+
+    bundle_count: int
+
+
 class CollectionReorder(BaseModel):
     """A collection move: which collections, into which group, at which gap.
 

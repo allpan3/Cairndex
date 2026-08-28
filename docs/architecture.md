@@ -815,7 +815,20 @@ collection names — assembled by a `bundle_search_source` view. SQLite triggers
 over the underlying tables keep it fresh on every write path (edits, scan,
 repair, grouping apply, deletion, tag/collection rename), so no application
 plumbing maintains it; `ensure_search_schema` creates and first-populates it on
-library open, and `devtools.reindex_search` rebuilds it. Browse's `q` parameter
+library open, and `devtools.reindex_search` rebuilds it.
+
+**An FTS row's `rowid` is its bundle's own `rowid`, and every trigger keys on
+that.** This is load-bearing rather than incidental: `bundle_id` is `UNINDEXED`
+and FTS5 supports no secondary indexes, so `WHERE bundle_id = ?` scans the entire
+index. Keyed that way, each maintenance trigger cost 8.5 ms on a 60k-bundle
+library against 0.0 ms by rowid — and since a write fires roughly ten of them,
+creating one bundle cost 94 ms where the same work without triggers cost 6 ms
+(owner report, 2026-08-26). The cost was linear in library size; it is now flat.
+Two consequences to preserve: the `AFTER DELETE ON asset_bundles` trigger must
+read `OLD.rowid` (the bundle row is already gone, so resolving its rowid by id
+would orphan the FTS row), and any rebuild must reassign the same rowids.
+`ensure_search_schema` detects an index built before this scheme — its trigger
+body does not mention `rowid` — and rebuilds once on open. Browse's `q` parameter
 tokenizes user input into safe quoted prefix terms and composes as a
 non-correlated FTS semijoin (`AssetBundle.id IN (SELECT bundle_id FROM
 bundle_search WHERE bundle_search MATCH ?)`), so it stacks with views,
