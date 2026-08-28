@@ -371,6 +371,72 @@ rowids and bundle rowids coincidentally agree; it needed an edit first (a reinde
 is delete-then-insert, and the reinserted row took a fresh auto rowid) to bite.
 Both are the same lesson twice: verify the edit landed, and verify the test fails.
 
+**New Collection from Folder… (2026-08-26).** A folder's context menu can now
+turn it into a collection: name (defaulting to the folder), a parent picker, and
+every bundle in the folder **and below** filed in. `bundle_ids_under_directory`
+reuses the same indexed `directory_path` half-open range as the suggestion work,
+so it is an index seek rather than a `LIKE` scan, and the sibling-prefix cases
+(`Alphax`, `Alpha-old`) are covered by tests.
+
+Three judgement calls worth recording, none of them forced by the request:
+
+- **Subtree, not direct children.** A collection is flat rather than a mirror of
+  the directory tree, so "the collection for this folder" means everything filed
+  under it. The dialog shows the count before the button is pressed, so the
+  choice is visible rather than guessed.
+- **Confirmed bundles only.** Provisional scan rows are guesses the owner has not
+  confirmed, and browse already hides them from every collection.
+- **One request, not create-then-assign.** A collection that exists but never
+  received its members is worse than one that was never created, and only the
+  server can make the two atomic.
+
+**The parent picker is a foldable tree, not a `<select>` (owner, 2026-08-28:
+"native list won't work well once it gets long").** Rows come from the shared
+`visibleHierarchy` in `usePopover.ts` — the generic helper `CollectionPicker`
+predates with its own near-identical local copy, which is left alone here since
+it has no tests and this commit had no reason to touch it. Worth collapsing the
+two some time.
+
+Three details that are not obvious from the requirement:
+
+- **Rows are `<button>` elements, not clickable divs.** This is a form field in a
+  modal, so it has to be operable from the keyboard, and a button gets focus,
+  Enter and Space for free. The fold chevron is a *sibling* button, because a
+  button inside a button is invalid HTML and folding is a different action from
+  choosing.
+- **Searching flattens the tree**, so a match is never hidden inside a folded
+  branch — verified live by folding `Archive` and then finding `2025` three
+  levels inside it.
+- **Folds survive a search** and its clearing, so narrowing to find one thing
+  does not throw away how you had arranged the rest.
+
+**The parent rows are radios, not tick boxes (owner, 2026-08-28).** Exactly one
+parent can be chosen, and a tick box reads as "any number of these". Round, with
+a centre dot rather than a glyph, and `role="radio"` inside a `role="radiogroup"`
+so the semantics match the appearance.
+
+**An unexplained intermittent, recorded rather than waved away.** Immediately
+after that change the full frontend suite failed twice in a row on
+`GroupingReview > a long plan opens folded, and Expand all still opens it` — a
+test this branch does not touch. It then passed 5/5 full runs, 2/2 with
+`--no-file-parallelism`, and in isolation; the baseline passed 4/4 under the same
+stress. So it is not a deterministic break from this work, and the likeliest
+story is that adding a test file changes worker scheduling and surfaced existing
+order/timing sensitivity in a fold interaction. Not reproduced, so not fixed —
+if it reappears, that test is where to look and this is the first sighting.
+
+**A folder's context menu is no longer write-mode-only.** It used to open only
+when writing was permitted, because Rename was the only reason it existed. It now
+carries two metadata-only entries (Copy Path, New Collection from Folder…), so it
+opens read-only and the filesystem entries are gated individually.
+
+**Pre-existing quirk found while testing, deliberately not changed:**
+`UNIQUE(parent_id, name)` does not constrain *top-level* collections, because SQL
+treats NULL as distinct from NULL — so two top-level collections may share a
+name, while two siblings under a parent may not. True of every route that creates
+one, including the sidebar's "+". A test now asserts both halves so the
+difference is recorded rather than rediscovered. Worth deciding on separately.
+
 **Not reproduced:** the flash the owner also sees on window resize. With
 `refetchOnWindowFocus: false` and a 30s `staleTime`, a resize should not refetch
 at all, so that may be a layout reflow rather than a reload.

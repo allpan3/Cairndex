@@ -88,7 +88,11 @@ vi.mock('../api/hooks', () => ({
 
 let flashes: { message: string; undo?: () => void }[]
 
-function renderBrowser(writeMode = true, onSelectEntry: () => void = () => undefined) {
+function renderBrowser(
+  writeMode = true,
+  onSelectEntry: () => void = () => undefined,
+  onCollectionFromFolder?: (directory: string) => void,
+) {
   flashes = []
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -108,6 +112,7 @@ function renderBrowser(writeMode = true, onSelectEntry: () => void = () => undef
         writeMode={writeMode}
         onFlash={(message, undoAction) => flashes.push({ message, undo: undoAction })}
         onImportFiles={importFiles}
+        onCollectionFromFolder={onCollectionFromFolder}
       />
     </QueryClientProvider>,
   )
@@ -126,9 +131,13 @@ test('a read-only library looks exactly as it did before write mode existed', ()
   expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull()
 
   fireEvent.contextMenu(row('Season 1'))
-  // A directory's context menu only exists because Rename does; without write
-  // mode there is nothing to put in it.
+  // A folder's menu opens read-only now — it carries Copy Path, and New
+  // Collection from Folder when the caller offers it, both metadata-only. What
+  // must stay absent is everything that touches the filesystem.
   expect(screen.queryByText('Rename…')).toBeNull()
+  expect(screen.queryByText('Move to…')).toBeNull()
+  expect(screen.queryByText('Move to Trash')).toBeNull()
+  expect(screen.getByText('Copy Path')).toBeTruthy()
 })
 
 test('renaming a file sends the new name and offers to undo it', async () => {
@@ -562,4 +571,37 @@ test('a settled listing is interactive as before', () => {
 
   fireEvent.click(row('ep1.mkv'))
   expect(onSelectEntry).toHaveBeenCalled()
+})
+
+// --- a collection made from a folder ------------------------------------------
+test('a folder offers to become a collection, and hands back its path', () => {
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(true, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('New Collection from Folder…'))
+
+  expect(onCollectionFromFolder).toHaveBeenCalledWith('Show/Season 1')
+})
+
+test('making a collection from a folder needs no write mode', () => {
+  // It is metadata-only — the folder is read to decide which bundles join and
+  // nothing on disk moves — so gating it behind write mode would be wrong. This
+  // is why a folder's menu opens read-only at all.
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(false, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('New Collection from Folder…'))
+
+  expect(onCollectionFromFolder).toHaveBeenCalledWith('Show/Season 1')
+})
+
+test('a file is not offered the folder action', () => {
+  const onCollectionFromFolder = vi.fn()
+  renderBrowser(true, () => undefined, onCollectionFromFolder)
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+
+  expect(screen.queryByText('New Collection from Folder…')).toBeNull()
 })

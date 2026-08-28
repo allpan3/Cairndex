@@ -90,6 +90,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   made in, and remembers its own title so the confirm button says what it will do
   even before the list arrives.
 
+- **New Collection from Folder…**, on a File Browser folder's context menu. Name
+  it (the folder's own name is the default), choose which collection it sits
+  inside from a **foldable, searchable tree**, and every bundle in that folder
+  **and below** is filed into it. The tree rather than a dropdown because a
+  library's collection list has no natural limit: depth is only legible while you
+  can close what you are not looking at. Searching flattens the tree, so a match
+  is never hidden inside a folded branch, and folds survive the search. The
+  dialog says how many that is before you press the button, because the same
+  click may file two bundles or two hundred and only the folder knows which.
+
+  Collections stay logical: the folder is read to decide membership and nothing
+  on disk moves. Provisional scan-staged bundles are left out — browse hides them
+  from collections anyway, so filing them would add rows that cannot be seen. The
+  whole thing is one request, since a collection that exists but never received
+  its members is a worse outcome than one that was never created.
+
+  A folder's context menu now opens **without write mode**, which it did not
+  before: it previously held nothing that worked read-only, and this and Copy
+  Path both do. The entries that touch the filesystem stay gated.
+
 - **Locate in File Browser, on a bundle.** The File Browser could jump to a
   file's owning bundle, but nothing went the other way: finding where a bundle
   actually lives on disk meant reading its path and navigating by hand. A

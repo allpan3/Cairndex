@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection, Tag
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
@@ -572,3 +573,138 @@ def test_delete_impact_404s_for_an_unknown_tag(session: Session) -> None:
     # a tag that is not there.
     with pytest.raises(NotFoundError):
         tag_service.tag_delete_impact(session, "01JUNKJUNKJUNKJUNKJUNKJUNK")
+
+
+# --- a collection made from a folder -----------------------------------------
+# "Create Collection from Folder…" on a File Browser directory (owner,
+# 2026-08-26). Collections stay logical: the folder is read to decide which
+# bundles join, and nothing on disk moves.
+def _bundle_at(session: Session, title: str, *paths: str) -> AssetBundle:
+    bundle = bundle_service.create_bundle(session, title=title)
+    for i, path in enumerate(paths):
+        bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=path,
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+            sequence=i,
+        )
+    return bundle
+
+
+def test_bundles_under_a_directory_include_the_subtree(session: Session) -> None:
+    here = _bundle_at(session, "Here", "Shows/Alpha/ep1.mp4")
+    below = _bundle_at(session, "Below", "Shows/Alpha/Extras/clip.mp4")
+    _bundle_at(session, "Sibling", "Shows/Beta/ep1.mp4")
+    # Folders whose names merely start the same must stay out. This is what the
+    # half-open range bounds and what a LIKE prefix would have to escape for.
+    _bundle_at(session, "PrefixSibling", "Shows/Alphax/ep1.mp4")
+    _bundle_at(session, "DashSibling", "Shows/Alpha-old/ep1.mp4")
+    session.commit()
+
+    found = set(collection_service.bundle_ids_under_directory(session, "Shows/Alpha"))
+    assert found == {here.id, below.id}
+
+
+def test_bundles_under_a_directory_counts_a_bundle_once(session: Session) -> None:
+    both = _bundle_at(session, "Both", "Shows/Alpha/ep1.mp4", "Shows/Alpha/ep2.mp4")
+    session.commit()
+
+    assert collection_service.bundle_ids_under_directory(session, "Shows/Alpha") == [both.id]
+
+
+def test_bundles_under_a_directory_skips_unconfirmed(session: Session) -> None:
+    """Provisional bundles are scan guesses the owner has not confirmed, and
+    browse hides them from every collection — filing them would add rows that
+    cannot be seen."""
+    confirmed = _bundle_at(session, "Confirmed", "Shows/Alpha/ep1.mp4")
+    staged = AssetBundle(
+        title="Staged",
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(staged)
+    session.flush()
+    session.add(
+        AssetFile(
+            bundle_id=staged.id,
+            relative_path="Shows/Alpha/loose.mp4",
+            original_filename="loose.mp4",
+            display_title="loose.mp4",
+            role=FileRole.OTHER,
+            media_kind=MediaKind.VIDEO,
+        )
+    )
+    session.commit()
+
+    assert collection_service.bundle_ids_under_directory(session, "Shows/Alpha") == [confirmed.id]
+
+
+def test_bundles_under_the_library_root_is_refused(session: Session) -> None:
+    """ "Everything in the library" is never what this action means."""
+    with pytest.raises(ValidationError):
+        collection_service.bundle_ids_under_directory(session, "")
+    with pytest.raises(ValidationError):
+        collection_service.bundle_ids_under_directory(session, "/")
+
+
+def test_create_collection_from_directory_files_its_bundles(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    inside = _bundle_at(session, "Inside", "Shows/Alpha/ep1.mp4")
+    nested = _bundle_at(session, "Nested", "Shows/Alpha/Extras/clip.mp4")
+    outside = _bundle_at(session, "Outside", "Shows/Beta/ep1.mp4")
+    parent = collection_service.create_collection(session, name="Shows")
+    session.commit()
+
+    preview = client.get(
+        f"/api/v1/libraries/{library_id}/collections/directory-bundle-count",
+        params={"directory": "Shows/Alpha"},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["bundle_count"] == 2
+
+    response = client.post(
+        f"/api/v1/libraries/{library_id}/collections/from-directory",
+        json={"directory": "Shows/Alpha", "name": "Alpha", "parent_id": parent.id},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["bundles_added"] == 2
+    assert body["collection"]["name"] == "Alpha"
+    assert body["collection"]["parent_id"] == parent.id
+
+    created = body["collection"]["id"]
+    session.expire_all()
+    assert {c.id for c in bundle_service.get_bundle(session, inside.id).collections} == {created}
+    assert {c.id for c in bundle_service.get_bundle(session, nested.id).collections} == {created}
+    assert bundle_service.get_bundle(session, outside.id).collections == []
+
+
+def test_create_collection_from_directory_reports_a_name_clash(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    """A folder's name may already be taken under the chosen parent, and the
+    dialog needs to say so rather than appear to do nothing.
+
+    Only *under a parent*: `UNIQUE(parent_id, name)` does not constrain
+    top-level collections, because SQL treats NULL as distinct from NULL, so two
+    of those may share a name. Pre-existing and true of every route that creates
+    one; asserted here so the difference is recorded rather than discovered.
+    """
+    parent = collection_service.create_collection(session, name="Shows")
+    collection_service.create_collection(session, name="Alpha", parent_id=parent.id)
+    session.commit()
+
+    clash = client.post(
+        f"/api/v1/libraries/{library_id}/collections/from-directory",
+        json={"directory": "Shows/Alpha", "name": "Alpha", "parent_id": parent.id},
+    )
+    assert clash.status_code == 409
+
+    at_top = client.post(
+        f"/api/v1/libraries/{library_id}/collections/from-directory",
+        json={"directory": "Shows/Alpha", "name": "Alpha", "parent_id": None},
+    )
+    assert at_top.status_code == 201

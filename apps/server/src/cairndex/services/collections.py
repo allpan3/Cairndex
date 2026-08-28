@@ -8,13 +8,13 @@ File Browser, which browses the active library root directly.
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import MediaKind
+from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.models import (
     AssetBundle,
@@ -398,3 +398,46 @@ def touch_membership_collections(session: Session, collection_ids: Iterable[str]
         if collection is not None:
             collection.updated_at = now
     session.flush()
+
+
+def bundle_ids_under_directory(session: Session, directory: str) -> list[str]:
+    """Confirmed bundles holding at least one file in ``directory`` or beneath it.
+
+    The membership a collection made from a folder starts with. Ordered by the
+    bundle's own rowid so the result is stable, and deduplicated: a bundle with
+    several files in the folder joins once.
+
+    Provisional (unbundled) bundles are excluded deliberately. They are
+    scan-staged guesses the owner has not confirmed, and the browse layer already
+    hides them from every collection — filing them here would add rows that
+    cannot be seen.
+
+    The subtree test is a half-open range on the indexed ``directory_path``, not
+    a ``LIKE`` prefix: SQLite cannot use an index for ``LIKE`` under its default
+    case-insensitive rules. ``"/"`` is 0x2F, so ``"0"`` is the next byte and
+    bounds the subtree exactly — every descendant starts with ``dir + "/"``, and
+    nothing else falls in the range (a sibling ``Set1-old`` sorts below it,
+    ``Set1x`` above).
+    """
+    directory = directory.strip("/")
+    if not directory:
+        # The library root encloses everything, so "the bundles under it" is the
+        # whole library. That is never what this action means, and the File
+        # Browser only offers it on a real folder row.
+        raise ValidationError("choose a folder inside the library")
+    within = or_(
+        AssetFile.directory_path == directory,
+        and_(
+            AssetFile.directory_path >= f"{directory}/",
+            AssetFile.directory_path < f"{directory}0",
+        ),
+    )
+    rows = session.execute(
+        select(AssetBundle.id)
+        .join(AssetFile, AssetFile.bundle_id == AssetBundle.id)
+        .where(AssetBundle.grouping_state == GroupingState.CONFIRMED)
+        .where(within)
+        .group_by(AssetBundle.id)
+        .order_by(func.min(AssetFile.id))
+    ).all()
+    return [row[0] for row in rows]
