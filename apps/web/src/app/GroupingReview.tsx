@@ -357,26 +357,15 @@ const LOW_CONFIDENCE = 0.75
 // thousand rows top to bottom, and folded rows now cost nothing at all.
 const FOLD_ON_OPEN_ABOVE = 400
 
-/** How sure the suggester is, in words, for every row that carries a score.
+/** Whether the suggester was really only going on the folder.
  *
- * This replaced a two-tab "All / Needs a look" filter. Hiding the confident rows
- * behind a tab meant a *mis*-scored row — one the suggester was sure about and
- * wrong about — was not merely unflagged but actively filtered out of the view
- * that claimed to show what needed deciding, and the owner had no signal at all
- * on the rows that remained (owner-reported, 2026-08-13). Every row states its
- * own confidence instead, and the owner picks what to apply.
+ * The one thing the score is still allowed to say. Every row used to carry its
+ * band in words as well — confident / likely / guess — and the owner asked for
+ * that removed: it is often wrong, and a wrong claim of certainty is worse than
+ * no claim (2026-08-28). What survives is not a confidence but a fact about the
+ * evidence: this group came from a folder rather than from matching names, and
+ * the row says so in the suggester's own words beside it.
  */
-function confidenceLabel(proposal: GroupingProposal): string | null {
-  if (proposal.files.length === 0) return null
-  // Plainly how sure the suggester is, on one scale. This said "matched", which
-  // does not say *what* matched, and the owner asked what it meant
-  // (owner-reported, 2026-08-13).
-  if (proposal.confidence >= 0.85) return 'confident'
-  if (proposal.confidence >= LOW_CONFIDENCE) return 'likely'
-  return 'guess'
-}
-
-/** Whether the suggester was really only going on the folder. */
 function needsALook(proposal: GroupingProposal): boolean {
   return proposal.files.length > 0 && proposal.confidence < LOW_CONFIDENCE
 }
@@ -1376,7 +1365,6 @@ function ProposalNode({
   const displayTitle = proposalDisplayTitle(proposal)
   const filesShown = fold.forceFiles || (fold.fileOverrides.get(proposal.id) ?? fold.filesDefault)
   const attention = needsALook(proposal)
-  const confidence = confidenceLabel(proposal)
   return (
     <li className="grp-node grp-node--bundle">
       <div
@@ -1432,18 +1420,6 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : fileSummary(proposal)}
           </span>
-          {confidence && (
-            <span
-              className={`grp-conf${attention ? ' grp-conf--weak' : ''}`}
-              title={
-                attention
-                  ? 'The suggester grouped these by folder rather than by matching their names'
-                  : 'The suggester matched these by name'
-              }
-            >
-              {confidence}
-            </span>
-          )}
           {attention && proposal.reason && <span className="grp-attention">{proposal.reason}</span>}
           {/* An addition has no placement of its own: its files join a bundle
               that already exists and already sits wherever it sits. Offering the
@@ -1614,7 +1590,8 @@ export function GroupingReview({
   )
   // Selection, folding and stem ownership all read the *unfiltered* tree, so
   // narrowing the view never changes what Accept would do.
-  // One list. Every row states its own confidence, so nothing is hidden.
+  // One list, and no filter tabs: a mis-scored row must not be hidden from the
+  // view that claims to show what needs deciding (owner-reported, 2026-08-13).
   const tree = fullTree
   const stemOwners = useMemo(() => stemControlOwners(fullTree), [fullTree])
   const bundleProposalIds = useMemo(() => collectBundleIds(fullTree), [fullTree])
