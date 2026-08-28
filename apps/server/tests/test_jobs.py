@@ -476,3 +476,168 @@ def test_run_ffmpeg_is_unaffected_without_an_abort_scope() -> None:
 def test_abort_scope_stops_a_running_process_and_leaves_none_behind() -> None:
     with abort_scope(lambda: True), pytest.raises(OperationAborted):
         run_ffmpeg([sys.executable, "-c", "import time; time.sleep(60)"], timeout=120.0)
+
+
+def _queue(registry_factory: sessionmaker[Session], library_id: str, job_type: JobType) -> str:
+    with registry_factory() as reg:
+        job = job_service.create_job(reg, library_id=library_id, job_type=job_type, payload={})
+        reg.commit()
+        return job.id
+
+
+def test_urgent_work_is_claimed_before_older_background_work(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """Queue order is by class of work first, arrival second.
+
+    The storyboard pass is queued first and is still claimed second: it is a
+    prefetch, and discovery is what the owner is waiting on.
+    """
+    storyboard = _queue(registry_session_factory, library_id, JobType.STORYBOARD)
+    probe = _queue(registry_session_factory, library_id, JobType.PROBE)
+    scan = _queue(registry_session_factory, library_id, JobType.SCAN)
+
+    claimed: list[str] = []
+    for _ in range(3):
+        with registry_session_factory() as reg:
+            job = job_service.claim_next_queued(reg)
+            assert job is not None
+            claimed.append(job.id)
+            reg.commit()
+
+    assert claimed == [scan, probe, storyboard]
+
+
+def test_arrival_order_still_decides_within_one_class(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    first = _queue(registry_session_factory, library_id, JobType.SCAN)
+    second = _queue(registry_session_factory, library_id, JobType.SCAN)
+
+    claimed: list[str] = []
+    for _ in range(2):
+        with registry_session_factory() as reg:
+            job = job_service.claim_next_queued(reg)
+            assert job is not None
+            claimed.append(job.id)
+            reg.commit()
+
+    assert claimed == [first, second]
+
+
+def test_a_running_pass_stands_aside_for_a_scan_and_finishes_afterwards(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """The case ordering alone cannot fix: the long job is *already running*.
+
+    A storyboard pass is mid-sweep when Update is pressed. At its next
+    checkpoint it goes back to the queue — not cancelled, not failed, same row
+    — the scan runs, and the pass is claimed again and completes.
+    """
+    attempts = {"storyboard": 0}
+    order: list[str] = []
+
+    def storyboard_handler(ctx: JobContext) -> dict[str, int]:
+        attempts["storyboard"] += 1
+        order.append(f"storyboard-{attempts['storyboard']}")
+        for item in range(1, 4):
+            if attempts["storyboard"] == 1 and item == 2:
+                # Update is pressed with the sweep half done.
+                _queue(registry_session_factory, library_id, JobType.SCAN)
+            ctx.checkpoint(processed=item, total=3)
+        return {"swept": 3}
+
+    def scan_handler(ctx: JobContext) -> None:
+        order.append("scan")
+        ctx.checkpoint(processed=1, total=1)
+
+    storyboard = _queue(registry_session_factory, library_id, JobType.STORYBOARD)
+    worker = Worker(
+        registry_session_factory,
+        {JobType.STORYBOARD: storyboard_handler, JobType.SCAN: scan_handler},
+    )
+
+    while worker.run_once():
+        pass
+
+    assert order == ["storyboard-1", "scan", "storyboard-2"]
+    with registry_session_factory() as reg:
+        job = job_service.get_job(reg, storyboard)
+        assert job.status == JobStatus.SUCCEEDED
+        assert job.result == {"swept": 3}
+
+
+def test_standing_aside_leaves_the_job_queued_rather_than_finished(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """A yield is neither a cancellation nor a failure, and says so.
+
+    The row keeps its identity, so the client watching it sees it go back to
+    waiting and the enqueue dedupe reuses it instead of stacking a second copy.
+    """
+
+    def storyboard_handler(ctx: JobContext) -> None:
+        _queue(registry_session_factory, library_id, JobType.SCAN)
+        ctx.checkpoint(processed=1, total=9)
+        raise AssertionError("should have stood aside at the checkpoint above")
+
+    storyboard = _queue(registry_session_factory, library_id, JobType.STORYBOARD)
+    status = execute_job(
+        registry_session_factory, storyboard, {JobType.STORYBOARD: storyboard_handler}
+    )
+
+    assert status == JobStatus.QUEUED
+    with registry_session_factory() as reg:
+        job = job_service.get_job(reg, storyboard)
+        assert job.status == JobStatus.QUEUED
+        assert job.cancel_requested is False
+        assert job.finished_at is None and job.started_at is None
+        assert job.error is None
+        # Counts belong to the sweep that stopped, not to the one that resumes.
+        assert job.processed == 0 and job.total is None
+        assert job.message == "paused while more urgent work runs"
+
+        # The same row is what a re-enqueue finds, rather than a second pass.
+        again = job_service.get_or_create_queued_job(
+            reg, library_id=library_id, job_type=JobType.STORYBOARD, payload={}
+        )
+        assert again.id == storyboard
+
+
+def test_a_scan_never_stands_aside_for_another_scan(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """Only a *more* urgent class preempts; peers queue behind, as before."""
+    ran = {"count": 0}
+
+    def scan_handler(ctx: JobContext) -> None:
+        ran["count"] += 1
+        _queue(registry_session_factory, library_id, JobType.SCAN)
+        ctx.checkpoint(processed=1, total=1)
+
+    first = _queue(registry_session_factory, library_id, JobType.SCAN)
+    status = execute_job(registry_session_factory, first, {JobType.SCAN: scan_handler})
+
+    assert status == JobStatus.SUCCEEDED
+    assert ran["count"] == 1
+
+
+def test_a_cancelled_queue_entry_does_not_make_a_running_pass_stand_aside(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """Nothing is waiting behind a scan that will never run."""
+
+    def storyboard_handler(ctx: JobContext) -> dict[str, int]:
+        scan = _queue(registry_session_factory, library_id, JobType.SCAN)
+        with registry_session_factory() as reg:
+            job_service.request_cancel(reg, scan)
+            reg.commit()
+        ctx.checkpoint(processed=1, total=1)
+        return {"swept": 1}
+
+    storyboard = _queue(registry_session_factory, library_id, JobType.STORYBOARD)
+    status = execute_job(
+        registry_session_factory, storyboard, {JobType.STORYBOARD: storyboard_handler}
+    )
+
+    assert status == JobStatus.SUCCEEDED
