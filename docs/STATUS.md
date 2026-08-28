@@ -392,10 +392,22 @@ Three judgement calls worth recording, none of them forced by the request:
 
 **The parent picker is a foldable tree, not a `<select>` (owner, 2026-08-28:
 "native list won't work well once it gets long").** Rows come from the shared
-`visibleHierarchy` in `usePopover.ts` — the generic helper `CollectionPicker`
-predates with its own near-identical local copy, which is left alone here since
-it has no tests and this commit had no reason to touch it. Worth collapsing the
-two some time.
+`visibleHierarchy` in `usePopover.ts`, and **`CollectionPicker`'s near-identical
+local copy has been folded into it** at the owner's request — 25 lines gone.
+
+Neither the shared helper nor `CollectionPicker` had any tests, so the fold was
+done back-to-front on purpose: first a throwaway differential check running both
+walks over 200 pseudo-random forests × three collapse states and comparing row
+for row (identical), then a permanent `usePopover.test.ts` covering the helper
+that now backs three pickers, and only then the deletion. The differential also
+pinned the one input where they disagree — a row whose parent is absent from the
+list, which the retired walk dropped and the shared one re-parents to the top
+level. `CollectionPicker` always passes the complete list, so it cannot occur
+there, and where it can (a filtered subset) keeping the row is the better answer.
+
+Verified live afterwards, since the component still has no tests of its own:
+the picker renders the full hierarchy, folding `By Year` hides exactly its three
+children, and assigning a bundle to `Reference` adds the chip.
 
 Three details that are not obvious from the requirement:
 
