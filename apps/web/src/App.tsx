@@ -112,6 +112,7 @@ import { SettingsDialog } from './app/SettingsDialog'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
+import { mergeJobRows, trackJobSnapshot, type LiveJobs } from './app/liveJobs'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import { consumeHtmlFileDropHandled } from './app/htmlFileDrop'
@@ -1021,31 +1022,30 @@ function Workspace({
     /* eslint-enable react-hooks/set-state-in-effect */
     onDeepLinkHandled()
   }, [deepLink, onDeepLinkHandled])
-  // Live snapshot of the running maintenance job so the
-  // sidebar can render a determinate/indeterminate progress bar. Null when idle.
-  const [activeJob, setActiveJob] = useState<JobRead | null>(null)
-  // Reuses the snapshots the sidebar progress bar already polls, so a long
-  // scan/probe/storyboard run can tell the owner it is done while they are away.
-  useJobNotifications(activeJob)
+  // Live snapshots of the maintenance jobs this client is watching, so the
+  // sidebar can render a determinate/indeterminate progress bar for each. Keyed
+  // by job id because several flows overlap — see `liveJobs.ts`.
+  const [liveJobs, setLiveJobs] = useState<LiveJobs>({})
+  const trackJob = useCallback(
+    (job: JobRead | null) => setLiveJobs((previous) => trackJobSnapshot(previous, job)),
+    [],
+  )
   // The server's view of what is running, so a page load finds work already in
-  // progress. `activeJob` alone lives inside the mutation that started it, so a
-  // refresh mid-scan used to lose the indicator while the scan carried on.
+  // progress. The local snapshots live inside the mutations that started them,
+  // so a refresh mid-scan used to lose the indicator while the scan carried on.
   const serverJobs = useActiveJobs(libraryId)
   const cancelJobMutation = useCancelJob()
-  const activeJobs = useMemo(() => {
+  const activeJobs = useMemo(
     // Array.isArray, not `?? []`: this is a network boundary, and a shape that
     // is not a list (an error envelope, a stub in a test that does not mock
     // this route) should degrade to "nothing running" rather than throw during
     // render.
-    const rows = Array.isArray(serverJobs.data) ? serverJobs.data : []
-    // The local snapshot is fresher than the poll and appears before the first
-    // one lands; the server's list is authoritative about what exists. Prefer
-    // the local copy of the same job, keep the server's ordering.
-    if (!activeJob) return rows
-    return rows.some((job) => job.id === activeJob.id)
-      ? rows.map((job) => (job.id === activeJob.id ? activeJob : job))
-      : [...rows, activeJob]
-  }, [serverJobs.data, activeJob])
+    () => mergeJobRows(Array.isArray(serverJobs.data) ? serverJobs.data : [], liveJobs),
+    [serverJobs.data, liveJobs],
+  )
+  // Reuses the snapshots the sidebar progress bar already polls, so a long
+  // scan/probe/storyboard run can tell the owner it is done while they are away.
+  useJobNotifications(activeJobs)
   const platform = getHostPlatform()
   const hostLabels = getHostLabels()
   // Shares the Settings Libraries page's cache entry, so locate/clear there
@@ -1254,7 +1254,7 @@ function Workspace({
   const counts = useViewCounts()
   const collectionCounts = useCollectionCounts()
   const updateLibrary = useUpdateLibrary({
-    onProgress: setActiveJob,
+    onProgress: trackJob,
     onScanComplete: reportScanComplete,
     onGroupingPlan: (planId) => {
       setReviewPlanId(planId)
@@ -1262,9 +1262,9 @@ function Workspace({
     },
   })
   // No onGroupingPlan: a scan-only job never reports one (see useScan).
-  const scanFiles = useScan({ onProgress: setActiveJob, onScanComplete: reportScanComplete })
-  const probe = useProbe({ onProgress: setActiveJob })
-  const storyboards = useStoryboards({ onProgress: setActiveJob })
+  const scanFiles = useScan({ onProgress: trackJob, onScanComplete: reportScanComplete })
+  const probe = useProbe({ onProgress: trackJob })
+  const storyboards = useStoryboards({ onProgress: trackJob })
   const deleteBundles = useDeleteBundles()
   // Shedding a dead member without dissolving the bundle around it — the answer
   // to "the only way to dismiss a missing file is to delete the bundle" (owner,

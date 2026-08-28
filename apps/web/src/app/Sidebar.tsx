@@ -247,6 +247,11 @@ export function Sidebar({
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const jobsMenuRef = useRef<HTMLDivElement | null>(null)
+  // An Update whose scan has not been claimed yet: a scan jumps the queue ahead
+  // of background passes, but the one already running keeps the worker until its
+  // next checkpoint, so there is still a wait to be honest about.
+  const updateWaiting =
+    updating && activeJobs.some((job) => job.job_type === 'scan' && job.status === 'queued')
 
   // A menu you can only close with the button that opened it is a trap. Same
   // shape as the player's settings menu: pointerdown outside closes, and the
@@ -553,10 +558,17 @@ export function Sidebar({
         <button
           className="sidebar__job"
           onClick={onUpdateLibrary}
-          title="Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background"
+          title={
+            updateWaiting
+              ? 'Waiting for the job ahead of it to reach a checkpoint'
+              : 'Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background'
+          }
           disabled={updating || libraryId === null}
         >
-          {updating ? '⟳ Updating…' : '⟳ Update'}
+          {/* "Updating…" while the scan is still queued was a lie the owner had
+              no way to see through: a storyboard pass could hold the queue for
+              an hour and the button read exactly as it does while working. */}
+          {updateWaiting ? '⟳ Waiting…' : updating ? '⟳ Updating…' : '⟳ Update'}
         </button>
         <div className="sidebar__job-menu" ref={jobsMenuRef}>
           <button

@@ -167,6 +167,20 @@ const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
 type JobProgressFn = (job: JobRead | null) => void
 
+/** Enqueue, tell the queue list about it, and hand back the job to wait on.
+ *
+ * `useActiveJobs` stops its interval while the list is empty — which is exactly
+ * the state every enqueue starts from. Without this nudge the server's list stays
+ * empty for the whole run, leaving the client-side snapshots as the only source
+ * of progress rows and hiding anything they do not cover (a second job, work
+ * started elsewhere, this tab reloading mid-run).
+ */
+async function announceJob(qc: QueryClient, enqueued: Promise<JobRead>): Promise<JobRead> {
+  const job = await enqueued
+  void qc.invalidateQueries({ queryKey: ['active-jobs'] })
+  return job
+}
+
 /** Merge optimistically hidden files back into their cached bundle positions. */
 function restoreBundleFileSnapshots(
   qc: QueryClient,
@@ -793,10 +807,10 @@ function watchPostScanJobs(
   options: MaintenanceOptions,
   libraryId: string,
 ): void {
-  void watchOptionalJob(enqueueProbe(libraryId), options.onProgress, () => {
+  void watchOptionalJob(announceJob(qc, enqueueProbe(libraryId)), options.onProgress, () => {
     invalidateProbeContent(qc)
     // Storyboard eligibility and sampling need the duration populated by probe
-    void watchOptionalJob(enqueueStoryboards(libraryId), options.onProgress, () =>
+    void watchOptionalJob(announceJob(qc, enqueueStoryboards(libraryId)), options.onProgress, () =>
       qc.invalidateQueries({ queryKey: ['playback'] }),
     )
   })
@@ -814,7 +828,7 @@ export function useScan(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(
-        await enqueueScan({ suggestGrouping: false }),
+        await announceJob(qc, enqueueScan({ suggestGrouping: false })),
         options.onProgress,
       )
       options.onScanComplete?.(scanOutcome(scanJob))
@@ -867,7 +881,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      const scanJob = await waitForJob(await announceJob(qc, enqueueScan()), options.onProgress)
       options.onScanComplete?.(scanOutcome(scanJob))
       return scanJob
     },
@@ -888,7 +902,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
 export function useProbe(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => waitForJob(await enqueueProbe(), options.onProgress),
+    mutationFn: async () => waitForJob(await announceJob(qc, enqueueProbe()), options.onProgress),
     onSuccess: () => invalidateProbeContent(qc),
     onSettled: () => options.onProgress?.(null),
   })
@@ -897,7 +911,8 @@ export function useProbe(options: { onProgress?: JobProgressFn } = {}) {
 export function useThumbnails(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => waitForJob(await enqueueThumbnails(), options.onProgress),
+    mutationFn: async () =>
+      waitForJob(await announceJob(qc, enqueueThumbnails()), options.onProgress),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
     onSettled: () => options.onProgress?.(null),
   })
@@ -907,7 +922,8 @@ export function useThumbnails(options: { onProgress?: JobProgressFn } = {}) {
 export function useStoryboards(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => waitForJob(await enqueueStoryboards(), options.onProgress),
+    mutationFn: async () =>
+      waitForJob(await announceJob(qc, enqueueStoryboards()), options.onProgress),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['playback'] }),
     onSettled: () => options.onProgress?.(null),
   })
