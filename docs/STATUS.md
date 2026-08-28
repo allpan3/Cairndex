@@ -124,13 +124,12 @@
 > card in Missing Files and from any unsupported format. Confirmed in the app by
 > the owner. See the first section below.
 >
-> **Open, unreviewed (2026-08-28):** `feat/job-priority-and-browsing-polish` —
-> four owner enhancements from one pass over the app: the job queue runs what
-> the owner is waiting for first (and a running pass stands aside for it), two
-> jobs on screen keep their own progress rows, the Collections heading folds
-> the tree instead of hiding it, a grouping suggestion no longer states a
-> confidence, and bundle notes can be dragged into a new order. See the first
-> section below.
+> **Merged (2026-08-28, PR #12):** four owner enhancements from one pass over
+> the app — the job queue runs what the owner is waiting for first (and a
+> running pass stands aside for it), two jobs on screen keep their own progress
+> rows, the Collections heading folds the tree instead of hiding it, a grouping
+> suggestion no longer states a confidence, and bundle notes can be dragged into
+> a new order. See the first section below.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -141,9 +140,20 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: `feat/job-priority-and-browsing-polish` (2026-08-28)
+## Merged: four owner enhancements in one pass (2026-08-28, PR #12)
 
-Off `main` at `fbeca040`. Four commits, unreviewed, **no PR** (owner-triggered).
+Branch `feat/job-priority-and-browsing-polish`, off `main` at `fbeca040`,
+**merged through PR #12** (`a5c52836`) with all seven CI jobs green — backend,
+frontend, full-stack e2e, packaged sidecar, Desktop Rust (Ubuntu), Desktop shell
+(macOS), and Docker.
+
+The eleven commits it was written in were squashed to six before review, one per
+coherent change: the four grip-placement attempts folded into the note-reordering
+commit, whose message keeps *why* the grip ended up under the remove button
+rather than the route there, and the e2e assertion joined the grouping commit it
+belongs to. Verified content-preserving — the tree hash before and after the
+rewrite was identical (`1fd8aeee`) — and each of the five code commits
+typechecks on its own.
 
 Four enhancements the owner asked for in one pass over the running app. They are
 unrelated to each other; they are one branch because they are one review round.
