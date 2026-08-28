@@ -10,6 +10,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Bundle notes can be dragged into a new order.** The stack could be added to
+  and removed from but never rearranged, so a note that belonged first had to be
+  retyped there. Each box grows a grip under its remove button, both revealed on
+  hover, and only where there is more than one note to move; the arrow keys do
+  the same move from the keyboard once the grip has focus. The pair shares one
+  column at the right edge, and that column got *narrower* in the process: 18px
+  where the remove button alone used to reserve 26, so every note line is a
+  little longer than it was before there was anything to drag. A note keeps its own box height when it
+  lands, rather than inheriting whatever height used to be in that position.
+
+- **Clicking the Collections heading folds the tree instead of hiding it.**
+  It hid every collection, which is the one thing that gesture could do that
+  nobody wants — those rows are the sidebar's main content. It now folds the
+  tree down to the top level and unfolds it again, and a collection's own
+  right-click menu offers the same for its branch: **Expand All / Collapse All
+  Subcollections**, on collections that have something under them.
+
 - **Adding a file offers the bundle it belongs to.** Both routes into the library
   put the file on disk and stopped there — it was in the library but invisible to
   the Bundle Browser until the next scan staged it, and bundling was a separate
@@ -362,6 +379,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **What the owner is waiting for runs first.** One worker runs one job at a
+  time, so a storyboard pass — a sweep over every video in the library — held
+  the queue against everything behind it: pressing Update during one queued a
+  scan that could not start until the prefetch had finished. Jobs are now
+  claimed in order of what they are for (scan, then metadata and thumbnails,
+  then storyboards) and stay first-come within each kind. That alone would not
+  help the case that prompted it, since the long job is already running, so a
+  running pass also *stands aside* at its next checkpoint when more urgent work
+  is waiting, and goes back to the queue to resume afterwards. Standing aside is
+  neither a cancellation nor a failure: the job keeps its identity, reports
+  itself as waiting, and picks up where a fresh sweep leaves off — every
+  library-wide pass skips work that is already current.
+
+- **A grouping suggestion no longer says how sure it is.** Every bundle row
+  carried a confidence band in words — confident / likely / guess — and it was
+  wrong often enough that stating certainty was the misleading part. What
+  remains is the evidence rather than the confidence: a row grouped from its
+  folder rather than from matching names is still flagged, still says so in the
+  suggester's own words, and is still counted above the list.
+
 - **A file that was never bundled is never "missing".** Unbundled is the pending
   zone — a scan stages every file it finds there, and bundling is what registers
   a file in the library. So a staged file deleted outside Cairndex was reported
@@ -579,6 +616,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sheets rather than leaving a library holding a mix of two qualities.
 
 ### Fixed
+
+- **Two jobs on screen no longer share one progress row.** Pressing Update while
+  a storyboard pass was running left a single row whose label, count and bar each
+  belonged to a different job every half second. Both flows were reporting into
+  one slot, on the assumption that one maintenance flow runs at a time — which
+  the Update flow breaks itself, since it hands metadata and storyboards to
+  background watchers and returns. Each job now keeps its own row. Enqueuing also
+  wakes the queue list, which stops polling while it is empty: until it did,
+  anything the client was not itself watching — a second job, work started from
+  another window, a reload mid-run — showed nothing at all.
+
+  Update reads **Waiting…** while its scan is still queued, rather than claiming
+  to be updating: a scan jumps the queue now, but the job already running keeps
+  the worker until its next checkpoint.
 
 - **Creating a bundle no longer slows down as the library grows.** It took about
   five seconds on the owner's library (2026-08-26). Almost none of that was the
