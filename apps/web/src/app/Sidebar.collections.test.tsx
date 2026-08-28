@@ -258,22 +258,68 @@ test('the same request is consumed once even if the caller never clears it', () 
   expect(onCreateCollection).toHaveBeenCalledOnce()
 })
 
-test('creating unfolds the Collections section so the rename box is visible', () => {
-  // A folded section hides the new row entirely, which would leave a collection
+test('the Collections heading folds the tree instead of hiding the collections', () => {
+  // Hiding every collection was the one thing the gesture could do that nobody
+  // wants: these rows are the sidebar's main content, and "show me the top level
+  // only" is what a tree heading is for (owner-reported, 2026-08-28).
+  renderSidebar()
+  const heading = screen.getByRole('button', { name: /^Collections/ })
+
+  expect(screen.getByText('Nested')).toBeInTheDocument()
+
+  fireEvent.click(heading)
+  expect(screen.getByText('Films')).toBeInTheDocument()
+  expect(screen.queryByText('Nested')).not.toBeInTheDocument()
+
+  fireEvent.click(heading)
+  expect(screen.getByText('Nested')).toBeInTheDocument()
+})
+
+test('creating unfolds the branch that would hide the new row', () => {
+  // A folded branch hides the new row entirely, which would leave a collection
   // named 'New Collection' and no visible way to type the name that was the
   // point of creating it — most likely when the request came from the grid, where
   // the user is not even looking at the sidebar.
   const onCreateCollection = renderSidebar()
-  const heading = screen.getByRole('button', { name: /^Collections/ })
 
-  fireEvent.click(heading)
-  expect(screen.queryByText('Films')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^Collections/ }))
+  expect(screen.queryByText('Nested')).not.toBeInTheDocument()
 
-  fireEvent.contextMenu(heading)
-  fireEvent.click(screen.getByRole('menuitem', { name: 'New Collection' }))
+  fireEvent.contextMenu(screen.getByText('Films'))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'New Subcollection' }))
 
   expect(onCreateCollection).toHaveBeenCalledOnce()
-  expect(screen.getByText('Films')).toBeInTheDocument()
+  expect(screen.getByText('Nested')).toBeInTheDocument()
+})
+
+test("a collection's menu folds and unfolds its whole subtree", () => {
+  // Three deep, so unfolding reaches past what the row's own caret can do.
+  renderSidebarWith(
+    [collection('c1', 'Films'), collection('c2', 'Nested', 'c1'), collection('c3', 'Deeper', 'c2')],
+    { collectionId: null },
+  )
+
+  fireEvent.contextMenu(screen.getByText('Films'))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Collapse All Subcollections' }))
+  expect(screen.queryByText('Nested')).not.toBeInTheDocument()
+
+  fireEvent.contextMenu(screen.getByText('Films'))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Expand All Subcollections' }))
+  expect(screen.getByText('Nested')).toBeInTheDocument()
+  expect(screen.getByText('Deeper')).toBeInTheDocument()
+})
+
+test('a collection with nothing under it is not offered the fold', () => {
+  renderSidebarWith([collection('c1', 'Films'), collection('c2', 'Nested', 'c1')], {
+    collectionId: null,
+  })
+
+  fireEvent.contextMenu(screen.getByText('Nested'))
+
+  expect(screen.queryByRole('menuitem', { name: /Subcollections$/ })).not.toBeInTheDocument()
+  // The entries that do apply to a leaf are all still there.
+  expect(screen.getByRole('menuitem', { name: 'New Subcollection' })).toBeInTheDocument()
+  expect(screen.getByRole('menuitem', { name: 'Delete Collection' })).toBeInTheDocument()
 })
 
 test('a new name avoids colliding with its own siblings only', () => {
