@@ -133,9 +133,21 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## Open on branch: `feat/suggest-bundle-on-import` (2026-08-25)
+## Open on branch: `feat/filing-into-bundles-and-collections` (2026-08-28)
 
-Off `main` at `21619138`. Three commits, unreviewed, **no PR** (owner-triggered).
+Off `main` at `21619138`. **Eight commits, rebased for review, unreviewed, no PR**
+(owner-triggered). Renamed from `feat/suggest-bundle-on-import`, which stopped
+describing it several rounds in: the branch is about getting a file you have just
+added into the place it belongs — a bundle, or a collection — plus the indexed
+lookups that made those paths quick enough to use.
+
+The fourteen commits it was written in were squashed into eight along contiguous
+runs, with no reordering, so each one lands on a state that was green when it was
+made. Verified content-preserving: the tree hash before and after the rebase is
+identical (`51ed7fca`).
+
+Sections below are in the order the work happened, which is not the order of the
+commits; the PR description is the summary that reads top to bottom.
 
 **What the owner asked for.** Not the refactor it started as. The opening request
 was "a bundle identifies one root directory, its files must live in that
