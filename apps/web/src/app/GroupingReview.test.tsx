@@ -889,7 +889,7 @@ test('title editor mirrors its live text instead of shrinking to a fixed width',
   expect(review.container.querySelectorAll('.grp-title-input')).toHaveLength(1)
 })
 
-test('keeps suggestion reasons without rendering numeric confidence badges', async () => {
+test('keeps suggestion reasons without rendering how sure the suggester is', async () => {
   vi.stubGlobal('fetch', mockGroupingApi())
   const review = renderReview()
 
@@ -898,11 +898,14 @@ test('keeps suggestion reasons without rendering numeric confidence badges', asy
   // reason only earns a line when the suggester is unsure (see the filter test).
   expect(screen.getByText('3 files · video, image')).toBeInTheDocument()
   expect(screen.queryByText('same filename stem')).not.toBeInTheDocument()
-  // A worded band, never a raw score — the percentages were rejected as noise.
-  expect(review.container.querySelectorAll('.grp-conf')).not.toHaveLength(0)
+  // Neither a raw score nor a worded band: the percentages were rejected as
+  // noise, and the words that replaced them were removed for being wrong often
+  // enough that certainty was the misleading part (owner, 2026-08-28).
   expect(review.container.textContent).not.toMatch(/\d+(\.\d+)?%/)
   expect(screen.queryByText('90%')).not.toBeInTheDocument()
   expect(screen.queryByText('95%')).not.toBeInTheDocument()
+  expect(screen.queryByText('confident')).not.toBeInTheDocument()
+  expect(screen.queryByText('likely')).not.toBeInTheDocument()
 })
 
 test('switches one addition proposal to a renameable new bundle and back', async () => {
@@ -1797,14 +1800,15 @@ test('arrow keys keep working after focus lands on a row control', async () => {
 
 // --- Triage: confidence filter, contents summary, compact placement ----------
 
-test('every row states its confidence, and the guessed ones are counted', async () => {
-  // Replaced a two-tab filter: hiding the confident rows meant a *mis*-scored row
-  // was filtered out of the view claiming to show what needed deciding.
+test('no row claims how sure the suggester is, and the guessed ones are counted', async () => {
+  // The rows used to carry a band in words. It was removed for being wrong often
+  // enough that stating certainty was the misleading part (owner, 2026-08-28).
+  // What is left says what the suggester *went on*, not how sure it was.
   const unsure = { ...PROPOSALS[1]!, id: 'weak', title: 'Loose Clip', confidence: 0.5 }
   vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, unsure]))
   renderReview()
 
-  // Nothing is hidden: both rows are present, each carrying its own label.
+  // Nothing is hidden, and the rows only going on the folder are still counted.
   await screen.findByRole('checkbox', { name: 'Accept Loose Clip' })
   expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeInTheDocument()
   expect(screen.getByText('1 guessed from the folder')).toBeInTheDocument()
@@ -1812,12 +1816,13 @@ test('every row states its confidence, and the guessed ones are counted', async 
   const weakRow = screen
     .getByRole('button', { name: 'Rename bundle suggestion Loose Clip' })
     .closest('.grp-row') as HTMLElement
-  expect(within(weakRow).getByText('guess')).toBeInTheDocument()
+  expect(within(weakRow).queryByText('guess')).not.toBeInTheDocument()
+  expect(weakRow).toHaveClass('grp-row--attention')
 
   const strongRow = screen
     .getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' })
     .closest('.grp-row') as HTMLElement
-  expect(within(strongRow).getByText('confident')).toBeInTheDocument()
+  expect(within(strongRow).queryByText('confident')).not.toBeInTheDocument()
 
   // No filter tabs to hide anything behind.
   expect(screen.queryByRole('button', { name: /Needs a look/ })).toBeNull()

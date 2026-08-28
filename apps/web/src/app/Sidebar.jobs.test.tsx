@@ -42,6 +42,7 @@ function renderSidebar(
   onCancelJob?: (jobId: string) => void,
   activeImports: ImportActivity[] = [],
   onCancelImport?: (batchId: string) => void,
+  updating = false,
 ) {
   render(
     <Sidebar
@@ -53,6 +54,7 @@ function renderSidebar(
       onManageLibraries={() => undefined}
       onOpenSettings={() => undefined}
       onUpdateLibrary={() => undefined}
+      updating={updating}
       onScanFiles={() => undefined}
       onProbe={() => undefined}
       onGenerateStoryboards={() => undefined}
@@ -223,4 +225,28 @@ test('an import and a background job have independent rows', () => {
   expect(screen.getByText('Importing “clip.mkv”')).toBeInTheDocument()
   expect(screen.getByText('Discovering files')).toBeInTheDocument()
   expect(screen.getAllByRole('progressbar')).toHaveLength(2)
+})
+
+test('Update says it is waiting while its scan sits in the queue', () => {
+  // "Updating…" while the scan had not even been claimed was a lie the owner
+  // could not see through: a storyboard pass holding the worker reads exactly
+  // like work in progress (owner-reported, 2026-08-28).
+  renderSidebar(
+    [
+      job({ id: 'sb', job_type: 'storyboard', phase: 'storyboarding' }),
+      job({ id: 's1', status: 'queued', phase: null, total: null, processed: 0 }),
+    ],
+    undefined,
+    [],
+    undefined,
+    true,
+  )
+
+  expect(screen.getByRole('button', { name: '⟳ Waiting…' })).toBeDisabled()
+})
+
+test('Update says it is updating once its scan is the job running', () => {
+  renderSidebar([job()], undefined, [], undefined, true)
+
+  expect(screen.getByRole('button', { name: '⟳ Updating…' })).toBeInTheDocument()
 })

@@ -124,6 +124,14 @@
 > card in Missing Files and from any unsupported format. Confirmed in the app by
 > the owner. See the first section below.
 >
+> **Open, unreviewed (2026-08-28):** `feat/job-priority-and-browsing-polish` —
+> four owner enhancements from one pass over the app: the job queue runs what
+> the owner is waiting for first (and a running pass stands aside for it), two
+> jobs on screen keep their own progress rows, the Collections heading folds
+> the tree instead of hiding it, a grouping suggestion no longer states a
+> confidence, and bundle notes can be dragged into a new order. See the first
+> section below.
+>
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
 > need the owner: a pass on a genuinely
@@ -132,6 +140,158 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## Open on branch: `feat/job-priority-and-browsing-polish` (2026-08-28)
+
+Off `main` at `fbeca040`. Four commits, unreviewed, **no PR** (owner-triggered).
+
+Four enhancements the owner asked for in one pass over the running app. They are
+unrelated to each other; they are one branch because they are one review round.
+
+### 1. Update pressed while another job runs
+
+The report was two things at once. The visible half: *"the new job's progress bar
+would overlay on top of the old one and the UI is broken."* The half behind it:
+*"storyboard generation is low priority. Scan should be prioritized."*
+
+**The overlay was one slot holding two jobs.** Every maintenance flow reported
+its polled snapshots into a single `activeJob` state, on the assumption that one
+runs at a time. The Update flow breaks that itself — it waits for the scan, then
+hands metadata and storyboards to background watchers and returns — so pressing
+Update during a storyboard pass left two pollers writing to that slot half a
+second apart. One row rendered, and its label, count and bar each belonged to a
+different job every 500 ms. It is now a map keyed by job id (`app/liveJobs.ts`),
+so a snapshot can only ever refresh its own row, and a flow reporting "settled"
+drops what finished rather than everything.
+
+**A second, quieter half of the same bug:** `useActiveJobs` stops polling while
+its list is empty, which is the state every enqueue starts from, and nothing
+invalidated it on enqueue. So the server's list — the authoritative one, and the
+only one that survives a reload — stayed empty for the whole run, leaving the
+client's own snapshots as the only source of rows. Enqueuing now nudges it.
+
+**Priority is two mechanisms, not one.** Ordering the queue
+(`registry/jobs.py:JOB_PRIORITY` — scan, then probe/thumbnail, then storyboard;
+FIFO within a class) only decides what starts *next*, which does nothing for the
+case the owner actually hit: the long job is already running. So a running job
+also asks, at its checkpoints, whether more urgent work is waiting, and stands
+aside if it is (`JobYielded` → `requeue_after_yield`).
+
+Standing aside is deliberately neither a cancellation nor a failure. The row
+keeps its identity — so the client watching it sees it return to *waiting*, and
+`get_or_create_queued_job` reuses it instead of stacking a second copy of the
+same pass behind it — and only the item in flight is rolled back. Counts reset
+because the resumed pass sweeps from the start again; every library-wide pass
+skips work that is already current, so what it re-reads is cheap. The check is
+raised only from the checkpoint path, so a pass stands aside *between* items
+rather than mid-ffmpeg, and the urgent job waits at most one item.
+
+Worth knowing for next time: **a scan is not slow, so the fix is mostly
+invisible.** Measured against a synthetic 300-clip library, a scan enqueued
+behind a forced storyboard pass showed
+`scan:running | storyboard:queued [paused while more urgent work runs]` within
+half a second, and the pass resumed immediately after. The Update button reads
+**Waiting…** rather than *Updating…* for that half second, because the job
+already running keeps the worker until its next checkpoint.
+
+### 2. The Collections heading
+
+It hid every collection. That is the one thing the gesture could do that nobody
+wants — those rows are the sidebar's main content — so it now folds the *tree*:
+one click down to the top level, another back out to every level. A collection's
+right-click menu carries the same for its own branch (**Expand All / Collapse
+All Subcollections**), offered only where there is something under it to fold.
+
+Both read the current fold state rather than keeping a flag of their own, which
+is what keeps the heading and a row's menu agreeing after individual carets have
+been clicked. The section's persisted collapse state is gone with the behaviour
+it drove; revealing a collection (creating or renaming one from elsewhere) now
+only has ancestors to unfold.
+
+### 3. The grouping suggestion's confidence
+
+Removed at the owner's request: *"It's often wrong anyways."* Every bundle row
+carried its band in words — confident / likely / guess — and a wrong claim of
+certainty is worse than no claim.
+
+The distinction worth keeping is that **what survives is evidence, not
+confidence**: a row the suggester grouped from its folder rather than from
+matching names is still flagged, still says so in the suggester's own words
+beside the title, and is still counted above the list. That one is checkable by
+looking at it; the band was not.
+
+### 4. Dragging bundle notes into order
+
+The stack could be added to and removed from but never rearranged. Each box now
+carries a grip directly under its remove button, both hover-revealed, on rows
+that have something to reorder.
+
+**Where the grip goes took three attempts, and the sequence is the useful
+part.** It began in the box's bottom-left corner, on the strip the resize grip
+already occupies, chosen because it cost the text no room. The owner: "not well
+placed" — and right, because a handle sharing a strip with the resize grip reads
+as part of the resize grip, and no list anywhere puts its reorder handle in a
+bottom corner. So it moved to a rail inside the box's left edge with the text
+inset to clear it, which is where list handles conventionally live. The owner
+again: too much margin, "I prefer the old way" — put it on the right, under the
+cross.
+
+That is the answer, and in hindsight the obvious one: **the remove button had
+already bought the space.** A right inset exists on every note box for the `×`;
+a second control stacked beneath it is free, where both a left rail and a wider
+right column charge every line of text for the privilege. The lesson worth
+keeping is that the question "where does this affordance go" was really "which
+margin already exists", and two of the three attempts went looking for new room
+instead of spending room already spent.
+
+**And the room already spent turned out to be too much** — "do we need this
+much?" — so the column was measured rather than inherited. Its floor is the 5px
+scrollbar it must not cover, plus a 12px glyph: **18px**, down from the 26 the
+`×` had reserved on its own since before any of this. Both controls fit a
+one-line box (34px, the shortest a note box gets) with 5px to spare: `×` at
+3–17px from the box top, the grip at 17–29px. Below 18 the glyphs stop being
+clickable targets or start sitting on the scrollbar, so the affordance that
+*added* a control also gave the text two pixels back.
+
+Two smaller notes on it. **The glyph is an inline SVG, not `⠿`** — U+283F is not
+in every platform's default font, and `icons.tsx` exists precisely so an icon
+cannot render as a tofu box on the Linux deployment. **Why pointer capture
+rather than HTML5 dnd:** a `draggable` ancestor hijacks text selection inside
+the box, which is the one thing a note box exists for — the same reason the
+bundle's file rail uses pointer capture, and the gesture is now the same on
+both.
+
+The order is carried through `moveTo` as *indices*, not ids: notes are plain
+strings and two of them can be identical (two empty draft boxes, most obviously).
+Per-note heights are permuted the same way, so a note arrives at its new position
+with its own height instead of inheriting whatever used to be there.
+
+### Verification
+
+**Gates:** `ruff check`, `ruff format --check`, `mypy src packaging`, and **1153
+backend tests** green (1 skipped); `npm run lint`, `format:check`, `typecheck`, **1004
+frontend tests**, and `build` green. Playwright frontend e2e: **133 passed**,
+with one player spec failing on each of two full runs — a *different* one each
+time, both passing when their spec runs alone, and no playback code is touched
+by this branch. **Not run:** the desktop Rust/Tauri gates (no Rust, Tauri or
+packaging file changed) and the full-stack e2e.
+
+**Verified in a browser** against a throwaway library on a scratch
+`CAIRNDEX_DATA_DIR` — 316 synthetic clips, never the owner's own, and no lease
+of a real library was touched. All four: the queue transition above; the
+Collections heading folding to the top level and back, and a branch folding from
+its menu two levels deep in one gesture; a 303-row grouping plan with no
+confidence anywhere; and a note dragged by its grip, with the insertion line on
+the row it will land beside, the source row dimmed, the reordered list PATCHed,
+and the arrow-key path doing the same move.
+
+One honest gap in that browser pass: **the pointer drag was dispatched
+synthetically**, because a synthetic `PointerEvent` carries no live pointer id
+and the real `setPointerCapture` rejects it, so capture was stubbed for the
+dispatch. Everything else in the gesture — hit-testing under the pointer, the
+geometry deciding which edge of which row, the drop line, the commit — ran for
+real. A genuine mouse drag is unverified here, as the same gesture on the file
+rail was when it shipped.
 
 ## Merged: filing what you add, into a bundle or a collection (2026-08-28, PR #11)
 
