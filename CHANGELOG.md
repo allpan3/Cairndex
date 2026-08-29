@@ -460,17 +460,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
-- **The side panels' scrollbars are thin and no longer shove their contents.**
-  The sidebar and the inspector used the platform scrollbar: sixteen pixels
-  wide, and it appeared the moment the content outgrew the window, pushing
-  everything sideways as it did. They now use the same 6px translucent bar the
-  pickers already had, and reserve it whether or not it is showing, so nothing
-  moves.
+- **The side panels' scrollbars lie over the content instead of beside it.** The
+  sidebar and the inspector used the platform scrollbar: sixteen pixels wide,
+  appearing the moment content outgrew the window and shoving everything
+  sideways to make room. They now draw their own — a thin translucent thumb,
+  visible on hover, draggable, and costing the panel **no width at all**, so
+  nothing moves when it comes and goes.
 
-  Not a true overlay, and it cannot be one: `overflow: overlay` has been removed
-  from Chromium — measured, it computes back to `auto` — so a bar costing no
-  width at all would have to be drawn by hand rather than by the engine. This
-  takes the cost from a jumping sixteen pixels to a constant seven.
+  A native scrollbar cannot do this: it paints in the gutter, outside the
+  content box, so it always costs width. Reserving that permanently only trades
+  the jump for a constant loss, and `overflow: overlay`, which would have done
+  it in one line, has been removed from Chromium.
 
 - **What the owner is waiting for runs first.** One worker runs one job at a
   time, so a storyboard pass — a sweep over every video in the library — held

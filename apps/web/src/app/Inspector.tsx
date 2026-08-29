@@ -48,6 +48,7 @@ import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
+import { OverlayScrollbar } from './OverlayScrollbar'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
@@ -177,6 +178,7 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   if (!bundle) {
     return (
       <aside className="inspector" data-tauri-drag-region>
+        <OverlayScrollbar />
         <div className="state">Loading…</div>
       </aside>
     )

@@ -16,6 +16,7 @@ import { formatBytes } from '../lib/format'
 import { StarRating } from './Stars'
 import { usePinyinSearch } from './pinyin'
 import { flattenHierarchy, usePopover } from './usePopover'
+import { OverlayScrollbar } from './OverlayScrollbar'
 
 /** A flat checkbox-style multi-pick list, shared by the bulk tag and
  * collection pickers below. Unlike the single-bundle editors (TagEditor,
@@ -205,6 +206,7 @@ export function MultiBundleInspector({
 
   return (
     <aside className="inspector" data-tauri-drag-region>
+      <OverlayScrollbar />
       <div className="inspector__multi-head">
         <span>{ids.length} bundles selected</span>
         <button className="add-btn" onClick={onClear}>

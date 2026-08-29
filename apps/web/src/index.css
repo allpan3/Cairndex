@@ -227,10 +227,6 @@ button {
   background: var(--bg-2);
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  /* Reserved whether or not it is scrolling, so the nav never jumps sideways
-     the moment the content grows past the window (owner, 2026-08-29). Costs a
-     constant 7px; the alternative is 16px that appears and disappears. */
-  scrollbar-gutter: stable;
   padding: 12px 8px;
   user-select: none;
   /* A column so the footer can claim the leftover space and sit at the bottom
@@ -1486,9 +1482,6 @@ button {
   background: var(--bg-2);
   border-left: 1px solid var(--border);
   overflow-y: auto;
-  /* Same reason as `.sidebar`: a rail whose content crosses the window height
-     should not shove its own contents sideways to make room. */
-  scrollbar-gutter: stable;
   padding: 14px;
 }
 /* The whole Bundle Inspector is the same import-and-link target as its card */
@@ -2047,31 +2040,45 @@ button {
   background: var(--border);
   margin: 4px 2px;
 }
-/* The side panels get the same thin bar as the pickers below: 6px of gutter
-   rather than the platform's 16, and a translucent thumb that reads as sitting
-   over the panel rather than beside it.
-   
-   Not a true overlay, and it cannot be: `overflow: overlay` is gone from
-   Chromium (measured 2026-08-29 — it computes back to `auto`), so a bar that
-   costs no width at all would have to be drawn by hand rather than by the
-   engine. This gets the width from 16px to 7px and, with the stable gutter
-   above, stops it appearing and disappearing. */
+/* The side panels hide the engine's scrollbar entirely and draw their own over
+   the content (`OverlayScrollbar`). A native bar paints in the gutter, outside
+   the content box, so it always costs width — 16px here — and reserving that
+   permanently only trades a jump for a constant loss. Neither was wanted
+   (owner, 2026-08-29). */
+.sidebar,
+.inspector {
+  scrollbar-width: none;
+}
 .sidebar::-webkit-scrollbar,
 .inspector::-webkit-scrollbar {
+  display: none;
+}
+/* Zero-height and sticky, so the thumb it carries is pinned to the top of the
+   *visible* part of the scroller rather than scrolling away with the content. */
+.oscroll {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.oscroll__thumb {
+  position: absolute;
+  top: 0;
+  right: 2px;
   width: 6px;
-}
-.sidebar::-webkit-scrollbar-track,
-.inspector::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar::-webkit-scrollbar-thumb,
-.inspector::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  pointer-events: auto;
+  transition: background 120ms ease;
 }
-.sidebar:hover::-webkit-scrollbar-thumb,
-.inspector:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
+/* Legible while the pointer is anywhere in the panel, and firmer while dragging;
+   otherwise quiet enough to sit over text. */
+.sidebar:hover .oscroll__thumb,
+.inspector:hover .oscroll__thumb,
+.oscroll__thumb--dragging {
+  background: rgba(255, 255, 255, 0.32);
 }
 
 /* Thin, unobtrusive scrollbar tucked inside the panel padding so it never
