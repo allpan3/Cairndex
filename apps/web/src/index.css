@@ -1596,6 +1596,21 @@ button {
   border-radius: 4px;
   background: rgba(248, 113, 113, 0.1);
 }
+/* A folder member (plan 6). Deliberately not draggable: plan 6 §4.5 is
+   withdrawn, not pending (built and reverted 2026-08-29 — the rail's drag has no
+   visible affordance, so it was an invisible capability on one more row). The
+   default cursor is the honest one, because a grab cursor would promise a drag
+   that does nothing. */
+.files .file-row--folder {
+  cursor: default;
+}
+.files .file-row--folder .file-row__name {
+  gap: 6px;
+}
+.file-row__folder-icon {
+  flex: none;
+  opacity: 0.75;
+}
 .files .file-row__name {
   display: flex;
   align-items: center;
@@ -2928,6 +2943,13 @@ code {
   margin: 0;
   padding: 0;
 }
+/* Room for the attention bar, which hangs 6px into the left margin. A nested
+   row gets that room from `.grp-children` below; a top-level one had none, so
+   the marker was simply not drawn on the outermost rows — the ones most likely
+   to be looked at first. */
+.grp-tree {
+  padding-left: 6px;
+}
 .grp-children {
   margin-left: 16px;
   border-left: 1px solid var(--border);
@@ -3056,7 +3078,14 @@ code {
 .grp-row--collection {
   gap: var(--grp-lead-gap);
   border-radius: 5px;
+  /* The padding is what gives the folder-header background and the drop
+     highlight room to breathe. Pulled straight back out again, because it is a
+     decoration and must not move the row's content: a bundle row has no such
+     padding, so a collection sat 4px right of a bundle at the same depth, and
+     two siblings looked like parent and child (owner-reported, 2026-08-28).
+     Same trick as `.grp-row--attention` below, which cancels its own bar. */
   padding: 2px 4px;
+  margin-inline: -4px;
 }
 /* The rows below a folder header are its contents. Faint on purpose: it has to
    read as a heading over them without becoming the loudest thing on screen. */
@@ -3406,6 +3435,57 @@ code {
   gap: 8px;
   font-size: 12px;
   padding: 1px 0;
+}
+/* A proposed folder row (plan 6): accepted or declined whole, so it is not
+   draggable and takes no grab cursor from the file rows around it. */
+.grp-file--folder .grp-file__name {
+  color: var(--text-strong);
+}
+.grp-file__folder-icon {
+  flex: none;
+  opacity: 0.75;
+}
+.grp-file__role {
+  color: var(--text-dim);
+}
+.grp-file__expand {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11px;
+}
+/* A folder listed individually: its files are in the list proper, and this row
+   stays only to say so and to offer the way back. Dimmed so it reads as a note
+   rather than as another item. */
+.grp-file--folder-listed .grp-file__name,
+.grp-file--folder-listed .grp-file__folder-icon {
+  opacity: 0.6;
+}
+/* A file drawn under the folder header that would otherwise stand for it.
+   Indented so the run reads as that folder's contents rather than as peers of
+   the bundle's own media. */
+.grp-file--in-folder {
+  padding-left: 16px;
+}
+/* Looking inside, which changes nothing. Read-only on purpose: every editing
+   affordance here belongs to the folder as a whole. */
+.grp-file-peek {
+  padding: 2px 0 4px 22px;
+}
+.grp-file-peek__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--border);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.grp-file-peek__row {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 1px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .grp-file--draggable {
   cursor: grab;

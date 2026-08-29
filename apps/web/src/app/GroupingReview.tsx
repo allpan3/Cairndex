@@ -15,6 +15,8 @@ import type {
   GroupingPlan,
   GroupingProposal,
   GroupingStemLevels,
+  ProposalDirectory,
+  ProposalFile,
 } from '../api/client'
 import { GROUPING_DEFAULT_STEM_LEVEL } from '../api/client'
 import {
@@ -28,8 +30,10 @@ import {
   useReparentGroupingProposal,
   useSetGroupingProposalDestination,
   useSetGroupingProposalKind,
+  useSetProposalDirectoryExpanded,
   useSetGroupingStemLevel,
 } from '../api/hooks'
+import { proposalEntries } from './bundleRows'
 import { formatFileRole } from '../lib/format'
 import { GroupingPlacementPicker, type GroupingPlacementOption } from './GroupingPlacementPicker'
 import { IconChevron, IconFolder, IconLayers } from './icons'
@@ -244,6 +248,14 @@ interface KindControls {
   canEdit: boolean
   pending: boolean
   set: (proposal: GroupingProposal) => void
+}
+
+/** Declining a proposed folder row (plan 6). Accepting one needs no control:
+ *  it is what the suggestion's own Accept already does. */
+interface FolderControls {
+  canEdit: boolean
+  pending: boolean
+  setExpanded: (proposalId: string, directoryId: string, expanded: boolean) => void
 }
 
 type ReviewDragItem =
@@ -1231,6 +1243,7 @@ interface SharedNodeProps {
   folderHeaders: Set<string>
   kind: KindControls
   fold: FoldControls
+  folders: FolderControls
 }
 
 function ProposalNode({
@@ -1246,6 +1259,7 @@ function ProposalNode({
   folderHeaders,
   kind,
   fold,
+  folders,
 }: {
   node: TreeNode
 } & SharedNodeProps) {
@@ -1262,6 +1276,7 @@ function ProposalNode({
     stemOwners,
     folderHeaders,
     kind,
+    folders,
     fold,
   }
   const { proposal, children } = node
@@ -1364,7 +1379,80 @@ function ProposalNode({
   const fileListDrop = drag.slot?.kind === 'file-list' && drag.slot.proposalId === proposal.id
   const displayTitle = proposalDisplayTitle(proposal)
   const filesShown = fold.forceFiles || (fold.fileOverrides.get(proposal.id) ?? fold.filesDefault)
+  // Files a folder row stands for are drawn as that row, not as themselves —
+  // which is the whole point: an album of a thousand photos is one line here.
+  // Files and folder rows in one order, each folder anchored where its files
+  // begin (see `proposalEntries`). A declined folder keeps its row as a header
+  // and its files are drawn under it, so the control that folds them back is
+  // beside them rather than stranded below.
+  const entries = proposalEntries(
+    proposal.files,
+    proposal.directories,
+    (file) => file.asset_file_id,
+  )
+  const indexOf = (file: ProposalFile) =>
+    proposal.files.findIndex((candidate) => candidate.asset_file_id === file.asset_file_id)
+  // A drop position means "index in the proposal's files", which stops matching
+  // the drawn row's index as soon as a folder row hides some of them — dropping
+  // beside the second visible row would land at position 2 of a thousand. Built
+  // only when something is actually hidden, so the common case pays nothing.
+  const positionInProposal =
+    proposal.directories.length > 0
+      ? new Map(proposal.files.map((file, at) => [file.asset_file_id, at]))
+      : null
   const attention = needsALook(proposal)
+  // One file row. Extracted so it can render in two places: on its own, and
+  // under the folder row that stands for it once that folder is listed
+  // individually. Inlining it twice is how the two would drift apart.
+  const fileRow = (f: ProposalFile, index: number, insideFolder = false) => (
+    <li
+      key={f.asset_file_id}
+      className={`grp-file${drag.canEdit ? ' grp-file--draggable' : ''}${
+        drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
+          ? ' grp-file--dragging'
+          : ''
+      }${insideFolder ? ' grp-file--in-folder' : ''}`}
+      draggable={drag.canEdit && !drag.pending}
+      data-drop={
+        drag.slot?.kind === 'file' &&
+        drag.slot.proposalId === proposal.id &&
+        drag.slot.assetFileId === f.asset_file_id
+          ? drag.slot.before
+            ? 'before'
+            : 'after'
+          : undefined
+      }
+      onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
+      onDragEnd={drag.end}
+      onDragOver={(event) => {
+        if (drag.item?.kind !== 'file') return
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = 'move'
+        const rect = event.currentTarget.getBoundingClientRect()
+        drag.hover({
+          kind: 'file',
+          proposalId: proposal.id,
+          assetFileId: f.asset_file_id,
+          before: event.clientY < rect.top + rect.height / 2,
+        })
+      }}
+      onDrop={(event) => {
+        if (drag.item?.kind !== 'file') return
+        event.preventDefault()
+        event.stopPropagation()
+        const rect = event.currentTarget.getBoundingClientRect()
+        const before = event.clientY < rect.top + rect.height / 2
+        const at = positionInProposal?.get(f.asset_file_id) ?? index
+        drag.dropFile(proposal.id, at + (before ? 0 : 1))
+      }}
+    >
+      <span className="grp-file__name">{baseName(f.relative_path)}</span>
+      <span className="grp-file__role">
+        {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
+      </span>
+    </li>
+  )
   return (
     <li className="grp-node grp-node--bundle">
       <div
@@ -1460,54 +1548,28 @@ function ProposalNode({
           }}
         >
           {proposal.files.length === 0 && <li className="grp-file-empty">Drop files here</li>}
-          {proposal.files.map((f, index) => (
-            <li
-              key={f.asset_file_id}
-              className={`grp-file${drag.canEdit ? ' grp-file--draggable' : ''}${
-                drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
-                  ? ' grp-file--dragging'
-                  : ''
-              }`}
-              draggable={drag.canEdit && !drag.pending}
-              data-drop={
-                drag.slot?.kind === 'file' &&
-                drag.slot.proposalId === proposal.id &&
-                drag.slot.assetFileId === f.asset_file_id
-                  ? drag.slot.before
-                    ? 'before'
-                    : 'after'
-                  : undefined
-              }
-              onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
-              onDragEnd={drag.end}
-              onDragOver={(event) => {
-                if (drag.item?.kind !== 'file') return
-                event.preventDefault()
-                event.stopPropagation()
-                event.dataTransfer.dropEffect = 'move'
-                const rect = event.currentTarget.getBoundingClientRect()
-                drag.hover({
-                  kind: 'file',
-                  proposalId: proposal.id,
-                  assetFileId: f.asset_file_id,
-                  before: event.clientY < rect.top + rect.height / 2,
-                })
-              }}
-              onDrop={(event) => {
-                if (drag.item?.kind !== 'file') return
-                event.preventDefault()
-                event.stopPropagation()
-                const rect = event.currentTarget.getBoundingClientRect()
-                const before = event.clientY < rect.top + rect.height / 2
-                drag.dropFile(proposal.id, index + (before ? 0 : 1))
-              }}
-            >
-              <span className="grp-file__name">{baseName(f.relative_path)}</span>
-              <span className="grp-file__role">
-                {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
-              </span>
-            </li>
-          ))}
+          {entries.map((entry) =>
+            entry.kind === 'file' ? (
+              fileRow(entry.file, entry.index)
+            ) : (
+              <Fragment key={entry.directory.id}>
+                {/* Anchored where its files begin, so it reads as a header over
+                    them when they are listed and sits in their place when they
+                    are not. Rendering every folder after the loose files instead
+                    stranded a listed folder at the very bottom, far from the
+                    files it belongs to and looking empty (owner-reported,
+                    2026-08-29). */}
+                <ProposalFolderRow
+                  proposalId={proposal.id}
+                  directory={entry.directory}
+                  contents={entry.contents}
+                  folders={folders}
+                />
+                {entry.directory.expanded &&
+                  entry.contents.map((f) => fileRow(f, indexOf(f), true))}
+              </Fragment>
+            ),
+          )}
         </ul>
       )}
     </li>
@@ -1523,6 +1585,14 @@ function ResultPanel({ result }: { result: GroupingApplyResult }) {
         <strong>{result.files_added_to_bundles}</strong> file(s) to existing bundle(s), linked{' '}
         <strong>{result.subtitles_linked}</strong> subtitle(s).
       </p>
+      {/* Only when it happened. The other counts are always meaningful, but a
+          run that collapsed nothing should not advertise a feature by printing
+          a zero next to it. */}
+      {result.folders_collapsed > 0 && (
+        <p className="grp-result__line">
+          Kept <strong>{result.folders_collapsed}</strong> folder(s) as a single row.
+        </p>
+      )}
       {result.conflicts.length > 0 && (
         <div className="grp-conflicts">
           <p className="grp-conflicts__head">{result.conflicts.length} item(s) need attention:</p>
@@ -1536,6 +1606,93 @@ function ResultPanel({ result }: { result: GroupingApplyResult }) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A folder this suggestion would create, standing in for the files it covers.
+ *
+ * Two separate things, deliberately not one control:
+ *
+ * - The **disclosure** looks inside. It changes nothing about the plan, which is
+ *   the whole point — "I need a way to view what's in the folder just so I know
+ *   making them a folder is desirable" (owner, 2026-08-28). Deciding required
+ *   flattening before this existed, and flattening had no way back.
+ * - The **button** decides, and now goes both ways. Accepting the folder is what
+ *   the suggestion's own Accept already does, so the button only ever toggles
+ *   between "keep as one row" and "list them individually".
+ */
+function ProposalFolderRow({
+  proposalId,
+  directory,
+  contents,
+  folders,
+}: {
+  proposalId: string
+  directory: ProposalDirectory
+  /** The proposal's files that live inside this folder, for the peek. */
+  contents: ProposalFile[]
+  folders: FolderControls
+}) {
+  const [open, setOpen] = useState(false)
+  const count = `${directory.file_count} file${directory.file_count === 1 ? '' : 's'}`
+  const listed = directory.expanded
+  return (
+    <>
+      <li
+        className={`grp-file grp-file--folder${listed ? ' grp-file--folder-listed' : ''}`}
+        title={directory.directory_path}
+      >
+        <button
+          type="button"
+          className={`grp-disclosure${open ? ' grp-disclosure--open' : ''}`}
+          aria-expanded={open}
+          aria-label={`${open ? 'Hide' : 'Show'} what is in ${directory.name}`}
+          title={`${open ? 'Hide' : 'Show'} what is in ${directory.name}`}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <IconChevron />
+        </button>
+        <span className="grp-file__folder-icon" aria-hidden="true">
+          {'\u{1F5C1}'}
+        </span>
+        <span className="grp-file__name">{directory.name}</span>
+        <span className="grp-file__role">
+          {listed ? `Folder \u00B7 listing ${count}` : `Folder \u00B7 ${count}`}
+        </span>
+        {folders.canEdit && (
+          <button
+            type="button"
+            className="grp-file__expand"
+            disabled={folders.pending}
+            onClick={() => folders.setExpanded(proposalId, directory.id, !listed)}
+            // Named for its folder, not just "List files": a suggestion can hold
+            // more than one folder row, and the text alone would repeat.
+            aria-label={
+              listed
+                ? `Keep ${directory.name} as one folder row`
+                : `List the ${count} in ${directory.name} individually`
+            }
+          >
+            {listed ? 'Keep as folder' : 'List files'}
+          </button>
+        )}
+      </li>
+      {/* Read-only, and only while the folder is still one row: once it is
+          listed, these same files are in the list proper and showing them twice
+          would be a lie about how many there are. */}
+      {open && !listed && (
+        <li className="grp-file-peek">
+          <ul className="grp-file-peek__list" aria-label={`Inside ${directory.name}`}>
+            {contents.map((file) => (
+              <li key={file.asset_file_id} className="grp-file-peek__row">
+                {baseName(file.relative_path)}
+              </li>
+            ))}
+          </ul>
+        </li>
+      )}
+    </>
   )
 }
 
@@ -1559,6 +1716,7 @@ export function GroupingReview({
   const destination = useSetGroupingProposalDestination(planId)
   const proposalKindMutation = useSetGroupingProposalKind(planId)
   const stemLevelMutation = useSetGroupingStemLevel(planId)
+  const expandDirectory = useSetProposalDirectoryExpanded(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -2074,6 +2232,14 @@ export function GroupingReview({
         return next
       }),
   }
+  const folderControls: FolderControls = {
+    // Same gate as every other plan edit: an applied or superseded plan is a
+    // record of what happened, not something to keep changing.
+    canEdit: status === 'open' && editing === null,
+    pending: busy || expandDirectory.isPending,
+    setExpanded: (proposalId, directoryId, expanded) =>
+      expandDirectory.mutate({ proposalId, directoryId, expanded }),
+  }
   const sharedNodeProps: SharedNodeProps = {
     selection: nodeSelection,
     onToggle: toggleNode,
@@ -2084,6 +2250,7 @@ export function GroupingReview({
     stem: stemControls,
     stemOwners,
     folderHeaders,
+    folders: folderControls,
     kind: kindControls,
     fold: foldControls,
   }

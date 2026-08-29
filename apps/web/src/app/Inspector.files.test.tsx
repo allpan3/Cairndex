@@ -14,6 +14,13 @@ const hooks = vi.hoisted(() => ({
 vi.mock('../api/hooks', () => ({
   useBundle: vi.fn(),
   useBundleFiles: () => ({ data: hooks.files }),
+  // Plan 6 folder rows: absent in these fixtures, so the rail draws every file
+  // exactly as it did before folder members existed.
+  useBundleDirectoryMembers: () => ({ data: [] }),
+  useDirectoryMemberMutations: () => ({
+    collapse: { mutate: vi.fn() },
+    expand: { mutate: vi.fn() },
+  }),
   useFileMutations: () => ({ reorder: hooks.reorder, remove: hooks.remove }),
   useForgetMissingFiles: () => ({ mutate: vi.fn() }),
   useFileRepairCandidate: vi.fn(),

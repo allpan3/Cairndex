@@ -551,6 +551,7 @@ export function ViewerShell({
   const {
     onPlayFile: shellPlayFile,
     onLocateFile: shellLocateFile,
+    onOpenFolderInBrowser: shellOpenFolderInBrowser,
     onAddFiles: shellAddFiles,
     onDropFilesOnBundle: shellDropFilesOnBundle,
     onFilterByTags: shellFilterByTags,
@@ -572,10 +573,13 @@ export function ViewerShell({
         // opening another one.
         shellPlayFile?.(targetBundleId, fileId)
       },
-      // These five open something in the shell — a File Browser directory, the
-      // add-files/drop-destination dialog, a tag-filtered grid, or a collection
-      // — all of which are behind a full-screen viewer. Close it first.
+      // These six open something in the shell — a File Browser directory, a
+      // folder member's contents, the add-files/drop-destination dialog, a
+      // tag-filtered grid, or a collection — all of which are behind a
+      // full-screen viewer. Close it first.
       onLocateFile: shellLocateFile && ((path) => (onClose(), shellLocateFile(path))),
+      onOpenFolderInBrowser:
+        shellOpenFolderInBrowser && ((path) => (onClose(), shellOpenFolderInBrowser(path))),
       onAddFiles: shellAddFiles && ((id) => (onClose(), shellAddFiles(id))),
       onDropFilesOnBundle:
         shellDropFilesOnBundle &&
@@ -594,6 +598,7 @@ export function ViewerShell({
       onClose,
       onIndex,
       shellAddFiles,
+      shellOpenFolderInBrowser,
       shellDropFilesOnBundle,
       shellFilterByTags,
       shellLocateFile,
