@@ -69,7 +69,8 @@
 > (2026-07-28) — tag `v0.1.0` at `0821890`, one Apple Silicon DMG with its
 > checksum and the third-party notices, verified by the owner on a genuinely
 > downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
-> _not_ in this release; it lives on as branch `plan/folder-as-bundle-member`.
+> _not_ in this release; it lives on as branch `feat/folder-as-bundle-member`
+> (renamed from `plan/…` on 2026-08-29, once it stopped being a plan).
 > Ten owner-reported faults in the Suggest-grouping review dialog are **merged**
 > (PR #40), two of which could silently drop files from a plan.
 >
@@ -136,9 +137,256 @@
 > need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
-> cannot be automated here. One diagnosis is parked rather than queued:
-> **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
-> inspector takes ~500 ms, deferred post-v0.1.0.
+> cannot be automated here. One diagnosis is parked rather than
+> queued: **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted
+> library's inspector takes ~500 ms, deferred post-v0.1.0.
+> **[Plan 6](plans/06-folder-as-bundle-member.md)** (a folder as one item inside a
+> bundle, so an album of 1000 photos is one row) is no longer parked: its
+> deferral expired with v0.1.0 and its design questions are settled. It is
+> designed and unbuilt — see the branch section below.
+
+## Open on branch: `feat/folder-as-bundle-member` — a folder as one item inside a bundle
+
+Owner wants a folder of 1000 photos to sit in a bundle without filling the
+inspector and the grouping dialog with 1000 rows. Design 2026-07-28, questions
+settled 2026-08-28; [plan 6](plans/06-folder-as-bundle-member.md) holds both.
+
+> **Position (2026-08-29, `7f326f0d`): built, owner-tested, and not merged.**
+> All four slices are done and exercised against the owner's real library. The
+> feature: a bundle may record one of its directories as a single member;
+> the inspector draws it as one row with collapse/expand; the grouping dialog
+> proposes it, lets you look inside without deciding, and take a decline back;
+> the scanner keeps it correct as the folder grows or is renamed.
+>
+> Gates at that commit — backend `ruff`/`ruff format`/`mypy` (175 files) and
+> **1189 pytest**; frontend `lint`/`format:check`/`typecheck`/`build`, **1029
+> vitest** and **121 Playwright**. The desktop gate was not run and does not
+> apply: no Rust changed on this branch.
+>
+> **No PR is open and nothing is pushed** — both owner-triggered. The branch was
+> rebased onto `main`, so pushing needs `--force-with-lease`. The open items
+> below are the only work left, none of it blocking.
+
+The record of how it got here follows, kept because several entries are
+decisions with reasons rather than progress notes.
+
+Rebased onto `main` on 2026-08-28, which exposed a **duplicate ADR number**: the
+directory-groups analysis written here and the journal-mode lifecycle decision
+that landed on `main` were both 0021. The accepted one keeps the number; the
+superseded one is now [ADR-0024](adr/0024-directory-groups-in-bundles.md) and is
+indexed in `docs/adr/README.md`, which the branch had never done.
+
+**The six open questions are answered** (plan 6 §4) and none of them changed the
+design. Two landed better than the plan had guessed, because the codebase
+already had the machinery: the cover fallback is a query against the existing
+`asset_files.directory_path` index rather than the disk read the plan proposed
+(which AGENTS.md forbids in a request handler), and folder deletion is one
+journaled operation rather than N, because `file_ops/trash.py` already trashes a
+directory in a single rename. The structural finding is that **reversibility is
+free** — the feature stores which directories are entities and never contents,
+so collapse and expand are one row inserted and one row deleted, with no file
+row, id, rating or resume position touched either way. That also yields a second
+entry point — "Collapse into a folder" on a file selection — which answers
+ADR-0024's "where do I create one?" objection without the grouping dialog.
+
+Still genuinely open, neither blocking: whether entity directories may nest
+(leaning no), and the threshold value, which wants a real library to pick it.
+
+**S1 is built** (2026-08-28): the `bundle_directory_members` table, the
+collapse/expand service, three library-scoped endpoints, and 12 tests. Backend
+only — no UI reads any of it yet, so nothing user-visible changed. The table
+stores no contents, so the reversibility guarantee is structural rather than
+defended by code: collapsing is one row in, expanding is one row out.
+
+Two things the build settled that the design had not: a folder row covers its
+**subtree** (matching only the exact directory would leave a nested album's
+files loose, and would contradict the File Browser handoff), and **nesting is
+refused** for now, in the service rather than the constraint — refusing is the
+direction that can be relaxed later without a migration.
+
+Gates run on 2026-08-28: `ruff check`, `ruff format --check`, `mypy` (175 files)
+and `pytest` (**1165 passed**, 1 skipped) from `apps/server`; `npm run
+typecheck` from `apps/web` after regenerating `openapi.json` and `schema.d.ts`,
+whose diff is additive only. Not run: the rest of the web gate and Playwright —
+no frontend source changed in S1.
+
+**S2 is built too** (2026-08-28), and the feature is usable end to end: the rail
+draws one folder row in place of the files it covers, right-click collapses a
+file's directory or expands the folder back, double-click hands off to the File
+Browser *inside* that folder, and playing the bundle skips a folder's contents.
+
+Three things the build settled. Opening a folder needed its **own shell action**
+— `onLocateFile` lands in a file's parent and highlights it, which for a folder
+shows everything except what is inside; `onOpenFolderInBrowser` navigates into
+it. The **playlist rule has two cases**: playing the bundle skips a folder's
+contents, but opening one of them pages through that folder, because filtering
+unconditionally would strand the viewer on a file its own playlist denied. And
+the **album grid deliberately still shows every photo** — the owner's complaint
+named the rail and the grouping dialog, and a grid of a thousand photos is what
+an album view should look like.
+
+Folder rows are **not draggable yet**: plan 6 §4.5's shared key space is designed
+but the reorder endpoint still takes file ids only, so the row does not claim a
+grab cursor it cannot honour.
+
+Verified by running it, not only by tests: an isolated stack against a throwaway
+library (`CAIRNDEX_DATA_DIR` pointed at a scratch dir, so the real registry and
+its leases were never touched) with a bundle of one loose image and a six-file
+folder. Collapse → two rows; expand → all seven back in their original order;
+double-click → the File Browser inside the folder. That run is what caught the
+`onLocateFile` mistake, which every test had happily agreed with.
+
+Gates on 2026-08-28, from `apps/web`: `lint`, `format:check`, `typecheck`,
+`vitest` (**1022 passed**, 109 files) and `build`. Backend unchanged in S2 and
+still green from S1. Not run: Playwright, and the desktop gate (no Rust changed).
+
+**S3 is built** (2026-08-28), and it corrected plan 6's own §2. The design
+assumed the dialog's problem was a bundle proposal listing a thousand files; it
+is not. The suggester turns a thousand-photo folder into a *collection wrapping a
+thousand single-photo bundles*, and those thousand rows are the complaint —
+annotating a bundle proposal could never fire, because a bundle proposal's files
+always come from exactly one directory. **Owner-confirmed answer:** above the
+threshold the folder becomes one bundle whose single member is the folder.
+
+The threshold counts **subjects, not files**. A flat folder of 300 releases is
+900 files but 300 subjects of three — a video, a cover and a subtitle sharing a
+stem — and must stay 300 suggestions; an album is 300 subjects of one. A first
+attempt thresholded on file count and swallowed the release shelf, which is the
+movie-folder lesson at scale, and an existing performance test caught it.
+
+Verified by running it against a throwaway library (`CAIRNDEX_DATA_DIR` in a
+scratch dir, so the real registry and its leases were untouched): a folder of 30
+photos beside a clip and a poster. Scan produced **3 proposals, not 33**; the
+dialog drew one `🗁 album · Folder · 30 files` row with **List files** beside it;
+declining listed all 30; accepting created a real folder member, and the bundle's
+inspector then read `Files in bundle (30 · 1 folder)` with a single row.
+
+Gates on 2026-08-28: `ruff`, `ruff format`, `mypy` (175 files), `pytest` (**1174
+passed**, 1 skipped); `lint`, `format:check`, `typecheck`, `vitest` (**1024
+passed**) and `build` from `apps/web`. Not run: Playwright, desktop (no Rust
+changed).
+
+**S4 is built** (2026-08-28), which finishes plan 6's slice list. Two of §4's
+answers turned out to be already true, and are now pinned by tests rather than
+assumed: the **cover fallback** needed no code, because `effective_cover_file`
+already walks the bundle's own files and a collapsed folder's files are still
+its files — the disk read §4.3 proposed would have been a filesystem walk in a
+request handler, which AGENTS.md forbids. **Trash and Put back** likewise work
+over a folder member unchanged, because trashing keeps the bundle.
+
+What S4 built is the scanner half. A file dropped into a collapsed folder now
+**joins that bundle** instead of arriving as its own suggestion, so an album
+stays one row as it grows. And a **renamed folder keeps its row**: move repair
+already followed the files, but the row naming the directory was left pointing
+at somewhere gone, which silently un-collapsed the album on the next scan. A
+nested file votes for the folder's new location, not its own parent's. A folder
+whose files genuinely scatter drops its row and lists individually — visible and
+harmless, which beats a row pointing at nothing.
+
+Gates on 2026-08-28: `ruff`, `ruff format`, `mypy` (175 files), `pytest`
+(**1182 passed**, 1 skipped). No API surface changed, so no regeneration was
+needed. Frontend untouched in S4.
+
+**Owner testing on a real library (2026-08-28) found two faults, both fixed.**
+The synthetic fixtures for S1–S3 all put the album *alone* in its folder, so the
+shape the plan was actually written about — a work whose extras live in a
+subfolder — was the one case never tested. A folder holding one video and an
+album subfolder was suggested as a *collection*, so the video became one bundle
+and the album another and the thing being looked at had no single row; it is now
+**one bundle**, its own media plus a folder row per album child. Merging is
+narrow on purpose: only when the folder's own media is a single subject and every
+child is an album. And **Convert to bundle** was destroying the folder row it had
+just been handed, which is the likeliest action to take on a folder that has one.
+
+Owner also reported the review dialog's rows **misaligning at the same level**
+(2026-08-28). Measured rather than guessed: a `.grp-row--collection` carries
+`padding: 2px 4px` that `.grp-row--bundle` does not, so sibling rows sat 4px
+apart and read as parent and child. Cancelled with a negative margin, keeping the
+padding that gives the folder-header background its room. Verified by measuring
+every row's disclosure, checkbox and content against its depth — all three
+kinds now agree. A second, pre-existing one surfaced while checking: the amber
+attention bar hangs 6px into the left margin and only nested rows had room, so
+it was never drawn on a top-level row; the tree now reserves the space.
+
+**Neither is covered by a test.** jsdom applies no stylesheet, so a layout
+regression of this kind cannot fail in `vitest` — it would need a Playwright
+run with real CSS. Recorded rather than papered over.
+
+Owner also reported (2026-08-28) that **"List files" was the only way to see
+inside a proposed folder, and it had no way back** — so deciding whether a folder
+*should* be a folder meant destroying the suggestion to find out. Split into two
+controls: a disclosure that lists the folder's files read-only and changes
+nothing about the plan, and a button that now toggles both ways. Declining marks
+the row (`grouping_proposal_directories.expanded`) instead of deleting it, so the
+row stays visible saying which state it is in and apply honours whichever it was
+left on. Adding a column there is safe where it would not be in `library.db`: the
+plans database is deleted wholesale at every server start (ADR-0022 §5), so it is
+genuinely always at the current shape.
+
+A follow-up on the same report (2026-08-29): listing a folder's files pushed the
+folder row to the *bottom* of the list, where it read as an empty folder with no
+relation to the 73 rows above it. The rule is now one line — **a folder is
+anchored where its files begin** — which covers both states: collapsed, the row
+sits exactly where the files it replaces would have been; listed, it is a header
+immediately above them, with the control that folds them back beside them. The
+listed files are indented under it so the run reads as that folder's contents.
+Ordering lives in `proposalEntries` with its own tests, rather than in the JSX.
+
+**Open on this branch, none blocking:**
+
+- **The threshold value** (12 subjects) — plan 6 §5.2. Owner ran it against the
+  real library on 2026-08-29 and reported the result good, so the number is
+  validated against one library's shapes rather than merely guessed. Left open
+  because it is one sample, and because it stays cheap to change: it only ever
+  decides what to *propose*.
+- ~~No Playwright coverage~~ **Closed 2026-08-29.** `e2e/grouping-folders.spec.ts`
+  covers the class of fault that reached the owner: sibling rows share one
+  indent, the attention bar is not clipped off a top-level row, a folder row sits
+  above the files it covers with its files indented under it, and looking inside
+  decides nothing. Relationships rather than pixel values, and each
+  mutation-checked against the bug it exists for. Untagged, so it runs in
+  `just e2e` and in CI.
+- **Folder rows are not draggable — withdrawn, not pending.** Built 2026-08-29
+  and reverted the same day at the owner's call ("I don't think this is
+  significant"). The rail's drag gesture has no visible affordance — grab cursor
+  and tooltip only — so it added an invisible capability to one more row, and
+  ordering inside a bundle barely matters for the shape the feature is for. If
+  reordering ever does matter, fix the missing affordance for *every* row first.
+  Recorded here because plan 6 §4.5 reads like an obvious requirement and will
+  otherwise invite rebuilding.
+- **Folder-level trash** (§4.6) still journals one entry per file. Moving a whole
+  folder in one rename is an optimisation of ADR-0013's journalling, not a
+  correctness gap, and deserves its own slice.
+- **Nested entity directories** are refused (§5.1), in the service rather than
+  the constraint, so the rule can be relaxed later without a migration.
+
+No PR is open (the recreation dropped #39); opening one is the owner's call.
+
+Three designs were considered in one session, and the first two were killed by
+the owner in a sentence each. *Folder as a bundle member* collides with
+`product-brief.md:67/124` and with the owner's own requirement that every file in
+the folder be in the bundle. *Automatic grouping* cannot work at all: a movie
+folder (film + subtitles + poster + cover) and a mixed-media album are
+indistinguishable from file properties, because the difference is what the folder
+*means*. That left explicit user-chosen groups — [ADR-0024](adr/0024-directory-groups-in-bundles.md),
+now **superseded** — which fell to the sharpest objection of the three: there was
+no answer to "where in the UI do I create a group?" that did not invent a new
+noun.
+
+The owner then proposed nesting bundles, and reconsidered that too as "kind of
+messy". The **accepted design is smaller**: a bundle member may be a *directory*,
+opened in the File Browser rather than entered, its files kept out of the
+playlist, never a cover, carrying no rating. Its contents stay indexed — an
+amendment made in review, because unindexed they would lose search, tags and
+playback resume, and the owner's own example is an album of short videos. The
+decision of which folders are entities is made in the grouping-suggestion
+dialog, which is what finally answered "where do I create one?".
+
+Sub-bundles were rejected on cost: **12 modules touch `AssetBundle`**, and a
+nested bundle must be invisible in every one. A directory member is not a bundle,
+so that entire class of bug does not arise. Also recorded: an early objection of
+mine that a folder could not be a bundle member misread
+`product-brief.md:67/124`, and cost two rounds of design.
 
 ## Merged: four owner enhancements in one pass (2026-08-28, PR #12)
 
