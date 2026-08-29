@@ -1397,7 +1397,7 @@ function ProposalNode({
   // beside the second visible row would land at position 2 of a thousand. Built
   // only when something is actually hidden, so the common case pays nothing.
   const positionInProposal =
-    proposal.directories.length > 0
+    (proposal.directories?.length ?? 0) > 0
       ? new Map(proposal.files.map((file, at) => [file.asset_file_id, at]))
       : null
   const attention = needsALook(proposal)

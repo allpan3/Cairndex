@@ -136,9 +136,14 @@ export function proposalEntries<
   F extends { relative_path: string; sequence: number },
   D extends { id: string; directory_path: string },
 >(files: F[], directories: D[], keyOf: (file: F) => string): ProposalEntry<F, D>[] {
+  // Tolerates an absent list rather than throwing. A proposal always carries
+  // `directories` — the field is required in the response — but the cost of
+  // being wrong about that is the whole review dialog rendering nothing, which
+  // is a far worse failure than a suggestion drawn without its folder rows.
+  const folders = directories ?? []
   const contents = new Map<string, F[]>()
   const owner = new Map<string, D>()
-  for (const directory of directories) {
+  for (const directory of folders) {
     const inside = files.filter((file) => isInside(file, directory))
     contents.set(directory.id, inside)
     for (const file of inside) owner.set(keyOf(file), directory)
@@ -156,7 +161,7 @@ export function proposalEntries<
       file,
     })
   }
-  for (const directory of directories) {
+  for (const directory of folders) {
     const inside = contents.get(directory.id) ?? []
     if (inside.length === 0) continue
     entries.push({
