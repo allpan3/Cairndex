@@ -27,6 +27,8 @@ from cairndex.api.schemas.bundles import (
     BundleReorder,
     BundleTags,
     BundleUpdate,
+    DirectoryMemberCreate,
+    DirectoryMemberRead,
     FileLink,
     FileRead,
     FileReorder,
@@ -50,6 +52,7 @@ from cairndex.scanning import repair as repair_service
 from cairndex.services import browse as browse_service
 from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as service
+from cairndex.services import directory_members as directory_member_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services.browse import BundleSort, SystemView
 from cairndex.services.pagination import MAX_LIMIT
@@ -427,6 +430,46 @@ def forget_missing_files(
 
 
 # --- Tag / collection assignment ---------------------------------------------
+# --- Directory members (plan 6) ----------------------------------------------
+# Metadata-only, like every other route in this file: collapsing a folder into
+# one row and expanding it again write a single row and touch no file and no
+# filesystem, so neither needs the write-mode gate.
+def _member_reads(db: LibrarySession, bundle_id: str) -> list[DirectoryMemberRead]:
+    # ``file_counts`` promises an entry for every folder row, but a KeyError here
+    # would be a 500 on the inspector's own read, so the default stands. The
+    # promise is asserted against the service instead.
+    counts = directory_member_service.file_counts(db, bundle_id)
+    reads = []
+    for member in directory_member_service.list_members(db, bundle_id):
+        read = DirectoryMemberRead.model_validate(member)
+        read.file_count = counts.get(member.id, 0)
+        reads.append(read)
+    return reads
+
+
+@router.get("/{bundle_id}/directory-members", response_model=list[DirectoryMemberRead])
+def list_directory_members(bundle_id: str, db: LibrarySession) -> list[DirectoryMemberRead]:
+    return _member_reads(db, bundle_id)
+
+
+@router.post(
+    "/{bundle_id}/directory-members",
+    response_model=DirectoryMemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def collapse_directory(
+    bundle_id: str, payload: DirectoryMemberCreate, db: LibrarySession
+) -> DirectoryMemberRead:
+    member = directory_member_service.collapse_directory(db, bundle_id, payload.directory_path)
+    by_id = {read.id: read for read in _member_reads(db, bundle_id)}
+    return by_id[member.id]
+
+
+@router.delete("/{bundle_id}/directory-members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+def expand_directory(bundle_id: str, member_id: str, db: LibrarySession) -> None:
+    directory_member_service.expand_directory(db, bundle_id, member_id)
+
+
 @router.get("/{bundle_id}/tags", response_model=BundleTags)
 def get_tags(bundle_id: str, db: LibrarySession) -> BundleTags:
     bundle = service.get_bundle(db, bundle_id)

@@ -289,6 +289,48 @@ class AssetFile(Base):
     )
 
 
+class BundleDirectoryMember(Base):
+    """One directory that stands in for its files as a single row in a bundle.
+
+    An album of a thousand photos should occupy one row in the inspector and one
+    row in the grouping dialog, not a thousand (plan 6). This table records
+    *which directories are entities* and nothing else: membership stays on
+    ``asset_files.bundle_id``, and the files under an entity directory are found
+    at read time through the index on ``asset_files.directory_path``.
+
+    Storing no contents is what makes the feature reversible for free —
+    collapsing is one row inserted, expanding is one row deleted, and neither
+    touches a file row, an ``AssetFile.id``, a rating, or a resume position.
+    """
+
+    __tablename__ = "bundle_directory_members"
+
+    id: Mapped[UlidPk]
+    # Indexed for the same reason as ``asset_files.bundle_id``: every inspector
+    # read correlates these rows by bundle, and SQLite does not index FKs.
+    bundle_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey("asset_bundles.id", ondelete="CASCADE"), index=True
+    )
+    # Library-relative, no trailing slash — the exact form
+    # ``AssetFile.directory_path`` holds, so the two compare without massaging.
+    directory_path: Mapped[str] = mapped_column(Text)
+    # Position among the bundle's file rows: this shares one key space with
+    # ``AssetFile.sequence`` so a folder can be dragged among files (plan 6 §4.5).
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[CreatedAt]
+
+    bundle: Mapped[AssetBundle] = relationship()
+
+    __table_args__ = (
+        # A directory is an entity for at most one bundle, mirroring the
+        # uniqueness ``asset_files.relative_path`` gives a file. Without it two
+        # bundles could each claim the same folder and the File Browser handoff
+        # would have no single answer to "whose folder is this?".
+        UniqueConstraint("directory_path", name="directory_path"),
+    )
+
+
 # Resume state for one playable video file
 class PlaybackProgress(Base):
     __tablename__ = "playback_progress"
@@ -619,6 +661,12 @@ class GroupingProposal(Base):
         passive_deletes=True,
         order_by="GroupingProposalFile.sequence",
     )
+    directories: Mapped[list[GroupingProposalDirectory]] = relationship(
+        back_populates="proposal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="GroupingProposalDirectory.directory_path",
+    )
 
 
 class GroupingProposalFile(Base):
@@ -648,6 +696,51 @@ class GroupingProposalFile(Base):
     sequence: Mapped[int] = mapped_column(Integer, default=0)
 
     proposal: Mapped[GroupingProposal] = relationship(back_populates="files")
+
+
+class GroupingProposalDirectory(Base):
+    """A directory this proposal would collapse into one bundle row (plan 6).
+
+    A **new table rather than a column** on ``grouping_proposals``: the plans
+    database is brought up to shape with ``create_all(checkfirst=True)``, which
+    creates a missing table but never adds a column to one that already exists.
+    A column would therefore be silently absent from every plans database that
+    predates it.
+
+    Stores no file ids. Which files a directory covers is derived from
+    ``asset_files.directory_path`` at read time, exactly as
+    ``bundle_directory_members`` does after apply — so a plan cannot disagree
+    with the bundle it becomes.
+
+    Declining a proposed folder in the review dialog deletes the row; the files
+    were never anywhere else, so they simply enumerate again.
+    """
+
+    __tablename__ = "grouping_proposal_directories"
+    __table_args__ = (
+        # Same reason as ``grouping_proposal_files``: SQLite needs an index on
+        # the child column so a plan's cascade delete is not a full scan per row.
+        Index("ix_grouping_proposal_directories_proposal_id", "proposal_id"),
+        {"schema": PLANS_SCHEMA},
+    )
+
+    id: Mapped[UlidPk]
+    proposal_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey(f"{PLANS_SCHEMA}.grouping_proposals.id", ondelete="CASCADE")
+    )
+    directory_path: Mapped[str] = mapped_column(Text)
+    # Declined: list this folder's files individually instead of as one row.
+    #
+    # A flag rather than deleting the row, so the decision is reversible — the
+    # owner could otherwise only find out what was in a folder by flattening it,
+    # with no way back (owner-reported, 2026-08-28). Apply skips an expanded row.
+    #
+    # Safe to add as a column, unlike anywhere in ``library.db``: the plans
+    # database is deleted wholesale at every server start (ADR-0022 §5), so it is
+    # genuinely always created at the current shape.
+    expanded: Mapped[bool] = mapped_column(default=False, server_default="0")
+
+    proposal: Mapped[GroupingProposal] = relationship(back_populates="directories")
 
 
 class FileOperation(Base):

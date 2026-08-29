@@ -210,6 +210,49 @@ small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
 A rescan also deletes scan-created provisional rows that point at now-ignored
 hidden paths, so portable cache files do not remain as user-visible assets.
 
+### `bundle_directory_members`
+
+Which of a bundle's directories stand in for their files as a single row — an
+album of a thousand photos occupying one row in the inspector rather than a
+thousand (plan 6). Columns:
+
+`id` (ULID PK), `bundle_id` (FK, CASCADE, indexed), `directory_path` (UNIQUE),
+`sequence`, `created_at`.
+
+**No column stores contents**, and that is the point rather than an economy.
+Membership stays on `asset_files.bundle_id`; which files a folder row stands for
+is derived at read time from the index on `asset_files.directory_path`. So
+collapsing a folder is one row inserted and expanding it is one row deleted, and
+neither can lose a file row, an `AssetFile.id`, a rating, a tag, or a saved
+playback position, because neither reads or writes one. Reversibility needs no
+undo journal.
+
+The match is the directory **and its subtree**: a folder member stands for the
+whole folder, because the owner's case is "every item in the folder is in the
+bundle" and opening the row hands off to the File Browser, which shows the
+subtree too. It is expressed as the range `[p + "/", p + "0")` rather than
+`LIKE 'p/%'` — `"0"` is one past `"/"` in ASCII — so SQLite uses the
+`directory_path` index unconditionally, and a directory whose real name contains
+`%` or `_` cannot widen the match.
+
+Two scoping rules:
+
+- **Collapse is bundle-scoped.** A folder row in bundle B stands for B's files
+  under that path and nothing else; a sibling filed into bundle C keeps its row
+  in C. The row's file count is therefore "files from this bundle in this
+  folder", which can be smaller than the count on disk. `relative_path` is
+  already unique library-wide, so a file cannot be in two bundles and no further
+  prohibition is needed.
+- **`UNIQUE(directory_path)`** makes a directory an entity for at most one
+  bundle, mirroring the uniqueness `asset_files.relative_path` gives a file.
+  The constraint only catches the *same* path, so the service additionally
+  refuses a parent or a child of an existing entity: nesting is an open question
+  and refusing is the direction that can be relaxed later without a migration.
+
+`sequence` shares one key space with `AssetFile.sequence` so a folder can be
+dragged among files. A new row takes the minimum sequence of the files it
+collapses, so collapsing does not also reorder the bundle.
+
 ### `tags`
 
 `id`, `parent_id` (self-FK, `SET NULL`), `name`, `color`, `sort_order`,
