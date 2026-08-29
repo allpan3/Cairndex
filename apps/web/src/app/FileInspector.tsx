@@ -14,6 +14,7 @@ import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
 import type { FileFacts } from './fileFacts'
 import { focusRenameInput } from './renameSelection'
+import { OverlayScrollbar } from './OverlayScrollbar'
 
 /**
  * Right-pane details for one file, wherever it was selected. Deliberately *not*
@@ -140,6 +141,7 @@ export function FileInspector({
 
   return (
     <aside className="inspector" data-tauri-drag-region>
+      <OverlayScrollbar />
       {editing ? (
         <input
           ref={titleRef}

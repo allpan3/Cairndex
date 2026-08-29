@@ -35,6 +35,7 @@ import { dropZone, getActiveDrag, isCopyDrag, sameTreeDrop, seamFor, setActiveDr
 import { PickGuides } from './PickGuides'
 import { gapBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
+import { OverlayScrollbar } from './OverlayScrollbar'
 import { usePersistentState } from '../state/usePersistentState'
 
 import type { SystemView } from '../api/client'
@@ -575,6 +576,7 @@ export function Sidebar({
         onBackgroundClick?.()
       }}
     >
+      <OverlayScrollbar />
       {/* Clearance for the window's traffic lights, which float over this corner
           in the desktop shell (see `markOverlayTitleBar`). Zero-height in a
           browser. The drag regions move the window, the way the system title bar
