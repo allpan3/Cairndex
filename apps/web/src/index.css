@@ -1605,17 +1605,32 @@ button {
   cursor: default;
 }
 /* Looking inside a folder member, which changes nothing about the bundle. */
-.file-row__disclosure {
-  flex: none;
-  width: 14px;
+/* A bare chevron, not one of the boxed row actions it sits beside. Written at
+   this specificity on purpose: `.file-row__actions button` is a class *and* an
+   element, so a single class loses to it and the arrow came out drawn as a
+   bordered 22px box (owner, 2026-08-29). Matches `.grp-disclosure`, which is
+   the same control in the grouping dialog. */
+.file-row__actions .file-row__disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
   padding: 0;
   border: 0;
-  background: none;
-  color: var(--text-dim);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   transition: transform 120ms ease;
 }
-.file-row__disclosure--open {
+.file-row__actions .file-row__disclosure:hover:not(:disabled),
+.file-row__actions .file-row__disclosure:focus-visible {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.file-row__actions .file-row__disclosure--open {
   transform: rotate(90deg);
 }
 /* A file drawn under the folder row that stands for it. Indented so the run
