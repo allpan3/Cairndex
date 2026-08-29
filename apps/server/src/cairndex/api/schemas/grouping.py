@@ -1,6 +1,7 @@
 """API schemas for grouping plans and apply results (ADR-0009 phase 3)."""
 
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,6 +28,37 @@ class ProposalFileRead(BaseModel):
     sequence: int
 
 
+class ProposalDirectoryRead(BaseModel):
+    """A directory this proposal would show as one folder row (plan 6).
+
+    ``file_count`` is how many of *this proposal's* files sit inside it — the
+    number of rows the folder replaces, which is what the dialog needs to say
+    what accepting it does. It is not the count on disk, which can be larger.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    directory_path: str
+    name: str = ""
+    file_count: int = 0
+    #: Declined — its files are listed individually and apply will not collapse
+    #: it. Reversible, so looking inside a folder is not a one-way door.
+    expanded: bool = False
+
+    @model_validator(mode="after")
+    def derive_name(self) -> "ProposalDirectoryRead":
+        self.name = PurePosixPath(self.directory_path).name
+        return self
+
+
+class ProposalDirectoryUpdate(BaseModel):
+    """Whether this folder's files are listed individually (declined) or shown
+    as the single row the suggestion proposes."""
+
+    expanded: bool
+
+
 class ProposalRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,6 +82,26 @@ class ProposalRead(BaseModel):
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
+    #: Subdirectories shown as one folder row each. The files they cover stay in
+    #: ``files`` — collapsing changes how a proposal is drawn, not what it holds
+    #: — so a client renders a folder row *instead of* those file rows.
+    directories: list[ProposalDirectoryRead] = []
+
+    @model_validator(mode="after")
+    def count_files_per_directory(self) -> Self:
+        """Fill each folder row's ``file_count`` from this proposal's own files.
+
+        Done here, once, rather than at each of the several routes that build a
+        ``ProposalRead``: the count is a fact about the pair, and a route that
+        forgot it would render a folder row claiming zero files. The trailing
+        slash is what stops `album2` counting as inside `album`.
+        """
+        for directory in self.directories:
+            prefix = f"{directory.directory_path}/"
+            directory.file_count = sum(
+                1 for file in self.files if file.relative_path.startswith(prefix)
+            )
+        return self
 
 
 # Validate the editable fields accepted for an open grouping proposal
@@ -165,6 +217,8 @@ class ApplyResultRead(BaseModel):
     bundles_added_to_collections: int
     files_added_to_bundles: int
     subtitles_linked: int
+    # Directories realized as single folder rows on the bundles that applied
+    folders_collapsed: int = 0
     conflicts: list[ApplyConflictRead]
     # How many suggestions the plan still holds. Zero means it is finished; anything
     # else means the client can carry on reviewing the same plan.

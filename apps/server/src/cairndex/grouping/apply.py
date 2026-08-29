@@ -14,13 +14,14 @@ the whole plan or silently overriding a confirmed user decision.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ConflictError
+from cairndex.core.errors import ConflictError, DomainError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
     CONTEXT_DIRECTORY_PREFIX,
@@ -38,7 +39,10 @@ from cairndex.persistence.models import (
     GroupingPlan,
     GroupingProposal,
 )
+from cairndex.services import directory_members
 from cairndex.services.subtitles import auto_link_external_subtitles
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,8 @@ class ApplyResult:
     files_added_to_bundles: int = 0
     subtitles_linked: int = 0
     conflicts: list[ProposalConflict] = field(default_factory=list)
+    # Directories realized as single folder rows on the bundles that applied.
+    folders_collapsed: int = 0
     # Suggestions still awaiting review once the accepted ones have left. Zero means
     # the plan is finished and closed; anything else means it is still open and the
     # client can carry on in it without regenerating (see ``apply_plan``).
@@ -128,6 +134,9 @@ def apply_plan(
             outcome = _apply_bundle(session, plan, proposal, result, source_bundles)
         if outcome.target_bundle_id is not None:
             target_bundle_by_proposal[proposal.id] = outcome.target_bundle_id
+            result.folders_collapsed += _apply_folder_members(
+                session, proposal, outcome.target_bundle_id
+            )
     _cleanup_sources(session, source_bundles, result)
 
     # 2) Resolve only the structural ancestors of bundles that actually applied
@@ -323,6 +332,35 @@ def _invalid_collection_targets(
         invalid.add(proposal.id)
         result.conflicts.append(_conflict(proposal, reason))
     return invalid
+
+
+def _apply_folder_members(session: Session, proposal: GroupingProposal, bundle_id: str) -> int:
+    """Realize the folder rows this proposal proposed, on the bundle it became.
+
+    Deliberately best-effort per directory. A folder member is a *drawing*
+    decision — the files are members of the bundle either way — so a directory
+    that can no longer be collapsed (claimed by another bundle since the plan was
+    written, or nesting with one that is) must not fail the grouping the owner
+    accepted. It simply enumerates, which is the state the bundle would have had
+    without the proposal.
+    """
+    collapsed = 0
+    for row in proposal.directories:
+        # Declined in the dialog: its files were listed individually there, and
+        # they land in the bundle the same way — just drawn one per row.
+        if row.expanded:
+            continue
+        try:
+            directory_members.collapse_directory(session, bundle_id, row.directory_path)
+        except DomainError:
+            logger.info(
+                "proposal %s: could not collapse a directory into bundle %s",
+                proposal.id,
+                bundle_id,
+            )
+            continue
+        collapsed += 1
+    return collapsed
 
 
 def _apply_bundle(
