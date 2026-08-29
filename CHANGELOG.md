@@ -10,9 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
-- **Open a folder in the inspector to see its files nested under it.** The
-  folder row gets a disclosure: the files it stands for appear indented beneath
-  it and the row stays put. Looking inside changes nothing about the bundle.
+- **Open a folder in the inspector to see its files nested under it.** A
+  disclosure on the right of the folder row — where a file keeps its cover and
+  play actions — reveals the files it stands for, indented beneath it, with the
+  row itself staying put. Looking inside changes nothing about the bundle.
+
+  The folder row carries no icon and no leading control, so it starts in the
+  same column as every other row in the rail.
 
   Previously the only way to see inside was *Expand folder into the bundle*,
   which deletes the folder row and flattens its files into the list — so the
