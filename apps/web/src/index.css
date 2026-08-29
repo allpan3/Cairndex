@@ -12,6 +12,12 @@
   --text: #c8ccd4;
   --text-strong: #f1f3f6;
   --text-muted: #7f8593;
+  /* Every scrollbar in the app, native or drawn: translucent so it reads as
+     lying over the panel rather than framing it. One pair of tokens so the
+     several widths — a 5px note box, a 6px picker, the 8px default, the drawn
+     overlay — cannot drift apart in colour. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.42);
   --accent: #5b8cff;
   --accent-soft: rgba(91, 140, 255, 0.16);
   /* Selected *and* hovered: has to read as "still selected, and under the
@@ -222,6 +228,31 @@ button {
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
+/* Half-transparent scrollbars everywhere (owner, 2026-08-29). `scrollbar-color`
+   is the standard property and covers Firefox; the WebKit pseudo-elements give
+   a narrower bar than its `thin` keyword, so both are set. The two side panels
+   opt out below — they hide the engine's bar and draw their own, which costs no
+   width at all. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
 .sidebar {
   grid-column: 1;
   background: var(--bg-2);
@@ -1915,11 +1946,11 @@ button {
   background: transparent;
 }
 .note-row .edit--note::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 .note-row .edit--note::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--scrollbar-thumb-hover);
 }
 .note-row:hover .note-remove,
 .note-row:hover .note-drag,
@@ -2080,7 +2111,7 @@ button {
   right: var(--oscroll-inset, 2px);
   width: 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--scrollbar-thumb);
   pointer-events: auto;
   transition: background 120ms ease;
 }
@@ -2089,7 +2120,7 @@ button {
 .sidebar:hover .oscroll__thumb,
 .inspector:hover .oscroll__thumb,
 .oscroll__thumb--dragging {
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Thin, unobtrusive scrollbar tucked inside the panel padding so it never
@@ -2102,11 +2133,11 @@ button {
   background: transparent;
 }
 .picker__panel::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 .picker__panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--scrollbar-thumb-hover);
 }
 .picker__search {
   flex: 1;
@@ -5261,6 +5292,11 @@ code {
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 600;
+}
+/* The standard property alone used to be enough here; the app-wide
+   `::-webkit-scrollbar` baseline would otherwise give this strip a bar back. */
+.file-browser__crumbs::-webkit-scrollbar {
+  display: none;
 }
 .file-browser__crumbs::-webkit-scrollbar {
   display: none;
