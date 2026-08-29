@@ -1157,32 +1157,36 @@ export function DirectoryMemberRow({
         onOpen?.(member.directory_path)
       }}
     >
-      <button
-        type="button"
-        className={`file-row__disclosure${open ? ' file-row__disclosure--open' : ''}`}
-        aria-expanded={open}
-        aria-label={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
-        title={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
-        onClick={(event) => {
-          // Not the row's own double-click-to-open-the-File-Browser.
-          event.stopPropagation()
-          onToggleOpen()
-        }}
-        onDoubleClick={(event) => event.stopPropagation()}
-      >
-        <IconChevron />
-      </button>
       <div className="file-row__main">
         <div className="file-row__name">
-          <span className="file-row__folder-icon" aria-hidden="true">
-            {'\u{1F5C1}'}
-          </span>
           <span className="file-row__title" title={member.directory_path}>
             {member.name}
           </span>
         </div>
-        {/* Leads with the row's kind, the way a file row leads with its role. */}
+        {/* Leads with the row's kind, the way a file row leads with its role.
+            No icon and no leading control: a folder lines up with every other
+            row in the rail, and says what it is in the same slot they do
+            (owner, 2026-08-29). */}
         <div className="file-row__role">{`Folder \u00B7 ${count}`}</div>
+      </div>
+      {/* On the right, where a file row keeps its cover and play actions, so
+          nothing about a folder shifts the column the names start in. */}
+      <div className="file-row__actions">
+        <button
+          type="button"
+          className={`file-row__disclosure${open ? ' file-row__disclosure--open' : ''}`}
+          aria-expanded={open}
+          aria-label={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
+          title={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
+          onClick={(event) => {
+            // Not the row's own double-click-to-open-the-File-Browser.
+            event.stopPropagation()
+            onToggleOpen()
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <IconChevron />
+        </button>
       </div>
     </div>
   )
