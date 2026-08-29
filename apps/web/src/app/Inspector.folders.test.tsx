@@ -164,3 +164,32 @@ test('keyboard reorder steps between visible rows, not into hidden files', () =>
   fireEvent.keyDown(rows[2] as Element, { key: 'ArrowUp', altKey: true })
   expect(hooks.reorder.mutate).toHaveBeenCalledWith(['notes', 'poster', 'a'])
 })
+
+test('a folder shows its files nested beneath it, and the row stays', () => {
+  // Owner-reported 2026-08-29: expanding deleted the folder row and flattened
+  // its files into the list, which read as the folder having gone.
+  render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getAllByRole('listitem')).toHaveLength(2)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show what is in album' }))
+
+  const rows = screen.getAllByRole('listitem')
+  // The folder row is still there, with its two files under it.
+  expect(rows).toHaveLength(4)
+  expect(rows[1]).toHaveAttribute('aria-label', 'Folder album, 2 files')
+  expect(rows[2]).toHaveClass('file-row--in-folder')
+  expect(rows[3]).toHaveClass('file-row--in-folder')
+  expect(screen.getByTitle('a.jpg')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hide what is in album' }))
+  expect(screen.getAllByRole('listitem')).toHaveLength(2)
+})
+
+test('a nested file is not a reorder target', () => {
+  // The folder is one row in the bundle's order, so its contents cannot be
+  // dragged out from inside it.
+  render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Show what is in album' }))
+  const nested = screen.getAllByRole('listitem')[2] as HTMLElement
+  expect(nested.dataset.reorderFileId).toBeUndefined()
+})
