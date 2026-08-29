@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useLayoutEffect,
   useMemo,
@@ -16,7 +17,7 @@ import {
 } from '../api/client'
 import { useBundleInspectorActions } from './bundleInspectorActions'
 import { bundleFileMenuEntries } from './bundleFileMenu'
-import { bundleRows } from './bundleRows'
+import { bundleRows, splitByFolder } from './bundleRows'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { ConfirmDialog } from './PromptDialog'
 import type { ContactSheetTarget } from './contactSheetExport'
@@ -46,7 +47,7 @@ import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
-import { IconGrip, IconPlay, IconPlus } from './icons'
+import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
@@ -796,6 +797,9 @@ export function FileList({
     () => new Map(visibleFiles.map((file, index) => [file.id, index])),
     [visibleFiles],
   )
+  // Which folder rows are showing their contents. Purely a way of looking:
+  // opening one changes nothing about the bundle, so it is not persisted.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
@@ -854,6 +858,184 @@ export function FileList({
     )
   }
 
+  // One file row, rendered at the top level or nested under the folder row
+  // that stands for it while that folder is open. A nested row is not a
+  // reorder target: the folder is one row in the bundle's order, so its
+  // contents cannot be dragged out from inside it.
+  const fileRow = (f: FileRead, i: number, nested = false) => {
+    const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
+    // Everything true about the file, in one line — the row used to pick
+    // exactly one of dimensions/duration/size and drop the rest, so a
+    // video never showed how long *or* how large it was at the same time.
+    // Absent facts are omitted rather than printed as em-dashes.
+    // Leads with the file's bundle role (today: its media kind), not the
+    // container format — this slot becomes the manual-role dropdown.
+    const metaLine = [
+      formatFileRole(f.media_kind, f.original_filename),
+      f.size_bytes ? formatBytes(f.size_bytes) : null,
+      meta.width && meta.height
+        ? formatResolution(meta.width as number, meta.height as number)
+        : null,
+      meta.duration ? formatDuration(meta.duration as number) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
+    const playable =
+      f.availability === 'available' &&
+      f.supported &&
+      (f.media_kind === 'image' || f.media_kind === 'video')
+    const dragTitle = onStartFileDrag
+      ? 'Drag to reorder · Option-drag to copy this file out'
+      : 'Drag to reorder'
+    return (
+      <div
+        className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}${dragId === f.id ? ' file-row--dragging' : ''}${nested ? ' file-row--in-folder' : ''}`}
+        key={f.id}
+        role="listitem"
+        tabIndex={0}
+        onContextMenu={(event) => {
+          // The same menu the album grid shows for the same file — one
+          // definition, so the two surfaces cannot drift (owner,
+          // 2026-07-27). Host actions come through as props: the rail sat
+          // without Reveal or Locate purely because nothing passed them,
+          // while the grid beside it offered both for the same file.
+          menu.open(
+            event,
+            bundleFileMenuEntries({
+              targets: [f],
+              hostLabels,
+              onOpenFile,
+              onRevealFile,
+              onLocateFile,
+              onTrash: onTrashFiles
+                ? (files) => onTrashFiles(files.map((file) => file.relative_path))
+                : undefined,
+              onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
+              onForgetMissing: (files) =>
+                forgetMissing.mutate({ bundleId, fileIds: files.map((file) => file.id) }),
+              onContactSheet: setSheetTarget,
+              onCollapseIntoFolder: (directoryPath) => collapse.mutate(directoryPath),
+            }),
+          )
+        }}
+        data-reorder-file-id={nested ? undefined : f.id}
+        title={dragTitle}
+        aria-label={`${f.display_title}. ${dragTitle}`}
+        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+        data-drop={
+          !nested && dropSlot?.id === f.id ? (dropSlot.before ? 'before' : 'after') : undefined
+        }
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+          event.preventDefault()
+          moveByKeyboard(f, event.key === 'ArrowUp' ? -1 : 1)
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return
+          if ((event.target as HTMLElement).closest('.file-row__actions')) {
+            return
+          }
+          event.preventDefault()
+          event.currentTarget.focus({ preventScroll: true })
+          event.currentTarget.setPointerCapture(event.pointerId)
+          pointerDragRef.current = {
+            fileId: f.id,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            mode: event.altKey && onStartFileDrag ? 'native' : 'reorder',
+            active: false,
+          }
+        }}
+        onPointerMove={(event) => {
+          const pointer = pointerDragRef.current
+          if (!pointer || pointer.pointerId !== event.pointerId) return
+          event.preventDefault()
+          if (!pointer.active) {
+            if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 4)
+              return
+            pointer.active = true
+            if (pointer.mode === 'native') {
+              event.currentTarget.releasePointerCapture?.(event.pointerId)
+              onStartFileDrag?.([f.relative_path])
+              clearDrag()
+              return
+            }
+            setDragId(pointer.fileId)
+          }
+          updatePointerDrop(pointer.fileId, event.clientX, event.clientY)
+        }}
+        onPointerUp={(event) => {
+          const pointer = pointerDragRef.current
+          if (!pointer || pointer.pointerId !== event.pointerId) return
+          const slot = dropSlotRef.current
+          if (pointer.active && pointer.mode === 'reorder' && slot) {
+            const orderedIds = moveTo(
+              files.map((file) => file.id),
+              pointer.fileId,
+              slot.id,
+              slot.before,
+            )
+            reorder.mutate(orderedIds)
+          }
+          clearDrag()
+        }}
+        onPointerCancel={clearDrag}
+      >
+        <div className="file-row__main">
+          <div className="file-row__name">
+            {(nameCuts[i] ?? 0) > 0 ? (
+              <span className="file-row__title file-row__title--split" title={f.display_title}>
+                <span className="fname__shared">{f.display_title.slice(0, nameCuts[i])}</span>
+                <span className="fname__distinct">{f.display_title.slice(nameCuts[i])}</span>
+              </span>
+            ) : (
+              <span className="file-row__title" title={f.display_title}>
+                {f.display_title}
+              </span>
+            )}
+            {f.availability !== 'available' && (
+              <span className="badge badge--missing">missing</span>
+            )}
+          </div>
+          <div className="file-row__role">{metaLine}</div>
+        </div>
+        <div className="file-row__actions">
+          {thumbnailable && (
+            <button
+              className={`tip cover-action${f.id === coverId ? ' cover-action--active' : ''}`}
+              data-tip={f.id === coverId ? 'Current cover' : 'Set as cover'}
+              aria-label={f.id === coverId ? 'Current cover' : 'Set as cover'}
+              aria-pressed={f.id === coverId}
+              aria-busy={update.isPending}
+              disabled={update.isPending}
+              onClick={() => {
+                if (f.id !== coverId) update.mutate({ cover_file_id: f.id })
+              }}
+            >
+              ★
+            </button>
+          )}
+          {playable && onPlayFile && (
+            <button
+              className="tip play-file-action"
+              data-tip="Play this media"
+              aria-label={`Play ${f.display_title}`}
+              onClick={() => onPlayFile(bundleId, f.id)}
+            >
+              <IconPlay />
+            </button>
+          )}
+          {f.availability !== 'available' && (
+            <MissingFileRepairAction bundleId={bundleId} file={f} />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="files">
       <div className="sidebar__heading sidebar__heading--row" style={{ padding: '4px 0' }}>
@@ -875,192 +1057,32 @@ export function FileList({
       <div className="files__list" role="list" aria-label="Files in bundle">
         {rows.map((row) => {
           if (row.kind === 'folder') {
+            const open = openFolders.has(row.member.id)
             return (
-              <DirectoryMemberRow
-                key={row.member.id}
-                member={row.member}
-                onOpen={onOpenFolderInBrowser}
-                onExpand={() => expand.mutate(row.member.id)}
-                onMenu={menu.open}
-              />
+              <Fragment key={row.member.id}>
+                <DirectoryMemberRow
+                  member={row.member}
+                  open={open}
+                  onToggleOpen={() =>
+                    setOpenFolders((current) => {
+                      const next = new Set(current)
+                      if (!next.delete(row.member.id)) next.add(row.member.id)
+                      return next
+                    })
+                  }
+                  onOpen={onOpenFolderInBrowser}
+                  onExpand={() => expand.mutate(row.member.id)}
+                  onMenu={menu.open}
+                />
+                {/* Nested rather than flattened into the list: the folder stays
+                    the row the bundle holds, and these read as what is inside
+                    it (owner-reported, 2026-08-29). */}
+                {open &&
+                  splitByFolder(files, [row.member]).covered.map((c) => fileRow(c, -1, true))}
+              </Fragment>
             )
           }
-          const f = row.file
-          const i = visibleIndex.get(f.id) ?? 0
-          const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
-          // Everything true about the file, in one line — the row used to pick
-          // exactly one of dimensions/duration/size and drop the rest, so a
-          // video never showed how long *or* how large it was at the same time.
-          // Absent facts are omitted rather than printed as em-dashes.
-          // Leads with the file's bundle role (today: its media kind), not the
-          // container format — this slot becomes the manual-role dropdown.
-          const metaLine = [
-            formatFileRole(f.media_kind, f.original_filename),
-            f.size_bytes ? formatBytes(f.size_bytes) : null,
-            meta.width && meta.height
-              ? formatResolution(meta.width as number, meta.height as number)
-              : null,
-            meta.duration ? formatDuration(meta.duration as number) : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')
-          const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
-          const playable =
-            f.availability === 'available' &&
-            f.supported &&
-            (f.media_kind === 'image' || f.media_kind === 'video')
-          const dragTitle = onStartFileDrag
-            ? 'Drag to reorder · Option-drag to copy this file out'
-            : 'Drag to reorder'
-          return (
-            <div
-              className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}${dragId === f.id ? ' file-row--dragging' : ''}`}
-              key={f.id}
-              role="listitem"
-              tabIndex={0}
-              onContextMenu={(event) => {
-                // The same menu the album grid shows for the same file — one
-                // definition, so the two surfaces cannot drift (owner,
-                // 2026-07-27). Host actions come through as props: the rail sat
-                // without Reveal or Locate purely because nothing passed them,
-                // while the grid beside it offered both for the same file.
-                menu.open(
-                  event,
-                  bundleFileMenuEntries({
-                    targets: [f],
-                    hostLabels,
-                    onOpenFile,
-                    onRevealFile,
-                    onLocateFile,
-                    onTrash: onTrashFiles
-                      ? (files) => onTrashFiles(files.map((file) => file.relative_path))
-                      : undefined,
-                    onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
-                    onForgetMissing: (files) =>
-                      forgetMissing.mutate({ bundleId, fileIds: files.map((file) => file.id) }),
-                    onContactSheet: setSheetTarget,
-                    onCollapseIntoFolder: (directoryPath) => collapse.mutate(directoryPath),
-                  }),
-                )
-              }}
-              data-reorder-file-id={f.id}
-              title={dragTitle}
-              aria-label={`${f.display_title}. ${dragTitle}`}
-              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-              data-drop={dropSlot?.id === f.id ? (dropSlot.before ? 'before' : 'after') : undefined}
-              onKeyDown={(event) => {
-                if (event.target !== event.currentTarget) return
-                if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
-                event.preventDefault()
-                moveByKeyboard(f, event.key === 'ArrowUp' ? -1 : 1)
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return
-                if ((event.target as HTMLElement).closest('.file-row__actions')) {
-                  return
-                }
-                event.preventDefault()
-                event.currentTarget.focus({ preventScroll: true })
-                event.currentTarget.setPointerCapture(event.pointerId)
-                pointerDragRef.current = {
-                  fileId: f.id,
-                  pointerId: event.pointerId,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  mode: event.altKey && onStartFileDrag ? 'native' : 'reorder',
-                  active: false,
-                }
-              }}
-              onPointerMove={(event) => {
-                const pointer = pointerDragRef.current
-                if (!pointer || pointer.pointerId !== event.pointerId) return
-                event.preventDefault()
-                if (!pointer.active) {
-                  if (
-                    Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 4
-                  )
-                    return
-                  pointer.active = true
-                  if (pointer.mode === 'native') {
-                    event.currentTarget.releasePointerCapture?.(event.pointerId)
-                    onStartFileDrag?.([f.relative_path])
-                    clearDrag()
-                    return
-                  }
-                  setDragId(pointer.fileId)
-                }
-                updatePointerDrop(pointer.fileId, event.clientX, event.clientY)
-              }}
-              onPointerUp={(event) => {
-                const pointer = pointerDragRef.current
-                if (!pointer || pointer.pointerId !== event.pointerId) return
-                const slot = dropSlotRef.current
-                if (pointer.active && pointer.mode === 'reorder' && slot) {
-                  const orderedIds = moveTo(
-                    files.map((file) => file.id),
-                    pointer.fileId,
-                    slot.id,
-                    slot.before,
-                  )
-                  reorder.mutate(orderedIds)
-                }
-                clearDrag()
-              }}
-              onPointerCancel={clearDrag}
-            >
-              <div className="file-row__main">
-                <div className="file-row__name">
-                  {(nameCuts[i] ?? 0) > 0 ? (
-                    <span
-                      className="file-row__title file-row__title--split"
-                      title={f.display_title}
-                    >
-                      <span className="fname__shared">{f.display_title.slice(0, nameCuts[i])}</span>
-                      <span className="fname__distinct">{f.display_title.slice(nameCuts[i])}</span>
-                    </span>
-                  ) : (
-                    <span className="file-row__title" title={f.display_title}>
-                      {f.display_title}
-                    </span>
-                  )}
-                  {f.availability !== 'available' && (
-                    <span className="badge badge--missing">missing</span>
-                  )}
-                </div>
-                <div className="file-row__role">{metaLine}</div>
-              </div>
-              <div className="file-row__actions">
-                {thumbnailable && (
-                  <button
-                    className={`tip cover-action${f.id === coverId ? ' cover-action--active' : ''}`}
-                    data-tip={f.id === coverId ? 'Current cover' : 'Set as cover'}
-                    aria-label={f.id === coverId ? 'Current cover' : 'Set as cover'}
-                    aria-pressed={f.id === coverId}
-                    aria-busy={update.isPending}
-                    disabled={update.isPending}
-                    onClick={() => {
-                      if (f.id !== coverId) update.mutate({ cover_file_id: f.id })
-                    }}
-                  >
-                    ★
-                  </button>
-                )}
-                {playable && onPlayFile && (
-                  <button
-                    className="tip play-file-action"
-                    data-tip="Play this media"
-                    aria-label={`Play ${f.display_title}`}
-                    onClick={() => onPlayFile(bundleId, f.id)}
-                  >
-                    <IconPlay />
-                  </button>
-                )}
-                {f.availability !== 'available' && (
-                  <MissingFileRepairAction bundleId={bundleId} file={f} />
-                )}
-              </div>
-            </div>
-          )
+          return fileRow(row.file, visibleIndex.get(row.file.id) ?? 0)
         })}
       </div>
       <ContextMenu state={menu.state} onClose={menu.close} />
@@ -1086,11 +1108,16 @@ export function FileList({
  */
 export function DirectoryMemberRow({
   member,
+  open,
+  onToggleOpen,
   onOpen,
   onExpand,
   onMenu,
 }: {
   member: DirectoryMember
+  /** Whether this folder is showing its contents nested beneath it. */
+  open: boolean
+  onToggleOpen: () => void
   /** Jump the File Browser to this folder; omitted where that is not wired. */
   onOpen?: (relativePath: string) => void
   onExpand: () => void
@@ -1130,6 +1157,21 @@ export function DirectoryMemberRow({
         onOpen?.(member.directory_path)
       }}
     >
+      <button
+        type="button"
+        className={`file-row__disclosure${open ? ' file-row__disclosure--open' : ''}`}
+        aria-expanded={open}
+        aria-label={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
+        title={`${open ? 'Hide' : 'Show'} what is in ${member.name}`}
+        onClick={(event) => {
+          // Not the row's own double-click-to-open-the-File-Browser.
+          event.stopPropagation()
+          onToggleOpen()
+        }}
+        onDoubleClick={(event) => event.stopPropagation()}
+      >
+        <IconChevron />
+      </button>
       <div className="file-row__main">
         <div className="file-row__name">
           <span className="file-row__folder-icon" aria-hidden="true">

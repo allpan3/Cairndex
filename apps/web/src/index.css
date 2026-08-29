@@ -1611,6 +1611,36 @@ button {
   flex: none;
   opacity: 0.75;
 }
+/* Looking inside a folder member, which changes nothing about the bundle. */
+.file-row__disclosure {
+  flex: none;
+  width: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.file-row__disclosure--open {
+  transform: rotate(90deg);
+}
+/* `.file-row` is space-between, sized for a row with actions on the right. A
+   folder has none, so once the disclosure became its first child the name was
+   shoved to the far edge. Let the name take the slack instead. */
+.file-row--folder .file-row__main {
+  flex: 1 1 auto;
+}
+/* A file drawn under the folder row that stands for it. Indented so the run
+   reads as that folder's contents rather than as peers of the bundle's own
+   media — flattening them into the list was the complaint (owner, 2026-08-29). */
+.files .file-row--in-folder {
+  /* Past the folder's disclosure and icon, so a nested name starts to the right
+     of the folder's own name rather than a few pixels left of it, which read as
+     a sibling. The disclosure plus its gap is 22px; this clears it. */
+  padding-left: 30px;
+  cursor: default;
+}
 .files .file-row__name {
   display: flex;
   align-items: center;

@@ -10,6 +10,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Open a folder in the inspector to see its files nested under it.** The
+  folder row gets a disclosure: the files it stands for appear indented beneath
+  it and the row stays put. Looking inside changes nothing about the bundle.
+
+  Previously the only way to see inside was *Expand folder into the bundle*,
+  which deletes the folder row and flattens its files into the list — so the
+  folder appeared to be gone, and the way back (**Collapse** on any of those
+  files) was on a different row under a different name. That action is still
+  there for when you want the folder to stop being one member; it is no longer
+  the only way to look.
+
 - **Look inside a suggested folder before deciding it should be one.** A folder
   row in the review dialog gets a disclosure: open it and the files it stands
   for are listed, read-only, changing nothing about the plan. Deciding whether a

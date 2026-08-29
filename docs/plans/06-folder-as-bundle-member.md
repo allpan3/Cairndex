@@ -376,4 +376,15 @@ touches nothing, and a decline that is a reversible flag rather than a delete.
 Worth recording as a design rule for this feature: **a control that reveals must
 not also decide.**
 
+A fourth owner report, 2026-08-29: expanding a folder in the rail "seems
+irreversible". It was not — the inverse is on any of the expanded files — but
+§4.1's answer put the two halves of one idea on different rows under different
+names, and nothing on screen connected them. The rail's folder row now has a
+disclosure that nests its files beneath it, leaving the row in place; expanding
+stays for when the folder should stop being a member at all.
+
+That makes it the same rule as the dialog, arrived at twice: **a control that
+reveals must not also decide.** Worth stating once here rather than rediscovering
+it a third time.
+
 §5's remaining item is the threshold value, which wants a real library.

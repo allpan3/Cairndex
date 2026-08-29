@@ -332,6 +332,14 @@ immediately above them, with the control that folds them back beside them. The
 listed files are indented under it so the run reads as that folder's contents.
 Ordering lives in `proposalEntries` with its own tests, rather than in the JSX.
 
+Owner-reported 2026-08-29: *Expand folder into the bundle* "seems irreversible".
+It is not — **Collapse** appears on any of the expanded files — but the way back
+sits on a different row under a different name, with nothing on screen saying so.
+The rail's folder row now has a **disclosure**: its files show nested beneath it
+and the row stays. Same split the review dialog already had, and the same rule —
+a control that reveals must not also decide. Expand remains for the case where
+the folder should stop being one member.
+
 **Open on this branch, none blocking:**
 
 - **The threshold value** (12 subjects) — plan 6 §5.2. Owner ran it against the
