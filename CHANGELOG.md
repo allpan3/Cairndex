@@ -472,6 +472,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the jump for a constant loss, and `overflow: overlay`, which would have done
   it in one line, has been removed from Chromium.
 
+- **Every scrollbar in the app is half-transparent now**, not just the two side
+  panels: the grid, the File Browser, dialogs, menus, pickers and the note boxes
+  all share one pair of colour tokens. The widths still differ where a layout
+  depends on them — a note box's bar is 5px because its row controls are placed
+  to sit exactly beside it — but nothing frames a panel in a solid bar any more.
+
 - **What the owner is waiting for runs first.** One worker runs one job at a
   time, so a storyboard pass — a sweep over every video in the library — held
   the queue against everything behind it: pressing Update during one queued a
