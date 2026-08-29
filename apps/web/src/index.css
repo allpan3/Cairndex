@@ -2049,6 +2049,13 @@ button {
 .inspector {
   scrollbar-width: none;
 }
+/* Each panel's padding, negated, so the thumb hugs its inner edge. */
+.sidebar {
+  --oscroll-inset: -6px;
+}
+.inspector {
+  --oscroll-inset: -12px;
+}
 .sidebar::-webkit-scrollbar,
 .inspector::-webkit-scrollbar {
   display: none;
@@ -2066,10 +2073,14 @@ button {
 .oscroll__thumb {
   position: absolute;
   top: 0;
-  right: 2px;
+  /* The anchor sits inside the panel's padding, so a plain inset would leave the
+     thumb floating that far in — 16px in the inspector, which reads as a stray
+     line rather than a scrollbar. Each panel pulls it back out to 2px from its
+     own inner edge. */
+  right: var(--oscroll-inset, 2px);
   width: 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.24);
   pointer-events: auto;
   transition: background 120ms ease;
 }
@@ -2078,7 +2089,7 @@ button {
 .sidebar:hover .oscroll__thumb,
 .inspector:hover .oscroll__thumb,
 .oscroll__thumb--dragging {
-  background: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.42);
 }
 
 /* Thin, unobtrusive scrollbar tucked inside the panel padding so it never

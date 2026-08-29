@@ -94,3 +94,89 @@ test('a panel that fits draws no thumb at all', async ({ page }) => {
   await expect(page.locator('.sidebar')).toBeVisible()
   await expect(page.locator('.sidebar .oscroll__thumb')).toHaveCount(0)
 })
+
+test('the bundle inspector gets one too', async ({ page }) => {
+  // Owner-reported: "the scroll bar is completely gone". It was — the sidebar
+  // had one and the inspector did not, because the panel that actually carries
+  // content is a different `<aside>` from the loading state beside it, and only
+  // the loading state had been given the scrollbar. Every inspector variant is
+  // its own root element, so this asserts the one that matters.
+  await mockApi(page)
+  await page.route('**/bundles/browse**', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: 'b0',
+            title: 'A bundle',
+            rating: null,
+            cover_file_id: null,
+            file_count: 30,
+            total_bytes: 1000,
+            updated_at: '2026-08-29T00:00:00Z',
+            created_at: '2026-08-29T00:00:00Z',
+            grouping_state: 'confirmed',
+            missing_count: 0,
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      },
+    }),
+  )
+  // Registered first: Playwright tries the most recent match, so this
+  // catch-all must not shadow the two specific routes below it.
+  await page.route('**/bundles/b0**', (r) =>
+    r.fulfill({
+      json: {
+        id: 'b0',
+        title: 'A bundle',
+        notes: [],
+        rating: null,
+        cover_file_id: null,
+        resume_file_id: null,
+        grouping_state: 'confirmed',
+        grouping_source: 'manual',
+        created_at: '2026-08-29T00:00:00Z',
+        imported_at: '2026-08-29T00:00:00Z',
+        updated_at: '2026-08-29T00:00:00Z',
+        version: 1,
+      },
+    }),
+  )
+  await page.route('**/bundles/b0/directory-members', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b0/files', (r) =>
+    r.fulfill({
+      json: Array.from({ length: 30 }, (_unused, index) => ({
+        id: `f${index}`,
+        bundle_id: 'b0',
+        relative_path: `clip${index}.mp4`,
+        original_filename: `clip${index}.mp4`,
+        display_title: `clip${index}.mp4`,
+        role: 'primary_video',
+        media_kind: 'video',
+        mime_type: 'video/mp4',
+        sequence: index,
+        size_bytes: 1000,
+        availability: 'available',
+        supported: true,
+        tech_metadata: {},
+        created_at: '2026-08-29T00:00:00Z',
+        updated_at: '2026-08-29T00:00:00Z',
+        version: 1,
+      })),
+    }),
+  )
+  await page.setViewportSize({ width: 1100, height: 500 })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const inspector = page.locator('.inspector')
+  await expect(inspector).toBeVisible()
+  // Names the failure precisely: the bug was an inspector that scrolled while
+  // carrying no scrollbar at all, not a thumb that was merely misplaced.
+  expect(await inspector.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+  await expect(inspector.locator('.oscroll__thumb')).toBeVisible()
+  expect(await inspector.evaluate((el) => el.offsetWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+})
