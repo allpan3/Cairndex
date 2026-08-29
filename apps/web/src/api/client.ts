@@ -41,6 +41,9 @@ export type PairPollResponse = components['schemas']['PairPollResponse']
 export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
+export type DirectoryMember = components['schemas']['DirectoryMemberRead']
+export type ProposalDirectory = components['schemas']['ProposalDirectoryRead']
+export type ProposalFile = components['schemas']['ProposalFileRead']
 export type FileRepairCandidate = components['schemas']['FileRepairCandidateRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type BundleCursorRead = components['schemas']['BundleCursorRead']
@@ -1004,6 +1007,19 @@ export const moveGroupingProposalFile = (
     { target_proposal_id: targetProposalId, target_index: targetIndex },
   )
 
+/** Decline a proposed folder row, so its files list individually again (plan 6) */
+export const setProposalDirectoryExpanded = (
+  planId: string,
+  proposalId: string,
+  directoryId: string,
+  expanded: boolean,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/directories/${directoryId}`,
+    'PUT',
+    { expanded },
+  )
+
 /** Move suggested work under another proposal, a persisted collection, or top level */
 export const reparentGroupingProposal = (
   planId: string,
@@ -1122,6 +1138,33 @@ export function fetchBundle(id: string, signal?: AbortSignal): Promise<BundleRea
 
 export function fetchBundleFiles(id: string, signal?: AbortSignal): Promise<FileRead[]> {
   return getJson<FileRead[]>(`${lib()}/bundles/${id}/files`, signal)
+}
+
+/**
+ * The bundle's folder rows — directories that stand in for their files as a
+ * single member (plan 6). Separate from `fetchBundleFiles` rather than folded
+ * into it: the files a folder covers are still the bundle's files and still
+ * come back from that endpoint, and the inspector needs both lists to decide
+ * which file rows a folder row replaces.
+ */
+export function fetchDirectoryMembers(
+  bundleId: string,
+  signal?: AbortSignal,
+): Promise<DirectoryMember[]> {
+  return getJson<DirectoryMember[]>(`${lib()}/bundles/${bundleId}/directory-members`, signal)
+}
+
+export function collapseDirectory(
+  bundleId: string,
+  directoryPath: string,
+): Promise<DirectoryMember> {
+  return send<DirectoryMember>(`${lib()}/bundles/${bundleId}/directory-members`, 'POST', {
+    directory_path: directoryPath,
+  })
+}
+
+export function expandDirectory(bundleId: string, memberId: string): Promise<void> {
+  return send<void>(`${lib()}/bundles/${bundleId}/directory-members/${memberId}`, 'DELETE')
 }
 
 export function fetchFileRepairCandidate(

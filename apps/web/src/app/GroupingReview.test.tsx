@@ -19,6 +19,7 @@ const PROPOSALS: GroupingProposal[] = [
     is_collection_context: false,
     confidence: 0.9,
     reason: 'holds related bundles',
+    directories: [],
     files: [],
   },
   {
@@ -34,6 +35,7 @@ const PROPOSALS: GroupingProposal[] = [
     is_collection_context: false,
     confidence: 0.95,
     reason: 'same filename stem',
+    directories: [],
     files: [
       {
         asset_file_id: 'file1',
@@ -68,6 +70,7 @@ const PROPOSALS: GroupingProposal[] = [
     is_collection_context: false,
     confidence: 0.8,
     reason: 'same folder',
+    directories: [],
     files: [
       {
         asset_file_id: 'file4',
@@ -92,6 +95,7 @@ const ADDITION: GroupingProposal = {
   is_collection_context: false,
   confidence: 0.8,
   reason: 'add 3 new file(s) to existing bundle',
+  directories: [],
   files: [
     {
       asset_file_id: 'new-video',
@@ -135,6 +139,7 @@ const DIVISIBLE: GroupingProposal = {
   is_collection_context: false,
   confidence: 0.7,
   reason: '2 unrelated files',
+  directories: [],
   files: [
     {
       asset_file_id: 'two-a',
@@ -455,6 +460,17 @@ function mockGroupingApi(
         applied_at: null,
         proposals,
       }
+    } else if (url.match(/\/proposals\/[^/]+\/directories\/[^/]+$/) && init?.method === 'PUT') {
+      // Declining marks the row rather than deleting it, so it goes both ways.
+      // Its files never moved, so nothing else about the proposal changes.
+      const directoryId = url.split('/').at(-1)!
+      const proposalId = url.split('/').at(-3)!
+      const expanded = (JSON.parse(init.body as string) as { expanded: boolean }).expanded
+      const source = proposals.find((proposal) => proposal.id === proposalId)!
+      source.directories = source.directories.map((entry) =>
+        entry.id === directoryId ? { ...entry, expanded } : entry,
+      )
+      body = source
     } else if (url.match(/\/proposals\/[^/]+\/kind$/) && init?.method === 'PUT') {
       // The server returns the whole plan, because a conversion adds or removes
       // sibling proposals rather than editing one in place.
@@ -513,6 +529,7 @@ function mockGroupingApi(
             kind: 'container',
             title: item.name,
             directory: `@existing-collection/${item.id}`,
+            directories: [],
             parent_proposal_id: contextParentId,
             target_bundle_id: null,
             target_bundle_title: null,
@@ -1507,6 +1524,7 @@ test('a run of identical-shape suggestions folds into one row', async () => {
     id: `clip-${i}`,
     title: `SET-025-0${i}`,
     reason: 'numbered sequence',
+    directories: [],
     files: [
       {
         asset_file_id: `v${i}`,
@@ -1553,6 +1571,7 @@ test('a run stops at a suggestion worth looking at', async () => {
     id: `clip-${i}`,
     title: `Clip 0${i}`,
     reason: 'numbered sequence',
+    directories: [],
     confidence,
     files: [
       {
@@ -1752,6 +1771,7 @@ test('an expanded run can be folded back', async () => {
     id: `clip-${i}`,
     title: `Clip 0${i}`,
     reason: 'numbered sequence',
+    directories: [],
     files: [
       {
         asset_file_id: `v${i}`,
@@ -1835,6 +1855,7 @@ test('a flagged row carries its reason; a confident one carries its contents', a
     title: 'Loose Clip',
     confidence: 0.5,
     reason: 'grouped by folder',
+    directories: [],
   }
   vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, unsure]))
   const review = renderReview()
@@ -2208,3 +2229,96 @@ test('an addition suggestion offers no collection override', async () => {
 })
 
 // --- Tooltips do not outlive the control they belong to ----------------------
+
+const ALBUM: GroupingProposal[] = [
+  {
+    id: 'album1',
+    kind: 'bundle',
+    title: 'album',
+    directory: 'trip/album',
+    parent_proposal_id: null,
+    target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: false,
+    target_collection_id: null,
+    is_collection_context: false,
+    confidence: 0.5,
+    reason: '30 files in one folder, kept as a folder',
+    directories: [
+      {
+        id: 'dir1',
+        directory_path: 'trip/album',
+        name: 'album',
+        file_count: 30,
+        expanded: false,
+      },
+    ],
+    files: Array.from({ length: 30 }, (_unused, index) => ({
+      asset_file_id: `photo${index}`,
+      relative_path: `trip/album/shot${index}.jpg`,
+      proposed_role: 'image' as const,
+      sequence: index,
+    })),
+  },
+]
+
+test('an album arrives as one folder row rather than thirty file rows', async () => {
+  // The complaint plan 6 exists to answer, at the surface it was made about.
+  vi.stubGlobal('fetch', mockGroupingApi(structuredClone(ALBUM)))
+  renderReview()
+  // File lists are folded by default; the folder row lives inside one.
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Expand files in bundle suggestion album' }),
+  )
+
+  const folder = await screen.findByTitle('trip/album')
+  expect(within(folder).getByText('Folder · 30 files')).toBeInTheDocument()
+  expect(screen.queryByText('shot0.jpg')).not.toBeInTheDocument()
+  expect(screen.queryByText('shot29.jpg')).not.toBeInTheDocument()
+})
+
+test('declining a folder row lists its files instead', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(structuredClone(ALBUM)))
+  renderReview()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Expand files in bundle suggestion album' }),
+  )
+
+  fireEvent.click(await screen.findByRole('button', { name: /List the 30 files/ }))
+
+  // Declining changes only how the suggestion is drawn, so the same files are
+  // still in it — there is nothing to restore.
+  await waitFor(() => expect(screen.getByText('shot0.jpg')).toBeInTheDocument())
+  expect(screen.getByText('shot29.jpg')).toBeInTheDocument()
+
+  // The row stays, marked, so the decision can be taken back. Deleting it was
+  // the first shape and made looking inside a folder a one-way door.
+  const folder = screen.getByTitle('trip/album')
+  expect(within(folder).getByText('Folder · listing 30 files')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /Keep album as one folder row/ }))
+  await waitFor(() => expect(screen.queryByText('shot0.jpg')).not.toBeInTheDocument())
+  expect(within(screen.getByTitle('trip/album')).getByText('Folder · 30 files')).toBeInTheDocument()
+})
+
+test('a folder can be looked into without changing the plan', async () => {
+  // The owner's ask (2026-08-28): deciding whether a folder *should* be a folder
+  // meant flattening it first, and flattening had no way back.
+  vi.stubGlobal('fetch', mockGroupingApi(structuredClone(ALBUM)))
+  renderReview()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Expand files in bundle suggestion album' }),
+  )
+
+  const peek = await screen.findByRole('button', { name: 'Show what is in album' })
+  fireEvent.click(peek)
+
+  const inside = await screen.findByRole('list', { name: 'Inside album' })
+  expect(within(inside).getByText('shot0.jpg')).toBeInTheDocument()
+  expect(within(inside).getAllByRole('listitem')).toHaveLength(30)
+  // Still one row as far as the plan is concerned: looking is not deciding.
+  expect(within(screen.getByTitle('trip/album')).getByText('Folder · 30 files')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /List the 30 files/ })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hide what is in album' }))
+  expect(screen.queryByRole('list', { name: 'Inside album' })).not.toBeInTheDocument()
+})

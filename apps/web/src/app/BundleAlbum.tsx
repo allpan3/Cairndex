@@ -4,6 +4,7 @@ import { type FileRead, fileThumbnailUrl } from '../api/client'
 import {
   useBundle,
   useBundleFiles,
+  useDirectoryMemberMutations,
   useFileMutations,
   useFileOperations,
   useForgetMissingFiles,
@@ -76,6 +77,7 @@ export function BundleAlbum({
   const { data: bundle } = useBundle(bundleId)
   const { data: files = [], isLoading } = useBundleFiles(bundleId)
   const fileMutations = useFileMutations(bundleId)
+  const { collapse: collapseDirectory } = useDirectoryMemberMutations(bundleId)
   // Dropping the record of a file that is gone; see `useForgetMissingFiles`.
   const forgetMissing = useForgetMissingFiles()
   const fileOps = useFileOperations()
@@ -148,6 +150,10 @@ export function BundleAlbum({
         onOpenFile,
         onRevealFile,
         onLocateFile,
+        // Offered here as well as in the inspector rail: one menu definition
+        // means the same file cannot show different actions on two surfaces,
+        // which is the drift `bundleFileMenu` exists to prevent.
+        onCollapseIntoFolder: (directoryPath) => collapseDirectory.mutate(directoryPath),
         onRemoveFromBundle: (files) => files.forEach((f) => fileMutations.remove.mutate(f.id)),
         onForgetMissing: (files) =>
           forgetMissing.mutate(

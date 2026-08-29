@@ -193,6 +193,11 @@
             "title": "Files Added To Bundles",
             "type": "integer"
           },
+          "folders_collapsed": {
+            "default": 0,
+            "title": "Folders Collapsed",
+            "type": "integer"
+          },
           "proposals_remaining": {
             "default": 0,
             "title": "Proposals Remaining",
@@ -2240,6 +2245,65 @@
           "bundle_count"
         ],
         "title": "DirectoryBundleCount",
+        "type": "object"
+      },
+      "DirectoryMemberCreate": {
+        "description": "Collapse one of the bundle's directories into a single row (plan 6).\n\nLibrary-relative; absolute paths and traversal are rejected in the service\nthrough the same guard every other client-supplied path goes through.",
+        "properties": {
+          "directory_path": {
+            "minLength": 1,
+            "title": "Directory Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "directory_path"
+        ],
+        "title": "DirectoryMemberCreate",
+        "type": "object"
+      },
+      "DirectoryMemberRead": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "directory_path": {
+            "title": "Directory Path",
+            "type": "string"
+          },
+          "file_count": {
+            "default": 0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_id",
+          "directory_path",
+          "sequence",
+          "created_at"
+        ],
+        "title": "DirectoryMemberRead",
         "type": "object"
       },
       "EmptyTrashRequest": {
@@ -5212,6 +5276,54 @@
         "title": "ProposalDestinationUpdate",
         "type": "object"
       },
+      "ProposalDirectoryRead": {
+        "description": "A directory this proposal would show as one folder row (plan 6).\n\n``file_count`` is how many of *this proposal's* files sit inside it \u2014 the\nnumber of rows the folder replaces, which is what the dialog needs to say\nwhat accepting it does. It is not the count on disk, which can be larger.",
+        "properties": {
+          "directory_path": {
+            "title": "Directory Path",
+            "type": "string"
+          },
+          "expanded": {
+            "default": false,
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "file_count": {
+            "default": 0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "directory_path"
+        ],
+        "title": "ProposalDirectoryRead",
+        "type": "object"
+      },
+      "ProposalDirectoryUpdate": {
+        "description": "Whether this folder's files are listed individually (declined) or shown\nas the single row the suggestion proposes.",
+        "properties": {
+          "expanded": {
+            "title": "Expanded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expanded"
+        ],
+        "title": "ProposalDirectoryUpdate",
+        "type": "object"
+      },
       "ProposalFileMove": {
         "properties": {
           "target_index": {
@@ -5288,6 +5400,14 @@
           "create_new_bundle": {
             "title": "Create New Bundle",
             "type": "boolean"
+          },
+          "directories": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProposalDirectoryRead"
+            },
+            "title": "Directories",
+            "type": "array"
           },
           "directory": {
             "title": "Directory",
@@ -8886,6 +9006,269 @@
           }
         },
         "summary": "Delete Bundle With Files",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/directory-members": {
+      "get": {
+        "operationId": "list_directory_members_api_v1_libraries__library_id__bundles__bundle_id__directory_members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DirectoryMemberRead"
+                  },
+                  "title": "Response List Directory Members Api V1 Libraries  Library Id  Bundles  Bundle Id  Directory Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Directory Members",
+        "tags": [
+          "bundles"
+        ]
+      },
+      "post": {
+        "operationId": "collapse_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectoryMemberCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryMemberRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collapse Directory",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/directory-members/{member_id}": {
+      "delete": {
+        "operationId": "expand_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members__member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Expand Directory",
         "tags": [
           "bundles"
         ]
@@ -15332,6 +15715,117 @@
           }
         },
         "summary": "Update Proposal Destination",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/directories/{directory_id}": {
+      "put": {
+        "operationId": "set_proposal_directory_expanded_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__directories__directory_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "directory_id",
+            "required": true,
+            "schema": {
+              "title": "Directory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalDirectoryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Proposal Directory Expanded",
         "tags": [
           "grouping"
         ]

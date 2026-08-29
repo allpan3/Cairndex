@@ -1136,6 +1136,19 @@ function Workspace({
     setOpenBundleId(null)
   }, [])
 
+  // Navigating *into* a directory, which is what opening a bundle's folder
+  // member means — `locateFileInBrowser` above lands in the parent and
+  // highlights an entry, which for a folder shows everything except what is
+  // inside it.
+  const openFolderInBrowser = useCallback((relativePath: string) => {
+    setMode('file')
+    setFileScope('browse')
+    setFilePath(relativePath)
+    setFileEntry(null)
+    setLocatedPath(null)
+    setOpenBundleId(null)
+  }, [])
+
   // Drag-out (plan 3 §6): a mapped desktop library can put its real files on the
   // OS pasteboard. The shell resolves + validates each server-provided relative
   // path; the web layer never handles an absolute path. Undefined disables every
@@ -1189,6 +1202,7 @@ function Workspace({
       onOpenFile: onOpenHostFile,
       onRevealFile: onRevealHostFile,
       onLocateFile: locateFileInBrowser,
+      onOpenFolderInBrowser: openFolderInBrowser,
       onTrashFiles: writeMode ? trashFiles : undefined,
       onDropFilesOnBundle: writeMode ? dropFilesOnBundle : undefined,
       onStartFileDrag,
@@ -1214,6 +1228,7 @@ function Workspace({
     [
       hostLabels,
       locateFileInBrowser,
+      openFolderInBrowser,
       dropFilesOnBundle,
       onOpenHostFile,
       onRevealHostFile,

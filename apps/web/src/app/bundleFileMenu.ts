@@ -34,6 +34,14 @@ export interface BundleFileMenuOptions {
   onForgetMissing?: (files: FileRead[]) => void
   /** Move to trash; undefined hides the row (no write mode). */
   onTrash?: (files: FileRead[]) => void
+  /**
+   * Collapse the targets' shared directory into a single bundle row (plan 6);
+   * undefined hides the row. Offered only when every target sits in the *same*
+   * directory and that directory is not the library root — a selection spanning
+   * two folders has no one folder to collapse, and collapsing the root would
+   * swallow the whole bundle into one row.
+   */
+  onCollapseIntoFolder?: (directoryPath: string) => void
   /** Open the contact-sheet dialog; undefined hides the row. */
   onContactSheet?: (target: ContactSheetTarget) => void
 }
@@ -60,6 +68,23 @@ function contactSheetTargetFor(file: FileRead): ContactSheetTarget {
     audioBitrate: facts.audioBitrate,
     audioSampleRate: facts.audioSampleRate,
   }
+}
+
+/** The one directory every target sits in, or null if they differ or it is the
+ *  library root (a root-level file has no parent segment). */
+function sharedParentDirectory(targets: FileRead[]): string | null {
+  const directories = new Set(
+    targets.map((file) => {
+      // `lastIndexOf` returns -1 for a root-level file, and `slice(0, -1)` would
+      // quietly drop its last character rather than yield the empty parent —
+      // offering to collapse a folder named after a truncated filename.
+      const cut = file.relative_path.lastIndexOf('/')
+      return cut === -1 ? '' : file.relative_path.slice(0, cut)
+    }),
+  )
+  if (directories.size !== 1) return null
+  const [only] = [...directories]
+  return only ? only : null
 }
 
 export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry[] {
@@ -104,6 +129,15 @@ export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry
       // bundle, exactly as deleting the whole bundle would have staged it.
       label: n > 1 ? `Remove ${n} Files from Bundle` : 'Remove from Bundle',
       onClick: () => onRemoveFromBundle(targets),
+    })
+  }
+  const sharedDirectory = sharedParentDirectory(targets)
+  if (options.onCollapseIntoFolder && sharedDirectory) {
+    bundleItems.push({
+      // Metadata-only and reversible from the folder row it creates: the files
+      // stay members of the bundle and are only drawn as one row.
+      label: `Collapse \u201C${sharedDirectory.split('/').pop()}\u201D into One Row`,
+      onClick: () => options.onCollapseIntoFolder?.(sharedDirectory),
     })
   }
   if (options.onLocateFile && n === 1) {
