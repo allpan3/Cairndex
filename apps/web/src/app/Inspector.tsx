@@ -178,7 +178,6 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   if (!bundle) {
     return (
       <aside className="inspector" data-tauri-drag-region>
-        <OverlayScrollbar />
         <div className="state">Loading…</div>
       </aside>
     )
@@ -410,6 +409,7 @@ function BundleEditor({
       onPointerDownCapture={blurActiveNoteOnPointerDown}
       {...dropProps}
     >
+      <OverlayScrollbar />
       <div
         className="inspector__cover"
         style={{ backgroundImage: `url(${thumbnailUrl(bundleId, coverKey)})` }}
