@@ -227,6 +227,10 @@ button {
   background: var(--bg-2);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  /* Reserved whether or not it is scrolling, so the nav never jumps sideways
+     the moment the content grows past the window (owner, 2026-08-29). Costs a
+     constant 7px; the alternative is 16px that appears and disappears. */
+  scrollbar-gutter: stable;
   padding: 12px 8px;
   user-select: none;
   /* A column so the footer can claim the leftover space and sit at the bottom
@@ -1482,6 +1486,9 @@ button {
   background: var(--bg-2);
   border-left: 1px solid var(--border);
   overflow-y: auto;
+  /* Same reason as `.sidebar`: a rail whose content crosses the window height
+     should not shove its own contents sideways to make room. */
+  scrollbar-gutter: stable;
   padding: 14px;
 }
 /* The whole Bundle Inspector is the same import-and-link target as its card */
@@ -2040,6 +2047,33 @@ button {
   background: var(--border);
   margin: 4px 2px;
 }
+/* The side panels get the same thin bar as the pickers below: 6px of gutter
+   rather than the platform's 16, and a translucent thumb that reads as sitting
+   over the panel rather than beside it.
+   
+   Not a true overlay, and it cannot be: `overflow: overlay` is gone from
+   Chromium (measured 2026-08-29 — it computes back to `auto`), so a bar that
+   costs no width at all would have to be drawn by hand rather than by the
+   engine. This gets the width from 16px to 7px and, with the stable gutter
+   above, stops it appearing and disappearing. */
+.sidebar::-webkit-scrollbar,
+.inspector::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-track,
+.inspector::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb,
+.inspector::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.sidebar:hover::-webkit-scrollbar-thumb,
+.inspector:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* Thin, unobtrusive scrollbar tucked inside the panel padding so it never
    widens the panel. Webkit/Blink pseudo-elements give a narrower bar than the
    standard `scrollbar-width: thin`, so we use them directly. */
