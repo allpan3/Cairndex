@@ -145,27 +145,27 @@
 > deferral expired with v0.1.0 and its design questions are settled. It is
 > designed and unbuilt — see the branch section below.
 
-## Open on branch: `feat/folder-as-bundle-member` — a folder as one item inside a bundle
+## Merged: a folder as one item inside a bundle (2026-08-29, PR #13)
+
+Owner wants a folder of 1000 photos to sit in a bundle without filling the
+inspector and the grouping dialog with 1000 rows. Design 2026-07-28, questions
+settled 2026-08-28, built and merged 2026-08-29;
+[plan 6](plans/06-folder-as-bundle-member.md) holds the design and its answers.
+
+> **Merged at `aa8a4300`** with all seven CI checks green. The feature: a bundle
+> may record one of its directories as a single member; the inspector draws it
+> as one row that opens to show its files nested; the grouping dialog proposes
+> it, lets you look inside without deciding, and take a decline back; the
+> scanner keeps it correct as the folder grows or is renamed.
+>
+> Also merged, unrelated and carried at the owner's request: every scrollbar in
+> the app is half-transparent, and the two side panels draw their own so it
+> costs no width.
 
 Owner wants a folder of 1000 photos to sit in a bundle without filling the
 inspector and the grouping dialog with 1000 rows. Design 2026-07-28, questions
 settled 2026-08-28; [plan 6](plans/06-folder-as-bundle-member.md) holds both.
 
-> **Position (2026-08-29, `7f326f0d`): built, owner-tested, and not merged.**
-> All four slices are done and exercised against the owner's real library. The
-> feature: a bundle may record one of its directories as a single member;
-> the inspector draws it as one row with collapse/expand; the grouping dialog
-> proposes it, lets you look inside without deciding, and take a decline back;
-> the scanner keeps it correct as the folder grows or is renamed.
->
-> Gates at that commit — backend `ruff`/`ruff format`/`mypy` (175 files) and
-> **1189 pytest**; frontend `lint`/`format:check`/`typecheck`/`build`, **1029
-> vitest** and **121 Playwright**. The desktop gate was not run and does not
-> apply: no Rust changed on this branch.
->
-> **No PR is open and nothing is pushed** — both owner-triggered. The branch was
-> rebased onto `main`, so pushing needs `--force-with-lease`. The open items
-> below are the only work left, none of it blocking.
 
 The record of how it got here follows, kept because several entries are
 decisions with reasons rather than progress notes.
@@ -340,7 +340,7 @@ and the row stays. Same split the review dialog already had, and the same rule �
 a control that reveals must not also decide. Expand remains for the case where
 the folder should stop being one member.
 
-**Open on this branch, none blocking:**
+**Left open at merge, none blocking:**
 
 - **The threshold value** (12 subjects) — plan 6 §5.2. Owner ran it against the
   real library on 2026-08-29 and reported the result good, so the number is
@@ -368,7 +368,7 @@ the folder should stop being one member.
 - **Nested entity directories** are refused (§5.1), in the service rather than
   the constraint, so the rule can be relaxed later without a migration.
 
-No PR is open (the recreation dropped #39); opening one is the owner's call.
+Owner-tested throughout, and merged once they were satisfied.
 
 Three designs were considered in one session, and the first two were killed by
 the owner in a sentence each. *Folder as a bundle member* collides with
