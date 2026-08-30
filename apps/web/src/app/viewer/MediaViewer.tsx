@@ -6,10 +6,12 @@ import {
   useBundle,
   useBundleCursor,
   useBundleFiles,
+  useBundleDirectoryMembers,
   useFileMutations,
   usePlaybackManifest,
 } from '../../api/hooks'
 import type { PlayerPrefs } from '../types'
+import { playlistFor } from '../bundleRows'
 import { inspectorTargetForBundleFile } from '../fileFacts'
 import { ViewerShell, type ShellCoverActions } from './ViewerShell'
 import { viewerItemFromFile } from './viewerItem'
@@ -41,6 +43,7 @@ export function MediaViewer({
   const rememberedCursorRef = useRef<string | null>(null)
   const { data: bundle, isLoading: bundleLoading, error: bundleError } = useBundle(bundleId)
   const { data: files = [], isLoading: filesLoading, error: filesError } = useBundleFiles(bundleId)
+  const { data: members = [] } = useBundleDirectoryMembers(bundleId)
   const {
     data: manifest,
     isLoading: playbackLoading,
@@ -49,12 +52,12 @@ export function MediaViewer({
   const hasMissingFiles = files.some((file) => file.availability !== 'available')
   const [pickedId, setPickedId] = useState<string | null>(null)
 
+  // A folder member's contents are browsable without being part of the bundle's
+  // own run of media (plan 6): playing the bundle skips them, and opening one of
+  // them pages through that folder instead. `playlistFor` owns both cases.
   const playlistFiles = useMemo(
-    () =>
-      files.filter(
-        (file) => file.supported && (file.media_kind === 'image' || file.media_kind === 'video'),
-      ),
-    [files],
+    () => playlistFor(files, members, initialFileId),
+    [files, members, initialFileId],
   )
   const items = useMemo(() => playlistFiles.map(viewerItemFromFile), [playlistFiles])
   const preferredId = bundle

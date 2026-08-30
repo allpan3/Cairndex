@@ -378,6 +378,9 @@ _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
     # ADR-0013: a library that predates write mode gains an empty journal, which
     # is the correct starting history — nothing has been done to it yet.
     "file_operations",
+    # Plan 6: a library that predates folder members gains an empty table, which
+    # is the correct starting state — no directory is an entity until asked.
+    "bundle_directory_members",
 )
 
 

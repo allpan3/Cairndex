@@ -10,6 +10,87 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Open a folder in the inspector to see its files nested under it.** A
+  disclosure on the right of the folder row — where a file keeps its cover and
+  play actions — reveals the files it stands for, indented beneath it, with the
+  row itself staying put. Looking inside changes nothing about the bundle.
+
+  The folder row carries no icon and no leading control, so it starts in the
+  same column as every other row in the rail.
+
+  Previously the only way to see inside was *Expand folder into the bundle*,
+  which deletes the folder row and flattens its files into the list — so the
+  folder appeared to be gone, and the way back (**Collapse** on any of those
+  files) was on a different row under a different name. That action is still
+  there for when you want the folder to stop being one member; it is no longer
+  the only way to look.
+
+- **Look inside a suggested folder before deciding it should be one.** A folder
+  row in the review dialog gets a disclosure: open it and the files it stands
+  for are listed, read-only, changing nothing about the plan. Deciding whether a
+  folder *should* be a folder previously meant flattening it to find out.
+
+  And flattening is no longer one-way. **List files** and **Keep as folder** are
+  now the two ends of one toggle: the row stays either way, saying which state it
+  is in, and applying honours whichever you left it on. The folder row sits where
+  its files begin, so listing them turns it into a header directly above them —
+  with the control that folds them back beside them, rather than stranded below
+  seventy-odd rows looking like an empty folder.
+
+- **A collapsed folder keeps working as the folder changes.** Two things a scan
+  used to get wrong about one. A photo dropped into a folder that a bundle shows
+  as one row now **joins that bundle**, instead of arriving as its own
+  suggestion to review — so an album stays one row as you add to it. And
+  **renaming the folder on disk keeps it collapsed**: move repair already
+  followed the files, but the row naming the directory was left pointing at
+  somewhere gone, which quietly un-collapsed the album on the next scan. A file
+  nested inside the folder votes for the folder's new location, not its own
+  parent's.
+
+  If a folder's files genuinely scatter to different places, it is not a folder
+  anymore: the row is dropped and its files list individually. Visible and
+  harmless, which is the right failure — the alternative is a row pointing at
+  nothing.
+
+- **Suggest grouping proposes a photo folder as one bundle, not a thousand.**
+  A folder of a thousand photos used to arrive in the review dialog as a
+  collection wrapping **a thousand single-photo bundle suggestions** — a
+  thousand rows to read before you could accept anything. Above a threshold the
+  suggester now proposes it as one bundle whose single member is the folder, and
+  applying it creates that folder row for real. One row instead of a thousand.
+
+  It counts **subjects, not files**, which is the whole of the rule. A folder of
+  300 releases is 900 files but only 300 subjects — each a video with a cover and
+  a subtitle sharing its stem — and stays 300 separate suggestions. An album is
+  300 photos that share nothing with each other. A single stray sidecar does not
+  disqualify an album, and a movie folder is never swallowed.
+
+  In the review dialog the folder is a single row — `🗁 album · Folder · 30
+  files` — with **List files** beside it. The threshold only ever decides what to
+  *propose*: a folder suggested wrongly is one click to decline, after which its
+  files list individually as before, and accepting the suggestion turns the row
+  into a real folder member on the bundle.
+
+- **A folder can sit in a bundle as one row.** A bundle that holds an album of a
+  thousand photos filled the inspector rail with a thousand rows, which is not a
+  list anyone can use. One of a bundle's directories can now stand in for its
+  files as a single row: right-click any file and choose **Collapse “…” into One
+  Row**, or right-click the folder row and **Expand “…” into the Bundle** to put
+  it back. Both are metadata-only and instant.
+
+  The folder row sits where its contents were, so collapsing does not reorder the
+  bundle, and the heading still counts every file the bundle holds — `Files in
+  bundle (1002 · 1 folder)` — because collapsing changes what is drawn, not what
+  is in the bundle. Nothing is lost either way: the files never stop being
+  members, and keep their ratings, tags, notes and playback positions throughout.
+
+  A folder carries no cover star and no play button, because a folder is a
+  container rather than a work. Double-click it (or press Enter) to open it in
+  the File Browser, which already pages through a folder in the viewer — so
+  there is no new viewer mode to learn. **Playing the bundle skips a folder's
+  contents**: "play this bundle" means its own media, not the thousand photos
+  inside. Opening one of those photos directly still pages through that folder.
+
 - **Bundle notes can be dragged into a new order.** The stack could be added to
   and removed from but never rearranged, so a note that belonged first had to be
   retyped there. Each box grows a grip under its remove button, both revealed on
@@ -379,6 +460,24 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The side panels' scrollbars lie over the content instead of beside it.** The
+  sidebar and the inspector used the platform scrollbar: sixteen pixels wide,
+  appearing the moment content outgrew the window and shoving everything
+  sideways to make room. They now draw their own — a thin translucent thumb,
+  visible on hover, draggable, and costing the panel **no width at all**, so
+  nothing moves when it comes and goes.
+
+  A native scrollbar cannot do this: it paints in the gutter, outside the
+  content box, so it always costs width. Reserving that permanently only trades
+  the jump for a constant loss, and `overflow: overlay`, which would have done
+  it in one line, has been removed from Chromium.
+
+- **Every scrollbar in the app is half-transparent now**, not just the two side
+  panels: the grid, the File Browser, dialogs, menus, pickers and the note boxes
+  all share one pair of colour tokens. The widths still differ where a layout
+  depends on them — a note box's bar is 5px because its row controls are placed
+  to sit exactly beside it — but nothing frames a panel in a solid bar any more.
+
 - **What the owner is waiting for runs first.** One worker runs one job at a
   time, so a storyboard pass — a sweep over every video in the library — held
   the queue against everything behind it: pressing Update during one queued a
@@ -616,6 +715,48 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sheets rather than leaving a library holding a mix of two qualities.
 
 ### Fixed
+
+- **A folder row goes when its last file leaves the bundle.** Removing files
+  from a bundle one at a time used to leave the folder behind reading "Folder ·
+  0 files" — a row standing for nothing, with no way to fill it. Trashing is
+  unaffected and deliberately so: a trashed file is still a member, so a folder
+  entirely in the trash keeps its row and Put back finds it there.
+
+- **Suggestion rows at the same level line up again.** A collection row carried
+  4px of horizontal padding that a bundle row did not, so two suggestions at the
+  same depth sat 4px apart and read as parent and child. The padding is what
+  gives the folder-header background and the drop highlight room to breathe, so
+  it stays — pulled back out with a matching negative margin, the same way the
+  amber "needs a look" bar already cancels its own.
+
+  While checking that, a second one: the amber bar hangs 6px into the left
+  margin, and only nested rows had room for it — on a **top-level** row it was
+  simply not drawn, which is the row most likely to be read first. The tree now
+  reserves the space.
+
+- **A work with an album subfolder is one bundle, and converting no longer
+  loses it.** Two owner-reported faults in the folder suggestion, found by
+  running it on a real library.
+
+  A folder holding a video and a subfolder of images was suggested as a
+  *collection* — the video one bundle, the images another — so the thing being
+  looked at had no single row at all. It is now one bundle: the video, and the
+  subfolder as a folder row beside it. That is the original ask stated exactly
+  ("every item in the folder in a bundle, along with other files not in the
+  folder"), and it had been missed. Merging is deliberately narrow: it happens
+  only when the folder's own media is one subject and every subfolder is an
+  album, so two videos beside a folder, or a subfolder holding its own film with
+  sidecars, still read as a collection.
+
+  **Convert to bundle** then destroyed the folder row it had just been given.
+  Converting merges the descendants' files into one bundle, and the folder row
+  is a statement about how some of those files are drawn — so it now comes
+  along, which matters most for exactly the action people take on a folder that
+  has one.
+
+  The dialog also draws a folder row *after* the loose files rather than before,
+  which is where the bundle inspector puts it once applied. The two surfaces were
+  showing the same bundle in two orders.
 
 - **Two jobs on screen no longer share one progress row.** Pressing Update while
   a storyboard pass was running left a single row whose label, count and bar each
@@ -1550,6 +1691,36 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   with a count when the work has one.
 
 ### Internal
+
+- **Browser tests for the grouping dialog's folder rows.** Both layout faults
+  the owner found were invisible to the unit suite by construction — jsdom
+  applies no stylesheet, so `vitest` renders the same markup and sees nothing
+  wrong. Four Playwright tests now cover the class: sibling rows share one
+  indent, the attention bar is not clipped off a top-level row, a folder row
+  sits above the files it covers and its files are indented under it, and
+  looking inside a folder decides nothing.
+
+  Asserted as relationships (these rows share an x; this row is above those)
+  rather than pixel values, so restyling does not break them. Each was
+  mutation-checked against the bug it exists for: reverting a fix fails its test
+  and only its test.
+
+- **A bundle may record that one of its directories is a single member** — the
+  storage and the two operations behind plan 6, with no UI yet, so nothing
+  user-visible changes. A new `bundle_directory_members` table names which
+  directories stand in for their files, and three library-scoped endpoints under
+  `/bundles/{id}/directory-members` list, collapse and expand them. Metadata-only
+  and outside the write-mode gate: nothing on disk is touched.
+
+  The table stores **no contents**. Membership stays on `asset_files.bundle_id`
+  and which files a folder covers is derived from the existing
+  `directory_path` index, so collapsing is one row inserted, expanding is one row
+  deleted, and neither can lose a file row, an id, a rating or a resume position.
+  Reversibility therefore needs no undo journal — which was the question the plan
+  called the one most worth designing up front.
+
+  The subtree match is a key range rather than a `LIKE`, so it always uses the
+  index and a folder whose real name contains `%` or `_` cannot widen it.
 
 - **`cairndex.devtools.benchmark_storyboards`** generates fixtures of known GOP
   length with ffmpeg and times each sampling mode over them, reporting wall

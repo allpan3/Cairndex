@@ -44,6 +44,7 @@ from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning import staging_cleanup
 from cairndex.scanning.fingerprint import quick_fingerprint, sqlite_filesystem_identity
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
+from cairndex.services import directory_members
 
 # Version of the scan-time provisional-bundling rule recorded on bundles staged
 # by scan. This remains intentionally simple: one provisional bundle per new file.
@@ -74,6 +75,11 @@ class ScanSummary:
     # ``staging_cleanup``). Counted separately from ``missing``: a file staged,
     # deleted, and forgotten in one pass is honestly both.
     forgotten: int = 0
+    # New files that joined an existing bundle because they landed in one of its
+    # folder members (plan 6), rather than being staged for review. Part of
+    # ``created``, and broken out because it is the one kind of new file a scan
+    # files without asking — worth being able to see in a log.
+    joined_folders: int = 0
 
 
 @dataclass(frozen=True)
@@ -391,6 +397,10 @@ def scan_library(
     repaired_rel = {obs.rel for obs, _ in repairs}
     repaired_row_ids = {row.id for _, row in repairs}
 
+    # Captured before the loop rewrites them: a folder member names a directory,
+    # and only the moves themselves say where that directory went (plan 6 §4.4).
+    moves = [(row.relative_path, obs.rel) for obs, row in repairs]
+
     for obs, row in repairs:
         # A rename Cairndex did not perform still has to carry the name a bundle
         # shows, or the file reads as its old self everywhere except the File
@@ -403,6 +413,9 @@ def scan_library(
         _apply_identity(row, obs)
         row.updated_at = utcnow()
     session.flush()
+    # A renamed folder's files repair themselves through the paths above; the row
+    # naming the folder is the one thing left pointing at somewhere that is gone.
+    directory_members.repair_after_moves(session, moves)
 
     # Pass 3: create bundles for genuinely new paths (not repaired moves).
     #
@@ -414,21 +427,35 @@ def scan_library(
     # share, where one statement costs ~36 ms, that is a minute per thousand files
     # (owner-reported, 2026-08-13). `persist_plan` had the same shape.
     created = 0
+    joined_folders = 0
     pending: list[AssetBundle | AssetFile] = []
+    # Folders the owner has collapsed into a single bundle row (plan 6). A file
+    # that lands inside one joins that bundle instead of being staged as its own
+    # provisional suggestion: the folder member *is* a durable user statement
+    # that this directory belongs to that bundle, so honouring it is not
+    # overriding a review (ADR-0009) but obeying one. It is also what keeps the
+    # feature worth having — an album stays one row as photos are added to it,
+    # rather than sprouting a provisional bundle per drop.
+    folder_owners = directory_members.bundle_by_directory(session)
     for obs in new_obs:
         if obs.rel in repaired_rel:
             continue
-        bundle = AssetBundle(
-            id=new_id(),
-            title=Path(obs.name).stem,
-            grouping_state=GroupingState.PROVISIONAL,
-            grouping_source=GroupingSource.SCAN_SUGGESTION,
-            grouping_rule_version=SCAN_GROUPING_RULE_VERSION,
-        )
-        pending.append(bundle)
+        owner_bundle_id = directory_members.owning_bundle_for(obs.rel, folder_owners)
+        if owner_bundle_id is not None:
+            joined_folders += 1
+        else:
+            bundle = AssetBundle(
+                id=new_id(),
+                title=Path(obs.name).stem,
+                grouping_state=GroupingState.PROVISIONAL,
+                grouping_source=GroupingSource.SCAN_SUGGESTION,
+                grouping_rule_version=SCAN_GROUPING_RULE_VERSION,
+            )
+            pending.append(bundle)
+            owner_bundle_id = bundle.id
         new_file = AssetFile(
             id=new_id(),
-            bundle_id=bundle.id,
+            bundle_id=owner_bundle_id,
             relative_path=obs.rel,
             original_filename=obs.name,
             display_title=obs.name,
@@ -467,6 +494,7 @@ def scan_library(
         missing_total=_missing_total(session),
         repaired=len(repairs),
         forgotten=forgotten,
+        joined_folders=joined_folders,
     )
 
 

@@ -30,10 +30,20 @@ from cairndex.domain.enums import DEFAULT_STEM_LEVEL, FileRole, MediaKind, Propo
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 5
+SUGGESTER_RULE_VERSION = 6
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
+
+# How many files a subdirectory must contribute before it is *proposed* as a
+# single folder row rather than enumerated (plan 6 §2).
+#
+# The number only ever decides what to propose, never what to do, so it can be
+# wrong cheaply: a wrongly-proposed folder costs one decline in the review
+# dialog. Twelve clears a movie folder comfortably — a film, its parts, subtitles
+# and a cover or two — while catching the album the feature exists for. It wants
+# a real library to tune it (plan 6 §5.2), which is why it is one named constant.
+FOLDER_MEMBER_THRESHOLD = 12
 
 # Trailing "...part 2 / pt2 / cd1 / disc 3" markers that indicate one work split
 # across several video files (multipart), as opposed to bare numbering (ep1, ep2)
@@ -98,6 +108,10 @@ class GroupingProposal:
     confidence: float
     reason: str
     files: tuple[ProposedFile, ...] = ()
+    # Subdirectories this proposal would show as one folder row each (plan 6).
+    # The files stay in ``files`` — collapsing changes how they are drawn, not
+    # what the bundle holds — so declining one needs nothing but dropping it.
+    directories: tuple[str, ...] = ()
     # When set, this is an *addition* proposal (ADR-0009 phase 5): its files
     # default to joining an existing confirmed bundle.
     target_bundle_id: str | None = None
@@ -667,6 +681,128 @@ def _container_proposal(
     )
 
 
+def _folder_children_merged(
+    groups: list[list[FileObservation]],
+    child_proposals: list[GroupingProposal],
+    directory: str,
+    parent: str | None,
+) -> GroupingProposal | None:
+    """One bundle for a folder that is its own media *plus* album subfolders.
+
+    The owner's original case, stated 2026-07-28 and missed until they ran it
+    (2026-08-28): "every item in the folder to be in a bundle (along with other
+    files not in the folder)". A folder holding a video and a subfolder of
+    screenshots is one work, but the suggester saw sub-bundles and made the
+    folder a *collection* — so the video became one bundle, the album another,
+    and the thing the owner was looking at had no single row at all.
+
+    Merges only when both halves are unambiguous:
+
+    - the folder's own media forms exactly **one** group, so there is no question
+      which work the albums belong to (two videos beside an album is a shelf, and
+      stays a collection);
+    - **every** child is an album, i.e. a folder bundle. One ordinary bundle among
+      them means a separate work lives down there, and a collection is right.
+
+    Returns None when either fails, leaving the container behaviour untouched.
+    """
+    if len(groups) != 1 or not child_proposals:
+        return None
+    if not all(
+        child.kind is ProposalKind.BUNDLE
+        and child.directories
+        and child.parent_directory == directory
+        for child in child_proposals
+    ):
+        return None
+
+    own = _assign_roles(groups[0])
+    inside: list[ProposedFile] = []
+    for child in child_proposals:
+        for proposed in child.files:
+            # A folder is never the cover (plan 6 §2), so a cover chosen *inside*
+            # an album stops being one here — the merged bundle's cover comes from
+            # its own media, or from the ordinary image fallback.
+            role = FileRole.IMAGE if proposed.role is FileRole.COVER else proposed.role
+            inside.append(
+                ProposedFile(
+                    asset_file_id=proposed.asset_file_id,
+                    role=role,
+                    sequence=len(own) + len(inside),
+                )
+            )
+    folders = sorted({path for child in child_proposals for path in child.directories})
+    return GroupingProposal(
+        kind=ProposalKind.BUNDLE,
+        directory=directory,
+        parent_directory=parent,
+        title=_basename(directory),
+        confidence=0.5,
+        reason=(
+            f"{len(own)} file(s) and {len(folders)} folder(s) in one place"
+            if len(folders) > 1
+            else f"{len(own)} file(s) and a folder of {len(inside)}"
+        ),
+        files=(*own, *inside),
+        directories=tuple(folders),
+    )
+
+
+def _looks_like_an_album(groups: list[list[FileObservation]]) -> bool:
+    """Whether a folder of unrelated items reads as one album rather than a shelf.
+
+    Counts **subjects, not files**, and requires them to be almost all singletons.
+    That distinction is the whole rule, and getting it wrong is the mistake that
+    killed two earlier designs (plan 6 §3): a folder of 300 releases is 900 files
+    but 300 subjects of three — a video, a cover and a subtitle sharing a stem —
+    and collapsing it would hide 300 separate works behind one row. An album is
+    300 photos that share nothing, so it is 300 subjects of one.
+
+    A little slack, because a single stray sidecar that happens to match one
+    photo's stem should not disqualify an album — being defeated by one file is
+    how a feature earns a reputation for not working.
+
+    Note this admits a folder of many single-file videos, which may be an album of
+    short clips (the owner's own example) or may be separate works. It is
+    unknowable from the files, which is exactly why this only ever proposes.
+    """
+    if len(groups) < FOLDER_MEMBER_THRESHOLD:
+        return False
+    singletons = sum(1 for group in groups if len(group) == 1)
+    return singletons >= len(groups) * 0.9
+
+
+def _folder_bundle_proposal(
+    media: list[FileObservation], directory: str, parent: str | None
+) -> GroupingProposal:
+    """A folder of many unrelated items, proposed as one bundle holding the folder.
+
+    Without this the suggester's honest answer to a thousand-photo album is a
+    collection wrapping a thousand one-photo bundles — every one of them a row in
+    the review dialog, which is the complaint plan 6 exists to answer. Above the
+    threshold the folder becomes a *single* bundle whose one row is the folder
+    itself, which is the owner's requirement stated literally: every item in the
+    folder is in a bundle.
+
+    The files are still the bundle's files, so they keep search, tags, ratings and
+    resume; only the drawing collapses. Roles are assigned as usual, which also
+    settles the cover: a real image inside the folder, not the folder (§4.3).
+    """
+    return GroupingProposal(
+        kind=ProposalKind.BUNDLE,
+        directory=directory,
+        parent_directory=parent,
+        title=_basename(directory),
+        # Deliberately modest. The threshold cannot tell an album from any other
+        # heap of files, and saying so is what makes declining it feel routine
+        # rather than like overriding the app.
+        confidence=0.5,
+        reason=f"{len(media)} files in one folder, kept as a folder",
+        files=_assign_roles(media),
+        directories=(directory,),
+    )
+
+
 def _classify(
     node: _Dir,
     parent: str | None,
@@ -695,6 +831,11 @@ def _classify(
     groups = _bundle_groups(media, stem_level) if media else []
 
     if has_subbundles and not is_root:
+        # ...unless the folder is one work whose extras happen to live in
+        # subfolders, in which case it is a bundle holding them (plan 6).
+        merged = _folder_children_merged(groups, child_proposals, node.path, parent)
+        if merged is not None:
+            return [merged]
         # This folder is a CONTAINER for the bundles found beneath it.
         direct_count = len(groups) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
@@ -740,6 +881,13 @@ def _classify(
         proposals.extend(
             _direct_media_proposals(groups, "", parent_for_children=None, stem_level=stem_level)
         )
+        return proposals
+    # Above the threshold this is an album, not a shelf of separate works: one
+    # bundle holding the folder, rather than a collection wrapping one bundle per
+    # file (plan 6 §2, owner-confirmed 2026-08-28). Only ever a proposal — the
+    # review dialog declines it in one click, and the files enumerate again.
+    if _looks_like_an_album(groups):
+        proposals.append(_folder_bundle_proposal(media, node.path, parent))
         return proposals
     # A container of unrelated items: one child bundle per subject or file
     proposals.append(_container_proposal(node.path, parent, child_count=len(groups)))

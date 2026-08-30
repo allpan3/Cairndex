@@ -590,6 +590,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/directory-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Directory Members */
+        get: operations["list_directory_members_api_v1_libraries__library_id__bundles__bundle_id__directory_members_get"];
+        put?: never;
+        /** Collapse Directory */
+        post: operations["collapse_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/directory-members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Expand Directory */
+        delete: operations["expand_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members__member_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
         parameters: {
             query?: never;
@@ -1970,6 +2005,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/directories/{directory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Proposal Directory Expanded */
+        put: operations["set_proposal_directory_expanded_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__directories__directory_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
         parameters: {
             query?: never;
@@ -2614,6 +2666,11 @@ export interface components {
             conflicts: components["schemas"]["ApplyConflictRead"][];
             /** Files Added To Bundles */
             files_added_to_bundles: number;
+            /**
+             * Folders Collapsed
+             * @default 0
+             */
+            folders_collapsed: number;
             /**
              * Proposals Remaining
              * @default 0
@@ -3278,6 +3335,43 @@ export interface components {
         DirectoryBundleCount: {
             /** Bundle Count */
             bundle_count: number;
+        };
+        /**
+         * DirectoryMemberCreate
+         * @description Collapse one of the bundle's directories into a single row (plan 6).
+         *
+         *     Library-relative; absolute paths and traversal are rejected in the service
+         *     through the same guard every other client-supplied path goes through.
+         */
+        DirectoryMemberCreate: {
+            /** Directory Path */
+            directory_path: string;
+        };
+        /** DirectoryMemberRead */
+        DirectoryMemberRead: {
+            /** Bundle Id */
+            bundle_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Directory Path */
+            directory_path: string;
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Sequence */
+            sequence: number;
         };
         /**
          * EmptyTrashRequest
@@ -4324,6 +4418,44 @@ export interface components {
             /** Create New Bundle */
             create_new_bundle: boolean;
         };
+        /**
+         * ProposalDirectoryRead
+         * @description A directory this proposal would show as one folder row (plan 6).
+         *
+         *     ``file_count`` is how many of *this proposal's* files sit inside it — the
+         *     number of rows the folder replaces, which is what the dialog needs to say
+         *     what accepting it does. It is not the count on disk, which can be larger.
+         */
+        ProposalDirectoryRead: {
+            /** Directory Path */
+            directory_path: string;
+            /**
+             * Expanded
+             * @default false
+             */
+            expanded: boolean;
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+        };
+        /**
+         * ProposalDirectoryUpdate
+         * @description Whether this folder's files are listed individually (declined) or shown
+         *     as the single row the suggestion proposes.
+         */
+        ProposalDirectoryUpdate: {
+            /** Expanded */
+            expanded: boolean;
+        };
         /** ProposalFileMove */
         ProposalFileMove: {
             /** Target Index */
@@ -4360,6 +4492,11 @@ export interface components {
             confidence: number;
             /** Create New Bundle */
             create_new_bundle: boolean;
+            /**
+             * Directories
+             * @default []
+             */
+            directories: components["schemas"]["ProposalDirectoryRead"][];
             /** Directory */
             directory: string;
             /** Files */
@@ -5971,6 +6108,117 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FileOperationResult"] | null;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_directory_members_api_v1_libraries__library_id__bundles__bundle_id__directory_members_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryMemberRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collapse_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectoryMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryMemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expand_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members__member_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                member_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -8680,6 +8928,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProposalDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_proposal_directory_expanded_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__directories__directory_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                directory_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDirectoryUpdate"];
             };
         };
         responses: {

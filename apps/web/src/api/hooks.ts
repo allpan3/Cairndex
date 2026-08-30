@@ -93,6 +93,9 @@ import {
   fetchBundle,
   fetchBundleCollections,
   fetchBundleFiles,
+  fetchDirectoryMembers,
+  collapseDirectory,
+  expandDirectory,
   isNotFoundError,
   fetchBundleTags,
   fetchCollectionCounts,
@@ -126,6 +129,7 @@ import {
   setGroupingProposalDestination,
   setGroupingProposalKind,
   moveGroupingProposalFile,
+  setProposalDirectoryExpanded,
   reparentGroupingProposal,
   renameCollection,
   updateCollection,
@@ -1031,6 +1035,27 @@ export function useSetGroupingProposalDestination(planId: string | null) {
 }
 
 /** Move one reviewed file and update every affected proposal in-place. */
+export function useSetProposalDirectoryExpanded(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      directoryId,
+      expanded,
+    }: {
+      proposalId: string
+      directoryId: string
+      expanded: boolean
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return setProposalDirectoryExpanded(planId, proposalId, directoryId, expanded)
+    },
+    // The server returns the proposal with the row's new state; its files were
+    // never elsewhere, so nothing else in the plan changes.
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
+  })
+}
+
 export function useMoveGroupingProposalFile(planId: string | null) {
   const qc = useQueryClient()
   return useMutation({
@@ -1491,6 +1516,41 @@ export function useBundleFiles(id: string | null) {
     queryFn: ({ signal }) => orAbsent(fetchBundleFiles(id as string, signal), []),
     enabled: id !== null,
   })
+}
+
+/**
+ * The bundle's folder rows (plan 6). Keyed separately from `bundle-files` so a
+ * collapse invalidates only what changed — the file list itself is untouched by
+ * collapsing, because collapsing does not alter membership.
+ */
+export function useBundleDirectoryMembers(id: string | null) {
+  return useQuery({
+    queryKey: ['bundle-directory-members', id],
+    queryFn: ({ signal }) => orAbsent(fetchDirectoryMembers(id as string, signal), []),
+    enabled: id !== null,
+  })
+}
+
+export function useDirectoryMemberMutations(bundleId: string) {
+  const qc = useQueryClient()
+  // The bundle card can draw a cover from a folder's contents, and the album
+  // view's row list changes shape, so both go stale — but `bundle-files` does
+  // not: the same files are members before and after.
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['bundle-directory-members', bundleId] })
+    qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
+    qc.invalidateQueries({ queryKey: ['browse'] })
+  }
+  return {
+    collapse: useMutation({
+      mutationFn: (directoryPath: string) => collapseDirectory(bundleId, directoryPath),
+      onSettled: invalidate,
+    }),
+    expand: useMutation({
+      mutationFn: (memberId: string) => expandDirectory(bundleId, memberId),
+      onSettled: invalidate,
+    }),
+  }
 }
 
 export function useFileRepairCandidate(bundleId: string, fileId: string, enabled: boolean) {

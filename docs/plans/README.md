@@ -37,6 +37,7 @@ shipping a release its own piece of work. Both are in the build order below.
 | 3   | macOS desktop app (Tauri 2 shell)                           | [03-macos-desktop-app.md](03-macos-desktop-app.md)                                    |
 | 4   | Library write mode (guarded file operations)                | [04-library-write-mode.md](04-library-write-mode.md) — ADR-0013 (accepted 2026-07-04) |
 | 5   | Network-library latency: Theater Mode + where the DB lives  | [05-network-library-latency.md](05-network-library-latency.md) — **deferred post-v0.1.0** |
+| 6   | A folder as one item inside a bundle                        | [06-folder-as-bundle-member.md](06-folder-as-bundle-member.md) — approved, **deferred post-v0.1.0**; supersedes ADR-0021 |
 
 ## How the three initiatives relate
 

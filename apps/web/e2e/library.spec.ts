@@ -67,6 +67,11 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
     const url = r.request().url()
     if (url.endsWith('/playback')) {
       r.fulfill({ json: { bundle_id: 'b0', videos: [] } })
+    } else if (url.includes('/directory-members')) {
+      // No folder members in this fixture. Needed explicitly: the catch-all
+      // below answers with the bundle *detail* object, and the inspector asks
+      // this endpoint for a list on every selection (plan 6).
+      r.fulfill({ json: [] })
     } else if (url.includes('/files')) {
       r.fulfill({
         json: [

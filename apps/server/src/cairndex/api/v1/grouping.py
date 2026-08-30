@@ -17,6 +17,7 @@ from cairndex.api.schemas.grouping import (
     PlanRead,
     PlanSummary,
     ProposalDestinationUpdate,
+    ProposalDirectoryUpdate,
     ProposalFileMove,
     ProposalKindUpdate,
     ProposalRead,
@@ -110,6 +111,26 @@ def update_proposal_destination(
     """Switch an addition candidate between its existing target and a new bundle."""
     proposal = plan_store.set_proposal_destination(
         db, plan_id, proposal_id, payload.create_new_bundle
+    )
+    return ProposalRead.model_validate(proposal)
+
+
+# List a proposed folder's files individually, or fold them back (plan 6).
+# A PUT rather than a DELETE because it goes both ways: looking inside a folder
+# must not be a one-way door (owner-reported, 2026-08-28).
+@router.put(
+    "/plans/{plan_id}/proposals/{proposal_id}/directories/{directory_id}",
+    response_model=ProposalRead,
+)
+def set_proposal_directory_expanded(
+    plan_id: str,
+    proposal_id: str,
+    directory_id: str,
+    payload: ProposalDirectoryUpdate,
+    db: LibrarySession,
+) -> ProposalRead:
+    proposal = plan_store.set_proposal_directory_expanded(
+        db, plan_id, proposal_id, directory_id, expanded=payload.expanded
     )
     return ProposalRead.model_validate(proposal)
 
@@ -209,6 +230,7 @@ def apply_plan(
         bundles_added_to_collections=result.bundles_added_to_collections,
         files_added_to_bundles=result.files_added_to_bundles,
         subtitles_linked=result.subtitles_linked,
+        folders_collapsed=result.folders_collapsed,
         conflicts=[
             ApplyConflictRead(proposal_id=c.proposal_id, title=c.title, reason=c.reason)
             for c in result.conflicts
