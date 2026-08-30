@@ -249,6 +249,39 @@ class FileRead(BaseModel):
         return self
 
 
+# --- Directory members -------------------------------------------------------
+class DirectoryMemberCreate(BaseModel):
+    """Collapse one of the bundle's directories into a single row (plan 6).
+
+    Library-relative; absolute paths and traversal are rejected in the service
+    through the same guard every other client-supplied path goes through.
+    """
+
+    directory_path: str = Field(min_length=1)
+
+
+class DirectoryMemberRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    bundle_id: str
+    directory_path: str
+    # The folder's own name, derived rather than stored, for the same reason
+    # ``FileRead.display_title`` is: a stored copy drifts when the path is
+    # repaired, and there is no case where the row wants a name of its own.
+    name: str = ""
+    sequence: int
+    #: Files *from this bundle* inside the folder — not the count on disk, which
+    #: can be larger (plan 6 §4.2). Filled by the route.
+    file_count: int = 0
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def derive_name(self) -> "DirectoryMemberRead":
+        self.name = PurePosixPath(self.directory_path).name
+        return self
+
+
 # --- Associations ------------------------------------------------------------
 class SetIdsRequest(BaseModel):
     ids: list[str]

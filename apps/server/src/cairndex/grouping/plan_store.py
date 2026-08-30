@@ -49,6 +49,7 @@ from cairndex.persistence.models import (
     Collection,
     GroupingPlan,
     GroupingProposal,
+    GroupingProposalDirectory,
     GroupingProposalFile,
 )
 
@@ -67,7 +68,10 @@ def get_plan(session: Session, plan_id: str) -> GroupingPlan:
     plan = session.scalar(
         select(GroupingPlan)
         .where(GroupingPlan.id == plan_id)
-        .options(selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files))
+        .options(
+            selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files),
+            selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.directories),
+        )
     )
     if plan is None:
         raise NotFoundError(f"grouping plan {plan_id!r} not found")
@@ -137,6 +141,31 @@ def rename_proposal(
         raise ValidationError("suggestion title cannot be empty")
     proposal.title = normalized
     proposal.owner_edited = True
+    session.flush()
+    return proposal
+
+
+def set_proposal_directory_expanded(
+    session: Session, plan_id: str, proposal_id: str, directory_id: str, *, expanded: bool
+) -> GroupingProposal:
+    """List a proposed folder's files individually, or fold them back to one row.
+
+    A flag rather than a delete, so it goes both ways. Deleting was the first
+    shape, and it made looking inside a folder a one-way door: the only way to
+    see what was in one was to flatten it, with nothing to undo that
+    (owner-reported, 2026-08-28).
+
+    Deliberately **not** ``owner_edited``. That flag licenses apply to move a
+    file out of an already-confirmed bundle (ADR-0009 §5/§7), and this changes no
+    membership at all: the same files land in the same bundle either way, drawn
+    one per row or as one. Setting it would hand a drawing preference the power
+    to override a confirmed grouping.
+    """
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    row = next((d for d in proposal.directories if d.id == directory_id), None)
+    if row is None:
+        raise NotFoundError(f"folder suggestion {directory_id!r} is not part of this suggestion")
+    row.expanded = expanded
     session.flush()
     return proposal
 
@@ -482,7 +511,10 @@ def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingP
         session.scalars(
             select(GroupingProposal)
             .where(GroupingProposal.plan_id == proposal.plan_id)
-            .options(selectinload(GroupingProposal.files))
+            .options(
+                selectinload(GroupingProposal.files),
+                selectinload(GroupingProposal.directories),
+            )
         )
     )
     by_parent: dict[str | None, list[GroupingProposal]] = {}
@@ -605,10 +637,41 @@ def _container_to_bundle(session: Session, proposal: GroupingProposal) -> None:
         seen.add(observation.asset_file_id)
         observations.append(observation)
 
+    # Folder rows the descendants were carrying, kept before they are deleted.
+    # Converting merges the descendants' *files* into this proposal, and a folder
+    # row is a statement about how some of those files are drawn — so dropping it
+    # here silently un-collapsed an album the moment the owner said "this folder
+    # is one bundle", which is the one action most likely to be taken on a folder
+    # that has one (owner-reported, 2026-08-28).
+    #
+    # Excludes this proposal's own directory: a bundle that collapsed the folder
+    # it *is* would be a single row hiding the whole bundle.
+    # Keeps each row's declined state: converting must not quietly re-collapse a
+    # folder the owner had asked to see listed.
+    carried: dict[str, bool] = {}
+    for descendant in descendants:
+        for folder in descendant.directories:
+            if folder.directory_path == proposal.directory:
+                continue
+            carried[folder.directory_path] = (
+                carried.get(folder.directory_path, False) or folder.expanded
+            )
+
     # Delete deepest-first so no row is orphaned mid-way through.
     for row in reversed(descendants):
         session.delete(row)
     session.flush()
+
+    existing_directories = {folder.directory_path for folder in proposal.directories}
+    for directory_path, expanded in sorted(carried.items()):
+        if directory_path in existing_directories:
+            continue
+        session.add(
+            GroupingProposalDirectory(
+                proposal_id=proposal.id, directory_path=directory_path, expanded=expanded
+            )
+        )
+    session.expire(proposal, ["directories"])
 
     ordered = _media_first(observations)
     path_by_id = {o.asset_file_id: o.relative_path for o in ordered}
@@ -1135,7 +1198,10 @@ def reusable_open_plan(session: Session) -> GroupingPlan | None:
         select(GroupingPlan)
         .where(GroupingPlan.status == GroupingPlanStatus.OPEN)
         .order_by(GroupingPlan.generated_at.desc())
-        .options(selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files))
+        .options(
+            selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files),
+            selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.directories),
+        )
     )
     if plan is None or plan.rule_version != SUGGESTER_RULE_VERSION:
         return None
@@ -1244,8 +1310,10 @@ def persist_plan(
     total = len(data.proposals)
     container_proposal_by_dir: dict[str, str] = {}
     rows: list[tuple[GroupingProposal, str | None]] = []
-    pending: list[GroupingProposal | GroupingProposalFile] = []
-    loaded: list[tuple[GroupingProposal, list[GroupingProposalFile]]] = []
+    pending: list[GroupingProposal | GroupingProposalFile | GroupingProposalDirectory] = []
+    loaded: list[
+        tuple[GroupingProposal, list[GroupingProposalFile], list[GroupingProposalDirectory]]
+    ] = []
 
     for order, proposal in enumerate(data.proposals):
         # The id is assigned here rather than left to the flush that would
@@ -1288,9 +1356,18 @@ def persist_plan(
             )
             for pf in proposal.files
         ]
+        # Same reason as ``files`` above: built here with known ids so the
+        # inserts batch, rather than one round trip per proposal.
+        directories = [
+            GroupingProposalDirectory(
+                id=new_id(), proposal_id=row.id, directory_path=directory_path
+            )
+            for directory_path in proposal.directories
+        ]
         pending.append(row)
         pending.extend(files)
-        loaded.append((row, files))
+        pending.extend(directories)
+        loaded.append((row, files, directories))
         if on_progress is not None:
             on_progress(order + 1, total)
         if proposal.kind is ProposalKind.CONTAINER:
@@ -1312,9 +1389,13 @@ def persist_plan(
     # generating a plan (owner-reported, 2026-08-13). Assigning the relationship
     # instead of the foreign key is not enough either: an *empty* collection stays
     # unloaded, so every container still paid a query.
-    for row, files in loaded:
+    for row, files, directories in loaded:
         set_committed_value(row, "files", files)
-    set_committed_value(plan, "proposals", [row for row, _ in loaded])
+        # Same treatment, same reason: an unprimed ``directories`` — usually the
+        # empty collection, since most proposals collapse nothing — costs one
+        # SELECT per proposal when the response serializes.
+        set_committed_value(row, "directories", directories)
+    set_committed_value(plan, "proposals", [row for row, _, _ in loaded])
     return plan
 
 

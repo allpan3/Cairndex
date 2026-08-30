@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import { useCollectionStats, useUpdateCollection } from '../api/hooks'
+import { OverlayScrollbar } from './OverlayScrollbar'
 
 /**
  * Right-pane details for a selected collection (single-click a collection card).
@@ -41,6 +42,7 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
 
   return (
     <aside className="inspector" data-tauri-drag-region>
+      <OverlayScrollbar />
       {hasCover && (
         <div className="inspector__cover">
           <img

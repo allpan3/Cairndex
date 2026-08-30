@@ -12,6 +12,12 @@
   --text: #c8ccd4;
   --text-strong: #f1f3f6;
   --text-muted: #7f8593;
+  /* Every scrollbar in the app, native or drawn: translucent so it reads as
+     lying over the panel rather than framing it. One pair of tokens so the
+     several widths — a 5px note box, a 6px picker, the 8px default, the drawn
+     overlay — cannot drift apart in colour. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.42);
   --accent: #5b8cff;
   --accent-soft: rgba(91, 140, 255, 0.16);
   /* Selected *and* hovered: has to read as "still selected, and under the
@@ -222,6 +228,31 @@ button {
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
+/* Half-transparent scrollbars everywhere (owner, 2026-08-29). `scrollbar-color`
+   is the standard property and covers Firefox; the WebKit pseudo-elements give
+   a narrower bar than its `thin` keyword, so both are set. The two side panels
+   opt out below — they hide the engine's bar and draw their own, which costs no
+   width at all. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
 .sidebar {
   grid-column: 1;
   background: var(--bg-2);
@@ -1596,6 +1627,52 @@ button {
   border-radius: 4px;
   background: rgba(248, 113, 113, 0.1);
 }
+/* A folder member (plan 6). Deliberately not draggable: plan 6 §4.5 is
+   withdrawn, not pending (built and reverted 2026-08-29 — the rail's drag has no
+   visible affordance, so it was an invisible capability on one more row). The
+   default cursor is the honest one, because a grab cursor would promise a drag
+   that does nothing. */
+.files .file-row--folder {
+  cursor: default;
+}
+/* Looking inside a folder member, which changes nothing about the bundle. */
+/* A bare chevron, not one of the boxed row actions it sits beside. Written at
+   this specificity on purpose: `.file-row__actions button` is a class *and* an
+   element, so a single class loses to it and the arrow came out drawn as a
+   bordered 22px box (owner, 2026-08-29). Matches `.grp-disclosure`, which is
+   the same control in the grouping dialog. */
+.file-row__actions .file-row__disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.file-row__actions .file-row__disclosure:hover:not(:disabled),
+.file-row__actions .file-row__disclosure:focus-visible {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.file-row__actions .file-row__disclosure--open {
+  transform: rotate(90deg);
+}
+/* A file drawn under the folder row that stands for it. Indented so the run
+   reads as that folder's contents rather than as peers of the bundle's own
+   media — flattening them into the list was the complaint (owner, 2026-08-29). */
+.files .file-row--in-folder {
+  /* The folder itself lines up with every other row, so this is the only indent
+     in the rail and it only has to clear the folder's own name. */
+  padding-left: 16px;
+  cursor: default;
+}
 .files .file-row__name {
   display: flex;
   align-items: center;
@@ -1869,11 +1946,11 @@ button {
   background: transparent;
 }
 .note-row .edit--note::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 .note-row .edit--note::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--scrollbar-thumb-hover);
 }
 .note-row:hover .note-remove,
 .note-row:hover .note-drag,
@@ -1994,6 +2071,58 @@ button {
   background: var(--border);
   margin: 4px 2px;
 }
+/* The side panels hide the engine's scrollbar entirely and draw their own over
+   the content (`OverlayScrollbar`). A native bar paints in the gutter, outside
+   the content box, so it always costs width — 16px here — and reserving that
+   permanently only trades a jump for a constant loss. Neither was wanted
+   (owner, 2026-08-29). */
+.sidebar,
+.inspector {
+  scrollbar-width: none;
+}
+/* Each panel's padding, negated, so the thumb hugs its inner edge. */
+.sidebar {
+  --oscroll-inset: -6px;
+}
+.inspector {
+  --oscroll-inset: -12px;
+}
+.sidebar::-webkit-scrollbar,
+.inspector::-webkit-scrollbar {
+  display: none;
+}
+/* Zero-height and sticky, so the thumb it carries is pinned to the top of the
+   *visible* part of the scroller rather than scrolling away with the content. */
+.oscroll {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.oscroll__thumb {
+  position: absolute;
+  top: 0;
+  /* The anchor sits inside the panel's padding, so a plain inset would leave the
+     thumb floating that far in — 16px in the inspector, which reads as a stray
+     line rather than a scrollbar. Each panel pulls it back out to 2px from its
+     own inner edge. */
+  right: var(--oscroll-inset, 2px);
+  width: 6px;
+  border-radius: 3px;
+  background: var(--scrollbar-thumb);
+  pointer-events: auto;
+  transition: background 120ms ease;
+}
+/* Legible while the pointer is anywhere in the panel, and firmer while dragging;
+   otherwise quiet enough to sit over text. */
+.sidebar:hover .oscroll__thumb,
+.inspector:hover .oscroll__thumb,
+.oscroll__thumb--dragging {
+  background: var(--scrollbar-thumb-hover);
+}
+
 /* Thin, unobtrusive scrollbar tucked inside the panel padding so it never
    widens the panel. Webkit/Blink pseudo-elements give a narrower bar than the
    standard `scrollbar-width: thin`, so we use them directly. */
@@ -2004,11 +2133,11 @@ button {
   background: transparent;
 }
 .picker__panel::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 .picker__panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--scrollbar-thumb-hover);
 }
 .picker__search {
   flex: 1;
@@ -2928,6 +3057,13 @@ code {
   margin: 0;
   padding: 0;
 }
+/* Room for the attention bar, which hangs 6px into the left margin. A nested
+   row gets that room from `.grp-children` below; a top-level one had none, so
+   the marker was simply not drawn on the outermost rows — the ones most likely
+   to be looked at first. */
+.grp-tree {
+  padding-left: 6px;
+}
 .grp-children {
   margin-left: 16px;
   border-left: 1px solid var(--border);
@@ -3056,7 +3192,14 @@ code {
 .grp-row--collection {
   gap: var(--grp-lead-gap);
   border-radius: 5px;
+  /* The padding is what gives the folder-header background and the drop
+     highlight room to breathe. Pulled straight back out again, because it is a
+     decoration and must not move the row's content: a bundle row has no such
+     padding, so a collection sat 4px right of a bundle at the same depth, and
+     two siblings looked like parent and child (owner-reported, 2026-08-28).
+     Same trick as `.grp-row--attention` below, which cancels its own bar. */
   padding: 2px 4px;
+  margin-inline: -4px;
 }
 /* The rows below a folder header are its contents. Faint on purpose: it has to
    read as a heading over them without becoming the loudest thing on screen. */
@@ -3406,6 +3549,57 @@ code {
   gap: 8px;
   font-size: 12px;
   padding: 1px 0;
+}
+/* A proposed folder row (plan 6): accepted or declined whole, so it is not
+   draggable and takes no grab cursor from the file rows around it. */
+.grp-file--folder .grp-file__name {
+  color: var(--text-strong);
+}
+.grp-file__folder-icon {
+  flex: none;
+  opacity: 0.75;
+}
+.grp-file__role {
+  color: var(--text-dim);
+}
+.grp-file__expand {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11px;
+}
+/* A folder listed individually: its files are in the list proper, and this row
+   stays only to say so and to offer the way back. Dimmed so it reads as a note
+   rather than as another item. */
+.grp-file--folder-listed .grp-file__name,
+.grp-file--folder-listed .grp-file__folder-icon {
+  opacity: 0.6;
+}
+/* A file drawn under the folder header that would otherwise stand for it.
+   Indented so the run reads as that folder's contents rather than as peers of
+   the bundle's own media. */
+.grp-file--in-folder {
+  padding-left: 16px;
+}
+/* Looking inside, which changes nothing. Read-only on purpose: every editing
+   affordance here belongs to the folder as a whole. */
+.grp-file-peek {
+  padding: 2px 0 4px 22px;
+}
+.grp-file-peek__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--border);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.grp-file-peek__row {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 1px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .grp-file--draggable {
   cursor: grab;
@@ -5098,6 +5292,11 @@ code {
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 600;
+}
+/* The standard property alone used to be enough here; the app-wide
+   `::-webkit-scrollbar` baseline would otherwise give this strip a bar back. */
+.file-browser__crumbs::-webkit-scrollbar {
+  display: none;
 }
 .file-browser__crumbs::-webkit-scrollbar {
   display: none;

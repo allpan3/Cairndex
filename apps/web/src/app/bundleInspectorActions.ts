@@ -38,6 +38,13 @@ export interface BundleInspectorActions {
   onRevealFile?: (relativePath: string) => void
   /** Jump to this file's directory in the File Browser. */
   onLocateFile?: (relativePath: string) => void
+  /**
+   * Open a *directory* in the File Browser — navigate into it, where
+   * `onLocateFile` navigates to a file's parent and highlights the file. A
+   * folder member's whole handoff is "show me what is in here" (plan 6), which
+   * locating it in its parent does not do.
+   */
+  onOpenFolderInBrowser?: (relativePath: string) => void
   /** Move files to the library trash (present only while write mode is on). */
   onTrashFiles?: (relativePaths: string[]) => void
   /** Import dropped OS files and link them into this bundle (write mode only) */
@@ -66,6 +73,7 @@ export const BUNDLE_INSPECTOR_ACTION_KEYS = [
   'onOpenFile',
   'onRevealFile',
   'onLocateFile',
+  'onOpenFolderInBrowser',
   'onTrashFiles',
   'onDropFilesOnBundle',
   'onStartFileDrag',

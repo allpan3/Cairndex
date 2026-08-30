@@ -39,6 +39,7 @@ from cairndex.persistence.models import (
     Tag,
 )
 from cairndex.services import collections as collection_service
+from cairndex.services import directory_members as directory_member_service
 from cairndex.services.pagination import keyset_page
 
 _BUNDLE_SCALAR_FIELDS = {"title"}
@@ -241,10 +242,13 @@ def forget_missing_files(
             )
     for row in selected:
         _forget_file(session, row)
-    return ForgetResult(
-        forgotten=len(selected),
-        bundle_deleted=session.get(AssetBundle, bundle_id) is None,
-    )
+    deleted = session.get(AssetBundle, bundle_id) is None
+    if not deleted:
+        # Forgetting drops the rows outright, so a folder row can be left
+        # standing for nothing (plan 6). If the bundle went with them, the
+        # cascade has already taken its folder rows.
+        directory_member_service.prune_empty(session, bundle_id)
+    return ForgetResult(forgotten=len(selected), bundle_deleted=deleted)
 
 
 def delete_bundle(session: Session, bundle_id: str) -> None:
@@ -430,9 +434,13 @@ def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     session.flush()
     if asset_file.availability is FileAvailability.MISSING:
         _forget_file(session, asset_file)
+        directory_member_service.prune_empty(session, bundle_id)
         return
     _restage_file(session, asset_file)
     session.flush()
+    # The file left this bundle, so a folder row that only stood for it now
+    # stands for nothing (plan 6).
+    directory_member_service.prune_empty(session, bundle_id)
 
 
 # --- Tag / collection assignment ---------------------------------------------
