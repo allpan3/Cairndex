@@ -477,12 +477,14 @@ def scan_github_event(
     return findings, f"{commits} pushed commits and {blobs} newly reachable blobs"
 
 
-# Print only locations and rule names so a detected value is never echoed
+# Report only a count because every finding remains derived from sensitive input
 def report(findings: list[str], summary: str, private_pattern_count: int) -> int:
     if findings:
         print("PRIVACY GATE FAILED", file=sys.stderr)
-        for finding in sorted(set(findings)):
-            print(f"- {finding}", file=sys.stderr)
+        print(
+            f"{len(set(findings))} private-content finding(s); details withheld",
+            file=sys.stderr,
+        )
         print("No push, pull request, tag, release, or image publication is safe.", file=sys.stderr)
         return 1
     print(f"privacy gate OK: {summary}; {private_pattern_count} private patterns")

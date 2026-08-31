@@ -208,6 +208,9 @@ _Nothing yet._
   body using the trusted base-branch implementation, so a PR cannot weaken its
   own check. New binaries fail unless their bytes, path, purpose, and synthetic
   or redistributable provenance are explicitly inventoried.
+- **Privacy failures do not echo sensitive-derived diagnostics.** A failed
+  publication scan reports only its finding count, keeping matched content and
+  any diagnostic strings derived from it out of CI and terminal logs.
 
 ### Internal
 

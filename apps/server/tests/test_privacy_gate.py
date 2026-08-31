@@ -71,6 +71,15 @@ def test_private_literal_findings_are_redacted():
     assert private_value not in findings[0]
 
 
+# Never echo diagnostics derived from private input at the publication boundary
+def test_failure_report_withholds_finding_details(capsys):
+    private_derived_finding = "fixture:1: owner-only-catalogue-name"
+    assert privacy_gate.report([private_derived_finding], "fixture", 1) == 1
+    captured = capsys.readouterr()
+    assert "1 private-content finding(s); details withheld" in captured.err
+    assert private_derived_finding not in captured.err
+
+
 # Require review for flag-like files and new repository-root entries
 def test_path_policy_catches_incident_shapes():
     allowlist = privacy_gate.load_allowlist()
