@@ -202,7 +202,12 @@ _Nothing yet._
   public push, rewritten history, pull request, or release, agents must inspect
   every published ref and object, detect binary content independently of file
   extensions, validate Docker contexts/images, and use only visually reviewed
-  synthetic fixtures and screenshots.
+  synthetic fixtures and screenshots. Tracked pre-commit, commit-message, and
+  pre-push hooks now enforce the local scan with an untracked owner-literal
+  profile. A separate PR workflow scans the exact commit graph plus PR title and
+  body using the trusted base-branch implementation, so a PR cannot weaken its
+  own check. New binaries fail unless their bytes, path, purpose, and synthetic
+  or redistributable provenance are explicitly inventoried.
 
 ### Internal
 
@@ -210,6 +215,10 @@ _Nothing yet._
   and Tauri versions must agree with each other and with a release tag. Manual
   release dispatch must also run from the tag it names. The release candidate is
   synchronized at `0.2.0`.
+- **Privacy checks are reproducible.** `just privacy-range`,
+  `just privacy-history`, and `just privacy-pr` distinguish ordinary branch
+  diffs from first-publication/rewritten-history audits and scan metadata files
+  without unsafe shell interpolation.
 - **Container smoke tests identify the exact image.** Default local runs build a
   commit-specific disposable tag; publication smoke-tests once, verifies every
   final tag points to those bytes, and pushes without rebuilding. Release images

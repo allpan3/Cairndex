@@ -1059,6 +1059,11 @@ attestations bind the downloadable DMG to that workflow run and SBOM.
 **1. Before tagging.** The tag is the input to everything below, and a tag that
 is wrong is more annoying to undo than to get right.
 
+- Install the privacy hooks with `just install-privacy-hooks`, maintain the
+  untracked owner-literal profile, and run `just privacy-history HEAD`. A tag
+  publishes every object in its reachable history; a range-only diff is not
+  sufficient after repository recreation or a rewrite. Do not tag if the gate
+  or the required PR privacy check is missing or failing.
 - `VERSION` is the release version. Bump it and the matching Python, npm,
   Cargo, lockfile, and Tauri package versions in the same commit. Run
   `python3 infra/release_version.py`; it names every stale source. The release
