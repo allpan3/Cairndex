@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+zero_oid="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  [[ "$local_oid" != "$zero_oid" ]] || continue
+  echo "privacy gate: $local_ref -> $remote_ref" >&2
+  if [[ "$remote_oid" == "$zero_oid" ]] || ! git cat-file -e "${remote_oid}^{commit}" 2>/dev/null; then
+    python3 "$repo_root/infra/privacy_gate.py" \
+      --all-history \
+      --head "$local_oid" \
+      --require-private-patterns
+  else
+    python3 "$repo_root/infra/privacy_gate.py" \
+      --base "$remote_oid" \
+      --head "$local_oid" \
+      --require-private-patterns
+  fi
+done

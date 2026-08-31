@@ -141,6 +141,14 @@ rewritten commits does not remove commits retained by GitHub pull-request refs, 
 forks, Actions artifacts, or existing clones. CI that runs after a push is too late to
 be the first privacy check.
 
+Install the tracked local hooks once per clone with `just install-privacy-hooks`. Keep
+owner-specific names, library labels, paths, domains, and other known private literals
+in Git's untracked `cairndex-private-patterns` file, one literal per line. The installer
+seeds the local checkout and home-path prefixes; add incident-specific values without
+copying them into tracked configuration. Never use `--no-verify`, change
+`core.hooksPath`, or remove a pattern to get a commit or push through. A scanner finding
+is a stop signal to inspect and sanitize, not a lint exception.
+
 Before **every push** and before creating or updating a pull request:
 
 1. Identify the exact refs and commit range that will become reachable. For the first
@@ -164,6 +172,30 @@ Before **every push** and before creating or updating a pull request:
 5. State the privacy-gate result before pushing. If the complete reachable history and
    publication metadata were not inspected, do not push and do not open the PR. Owner
    authorization to open a PR is not a waiver of this gate.
+
+Use the executable gates, not an ad hoc approximation:
+
+```bash
+# Ordinary branch work: all commits and objects newly reachable from the base
+just privacy-range origin/main HEAD
+
+# First publication, rewritten history, changed remote, tag, or recreated repository
+just privacy-history HEAD
+
+# Before opening/updating a PR; title and body must be files, never shell interpolation
+just privacy-pr origin/main /tmp/pr-title.txt /tmp/pr-body.md HEAD
+```
+
+The pre-commit hook scans exact staged bytes and paths; the commit-msg hook scans the
+message; the pre-push hook scans every ref update and uses a whole-history audit for a
+new remote ref. `.github/workflows/privacy.yml` repeats the object and PR-metadata scan
+on open, synchronization, reopen, edit, and ready-for-review events. Its
+`pull_request_target` job executes only the trusted base implementation, never checks
+out PR files, and posts `publication-privacy/trusted` to the exact PR head, so a PR
+cannot weaken its own scanner. That context must be a required check on `main` once the
+workflow is present there. The GitHub check is defense in depth: it has no access to
+local owner-specific literals, so it never replaces the local gate and human
+inspection.
 
 If user data is found in an unpushed commit, rewrite it out of every affected local ref
 and prove the old blob and commits are unreachable before pushing. If it is found after
@@ -271,7 +303,10 @@ Commit frequently at meaningful checkpoints. Commits should be small enough to r
 
 Every PR should include problem and scope, design summary, synthetic-data screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, the publication privacy-gate result, and follow-up work explicitly out of scope.
 
-Never force-push `main`. Force-push only non-main branches and use `--force-with-lease`.
+Never force-push `main`. Force-push a non-main branch only after the owner explicitly
+confirms that exact force-push in the current task, use `--force-with-lease`, and rerun
+the complete privacy gate against the rewritten ref immediately before pushing.
+Confirmation is not a waiver of the privacy gate.
 
 **Releasing is owner-triggered, like opening a PR.** Do not create or push a `v*` tag unless the owner asks for one: the tag is what builds and publishes artifacts to other people, and it spends billed macOS CI minutes. Never move or delete a tag that has a **published** release — downloaded checksums would stop matching; ship a new version instead. The full procedure, including pre-tag version bumps and how to back out a draft, is in [`docs/deployment.md`](docs/deployment.md) under *Cutting a release*.
 

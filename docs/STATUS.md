@@ -70,6 +70,19 @@
 > artifact, resolves the digest after pushing the tested tags, and writes provenance
 > and SBOM attestations against that immutable GHCR digest.
 
+> Publication privacy is now executable rather than instruction-only. Tracked
+> pre-commit, commit-message, and pre-push hooks scan staged bytes, metadata, and
+> every object newly exposed by each ref update, using an untracked local profile
+> for owner-specific literals. First pushes, rewritten histories, changed remotes,
+> and tags receive a whole-history scan. The PR workflow repeats the generic scan
+> for exact commits, paths, blobs, branch name, title, and body from the trusted
+> base-branch implementation; binary SHA-256/path/purpose/provenance is explicit.
+> It posts `publication-privacy/trusted` to the exact PR head. The workflow must
+> first land on `main`, after which that context should become a required `main`
+> rule. Force-pushing `main` remains forbidden; another branch may
+> be force-pushed only with explicit owner confirmation for that operation,
+> `--force-with-lease`, and a fresh privacy pass.
+
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
 > screenshot. It had been removed from the working tree long ago, but both retained

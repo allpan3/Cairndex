@@ -280,6 +280,11 @@ not a public issue. Do not attach real library media or identifying metadata;
 reduce reports to synthetic data. See [SECURITY.md](SECURITY.md) for supported
 versions, deployment boundaries, and reporting details.
 
+Repository contributors must install the fail-closed privacy hooks with
+`just install-privacy-hooks`. The mandatory object-level scan covers staged
+bytes, commit messages, push ranges, PR title/body text, historical deleted
+blobs, and unreviewed binaries; see [AGENTS.md](AGENTS.md#mandatory-publication-privacy-gate).
+
 ## License
 
 Cairndex is released under the [MIT License](LICENSE) (owner decision,
