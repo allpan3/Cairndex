@@ -303,10 +303,12 @@ Commit frequently at meaningful checkpoints. Commits should be small enough to r
 
 Every PR should include problem and scope, design summary, synthetic-data screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, the publication privacy-gate result, and follow-up work explicitly out of scope.
 
-Never force-push `main`. Force-push a non-main branch only after the owner explicitly
-confirms that exact force-push in the current task, use `--force-with-lease`, and rerun
-the complete privacy gate against the rewritten ref immediately before pushing.
-Confirmation is not a waiver of the privacy gate.
+Do not force-push any branch unless the owner explicitly confirms that exact
+force-push and target branch in the current task. A force-push to `main` requires
+confirmation that names `main`; never infer it from approval to rewrite or repair
+another ref. Use `--force-with-lease`, and rerun the complete privacy gate against the
+rewritten ref immediately before pushing. Confirmation is not a waiver of the privacy
+gate and cannot remove commits retained by existing GitHub PR refs.
 
 **Releasing is owner-triggered, like opening a PR.** Do not create or push a `v*` tag unless the owner asks for one: the tag is what builds and publishes artifacts to other people, and it spends billed macOS CI minutes. Never move or delete a tag that has a **published** release — downloaded checksums would stop matching; ship a new version instead. The full procedure, including pre-tag version bumps and how to back out a draft, is in [`docs/deployment.md`](docs/deployment.md) under *Cutting a release*.
 
