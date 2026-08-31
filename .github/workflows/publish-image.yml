@@ -36,6 +36,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 env:
   # github.repository would be "allpan3/Cairndex" — GHCR requires a lowercase
@@ -101,6 +103,40 @@ jobs:
       - name: Smoke-test the candidate
         run: ./infra/docker/smoke.sh cairndex:candidate
 
+      # Scan the exact local image that passed the smoke test, before any
+      # registry operation can change what the tag names. The uploaded JSON is
+      # the portable copy; the post-push attestation binds the same document to
+      # the immutable GHCR digest.
+      - name: Generate image SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: cairndex:candidate
+          format: spdx-json
+          output-file: cairndex-container.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+      - name: Verify the SPDX SBOM
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("cairndex-container.spdx.json")
+          document = json.loads(path.read_text())
+          if not str(document.get("spdxVersion", "")).startswith("SPDX-"):
+              raise SystemExit(f"invalid SPDX document: {path}")
+          if not document.get("packages"):
+              raise SystemExit(f"SBOM contains no packages: {path}")
+          if path.stat().st_size > 16 * 1024 * 1024:
+              raise SystemExit(f"SBOM exceeds GitHub's 16 MiB attestation limit: {path}")
+          print(f"SPDX OK: {len(document['packages'])} packages in {path}")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cairndex-container-sbom-${{ inputs.tag || github.ref_name }}
+          path: cairndex-container.spdx.json
+          if-no-files-found: error
+
       # Login happens here rather than at the top: nothing before this point
       # needs the registry, and a failed smoke test should not have left an
       # authenticated session lying around on the runner.
@@ -114,16 +150,47 @@ jobs:
       # A second build could resolve a changed base image or dependency and
       # publish bytes that were never run.
       - name: Push the tested image
+        id: push
         env:
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
           candidate_id=$(docker image inspect cairndex:candidate --format '{{.Id}}')
+          manifest_digest=''
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
             test "$(docker image inspect "$tag" --format '{{.Id}}')" = "$candidate_id"
             docker push "$tag"
+            repository="${tag%:*}"
+            repo_digest=$(docker image inspect "$tag" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+              | awk -v prefix="${repository}@" 'index($0, prefix) == 1 { print; exit }')
+            [ -n "$repo_digest" ] || { echo "::error::No registry digest recorded for $tag"; exit 1; }
+            pushed_digest="${repo_digest#*@}"
+            [[ "$pushed_digest" == sha256:* ]] \
+              || { echo "::error::Unexpected registry digest: $pushed_digest"; exit 1; }
+            if [ -n "$manifest_digest" ] && [ "$manifest_digest" != "$pushed_digest" ]; then
+              echo "::error::Published tags do not share one tested digest"
+              exit 1
+            fi
+            manifest_digest="$pushed_digest"
           done <<< "$IMAGE_TAGS"
+          [ -n "$manifest_digest" ] || { echo "::error::No image tags were published"; exit 1; }
+          echo "digest=$manifest_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Attest image SBOM
+        uses: actions/attest-sbom@v3
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: cairndex-container.spdx.json
+          push-to-registry: true
 
       - name: Summary
         run: |
@@ -133,6 +200,8 @@ jobs:
             echo '```'
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
+            echo
+            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
             echo
             echo "Pull on the server with \`docker compose pull && docker compose up -d\`."
           } >> "$GITHUB_STEP_SUMMARY"

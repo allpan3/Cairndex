@@ -1858,6 +1858,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- **Published artifacts now have SBOMs and cryptographic provenance.** The
+  release workflow attaches an SPDX inventory of the verified app payload and
+  creates build-provenance and SBOM attestations for its DMG. Container
+  publication inventories the exact smoke-tested image, uploads the JSON for
+  inspection, and attaches both attestations to the immutable post-push GHCR
+  digest rather than to a movable tag.
+
 - **Dependency audits are release gates rather than dashboard-only alerts.** CI
   audits both npm projects at high severity, the complete Python lock, and the
   Rust lock. Vulnerable transitive web build tools are pinned to patched
