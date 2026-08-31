@@ -1006,14 +1006,17 @@ bundles a GPL ffmpeg.
 **1. Before tagging.** The tag is the input to everything below, and a tag that
 is wrong is more annoying to undo than to get right.
 
-- `apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/package.json` carry
-  the version, and **the artifact names come from `tauri.conf.json`, not from
-  the tag**. Nothing enforces that they agree, so a `v0.2.0` tag on a
-  `0.1.0` config silently produces `Cairndex_0.1.0_*.dmg`. Bump both first.
+- `VERSION` is the release version. Bump it and the matching Python, npm,
+  Cargo, lockfile, and Tauri package versions in the same commit. Run
+  `python3 infra/release_version.py`; it names every stale source. The release
+  workflow repeats that check against the tag on a Linux runner **before** it
+  starts the macOS build, so a `v0.2.0` tag can no longer silently produce a
+  `Cairndex_0.1.0_*.dmg` or spend macOS minutes before failing.
 - `CHANGELOG.md` — move `Unreleased` entries under the new version. **This is
   enforced**: the release body is that section, extracted by
   `infra/release_notes.py`, and the job fails if `## [<version>]` is missing
-  rather than publishing a release with no notes.
+  rather than publishing a release with no notes. This check also runs in the
+  Linux preflight before the macOS build.
 - Gates green on `main` (`AGENTS.md`), since the tag is what gets built.
 
 **2. Tag and push.** Annotated, so the tag carries its own description:

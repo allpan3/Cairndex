@@ -31,8 +31,27 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      # Fail on a free Linux runner before starting the billed macOS build. The
+      # tag, every native package file, the Tauri artifact version, and the
+      # changelog section must describe the same release.
+      - name: Check tag, package versions, and release notes
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 infra/release_version.py --tag "$TAG"
+          python3 infra/release_notes.py "$TAG" >/dev/null
+
   build:
     name: ${{ matrix.label }}
+    needs: validate
     runs-on: ${{ matrix.runner }}
     # macOS minutes bill at 10x, and the app+DMG step is compile-bound with no
     # progress output, so a wedged Tauri DMG bundler (it drives Finder over

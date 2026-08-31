@@ -751,6 +751,9 @@ an amd64 image for the NAS from an Apple Silicon Mac.
 - Record consequential decisions in `docs/adr/` (see `docs/adr/README.md`).
 - Do not commit source media, databases, caches, thumbnails, or secrets —
   enforced by `.gitignore`, but review diffs before pushing regardless.
+- Keep the root `VERSION`, Python, npm, Cargo, lockfile, and Tauri versions in
+  sync. `python3 infra/release_version.py` checks every source; passing
+  `--tag vX.Y.Z` also checks the release tag.
 
 ## CI
 

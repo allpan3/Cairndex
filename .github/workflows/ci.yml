@@ -43,6 +43,8 @@ jobs:
         working-directory: apps/server
     steps:
       - uses: actions/checkout@v7
+      - name: Release metadata consistency
+        run: python3 ../../infra/release_version.py
       - name: Install ffmpeg (for scanner/probe/thumbnail tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
