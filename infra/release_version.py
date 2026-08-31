@@ -58,9 +58,7 @@ def _locked_package_version(path: Path, package_name: str) -> str:
         if name and name.group(1) == package_name and version:
             matches.append(version.group(1))
     if len(matches) != 1:
-        raise SystemExit(
-            f"{path}: expected one {package_name!r} package, found {len(matches)}"
-        )
+        raise SystemExit(f"{path}: expected one {package_name!r} package, found {len(matches)}")
     return matches[0]
 
 
@@ -82,14 +80,10 @@ def collect_versions(repo_root: Path = REPO_ROOT) -> dict[str, str]:
         ),
         "apps/web/package.json": str(web_package["version"]),
         "apps/web/package-lock.json": str(web_lock["version"]),
-        "apps/web/package-lock.json packages['']": str(
-            web_lock["packages"][""]["version"]
-        ),
+        "apps/web/package-lock.json packages['']": str(web_lock["packages"][""]["version"]),
         "apps/desktop/package.json": str(desktop_package["version"]),
         "apps/desktop/package-lock.json": str(desktop_lock["version"]),
-        "apps/desktop/package-lock.json packages['']": str(
-            desktop_lock["packages"][""]["version"]
-        ),
+        "apps/desktop/package-lock.json packages['']": str(desktop_lock["packages"][""]["version"]),
         "apps/desktop/src-tauri/Cargo.toml": _toml_table_version(
             repo_root / "apps/desktop/src-tauri/Cargo.toml", "package"
         ),
@@ -106,9 +100,7 @@ def validate_versions(versions: dict[str, str], tag: str | None = None) -> str:
     if not _VERSION.fullmatch(canonical):
         raise SystemExit(f"VERSION is not a valid semantic version: {canonical!r}")
 
-    disagreements = {
-        name: value for name, value in versions.items() if value != canonical
-    }
+    disagreements = {name: value for name, value in versions.items() if value != canonical}
     if disagreements:
         lines = [f"release version mismatch; VERSION is {canonical}:"]
         lines.extend(f"  {name}: {value}" for name, value in disagreements.items())
@@ -119,17 +111,34 @@ def validate_versions(versions: dict[str, str], tag: str | None = None) -> str:
             raise SystemExit(f"release tag must start with 'v': {tag!r}")
         tag_version = tag[1:]
         if tag_version != canonical:
-            raise SystemExit(
-                f"release tag {tag!r} does not match repository version {canonical!r}"
-            )
+            raise SystemExit(f"release tag {tag!r} does not match repository version {canonical!r}")
 
     return canonical
+
+
+# Reject a manual dispatch whose provenance ref differs from its release tag
+def validate_dispatch_ref(
+    event_name: str | None,
+    ref_type: str | None,
+    ref_name: str | None,
+    tag: str | None,
+) -> None:
+    if event_name != "workflow_dispatch":
+        return
+    if tag is None or ref_type != "tag" or ref_name != tag:
+        raise SystemExit(
+            "manual release must be dispatched from the same tag passed as --tag "
+            f"(ref_type={ref_type!r}, ref_name={ref_name!r}, tag={tag!r})"
+        )
 
 
 # Run the repository gate
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="Release tag to compare, e.g. v0.1.1")
+    parser.add_argument("--event-name", help="GitHub event name for dispatch validation")
+    parser.add_argument("--ref-type", help="GitHub ref type for dispatch validation")
+    parser.add_argument("--ref-name", help="GitHub ref name for dispatch validation")
     parser.add_argument(
         "--repo-root",
         type=Path,
@@ -137,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Repository root (defaults to the script's parent repository)",
     )
     args = parser.parse_args(argv)
+    validate_dispatch_ref(args.event_name, args.ref_type, args.ref_name, args.tag)
     version = validate_versions(collect_versions(args.repo_root), args.tag)
     suffix = f" and tag {args.tag}" if args.tag else ""
     print(f"release version OK: {version}{suffix}")
