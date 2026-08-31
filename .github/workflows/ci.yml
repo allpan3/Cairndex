@@ -35,6 +35,44 @@ concurrency:
 
 
 jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Audit web dependencies
+        run: npm audit --audit-level=high
+        working-directory: apps/web
+      - name: Audit desktop npm dependencies
+        run: npm audit --audit-level=high
+        working-directory: apps/desktop
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Audit Python dependencies
+        run: uv audit --preview-features audit-command
+        working-directory: apps/server
+      - uses: dtolnay/rust-toolchain@stable
+      # Current Tauri/wry Linux support still resolves GTK 0.18 and glib 0.18.
+      # RUSTSEC-2024-0429 affects VariantStrIter, which Cairndex does not call,
+      # and is absent from the macOS release graph. Keep the exception explicit
+      # so every other Rust advisory remains a failing check; remove it when
+      # Tauri's GTK dependency line reaches glib >=0.20.
+      - name: Audit Rust dependencies
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: apps/desktop/src-tauri
+          ignore: RUSTSEC-2024-0429
+
   backend:
     name: Backend (lint, types, tests)
     runs-on: ubuntu-latest

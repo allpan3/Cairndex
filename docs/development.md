@@ -782,10 +782,20 @@ an amd64 image for the NAS from an Apple Silicon Mac.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push/PR: backend lint + type-check +
-tests, frontend lint + type-check + unit tests, macOS and Ubuntu desktop checks,
-a macOS Tauri bundle, and Docker context/privacy/build/smoke validation. PRs
-should be green before merge.
+`.github/workflows/ci.yml` runs on every push/PR: dependency audits; backend
+lint, type-check, and tests; frontend lint, type-check, unit tests, and browser
+e2e; macOS and Ubuntu desktop checks; a macOS Tauri bundle; and Docker
+context/privacy/build/smoke/recovery validation. PRs should be green before
+merge. The audit job checks both npm lockfiles at high severity, the complete
+Python lock, and the Rust lock.
+
+The Rust audit carries one narrow exception: `RUSTSEC-2024-0429` applies to
+`glib::VariantStrIter` in `glib` 0.18.5. Cairndex does not call that API, the
+crate enters only through Tauri/wry's Linux GTK 0.18 dependency graph, and it is
+not part of the Apple Silicon release artifact. The first patched glib line is
+0.20, which GTK 0.18 cannot accept. Keep the exception until Tauri's Linux GTK
+line moves, then remove it rather than broadening it; every other Rust advisory
+still fails CI.
 
 CodeQL analyzes Python and JavaScript/TypeScript on pushes, pull requests, and a
 weekly schedule. Dependency review rejects a pull request that introduces a
