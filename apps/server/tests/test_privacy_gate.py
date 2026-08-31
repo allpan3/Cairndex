@@ -71,6 +71,22 @@ def test_private_literal_findings_are_redacted():
     assert private_value not in findings[0]
 
 
+# Allow Git identity emails while continuing to scan the commit message
+def test_commit_identity_email_is_public_metadata():
+    identity_email = "maintainer" + "@invalid" + ".dev"
+    metadata = (
+        "tree 0000000000000000000000000000000000000000\n"
+        f"author Synthetic Maintainer <{identity_email}> 1 +0000\n"
+        f"committer Synthetic Maintainer <{identity_email}> 1 +0000\n\n"
+        "safe message\n"
+    ).encode()
+    assert privacy_gate.scan_commit(metadata, "fixture", []) == []
+
+    message = metadata + f"Mention {identity_email} here\n".encode()
+    findings = privacy_gate.scan_commit(message, "fixture", [])
+    assert findings == ["commit fixture:6: non-placeholder email address"]
+
+
 # Never echo diagnostics derived from private input at the publication boundary
 def test_failure_report_withholds_finding_details(capsys):
     private_derived_finding = "fixture:1: owner-only-catalogue-name"

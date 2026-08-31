@@ -211,6 +211,10 @@ _Nothing yet._
 - **Privacy failures do not echo sensitive-derived diagnostics.** A failed
   publication scan reports only its finding count, keeping matched content and
   any diagnostic strings derived from it out of CI and terminal logs.
+- **Git identity metadata is distinguished from repository content.** The
+  publication gate accepts standard author and committer email headers while
+  continuing to reject personal email addresses in messages, paths, PR text,
+  tracked files, and artifacts.
 
 ### Internal
 
