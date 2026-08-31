@@ -8,15 +8,28 @@
 # unwritable. Those are exactly the ways this image can rot while CI stays
 # green, so they are what this checks.
 #
-#   ./infra/docker/smoke.sh [image-tag]        # default: cairndex:ci
+#   ./infra/docker/smoke.sh                    # build fresh, test, remove image
+#   ./infra/docker/smoke.sh <image-tag>        # test an explicitly built image
 #
-# Builds the image if the tag is not already present. Leaves nothing behind.
+# An explicit image is the only reuse path. Leaves nothing behind otherwise.
 set -euo pipefail
 
-IMAGE="${1:-cairndex:ci}"
+if [[ $# -gt 1 ]]; then
+    echo "usage: $0 [image-tag]" >&2
+    exit 2
+fi
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BUILT_IMAGE=false
+if [[ $# -eq 0 ]]; then
+    REVISION=$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo worktree)
+    IMAGE="cairndex:smoke-${REVISION}-$$"
+    BUILT_IMAGE=true
+else
+    IMAGE="$1"
+fi
 CONTAINER="cairndex-smoke-$$"
 PORT="${CAIRNDEX_SMOKE_PORT:-18000}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LIBRARY_DIR="$(mktemp -d)"
 ALT_CONTAINER="${CONTAINER}-altuid"
 ALT_LIBRARY_DIR="$(mktemp -d)"
@@ -32,6 +45,9 @@ cleanup() {
     rm -rf "$LIBRARY_DIR"
     # The alternate-uid run wrote as *this* user, so no container is needed.
     rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR"
+    if [[ "$BUILT_IMAGE" == true ]]; then
+        docker image rm "$IMAGE" >/dev/null 2>&1 || true
+    fi
 }
 trap cleanup EXIT
 
@@ -56,9 +72,12 @@ in_library() {
 api() { curl -fsS "http://127.0.0.1:${PORT}/api/v1$1" "${@:2}"; }
 post_json() { api "$1" -X POST -H 'content-type: application/json' -d "$2"; }
 
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+if [[ "$BUILT_IMAGE" == true ]]; then
     step "building $IMAGE"
     docker build -f "$REPO_ROOT/infra/docker/production.Dockerfile" -t "$IMAGE" "$REPO_ROOT"
+elif ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "SMOKE FAIL: explicit image does not exist: $IMAGE" >&2
+    exit 1
 fi
 
 # The library dir is created by mktemp as this user; the container runs as uid

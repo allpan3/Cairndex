@@ -296,10 +296,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Build dev images
-        run: docker compose build
-      - name: Build production image
-        run: docker build -f infra/docker/production.Dockerfile -t cairndex:ci .
+      - name: Build images and guard their contexts
+        run: ./infra/docker/build-and-check.sh cairndex:ci
       # Building only proves the Dockerfile parses and the dependencies resolve.
       # This job was green for a month while the image's entrypoint ran a
       # migration command that no longer did anything and the dev image had no

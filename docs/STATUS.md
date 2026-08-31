@@ -1,5 +1,22 @@
 # Project status
 
+> **Repository privacy incident resolved (2026-08-30).** The live public repository
+> is the newly created `allpan3/Cairndex`; its clean `main` starts at
+> `52c8f6785ad2faad886bd56f0575a279f880b169`. The contaminated repository is now
+> `allpan3/Cairndex-archive-3`, private and archived. No pull-request refs, tags, or
+> releases were migrated. The clean repository's first CI run passed all seven jobs.
+> The incident record immediately below describes why recreating the repository was
+> necessary; its statement that remote remediation is pending is historical.
+
+> **Release hardening in progress (`chore/release-hardening`, 2026-08-30).** Docker
+> contexts now exclude nested environment files, runtime databases, virtualenvs, and
+> sidecar build/vendor output. CI seeds synthetic private-data canaries into each risky
+> path, builds all development and production images, rejects a context above 50 MiB,
+> and inspects every image for leaks. The production smoke path builds a fresh,
+> commit-specific image by default and deletes it afterward; passing an explicit image
+> tag is the only reuse path. Image publication now smoke-tests the exact tagged image
+> IDs that it pushes rather than rebuilding after the test.
+
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
 > screenshot. It had been removed from the working tree long ago, but both retained

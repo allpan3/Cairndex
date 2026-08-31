@@ -1,4 +1,4 @@
-.venv
+.venv*
 __pycache__
 *.pyc
 .pytest_cache
@@ -6,6 +6,14 @@ __pycache__
 .ruff_cache
 .coverage
 htmlcov
-dist
-build
+var
+packaging/build
+packaging/dist
+packaging/vendor
 *.egg-info
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
