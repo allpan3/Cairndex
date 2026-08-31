@@ -150,15 +150,16 @@
 > deferral expired with v0.1.0 and its design questions are settled. It is
 > designed and unbuilt — see the branch section below.
 
-## Open on branch: moments, and the range loop they carry (2026-08-29)
+## Merged: moments, and the range loop they carry (2026-08-31, PR #14)
 
 Owner wants to save the frames and spans that matter inside a video, tag and
 comment them, read them back in the Bundle Inspector, and — related, and the same
 infrastructure — loop between two points.
 [Plan 7](plans/07-moments-and-range-loop.md) holds the design and the two
-decisions worth arguing with. **Built and gate-green on branch
-`feat/moments`; the owner has not yet used it in the app.** No PR is open —
-that is the owner's call.
+decisions worth arguing with. **Merged as PR #14, after the owner's pass in the
+app.** The 24 commits the work actually took were squashed to four before review
+— four attempts at one chevron and a preview design added, removed and re-added
+are the owner's history, not a reviewer's. All seven CI checks green.
 
 **The model.** A moment is one instant (`end_s IS NULL`) or one span inside
 one `AssetFile`, with an optional comment and any number of library tags. Two new
@@ -351,8 +352,19 @@ the same `apps/web` build that passed here.
 - No `has_moments` / `moment_count` filter field. Propagation means the tag
   filters already reach these bundles.
 
-**Next recommended task:** the owner's pass in the app, then whether to open a
-PR. After that, phase I (the Android client, plan 2 T1–T7) is still what follows.
+**Next recommended task:** phase I — the Android client, plan 2 T1–T7 — which is
+what the roadmap has after this. The gaps listed above are all deliberate and
+none of them block it.
+
+**Worth carrying forward from this branch.** Four of the six bugs the owner found
+were invisible to reading the diff and only appeared in a running app against a
+real file: a fill class resolving against the viewport, two cache artifacts
+colliding on a `with_suffix` sidecar, a background task holding its own write
+invisible, and chrome idling out from under a resting pointer. Two of those were
+*introduced by the fix for the previous one*. On anything that generates a cached
+artifact or touches the request lifecycle, budget for driving the real app rather
+than trusting the gates — and reproduce before fixing, because three of these had
+a plausible wrong diagnosis that testing killed.
 
 ## Merged: a folder as one item inside a bundle (2026-08-29, PR #13)
 
