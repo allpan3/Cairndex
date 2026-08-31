@@ -1858,6 +1858,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- **Dependency audits are release gates rather than dashboard-only alerts.** CI
+  audits both npm projects at high severity, the complete Python lock, and the
+  Rust lock. Vulnerable transitive web build tools are pinned to patched
+  versions. The one explicit exception is a Linux-only GTK/glib iterator
+  advisory in Tauri's current dependency line; Cairndex does not call the
+  affected API, it is absent from the macOS artifact, and every other Rust
+  advisory still fails the gate.
+
 - **Automated dependency and static security review now covers the public
   repository.** Dependabot checks GitHub Actions, Python, both npm projects,
   Cargo, and Docker weekly; pull requests reject newly introduced high-severity
