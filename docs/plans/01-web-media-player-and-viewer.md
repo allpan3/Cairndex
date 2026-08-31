@@ -53,7 +53,7 @@ opens it on that file.
 - Custom control bar (auto-hiding): play/pause, seek bar with buffered ranges
   - chapter ticks, time/duration, volume slider + mute, settings menu
     (speed 0.25–3× with pitch-preserve toggle, quality when transcoding, loop,
-    A-B loop, video adjustments, seek-step size), subtitle menu, audio-track
+    range loop, video adjustments, seek-step size), subtitle menu, audio-track
     menu, PiP, theater/fullscreen.
 - Seek bar: click/drag scrubbing, hover time tooltip with **storyboard
   thumbnail**, chapter markers from container metadata.
@@ -63,8 +63,9 @@ opens it on that file.
   paused, `,`/`.` speed down/up (owner 2026-07-11: swapped from the original
   map — M2 shipped frame step on `,`/`.` and speed on `<`/`>`; M9 rebinds),
   `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set the clip range's ends
-  (shipped M11 2026-08-15; the same span A-B loop replay will use),
-  `Esc` close. Same map reused by the desktop shell.
+  (shipped M11 2026-08-15; the same span the armed range loop uses), `b` save a
+  moment (plan 7, 2026-08-29), `Esc` close. Same map reused by the desktop
+  shell.
 - Subtitle experience (Movist-inspired): external + embedded text tracks,
   on/off + track pick, styling settings (size, color, background/edge,
   vertical offset — persisted), timing offset nudge (±). Owner-deprioritized:
@@ -73,11 +74,16 @@ opens it on that file.
   (M9 at the earliest).
 - Snapshot capture: save/copy the current frame via a canvas grab (streams
   are same-origin, so the canvas stays untainted).
-- A-B loop between two marked points (2026-07-11: moved to M11 as the GIF
-  range-picker). **The range picker shipped 2026-08-15** and loops the marked
-  span while it is being picked; what remains is exposing that loop as a
-  persistent playback mode, which is a settings-menu toggle over the existing
-  `useClipRange`/`useClipPlayback` pair rather than new machinery. Video adjustments
+- range loop between two marked points (2026-07-11: moved to M11 as the GIF
+  range-picker). **The range picker shipped 2026-08-15**, and the **persistent
+  range loop shipped 2026-08-29** with moments ([plan 7](07-moments-and-range-loop.md)),
+  as predicted: a third mode over the existing
+  `useClipRange`/`useClipPlayback` pair rather than new machinery. It is
+  **armed** rather than a preference — while it is on, all playback stays inside
+  the span and a pause does not end it ([ADR-0026](../adr/0026-armed-range-loop.md)),
+  which extends the 2026-08-16 "not a quiet mode" decision rather than
+  contradicting it. A saved range moment is an loop pair, so its row in the
+  inspector arms the loop directly. Video adjustments
   (2026-07-11: deferred, reframed as color/tone — see §11 future rows).
 - Resume: reopening a partially-watched file offers/starts at the saved
   position; progress saved throttled + on pause/close.
@@ -503,8 +509,10 @@ than registry jobs — a running scan must not queue-block a ten-second export:
   states: off, **range** (stop at the out-point) and **loop**, modelled as one
   `ClipPlayMode` because "loop while ignoring the out-point" is not a state that
   means anything. `useClipRange` owns the span and `useClipPlayback` consumes
-  it, so **A-B loop replay is a second entry point to the same model**, not a
-  second model. **Size and rate shipped 2026-08-15** as the dialog this section
+  it, so **range-loop replay is a second entry point to the same model**, not a
+  second model. (Shipped 2026-08-29 as exactly that — see plan 7 and ADR-0026;
+  the three playback states named here became one `ClipPlaybackMode` of
+  `off`/`session`/`armed`.) **Size and rate shipped 2026-08-15** as the dialog this section
   originally sketched, with every choice on a scrolling **wheel**
   (`WheelPicker`) rather than a segmented row — a row caps out at three or four
   options, and the size ladders wanted fifteen. The contact sheet and the
@@ -594,7 +602,7 @@ there is one layout, not two.
 | M12 | ✅ Thumbnail hover video preview (Eagle-style, §13.2; merged, #12)                  | Dwell-to-play muted video at rest; storyboard sprites while the cursor moves; one video seek/resume after 250 ms rest; position bar, time, sound toggle, and storyboard-only fallback. Sequenced right after M9, before the desktop shell                                                                          |
 | M8  | Subtitle upgrade — **deferred to future**                                           | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice                                |
 | M10 | Video wall (web) — **deferred to future**                                           | §9                                                                                                                                                                                                                                                                                                                 |
-| M11 | ◐ Media exports — **contact sheet (#34) and GIF snippet shipped; webp/mp4 left** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **GIF snippet shipped 2026-08-15**, also an owner request: an interactive create/poll/download export task (not a plain GET — a GIF decodes a contiguous span and can outlast the shell's 30s relay timeout), and the **range picker the A-B loop was moved here to become** (owner 2026-07-11). The picker is an inline clip bar with two granularities, and the span it owns is shared — `useClipPlayback` already consumes it for the range and loop playback modes, so **A-B loop replay is a follow-up entry point rather than new machinery**. The D5b export seam's JSON-number-array byte transport was replaced with a raw IPC body, as §10 required before a real export shipped. **Size/fps controls followed on 2026-08-15** — an options dialog on Save GIF…, source-aware width presets, and the output size shown before encoding. **Still open:** `kind: "webp"`/`"mp4"`. Plan 4 W2 (save exports into library) is a slice rather than a blocked item |
+| M11 | ◐ Media exports — **contact sheet (#34) and GIF snippet shipped; webp/mp4 left** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **Contact-sheet export shipped 2026-07-27 (PR #34)** out of order, as an owner request rather than a scheduled slice: server-cut frame grid (one input per cell seeking to its own timestamp, cached by grid shape + source fingerprint), header and per-cell timestamps composed client-side on canvas, a dialog for grid and width, and a save path reachable from every surface that shows a video. **GIF snippet shipped 2026-08-15**, also an owner request: an interactive create/poll/download export task (not a plain GET — a GIF decodes a contiguous span and can outlast the shell's 30s relay timeout), and the **range picker the range loop was moved here to become** (owner 2026-07-11). The picker is an inline clip bar with two granularities, and the span it owns is shared — `useClipPlayback` already consumes it for the range and loop playback modes, so **range-loop replay is a follow-up entry point rather than new machinery**. The D5b export seam's JSON-number-array byte transport was replaced with a raw IPC body, as §10 required before a real export shipped. **Size/fps controls followed on 2026-08-15** — an options dialog on Save GIF…, source-aware width presets, and the output size shown before encoding. **Still open:** `kind: "webp"`/`"mp4"`. Plan 4 W2 (save exports into library) is a slice rather than a blocked item |
 | —   | Video adjustments — **deferred to future**                                          | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred                                                                                                                                      |
 
 Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved
