@@ -1784,6 +1784,75 @@ button {
 }
 
 /* --- Inspector editable fields ------------------------------------------- */
+/* A foldable inspector block (owner, 2026-08-30). The heading is the control,
+   so the target is a rail-wide strip rather than a 12px chevron. */
+.ins-section {
+  margin-top: 12px;
+}
+.ins-section__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ins-section__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.ins-section__toggle .field-label {
+  margin: 0;
+  cursor: pointer;
+}
+.ins-section__toggle:hover .field-label {
+  color: var(--text);
+}
+/* On the right, and only under the pointer: a rail of five headings should read
+   as five labels at rest rather than five controls (owner, 2026-08-30). */
+.ins-section__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: rotate(-90deg);
+  transition:
+    transform 0.12s,
+    opacity 0.12s;
+}
+.ins-section__chevron.is-open {
+  transform: none;
+}
+.ins-section__head:hover .ins-section__chevron {
+  opacity: 1;
+}
+.ins-section__head:hover .ins-section__chevron:hover {
+  color: var(--text-strong);
+}
+/* Sized here, and it has to be `.icon` to be sized at all: `IconChevron`'s own
+   class is a 9×13 filled triangle for tree rows, which is what this looked like
+   however large the wrapper around it was (owner, 2026-08-30). */
+.ins-section__chevron .icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.75;
+}
+/* Sections own their spacing, so the blocks inside them do not add a second
+   margin at the top. */
+.ins-section > .field-label:first-of-type,
+.ins-section .chips:first-of-type {
+  margin-top: 0;
+}
+
 .field-label {
   display: block;
   font-size: 11px;
@@ -2152,6 +2221,365 @@ button {
   box-shadow: none;
   border-color: var(--border);
 }
+/* --- Moments (plan 7) -------------------------------------------------- */
+/* The inspector section: one line per moment when it has nothing else to say,
+   growing only for the tags and the comment it actually has. */
+.moment-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.moment-head .field-label {
+  margin-bottom: 0;
+}
+.moment-count {
+  /* Inside the section title, so it needs its own gap — the flex row's gap does
+     not reach between a label and a span within it. */
+  margin-left: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.moment-add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.moment-add:hover {
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
+.moment-add .icon {
+  width: 12px;
+  height: 12px;
+}
+.moment-empty {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.moment-empty kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.moment-list {
+  margin-top: 2px;
+}
+/* Quiet, and only drawn when there is more than one video to tell apart. */
+.moment-group__file {
+  padding: 6px 0 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.moment-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+/* The frame lives in a hover tooltip, not a column of thumbnails: at 48px a row
+   a stack of them made the rail bulky, for a picture you only want while
+   deciding which moment this is (owner, 2026-08-29). Fixed and portalled to the
+   body, because the rail scrolls and clips — a preview that scrolled away with
+   its row, or was cut off by the rail's edge, is worse than none. */
+.moment-preview {
+  position: fixed;
+  overflow: hidden;
+  /* Above the media viewer's 240: the rail is docked *inside* the viewer while a
+     video is open, so at 60 the preview rendered behind the whole player and
+     never appeared there (owner-reported, 2026-08-30). */
+  z-index: 260;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #050609;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.moment-preview__tile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The picture's aspect ratio need not match the frame it is drawn in;
+     letterbox it rather than stretching. */
+  object-fit: contain;
+}
+/* A range plays itself over the tile. Faded in only once it has a frame, so the
+   still picture underneath is never replaced by a black box mid-load. */
+/* The honest still: one frame decoded at the marked instant, over the storyboard
+   tile's approximation of it. Hidden until loaded, so the 404 the server returns
+   while it is still being decoded leaves the tile visible rather than blanking
+   the preview. */
+.moment-preview__poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+.moment-preview__poster.is-ready {
+  opacity: 1;
+}
+.moment-preview__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  /* Short, because it is the last thing between the pointer resting and the
+     span visibly moving, and it is crossfading to a picture that is nearly the
+     same one: the storyboard tile underneath is the frame nearest the in-point.
+     There is nothing here worth a long dissolve, and 120ms of it read as part
+     of the load (owner, 2026-08-30). */
+  transition: opacity 0.06s;
+}
+.moment-preview__video.is-ready {
+  opacity: 1;
+}
+/* The picture, at a fixed height; the comment flows under it inside the same
+   box. The box is anchored by the edge nearest the row, so however tall the
+   comment makes it, it grows away from the row rather than over it. */
+.moment-preview__frame {
+  position: relative;
+  overflow: hidden;
+}
+/* The comment in full: the row itself can only clamp it to one line. */
+.moment-preview__comment {
+  margin: 0;
+  padding: 5px 7px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.moment-row__body {
+  flex: 1;
+  min-width: 0;
+}
+/* Every item in this line is a box of the same height, centred — not a mix of
+   baseline-aligned text and centred icons. Left to themselves a CJK tag pill is
+   taller than a Latin one and a `⋯` glyph sits low in its box, so the row read
+   as three things on three slightly different lines (owner, 2026-08-30). */
+.moment-row__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  /* A narrow rail clips the timecode rather than letting it push the actions
+     out of the row. */
+  min-width: 0;
+  overflow: hidden;
+}
+/* One line, so the length stays beside the span it measures. Wrapped, the two
+   ends stacked and pushed the length to the far right of the row. */
+.moment-row__time {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.moment-row__length {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Revealed on hover/focus, like the file rail's actions: a stack of moments
+   should read as timecodes, not as a column of buttons. */
+.moment-row__act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.moment-row:hover .moment-row__act,
+.moment-row:focus-within .moment-row__act {
+  opacity: 1;
+}
+.moment-row__act:hover:not(:disabled) {
+  background: var(--row-hover);
+  color: var(--text-strong);
+}
+.moment-row__act:disabled {
+  opacity: 0;
+  cursor: default;
+}
+.moment-row:hover .moment-row__act:disabled,
+.moment-row:focus-within .moment-row__act:disabled {
+  opacity: 0.3;
+}
+.moment-row__act .icon {
+  width: 12px;
+  height: 12px;
+}
+/* The picker's own chips row carries vertical margin for the bundle section;
+   inside a moment row the line spacing is the row's to decide. */
+/* Tags share the first line with the timecode: one pill is the usual case, and
+   a line of its own for it made every moment three rows tall (owner,
+   2026-08-30). Many tags cost width, never height.
+   
+   `flex: 1` rather than a fixed share of the row — a hard `max-width: 45%` left
+   obvious empty space to the right *and* pushed the add button out of view long
+   before the row was actually full (owner, 2026-08-30). The region now takes
+   whatever the timecode and the actions leave. */
+.moment-row__tags {
+  /* Takes every pixel the timecode and the actions leave. There used to be a
+     `flex: 1` spacer here as well, so the free space split evenly between the
+     two and the tag region gave up half the row for nothing — visible as a gap
+     on the right, and as an add button that vanished long before the row was
+     full (owner, 2026-08-30). Pushing the actions right is this region's job. */
+  flex: 1;
+  min-width: 0;
+}
+.moment-row__tags .chips {
+  margin: 0;
+  gap: 4px;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+}
+/* The pills give way, never the add button: with too many tags to fit, the last
+   pill is clipped and `+` stays where it is. Losing the affordance is worse than
+   losing the tail of a tag you can still read in the picker. */
+.moment-row__tags .chips > .chip {
+  min-width: 0;
+  overflow: hidden;
+}
+/* The picker is a wrapper around the add button; without centring here the
+   button sits its own height's difference low, which is exactly the kind of
+   half-pixel that makes a row look like two rows. */
+.moment-row__tags .picker {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+}
+/* One pill, shown whole, and a `+N` for the rest — so the row never clips a tag
+   mid-glyph (owner, 2026-08-30). A very long single tag can still run out of
+   room, and is truncated with an ellipsis rather than cut off square. */
+/* A fixed height, so a CJK pill is exactly as tall as a Latin one — otherwise
+   the taller line box grows the chip and it stops sharing a centre line with
+   the timecode and the actions beside it. */
+.moment-row__tags .chip {
+  height: 18px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The count stands in for the tags there was no room for. Quieter than a tag,
+   because it names none of them — it says only that there are more. */
+.chip--more {
+  flex: none;
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chip--more:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+/* A round button with the glyph actually in the middle of it. The shared
+   `.add-btn` is a pill sized for a word — with a lone `+` in it the padding is
+   asymmetric and the sign sits off-centre (owner, 2026-08-30). Revealed with the
+   row's other controls, so a rail of moments reads as timecodes at rest. */
+.moment-row__tags .add-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+}
+.moment-row:hover .moment-row__tags .add-btn,
+.moment-row:focus-within .moment-row__tags .add-btn,
+.moment-row__tags .add-btn[aria-expanded='true'] {
+  opacity: 1;
+}
+.moment-row__tags .add-btn:hover,
+.moment-row__tags .add-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+.moment-row__tags .add-btn {
+  padding: 0 6px;
+  font-size: 11px;
+}
+.moment-row__comment {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.moment-row__comment:hover {
+  color: var(--text-strong);
+}
+.moment-row__edit {
+  margin-top: 3px;
+  padding: 3px 6px;
+  font-size: 11.5px;
+  resize: none;
+  overflow: hidden;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -4170,6 +4598,14 @@ code {
 .media-viewer--railed .mv-nav--next {
   right: calc(var(--inspector-w, 300px) + 16px);
 }
+/* The control bar stops at the rail too, for the same reason the topbar does.
+   It did not, and being absolutely positioned it lay *over* the bottom of the
+   docked inspector — so anything low enough in that pane could not be clicked or
+   hovered at all. Invisible while the bottom of the rail was the file list;
+   found when a moment row landed there (owner-reported, 2026-08-30). */
+.media-viewer--railed .mv-controls {
+  right: var(--inspector-w, 300px);
+}
 
 .mv-nav {
   position: absolute;
@@ -4603,6 +5039,38 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Saved moments (plan 7): a map of what has been marked, in a green
+   distinct from the amber of the live clip marks so the two never read as one
+   thing. Non-interactive — the track's own pointerdown scrubs. */
+.mv-seek__moment-tick {
+  position: absolute;
+  z-index: 1;
+  top: -1px;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+  background: #4ade80;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.mv-seek__moment-band {
+  position: absolute;
+  z-index: 1;
+  top: 1px;
+  height: 11px;
+  border-radius: 2px;
+  background: rgba(74, 222, 128, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.66);
+  pointer-events: none;
+}
+.mv-seek__moment-note {
+  max-width: 220px;
+  overflow: hidden;
+  color: #86efac;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Clip range picker (plan 1 §10 / M11) — docked above the seek bar so the
    frame an edge lands on stays on screen while it is being placed. */
 /* Three rows: the two edges side by side with the label and actions, then the
@@ -4612,8 +5080,13 @@ code {
 .mv-clip {
   display: grid;
   grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 6px 16px;
+  /* Stretch, not centre: the right column has to be as tall as the In/Out rows
+     beside it so its own two rows can sit at the top and the bottom of that
+     height — which is what puts the actions on the same baseline as Out. */
+  align-items: stretch;
+  /* A tighter column gap than the row gap: the four actions on the right need
+     every pixel the steppers on the left do not. */
+  gap: 6px 10px;
   max-width: 720px;
   margin: 0 auto 10px;
   border: 1px solid rgba(255, 190, 74, 0.24);
@@ -4626,18 +5099,20 @@ code {
   flex-direction: column;
   gap: 6px;
 }
-/* The label above the actions, both hard right, so the two blocks line up with
-   the In and Out rows beside them. */
+/* Two rows, hard right, pinned to the top and bottom of the column so they line
+   up with the In and Out rows beside them: the label (and the close) against
+   In, the actions against Out. No third row — the actions wrapping onto one is
+   what put Save GIF below Save Moment rather than after it (owner, 2026-08-30). */
 .mv-clip__side {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: space-between;
   gap: 6px;
   min-width: 0;
 }
-/* Wrapping rather than overflowing: on a narrow window the actions take an
-   extra line instead of running out past the overlay's edge. */
+/* Wrapping rather than overflowing: on a narrow window these take an extra line
+   instead of running out past the overlay's edge. */
 .mv-clip__meta,
 .mv-clip__buttons {
   display: flex;
@@ -4645,6 +5120,15 @@ code {
   align-items: center;
   justify-content: flex-end;
   gap: 6px 8px;
+}
+.mv-clip__meta {
+  gap: 8px;
+}
+/* Four buttons on one line in the space the In/Out steppers leave. Tight
+   because that is the whole point — a fifth row would put them back where they
+   were. The close moved up to the label row, which bought the width. */
+.mv-clip__buttons {
+  gap: 6px;
 }
 .mv-clip__title {
   font-size: 12px;
@@ -4657,13 +5141,6 @@ code {
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.86);
-}
-.mv-clip__duration.is-over {
-  color: #ff8f6b;
-}
-.mv-clip__warn {
-  font-size: 12px;
-  color: #ff8f6b;
 }
 .mv-clip__row {
   display: flex;
@@ -4684,6 +5161,7 @@ code {
 .mv-clip__here,
 .mv-clip__play,
 .mv-clip__toggle,
+.mv-clip__save,
 .mv-clip__export,
 .mv-clip__close {
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -4694,10 +5172,35 @@ code {
   font-size: 12px;
   padding: 4px 8px;
 }
+/* The four actions share one line, so they are trimmed to fit it rather than
+   allowed to wrap. */
+/* One height for all four, so the glyphs in their labels cannot each set their
+   own line box and leave the row a pixel ragged. */
+.mv-clip__play,
+.mv-clip__toggle,
+.mv-clip__save,
+.mv-clip__export {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+/* Small and quiet at the top right: it dismisses the picker rather than doing
+   anything to the range. */
+.mv-clip__close {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mv-clip__close:hover {
+  color: #fff;
+}
 .mv-clip__step:hover,
 .mv-clip__here:hover,
 .mv-clip__play:hover,
 .mv-clip__toggle:hover,
+.mv-clip__save:hover,
 .mv-clip__export:hover:not(:disabled),
 .mv-clip__close:hover {
   background: rgba(255, 255, 255, 0.14);
@@ -4713,6 +5216,17 @@ code {
 .mv-clip__play {
   font-weight: 600;
   white-space: nowrap;
+}
+/* Between the toggles and the export in weight: it commits something, but it
+   writes a row rather than encoding a file. */
+.mv-clip__save {
+  border-color: rgba(74, 222, 128, 0.5);
+  background: rgba(74, 222, 128, 0.14);
+  color: #bbf7d0;
+  white-space: nowrap;
+}
+.mv-clip__save:hover {
+  background: rgba(74, 222, 128, 0.24);
 }
 .mv-clip__export {
   border-color: var(--accent);

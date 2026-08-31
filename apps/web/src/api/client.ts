@@ -42,6 +42,10 @@ export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type DirectoryMember = components['schemas']['DirectoryMemberRead']
+export type Moment = components['schemas']['MomentRead']
+export type MomentCreate = components['schemas']['MomentCreate']
+export type MomentPatch = components['schemas']['MomentUpdate']
+export type MomentTags = components['schemas']['MomentTags']
 export type ProposalDirectory = components['schemas']['ProposalDirectoryRead']
 export type ProposalFile = components['schemas']['ProposalFileRead']
 export type FileRepairCandidate = components['schemas']['FileRepairCandidateRead']
@@ -1167,6 +1171,46 @@ export function expandDirectory(bundleId: string, memberId: string): Promise<voi
   return send<void>(`${lib()}/bundles/${bundleId}/directory-members/${memberId}`, 'DELETE')
 }
 
+/**
+ * The bundle's moments — the instants and spans marked inside its videos
+ * (plan 7), in time order across all of them.
+ *
+ * Tags arrive on each row rather than behind a per-moment request: the inspector
+ * draws every moment at once, and the pane is docked beside a playing video.
+ */
+export function fetchMoments(bundleId: string, signal?: AbortSignal): Promise<Moment[]> {
+  return getJson<Moment[]>(`${lib()}/bundles/${bundleId}/moments`, signal)
+}
+
+export function createMoment(bundleId: string, body: MomentCreate): Promise<Moment> {
+  return send<Moment>(`${lib()}/bundles/${bundleId}/moments`, 'POST', body)
+}
+
+export function updateMoment(
+  bundleId: string,
+  momentId: string,
+  patch: MomentPatch,
+  version?: number,
+): Promise<Moment> {
+  return send<Moment>(`${lib()}/bundles/${bundleId}/moments/${momentId}`, 'PATCH', patch, version)
+}
+
+/** Replace a moment's tags. The answer also carries the bundle's resulting tags,
+ *  because assigning here adds to them (ADR-0025). */
+export function setMomentTags(
+  bundleId: string,
+  momentId: string,
+  ids: string[],
+): Promise<MomentTags> {
+  return send<MomentTags>(`${lib()}/bundles/${bundleId}/moments/${momentId}/tags`, 'PUT', {
+    ids,
+  })
+}
+
+export function deleteMoment(bundleId: string, momentId: string): Promise<void> {
+  return send<void>(`${lib()}/bundles/${bundleId}/moments/${momentId}`, 'DELETE')
+}
+
 export function fetchFileRepairCandidate(
   bundleId: string,
   fileId: string,
@@ -1246,6 +1290,36 @@ export function fileContactSheetUrl(fileId: string, cols = 4, rows = 4, width = 
 
 export function fileStreamUrl(fileId: string): string {
   return resolveAssetUrl(`${lib()}/files/${fileId}/stream`)
+}
+
+/**
+ * A range moment's pre-cut preview clip.
+ *
+ * 404 until the server has built it, which is not an error: the row falls back
+ * to streaming and seeking the original, and the request itself is what queues
+ * the cut. So the second hover is the fast one, and a deleted cache costs
+ * nothing but the wait it started with.
+ *
+ * Versioned by the moment's own `version`, because the response is served
+ * `immutable` for a year and this URL is not content-addressed: the server
+ * rebuilds when the span moves, but without this the *browser* would keep the
+ * clip of where the span used to be. Not reachable from the UI today — re-marking
+ * makes a new moment — but `PATCH` can move a span, and a year is a long time to
+ * be wrong.
+ */
+export function momentClipUrl(bundleId: string, momentId: string, version: number): string {
+  return resolveAssetUrl(`${lib()}/bundles/${bundleId}/moments/${momentId}/clip.mp4?v=${version}`)
+}
+
+/**
+ * The frame a moment marks — the still under its hover preview.
+ *
+ * Every moment has one, span or instant. Queued when the moment is saved, so it
+ * is normally there by the first hover; 404 until then, and the request queues
+ * it, which covers moments that predate the feature and a cache someone emptied.
+ */
+export function momentPosterUrl(bundleId: string, momentId: string, version: number): string {
+  return resolveAssetUrl(`${lib()}/bundles/${bundleId}/moments/${momentId}/poster.jpg?v=${version}`)
 }
 
 // The version bypasses legacy immutable VTTs; current indexes revalidate via no-cache

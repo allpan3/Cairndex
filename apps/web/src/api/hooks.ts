@@ -96,6 +96,14 @@ import {
   fetchDirectoryMembers,
   collapseDirectory,
   expandDirectory,
+  type Moment,
+  type MomentCreate,
+  type MomentPatch,
+  fetchMoments,
+  createMoment,
+  updateMoment,
+  setMomentTags,
+  deleteMoment,
   isNotFoundError,
   fetchBundleTags,
   fetchCollectionCounts,
@@ -1552,6 +1560,209 @@ export function useDirectoryMemberMutations(bundleId: string) {
     }),
   }
 }
+
+/** The bundle's moments, in time order across its videos (plan 7). */
+export function useMoments(id: string | null) {
+  return useQuery({
+    queryKey: ['moments', id],
+    queryFn: ({ signal }) => orAbsent(fetchMoments(id as string, signal), []),
+    enabled: id !== null,
+  })
+}
+
+/**
+ * Mark, edit, tag, and forget moments.
+ *
+ * `setTags` is the one that reaches outside this list: assigning a tag to a
+ * moment adds it to the bundle (ADR-0025), so the bundle's own chips and the
+ * per-tag counts move with it. The route answers with the bundle's resulting
+ * tags, and that answer is written straight into the `bundle-tags` cache — a
+ * plain invalidation would leave the pill missing until the refetch landed,
+ * which is exactly the delay the optimistic bundle-tag path exists to avoid.
+ */
+/**
+ * One moment placed into a list the server would have returned in the same order.
+ *
+ * `list_moments` orders by `(start_s, id)`, so a row written in from a create's
+ * answer sits exactly where a refetch would have put it — otherwise the list
+ * would reshuffle the next time one happened.
+ */
+function insertMoment(current: Moment[], saved: Moment): Moment[] {
+  const without = current.filter((moment) => moment.id !== saved.id)
+  const at = without.findIndex(
+    (moment) =>
+      moment.start_s > saved.start_s || (moment.start_s === saved.start_s && moment.id > saved.id),
+  )
+  if (at < 0) return [...without, saved]
+  return [...without.slice(0, at), saved, ...without.slice(at)]
+}
+
+export function useMomentMutations(bundleId: string | null) {
+  const qc = useQueryClient()
+  // Null where the surface has no bundle to hold a moment — an unindexed File
+  // Browser path. The hook still runs (hooks cannot be conditional); every
+  // mutation refuses rather than building a URL with an empty id in it, and the
+  // callers that could reach one are gated on the same fact.
+  const requireBundle = (): string => {
+    if (bundleId === null) throw new Error('no bundle to hold a moment')
+    return bundleId
+  }
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['moments', bundleId] })
+  }
+  const invalidateWithTags = () => {
+    invalidate()
+    qc.invalidateQueries({ queryKey: ['bundle-tags', bundleId] })
+    qc.invalidateQueries({ queryKey: ['tag-counts'] })
+    // Untagged lists the bundles carrying no tag, so gaining one can move a
+    // bundle out of it. Lazily, like the bundle-tag path: no other browse row
+    // is affected, so forcing the grid to refetch now is work nobody sees.
+    qc.invalidateQueries({ queryKey: ['browse'], refetchType: 'none' })
+    qc.invalidateQueries({ queryKey: ['view-counts'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (body: MomentCreate) => createMoment(requireBundle(), body),
+      // The answer *is* the new row, so it goes straight into the list rather
+      // than the list being thrown away and fetched again. That refetch was the
+      // visible delay between pressing Save Moment and the row appearing (owner,
+      // 2026-08-30): one round trip to write, a second to read back what the
+      // first had already returned.
+      //
+      // Not optimistic ahead of the write, unlike `setTags`. A moment's id comes
+      // from the server and three things need the real one immediately — the
+      // poster and clip URLs, and the capture note that opens the row's comment
+      // box — so a placeholder row would have to be swapped underneath an open
+      // editor. One round trip is worth more than that risk.
+      onSuccess: (saved) => {
+        const key = ['moments', bundleId]
+        // Only *into* a list that exists. Seeding one from a single answer would
+        // mark the query as holding fresh data, and `staleTime` would then keep
+        // the rail showing this one moment and none of the others for half a
+        // minute. If nothing is cached yet a read is already on its way, and it
+        // will bring this row with it.
+        if (qc.getQueryData<Moment[]>(key) === undefined) {
+          void qc.invalidateQueries({ queryKey: key })
+          return
+        }
+        qc.setQueryData<Moment[]>(key, (current) => insertMoment(current ?? [], saved))
+      },
+      // Creation *can* carry tags, and then it moves the bundle's set and the
+      // counts with it. Marking one never does — nothing in the viewer sends
+      // tags with a capture — so the ordinary path skips a bundle-tag refetch,
+      // a tag-count refetch and a view-count refetch that cannot have changed.
+      onSettled: (saved, _error, body) => {
+        if (body.tag_ids?.length || saved?.tag_ids?.length) invalidateWithTags()
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({
+        momentId,
+        patch,
+        version,
+      }: {
+        momentId: string
+        patch: MomentPatch
+        version?: number
+      }) => updateMoment(requireBundle(), momentId, patch, version),
+      onSettled: invalidate,
+    }),
+    setTags: useMutation({
+      mutationFn: ({ momentId, ids }: { momentId: string; ids: string[] }) =>
+        setMomentTags(requireBundle(), momentId, ids),
+      // Optimistic, for the reason the bundle's own tag write is: the pill has to
+      // appear on the click, not a round trip and three refetches later. Tagging
+      // a moment was visibly slower than tagging its bundle, which is the same
+      // gesture through the same picker (owner, 2026-08-30).
+      onMutate: async ({ momentId, ids }) => {
+        const key = ['moments', bundleId]
+        const bundleKey = ['bundle-tags', bundleId]
+        await Promise.all([
+          qc.cancelQueries({ queryKey: key }),
+          qc.cancelQueries({ queryKey: bundleKey }),
+          qc.cancelQueries({ queryKey: ['tag-counts'] }),
+          qc.cancelQueries({ queryKey: ['view-counts'] }),
+        ])
+        const previous = qc.getQueryData<Moment[]>(key)
+        const previousBundle = qc.getQueryData<{ bundle_id: string; tag_ids: string[] }>(bundleKey)
+        const before = previous?.find((moment) => moment.id === momentId)?.tag_ids
+        if (previous) {
+          qc.setQueryData(
+            key,
+            previous.map((moment) =>
+              moment.id === momentId ? { ...moment, tag_ids: ids } : moment,
+            ),
+          )
+        }
+        // Assignment propagates to the bundle additively (ADR-0025), so its own
+        // chips can move now too — the server's answer confirms the same union.
+        if (previousBundle) {
+          const union = [...new Set([...previousBundle.tag_ids, ...ids])]
+          qc.setQueryData(bundleKey, { ...previousBundle, tag_ids: union })
+        }
+        // The picker shows a count per tag; it moves with the chip, not after it.
+        // Counted against the *bundle's* set, since that is what a tag count
+        // counts — a moment gaining a tag its bundle already had changes nothing.
+        const snapshots =
+          previousBundle && before
+            ? applyTagCounts(qc, [
+                {
+                  before: previousBundle.tag_ids,
+                  after: [...new Set([...previousBundle.tag_ids, ...ids])],
+                },
+              ])
+            : []
+        return { previous, previousBundle, snapshots }
+      },
+      onError: (_error, _variables, context) => {
+        if (context?.previous) qc.setQueryData(['moments', bundleId], context.previous)
+        if (context?.previousBundle)
+          qc.setQueryData(['bundle-tags', bundleId], context.previousBundle)
+        restoreSnapshots(qc, context?.snapshots)
+      },
+      onSuccess: (answer) => {
+        qc.setQueryData(['bundle-tags', bundleId], {
+          bundle_id: bundleId,
+          tag_ids: answer.bundle_tag_ids,
+        })
+      },
+      onSettled: invalidateWithTags,
+    }),
+    remove: useMutation({
+      mutationFn: (momentId: string) => deleteMoment(requireBundle(), momentId),
+      // Optimistic: the row goes on the click. Forgetting a moment is the one
+      // write here with nothing to wait for — there is no server-assigned
+      // anything to fold back in, so waiting a round trip only made the row
+      // linger after the owner had already dismissed it (owner, 2026-08-30).
+      onMutate: async (momentId) => {
+        const key = ['moments', bundleId]
+        await qc.cancelQueries({ queryKey: key })
+        const previous = qc.getQueryData<Moment[]>(key)
+        if (previous) {
+          qc.setQueryData<Moment[]>(
+            key,
+            previous.filter((moment) => moment.id !== momentId),
+          )
+        }
+        return { previous }
+      },
+      onError: (_error, _momentId, context) => {
+        if (context?.previous) qc.setQueryData(['moments', bundleId], context.previous)
+      },
+      // Deleting a moment leaves its tags on the bundle (ADR-0025), so nothing
+      // about the bundle's tags or the counts can have changed.
+      onSettled: invalidate,
+    }),
+  }
+}
+
+/** How many moments a bundle has, without the caller holding the list. */
+export function useMomentCount(id: string | null): number {
+  const { data } = useMoments(id)
+  return data?.length ?? 0
+}
+
+export type { Moment }
 
 export function useFileRepairCandidate(bundleId: string, fileId: string, enabled: boolean) {
   return useQuery<FileRepairCandidate | null>({

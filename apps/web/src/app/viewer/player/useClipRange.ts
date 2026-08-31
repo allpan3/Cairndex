@@ -25,10 +25,18 @@ export interface ClipRangeController {
   active: boolean
   range: ClipRange | null
   /**
-   * Whether playing the span repeats it instead of stopping at the out-point.
+   * Whether the **range loop is armed** on this span (plan 7).
    *
-   * A standing preference, not a playback state: it decides what the *next*
-   * Play Range does, and takes effect immediately on one already running.
+   * Armed is a mode, not a preference and not a session: while it is on, any
+   * playback is confined to the span and repeats at the out-point, and a pause
+   * does not end it — pressing Space again resumes inside the span. That is the
+   * one thing the 2026-08-16 decision ruled out for a *quiet* mode, and the
+   * distinction is that this one is visible: the clip bar is open, the control
+   * is lit, and the band is drawn on both tracks.
+   *
+   * Turning it on starts it, because "loop this span" is an action rather than a
+   * preference about some later press. Turning it off leaves playback running,
+   * simply no longer confined.
    */
   loop: boolean
   /**
@@ -74,7 +82,16 @@ export interface ClipRangeController {
    * press, watch, repeat.
    */
   playRange: () => void
+  /** Arm or disarm the range loop on the current span. Arming starts it. */
   setLoop: (on: boolean) => void
+  /**
+   * Adopt a span and arm the loop on it in one step — a saved moment's
+   * loop button (plan 7).
+   *
+   * The clip bar opens with the span in it, so an armed loop is always
+   * accompanied by the marks that define it and the control that ends it.
+   */
+  armLoop: (range: ClipRange) => void
   /**
    * Give up confining playback to the span.
    *
@@ -112,7 +129,7 @@ export function useClipRange({
 }: UseClipRangeOptions): ClipRangeController {
   const [active, setActive] = useState(false)
   const [range, setRange] = useState<ClipRange | null>(null)
-  const [loop, setLoop] = useState(false)
+  const [loop, setLoopState] = useState(false)
   const [playingRange, setPlayingRange] = useState(false)
   // One piece of state for both facts: a drag is in progress, and this is the
   // span it started from.
@@ -142,7 +159,7 @@ export function useClipRange({
     /* eslint-disable react-hooks/set-state-in-effect */
     setActive(false)
     setRange(null)
-    setLoop(false)
+    setLoopState(false)
     setPlayingRange(false)
     setAdjustBase(null)
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -154,7 +171,9 @@ export function useClipRange({
     rangeRef.current = null
     setActive(false)
     setRange(null)
-    setLoop(false)
+    // Closing the picker disarms: an armed loop with no visible span and no
+    // control to end it is exactly the quiet mode this design refuses.
+    setLoopState(false)
     setPlayingRange(false)
     setAdjustBase(null)
   }, [])
@@ -230,17 +249,47 @@ export function useClipRange({
     [commit],
   )
 
+  /** Start the span from its in-point — what arming and Play Range share. */
+  const startSpan = useCallback((from: ClipRange) => {
+    // Seek before play, so the frame that arrives is the in-point rather than a
+    // moment of wherever the playhead happened to be.
+    playerRef.current.seek(from.start)
+    playerRef.current.play()
+  }, [])
+
+  const setLoop = useCallback(
+    (on: boolean) => {
+      setLoopState(on)
+      // Disarming leaves playback alone: it stops being confined, it does not
+      // stop.
+      if (!on) return
+      const current = rangeRef.current
+      if (!current) return
+      setActive(true)
+      startSpan(current)
+    },
+    [startSpan],
+  )
+
+  const armLoop = useCallback(
+    (next: ClipRange) => {
+      const clamped = clampRange(next, durationRef.current)
+      commit(clamped)
+      setActive(true)
+      setLoopState(true)
+      startSpan(clamped)
+    },
+    [commit, startSpan],
+  )
+
   const playRange = useCallback(() => {
     const current = rangeRef.current
     // Nothing marked means nothing to play — the shortcut is then simply not
     // this window's to handle.
     if (!current) return
-    // Seek before play, so the frame that arrives is the in-point rather than
-    // a moment of wherever the playhead happened to be.
-    playerRef.current.seek(current.start)
-    playerRef.current.play()
+    startSpan(current)
     setPlayingRange(true)
-  }, [])
+  }, [startSpan])
 
   const endRangePlayback = useCallback(() => setPlayingRange(false), [])
 
@@ -260,12 +309,14 @@ export function useClipRange({
       moveTo,
       playRange,
       setLoop,
+      armLoop,
       endRangePlayback,
       setAdjusting,
     }),
     [
       active,
       adjustBase,
+      armLoop,
       close,
       endRangePlayback,
       frame,
@@ -278,35 +329,50 @@ export function useClipRange({
       playingRange,
       range,
       setAdjusting,
+      setLoop,
     ],
   )
 }
 
 /**
- * Confine playback to the marked span, for as long as the span is playing.
+ * How, if at all, playback is confined to the marked span.
  *
- * **A session, not a mode.** Playing the span used to be a standing setting
- * that redefined the play button, so Space meant one thing with a clip marked
- * and another without. Now Space is always ordinary playback and this only
- * runs while Play Range says so (owner, 2026-08-16) — which is also why every
- * way out is a pause: the element pausing is the single fact that ends it,
- * whether that pause came from the owner, from the out-point below, or from
- * running off the end of the file.
+ * - `off` — not at all. Space is ordinary playback and the marks are only marks.
+ * - `session` — one run of the span: it stops at the out-point, and **any** pause
+ *   ends the session, so resuming with Space is unconfined again. What Play
+ *   Range starts.
+ * - `armed` — the range loop: playback repeats at the out-point and a pause does
+ *   not end it, so Space resumes *inside* the span. Stays until disarmed.
+ *
+ * The two are one mechanism with two endings rather than a flag apiece, because
+ * "confine, but do not repeat, and survive a pause" is not a state that means
+ * anything.
+ */
+export type ClipPlaybackMode = 'off' | 'session' | 'armed'
+
+/**
+ * Confine playback to the marked span (plan 1 §10 / M11; armed mode from plan 7).
+ *
+ * **A session or a mode, and the difference is only what a pause means.** Playing
+ * the span used to be a standing setting that silently redefined the play button,
+ * so Space meant one thing with a clip marked and another without (owner,
+ * 2026-08-16). `session` is the answer to that: every way out is a pause, so
+ * Space is always ordinary playback afterwards. `armed` is the range loop the owner
+ * asked for on top of it, and it survives a pause deliberately — which is only
+ * defensible because arming is visible and one click undoes it.
  *
  * Driven off `requestAnimationFrame` rather than `timeupdate`, which fires as
  * seldom as four times a second — an out-point enforced on it overshoots by up
  * to 250 ms, which is exactly the precision this whole feature exists to give.
- *
- * This is also the seam A-B loop replay lands on: the same span, driven from
- * playback settings instead of the clip bar.
  */
 export function useClipPlayback(
   video: HTMLVideoElement | null,
   range: ClipRange | null,
-  { playing, loop, onEnd }: { playing: boolean; loop: boolean; onEnd: () => void },
+  { mode, onEnd }: { mode: ClipPlaybackMode; onEnd: () => void },
 ) {
   useEffect(() => {
-    if (!video || !range || !playing) return
+    if (!video || !range || mode === 'off') return
+    const armed = mode === 'armed'
     let frame = 0
     const tick = () => {
       frame = requestAnimationFrame(tick)
@@ -314,32 +380,39 @@ export function useClipPlayback(
       // deliberately, and re-entering a seek that has not landed yet thrashes
       // the byte range the same way unthrottled scrubbing does.
       if (video.paused || video.seeking) return
+      // Only the out-point is enforced. A playhead *before* the in-point is left
+      // alone on purpose: watching the run-up into a marked span is a real thing
+      // to want, and yanking it forward would make seeking inside an armed loop
+      // impossible (plan 7 §2).
       if (video.currentTime < range.end) return
-      if (loop) video.currentTime = range.start
-      // Not looping: stop on the out-point and let the pause below close the
-      // session, so there is one ending rather than two that can disagree.
+      if (armed) video.currentTime = range.start
+      // A session stops on the out-point and lets the pause below close it, so
+      // there is one ending rather than two that can disagree.
       else video.pause()
     }
     // `pause` and `ended` get distinct owners, because a span whose out-point is
     // the *file's* own end finishes through both — and the spec fires `pause`
     // first. Treating that pause as an ordinary one tore the session down before
-    // loop could come round, and the tick above cannot help: by then the element
-    // has paused itself, so its first guard returns. Marking an in-point late in
-    // a video is enough to get there, since `setEdgeAtPlayhead` keeps the span's
-    // length and clamps the out-point to the duration (owner-reported,
+    // the loop could come round, and the tick above cannot help: by then the
+    // element has paused itself, so its first guard returns. Marking an in-point
+    // late in a video is enough to get there, since `setEdgeAtPlayhead` keeps the
+    // span's length and clamps the out-point to the duration (owner-reported,
     // 2026-08-16: the playhead parked at the far right and Loop never returned).
     const onPause = () => {
       // The media pausing itself at its own end is `ended`'s business.
       if (video.ended) return
+      // An armed loop is a mode: the owner pausing it is a pause, not a
+      // disarm, and Space picks up inside the span again.
+      if (armed) return
       onEnd()
     }
     const onEnded = () => {
-      if (loop) {
+      if (armed) {
         video.currentTime = range.start
         void video.play()
         return
       }
-      // Not looping: park at the in-point rather than at the file's end, so the
+      // A session parks at the in-point rather than at the file's end, so the
       // next press replays the span instead of restarting the whole file — a
       // browser resets an ended element's playhead before `play` fires, which is
       // why leaving it at the end silently lost the selection.
@@ -354,5 +427,5 @@ export function useClipPlayback(
       video.removeEventListener('pause', onPause)
       video.removeEventListener('ended', onEnded)
     }
-  }, [loop, onEnd, playing, range, video])
+  }, [mode, onEnd, range, video])
 }
