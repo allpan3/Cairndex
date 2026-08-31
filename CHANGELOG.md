@@ -1862,6 +1862,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- **Release versions can no longer drift between the tag and the artifact.** A
+  root `VERSION` is checked against the server, web, desktop, npm lock, Cargo
+  lock, and Tauri metadata in CI. Tag-triggered desktop and container workflows
+  also require the tag to match, and the desktop workflow validates both the
+  version and changelog on Linux before spending macOS build minutes. Existing
+  metadata is synchronized at the already-current `0.1.1` baseline; the next
+  release number remains an owner decision.
+
 - **Container smoke tests no longer reuse a stale image by accident.** Running
   the smoke script without an argument always builds a commit-specific image and
   removes it afterward. An explicit image tag is the only reuse path. GHCR

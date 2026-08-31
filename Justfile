@@ -91,9 +91,13 @@ bundled:
 
 # ---------------------------------------------------------------------- check --
 
-# Everything: server, web, desktop. What CI checks.
+# Everything: release metadata, server, web, desktop. What CI checks.
 [group('check')]
-check: check-server check-web check-desktop
+check: check-release check-server check-web check-desktop
+
+[group('check')]
+check-release:
+    python3 infra/release_version.py
 
 [group('check')]
 check-server:

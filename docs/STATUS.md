@@ -16,6 +16,13 @@
 > commit-specific image by default and deletes it afterward; passing an explicit image
 > tag is the only reuse path. Image publication now smoke-tests the exact tagged image
 > IDs that it pushes rather than rebuilding after the test.
+>
+> Release metadata is now synchronized at the existing `0.1.1` baseline across
+> Python, npm, Cargo, their lockfiles, and Tauri. A repository gate checks them
+> against root `VERSION`; tag-triggered desktop and image publication additionally
+> require the `v*` tag to match. The desktop release validates version metadata and
+> the changelog on Linux before starting any macOS build. This does **not** choose the
+> next release number.
 
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop

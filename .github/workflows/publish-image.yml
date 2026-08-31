@@ -50,6 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # A version tag publishes the same product as the desktop workflow. An
+      # arbitrary manual label such as `edge` is deliberately not a release.
+      - name: Verify release tag matches repository version
+        if: github.event_name == 'push'
+        run: python3 infra/release_version.py --tag "${{ github.ref_name }}"
+
       # Non-GitHub-owned actions are pinned by commit SHA, as in release.yml:
       # this produces an artifact that machines pull and run unattended, so a
       # repointed tag must not be able to change what runs here.
