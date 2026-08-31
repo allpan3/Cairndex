@@ -19,12 +19,14 @@
 > tag is the only reuse path. Image publication now smoke-tests the exact tagged image
 > IDs that it pushes rather than rebuilding after the test.
 >
-> Release metadata is now synchronized at the existing `0.1.1` baseline across
+> Release metadata is now synchronized at the owner-selected `0.2.0` across
 > Python, npm, Cargo, their lockfiles, and Tauri. A repository gate checks them
 > against root `VERSION`; tag-triggered desktop and image publication additionally
 > require the `v*` tag to match. The desktop release validates version metadata and
-> the changelog on Linux before starting any macOS build. This does **not** choose the
-> next release number.
+> the changelog on Linux before starting any macOS build, so a `v0.2.0` tag cannot
+> silently produce a mismatched artifact. The pre-release desktop bundle identifier
+> is now `dev.cairndex.desktop`; compatibility with the former development identifier
+> was explicitly not required.
 > `/api/v1/health` and OpenAPI now expose that synchronized package version, and
 > Settings has an About page showing the version plus the public build commit.
 > Container publication embeds the workflow commit through a Docker build argument;

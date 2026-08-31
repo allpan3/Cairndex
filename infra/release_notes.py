@@ -10,7 +10,7 @@ notes had to be rewritten by hand after the fact.
 The changelog is already the curated record, written for the people who read
 releases. This makes it the source.
 
-    python infra/release_notes.py v0.1.1 > notes.md
+    python infra/release_notes.py v0.2.0 > notes.md
 
 Missing sections are an error rather than an empty release: the documented
 release procedure says to move `Unreleased` under the new version *before*
