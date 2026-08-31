@@ -1027,9 +1027,9 @@ Notes for when this is picked up:
 - The `dev.cairndex.app` bundle identifier is owner-specified and must match the
   identifier registered under the team.
 - Auto-update is **deferred**, not part of this pipeline (see
-  [plan 3 §3](plans/03-macos-desktop-app.md)): the repository is private with no
-  releases, and Tauri's updater fetches release assets over plain HTTPS, so it
-  would require embedding a token in the shipped app.
+  [plan 3 §3](plans/03-macos-desktop-app.md)). The public repository removes the
+  old token-distribution blocker, but updater signing, `latest.json`, rollback,
+  and update UX remain separate post-release scope.
 
 ### Cutting a release (plan 3 D7)
 

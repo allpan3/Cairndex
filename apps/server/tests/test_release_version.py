@@ -44,6 +44,29 @@ def test_rejects_an_unversioned_release_ref():
         release_version.validate_versions(versions(), "1.2.3")
 
 
+def test_accepts_manual_dispatch_from_the_named_tag():
+    release_version.validate_dispatch_ref("workflow_dispatch", "tag", "v1.2.3", "v1.2.3")
+
+
+@pytest.mark.parametrize(
+    ("ref_type", "ref_name", "tag"),
+    [
+        ("branch", "main", "v1.2.3"),
+        ("tag", "v1.2.2", "v1.2.3"),
+        ("tag", "v1.2.3", None),
+    ],
+)
+def test_rejects_manual_dispatch_with_mismatched_provenance(
+    ref_type: str, ref_name: str, tag: str | None
+):
+    with pytest.raises(SystemExit, match="same tag"):
+        release_version.validate_dispatch_ref("workflow_dispatch", ref_type, ref_name, tag)
+
+
+def test_tag_push_does_not_apply_manual_dispatch_rules():
+    release_version.validate_dispatch_ref("push", "tag", "v1.2.3", "v1.2.3")
+
+
 @pytest.mark.parametrize("version", ["1.2", "v1.2.3", "01.2.3", "1.2.3-"])
 def test_rejects_invalid_repository_versions(version: str):
     with pytest.raises(SystemExit, match="semantic version"):
