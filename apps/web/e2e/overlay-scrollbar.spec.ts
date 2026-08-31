@@ -146,6 +146,9 @@ test('the bundle inspector gets one too', async ({ page }) => {
     }),
   )
   await page.route('**/bundles/b0/directory-members', (r) => r.fulfill({ json: [] }))
+  // Nothing marked in this fixture; the bundle catch-all above would otherwise
+  // answer this list request with the bundle detail object (plan 7).
+  await page.route('**/bundles/b0/moments', (r) => r.fulfill({ json: [] }))
   await page.route('**/bundles/b0/files', (r) =>
     r.fulfill({
       json: Array.from({ length: 30 }, (_unused, index) => ({

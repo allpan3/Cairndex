@@ -4,6 +4,7 @@ import type { AudioStreamRead, SubtitleTrackRead } from '../../../api/client'
 import { PLAYER_SEEK_STEPS } from '../../types'
 import { IconSettings } from '../../icons'
 import { qualityOptions } from './quality'
+import type { ClipRangeController } from './useClipRange'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
@@ -33,6 +34,11 @@ interface SettingsMenuProps {
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
   sourceHeight: number | null
+  /**
+   * The marked range, for the range-loop entry. Absent on a source that cannot be
+   * clipped, which is also one that cannot be looped between two points.
+   */
+  clip?: ClipRangeController
 }
 
 function audioLabel(track: AudioStreamRead): string {
@@ -60,6 +66,7 @@ export function SettingsMenu({
   fileLoop,
   onFileLoop,
   sourceHeight,
+  clip,
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
   const [resolutionOpen, setResolutionOpen] = useState(false)
@@ -170,6 +177,26 @@ export function SettingsMenu({
             >
               Loop file
             </button>
+            {/* Beside Loop file, because they are the same kind of setting at two
+                scales — and this is where plan 1 said the loop toggle would live.
+                The clip bar owns the same switch; this is the discoverable copy,
+                and it explains itself when there is nothing to loop yet. */}
+            {clip && (
+              <button
+                role="menuitemcheckbox"
+                aria-checked={clip.loop}
+                className={`mv-menu__item${clip.loop ? ' is-selected' : ''}`}
+                disabled={clip.range === null}
+                onClick={() => clip.setLoop(!clip.loop)}
+                title={
+                  clip.range === null
+                    ? 'Mark a range first — [ and ] set its ends.'
+                    : 'Confine playback to the marked span and repeat it.'
+                }
+              >
+                Range loop
+              </button>
+            )}
           </div>
 
           <div

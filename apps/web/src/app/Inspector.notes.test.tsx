@@ -29,6 +29,9 @@ vi.mock('../api/hooks', () => ({
 // Neither picker has anything to do with the note box's geometry.
 vi.mock('./TagEditor', () => ({ TagEditor: () => null }))
 vi.mock('./CollectionPicker', () => ({ CollectionPicker: () => null }))
+// Same for the moments section: it reads its own queries and has its own
+// tests.
+vi.mock('./Moments', () => ({ Moments: () => null }))
 
 const HEIGHTS_KEY = 'cairndex.noteHeights.v2'
 

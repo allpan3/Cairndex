@@ -303,7 +303,11 @@ test('tag and collection pickers match Chinese names by pinyin', async ({ page }
   await expect(page.locator('.picker__panel .pick-row', { hasText: '摄影' })).toBeVisible()
   await expect(page.locator('.picker__panel .pick-row', { hasText: '音乐' })).toHaveCount(0)
 
-  await page.locator('.inspector .field-label', { hasText: 'Collections' }).click()
+  // Dismiss the tag picker before opening the collection one. Escape, not a
+  // click on the Collections heading: since inspector sections fold, that
+  // heading *is* a toggle and clicking it puts the picker underneath away
+  // (2026-08-30).
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '+ Collection' }).click()
   await page.getByRole('textbox', { name: 'Search collections' }).fill('dianying')
   await expect(page.locator('.picker__panel .pick-row', { hasText: '电影' })).toBeVisible()

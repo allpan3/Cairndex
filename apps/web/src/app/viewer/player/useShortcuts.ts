@@ -19,6 +19,12 @@ export interface ShortcutActions {
    */
   playClipRange?: () => void
   /**
+   * Save a moment (`b`, for bookmark — plan 7). With a range marked it saves
+   * the range; otherwise it saves the frame at the playhead. Absent when the
+   * file cannot hold one.
+   */
+  saveMoment?: () => void
+  /**
    * Whether the viewer is currently fullscreen. Supplied by the viewer rather than
    * read from the player, because an image bundle has no `PlayerController` yet can
    * still be fullscreen via the View menu.
@@ -173,6 +179,10 @@ export function handleViewerShortcut(
   // `\\` sits next to them, and plays what they marked. Ordinary play stays
   // Space: the span is something you ask for, not a redefinition of play.
   else if (key === '\\' && actions.playClipRange) actions.playClipRange()
+  // `b` for bookmark: the frame at the playhead, or the marked range if there is
+  // one. Unhandled — and so left to the browser — on a file with no row to hang
+  // a moment on.
+  else if (lower === 'b' && actions.saveMoment) actions.saveMoment()
   else if (/^[0-9]$/.test(key)) player.seek((player.duration * Number(key)) / 10)
   else return false
 

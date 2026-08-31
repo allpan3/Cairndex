@@ -48,6 +48,8 @@ import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
+import { InspectorSection } from './InspectorSection'
+import { Moments } from './Moments'
 import { OverlayScrollbar } from './OverlayScrollbar'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
@@ -205,10 +207,17 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   )
 })
 
-/** Commit and unfocus an active note when the inspector is pressed elsewhere */
-function blurActiveNoteOnPointerDown(event: ReactPointerEvent<HTMLElement>) {
+/** Commit and unfocus whichever inspector editor is open when the pane is
+ *  pressed elsewhere.
+ *
+ *  Any `.edit` textarea, not only a note: a moment's comment box is one too, and
+ *  clicking away from it left it open because most of the rail is not focusable,
+ *  so the browser never moved focus and never fired the blur that commits
+ *  (owner-reported, 2026-08-30). The bundle title is covered for the same
+ *  reason. */
+function blurActiveEditorOnPointerDown(event: ReactPointerEvent<HTMLElement>) {
   const active = event.currentTarget.ownerDocument.activeElement
-  if (!(active instanceof HTMLTextAreaElement) || !active.classList.contains('edit--note')) return
+  if (!(active instanceof HTMLTextAreaElement) || !active.classList.contains('edit')) return
   if (event.target === active) return
   active.blur()
 }
@@ -406,7 +415,7 @@ function BundleEditor({
       className={`inspector${fileDropOver ? ' inspector--file-drop' : ''}`}
       data-file-drop={fileDropOver || undefined}
       data-tauri-drag-region
-      onPointerDownCapture={blurActiveNoteOnPointerDown}
+      onPointerDownCapture={blurActiveEditorOnPointerDown}
       {...dropProps}
     >
       <OverlayScrollbar />
@@ -454,49 +463,62 @@ function BundleEditor({
         <span className="prop__v">{formatDate(bundle.created_at)}</span>
       </div>
 
-      <div className="notes-head">
-        <label className="field-label">Notes</label>
-        <button
-          className="notes-add"
-          onClick={addNote}
-          aria-label="Add note"
-          title="Add another note"
-        >
-          <IconPlus />
-        </button>
-      </div>
-      {/* A wrapper, so a note row can be found under the pointer during a drag
-          without also matching a row in some other inspector pane. */}
-      <div className="notes-list">
-        {notes.map((n, i) => (
-          <NoteBox
-            key={i}
-            value={n}
-            index={i}
-            count={notes.length}
-            height={heights[i] ?? null}
-            onChange={(v) => changeNote(i, v)}
-            onCommit={commitNotes}
-            onRemove={() => removeNote(i)}
-            onResize={(h) => setNoteHeight(i, h)}
-            dragging={draggingNote === i}
-            drop={
-              noteDropSlot?.index === i ? (noteDropSlot.before ? 'before' : 'after') : undefined
-            }
-            onDragStart={() => setDraggingNote(i)}
-            onDragMove={(x, y) => hoverNoteDrop(i, x, y)}
-            onDragEnd={() => {
-              const slot = noteDropRef.current
-              if (slot) moveNote(i, slot.index, slot.before)
-              clearNoteDrag()
-            }}
-            onMoveBy={(delta) => moveNote(i, i + delta, delta < 0)}
-          />
-        ))}
-      </div>
+      <InspectorSection
+        id="notes"
+        title="Notes"
+        actions={
+          <button
+            className="notes-add"
+            onClick={addNote}
+            aria-label="Add note"
+            title="Add another note"
+          >
+            <IconPlus />
+          </button>
+        }
+      >
+        {/* A wrapper, so a note row can be found under the pointer during a drag
+            without also matching a row in some other inspector pane. */}
+        <div className="notes-list">
+          {notes.map((n, i) => (
+            <NoteBox
+              key={i}
+              value={n}
+              index={i}
+              count={notes.length}
+              height={heights[i] ?? null}
+              onChange={(v) => changeNote(i, v)}
+              onCommit={commitNotes}
+              onRemove={() => removeNote(i)}
+              onResize={(h) => setNoteHeight(i, h)}
+              dragging={draggingNote === i}
+              drop={
+                noteDropSlot?.index === i ? (noteDropSlot.before ? 'before' : 'after') : undefined
+              }
+              onDragStart={() => setDraggingNote(i)}
+              onDragMove={(x, y) => hoverNoteDrop(i, x, y)}
+              onDragEnd={() => {
+                const slot = noteDropRef.current
+                if (slot) moveNote(i, slot.index, slot.before)
+                clearNoteDrag()
+              }}
+              onMoveBy={(delta) => moveNote(i, i + delta, delta < 0)}
+            />
+          ))}
+        </div>
+      </InspectorSection>
 
-      <TagEditor bundleId={bundleId} onFilterByTags={onFilterByTags} />
-      <CollectionPicker bundleId={bundleId} />
+      <InspectorSection id="tags" title="Tags">
+        <TagEditor bundleId={bundleId} onFilterByTags={onFilterByTags} />
+      </InspectorSection>
+      <InspectorSection id="collections" title="Collections">
+        <CollectionPicker bundleId={bundleId} />
+      </InspectorSection>
+
+      {/* Last of the content sections and directly above the file rail, so the
+          two lists sit together and the moments read as "inside the videos" the
+          rail below enumerates (plan 7 §4.5). */}
+      <Moments bundleId={bundleId} files={files} />
 
       <FileList
         bundleId={bundleId}
@@ -1039,12 +1061,18 @@ export function FileList({
   }
 
   return (
-    <div className="files">
-      <div className="sidebar__heading sidebar__heading--row" style={{ padding: '4px 0' }}>
-        Files in bundle ({files.length}
-        {members.length > 0 ? ` · ${members.length} folder${members.length > 1 ? 's' : ''}` : ''}
-        {missingCount > 0 ? ` · ${missingCount} missing` : ''})
-        {onAddFiles && (
+    <InspectorSection
+      id="files"
+      className="files"
+      title={
+        <>
+          Files in bundle ({files.length}
+          {members.length > 0 ? ` · ${members.length} folder${members.length > 1 ? 's' : ''}` : ''}
+          {missingCount > 0 ? ` · ${missingCount} missing` : ''})
+        </>
+      }
+      actions={
+        onAddFiles && (
           <button
             className="sidebar__add"
             onClick={() => onAddFiles(bundleId)}
@@ -1053,8 +1081,9 @@ export function FileList({
           >
             +
           </button>
-        )}
-      </div>
+        )
+      }
+    >
       <ConflictNotice error={update.error} />
       <div className="files__list" role="list" aria-label="Files in bundle">
         {rows.map((row) => {
@@ -1095,7 +1124,7 @@ export function FileList({
           onReport={(message) => message !== null && onFlash?.(message)}
         />
       )}
-    </div>
+    </InspectorSection>
   )
 }
 

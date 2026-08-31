@@ -253,6 +253,70 @@ Two scoping rules:
 dragged among files. A new row takes the minimum sequence of the files it
 collapses, so collapsing does not also reorder the bundle.
 
+### `moments`
+
+The instants and spans the owner marked inside a video (plan 7). Columns:
+
+`id` (ULID PK), `bundle_id` (FK, CASCADE, indexed), `file_id` (FK, CASCADE,
+indexed), `start_s`, `end_s` (nullable), `comment` (nullable), `version`,
+timestamps.
+
+**`end_s IS NULL` is the discriminator: null means a frame, set means a range.**
+Not a `kind` column over two always-present values — that shape admits
+`start_s == end_s`, which is neither a frame nor a legal range, and would need a
+minimum length to adjudicate between them. Two CHECK constraints hold the
+invariant in the database as well as the schema layer:
+`end_s IS NULL OR end_s > start_s`, and `start_s >= 0`. Clamping to the *file's*
+duration deliberately stays with the client, which knows the duration exactly;
+the server would be second-guessing it from probe metadata that may be absent.
+
+A range moment is an loop pair, which is why the player's clip range consumes
+these rather than owning a second span model.
+
+`file_id` is the truth — a moment is inside a video — and `bundle_id` is
+denormalized for the same two reasons `playback_progress` denormalizes it: the
+inspector reads a bundle's moments together on every open, and the
+tag-propagation target has to be on the row. The same `AssetFile.bundle_id`
+re-parent hook keeps it in step, so a file moved between bundles takes its
+moments with it.
+
+Lifecycle follows the file row and needs no code of its own. Dropping an
+`AssetFile` cascades (library connections run with `PRAGMA foreign_keys=ON`);
+moved-file repair preserves `AssetFile.id`, so a renamed file keeps its moments;
+trashing repoints the row rather than deleting it, so a restore brings them back.
+Removing a *present* file from a bundle re-stages it into its own one-file
+bundle, which means the moments move with the video rather than being destroyed.
+
+Ordered by `start_s` with `id` as the tie-breaker, across all of the bundle's
+videos. A moment list is a timeline, so time is the only order it can have;
+grouping by file is the client's presentation choice over rows it already has.
+There is no uniqueness constraint — one frame can be worth two notes with
+different tags — and the accidental double-press is guarded client-side, where
+the frame rate is known.
+
+A **range** moment has no artifact of its own. Its inspector row previews the
+span by *playing the source*, over the ranged `/files/{id}/stream` route the
+player already uses — so there is nothing to generate, nothing to cache, and
+nothing to invalidate when a span moves. A generated clip was tried first and
+removed: it could never be as immediate as the storyboard, because the wait *is*
+the generation (owner, 2026-08-30).
+
+### `moment_tags`
+
+Many-to-many between `moments` and `tags`, composite PK, CASCADE FKs, plus
+`ix_moment_tags_tag_id` for the reverse lookup — the same shape and the same
+index rationale as `asset_bundle_tags`.
+
+**Assignment propagates to the bundle, one way** (ADR-0025). Adding a tag to a
+moment adds a real row to `asset_bundle_tags`; removing it from the moment, or
+deleting the moment, does not remove it from the bundle. That is what keeps every
+tag count, filter compilation, and Smart Collection working unchanged — they find
+an ordinary bundle tag — and it is the honest semantic, because a propagated
+assignment and a hand-made one are the same row. Propagation bumps
+`asset_bundles.updated_at` but deliberately not its `version`: a version is the
+optimistic-concurrency token for edits to the bundle itself, and spending one
+here would fail an unrelated in-flight bundle edit.
+
 ### `tags`
 
 `id`, `parent_id` (self-FK, `SET NULL`), `name`, `color`, `sort_order`,

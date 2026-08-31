@@ -19,6 +19,8 @@ import { viewerItemFromFile } from './viewerItem'
 interface MediaViewerProps {
   bundleId: string
   initialFileId?: string | null
+  /** Open already at a saved moment (plan 7), from the inspector's rail. */
+  startAt?: { fileId: string; time: number } | null
   playerPrefs: PlayerPrefs
   onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onClose: () => void
@@ -33,6 +35,7 @@ interface MediaViewerProps {
 export function MediaViewer({
   bundleId,
   initialFileId,
+  startAt = null,
   playerPrefs,
   onPlayerPrefs,
   onClose,
@@ -152,6 +155,7 @@ export function MediaViewer({
       emptyMessage={emptyMessage}
       cover={cover}
       inspectorTarget={inspectorTarget}
+      startAt={startAt}
     />
   )
 }

@@ -35,7 +35,7 @@ ADR-0010 (passphrase lock is browser-session-shaped).
    Pillow/`pillow-heif` (image previews) are the only new runtime
    dependencies. The player's UX bar is desktop-native macOS players —
    **Movist, Elmedia, IINA** (owner-stated): dual simultaneous subtitles,
-   rich subtitle styling, A-B loop, snapshots, video adjustments. Eagle's
+   rich subtitle styling, range loop, snapshots, video adjustments. Eagle's
    comparatively bare built-in player (no subtitles, no PiP) is explicitly
    *not* the playback reference; Eagle remains the reference for the image
    viewer and browsing feel only.

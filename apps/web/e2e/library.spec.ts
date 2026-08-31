@@ -67,6 +67,12 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
     const url = r.request().url()
     if (url.endsWith('/playback')) {
       r.fulfill({ json: { bundle_id: 'b0', videos: [] } })
+    } else if (url.includes('/moments')) {
+      // Nothing marked in this fixture. Needed explicitly for the same reason as
+      // directory-members: the catch-all below answers with the bundle *detail*
+      // object, and the inspector asks this endpoint for a list on every
+      // selection (plan 7).
+      r.fulfill({ json: [] })
     } else if (url.includes('/directory-members')) {
       // No folder members in this fixture. Needed explicitly: the catch-all
       // below answers with the bundle *detail* object, and the inspector asks
@@ -1373,6 +1379,8 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {
+  page.on('console', (m) => m.type() === 'error' && console.log('CONSOLE', m.text().slice(0, 400)))
+  page.on('pageerror', (e) => console.log('PAGEERROR', String(e).slice(0, 600)))
   await mockApi(page)
   await page.goto('/')
   await page.locator('.card').first().click()

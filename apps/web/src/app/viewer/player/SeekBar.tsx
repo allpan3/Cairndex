@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { PlayableVideo } from '../../../api/client'
+import type { Moment, PlayableVideo } from '../../../api/client'
 import { formatClock } from '../../../lib/format'
 import {
   createLeadingTrailingThrottle,
@@ -32,21 +32,49 @@ function chapterForTime(chapters: Chapter[], time: number): Chapter | null {
   return null
 }
 
+/** The saved moment covering a hovered time, if any. A range wins over a frame:
+ *  it says more, and a frame inside a range is the less specific answer. */
+function momentForTime(moments: Moment[], time: number, frame: number): Moment | null {
+  if (!moments.length || !Number.isFinite(time)) return null
+  const span = moments.find(
+    (moment) => moment.end_s !== null && time >= moment.start_s && time <= moment.end_s,
+  )
+  if (span) return span
+  // A frame occupies no width, so "hovering it" has to mean landing near it —
+  // and a pixel of a two-hour film is far wider than a frame.
+  return (
+    moments.find((moment) => moment.end_s === null && Math.abs(moment.start_s - time) <= frame) ??
+    null
+  )
+}
+
 /** Seek bar with buffered ranges, drag scrubbing, trickplay, and chapter ticks */
 export function SeekBar({
   player,
   video,
   onDragChange,
   clip,
+  moments = [],
 }: {
   player: PlayerController
   video: PlayableVideo
   onDragChange?: (dragging: boolean) => void
   /** Present while clip mode is on: draws the marked band and its handles. */
   clip?: ClipRangeController
+  /**
+   * Saved moments on this file (plan 7), drawn as ticks and thin bands.
+   *
+   * Non-interactive on purpose: the track's own `pointerdown` scrubs, and a
+   * click target competing with it is a separate design problem. They are a
+   * *map* — where the marked things are — and the hover tooltip names them.
+   */
+  moments?: Moment[]
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
+  // The track's width travels with the hover so a frame mark's hit tolerance can
+  // be one pixel of *this* track: a pixel of a two-hour film is far wider than a
+  // frame, and the geometry is only knowable from the gesture that measured it.
+  const [hover, setHover] = useState<{ x: number; time: number; width: number } | null>(null)
   // While dragging, drive the fill/thumb from the pointer position (dragPct)
   // rather than currentTime, which the throttle deliberately lags behind.
   const [dragPct, setDragPct] = useState<number | null>(null)
@@ -97,6 +125,36 @@ export function SeekBar({
     [chapters, player.duration],
   )
   const hoverChapter = hover ? chapterForTime(chapters, hover.time) : null
+  const momentMarks = useMemo(
+    () =>
+      player.duration > 0
+        ? moments
+            .filter((moment) => moment.start_s >= 0 && moment.start_s <= player.duration)
+            .map((moment) => ({
+              id: moment.id,
+              left: (moment.start_s / player.duration) * 100,
+              // A frame has no width; a range gets one, clamped so a very short
+              // span is still visible rather than a sub-pixel sliver.
+              width:
+                moment.end_s === null
+                  ? null
+                  : Math.max(
+                      0.4,
+                      ((Math.min(moment.end_s, player.duration) - moment.start_s) /
+                        player.duration) *
+                        100,
+                    ),
+            }))
+        : [],
+    [moments, player.duration],
+  )
+  const hoverMoment = hover
+    ? momentForTime(
+        moments,
+        hover.time,
+        hover.width > 0 && player.duration > 0 ? player.duration / hover.width : 0,
+      )
+    : null
   // Only draw the band once there is a duration to scale it against.
   const clipRange = clip?.active && player.duration > 0 ? clip.range : null
 
@@ -146,7 +204,7 @@ export function SeekBar({
       // The throttle deliberately lags the video, and this preview is what
       // covers for it — so it has to track the pointer through the drag, not
       // freeze at wherever the press landed.
-      setHover({ x: moveEvent.clientX, time: next })
+      setHover({ x: moveEvent.clientX, time: next, width: trackRect.current?.width ?? 0 })
       throttledSeek(next)
     }
     const removeListeners = () => {
@@ -189,7 +247,7 @@ export function SeekBar({
         onPointerMove={(event) => {
           if (dragging.current) return
           const time = timeFor(event.clientX)
-          setHover({ x: event.clientX, time })
+          setHover({ x: event.clientX, time, width: event.currentTarget.clientWidth })
         }}
         onPointerLeave={() => setHover(null)}
         onKeyDown={(event) => {
@@ -215,6 +273,23 @@ export function SeekBar({
           />
         ))}
         <div className="mv-seek__fill" style={{ width: `${displayPct}%` }} />
+        {momentMarks.map((mark) =>
+          mark.width === null ? (
+            <div
+              key={mark.id}
+              className="mv-seek__moment-tick"
+              style={{ left: `${mark.left}%` }}
+              aria-hidden="true"
+            />
+          ) : (
+            <div
+              key={mark.id}
+              className="mv-seek__moment-band"
+              style={{ left: `${mark.left}%`, width: `${mark.width}%` }}
+              aria-hidden="true"
+            />
+          ),
+        )}
         {clipRange && (
           <>
             <div
@@ -261,6 +336,11 @@ export function SeekBar({
             <span>{formatClock(hover.time)}</span>
             {hoverChapter?.title && (
               <span className="mv-seek__chapter-title">{hoverChapter.title}</span>
+            )}
+            {hoverMoment && (
+              <span className="mv-seek__moment-note">
+                ★{hoverMoment.comment ? ` ${hoverMoment.comment}` : ' Moment'}
+              </span>
             )}
           </span>
         </div>

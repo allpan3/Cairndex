@@ -25,6 +25,7 @@ function controller(overrides: Partial<ClipRangeController> = {}): ClipRangeCont
     moveTo: vi.fn(),
     playRange: vi.fn(),
     setLoop: vi.fn(),
+    armLoop: vi.fn(),
     endRangePlayback: vi.fn(),
     setAdjusting: vi.fn(),
     ...overrides,
@@ -40,7 +41,7 @@ const renderBar = (overrides: Partial<ClipRangeController> = {}) => {
 }
 
 const playButton = () => screen.getByRole('button', { name: 'Play range' })
-const loopToggle = () => screen.getByRole('button', { name: /Loop/ })
+const loopToggle = () => screen.getByRole('button', { name: 'Range loop' })
 
 test('plays the span', () => {
   const clip = renderBar()
@@ -58,7 +59,9 @@ test('offers one span control, not an action and a mode', () => {
   expect(labels.filter((l) => l === '▶| Range')).toHaveLength(0)
 })
 
-test('Loop is a toggle on what Play Range does, and starts nothing itself', () => {
+// Loop is now the A-B loop's arm switch (plan 7). It still does not go through
+// Play Range — arming starts the span itself, inside the controller.
+test('Loop arms the range loop rather than qualifying Play Range', () => {
   const clip = renderBar()
   expect(loopToggle()).toHaveAttribute('aria-pressed', 'false')
 
@@ -68,7 +71,14 @@ test('Loop is a toggle on what Play Range does, and starts nothing itself', () =
   expect(clip.playRange).not.toHaveBeenCalled()
 })
 
-test('Loop reads as pressed once it is on', () => {
+// The one click that ends the mode has to be findable while it is on, and has to
+// say that is what it does.
+test('an armed range loop says how to turn it off', () => {
+  renderBar({ loop: true })
+  expect(loopToggle().getAttribute('title')).toMatch(/Click to stop/)
+})
+
+test('Loop reads as pressed once it is armed', () => {
   renderBar({ loop: true })
   expect(loopToggle()).toHaveAttribute('aria-pressed', 'true')
 })
@@ -85,12 +95,11 @@ test('is idle when no span is playing', () => {
   expect(playButton().className).not.toContain('is-active')
 })
 
-test.each([
-  [false, /stop at Out/],
-  [true, /repeating it/],
-])('says what Loop=%s will do at the out-point', (loop, expected) => {
+// Play Range is now unconditionally the one-shot: repeating is Loop's business,
+// so its own description no longer changes under it.
+test.each([[false], [true]])('Play Range describes one ending, with Loop=%s', (loop) => {
   renderBar({ loop })
-  expect(playButton().getAttribute('title')).toMatch(expected)
+  expect(playButton().getAttribute('title')).toMatch(/stop at Out/)
 })
 
 test('names its keyboard shortcut', () => {
@@ -103,8 +112,24 @@ test('is absent along with the rest of the bar when no span is marked', () => {
   expect(screen.queryByRole('button', { name: 'Play range' })).not.toBeInTheDocument()
 })
 
-// It leads the modifier it depends on: the action, then how it ends.
-test('leads the Loop control that qualifies it', () => {
+// Saving the marked span as a moment (plan 7). Absent for a file that cannot
+// hold one, rather than present and inert.
+test('offers Save Moment only when the file can hold one', () => {
+  const withSave = vi.fn()
+  render(<ClipBar clip={controller()} player={player} onSaveMoment={withSave} />)
+  const button = screen.getByRole('button', { name: /Save Moment/ })
+  fireEvent.click(button)
+  expect(withSave).toHaveBeenCalledOnce()
+  expect(button.getAttribute('title')).toContain('B')
+})
+
+test('has no Save Moment control when the file cannot hold one', () => {
+  renderBar()
+  expect(screen.queryByRole('button', { name: /Save Moment/ })).not.toBeInTheDocument()
+})
+
+// The one-shot leads the mode beside it: play it once, or loop it.
+test('leads the Loop control beside it', () => {
   renderBar()
   const labels = screen
     .getAllByRole('button')

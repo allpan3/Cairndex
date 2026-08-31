@@ -44,6 +44,20 @@ export const IconChevron = ({
   </Svg>
 )
 
+/**
+ * A line chevron, pointing down.
+ *
+ * Distinct from `IconChevron`, which is a small filled triangle sized by its own
+ * `.chevron` class (9×13) — a disclosure marker for a tree row. This is the
+ * lighter, larger affordance a section header wants (owner, 2026-08-30), and it
+ * takes its size from `.icon` like every other icon here.
+ */
+export const IconChevronDown = () => (
+  <Svg>
+    <path d="M6 9l6 6 6-6" />
+  </Svg>
+)
+
 export const IconPlus = () => (
   <Svg>
     <line x1="12" y1="5" x2="12" y2="19" />
@@ -279,6 +293,34 @@ export const IconClipRange = () => (
     <path d="M17 8h3" />
     <path d="M4 16h3" />
     <path d="M17 16h3" />
+  </Svg>
+)
+
+/** More actions — the same three dots the sidebar uses, as a real icon so it
+ *  centres in its box like its neighbours instead of sitting on a baseline. */
+export const IconMore = () => (
+  <Svg>
+    <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+/** Range loop: two arrows running back into each other (plan 7). */
+export const IconRepeat = () => (
+  <Svg>
+    <path d="M6 8h12" />
+    <path d="M15.5 5.5 18 8l-2.5 2.5" />
+    <path d="M18 16H6" />
+    <path d="M8.5 13.5 6 16l2.5 2.5" />
+  </Svg>
+)
+
+/** A saved moment — a flag planted on the timeline. */
+export const IconMoment = () => (
+  <Svg>
+    <path d="M7 4v16" />
+    <path d="M7 5h11l-3 4 3 4H7" />
   </Svg>
 )
 

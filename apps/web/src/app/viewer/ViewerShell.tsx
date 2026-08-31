@@ -20,6 +20,7 @@ import {
   useBundleInspectorActions,
   useMergedBundleInspectorActions,
   type BundleInspectorActions,
+  type MomentPlayerActions,
 } from '../bundleInspectorActions'
 import { type MenuEntry, useContextMenu } from '../useContextMenu'
 import {
@@ -38,7 +39,10 @@ import { VideoStage } from './VideoStage'
 import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
-import { useClipPlayback, useClipRange } from './player/useClipRange'
+import { useMomentMutations, useMoments } from '../../api/hooks'
+import { noteCapturedMoment } from '../momentCapture'
+import { useClipPlayback, useClipRange, type ClipPlaybackMode } from './player/useClipRange'
+import { type ClipRange } from './player/clipRange'
 import { MAX_CLIP_EXPORT_SECONDS, type ClipExportTarget } from '../clipExport'
 import { ClipExportDialog } from '../ClipExportDialog'
 import { SnapshotDialog } from '../SnapshotDialog'
@@ -116,6 +120,16 @@ interface ViewerShellProps {
   cover?: ShellCoverActions | null
   /** What the docked inspector describes for the current item, if anything. */
   inspectorTarget?: ViewerInspectorTarget | null
+  /**
+   * Open already at a saved moment (plan 7): the shell's rail asking for one
+   * on a viewer that is not up yet.
+   *
+   * Applied through the same pending-jump the rail uses for a moment on another
+   * video, rather than through `usePlayer`'s resume seek — that path also raises
+   * the "Resumed at…" notice, which would offer to restart from a position the
+   * owner picked deliberately.
+   */
+  startAt?: { fileId: string; time: number } | null
 }
 
 /**
@@ -128,6 +142,9 @@ interface ViewerShellProps {
  * resolved, whether a bundle cover can be set — is a prop, so neither surface
  * has to know about the other's identity model (see `ViewerItem`).
  */
+/** One wheel notch of volume, matching what the arrow keys move. */
+const VOLUME_WHEEL_STEP = 0.05
+
 export function ViewerShell({
   items,
   index,
@@ -144,6 +161,7 @@ export function ViewerShell({
   emptyMessage = null,
   cover = null,
   inspectorTarget = null,
+  startAt = null,
 }: ViewerShellProps) {
   const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -165,11 +183,11 @@ export function ViewerShell({
   const endedHandledRef = useRef(false)
   const endedContextRef = useRef<{
     fileLoop: boolean
-    /** A marked span is playing, so it owns the end of the file. */
-    clipPlaying: boolean
+    /** Playback is confined to a marked span, which owns the end of the file. */
+    clipConfined: boolean
     player: PlayerController | null
     step: (delta: number) => void
-  }>({ fileLoop: false, clipPlaying: false, player: null, step: () => {} })
+  }>({ fileLoop: false, clipConfined: false, player: null, step: () => {} })
   const [resumeNotice, setResumeNotice] = useState<{ key: string; position: number } | null>(null)
   // Transient feedback for exports ("Building contact sheet…" / errors) — the
   // viewer has no toast bus of its own.
@@ -277,7 +295,7 @@ export function ViewerShell({
   const videoActive = Boolean(isVideo && videoAvailable && source)
 
   // The marked span, shared by the GIF export below and — once it lands — by
-  // A-B loop replay (plan 1 §10 / M11). Keyed on the file so a selection never
+  // Range-loop replay (plan 1 §10 / M11). Keyed on the file so a selection never
   // survives into the next item of the playlist.
   const clip = useClipRange({
     player,
@@ -291,17 +309,156 @@ export function ViewerShell({
   // A clip only means something on a file the server can cut: an unindexed
   // File Browser path has no file id to export from.
   const clipAvailable = videoActive && fileId !== null
-  // Suppressed mid-drag: a handle drag is already scrubbing the playhead
-  // deliberately, and the mode would fight it.
+  // `armed` outranks the one-shot session: while the range loop is on, that is
+  // what governs playback, and Play Range pressed inside it simply restarts the
+  // span (plan 7 §2). Suppressed mid-drag either way — a handle drag is already
+  // scrubbing the playhead deliberately, and confinement would fight it.
+  const clipMode: ClipPlaybackMode = clip.adjusting
+    ? 'off'
+    : clip.loop
+      ? 'armed'
+      : clip.playingRange
+        ? 'session'
+        : 'off'
   useClipPlayback(videoElement, clip.range, {
-    playing: clip.playingRange && !clip.adjusting,
-    loop: clip.loop,
+    mode: clipMode,
     onEnd: clip.endRangePlayback,
   })
+
+  // --- Moments (plan 7) -------------------------------------------------
+  // Gated on the docked pane being a *Bundle* Inspector, which is the same
+  // question as "is there somewhere for a saved moment to appear". An unbundled
+  // or unindexed file gets the File Inspector, which has no moments section, so
+  // marking one there would write a row nothing could show.
+  const momentBundleId = inspectorTarget?.kind === 'bundle' ? inspectorTarget.bundleId : null
+  const { data: moments = [] } = useMoments(momentBundleId)
+  const momentMutations = useMomentMutations(momentBundleId)
+  const momentsAvailable = momentBundleId !== null && fileId !== null && videoActive
+  // Only this file's, for the seek track: the list is bundle-wide.
+  const fileMoments = useMemo(
+    () => (fileId ? moments.filter((moment) => moment.file_id === fileId) : []),
+    [fileId, moments],
+  )
+
+  /**
+   * A jump asked for before its file could take it, applied once that file's
+   * playhead exists.
+   *
+   * Both entry points need it: a moment row for another video in this bundle
+   * (the file has to load first), and the viewer being opened straight onto a
+   * moment from the shell (nothing has loaded at all yet). One queue for both,
+   * so the two paths cannot drift.
+   */
+  const [pendingJump, setPendingJump] = useState<{
+    fileId: string
+    at: number
+    loop: ClipRange | null
+  } | null>(startAt ? { fileId: startAt.fileId, at: startAt.time, loop: null } : null)
+  // A later ask replaces an unconsumed one — the owner changed their mind about
+  // where to open, and only the last answer can be right.
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setPendingJump(startAt ? { fileId: startAt.fileId, at: startAt.time, loop: null } : null)
+  }, [startAt])
+  const playerDuration = player.duration
+  const seek = player.seek
+  const armLoop = clip.armLoop
+  useEffect(() => {
+    // Waits for a real duration, not merely a source: a seek issued before
+    // metadata arrives is silently dropped by the element.
+    if (!pendingJump || pendingJump.fileId !== fileId || playerDuration <= 0) return
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setPendingJump(null)
+    // The resume seek has already happened and raised its notice by now; this
+    // overrides it, and a notice offering to "restart" from a position nothing
+    // ends up playing at is worse than none.
+    setResumeNotice(null)
+    if (pendingJump.loop) armLoop(pendingJump.loop)
+    else seek(pendingJump.at)
+  }, [armLoop, fileId, pendingJump, playerDuration, seek])
+
+  /** Go to a moment on this file, or queue the jump and navigate to its file. */
+  const goToMoment = useCallback(
+    (targetFileId: string, at: number, loop: ClipRange | null) => {
+      if (targetFileId === fileId && player.duration > 0) {
+        if (loop) armLoop(loop)
+        else player.seek(at)
+        return
+      }
+      setPendingJump({ fileId: targetFileId, at, loop })
+      const to = items.findIndex((item) => item.fileId === targetFileId)
+      if (to >= 0) onIndex(to)
+    },
+    [armLoop, fileId, items, onIndex, player],
+  )
 
   // Save GIF… opens the options dialog rather than exporting straight away.
   // The range is already decided by then; what is left is size and rate, and
   // neither needs the frame on screen the way placing an edge does.
+  /**
+   * `B`, the clip bar's Save Moment, and the section header's `+`.
+   *
+   * With a span marked it saves the *span*; otherwise it saves the frame at the
+   * playhead. One gesture with the obvious dual meaning, and it makes the clip
+   * bar the range editor for moments as well as for exports.
+   */
+  const captureMoment = useCallback(() => {
+    if (!momentBundleId || !fileId) return
+    const marked = clip.active ? clip.range : null
+    const at = marked ? marked.start : getCurrentTime()
+    if (!marked) {
+      // Pressing the key twice at one frame is a slip, not an intent: offer the
+      // row that is already there rather than adding a second (plan 7 §4.6).
+      // Only for frames — two spans starting together are plausibly deliberate.
+      const already = fileMoments.find(
+        (moment) => moment.end_s === null && Math.abs(moment.start_s - at) <= clip.frame,
+      )
+      if (already) {
+        setExportNotice(`Already marked at ${formatClock(already.start_s)}`)
+        return
+      }
+    }
+    momentMutations.create.mutate(
+      { file_id: fileId, start_s: at, end_s: marked ? marked.end : null },
+      {
+        onSuccess: (saved) => {
+          // The row opens straight into its comment box: what you want to write
+          // down is freshest at the instant you mark it (owner, 2026-08-29).
+          noteCapturedMoment(momentBundleId, saved.id)
+          setExportNotice(
+            saved.end_s === null
+              ? `Moment saved at ${formatClock(saved.start_s)}`
+              : `Moment saved: ${formatClock(saved.start_s)} → ${formatClock(saved.end_s)}`,
+          )
+          // …and the rail has to be open for that box to be on screen.
+          onPlayerPrefs((previous) =>
+            previous.inspectorOpen ? previous : { ...previous, inspectorOpen: true },
+          )
+        },
+        onError: () => setExportNotice('Couldn’t save that moment.'),
+      },
+    )
+  }, [
+    clip.active,
+    clip.frame,
+    clip.range,
+    fileId,
+    fileMoments,
+    getCurrentTime,
+    momentBundleId,
+    momentMutations.create,
+    onPlayerPrefs,
+  ])
+
+  /** What a moment can do here — absent wherever there is no playhead. */
+  const momentActions = useMemo<MomentPlayerActions | undefined>(() => {
+    if (!momentsAvailable) return undefined
+    return {
+      capture: captureMoment,
+      loop: (targetFileId, range) => goToMoment(targetFileId, range.start, range),
+    }
+  }, [captureMoment, goToMoment, momentsAvailable])
+
   const exportClip = useCallback(() => {
     if (!fileId || !clip.range) return
     setClipTarget({
@@ -541,8 +698,8 @@ export function ViewerShell({
   )
 
   useEffect(() => {
-    endedContextRef.current = { fileLoop, clipPlaying: clip.playingRange, player, step }
-  }, [clip.playingRange, fileLoop, player, step])
+    endedContextRef.current = { fileLoop, clipConfined: clipMode !== 'off', player, step }
+  }, [clipMode, fileLoop, player, step])
 
   // What the docked Bundle Inspector's actions mean *here*. Everything not
   // listed is inherited from the shell unchanged — the whole point of the
@@ -592,8 +749,15 @@ export function ViewerShell({
       // edit in here finished with no sign it had (owner, 2026-07-30). The
       // viewer already owns a notice anchor above its own chrome; use that.
       onFlash: setExportNotice,
+      // A saved moment is inside this playlist, so going to one is a seek (and
+      // a file step when it belongs to another video) rather than a second
+      // viewer on top of the first.
+      onPlayMoment: (_targetBundleId, targetFileId, at) => goToMoment(targetFileId, at, null),
+      moments: momentActions,
     }),
     [
+      goToMoment,
+      momentActions,
       items,
       onClose,
       onIndex,
@@ -617,7 +781,7 @@ export function ViewerShell({
       // `useClipPlayback` has already dealt with it — looped, or parked at the
       // in-point. Advancing to the next file on top of that is the last thing a
       // clip selection wants (owner-reported, 2026-08-16).
-      if (context.clipPlaying) return
+      if (context.clipConfined) return
       if (context.player) {
         handlePlaybackEnded(context.fileLoop, context.player, () => context.step(1))
       }
@@ -680,6 +844,7 @@ export function ViewerShell({
       next: () => step(1),
       markClipEdge: clipAvailable ? clip.markAtPlayhead : undefined,
       playClipRange: clipAvailable ? clip.playRange : undefined,
+      saveMoment: momentsAvailable ? captureMoment : undefined,
       // `player` exists even for image bundles (only its use as a *controller* is
       // gated on videoActive), so fullscreen state stays correct for images too.
       isFullscreen: () => player.fullscreen,
@@ -696,8 +861,35 @@ export function ViewerShell({
       clipAvailable,
       clip.markAtPlayhead,
       clip.playRange,
+      momentsAvailable,
+      captureMoment,
     ],
   )
+
+  /**
+   * The wheel over the media is the volume (owner, 2026-08-30) — the same 5% a
+   * step the arrow keys move, so the two agree.
+   *
+   * The range track claims the wheel before this sees it, because there the
+   * wheel is the zoom. Panes that scroll are left alone for the obvious reason;
+   * a wheel inside the docked inspector is the owner reading their moments, not
+   * reaching for the volume.
+   */
+  const setVolume = player.setVolume
+  const volume = player.volume
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || !videoActive) return
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('.inspector, .mv-info, .picker__panel, .context-menu')) return
+      event.preventDefault()
+      const step = event.deltaY > 0 ? -VOLUME_WHEEL_STEP : VOLUME_WHEEL_STEP
+      setVolume(Math.max(0, Math.min(1, volume + step)))
+    }
+    root.addEventListener('wheel', onWheel, { passive: false })
+    return () => root.removeEventListener('wheel', onWheel)
+  }, [setVolume, videoActive, volume])
 
   useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
   // Native Playback menu items drive the same commands as the key bindings, and
@@ -746,8 +938,18 @@ export function ViewerShell({
           label: fileLoop ? 'Stop Looping File' : 'Loop File',
           onClick: () => setFileLoop(!fileLoop),
         },
-        null,
       )
+      // The range loop belongs beside Loop File, at the two scales of the same
+      // idea (owner, 2026-08-29). Disabled rather than hidden when nothing is
+      // marked, so the menu says the loop exists and what it needs.
+      if (clipAvailable) {
+        entries.push({
+          label: clip.loop ? 'Stop Range Loop' : 'Range Loop',
+          disabled: !clip.loop && clip.range === null,
+          onClick: () => clip.setLoop(!clip.loop),
+        })
+      }
+      entries.push(null)
       if (coverActions) {
         entries.push(
           // "Video", not "cover", because this sets the thumbnail of the file
@@ -765,6 +967,12 @@ export function ViewerShell({
             onClick: coverActions.onClear,
           },
         )
+      }
+      if (momentsAvailable) {
+        entries.push({
+          label: clip.active && clip.range ? 'Save Range as Moment' : 'Save Moment Here',
+          onClick: captureMoment,
+        })
       }
       entries.push(
         { label: 'Save Snapshot', onClick: snapshot },
@@ -906,6 +1114,8 @@ export function ViewerShell({
           clip={clipAvailable ? clip : undefined}
           onExportClip={exportClip}
           maxExportSeconds={MAX_CLIP_EXPORT_SECONDS}
+          moments={fileMoments}
+          onSaveMoment={momentsAvailable ? captureMoment : undefined}
         />
       )}
 
