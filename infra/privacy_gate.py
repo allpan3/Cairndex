@@ -79,6 +79,10 @@ _QUOTED_SECRET = re.compile(
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _POSIX_HOME = re.compile(r"/(?:Users|home)/([^/\s'\"`]+)")
 _WINDOWS_HOME = re.compile(r"(?i)\b[A-Z]:\\Users\\([^\\\s'\"`]+)")
+_COMMIT_IDENTITY_EMAIL = re.compile(
+    r"^(?P<prefix>(?:author|committer) .+ <)[^<>\r\n]+(?P<suffix>> \d+ [+-]\d{4})$",
+    re.MULTILINE,
+)
 _BINARY_MAGIC = (
     b"\x89PNG\r\n\x1a\n",
     b"\xff\xd8\xff",
@@ -307,6 +311,13 @@ def scan_text(text: str, label: str, private_patterns: list[str]) -> list[str]:
     return findings
 
 
+# Scan commit messages and metadata while accepting standard Git identity emails
+def scan_commit(data: bytes, oid: str, private_patterns: list[str]) -> list[str]:
+    metadata = data.decode("utf-8", errors="replace")
+    metadata = _COMMIT_IDENTITY_EMAIL.sub(r"\g<prefix>you@example.com\g<suffix>", metadata)
+    return scan_text(metadata, f"commit {oid[:12]}", private_patterns)
+
+
 # Reject suspicious or previously unreviewed publication paths
 def scan_path(
     path: str, label: str, allowlist: PrivacyAllowlist, private_patterns: list[str]
@@ -408,8 +419,7 @@ def scan_range(
                 scan_path(path, f"path in object {oid[:12]}", allowlist, private_patterns)
             )
         if object_type == "commit":
-            metadata = data.decode("utf-8", errors="replace")
-            findings.extend(scan_text(metadata, f"commit {oid[:12]}", private_patterns))
+            findings.extend(scan_commit(data, oid, private_patterns))
         elif object_type == "blob":
             blob_count += 1
             findings.extend(scan_blob(data, oid, paths, allowlist, private_patterns))

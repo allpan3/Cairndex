@@ -805,10 +805,13 @@ just privacy-pr origin/main /tmp/pr-title.txt /tmp/pr-body.md HEAD
 
 The range scanner reads newly reachable Git objects, including blobs introduced
 and deleted by an intermediate commit. It scans commit metadata, paths, text,
-credential shapes, configured private literals, and binary bytes. The reviewed
-binary allowlist records an immutable SHA-256, expected path, purpose, and
-provenance; a new or moved binary fails until it receives deliberate review.
-Do not use `--no-verify` or weaken the profile to make a finding disappear.
+credential shapes, configured private literals, and binary bytes. Standard Git
+author/committer email headers are intentional public identity metadata; email
+addresses in messages, paths, PR text, tracked files, and artifacts remain
+content findings. The reviewed binary allowlist records an immutable SHA-256,
+expected path, purpose, and provenance; a new or moved binary fails until it
+receives deliberate review. Do not use `--no-verify` or weaken the profile to
+make a finding disappear.
 
 ## CI
 
