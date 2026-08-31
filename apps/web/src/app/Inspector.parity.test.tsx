@@ -42,6 +42,9 @@ vi.mock('../api/hooks', () => ({
 // have nothing to do with what this file is asserting.
 vi.mock('./TagEditor', () => ({ TagEditor: () => null }))
 vi.mock('./CollectionPicker', () => ({ CollectionPicker: () => null }))
+// Same for the moments section: it reads its own queries and has its own
+// tests.
+vi.mock('./Moments', () => ({ Moments: () => null }))
 
 function file(id: string): FileRead {
   return {
@@ -84,6 +87,11 @@ const shellActions: BundleInspectorActions = {
   onFlash: vi.fn(),
   onFilterByTags: vi.fn(),
   onOpenCollection: vi.fn(),
+  onPlayMoment: vi.fn(),
+  // Player-bound in practice (only the viewer has a playhead), but this fixture
+  // is "everything, with every entry present": the invariant under test is that
+  // whatever the shell supplies reaches the viewer's rail.
+  moments: { capture: vi.fn(), loop: vi.fn() },
 }
 
 /**

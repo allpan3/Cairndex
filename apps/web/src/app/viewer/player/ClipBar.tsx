@@ -18,6 +18,9 @@ const COARSE_NUDGE_SECONDS = 1
 /** The key that plays the span, next to the `[` and `]` that mark its ends. */
 export const PLAY_RANGE_KEY = '\\'
 
+/** The key that saves a moment — `b` for bookmark, and otherwise unbound. */
+export const SAVE_MOMENT_KEY = 'b'
+
 interface ClipBarProps {
   clip: ClipRangeController
   player: PlayerController
@@ -25,6 +28,11 @@ interface ClipBarProps {
   onExport?: () => void
   /** Longest span the exporter accepts, for the over-length warning. */
   maxExportSeconds?: number
+  /**
+   * Saves the marked span as a moment (plan 7); absent when this file
+   * cannot hold one — an unindexed File Browser path has no row to hang it on.
+   */
+  onSaveMoment?: () => void
 }
 
 function EdgeRow({
@@ -92,7 +100,7 @@ function EdgeRow({
   )
 }
 
-export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarProps) {
+export function ClipBar({ clip, player, onExport, maxExportSeconds, onSaveMoment }: ClipBarProps) {
   const range = clip.range
   if (!clip.active || !range) return null
 
@@ -111,41 +119,63 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarPro
 
       <div className="mv-clip__side">
         <div className="mv-clip__meta">
-          <span className="mv-clip__title">Clip</span>
-          <span className={`mv-clip__duration${tooLong ? ' is-over' : ''}`}>
-            {length.toFixed(2)} s
-          </span>
-          {tooLong && (
-            <span className="mv-clip__warn" role="status">
-              max {maxExportSeconds} s
-            </span>
-          )}
+          <span className="mv-clip__title">Range</span>
+          {/* The length, plainly. It used to turn red beside a "max 30 s" notice
+              once the span passed what a GIF may be — which read as a limit on
+              the *range*, and there is none: a moment can be any length, and
+              only the export is bounded (owner, 2026-08-30). The greyed-out
+              Save GIF button and its tooltip say that, where it applies. */}
+          <span className="mv-clip__duration">{length.toFixed(2)} s</span>
+          {/* Top right, away from the actions: closing the picker is not one of
+              the things you do *to* a range (owner, 2026-08-30). */}
+          <button className="mv-clip__close" onClick={clip.close} aria-label="Close range">
+            ✕
+          </button>
         </div>
+        {/* Two rows on this side, matching the two on the left, with this one
+            sitting on the same baseline as Out. The actions had been wrapping to
+            a third row, which is what put Save GIF below Save Moment instead of
+            after it. */}
         <div className="mv-clip__buttons">
           {/* One control, not two. "From In" and "Range" were an action and a
               mode that only ever made sense together, and separating them left
-              a strip too crowded to read (owner, 2026-08-16). Loop is what is
-              left as a modifier, because "repeat" genuinely is one. */}
+              a strip too crowded to read (owner, 2026-08-16). */}
           <button
             className={`mv-clip__play${clip.playingRange ? ' is-active' : ''}`}
             onClick={clip.playRange}
             aria-label="Play range"
-            title={
-              clip.loop
-                ? `Play the span from In, repeating it (${PLAY_RANGE_KEY})`
-                : `Play the span from In and stop at Out (${PLAY_RANGE_KEY})`
-            }
+            title={`Play the span from In and stop at Out (${PLAY_RANGE_KEY})`}
           >
             ▶ Play Range
           </button>
+          {/* The range loop, armed (plan 7). No longer a modifier on Play Range:
+              while it is lit, all playback stays inside the span and repeats,
+              and a pause does not end it — so this is both the sign the mode is
+              on and the one click that ends it. */}
           <button
             className={`mv-clip__toggle${clip.loop ? ' is-active' : ''}`}
             onClick={() => clip.setLoop(!clip.loop)}
             aria-pressed={clip.loop}
-            title="Repeat the span instead of stopping at Out. Applies to Play Range; ordinary playback ignores the marks."
+            // Stable label, state on `aria-pressed`: a toggle whose *name*
+            // changes reads to a screen reader as a different control appearing.
+            aria-label="Range loop"
+            title={
+              clip.loop
+                ? 'Range loop is on. Click to stop confining playback to this span.'
+                : 'Range loop: playback stays inside this span and repeats until you turn this off.'
+            }
           >
             ⟳ Loop
           </button>
+          {onSaveMoment && (
+            <button
+              className="mv-clip__save"
+              onClick={onSaveMoment}
+              title={`Save the marked span as a moment (${SAVE_MOMENT_KEY.toUpperCase()})`}
+            >
+              ★ Save Moment
+            </button>
+          )}
           {onExport && (
             <button
               className="mv-clip__export"
@@ -160,9 +190,6 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds }: ClipBarPro
               Save GIF…
             </button>
           )}
-          <button className="mv-clip__close" onClick={clip.close} aria-label="Close clip range">
-            ✕
-          </button>
         </div>
       </div>
 

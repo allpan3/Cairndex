@@ -372,6 +372,35 @@ def _relocate_legacy_grouping_tables(conn: Connection, existing: set[str]) -> No
         logger.exception("could not move grouping plans out of the library database")
 
 
+#: What the moment tables were called for the two days they were "key moments"
+#: (plan 7). Renamed at the owner's request on 2026-08-30, having deleted the
+#: moments they had — so this drops the old tables rather than copying them, and
+#: the `create_all` above has already made the new ones.
+_PRERENAME_MOMENT_TABLES: tuple[str, ...] = ("key_moment_tags", "key_moments")
+
+
+def _drop_prerename_moment_tables(conn: Connection, existing: set[str]) -> None:
+    """Remove the pre-rename moment tables, children first.
+
+    A clean break rather than a copy: the rename landed before the feature had
+    shipped in any release, and the owner had already deleted the rows. Leaving
+    them would put two dead tables in every library that had ever opened the
+    branch. Forgiving, like the grouping relocation — a library that will not
+    drop them must still open.
+    """
+    present = [name for name in _PRERENAME_MOMENT_TABLES if name in existing]
+    if not present:
+        return
+    try:
+        with conn.begin_nested():
+            for name in present:
+                conn.execute(text(f"DROP TABLE main.{name}"))
+                existing.discard(name)
+        logger.info("dropped the pre-rename key-moment tables: %s", present)
+    except Exception:
+        logger.exception("could not drop the pre-rename key-moment tables")
+
+
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
     "playback_progress",
     "bundle_cursors",
@@ -381,6 +410,11 @@ _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
     # Plan 6: a library that predates folder members gains an empty table, which
     # is the correct starting state — no directory is an entity until asked.
     "bundle_directory_members",
+    # Plan 7: same for moments — nothing is marked until the owner marks it.
+    # Parent before child: ``moment_tags`` has a foreign key into
+    # ``moments``, and these are created in list order.
+    "moments",
+    "moment_tags",
 )
 
 
@@ -446,6 +480,7 @@ def ensure_content_indexes(engine: Engine) -> None:
         # shape before they are copied; before the index pass, so no index is
         # built on a table that is about to be dropped.
         _relocate_legacy_grouping_tables(conn, existing)
+        _drop_prerename_moment_tables(conn, existing)
         if "asset_files" in existing:
             # rtrim stops at the final slash; the second rtrim removes that slash
             conn.execute(

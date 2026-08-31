@@ -14,6 +14,7 @@ from cairndex.api.v1 import (
     library_collections,
     library_files,
     manual_bundling,
+    moments,
     ownership,
     playback,
     playback_sessions,
@@ -41,6 +42,9 @@ router.include_router(ownership.router)
 router.include_router(library_collections.router)
 router.include_router(library_files.router)
 router.include_router(bundles.router)
+# Moments (plan 7). Nested under a bundle, in its own module: it shares a
+# URL prefix with the bundle routes and nothing else.
+router.include_router(moments.router)
 router.include_router(tags.router)
 router.include_router(tag_groups.router)
 router.include_router(smart_collections.router)

@@ -95,7 +95,7 @@ export function createStallDetector(
         sample.readyState < HAVE_METADATA
       // Any change counts, in either direction: a clip loop restarting at its
       // in-point moves the playhead backward, and that is playback working.
-      // Narrowing this to `>` would card an A-B loop every threshold.
+      // Narrowing this to `>` would card a range loop every threshold.
       const moved =
         sample.currentTime !== lastTime || sample.bufferedSeconds !== lastBufferedSeconds
       lastTime = sample.currentTime

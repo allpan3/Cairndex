@@ -791,6 +791,8 @@ function Workspace({
   const [viewerTarget, setViewerTarget] = useState<{
     bundleId: string
     initialFileId?: string
+    /** Opened by asking for a saved moment, so it starts there (plan 7). */
+    startAt?: { fileId: string; time: number }
   } | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -1199,6 +1201,10 @@ function Workspace({
       onAddFiles: (id) => setAddFilesBundleId(id),
       onPlayBundle: (id) => setViewerTarget({ bundleId: id }),
       onPlayFile: (bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId }),
+      // A saved moment from the shell's rail opens the viewer already there,
+      // rather than at the top of the file with the owner left to find it.
+      onPlayMoment: (bundleId, fileId, at) =>
+        setViewerTarget({ bundleId, initialFileId: fileId, startAt: { fileId, time: at } }),
       onOpenFile: onOpenHostFile,
       onRevealFile: onRevealHostFile,
       onLocateFile: locateFileInBrowser,
@@ -2838,6 +2844,7 @@ function Workspace({
         <MediaViewer
           bundleId={viewerTarget.bundleId}
           initialFileId={viewerTarget.initialFileId}
+          startAt={viewerTarget.startAt}
           playerPrefs={prefs.player}
           onPlayerPrefs={setPlayerPrefs}
           onClose={() => setViewerTarget(null)}

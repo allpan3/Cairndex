@@ -4,7 +4,7 @@
  *
  * Deliberately shared rather than owned by the GIF exporter. Picking a GIF
  * range and looping between two points are the same selection with different
- * consumers — which is why the A-B loop was moved out of M9 into this
+ * consumers — which is why the range loop was moved out of M9 into this
  * milestone (owner, 2026-07-11: "it's really the GIF range-picker"). Keeping
  * the span here means loop replay needs a consumer, not a second model.
  *

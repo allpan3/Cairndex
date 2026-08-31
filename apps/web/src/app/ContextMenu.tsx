@@ -56,6 +56,35 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
         window.removeEventListener('mouseup', swallow, true)
         window.removeEventListener('click', swallow, true)
       }, 0)
+      // ...and own the `dblclick` the *next* press can complete, because the app
+      // never saw the first half of it.
+      //
+      // Swallowing the dismissing click hides it from the app but not from the
+      // browser's click counter. So the press after a dismissal arrives as click
+      // two of a pair and delivers `dblclick` — and `dblclick` on a bundle card
+      // opens the media viewer. To the owner that is one click opening the player
+      // (owner-reported, 2026-08-29: "single click on the bundle would enter the
+      // video player"). It is also why a control clicked right after a dismissal
+      // can look dead: its click is the swallowed one.
+      //
+      // Disarmed by the next press that starts a *fresh* sequence (`detail <= 1`),
+      // which is the browser telling us the pair window has closed. The pair's own
+      // second press carries `detail === 2`, so it does not disarm this.
+      const swallowPairedDblClick = (event: MouseEvent) => {
+        if (event.type === 'mousedown') {
+          if (event.detail > 1) return
+          disarmPair()
+          return
+        }
+        swallow(event)
+        disarmPair()
+      }
+      const disarmPair = () => {
+        window.removeEventListener('mousedown', swallowPairedDblClick, true)
+        window.removeEventListener('dblclick', swallowPairedDblClick, true)
+      }
+      window.addEventListener('mousedown', swallowPairedDblClick, true)
+      window.addEventListener('dblclick', swallowPairedDblClick, true)
     }
     const onAway = (e: MouseEvent) => {
       if (inside(e.target)) return
@@ -70,9 +99,22 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     window.addEventListener('mouseup', onAway, true)
     window.addEventListener('click', onAway, true)
     window.addEventListener('keydown', onKey, true)
-    window.addEventListener('scroll', onClose, true)
-    window.addEventListener('resize', onClose)
+    // Scroll and resize dismiss the menu because it is anchored to a cursor
+    // position that stops meaning anything once the page moves under it — but
+    // only from the next frame on. The gesture that *opens* a menu can scroll:
+    // clicking a `⋯` button near the edge of a scrollable rail focuses it, and
+    // the browser brings it into view in the same dispatch. Listening straight
+    // away made that button dismiss its own menu (found by the moments e2e,
+    // 2026-08-29), and every rail row deep enough to need scrolling had the same
+    // fragility.
+    let armed = 0
+    const arm = () => {
+      window.addEventListener('scroll', onClose, true)
+      window.addEventListener('resize', onClose)
+    }
+    armed = requestAnimationFrame(arm)
     return () => {
+      cancelAnimationFrame(armed)
       window.removeEventListener('mousedown', onDown, true)
       window.removeEventListener('mouseup', onAway, true)
       window.removeEventListener('click', onAway, true)

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 
@@ -137,4 +137,116 @@ test('opening a menu drops the text selection the right-click made', () => {
   expect(removeAllRanges).toHaveBeenCalledOnce()
   expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
   vi.restoreAllMocks()
+})
+
+// The gesture that opens a menu is allowed to scroll. Clicking a `⋯` button near
+// the edge of a scrollable rail focuses it, and the browser brings it into view
+// in the same dispatch — so a menu that dismissed on the very next scroll event
+// dismissed itself (found by the moments e2e, 2026-08-29).
+test('a scroll from the opening gesture does not dismiss the menu', () => {
+  function Surface() {
+    const menu = useContextMenu()
+    return (
+      <>
+        <button onClick={(e) => menu.open(e, [{ label: 'Delete', onClick: vi.fn() }])}>more</button>
+        <ContextMenu state={menu.state} onClose={menu.close} />
+      </>
+    )
+  }
+  const frames: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
+    frames.push(fn)
+    return frames.length
+  })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  render(<Surface />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'more' }))
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+
+  // Same dispatch, before the next frame: part of opening, not a later movement.
+  fireEvent.scroll(window, {})
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+
+  // From the next frame on, a scroll means the anchor has moved under it.
+  act(() => frames.splice(0, frames.length).forEach((fn) => fn(0)))
+  fireEvent.scroll(window, {})
+  expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
+
+  vi.unstubAllGlobals()
+})
+
+/** A card-like surface: a menu on right-click, "open" on double-click. */
+function OpenableSurface({ onOpen }: { onOpen: () => void }) {
+  const menu = useContextMenu()
+  return (
+    <>
+      <div
+        data-testid="card"
+        onContextMenu={(e) => menu.open(e, [{ label: 'Delete', onClick: vi.fn() }])}
+        onDoubleClick={onOpen}
+      >
+        a bundle
+      </div>
+      <ContextMenu state={menu.state} onClose={menu.close} />
+    </>
+  )
+}
+
+/** Fire one press-release-click at `detail`, as the browser numbers a pair. */
+function press(target: Element, detail: number) {
+  const opts = { bubbles: true, cancelable: true, detail }
+  fireEvent(target, new MouseEvent('mousedown', { ...opts, buttons: 1 }))
+  fireEvent(target, new MouseEvent('mouseup', opts))
+  fireEvent(target, new MouseEvent('click', opts))
+}
+
+// Swallowing the dismissing click hides it from the app but not from the
+// browser's click counter, so the *next* press arrives as click two of a pair and
+// delivers `dblclick` — which on a bundle card opens the media viewer. To the
+// owner that is one click opening the player (owner-reported, 2026-08-29).
+test('the press after dismissing a menu does not complete a double-click', () => {
+  const onOpen = vi.fn()
+  render(<OpenableSurface onOpen={onOpen} />)
+  const card = screen.getByTestId('card')
+
+  fireEvent.contextMenu(card)
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+
+  press(card, 1) // dismisses the menu; the app never sees this click
+  expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
+
+  press(card, 2) // the owner's next click — the browser calls it click two
+  fireEvent.dblClick(card, { detail: 2 })
+
+  expect(onOpen).not.toHaveBeenCalled()
+})
+
+test('a genuine double-click still opens', () => {
+  const onOpen = vi.fn()
+  render(<OpenableSurface onOpen={onOpen} />)
+  const card = screen.getByTestId('card')
+
+  press(card, 1)
+  press(card, 2)
+  fireEvent.dblClick(card, { detail: 2 })
+
+  expect(onOpen).toHaveBeenCalledOnce()
+})
+
+// The guard covers the pair the dismissal started and nothing after it: a later,
+// unrelated double-click must still open.
+test('a double-click after an intervening click still opens', () => {
+  const onOpen = vi.fn()
+  render(<OpenableSurface onOpen={onOpen} />)
+  const card = screen.getByTestId('card')
+
+  fireEvent.contextMenu(card)
+  press(card, 1) // dismiss
+  press(card, 1) // a fresh, separate click — the pair window has closed
+  press(card, 1)
+  press(card, 2)
+  fireEvent.dblClick(card, { detail: 2 })
+
+  expect(onOpen).toHaveBeenCalledOnce()
 })

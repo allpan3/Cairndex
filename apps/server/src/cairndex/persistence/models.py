@@ -3,7 +3,8 @@
 Covers storage roots, asset bundles, asset files, tags, tag groups (+
 membership), collections, and smart collections, plus the bundle↔tag and
 bundle↔collection join tables (Phase 1); the jobs table (Phase 2); and subtitle
-tracks (Phase 6, ADR-0003).
+tracks (Phase 6, ADR-0003); and moments with their own tag join table
+(plan 7).
 
 Note: the logical grouping concept is a **Collection** (formerly "folder"). The
 physical filesystem File Browser is a separate, storage-root-scoped surface and is
@@ -104,6 +105,27 @@ asset_bundle_collections = Table(
     # Reverse index (PK leads with bundle_id) for collection_counts' GROUP BY
     # collection_id and collection-scoped lookups (measured: perf/M2).
     Index("ix_asset_bundle_collections_collection_id", "collection_id"),
+)
+
+moment_tags = Table(
+    "moment_tags",
+    Base.metadata,
+    Column(
+        "moment_id",
+        String(26),
+        ForeignKey("moments.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        String(26),
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # Same reverse index as ``asset_bundle_tags``, for the same reason: the
+    # composite PK indexes the leading moment_id, and "which moments carry this
+    # tag" is a lookup the other way round.
+    Index("ix_moment_tags_tag_id", "tag_id"),
 )
 
 tag_group_memberships = Table(
@@ -331,6 +353,58 @@ class BundleDirectoryMember(Base):
     )
 
 
+class Moment(Base):
+    """One instant, or one span, the owner marked inside one video (plan 7).
+
+    ``end_s IS NULL`` means a frame; a range carries both ends. Not a ``kind``
+    enum over two always-present columns — that shape admits ``start == end``,
+    which is neither a frame nor a legal range, and would need a minimum length
+    to adjudicate between them.
+
+    A range moment is an A-B pair, which is why the player's clip range consumes
+    these rather than owning a second span model.
+    """
+
+    __tablename__ = "moments"
+
+    id: Mapped[UlidPk]
+    # Indexed for the same reason as ``asset_files.bundle_id``: the inspector
+    # reads a bundle's moments together on every open, and SQLite does not index
+    # FKs. ``file_id`` is the truth — a moment is inside a video — and
+    # ``bundle_id`` is carried so that read is one indexed query and so the
+    # tag-propagation target is on the row. ``PlaybackProgress`` holds the same
+    # pair, and the ``before_flush`` listener below keeps both in step when a
+    # file is reparented.
+    bundle_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey("asset_bundles.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey("asset_files.id", ondelete="CASCADE"), index=True
+    )
+
+    start_s: Mapped[float] = mapped_column(Float)
+    end_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Freeform owner comment. One per moment, unlike a bundle's ordered list:
+    #: a moment is already the small unit, so a second level of blocks inside it
+    #: would be a list of notes about one instant.
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
+
+    file: Mapped[AssetFile] = relationship()
+    tags: Mapped[list[Tag]] = relationship(secondary=moment_tags)
+
+    __table_args__ = (
+        # A frame has no end; a range's end is strictly after its start. Enforced
+        # in the DB as well as the schema layer because the invariant is what
+        # makes ``end_s IS NULL`` readable as "this is a frame".
+        CheckConstraint("end_s IS NULL OR end_s > start_s", name="moment_span"),
+        CheckConstraint("start_s >= 0", name="moment_start_non_negative"),
+    )
+
+
 # Resume state for one playable video file
 class PlaybackProgress(Base):
     __tablename__ = "playback_progress"
@@ -373,9 +447,10 @@ class BundleCursor(Base):
     file: Mapped[AssetFile] = relationship()
 
 
-# Sync progress ownership and clear a source bundle's cursor after file reparenting
+# Carry the per-file rows that denormalize bundle_id, and clear a source
+# bundle's cursor, after file reparenting
 @event.listens_for(OrmSession, "before_flush")
-def _sync_playback_progress_bundle_id(
+def _sync_denormalized_bundle_ids(
     session: OrmSession, _flush_context: object, _instances: object
 ) -> None:
     for obj in session.dirty:
@@ -388,6 +463,13 @@ def _sync_playback_progress_bundle_id(
             update(PlaybackProgress)
             .where(PlaybackProgress.file_id == obj.id)
             .values(bundle_id=obj.bundle_id)
+        )
+        # A moment moves with the video it is inside. Leaving it behind would
+        # point the old bundle's inspector at a file it no longer holds; its
+        # already-propagated tags do stay on the old bundle, which is the same
+        # one-way rule assignment follows (plan 7 §4.1).
+        session.execute(
+            update(Moment).where(Moment.file_id == obj.id).values(bundle_id=obj.bundle_id)
         )
         session.execute(
             delete(BundleCursor).where(

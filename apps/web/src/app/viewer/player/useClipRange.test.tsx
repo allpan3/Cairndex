@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { DEFAULT_CLIP_SECONDS, MIN_CLIP_SECONDS, windowFor } from './clipRange'
-import { useClipPlayback, useClipRange } from './useClipRange'
+import { useClipPlayback, useClipRange, type ClipPlaybackMode } from './useClipRange'
 import type { PlayerController } from './usePlayer'
 
 function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController {
@@ -218,7 +218,7 @@ function fakeVideo() {
 
 function runPlayback(
   video: ReturnType<typeof fakeVideo>,
-  options: { playing?: boolean; loop?: boolean } = {},
+  options: { mode?: ClipPlaybackMode } = {},
 ) {
   const pending: FrameRequestCallback[] = []
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
@@ -231,7 +231,7 @@ function runPlayback(
     useClipPlayback(
       video as unknown as HTMLVideoElement,
       { start: 10, end: 20 },
-      { playing: options.playing ?? true, loop: options.loop ?? false, onEnd },
+      { mode: options.mode ?? 'session', onEnd },
     ),
   )
   // One rAF turn: the effect queued the first callback at mount.
@@ -261,7 +261,7 @@ test('a playing span stops at the out-point', () => {
 test('looping returns to the in-point instead of stopping', () => {
   const video = fakeVideo()
   video.currentTime = 20.1
-  const { tick } = runPlayback(video, { loop: true })
+  const { tick } = runPlayback(video, { mode: 'armed' })
 
   tick()
   expect(video.pause).not.toHaveBeenCalled()
@@ -300,7 +300,7 @@ test('a span ending at the file end still loops', () => {
   const video = fakeVideo()
   video.currentTime = 240
   video.ended = true
-  const { onEnd } = runPlayback(video, { loop: true })
+  const { onEnd } = runPlayback(video, { mode: 'armed' })
 
   // The spec fires `pause` before `ended` when the media reaches its end.
   video.emit('pause')
@@ -313,21 +313,47 @@ test('a span ending at the file end still loops', () => {
   expect(onEnd).not.toHaveBeenCalled()
 })
 
-test('an ordinary pause still ends the span, even mid-span', () => {
+test('an ordinary pause ends a span *session*, even mid-span', () => {
   const video = fakeVideo()
   video.currentTime = 15
   video.ended = false
-  const { onEnd } = runPlayback(video, { loop: true })
+  const { onEnd } = runPlayback(video, { mode: 'session' })
 
   video.emit('pause')
   expect(onEnd).toHaveBeenCalledOnce()
+})
+
+// The whole difference between the session and the armed A-B loop (plan 7): the
+// mode survives the owner pausing it, so Space picks up inside the span again.
+test('an armed loop survives an ordinary pause', () => {
+  const video = fakeVideo()
+  video.currentTime = 15
+  video.ended = false
+  const { onEnd } = runPlayback(video, { mode: 'armed' })
+
+  video.emit('pause')
+  expect(onEnd).not.toHaveBeenCalled()
+})
+
+// Only the out-point is enforced. Yanking a playhead before the in-point forward
+// would make seeking inside an armed loop impossible, and watching the run-up
+// into a marked span is a real thing to want.
+test('an armed loop leaves a playhead before the in-point alone', () => {
+  const video = fakeVideo()
+  video.currentTime = 4
+  const { tick } = runPlayback(video, { mode: 'armed' })
+
+  tick()
+
+  expect(video.currentTime).toBe(4)
+  expect(video.pause).not.toHaveBeenCalled()
 })
 
 // Space is plain playback now: with no span playing, the marks are inert.
 test('leaves playback alone entirely when no span is playing', () => {
   const video = fakeVideo()
   video.currentTime = 90
-  const { tick } = runPlayback(video, { playing: false })
+  const { tick } = runPlayback(video, { mode: 'off' })
 
   tick()
   expect(video.pause).not.toHaveBeenCalled()
@@ -347,7 +373,7 @@ test('never acts on a paused or seeking element', () => {
   const video = fakeVideo()
   video.currentTime = 50
   video.paused = true
-  const { tick } = runPlayback(video, { loop: true })
+  const { tick } = runPlayback(video, { mode: 'armed' })
   tick()
   expect(video.currentTime).toBe(50)
 
@@ -403,18 +429,61 @@ test('Play Range does nothing with no span marked', () => {
   expect(result.current.playingRange).toBe(false)
 })
 
-// Loop is a standing preference for what Play Range does, not a playback state
-// of its own: turning it on must not start anything.
-test('Loop is a preference, and does not start playback', () => {
-  const player = mockPlayer({ currentTime: 10 })
+// Arming is an action: "loop this span" starts it, rather than recording a
+// preference about some later press (plan 7 §2).
+test('arming the loop starts the span from its in-point', () => {
+  const player = mockPlayer({ currentTime: 30 })
   const { result } = setup(player)
   act(() => result.current.open())
+  const start = result.current.range!.start
 
   act(() => result.current.setLoop(true))
 
   expect(result.current.loop).toBe(true)
+  expect(player.seek).toHaveBeenLastCalledWith(start)
+  expect(player.play).toHaveBeenCalled()
+  // Not a Play Range session — the two endings are different, so the states are.
   expect(result.current.playingRange).toBe(false)
-  expect(player.play).not.toHaveBeenCalled()
+})
+
+// Disarming stops confining playback; it does not stop playback.
+test('disarming the loop leaves playback running', () => {
+  const player = mockPlayer({ currentTime: 10 })
+  const { result } = setup(player)
+  act(() => result.current.open())
+  act(() => result.current.setLoop(true))
+  vi.mocked(player.pause).mockClear()
+
+  act(() => result.current.setLoop(false))
+
+  expect(result.current.loop).toBe(false)
+  expect(player.pause).not.toHaveBeenCalled()
+})
+
+// A saved moment's loop button: adopt the span and arm it in one step, with
+// the clip bar open so the marks and the way out are both on screen.
+test('armLoop adopts a span, opens the bar, and starts looping it', () => {
+  const player = mockPlayer({ currentTime: 0 })
+  const { result } = setup(player)
+
+  act(() => result.current.armLoop({ start: 12, end: 17.5 }))
+
+  expect(result.current.active).toBe(true)
+  expect(result.current.loop).toBe(true)
+  expect(result.current.range).toEqual({ start: 12, end: 17.5 })
+  expect(player.seek).toHaveBeenLastCalledWith(12)
+  expect(player.play).toHaveBeenCalled()
+})
+
+// An adopted span still has to be a legal one: a saved moment from a file that
+// has since been replaced by a shorter one cannot mark past its end.
+test('armLoop clamps a span that no longer fits the media', () => {
+  const { result } = setup(mockPlayer({ currentTime: 0, duration: 20 }))
+
+  act(() => result.current.armLoop({ start: 18, end: 40 }))
+
+  expect(result.current.range!.end).toBeLessThanOrEqual(20)
+  expect(result.current.loop).toBe(true)
 })
 
 test('the span session ends when playback stops being confined', () => {

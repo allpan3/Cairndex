@@ -132,6 +132,11 @@
 > suggestion no longer states a confidence, and bundle notes can be dragged into
 > a new order. See the first section below.
 >
+> **Moments and the range loop are built on `feat/moments`** and awaiting
+> the owner's pass (2026-08-29) — see the first section below, plus
+> [ADR-0025](adr/0025-moment-tag-propagation.md) and
+> [ADR-0026](adr/0026-armed-range-loop.md).
+>
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
 > need the owner: a pass on a genuinely
@@ -144,6 +149,210 @@
 > bundle, so an album of 1000 photos is one row) is no longer parked: its
 > deferral expired with v0.1.0 and its design questions are settled. It is
 > designed and unbuilt — see the branch section below.
+
+## Open on branch: moments, and the range loop they carry (2026-08-29)
+
+Owner wants to save the frames and spans that matter inside a video, tag and
+comment them, read them back in the Bundle Inspector, and — related, and the same
+infrastructure — loop between two points.
+[Plan 7](plans/07-moments-and-range-loop.md) holds the design and the two
+decisions worth arguing with. **Built and gate-green on branch
+`feat/moments`; the owner has not yet used it in the app.** No PR is open —
+that is the owner's call.
+
+**The model.** A moment is one instant (`end_s IS NULL`) or one span inside
+one `AssetFile`, with an optional comment and any number of library tags. Two new
+tables, `moments` and `moment_tags`, added to an existing library on open.
+`file_id` is the truth and `bundle_id` is denormalized for the same two reasons
+`playback_progress` denormalizes it, and maintained by the same re-parent hook —
+so the whole lifecycle came free: the cascade handles a dropped file row, move
+repair preserves `AssetFile.id` so a rename keeps the moments, trashing repoints
+rather than deletes, and removing a *present* file from a bundle carries its
+moments to the one-file bundle it is re-staged into.
+
+**A range moment is an loop pair**, which is what makes the owner's two asks one
+feature. `useClipPlayback` went from two booleans to one `ClipPlaybackMode` of
+`off`/`session`/`armed` — simpler than it was, because "confine, do not repeat,
+and survive a pause" was never a state that meant anything.
+
+**Two ADRs, both accepted, both flagged to the owner before building:**
+
+- [ADR-0025](adr/0025-moment-tag-propagation.md) — a moment's tag propagates
+  to its bundle **one way**: assignment adds, and nothing un-adds. A derived
+  union would make tag counts, filters, facets and Smart Collections all learn
+  about a second source to avoid a one-line write; two-way propagation is unsound,
+  because a propagated assignment and a hand-made one are the same row.
+- [ADR-0026](adr/0026-armed-range-loop.md) — an armed range loop confines ordinary
+  playback, Space included, and survives a pause. This **extends** the owner's
+  2026-08-16 decision that a marked span must not redefine the play button, on
+  the reading that what was rejected was the *quiet* redefinition. The ADR records
+  the fallback if the owner would rather keep the older rule: it is a two-line
+  change to the pause handler.
+
+**One departure from the approved design, made while building.** §5.1 planned an
+empty state wherever the section appears. An unmarked video now shows *nothing*
+in a pane with no playhead: the planned hint would have put a permanent "press B
+while playing" line — and its height — on every video bundle's rail, in a pane
+where `B` does nothing. A bundle that *has* moments shows them in both rails.
+
+**One bug fixed on the way, found by the new e2e and not specific to this
+feature.** `ContextMenu` dismissed itself: clicking a row's `⋯` near the edge of a
+scrollable rail focuses it, the browser scrolls it into view in the same dispatch,
+and the scroll listener closed the menu that click had just opened. Scroll and
+resize dismissal now arm a frame later. Every rail row deep enough to need
+scrolling had the same fragility.
+
+**The hover preview took three tries, and the third is a generated artifact
+after all.** Owner: it sits on the first frame for about a second, and that frame
+is not even inside the range. Measuring rather than guessing separated two causes.
+About 340ms of a ~400ms wait was two of our own constants — an arm delay paid
+*before* anything loaded, then a fade after it was already playing — and those are
+now 100ms and 60ms. The rest was inherent to streaming the original: an accurate
+seek makes the decoder run forward from the preceding keyframe (14ms landing just
+after one, 123ms just before the next, on 1080p/30fps, and worse with resolution
+and GOP length). The wrong-frame half was the storyboard grid: tiles are sampled
+every 2 to 30 seconds, so the still for an in-point is usually from before the
+range.
+
+So **two pre-made artifacts** (`media/moment_previews.py`), 480px, cached under
+`.cairndex/cache/moment-previews/`.
+
+- **A poster frame** for *every* moment, decoded at the marked instant, queued by
+  the save rather than the first hover — it is the picture rather than the motion,
+  and one frame is a keyframe seek and a JPEG (~1KB). This is the fix for the
+  wrong-frame report, and the whole fix for a **frame** moment, which had only the
+  stale tile and no second act to correct it.
+- **A clip of the span** for a range, muted and faststart, keyed by the source
+  fingerprint *and* the span. Plays from byte 0, and its own first frame is the
+  in-point too. Same 1080p source, hover to first moving frame: **385ms streaming,
+  181ms from the clip**, 8-84KB per five-second span. Cut lazily on first hover
+  (owner's choice), since a range can fall back to streaming while it builds.
+
+Both routes answer 404 until the artifact lands and the request is what queues it,
+so the client keeps what it can already show — no hover waits on ffmpeg, and the
+cache stays disposable (owner asked directly; there is a test for it). This
+reverses the GIF-removal decision from earlier on this branch: what was wrong
+there was *when* it ran, not *what* it made. Plan 7 §4.3 records all three
+attempts.
+
+**Three bugs worth remembering, all caught by verification rather than review.**
+
+1. `raise HTTPException` **discards `BackgroundTasks`** — the exception handler
+   builds a fresh response — so the queued cut never ran and the clip would never
+   have been built at all. The 404 is returned, not raised.
+2. **A moment's two artifacts shared a fingerprint sidecar and a lock.**
+   `derived_cache` derives both with `with_suffix`, so `{id}.mp4` and `{id}.jpg`
+   resolved to `{id}.fingerprint`; the clip's value overwrote the poster's, every
+   range moment's poster then failed `is_current` forever, fell back to the stale
+   tile on every hover, and silently re-encoded itself each time. A frame moment,
+   having one artifact, looked perfectly fine — which is exactly how it survived a
+   round of testing, and why the owner still saw the original symptom after the
+   "fix". The kind now goes in the stem, not the suffix, and a test builds both
+   and asserts each survives the other.
+3. A throwaway in-page timing harness was reading Chrome's 1000ms
+   background-tab timer clamp rather than the product, which is why the first two
+   readings were a suspiciously round ~1001ms. All numbers here are from a visible
+   Chromium via Playwright.
+
+**A fourth bug, and this one was mine and new.** Owner: it saves, but it does not
+render until I reload the app. Queueing the poster from `POST /moments` as a
+**Starlette background task** was the cause: those run *before* FastAPI exits the
+`yield` dependency that commits the library session, so a moment's own preview
+build held its own write invisible for as long as ffmpeg took. Proven by slowing
+the encode to 2000ms and watching the row stay invisible for 2121ms. The rail
+refetches about 20ms after the POST, so it read `[]` and — nothing invalidating
+again — stayed empty until a reload. On a large source the encode is slow enough
+to lose that race every time, which is why it looked absolute rather than flaky.
+
+Preview builds now go through `moment_previews.schedule`, a daemon thread, so the
+response, the commit, and the encode are independent. The read routes moved to it
+too, for a milder version of the same hazard: a background task there delays the
+teardown of the library access dependency and so holds it across an ffmpeg run —
+the stranded-dependency shape ADR-0014's scoped sessions exist to avoid.
+Re-verified in the browser with the encode slowed to 3000ms: the row renders at
+55ms. The regression test asserts the POST returns *before* its build finishes and
+that the write is already listed in that window; it fails on the old behaviour.
+
+**And the last of the owner's pass: create and remove felt slow.** Neither moved
+the rail until the write had answered *and* a refetch after it had answered too;
+create additionally invalidated `bundle-tags`, `tag-counts` and `view-counts`,
+none of which a moment saved without tags can have changed. Now: remove is
+optimistic (rollback on error), create writes the row it was handed into the list
+at the `(start_s, id)` position `list_moments` would have put it, and the
+tag-shaped invalidation only runs when the create actually carried tags. Measured
+locally: press-to-row 64ms -> 52ms, and 5 requests -> 1. The local delta is small
+because a loopback round trip is milliseconds; the requests removed are the ones
+that scale with library size, so the owner's machine should see more of it.
+
+Create is deliberately *not* optimistic ahead of the write, unlike `setTags`: the
+id comes from the server and the poster URL, the clip URL and the capture note
+that opens the comment box all need the real one, so a placeholder row would have
+to be swapped underneath an open editor. If one round trip still reads as a delay
+that is the next thing to try.
+
+**How the previews were verified**, since "shows the right frame" is not something
+a unit test can assert: a fixture whose colour is a pure function of `floor(t)`,
+so any frame decodes back to its own source timestamp. The clip is 150 frames
+covering exactly `[90.000, 95.000)`; the composited pixel of the preview at the
+instant it opens is the in-point's colour with zero error, and a frame moment's is
+its marked instant's.
+
+**One more bug from the owner's pass, and it was not in this feature.** The first
+click on Save Moment did nothing and the second worked. The chrome auto-hides
+after 2.6s of pointer idle, and `.media-viewer--idle` sets `pointer-events: none`
+as well as `opacity: 0` — so resting the cursor on a control while reading it let
+the chrome idle out from under it, and the next click passed through to the video
+and was spent waking the chrome. Every button in the bar had it; the `b` key never
+did, which is why frame moments seemed fine. `useIdleHide` now declines to idle
+while the pointer is on a control, which is the same root cause as the wheel-zoom
+case fixed earlier on this branch — that one was a *specific* wake source, this is
+the general rule. Reproduced first (0 moments after one click, 1 after two), then
+fixed, then re-checked all four save paths — key/click/idle-click for a range and
+`b` for a frame — each saving exactly one moment of the right kind.
+
+Worth recording because it cost time: `list_moments` returns **time order**, so
+reading `.at(-1)` of the list to find "the moment just saved" returns whichever has
+the largest `start_s`. That made a correct range save look like it had saved a
+frame, and sent me looking for a stale closure in `useShortcuts` that was not
+there. Diff the id set instead.
+
+**Tests run.** Backend 1225 passed, 1 skipped (36 new: frame vs range, span
+validation, file-must-be-in-bundle, time ordering, the four propagation rules, the
+version guard, comment cleaning, five lifecycle paths, and the additive
+bootstrap). Frontend 1107 passed across 112 files (22 for the section, 6 hooks,
+6 seek markers, 6 clip modes/`armLoop`, 2 for the `b` binding, 1 `ContextMenu`
+regression). `ruff`, `ruff format`, `mypy src packaging`, and frontend
+lint/format/typecheck/build all clean. Frontend e2e 142 passed with **one
+pre-existing failure** — `reports real MP4 progress and resumes on reopen`, which
+fails identically with the branch stashed, so it is not this work; two new e2e
+tests cover the armed loop surviving a pause and the whole
+mark→read→comment→loop→forget round trip.
+
+**Not run:** the desktop Rust/Tauri gate. No Rust changed, and the shell embeds
+the same `apps/web` build that passed here.
+
+**Known gaps, deliberate (plan 7 §9).**
+
+- A moment needs an `AssetFile` row, so an unindexed File Browser path cannot
+  have one — the same limit clips already carry. An *unbundled* file does have a
+  row and could show moments in the `FileInspector`; not built.
+- Seek-track markers are non-interactive. The track's own `pointerdown` scrubs,
+  and a click target competing with it is a separate design problem.
+- No keys to step between moments (`Alt+←/→` was considered and left out); the
+  rail is the way to jump. Cheap to add if the owner wants them.
+- No *Export this moment* — loading a span into the marks and using `Save GIF…`
+  already works in two steps.
+- Clips are cut on first hover, not at save time (owner's choice, 2026-08-30), so
+  the first hover of a *range* is the slow one. Posters are made on save, so the
+  picture is right from the first hover either way.
+- The seek-bar hover tooltip still reads a storyboard tile, which is correct for
+  it: it follows the pointer over arbitrary times, where a moment has one fixed
+  instant worth decoding.
+- No `has_moments` / `moment_count` filter field. Propagation means the tag
+  filters already reach these bundles.
+
+**Next recommended task:** the owner's pass in the app, then whether to open a
+PR. After that, phase I (the Android client, plan 2 T1–T7) is still what follows.
 
 ## Merged: a folder as one item inside a bundle (2026-08-29, PR #13)
 
@@ -2101,7 +2310,7 @@ resuming with Space is ordinary playback. One consequence worth knowing: pausing
 mid-loop drops the loop, which is the honest reading of "Space ignores the
 range" and is one keypress to resume.
 
-Deliberately deferred: A-B loop replay will drive the same span from playback
+Deliberately deferred: range-loop replay will drive the same span from playback
 settings, and the `useClipPlayback` seam is still the place for it.
 
 Tests: 827 frontend, including two e2e that exercise the button, the shortcut,
@@ -2462,7 +2671,7 @@ check and deregistered afterwards; both preview servers were stopped.
 
 Branch `feat/clip-range-and-gif-export` off `main` at `6523fec8`, **merged**
 after an owner pass. Fourteen commits. This is plan 1 **§10 / M11**'s
-GIF-snippet half, plus the range picker the A-B loop was moved into M11 to
+GIF-snippet half, plus the range picker the range loop was moved into M11 to
 become (owner, 2026-07-11).
 
 **One thing the owner should still check:** the desktop app was not exercised
@@ -2478,7 +2687,7 @@ same seam, so they are in the same position.
 
 **Two owner decisions shaped it.** Both mechanisms for precision, not one — a
 seek-bar band with handles _and_ a magnified track — but no editable timestamp
-field. And loop scope stops at the picking session; persistent A-B loop replay
+field. And loop scope stops at the picking session; persistent range-loop replay
 is a follow-up.
 
 **A second owner pass (2026-08-15) changed four things**, all from using it:
@@ -2660,7 +2869,7 @@ capture moved out of `ViewerShell` into `snapshotExport.ts`, and its filenames
 joined the GIF's naming — `clip.mp4` produced `clip_mp4.png` before and
 produces `clip.png` now, via a shared `exportFileName`.
 
-**Known gaps / next:** persistent A-B loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
+**Known gaps / next:** persistent range-loop replay; `kind: "webp"|"mp4"`; and the desktop native-save path for a GIF has not
 been exercised on a packaged build — only the browser download has, since the
 Tauri shell cannot be driven here. The contact sheet still names its output
 `X.mp4 — contact sheet.jpg`; left alone as pre-existing rather than widened into.
@@ -8849,7 +9058,7 @@ Historical M9 limits at merge: file loop does not persist; previously cached
 storyboards keep their old final padding cues until normal regeneration. If an
 ffmpeg build omits parsable `showinfo`, new generation safely caps cues to sheet
 capacity but cannot trim padding within its final sheet; a warning records that
-fallback. A-B loop/GIF range selection, video adjustments, slideshow, and
+fallback. range loop/GIF range selection, video adjustments, slideshow, and
 subtitle depth remain out of scope. Hover previews followed in M12 above.
 
 The next task after M9 was M12; it is now the in-review section above.
@@ -8876,7 +9085,7 @@ M7 (web HLS) merged (#9):
 Updated: `docs/plans/README.md` (build order), plans 01–04 headers/milestone
 tables, this file, CHANGELOG. No code changes; no gates run (docs-only).
 
-**M9 recomposed + M12 added (owner, 2026-07-11):** A-B loop moved to M11
+**M9 recomposed + M12 added (owner, 2026-07-11):** range loop moved to M11
 (it's really the GIF range-picker); video adjustments deferred (owner wants
 color/tone, not brightness sliders); image slideshow deferred. M9 is now
 interaction polish: right-click play/pause, drag-scrub surviving cursor
@@ -9814,7 +10023,7 @@ they share:
   (**Movist/Elmedia/IINA** — Eagle's own player is explicitly _not_ the
   playback reference), and a separate `cairndex-android` repo confirmed for
   the TV client. Plan 1 gained the Movist/Elmedia-inspired features (dual
-  simultaneous subtitles, subtitle styling, A-B loop, snapshot capture,
+  simultaneous subtitles, subtitle styling, range loop, snapshot capture,
   video adjustments, configurable seek step) and a new M9 polish slice.
   Also fixed the stale ADR index (0011 was missing).
 

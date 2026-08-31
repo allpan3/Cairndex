@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef } from 'react'
 
-import type { PlayableVideo, SubtitleTrackRead } from '../../../api/client'
+import type { Moment, PlayableVideo, SubtitleTrackRead } from '../../../api/client'
 import {
   IconCamera,
   IconCaptions,
   IconClipRange,
   IconFullscreen,
+  IconMoment,
   IconPause,
   IconPictureInPicture,
   IconPlay,
@@ -33,6 +34,10 @@ interface ControlBarProps {
   clip?: ClipRangeController
   onExportClip?: () => void
   maxExportSeconds?: number
+  /** Saved moments on this file, drawn on the seek track (plan 7). */
+  moments?: Moment[]
+  /** Mark a moment at the playhead, or save the marked span if there is one. */
+  onSaveMoment?: () => void
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
@@ -48,6 +53,8 @@ export function ControlBar({
   clip,
   onExportClip,
   maxExportSeconds,
+  moments,
+  onSaveMoment,
 }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
@@ -92,6 +99,7 @@ export function ControlBar({
           player={player}
           onExport={onExportClip}
           maxExportSeconds={maxExportSeconds}
+          onSaveMoment={onSaveMoment}
         />
       )}
       <div className="mv-controls__row">
@@ -140,11 +148,21 @@ export function ControlBar({
           <button
             className={`mv-btn${clip.active ? ' is-active' : ''}`}
             onClick={() => (clip.active ? clip.close() : clip.open())}
-            aria-label={clip.active ? 'Close clip range' : 'Mark clip range'}
+            aria-label={clip.active ? 'Close range' : 'Mark range'}
             aria-pressed={clip.active}
-            title="Clip range ([ and ] mark the ends)"
+            title="Range ([ and ] mark the ends)"
           >
             <IconClipRange />
+          </button>
+        )}
+        {onSaveMoment && (
+          <button
+            className="mv-btn"
+            onClick={onSaveMoment}
+            aria-label="Save moment"
+            title="Save a moment here (B). With a range marked, saves the range."
+          >
+            <IconMoment />
           </button>
         )}
         <SettingsMenu
@@ -154,6 +172,7 @@ export function ControlBar({
           fileLoop={fileLoop}
           onFileLoop={onFileLoop}
           sourceHeight={video.height}
+          clip={clip}
         />
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
@@ -172,7 +191,13 @@ export function ControlBar({
           <IconFullscreen />
         </button>
       </div>
-      <SeekBar player={player} video={video} onDragChange={onDragChange} clip={clip} />
+      <SeekBar
+        player={player}
+        video={video}
+        onDragChange={onDragChange}
+        clip={clip}
+        moments={moments}
+      />
     </div>
   )
 }

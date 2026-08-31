@@ -19,11 +19,23 @@ export function StoryboardTile({
   storyboardUrl,
   cue,
   fill = false,
+  fillClassName = 'hover-preview__storyboard',
   testId,
 }: {
   storyboardUrl: string
   cue: StoryboardCue
   fill?: boolean
+  /**
+   * The class a filling tile wears, and with it the *positioning* it inherits.
+   *
+   * Named by the caller rather than hard-coded, because "fill" is only half a
+   * contract: the hover preview's class is `position: absolute; inset: 0`, which
+   * fills a positioned card and — anywhere without one — escapes to the viewport
+   * instead. A moment row borrowed this and drew a full-window frame over the
+   * whole app (owner-reported, 2026-08-29). A second consumer must bring its own
+   * class so it brings its own containing block with it.
+   */
+  fillClassName?: string
   testId?: string
 }) {
   const clipId = `storyboard-tile-${useId().replaceAll(':', '')}`
@@ -31,7 +43,7 @@ export function StoryboardTile({
   if (fill) {
     return (
       <svg
-        className="hover-preview__storyboard"
+        className={fillClassName}
         data-testid={testId}
         data-cue-position={`${cue.x},${cue.y}`}
         data-cue-start={cue.start}

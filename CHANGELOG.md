@@ -10,6 +10,61 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Moments — save the frames and spans that matter inside a video.** Press
+  <kbd>B</kbd> while watching to mark the frame you are on; with a range marked in
+  the clip bar, it saves the range instead. Saved moments appear in the Bundle
+  Inspector as **one line each** — the start time, a range's length, and its tags
+  all on that line — and as ticks and thin bands on the seek track, with the hover
+  tooltip naming whichever one you are over. Hovering a row shows the frame above
+  it, in the shell and inside the player alike. Clicking one plays from there,
+  from the viewer or from the shell, which opens the viewer already at that
+  instant.
+
+  Saving one opens the rail and puts the cursor straight in its comment box: what
+  you want to write down is freshest at the instant you mark it. **A range's
+  hover preview plays the span**, from a small clip of just that span, cut once in
+  the background and cached. It starts on the frame you marked and loops there,
+  and on this machine it is moving about a fifth of a second after the pointer
+  settles. The first hover of a moment is the slow one — it streams the original
+  while the cut is made — and every hover after it reads the clip. Emptying
+  `.cairndex/cache/` costs you that first hover again and nothing else.
+
+  **The still is the frame you marked**, for a span and an instant alike, decoded
+  when you save the moment. It used to be a storyboard tile, which is sampled
+  every 2 to 30 seconds and holds the frame from the *start* of the interval your
+  mark fell in — so the first thing you saw was reliably not the frame you chose,
+  and on a long video not even inside the range.
+
+  The preview also carries the comment in full, which the row itself can only
+  clamp to one line, and it grows away from the row so it never covers the row's
+  own controls.
+
+  A moment's tags are the library's own tags, through the same picker the bundle
+  uses. **Tagging a moment also tags its bundle**, so a marked moment is
+  browsable, filterable, and countable without anything new to learn. Removing the
+  tag from the moment, or deleting the moment, leaves the bundle's tag alone —
+  the way out is *Remove from This Bundle* on the pill, as it always was. See
+  [ADR-0025](docs/adr/0025-moment-tag-propagation.md).
+
+  Pressing <kbd>B</kbd> twice at the same frame offers the moment already there
+  rather than saving a second one. Adjusting a saved span reuses the range bar
+  rather than a second range editor: mark it there, then **Update to Range Marks**
+  on the row.
+
+- **range looping.** A saved range *is* an loop pair, so its row in the inspector has
+  a loop button, and the range bar's **Loop** is now that same switch. While it is
+  on, playback stays inside the span and repeats — <kbd>Space</kbd> included — and
+  pausing to look at something no longer ends it. One click on the lit control
+  turns it off, and so does changing file or closing the clip bar. Seeking to
+  before the in-point is left alone, so the run-up into a span is still watchable.
+  Also reachable from the settings menu and the viewer's right-click menu, both
+  beside *Loop file*.
+
+  **Play Range** is unchanged and still the one-shot: play the span once, stop at
+  the out-point, and any pause ends it. See
+  [ADR-0026](docs/adr/0026-armed-range-loop.md) for why the loop is a visibly armed
+  mode rather than a preference.
+
 - **Open a folder in the inspector to see its files nested under it.** A
   disclosure on the right of the folder row — where a file keeps its cover and
   play actions — reveals the files it stands for, indented beneath it, with the
@@ -335,7 +390,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Space meant one thing with a clip marked and another without. Space is plain
   playback again: it never jumps to the in-point and never stops at the
   out-point, and pausing ends a running span so resuming is unconfined. Only
-  Play Range confines anything, and only while it runs. (A-B loop replay, when
+  Play Range confines anything, and only while it runs. (range-loop replay, when
   it lands, will drive the same span from playback settings.)
 
 - **The watermark can be your own image instead of words.** Settings → Exports
@@ -714,7 +769,103 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sampling mode is part of the cache key too, so switching it retires cached
   sheets rather than leaving a library holding a mix of two qualities.
 
+- **Every inspector section folds.** Notes, Tags, Collections, Moments and Files
+  each get a heading you can click to fold them away — anywhere on the row, with
+  the chevron on the right appearing only under the pointer, so a rail of
+  headings reads as labels rather than as controls. The single-line facts above
+  them stay put. What is folded is remembered across bundles and across the
+  shell's rail and the viewer's docked one, because it is a view preference
+  rather than something about a bundle.
+
+- **The range track zooms.** With the pointer over the magnified track, the wheel
+  zooms it around the cursor and ⌥-wheel pans it — and scrolling counts as using
+  the player, so the controls no longer fade out from under the pointer
+  mid-adjustment. **Anywhere else over the media, the wheel is the volume**, in
+  the same 5% steps the arrow keys use; the range track takes the wheel first,
+  and panes that scroll keep it — so a minute-long span can be
+  worked at frame scale instead of a tenth of a second per pixel. Double-click
+  puts it back to fitting the selection, and a hand-set window that the selection
+  has left re-fits itself rather than stranding you on empty timeline.
+
 ### Fixed
+
+- **Marking and forgetting a moment no longer lag.** Forgetting one takes the row
+  away on the click instead of a round trip later, and marking one puts the new
+  row in from the answer the save already returned rather than throwing the list
+  away and fetching it again. Marking also stopped refreshing the bundle's tags
+  and the tag and bundle counts — a moment saved without tags cannot have changed
+  any of them, and on a large library those were the slow part.
+- **A saved moment appears in the rail straight away.** Marking one wrote it
+  correctly but the row did not show up until the app was reloaded, because the
+  frame being decoded for its preview was holding the save itself invisible for as
+  long as that took. The preview is now built well clear of the save.
+- **The viewer's controls no longer disappear from under the pointer.** Resting
+  the cursor on a control while you read it let the chrome idle out after a couple
+  of seconds — and hiding it also makes it unclickable, so the next click passed
+  straight through to the picture and was spent bringing the controls back. It
+  read as the first click on **Save Moment** doing nothing and the second one
+  working, and was true of every button down there. A pointer sitting on a control
+  now counts as someone about to use it.
+- **Tagging a moment is as quick as tagging a bundle.** The pill now appears on
+  the click rather than a round trip and three refetches later — the same
+  optimistic write the bundle's own tag picker has always had.
+
+- **A moment row shows one tag in full, and `+N` for the rest.** It used to clip
+  the second one against the edge of its region, which read as a rendering fault
+  rather than as "there is more"; the count opens the picker, where they all are.
+
+- **The range bar's actions fit on one line.** Squeezed into the column beside
+  the In/Out steppers they had barely half the bar's width, so **Save GIF…**
+  wrapped onto a second line below **Save Moment** — which made the two look out
+  of order. They span the bar now.
+
+- **A moment row lines up.** The timecode, the tags and the actions were a mix of
+  baseline-aligned text and centred icons at three different heights: a CJK tag
+  pill is taller than a Latin one, and the `⋯` glyph sat low in its box. Every
+  item in the row is now the same height and shares one centre line.
+
+- **A moment row uses the whole width it has.** The tag region shared the free
+  space with an invisible spacer, so it gave up half the row — visible as a gap
+  on the right, and as an add button that disappeared long before the row was
+  actually full. The add button is also round now, with the `+` centred in it,
+  and appears with the row's other controls rather than sitting there always.
+
+- **The range bar no longer claims a 30-second limit.** There is none on a range
+  or on a moment; it is the GIF export that is bounded, and it now says so by
+  greying out **Save GIF…** with the reason in its tooltip, rather than by a
+  "max 30 s" notice beside the length that read as a limit on the marks.
+
+- **The docked inspector's bottom is reachable again.** The player's control bar
+  is absolutely positioned and spanned the whole window, so it lay *over* the
+  lower part of the inspector docked beside it — anything low enough in that pane
+  could not be clicked or hovered at all. The top bar already stopped at the rail;
+  now the control bar does too.
+
+- **A right-click menu no longer dismisses itself.** Opening one from a control
+  near the edge of a scrolling panel — the inspector's rails, most of all — could
+  close it instantly: clicking the button scrolls it into view, and any scroll
+  dismissed the menu. The dismissal now starts a frame later, so the gesture that
+  opens a menu is allowed to scroll.
+
+- **A moment's thumbnail no longer covers the whole window.** The frame beside
+  each saved moment is a storyboard tile, and it was borrowing the hover preview's
+  filling style — which is `position: absolute; inset: 0`. That fills a positioned
+  card, but the inspector row has no positioned ancestor, so the tile escaped to
+  the viewport and drew a full-window video frame over the app: the inspector
+  looked like it had not opened, and clicks fell through to the grid behind it, so
+  a single click on a bundle could land as a double-click and open the player. It
+  only happened for a bundle that had a moment *and* a generated storyboard.
+  The tile now brings its own style and its own containing block, and
+  `StoryboardTile` no longer hard-codes one consumer's class.
+
+- **The click after dismissing a right-click menu no longer opens what it lands
+  on.** Dismissing a menu is deliberately invisible to the app — the click stops
+  at the menu rather than also acting on whatever is underneath. But it was not
+  invisible to the browser's click counter, so the *next* click arrived as the
+  second half of a double-click: on a bundle card that meant one click opened the
+  media viewer, and on the viewer's stage it meant one click closed it. A control
+  clicked right after a dismissal could also look dead, because its click was the
+  swallowed one. Genuine double-clicks are unaffected.
 
 - **A folder row goes when its last file leaves the bundle.** Removing files
   from a bundle one at a time used to leave the folder behind reading "Folder ·
@@ -4021,7 +4172,7 @@ library is served by one machine at a time, enforced by a lease.
   packaging exercise rather than a port. Revised 2026-07-11: M9 recomposed
   into interaction polish (right-click play/pause, drag-scrub off-track fix,
   seek step, pitch-preserve, file loop, frame-step rebound to `<`/`>`,
-  set-cover-to-frame) — A-B loop moved
+  set-cover-to-frame) — range loop moved
   to M11 as the GIF range-picker, video adjustments (reframed color/tone)
   and slideshow deferred; new M12 Eagle-style thumbnail hover video preview
   specced (plan 1 §13) between M9 and the desktop shell.

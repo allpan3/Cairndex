@@ -26,8 +26,10 @@ storyboard jobs with high-confidence moved-file repair, and a hardened
 single-container production deployment. Media playback runs in a unified
 custom **media viewer** — a hand-built video player (auto-hiding controls,
 keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
-tracks, **seek-bar storyboard trickplay** and chapter ticks, and **watch
-progress / resume** — plus a **zoom/pan image viewer** with progressive
+tracks, **seek-bar storyboard trickplay** and chapter ticks, **watch
+progress / resume**, and **moments**: saved frames and spans inside a video,
+tagged and commented in the Bundle Inspector, drawn on the seek track, and
+loopable with the **range loop** — plus a **zoom/pan image viewer** with progressive
 preview tiers and server-side WebP derivatives that make HEIC/TIFF/BMP
 openable in the browser. Bundle file sequence is the media playlist order, and
 one remembered bundle cursor keeps card hover and double-click open aligned

@@ -23,6 +23,21 @@ import type { HostLabels } from '../platform'
  * those entries (see `useMergedBundleInspectorActions`) rather than restating
  * the whole set.
  */
+/**
+ * What a moment can do while a player is on screen (plan 7).
+ *
+ * One object rather than three more optional callbacks, because these three
+ * stand or fall together: each needs a playhead or the live clip marks, so the
+ * shell's rail has none of them and the viewer's rail has all of them. Whether
+ * the whole object is present is the same question as whether a player exists.
+ */
+export interface MomentPlayerActions {
+  /** Mark a moment at the playhead — the section header's `+`. */
+  capture: () => void
+  /** Arm the range loop on a saved span, navigating to its file if needed. */
+  loop: (fileId: string, range: { start: number; end: number }) => void
+}
+
 export interface BundleInspectorActions {
   /** Open/Reveal wording for this host; omitted where those are not wired. */
   hostLabels?: HostLabels
@@ -57,6 +72,13 @@ export interface BundleInspectorActions {
   onFilterByTags?: (tagIds: string[]) => void
   /** Navigate the shell to one collection from its inspector pill. */
   onOpenCollection?: (collectionId: string) => void
+  /**
+   * Play from a saved moment: seek the open player, or — from the shell —
+   * open the viewer on that file already at that instant.
+   */
+  onPlayMoment?: (bundleId: string, fileId: string, at: number) => void
+  /** The player-bound moment abilities; absent wherever there is no player. */
+  moments?: MomentPlayerActions
 }
 
 /** Every key of `BundleInspectorActions`, as data.
@@ -80,6 +102,8 @@ export const BUNDLE_INSPECTOR_ACTION_KEYS = [
   'onFlash',
   'onFilterByTags',
   'onOpenCollection',
+  'onPlayMoment',
+  'moments',
 ] as const satisfies readonly (keyof BundleInspectorActions)[]
 
 /**
