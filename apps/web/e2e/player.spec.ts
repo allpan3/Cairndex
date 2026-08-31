@@ -581,6 +581,55 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/tags\/counts$/, (r) =>
     r.fulfill({ json: { counts: {} } }),
   )
+  // Moments (plan 7), backed by a store so the whole marking flow works:
+  // mark it, see it in the docked rail, edit it, loop it, forget it.
+  const momentStore: Record<string, unknown>[] = []
+  let nextMomentId = 0
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/moments$/, async (r) => {
+    if (r.request().method() === 'POST') {
+      const body = JSON.parse(r.request().postData() ?? '{}') as {
+        file_id: string
+        start_s: number
+        end_s?: number | null
+        comment?: string | null
+        tag_ids?: string[]
+      }
+      const created = {
+        id: `km${nextMomentId++}`,
+        bundle_id: 'b0',
+        file_id: body.file_id,
+        start_s: body.start_s,
+        end_s: body.end_s ?? null,
+        comment: body.comment ?? null,
+        tag_ids: body.tag_ids ?? [],
+        version: 1,
+        created_at: '2026-08-29T00:00:00Z',
+        updated_at: '2026-08-29T00:00:00Z',
+      }
+      momentStore.push(created)
+      momentStore.sort((a, b) => (a.start_s as number) - (b.start_s as number))
+      return r.fulfill({ status: 201, json: created })
+    }
+    return r.fulfill({ json: momentStore })
+  })
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/moments\/([^/]+)$/, async (r) => {
+    const id = new URL(r.request().url()).pathname.split('/').pop()
+    const index = momentStore.findIndex((moment) => moment.id === id)
+    if (index < 0) return r.fulfill({ status: 404, json: { detail: 'gone' } })
+    if (r.request().method() === 'DELETE') {
+      momentStore.splice(index, 1)
+      return r.fulfill({ status: 204, body: '' })
+    }
+    const patch = JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>
+    const updated = {
+      ...momentStore[index],
+      ...patch,
+      version: (momentStore[index]!.version as number) + 1,
+    }
+    momentStore[index] = updated
+    momentStore.sort((a, b) => (a.start_s as number) - (b.start_s as number))
+    return r.fulfill({ json: updated })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
@@ -2813,10 +2862,18 @@ test('refuses to export a range longer than the cap', async ({ page }) => {
   await page.keyboard.press(']')
 
   await expect(page.locator('.mv-clip__duration')).toHaveText('90.00 s')
-  await expect(page.locator('.mv-clip__warn')).toContainText('max 30 s')
+  // The cap is the GIF's, not the range's: a 90-second span is a perfectly good
+  // range and a perfectly good moment, so only the export refuses it. It says so
+  // by greying out, rather than by a "max 30 s" notice beside the length that
+  // read as a limit on the marks (owner, 2026-08-30).
+  const save = page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' })
+  await expect(save).toBeDisabled()
+  await expect(save).toHaveAttribute('title', /at most 30 seconds/)
+  await expect(page.locator('.mv-clip__warn')).toHaveCount(0)
+  // ...and the span itself is still saveable as a moment.
   await expect(
-    page.locator('[data-testid="clip-bar"]').getByRole('button', { name: 'Save GIF…' }),
-  ).toBeDisabled()
+    page.locator('[data-testid="clip-bar"]').getByRole('button', { name: /Save Moment/ }),
+  ).toBeEnabled()
 })
 
 test('Snapshot As… picks a size, while S stays a single press', async ({ page }) => {
@@ -2863,7 +2920,10 @@ test('Set In past the out-point carries the clip and keeps its length', async ({
   await expect(page.locator('.mv-clip__duration')).toHaveText('5.00 s')
 })
 
-test('Loop is a standing preference, and starts nothing on its own', async ({ page }) => {
+// Loop is now the range loop's arm switch (plan 7). Arming starts the span, and
+// unlike the Play Range session it survives a pause — which is the whole
+// difference between a mode and a one-shot.
+test('Loop arms the range loop, and survives a pause', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
   await page.goto('/')
@@ -2873,23 +2933,151 @@ test('Loop is a standing preference, and starts nothing on its own', async ({ pa
   await page.keyboard.press('[')
 
   const bar = page.locator('[data-testid="clip-bar"]')
-  const loopToggle = bar.getByRole('button', { name: /Loop/ })
+  const loopToggle = bar.getByRole('button', { name: 'Range loop' })
   const playRange = bar.getByRole('button', { name: 'Play range' })
+  const paused = () => video.evaluate((el) => (el as HTMLVideoElement).paused)
+  const now = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime)
 
-  // One span control now, not an action and a mode that only meant anything
-  // together.
+  // One span control, not an action and a mode that only meant anything together.
   await expect(bar.getByRole('button', { name: /^▶\| Range$/ })).toHaveCount(0)
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
+  // Play Range describes one ending now; repeating is Loop's business.
+  await expect(playRange).toHaveAttribute('title', /stop at Out/)
 
-  // Turning Loop on says what the *next* Play Range does; it must not start one.
+  // Arming is an action: it goes to the in-point and plays.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 100))
   await loopToggle.click()
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
-  await expect(playRange).toHaveAttribute('title', /repeating it/)
+  await expect.poll(now).toBeLessThan(30)
+  await expect.poll(paused).toBe(false)
 
+  // A pause does not disarm it; the control still says the mode is on, and says
+  // how to end it.
+  await page.keyboard.press('Space')
+  await expect.poll(paused).toBe(true)
+  await expect(loopToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(loopToggle).toHaveAttribute('title', /Click to stop/)
+
+  // And one click does end it, without stopping playback.
+  await page.keyboard.press('Space')
+  await expect.poll(paused).toBe(false)
   await loopToggle.click()
   await expect(loopToggle).toHaveAttribute('aria-pressed', 'false')
-  await expect(playRange).toHaveAttribute('title', /stop at Out/)
+  await expect.poll(paused).toBe(false)
+})
+
+// The whole feature end to end: mark a frame and a span, see them in the docked
+// rail and on the seek track, comment on one, loop the other, forget it (plan 7).
+test('moments are marked in the player and read back in the inspector', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await parkPlayhead(page, video, 30, '0:30')
+
+  // `b` with nothing marked saves the frame at the playhead.
+  await page.keyboard.press('b')
+  await expect(page.locator('.mv-export-notice')).toContainText('Moment saved at 0:30')
+
+  // Saving opened the rail and put the cursor in the new row's comment box, so
+  // dismiss it first — and that also pins the focus hand-back: the viewer's
+  // keyboard map is bound to the viewer element, so a focus stranded on `body`
+  // would leave every shortcut below dead.
+  await expect(page.locator('.media-viewer .inspector').getByLabel('Moment comment')).toBeFocused()
+  await page.keyboard.press('Escape')
+
+  // Pressing `b` again at the same frame offers the row that is already there
+  // rather than adding a second (plan 7 §4.6).
+  await page.keyboard.press('b')
+  await expect(page.locator('.mv-export-notice')).toContainText('Already marked at 0:30')
+
+  // With a span marked, Save Moment saves the span. Already paused by the park
+  // above, so this moves the playhead directly rather than toggling play again.
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 60))
+  await expect(page.locator('.mv-time')).toContainText('1:00')
+  await page.keyboard.press('[')
+  const bar = page.locator('[data-testid="clip-bar"]')
+  await bar.getByRole('button', { name: /Save Moment/ }).click()
+  await expect(page.locator('.mv-export-notice')).toContainText('Moment saved: 1:00 →')
+
+  // Both are on the seek track: a tick for the frame, a band for the span.
+  await expect(page.locator('.mv-seek__moment-tick')).toHaveCount(1)
+  await expect(page.locator('.mv-seek__moment-band')).toHaveCount(1)
+
+  // Saving opens the rail and the new row's comment box, because what you want to
+  // write down is freshest at the instant you mark it (owner, 2026-08-29).
+  const rail = page.locator('.media-viewer .inspector')
+  await expect(rail).toBeVisible()
+  await expect(rail.getByText('Moments')).toBeVisible()
+  await rail.getByLabel('Moment comment').fill('the reaction')
+  await rail.getByLabel('Moment comment').blur()
+  await expect(rail.getByText('the reaction')).toBeVisible()
+
+  // Both are listed, in time order, to the second — milliseconds are what
+  // *placing* an edge needs, not what scanning a list does (owner, 2026-08-29).
+  await expect(rail.locator('.moment-row__time')).toHaveText(['0:30', '1:00'])
+
+  // The frame is a hover tooltip, not a thumbnail column — and it must stay a
+  // tooltip. It is a storyboard tile, and the hover preview's filling class is
+  // `position: absolute; inset: 0`; drawn with no positioned ancestor it escaped
+  // to the viewport and covered the whole window, hiding the rail and letting
+  // clicks fall through to the grid behind (owner-reported, 2026-08-29). Asserted
+  // as geometry because the defect was entirely in the computed style: every
+  // other assertion here passed while a black frame covered the app.
+  const spanRow = rail.locator('.moment-row').nth(1)
+  await expect(page.getByTestId('moment-preview')).toHaveCount(0)
+  // Moved by coordinate rather than `hover()`: the pointer is still over this row
+  // from the menu click above, so a hover that never leaves fires no new
+  // `pointerover` — and `hover()`'s scroll-into-view can slide the row out from
+  // under the cursor it just placed.
+  const rowBox = (await spanRow.boundingBox())!
+  await page.mouse.move(10, 10)
+  await expect(page.getByTestId('moment-preview')).toHaveCount(0)
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2)
+  const preview = page.getByTestId('moment-preview')
+  await expect(preview).toBeVisible()
+  const geometry = await preview.evaluate((node) => {
+    const box = node.getBoundingClientRect()
+    const row = node.ownerDocument
+      .querySelectorAll('.media-viewer .moment-row')[1]!
+      .getBoundingClientRect()
+    return {
+      width: box.width,
+      rowWidth: row.width,
+      // Above the row it belongs to, and the same width as it (owner,
+      // 2026-08-30).
+      above: box.bottom <= row.top + 1,
+      alignedLeft: Math.abs(box.left - row.left) <= 1,
+      // Over the player, not behind it: the rail is docked *inside* the viewer,
+      // so a preview below its stacking context never appeared there at all
+      // (owner-reported, 2026-08-30).
+      z: Number(getComputedStyle(node).zIndex),
+      coversViewport: box.width >= window.innerWidth - 1 || box.height >= window.innerHeight - 1,
+      insideWindow: box.left >= 0 && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+    }
+  })
+  expect(geometry.coversViewport).toBe(false)
+  expect(geometry.insideWindow).toBe(true)
+  expect(geometry.above).toBe(true)
+  expect(geometry.alignedLeft).toBe(true)
+  expect(geometry.width).toBeCloseTo(geometry.rowWidth, 0)
+  expect(geometry.z).toBeGreaterThan(240)
+
+  // Only the range offers the loop control, and using it arms the A-B loop.
+  await expect(rail.getByRole('button', { name: /^Range loop from 1:00/ })).toHaveCount(1)
+  await expect(rail.getByRole('button', { name: /^Range loop from 0:30/ })).toHaveCount(0)
+  await rail.getByRole('button', { name: /^Range loop from 1:00/ }).click()
+  await expect(bar.getByRole('button', { name: 'Range loop' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+
+  // Forgetting one leaves the other.
+  await spanRow.getByRole('button', { name: /Moment actions/ }).click()
+  await page.getByRole('menuitem', { name: 'Delete Moment' }).click()
+  await expect(rail.locator('.moment-row__time')).toHaveText(['0:30'])
+  await expect(page.locator('.mv-seek__moment-band')).toHaveCount(0)
 })
 
 test('Play Range plays the span, and Space is ordinary playback', async ({ page }) => {

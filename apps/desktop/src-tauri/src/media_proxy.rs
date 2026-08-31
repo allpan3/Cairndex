@@ -253,6 +253,13 @@ fn media_route_library_id(path: &str) -> Option<&str> {
     let allowed = match route {
         ["bundles", _, "thumbnail"]
         | ["bundles", _, "files", _, "thumbnail"]
+        // A moment's pre-made hover previews: the poster frame it marks, and for
+        // a span the pre-cut clip. Generated, read-only, and library-scoped like
+        // a contact sheet, and they are an `<img src>` and a `<video src>` —
+        // neither of which can carry an Authorization header, so the relay is
+        // the only way they reach the server at all. The moment's *JSON* routes
+        // are deliberately absent: those go over `hostFetch` with their own auth.
+        | ["bundles", _, "moments", _, "clip.mp4" | "poster.jpg"]
         | ["collections", _, "thumbnail"]
         | ["files", _, "stream" | "content" | "preview" | "storyboard.vtt" | "contact-sheet"]
         | ["subtitles", _, "vtt"]
@@ -545,6 +552,21 @@ mod tests {
             media_route_library_id("/api/v1/libraries/lib/file-browser/playback-sessions/s/0.m4s"),
             Some("lib")
         );
+        // A moment's pre-made previews are relayable; its JSON is not, and no
+        // other artifact name under a moment is either.
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib/bundles/b/moments/m/clip.mp4"),
+            Some("lib")
+        );
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib/bundles/b/moments/m/poster.jpg"),
+            Some("lib")
+        );
+        assert!(media_route_library_id("/api/v1/libraries/lib/bundles/b/moments/m").is_none());
+        assert!(
+            media_route_library_id("/api/v1/libraries/lib/bundles/b/moments/m/clip.gif").is_none()
+        );
+        assert!(media_route_library_id("/api/v1/libraries/lib/bundles/b/moments/m/tags").is_none());
         assert!(media_route_library_id("/api/v1/libraries/lib/bundles/bundle").is_none());
         assert!(media_route_library_id("/api/v1/auth/devices").is_none());
         // Still a strict allowlist: a neighbouring write route stays refused.

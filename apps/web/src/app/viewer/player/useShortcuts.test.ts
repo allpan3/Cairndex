@@ -54,6 +54,7 @@ function mockActions() {
     exitFullscreen: vi.fn(),
     markClipEdge: vi.fn(),
     playClipRange: vi.fn(),
+    saveMoment: vi.fn(),
   }
 }
 
@@ -95,6 +96,29 @@ test('leaves backslash unhandled when the source cannot be clipped', () => {
   const actions = { ...mockActions(), playClipRange: undefined }
 
   expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: '\\' }), player, actions)).toBe(
+    false,
+  )
+})
+
+// `b` for bookmark (plan 7). Previously unbound, so nothing had to move for it.
+test('saves a moment on b, in either case', () => {
+  const player = mockPlayer()
+  const actions = mockActions()
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: 'b' }), player, actions)).toBe(
+    true,
+  )
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: 'B' }), player, actions)).toBe(
+    true,
+  )
+  expect(actions.saveMoment).toHaveBeenCalledTimes(2)
+})
+
+test('leaves b unhandled on a file that cannot hold a moment', () => {
+  const player = mockPlayer()
+  const actions = { ...mockActions(), saveMoment: undefined }
+
+  expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: 'b' }), player, actions)).toBe(
     false,
   )
 })

@@ -749,6 +749,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Moments
+         * @description Every moment in the bundle, in time order across all of its videos.
+         */
+        get: operations["list_moments_api_v1_libraries__library_id__bundles__bundle_id__moments_get"];
+        put?: never;
+        /**
+         * Create Moment
+         * @description Mark a moment, and start decoding the frame it marks.
+         *
+         *     The poster is queued here rather than left to the first hover, because it is
+         *     the *picture* rather than the motion: one keyframe seek and one JPEG, and
+         *     without it the first hover of a brand-new moment shows the stale storyboard
+         *     tile — the frame from up to 30 seconds before the mark, which is the thing
+         *     the owner reported twice. The clip stays lazy (owner's choice, 2026-08-30):
+         *     it is the expensive one, and a range has the streaming path to fall back on
+         *     while it builds.
+         *
+         *     Best-effort by construction. A failed build leaves no fingerprint, so the
+         *     hover route simply tries again.
+         */
+        post: operations["create_moment_api_v1_libraries__library_id__bundles__bundle_id__moments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments/{moment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Moment
+         * @description Forget a moment. Tags it put on the bundle stay there (plan 7 §4.1).
+         */
+        delete: operations["delete_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Moment */
+        patch: operations["update_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments/{moment_id}/clip.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Moment Clip
+         * @description The pre-cut preview clip for a range moment, if it has been built yet.
+         *
+         *     Plays from byte 0, so a hover pays no header round trip, no seek, and no
+         *     decoding forward from the preceding keyframe — and its first frame is the
+         *     marked in-point.
+         */
+        get: operations["get_moment_clip_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__clip_mp4_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments/{moment_id}/poster.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Moment Poster
+         * @description The frame a moment marks, as the still under its hover preview.
+         *
+         *     For every moment, not only a span: a frame moment has nothing else to show,
+         *     and the storyboard tile it used to fall back on is sampled on a 2-to-30
+         *     second grid, so it held the frame from the *start* of the interval containing
+         *     the mark rather than the mark itself (owner, 2026-08-30).
+         *
+         *     A scoped session so the response body is not streamed while a DB connection
+         *     is held, and the values a background build needs are read out here rather
+         *     than handing a session to a thread.
+         */
+        get: operations["get_moment_poster_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__poster_jpg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments/{moment_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Moment Tags
+         * @description Replace this moment's tags; the new ones join the bundle's as well.
+         *
+         *     Takes the same ``{"ids": [...]}`` envelope as ``PUT /bundles/{id}/tags``, so
+         *     a client setting tags on either owner sends the same body shape.
+         */
+        put: operations["set_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/opened": {
         parameters: {
             query?: never;
@@ -4070,6 +4202,89 @@ export interface components {
          */
         MediaKind: "video" | "image" | "subtitle" | "audio" | "other";
         /**
+         * MomentCreate
+         * @description Mark a moment on one of the bundle's files.
+         *
+         *     ``end_s`` omitted (or null) marks a frame. The service proves ``file_id`` is
+         *     a member of the bundle in the URL; a client cannot file a moment under a
+         *     bundle that does not hold the video.
+         */
+        MomentCreate: {
+            /** Comment */
+            comment?: string | null;
+            /** End S */
+            end_s?: number | null;
+            /** File Id */
+            file_id: string;
+            /** Start S */
+            start_s: number;
+            /** Tag Ids */
+            tag_ids?: string[];
+        };
+        /** MomentRead */
+        MomentRead: {
+            /** Bundle Id */
+            bundle_id: string;
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End S */
+            end_s: number | null;
+            /** File Id */
+            file_id: string;
+            /** Id */
+            id: string;
+            /** Start S */
+            start_s: number;
+            /** Tag Ids */
+            tag_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * MomentTags
+         * @description The answer to a tag assignment: what the moment now carries, and what the
+         *     bundle now carries because of it (plan 7 §4.1).
+         *
+         *     Both, so the client's bundle chips update from the same answer that changed
+         *     them rather than from a later refetch that can disagree — the reasoning
+         *     ``reorder_bundles`` already uses.
+         */
+        MomentTags: {
+            /** Bundle Tag Ids */
+            bundle_tag_ids: string[];
+            /** Moment Id */
+            moment_id: string;
+            /** Tag Ids */
+            tag_ids: string[];
+        };
+        /**
+         * MomentUpdate
+         * @description Move a moment's ends, or rewrite its comment.
+         *
+         *     All optional, and the route forwards only explicitly-set fields — so sending
+         *     ``end_s: null`` turns a range back into a frame while omitting it leaves the
+         *     span alone. ``file_id`` is deliberately absent: a moment marked in one video
+         *     is not the same moment in another, so moving it is a delete and a re-mark.
+         */
+        MomentUpdate: {
+            /** Comment */
+            comment?: string | null;
+            /** End S */
+            end_s?: number | null;
+            /** Start S */
+            start_s?: number | null;
+        };
+        /**
          * MoveRequest
          * @description Move one or more files/directories into another directory.
          */
@@ -6567,6 +6782,275 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_moments_api_v1_libraries__library_id__bundles__bundle_id__moments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MomentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_moment_api_v1_libraries__library_id__bundles__bundle_id__moments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MomentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MomentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MomentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MomentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_moment_clip_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__clip_mp4_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_moment_poster_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__poster_jpg_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MomentTags"];
                 };
             };
             /** @description Validation Error */

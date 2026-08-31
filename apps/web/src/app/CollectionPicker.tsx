@@ -183,7 +183,6 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
 
   return (
     <>
-      <label className="field-label">Collections</label>
       <div className="chips">
         {[...assigned]
           .map((id) => byId.get(id))
