@@ -1,5 +1,112 @@
 # Project status
 
+> **Repository privacy incident resolved (2026-08-30).** The live public repository
+> is the newly created `allpan3/Cairndex`; its clean `main` starts at
+> `52c8f6785ad2faad886bd56f0575a279f880b169`. The contaminated repository is now
+> `allpan3/Cairndex-archive-3`, private and archived. No pull-request refs, tags, or
+> releases were migrated. The clean repository's first CI run passed all seven jobs.
+> The incident record immediately below describes why recreating the repository was
+> necessary; its statement that remote remediation is pending is historical.
+
+> **Release hardening in progress (`chore/release-hardening`, 2026-08-30).** Docker
+> contexts now exclude nested environment files, runtime databases, virtualenvs, and
+> sidecar build/vendor output. CI seeds synthetic private-data canaries into each risky
+> path, builds all development and production images, rejects a context above 50 MiB,
+> and inspects every image for leaks. The gate also excludes and rejects residual
+> Python/uv caches and tests, while the production stage copies only runtime source
+> plus the project/copyleft license payload. The production smoke path builds a fresh,
+> commit-specific image by default and deletes it afterward; passing an explicit image
+> tag is the only reuse path. Image publication now smoke-tests the exact tagged image
+> IDs that it pushes rather than rebuilding after the test.
+>
+> Release metadata is now synchronized at the owner-selected `0.2.0` across
+> Python, npm, Cargo, their lockfiles, and Tauri. A repository gate checks them
+> against root `VERSION`; tag-triggered desktop and image publication additionally
+> require the `v*` tag to match. The desktop release validates version metadata and
+> the changelog on Linux before starting any macOS build, so a `v0.2.0` tag cannot
+> silently produce a mismatched artifact. The pre-release desktop bundle identifier
+> is now `dev.cairndex.desktop`; compatibility with the former development identifier
+> was explicitly not required.
+> `/api/v1/health` and OpenAPI now expose that synchronized package version, and
+> Settings has an About page showing the version plus the public build commit.
+> Container publication embeds the workflow commit through a Docker build argument;
+> the desktop shell embeds it at compile time and passes it to its sidecar. Development
+> builds report no commit unless one is supplied explicitly.
+>
+> Distribution licensing is now self-contained. The stale GPL-2.0-or-later line in
+> `LICENSE` is corrected to the manifest's GPL-3.0-or-later result. Tauri embeds the
+> MIT license, third-party notice, GPLv3 text, and LGPLv3 text in the app. macOS CI
+> verifies the app resources, while the release workflow additionally mounts and
+> checks the finished DMG and attaches the same texts beside it.
+>
+> Repository security automation now covers weekly dependency updates across all
+> five package ecosystems, pull-request dependency review at high severity, and
+> scheduled/PR CodeQL analysis for Python and JavaScript/TypeScript. Secret scanning
+> and push protection were already enabled on the recreated public repository;
+> Dependabot alerts/security updates and private vulnerability reporting are enabled.
+> Every non-GitHub workflow action is pinned to an immutable commit, with Dependabot
+> responsible for reviewed updates. CI now audits both npm lockfiles, the complete
+> Python lock, and the Rust lock. Four
+> vulnerable web build-tool transitive dependencies are pinned to patched versions.
+> The sole remaining advisory is `RUSTSEC-2024-0429` in Linux-only GTK/glib 0.18:
+> Cairndex does not call the affected iterator API, it is absent from the macOS release
+> graph, and current Tauri cannot move GTK 0.18 to the patched glib 0.20 line. The CI
+> exception names only that advisory and must be removed when Tauri's GTK line moves.
+> `main` still has no branch rule: choosing PR/approval/admin-bypass semantics is a
+> separate owner decision because the wrong rule can lock out a solo maintainer.
+>
+> Backup/recovery acceptance is now executable. Library backups include the portable
+> UUID and a unique suffix instead of every library competing for `library-<second>.db`.
+> The image ships a stopped-only restore helper that rejects WAL sidecars, validates a
+> temporary SQLite copy, fsyncs and atomically replaces the destination, and preserves
+> prior bytes. Docker CI proves live registry/library backup, simulated database loss,
+> restore, and reopen; the same script accepts an older source image for a release
+> upgrade rehearsal. Documentation no longer claims arbitrary downgrades are safe.
+>
+> Release artifacts now carry verifiable supply-chain metadata. The macOS workflow
+> inventories the verified app payload as SPDX JSON, attaches it to the draft release,
+> and creates build-provenance and SBOM attestations for the DMG. Image publication
+> inventories the exact smoke-tested local candidate, uploads that SBOM as a workflow
+> artifact, resolves the digest after pushing the tested tags, and writes provenance
+> and SBOM attestations against that immutable GHCR digest.
+
+> Publication privacy is now executable rather than instruction-only. Tracked
+> pre-commit, commit-message, and pre-push hooks scan staged bytes, metadata, and
+> every object newly exposed by each ref update, using an untracked local profile
+> for owner-specific literals. First pushes, rewritten histories, changed remotes,
+> and tags receive a whole-history scan. The PR workflow repeats the generic scan
+> for exact commits, paths, blobs, branch name, title, and body from the trusted
+> base-branch implementation; binary SHA-256/path/purpose/provenance is explicit.
+> It posts `publication-privacy/trusted` to the exact PR head. The workflow must
+> first land on `main`, after which that context should become a required `main`
+> rule. Any force-push, including one to `main`, requires explicit owner
+> confirmation naming the exact target in the current task, `--force-with-lease`,
+> and a fresh privacy pass; confirmation cannot remove GitHub PR refs.
+
+> **Release-hardening verification complete locally (2026-08-31).** Branch
+> `chore/release-hardening` is implemented through `3f990be9` plus this status
+> receipt; nothing is pushed and no PR, tag, release, or image publication was
+> created. The synchronized candidate is `0.2.0` with desktop identifier
+> `dev.cairndex.desktop`. Full gates passed: backend Ruff/format/mypy and 1,258
+> tests (one skipped), frontend lint/format/types plus 1,112 tests and production
+> build, and Rust format/Clippy plus 120 tests. Both npm projects and the Python
+> lock report zero known vulnerabilities; RustSec remains CI-enforced with only
+> the documented Linux GTK exception.
+>
+> The packaged `0.2.0` sidecar smoke test passed. A macOS app and Apple Silicon
+> DMG built with exact commit `3f990be911ad71062c1069d6182d9aae675106af`;
+> both carry all notices, the app has a valid ad-hoc signature, and its embedded
+> version, identifier, and build commit match. Docker development/production
+> context and residue checks, production smoke, and same-image backup/restore
+> passed; the disposable candidate image was removed afterward. The exact
+> proposed PR title/body and the base-to-head object range passed the local
+> owner-pattern scan, as did every object reachable from HEAD.
+>
+> Next publication step is deliberately two-stage. The first PR must use the
+> locally audited title/body because the trusted workflow is not on `main` yet.
+> Once that PR lands, require `publication-privacy/trusted` on `main`; every
+> later PR then receives the immutable base-branch scan before merge.
+
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
 > screenshot. It had been removed from the working tree long ago, but both retained

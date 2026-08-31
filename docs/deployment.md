@@ -59,10 +59,20 @@ which publishes exactly the tag you name and never touches `latest`. It does
 **not** run on pushes to `main`: publication should be a deliberate act, the same
 reason `release.yml` produces a *draft* release rather than a published one.
 
-The image is smoke-tested before it is pushed, not after — built to the runner's
-local daemon, put through `infra/docker/smoke.sh`, and only then pushed, with the
-second build reusing the layer cache. Publishing first and testing after would
-leave a broken image pullable in between, and `:latest` already moved.
+The image is smoke-tested before it is pushed, not after — built and tagged in
+the runner's local daemon, put through `infra/docker/smoke.sh`, checked so every
+final registry tag still resolves to that exact tested image ID, and only then
+pushed. There is no second build between test and publication: a rebuild could
+resolve a changed base image or dependency and publish bytes that were never
+run. Publishing first and testing after would leave a broken image pullable in
+between, with `:latest` already moved.
+
+After the smoke test, the workflow generates an SPDX JSON SBOM from that local
+candidate and uploads it as a workflow artifact. Once the tested tags are
+pushed, it resolves their shared immutable `sha256:` manifest digest and binds
+both build provenance and the SBOM to that digest as GHCR attestations. A tag is
+therefore only a convenient name; the digest is the release identity that the
+attestations verify.
 
 Two things to know about GHCR:
 
@@ -215,12 +225,27 @@ prefer building there when you can.
 just docker-smoke
 ```
 
-Starts the production image against a throwaway library, waits for health,
+With no argument, builds a fresh commit-specific production image, starts it
+against a throwaway library, waits for health,
 checks the SPA is served and ffmpeg/ffprobe are present, creates a library
 through the API, generates a video and scans it, asserts a cover was produced
 (which is what proves the media pipeline, not just the web layer), then stops
 the container and asserts the ownership lease was released and the WAL folded
-back in. CI runs the same script after building.
+back in. The temporary image is removed at exit. To smoke an already-built
+publication candidate without rebuilding it, pass that image tag explicitly:
+
+```bash
+./infra/docker/smoke.sh cairndex:candidate
+```
+
+CI first runs `infra/docker/build-and-check.sh`. That gate creates synthetic
+private-data canaries in every ignored runtime, environment, dependency, and
+sidecar packaging path, builds both development contexts and the production
+context, checks all three images for a leaked canary, rejects residual Python
+caches, verifies the production image contains the project and copyleft license
+notices, and rejects any context larger than 50 MiB by default. The production
+stage copies only installed runtime source and those notices from its build
+stages. CI then passes that exact image explicitly to the smoke test.
 
 This exists because *building* an image proves very little. The Docker CI job
 was green for a month while the production entrypoint ran a migration command
@@ -354,6 +379,15 @@ FTS index when its column set changes). Nothing needs to be run before or after
 an upgrade — starting the new image is the whole procedure. The entrypoint used
 to call `alembic upgrade head`, which had quietly become a no-op that still
 printed a line claiming migrations were applied.
+
+That is a forward-upgrade statement, not a blanket downgrade promise. Before an
+update, take and copy off-box the registry and every library backup described
+below, record the image tag you are leaving, and read the target version's
+compatibility notes. If the candidate fails, stop it. Start the older image only
+when the changelog explicitly says the schema remains backward-compatible;
+otherwise restore the pre-upgrade database set first. Never run two image
+versions against one library to test a rollback — the one-owner rule still
+applies.
 
 ### One server per library
 
@@ -572,7 +606,10 @@ runs against whatever the library holds at open, so a library nobody opens is
 never swept.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
-online backup API and integrity-checks it:
+online backup API and integrity-checks it. Registry backups are named
+`registry-…`; library backups include the portable library UUID, so two
+different `library.db` files cannot overwrite each other even when backed up in
+the same second. `mktemp` adds a final unique suffix for concurrent runs:
 
 ```bash
 # Back up server-local registry state.
@@ -585,8 +622,37 @@ docker exec <container> /app/infra/backup.sh /libraries/main/.cairndex/library.d
 docker cp <container>:/data/backups ./backups
 ```
 
-Restore is a file copy while the app is **stopped**: `down`, replace the relevant
-`registry.db` and/or `library.db` with backup copies, then `up -d`.
+Restore is deliberately guarded and atomic. Stop the app first, make the backup
+files available read-only at `/restore`, then restore the registry and/or each
+library database through the image helper:
+
+```bash
+docker compose down
+
+docker compose run --rm --no-deps \
+  -v "$PWD/backups:/restore:ro" \
+  --entrypoint /app/infra/restore.sh app \
+  --stopped /restore/<registry-backup> /data/registry.db
+
+docker compose run --rm --no-deps \
+  -v "$PWD/backups:/restore:ro" \
+  --entrypoint /app/infra/restore.sh app \
+  --stopped /restore/<library-backup> /libraries/main/.cairndex/library.db
+
+docker compose up -d
+```
+
+The explicit `--stopped` is an acknowledgement, not process detection. The
+helper refuses a destination with `-wal`/`-shm` sidecars, integrity-checks a
+fresh temporary copy, fsyncs it, and atomically replaces the destination. If a
+destination existed, its exact previous bytes remain beside it as
+`*.pre-restore-*` until you remove them after verifying the recovery.
+
+`infra/docker/backup-restore-smoke.sh <candidate> [source]` automates the full
+acceptance path with synthetic state. With one image it proves hot backup,
+destructive-loss simulation, restore, and reopen. Passing an older source image
+creates the state and backups there, then restores and opens them with the
+candidate — the pre-release upgrade rehearsal.
 
 ### Remote access and security
 
@@ -790,7 +856,7 @@ codesign -dv src-tauri/target/release/bundle/macos/Cairndex.app
 # → TeamIdentifier=not set
 
 spctl --assess --type open --context context:primary-signature -vv \
-  src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+  src-tauri/target/release/bundle/dmg/Cairndex_0.2.0_aarch64.dmg
 # → rejected
 # → source=no usable signature
 ```
@@ -936,7 +1002,7 @@ codesign -dv "$DMG" 2>&1 | grep -E 'Signature|Authority' || \
 Then notarize and staple the DMG:
 
 ```bash
-DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.2.0_aarch64.dmg
 xcrun notarytool submit "$DMG" --keychain-profile "cairndex-notary" --wait
 xcrun stapler staple "$DMG"
 ```
@@ -958,12 +1024,12 @@ Notes for when this is picked up:
   one; Cairndex currently needs none beyond the default.
 - Notarization requires the app to be signed with a **Developer ID Application**
   certificate specifically — an "Apple Development" certificate is rejected.
-- The `dev.cairndex.app` bundle identifier is owner-specified and must match the
+- The `dev.cairndex.desktop` bundle identifier is owner-specified and must match the
   identifier registered under the team.
 - Auto-update is **deferred**, not part of this pipeline (see
-  [plan 3 §3](plans/03-macos-desktop-app.md)): the repository is private with no
-  releases, and Tauri's updater fetches release assets over plain HTTPS, so it
-  would require embedding a token in the shipped app.
+  [plan 3 §3](plans/03-macos-desktop-app.md)). The public repository removes the
+  old token-distribution blocker, but updater signing, `latest.json`, rollback,
+  and update UX remain separate post-release scope.
 
 ### Cutting a release (plan 3 D7)
 
@@ -981,36 +1047,50 @@ feature, eleven fixes and a breaking change — and had to be rewritten by hand.
 
 The build job fetches the pinned ffmpeg, builds and smoke-tests the sidecar,
 builds the app and DMG, and refuses to continue on a bad bundle signature or a
-binary of the wrong architecture. The draft carries the `.dmg`, its `.sha256`,
-and `THIRD-PARTY-NOTICES.md` — which has to travel with the artifact, since it
-bundles a GPL ffmpeg.
+binary of the wrong architecture. It also verifies the app bundle and then
+mounts the DMG read-only to prove both contain the MIT license, third-party
+notice, GPLv3 text, and LGPLv3 text. The draft carries the `.dmg`, its
+`.sha256`, an SPDX JSON inventory of the app payload inside it, and the same
+four license/notice files beside it. GitHub build-provenance and SBOM
+attestations bind the downloadable DMG to that workflow run and SBOM.
 
 #### The procedure
 
 **1. Before tagging.** The tag is the input to everything below, and a tag that
 is wrong is more annoying to undo than to get right.
 
-- `apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/package.json` carry
-  the version, and **the artifact names come from `tauri.conf.json`, not from
-  the tag**. Nothing enforces that they agree, so a `v0.2.0` tag on a
-  `0.1.0` config silently produces `Cairndex_0.1.0_*.dmg`. Bump both first.
+- Install the privacy hooks with `just install-privacy-hooks`, maintain the
+  untracked owner-literal profile, and run `just privacy-history HEAD`. A tag
+  publishes every object in its reachable history; a range-only diff is not
+  sufficient after repository recreation or a rewrite. Do not tag if the gate
+  or the required PR privacy check is missing or failing.
+- `VERSION` is the release version. Bump it and the matching Python, npm,
+  Cargo, lockfile, and Tauri package versions in the same commit. Run
+  `python3 infra/release_version.py`; it names every stale source. The release
+  workflow repeats that check against the tag on a Linux runner **before** it
+  starts the macOS build, so a `v0.2.0` tag can no longer silently produce a
+  mismatched DMG or spend macOS minutes before failing.
 - `CHANGELOG.md` — move `Unreleased` entries under the new version. **This is
   enforced**: the release body is that section, extracted by
   `infra/release_notes.py`, and the job fails if `## [<version>]` is missing
-  rather than publishing a release with no notes.
+  rather than publishing a release with no notes. This check also runs in the
+  Linux preflight before the macOS build.
 - Gates green on `main` (`AGENTS.md`), since the tag is what gets built.
 
 **2. Tag and push.** Annotated, so the tag carries its own description:
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0 — <summary>"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "v0.2.0 — <summary>"
+git push origin v0.2.0
 ```
 
 The push triggers the workflow. Do **not** also dispatch it manually — that
 would build the same tag twice, and macOS minutes are the expensive kind (see
 the cost note below). `workflow_dispatch` is for re-running a tag that already
-exists, after fixing a workflow-level failure.
+exists, after fixing a workflow-level failure. Dispatch from that tag as well as
+entering it as the input (`gh workflow run Release --ref v0.2.0 -f
+tag=v0.2.0`); preflight rejects a mismatch so build provenance cannot name the
+default branch while the checkout actually builds a tag.
 
 **3. Watch the run.**
 
@@ -1019,19 +1099,20 @@ gh run list --workflow=Release --limit 1
 gh run watch <run-id> --exit-status
 ```
 
-**4. Review the draft** at `gh release view v0.1.0 --web`. The Apple Silicon
-DMG, its `.sha256`, and `THIRD-PARTY-NOTICES.md` should be attached — one of
-each, since Intel was dropped from the matrix after the first run (2026-07-23);
-restoring it means uncommenting the matrix entry in `release.yml` and this
-step then expects two of each. Download the DMG and actually open it — the
-workflow proves the bundle is signed and correctly architected, but only a real
-download carries `com.apple.quarantine`, which is the one thing local builds
-never reproduce.
+**4. Review the draft** at `gh release view v0.2.0 --web`. The Apple Silicon
+DMG, its `.sha256`, and its `.app.spdx.json` should be attached — one of each,
+since Intel was dropped from the matrix after the first run (2026-07-23) —
+together with `LICENSE`, `THIRD-PARTY-NOTICES.md`, `GPL-3.0.txt`, and
+`LGPL-3.0.txt`. Restoring Intel means uncommenting the matrix entry in
+`release.yml` and this step then expects two sets. Download the DMG and actually
+open it — the workflow proves the bundle is signed, correctly architected, and
+carries its notices, but only a real download carries `com.apple.quarantine`,
+which is the one thing local builds never reproduce.
 
 **5. Publish** when satisfied:
 
 ```bash
-gh release edit v0.1.0 --draft=false
+gh release edit v0.2.0 --draft=false
 ```
 
 #### Backing out
@@ -1040,9 +1121,9 @@ A draft release is not visible to anyone, so a bad build costs nothing but
 minutes — delete the draft and the tag, fix, and re-tag:
 
 ```bash
-gh release delete v0.1.0 --yes --cleanup-tag   # removes the draft and the tag
+gh release delete v0.2.0 --yes --cleanup-tag   # removes the draft and the tag
 # or, if no release object exists yet:
-git push origin --delete v0.1.0 && git tag -d v0.1.0
+git push origin --delete v0.2.0 && git tag -d v0.2.0
 ```
 
 Once a release is **published**, do not re-point the tag. People may already
@@ -1125,6 +1206,9 @@ want an Authenticode certificate on the same env-gated pattern.
 
 ## Health check
 
-`GET /api/v1/health` returns `{"status": "ok", "api_features": [...], ...}` and backs the image's
-Docker `HEALTHCHECK` (and any NAS container-manager liveness probe). No
-authentication is required for this endpoint.
+`GET /api/v1/health` returns the liveness state, API capabilities, synchronized
+package version, and (for release artifacts) the public source commit. The same
+version is OpenAPI's `info.version` and appears under **Settings → About**. This
+endpoint backs the image's Docker `HEALTHCHECK` and any NAS container-manager
+liveness probe. No authentication is required, so `build_commit` accepts only a
+hexadecimal Git SHA and never reflects arbitrary environment text.

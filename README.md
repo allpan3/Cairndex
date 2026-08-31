@@ -124,7 +124,9 @@ app at a server you already run (a NAS, say) works the same as it always has.
 
 The bundled ffmpeg is GPL-licensed and redistributing it carries source
 obligations that Cairndex's own MIT license does not — see
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The app itself also carries
+that notice, Cairndex's MIT license, and the full GPLv3/LGPLv3 texts under its
+`Contents/Resources/licenses/` directory.
 
 ## Repository layout
 
@@ -211,11 +213,11 @@ cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
 open /Applications/Cairndex.app
 ```
 
-Cairndex displays no version anywhere, so a stale install is indistinguishable
-from a current one by looking at it. **When in doubt, rebuild and reinstall** —
-it takes under a minute and is more reliable than trying to work out what you are
-running. After every rebuild, re-check which copy owns the `cairndex://` scheme;
-each build re-registers the build-directory bundle. See
+Cairndex shows the server/package version and release commit under **Settings →
+About**. A development build records no commit unless
+`CAIRNDEX_BUILD_COMMIT=<git-sha>` was set while compiling the desktop shell.
+After every rebuild, re-check which copy owns the `cairndex://` scheme; each
+build re-registers the build-directory bundle. See
 [docs/deployment.md](docs/deployment.md#installing-and-updating-your-local-build).
 
 ## Quickstart (Docker)
@@ -269,6 +271,19 @@ Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
 - [docs/adr/](docs/adr/) — Architecture Decision Records
 - [docs/STATUS.md](docs/STATUS.md) — current milestone and known issues
 - [CHANGELOG.md](CHANGELOG.md)
+
+## Security
+
+Report vulnerabilities through
+[GitHub private vulnerability reporting](https://github.com/allpan3/Cairndex/security/advisories/new),
+not a public issue. Do not attach real library media or identifying metadata;
+reduce reports to synthetic data. See [SECURITY.md](SECURITY.md) for supported
+versions, deployment boundaries, and reporting details.
+
+Repository contributors must install the fail-closed privacy hooks with
+`just install-privacy-hooks`. The mandatory object-level scan covers staged
+bytes, commit messages, push ranges, PR title/body text, historical deleted
+blobs, and unreviewed binaries; see [AGENTS.md](AGENTS.md#mandatory-publication-privacy-gate).
 
 ## License
 

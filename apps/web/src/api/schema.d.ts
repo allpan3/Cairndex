@@ -774,6 +774,12 @@ export interface paths {
          *     it is the expensive one, and a range has the streaming path to fall back on
          *     while it builds.
          *
+         *     Queued through `moment_previews.schedule`, *not* as a background task on this
+         *     response: a background task runs before the session dependency commits, so
+         *     the poster would hold its own moment's write invisible until ffmpeg finished
+         *     — and the rail's refetch, twenty milliseconds later, would read an empty list
+         *     and never ask again.
+         *
          *     Best-effort by construction. A failed build leaves no fingerprint, so the
          *     hover route simply tries again.
          */
@@ -3977,10 +3983,14 @@ export interface components {
             api_features: string[];
             /** App Name */
             app_name: string;
+            /** Build Commit */
+            build_commit: string | null;
             /** Environment */
             environment: string;
             /** Status */
             status: string;
+            /** Version */
+            version: string;
             /** Write Mode */
             write_mode: string;
         };

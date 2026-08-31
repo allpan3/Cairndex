@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from cairndex.core.config import get_settings
+from cairndex.version import APP_VERSION
 
 router = APIRouter(tags=["health"])
 
@@ -9,6 +10,8 @@ router = APIRouter(tags=["health"])
 class HealthStatus(BaseModel):
     status: str
     app_name: str
+    version: str
+    build_commit: str | None
     environment: str
     api_features: list[str]
     # The deployment write-mode master switch, ``allowed`` or ``disabled``
@@ -24,6 +27,8 @@ def get_health() -> HealthStatus:
     return HealthStatus(
         status="ok",
         app_name=settings.app_name,
+        version=APP_VERSION,
+        build_commit=settings.build_commit,
         environment=settings.environment,
         api_features=["trickplay", "hls", "progress", "pairing"],
         write_mode=settings.write_mode,

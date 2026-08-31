@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+exec python3 "$repo_root/infra/privacy_gate.py" \
+  --text-file "$1" \
+  --label "commit message" \
+  --require-private-patterns

@@ -1,0 +1,61 @@
+name: Publication privacy
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: privacy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  privacy:
+    name: Commit and PR privacy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark trusted PR scan pending
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}"
+          -f state=pending
+          -f context=publication-privacy/trusted
+          -f description='Trusted object and PR metadata scan is running'
+      # Check out the trusted base implementation, not a PR's editable scanner
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch pull-request commit objects
+        if: github.event_name == 'pull_request_target'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+      - name: Scan exact publication objects and metadata
+        id: scan
+        continue-on-error: true
+        run: python3 infra/privacy_gate.py --github-event "$GITHUB_EVENT_PATH"
+      - name: Record trusted PR scan result
+        if: always() && github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SCAN_STATE: ${{ steps.scan.outcome == 'success' && 'success' || 'failure' }}
+        run: >-
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}"
+          -f state="$SCAN_STATE"
+          -f context=publication-privacy/trusted
+          -f description='Trusted object and PR metadata scan completed'
+      - name: Fail when the privacy scan failed
+        if: steps.scan.outcome != 'success'
+        run: exit 1

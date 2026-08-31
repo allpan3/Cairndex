@@ -8,1893 +8,238 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-08-31
+
 ### Added
 
-- **Moments — save the frames and spans that matter inside a video.** Press
-  <kbd>B</kbd> while watching to mark the frame you are on; with a range marked in
-  the clip bar, it saves the range instead. Saved moments appear in the Bundle
-  Inspector as **one line each** — the start time, a range's length, and its tags
-  all on that line — and as ticks and thin bands on the seek track, with the hover
-  tooltip naming whichever one you are over. Hovering a row shows the frame above
-  it, in the shell and inside the player alike. Clicking one plays from there,
-  from the viewer or from the shell, which opens the viewer already at that
-  instant.
-
-  Saving one opens the rail and puts the cursor straight in its comment box: what
-  you want to write down is freshest at the instant you mark it. **A range's
-  hover preview plays the span**, from a small clip of just that span, cut once in
-  the background and cached. It starts on the frame you marked and loops there,
-  and on this machine it is moving about a fifth of a second after the pointer
-  settles. The first hover of a moment is the slow one — it streams the original
-  while the cut is made — and every hover after it reads the clip. Emptying
-  `.cairndex/cache/` costs you that first hover again and nothing else.
-
-  **The still is the frame you marked**, for a span and an instant alike, decoded
-  when you save the moment. It used to be a storyboard tile, which is sampled
-  every 2 to 30 seconds and holds the frame from the *start* of the interval your
-  mark fell in — so the first thing you saw was reliably not the frame you chose,
-  and on a long video not even inside the range.
-
-  The preview also carries the comment in full, which the row itself can only
-  clamp to one line, and it grows away from the row so it never covers the row's
-  own controls.
-
-  A moment's tags are the library's own tags, through the same picker the bundle
-  uses. **Tagging a moment also tags its bundle**, so a marked moment is
-  browsable, filterable, and countable without anything new to learn. Removing the
-  tag from the moment, or deleting the moment, leaves the bundle's tag alone —
-  the way out is *Remove from This Bundle* on the pill, as it always was. See
+- **Build identity and release diagnostics.** Settings → About, `/api/v1/health`,
+  and OpenAPI report the synchronized package version. Release artifacts also
+  report the public source commit; development builds clearly show when no
+  commit was recorded.
+- **Moments.** Mark an instant or range while viewing a video, add comments and
+  library tags, jump back to it, and preview the exact marked frame or cached
+  range clip. Moment tags also tag the bundle; removing a moment does not remove
+  that bundle tag. Duplicate marks are detected, and saved ranges can be edited
+  from the shared range controls. See
   [ADR-0025](docs/adr/0025-moment-tag-propagation.md).
-
-  Pressing <kbd>B</kbd> twice at the same frame offers the moment already there
-  rather than saving a second one. Adjusting a saved span reuses the range bar
-  rather than a second range editor: mark it there, then **Update to Range Marks**
-  on the row.
-
-- **range looping.** A saved range *is* an loop pair, so its row in the inspector has
-  a loop button, and the range bar's **Loop** is now that same switch. While it is
-  on, playback stays inside the span and repeats — <kbd>Space</kbd> included — and
-  pausing to look at something no longer ends it. One click on the lit control
-  turns it off, and so does changing file or closing the clip bar. Seeking to
-  before the in-point is left alone, so the run-up into a span is still watchable.
-  Also reachable from the settings menu and the viewer's right-click menu, both
-  beside *Loop file*.
-
-  **Play Range** is unchanged and still the one-shot: play the span once, stop at
-  the out-point, and any pause ends it. See
-  [ADR-0026](docs/adr/0026-armed-range-loop.md) for why the loop is a visibly armed
-  mode rather than a preference.
-
-- **Open a folder in the inspector to see its files nested under it.** A
-  disclosure on the right of the folder row — where a file keeps its cover and
-  play actions — reveals the files it stands for, indented beneath it, with the
-  row itself staying put. Looking inside changes nothing about the bundle.
-
-  The folder row carries no icon and no leading control, so it starts in the
-  same column as every other row in the rail.
-
-  Previously the only way to see inside was *Expand folder into the bundle*,
-  which deletes the folder row and flattens its files into the list — so the
-  folder appeared to be gone, and the way back (**Collapse** on any of those
-  files) was on a different row under a different name. That action is still
-  there for when you want the folder to stop being one member; it is no longer
-  the only way to look.
-
-- **Look inside a suggested folder before deciding it should be one.** A folder
-  row in the review dialog gets a disclosure: open it and the files it stands
-  for are listed, read-only, changing nothing about the plan. Deciding whether a
-  folder *should* be a folder previously meant flattening it to find out.
-
-  And flattening is no longer one-way. **List files** and **Keep as folder** are
-  now the two ends of one toggle: the row stays either way, saying which state it
-  is in, and applying honours whichever you left it on. The folder row sits where
-  its files begin, so listing them turns it into a header directly above them —
-  with the control that folds them back beside them, rather than stranded below
-  seventy-odd rows looking like an empty folder.
-
-- **A collapsed folder keeps working as the folder changes.** Two things a scan
-  used to get wrong about one. A photo dropped into a folder that a bundle shows
-  as one row now **joins that bundle**, instead of arriving as its own
-  suggestion to review — so an album stays one row as you add to it. And
-  **renaming the folder on disk keeps it collapsed**: move repair already
-  followed the files, but the row naming the directory was left pointing at
-  somewhere gone, which quietly un-collapsed the album on the next scan. A file
-  nested inside the folder votes for the folder's new location, not its own
-  parent's.
-
-  If a folder's files genuinely scatter to different places, it is not a folder
-  anymore: the row is dropped and its files list individually. Visible and
-  harmless, which is the right failure — the alternative is a row pointing at
-  nothing.
-
-- **Suggest grouping proposes a photo folder as one bundle, not a thousand.**
-  A folder of a thousand photos used to arrive in the review dialog as a
-  collection wrapping **a thousand single-photo bundle suggestions** — a
-  thousand rows to read before you could accept anything. Above a threshold the
-  suggester now proposes it as one bundle whose single member is the folder, and
-  applying it creates that folder row for real. One row instead of a thousand.
-
-  It counts **subjects, not files**, which is the whole of the rule. A folder of
-  300 releases is 900 files but only 300 subjects — each a video with a cover and
-  a subtitle sharing its stem — and stays 300 separate suggestions. An album is
-  300 photos that share nothing with each other. A single stray sidecar does not
-  disqualify an album, and a movie folder is never swallowed.
-
-  In the review dialog the folder is a single row — `🗁 album · Folder · 30
-  files` — with **List files** beside it. The threshold only ever decides what to
-  *propose*: a folder suggested wrongly is one click to decline, after which its
-  files list individually as before, and accepting the suggestion turns the row
-  into a real folder member on the bundle.
-
-- **A folder can sit in a bundle as one row.** A bundle that holds an album of a
-  thousand photos filled the inspector rail with a thousand rows, which is not a
-  list anyone can use. One of a bundle's directories can now stand in for its
-  files as a single row: right-click any file and choose **Collapse “…” into One
-  Row**, or right-click the folder row and **Expand “…” into the Bundle** to put
-  it back. Both are metadata-only and instant.
-
-  The folder row sits where its contents were, so collapsing does not reorder the
-  bundle, and the heading still counts every file the bundle holds — `Files in
-  bundle (1002 · 1 folder)` — because collapsing changes what is drawn, not what
-  is in the bundle. Nothing is lost either way: the files never stop being
-  members, and keep their ratings, tags, notes and playback positions throughout.
-
-  A folder carries no cover star and no play button, because a folder is a
-  container rather than a work. Double-click it (or press Enter) to open it in
-  the File Browser, which already pages through a folder in the viewer — so
-  there is no new viewer mode to learn. **Playing the bundle skips a folder's
-  contents**: "play this bundle" means its own media, not the thousand photos
-  inside. Opening one of those photos directly still pages through that folder.
-
-- **Bundle notes can be dragged into a new order.** The stack could be added to
-  and removed from but never rearranged, so a note that belonged first had to be
-  retyped there. Each box grows a grip under its remove button, both revealed on
-  hover, and only where there is more than one note to move; the arrow keys do
-  the same move from the keyboard once the grip has focus. The pair shares one
-  column at the right edge, and that column got *narrower* in the process: 18px
-  where the remove button alone used to reserve 26, so every note line is a
-  little longer than it was before there was anything to drag. A note keeps its own box height when it
-  lands, rather than inheriting whatever height used to be in that position.
-
-- **Clicking the Collections heading folds the tree instead of hiding it.**
-  It hid every collection, which is the one thing that gesture could do that
-  nobody wants — those rows are the sidebar's main content. It now folds the
-  tree down to the top level and unfolds it again, and a collection's own
-  right-click menu offers the same for its branch: **Expand All / Collapse All
-  Subcollections**, on collections that have something under them.
-
-- **Adding a file offers the bundle it belongs to.** Both routes into the library
-  put the file on disk and stopped there — it was in the library but invisible to
-  the Bundle Browser until the next scan staged it, and bundling was a separate
-  trip through Unbundled. The destination folder is the strongest signal about
-  which bundle a file joins, so both routes now use it:
-
-  - `File ▸ Add Files to Library…` asks which bundle alongside where. Nothing is
-    preselected, there is an explicit **Don't add to a bundle** row rather than an
-    implied one, and the confirm button names the bundle it will file into, so
-    joining one cannot happen unnoticed. Choosing a bundle in one folder and then
-    browsing to another drops the choice, since it belonged to the folder you
-    left. *Move to…* is unchanged — it shares the dialog but not the question.
-  - **The File Browser's drag-in and Add Files Here** report the import in a
-    toast that now carries the offer beside Undo. Undo reverses the whole batch,
-    not only the last file, because each import is its own journal operation.
-    This covers both ways files arrive there — a browser upload and the desktop
-    shell's own Finder drop are separate machinery end to end, and the offer has
-    to be asked for on each.
-
-  **New Bundle sits beside the add-to action on every import**, because a file
-  arriving in the library is at least as likely to *be* a bundle as to join one,
-  and a suggester can only ever propose the second. It opens the same dialog the
-  File Browser's Create Bundle… does, with a title proposed from the filename.
-
-  An offer, never an action: the file has already landed where it was told to,
-  and everything is metadata-only from there. Two cases decline to *name* a
-  bundle — a weak match, and **a folder holding several bundles that the path
-  cannot choose between** (two bundles in one folder score identically, and
-  naming one would dress a coin flip as a recommendation). Neither goes quiet:
-  both degrade to **Add to Bundle**, which opens every candidate ranked plus a
-  search over all confirmed bundles. Answering "Don't add to a bundle" in the
-  destination picker leads to the same toast, since that is a *not yet* rather
-  than a no. So an import always offers both ways to bundle what just landed.
-
-- **Forget a file that is gone.** A file deleted outside Cairndex could only be
-  dismissed by deleting the whole bundle around it — which dissolved the
-  grouping, scattered the surviving files back into Unbundled, and (until the
-  fix below) left the dead file behind anyway. **Forget Missing File** on a
-  file's own menu drops just that record; **Forget Missing Files** on a bundle
-  card drops every dead member and keeps the bundle, unless they were all it
-  had. Metadata-only: there is nothing on disk left to touch, and repair is
-  still the answer when a file *moved* rather than went.
-
-  A file that is gone no longer offers "Remove from Bundle" beside it. Removing
-  it drops the record too, so the two were one action under two names, and only
-  one of the names said so.
-
-- **The destination picker stops flashing on every click.** Stepping into a folder
-  fetched a listing under a new cache key, so the list was replaced by "Loading…"
-  and the dialog visibly blinked each time. It now holds the previous listing
-  while the next arrives — dimmed, with its rows disabled, because those rows
-  belong to the folder you just left while the breadcrumb already reads the new
-  one, and clicking one would navigate somewhere that need not exist.
-
-  **The File Browser itself does the same**, where the stakes are higher: its
-  rows feed Rename, Move to… and Move to Trash, so a click landing on a held row
-  could have targeted a file from the folder just left. There the held listing is
-  dimmed, marked `aria-busy`, made inert in CSS *and* guarded in the click,
-  double-click and context-menu handlers — belt and braces, because a CSS-only
-  guard depends on a stylesheet having loaded. Band-select and arrow keys are
-  suspended for the same window. Affordances keyed on the *path* rather than a
-  row — dropping files in, New Folder, the background menu — stay live, since the
-  path is already the folder being navigated to.
-
-  Still opt-in per caller rather than a default on the shared listing hook: any
-  caller holding a stale listing has to guard against acting on it, and that
-  guard is specific to what its rows do. The remaining pickers need no change —
-  the collection picker reads one non-navigable query, and the bundle-drop
-  destination wraps this same directory picker.
-
-- **Fixed: a bundle chosen in the destination picker could be silently dropped.**
-  The rule is "forget the choice when you leave the folder", but it was
-  implemented as "forget it when the id is no longer in the fetched suggestion
-  list" — a correctness rule keyed on a network state. It held only because
-  TanStack retains data across a refetch; any render where that list was
-  momentarily empty for the *same* folder would have discarded an explicit choice
-  and imported the file unbundled. The choice is now keyed on the folder it was
-  made in, and remembers its own title so the confirm button says what it will do
-  even before the list arrives.
-
-- **New Collection from Folder…**, on a File Browser folder's context menu. Name
-  it (the folder's own name is the default), choose which collection it sits
-  inside from a **foldable, searchable tree**, and every bundle in that folder
-  **and below** is filed into it. The tree rather than a dropdown because a
-  library's collection list has no natural limit: depth is only legible while you
-  can close what you are not looking at. Searching flattens the tree, so a match
-  is never hidden inside a folded branch, and folds survive the search. The
-  dialog says how many that is before you press the button, because the same
-  click may file two bundles or two hundred and only the folder knows which.
-
-  Collections stay logical: the folder is read to decide membership and nothing
-  on disk moves. Provisional scan-staged bundles are left out — browse hides them
-  from collections anyway, so filing them would add rows that cannot be seen. The
-  whole thing is one request, since a collection that exists but never received
-  its members is a worse outcome than one that was never created.
-
-  A folder's context menu now opens **without write mode**, which it did not
-  before: it previously held nothing that worked read-only, and this and Copy
-  Path both do. The entries that touch the filesystem stay gated.
-
-- **Locate in File Browser, on a bundle.** The File Browser could jump to a
-  file's owning bundle, but nothing went the other way: finding where a bundle
-  actually lives on disk meant reading its path and navigating by hand. A
-  bundle's context menu now opens the folder its own file sits in, with that file
-  highlighted. Like *Locate in Bundle Browser* — and unlike Open in Default App
-  and Reveal in Finder, which it sits above — this navigates inside Cairndex, so
-  it works in a browser too.
-
-- **⌘↩ reveals the selection in Finder, ⇧↩ opens it in its default app**, and
-  both are in the menu bar under `File` — greyed out when there is nothing they
-  could act on, so the answer is visible before the keystroke.
-
-  What they act on follows the surface you are looking at: the File Browser's
-  selected entry, or in the Bundle Browser the file selected inside an open
-  bundle, else the selected bundle's own playback file. A selection left behind
-  in a pane that is off screen is never what opens.
-
-- **A library this Mac is already serving no longer has to be "located".** Open
-  in Default App and Reveal in Finder need a local path for the library, and the
-  desktop app only had one if you had pointed at the folder yourself — so both
-  actions were missing from every menu for a library the app was actively
-  reading from (owner, 2026-08-23). That ceremony exists for a *remote* server,
-  whose path (`/volume1/media`) means nothing here; it was never needed for the
-  local server, which reports a path on this Mac. The app now adopts that path
-  by itself, after checking the folder's own `.cairndex` marker names the same
-  library — so it is verified, not merely trusted. Remote servers still ask,
-  because there a local *copy* of the library would pass the same check while
-  pointing at the wrong files.
-
-  Where they cannot work at all — a plain browser, or a genuinely remote server
-  — the menu-bar items are what say so. The context menus stay as they were,
-  simply leaving the pair out: no greyed rows were added there.
-
-- **Tags and tag groups can be made from the All Tags page.** It could rename,
-  nest and delete what already existed, but there was no way to *create* a tag
-  there at all — the only route was typing one into a bundle's tag picker — and
-  tag groups could not be created, renamed, deleted, or have anything put in
-  them from the UI, despite the API having supported all four since the taxonomy
-  went in. The page now covers the whole lifecycle:
-
-  - **New Tag** in the toolbar creates a top-level tag, reading `/` as a
-    hierarchy divider, so `Studio/Series` makes both in one pass and reuses
-    either if it is already there. Created while a group panel is open, the tag
-    joins that group — otherwise "new tag" in a group would make something the
-    panel cannot show.
-  - **New Child Tag** on a tag's context menu creates beneath that tag, and
-    unfolds it so the new child is visible rather than hidden in a folded branch.
-  - The side rail's **Tag Groups** header has a **+** for a new group, and each
-    group row right-clicks to **Rename Group** or **Delete Group**. Deleting one
-    is metadata-only and says so: the tags stay, only the grouping goes.
-  - A tag joins or leaves a group from its own context menu (**Add to …** /
-    **Remove from …**), or by being **dragged onto a group row** — which is
-    membership, not nesting, so the tag keeps its parent. A row it already holds
-    offers no drop cue.
-  - **Expand all** / **Collapse all** opens or folds every tag with children in
-    the current panel, which is the only practical way through a deep hierarchy
-    one chevron at a time.
-  - Right-clicking the page's blank space offers **New Tag** and the same fold
-    toggle — "here" being the open panel, so in a group panel the new tag joins
-    that group. Right-clicking a tag still gets the tag's own menu.
-
-- **HDR video no longer transcodes to a flat, washed-out picture.** A transcode
-  ended in 8-bit BT.709 with no colour conversion, so an HDR source's PQ or HLG
-  code values were read as ordinary gamma — correct for SDR, wrong for
-  everything graded brighter than it. HDR10 and HLG sources are now tone mapped
-  properly on the way through, and the **Playback** row says so. Where the
-  ffmpeg in use cannot do it — the filter needed is missing from some builds,
-  including Homebrew's — the source is left alone and the row says *that*,
-  because a flat picture with a stated cause is worth much more than a flat
-  picture without one. `CAIRNDEX_FFMPEG_TONEMAP=off` switches it off.
-
-  Two things deliberately left alone. **Dolby Vision is not converted**: profile
-  8.1 would tone map correctly but profile 5 carries a different colour encoding
-  entirely and would come out green and magenta — worse than flat — and the two
-  cannot be told apart from what is recorded today. It says so rather than
-  guessing. And **4K is the case to watch**: the conversion runs through a
-  high-precision intermediate, and measured here a 4K source converts at only
-  1.4x real time where the same source capped to 1080p manages 10x. Picking a
-  quality below the source's own height from the player's settings menu makes it
-  comfortable again, because the downscale happens first, on purpose.
-
-- **Adding files to the library no longer means standing in the right folder
-  first.** `File ▸ Add Files to Library…` (⇧⌘A) picks files and then asks where
-  they should go, so it works from the Bundle Browser and the viewer, not just
-  the File Browser. Collisions raise the same Replace / Skip / Keep both prompt
-  as a drag-in, and each copy keeps its own Undo.
-
-  The destination dialog can **create a folder**, because deciding where a file
-  should go is often the moment you notice the folder does not exist yet; the new
-  folder becomes the destination straight away. Move to… is unchanged.
-
-  On the web the same command is **Add files** in the sidebar's **⋯** menu beside
-  Update, which is renamed from "library maintenance" to **library actions** — it
-  was already the home for library-scoped things that do not earn a button, and
-  adding files is not maintenance. It sits above a divider, because everything
-  else in there runs in the background while this one opens a dialog. It appears
-  only in write mode.
-
-  The collision prompt gained a **Skip**. It offered Cancel, Replace and Keep
-  both — and Cancel abandons every file still queued, so with several files
-  picked there was no way to say "not this one, carry on". Skip leaves that file
-  alone and continues; Cancel stops and copies nothing further. The dialog now
-  says which is which, since the buttons alone did not.
-
-  **Dragging a file that is already in the library into it is refused**, with a
-  message pointing at Move to… instead. Copying it in would be silent whenever
-  the destination folder differed, and worse when it did not: answering Replace
-  moves the original to Trash, so a bundle containing that file loses it while
-  identical bytes land at the same path untracked. Only the drag-in can be
-  guarded — the Add Files picker receives bytes with no path, deliberately, so
-  neither the app nor the server can tell where they came from.
-
-  The File Browser's existing button is renamed **Add Files Here**, because that
-  is what it does — it copies into the folder on screen without asking, which is
-  the faster path when you are already there.
-
-||||||| parent of 20aaecee (feat(transcode): HDR sources are tone mapped instead of coming out flat)
-- **The marked span is something you play, with `\` or Play Range.** The clip
-  strip had grown an action and a mode that only meant anything together —
-  "From In" and "Range" — so they are now one control. **Play Range** jumps to
-  the in-point and runs to the out-point, `⟳ Loop` repeats it instead of
-  stopping, and pressing it again restarts, which is what checking a mark
-  actually needs. The button shows while the span is running.
-- **Ordinary play now ignores the marks.** Range used to be a standing mode, so
-  Space meant one thing with a clip marked and another without. Space is plain
-  playback again: it never jumps to the in-point and never stops at the
-  out-point, and pausing ends a running span so resuming is unconfined. Only
-  Play Range confines anything, and only while it runs. (range-loop replay, when
-  it lands, will drive the same span from playback settings.)
-
-- **The watermark can be your own image instead of words.** Settings → Exports
-  offers Text or Image; choosing Image takes a PNG, JPEG, WebP, or GIF, with a
-  transparent PNG working best. The picture is fitted inside both a height and
-  a width bound rather than scaled by one of them, because the two shapes
-  people actually use pull in opposite directions — a square badge scaled to a
-  fixed width becomes enormously tall, and a long wordmark scaled to a fixed
-  height runs off the frame. It scales with the export like the text does, so
-  one logo suits a 480 px GIF and a 4K snapshot alike, and it keeps the same
-  soft shadow, which is what stops a white logo vanishing into a white frame.
-  Chosen images are stored on this machine, resized to at most 1024 px on the
-  longest side and re-encoded as PNG so transparency survives; SVG is not
-  accepted, being a document that can carry scripts rather than a picture.
-  Switching between Text and Image keeps both answers, so neither has to be
-  retyped or re-picked.
-- **Exports can carry a watermark, and it says what you tell it to.**
-  Settings → Exports has an off-by-default switch and a text field; with it on,
-  the mark is stamped on snapshots and GIFs in the bottom-right corner and on
-  contact sheets at the top right of their header. Only the exported copy is
-  marked — nothing in the library is touched. The mark scales with the export
-  rather than with the source, so it reads the same on a 480 px GIF as on a
-  full-resolution snapshot, and it is drawn in white over a soft shadow because
-  a frame can be a snowfield or a night sky and neither a light nor a dark mark
-  reads on both. Leaving the text empty stamps nothing. The setting is local to
-  the machine, like the export folder beside it, and the Exports page is now
-  reachable in a browser instead of only in the desktop app — a watermark
-  applies wherever an export can be started, even though the folder choice
-  above it is still desktop-only.
-- **A span of a video can be marked in the player and saved as a GIF.** The
-  clip button (or `[` and `]`) marks the two ends at the playhead; the seek bar
-  carries the selection in the context of the whole file, and a magnified track
-  in the clip bar covers just the selection plus a margin, so the same pointer
-  movement spans frames instead of minutes. Each end has one-second and
-  one-frame steppers, and every adjustment — stepper or handle drag — scrubs the
-  video to the end being moved, because a frame you cannot see cannot be placed
-  accurately. **Set In** / **Set Out** put an end at the playhead, and
-  when that would land past the other end the whole clip moves and keeps its
-  length rather than collapsing — the length is already decided, the click only
-  says where it sits. Save GIF… asks for the output width and frame rate,
-  showing the pixel size and frame count it will actually produce, then encodes
-  server-side (≤30 s, ≤1920 px) and downloads, or saves through the native
-  dialog in the desktop app.
-- **Export sizes are chosen on a scrolling wheel rather than a row of buttons.**
-  A row had to fit every choice side by side, so it held three or four; a wheel
-  scrolls, so the ladders are as long as they should be — fifteen GIF widths,
-  ten sheet widths, and five grids. GIF frame rates run 5–50 (the ceiling was
-  15), and each says what it will really play at: a GIF stores frame delays in
-  whole centiseconds, so 15 fps plays at 14.3 and the wheel says so rather than
-  leaving it to be discovered. Rates the source cannot meaningfully supply are
-  left off — though a 24 fps source can still reach 25, which fits it far better
-  than 20 does. The GIF and snapshot wheels end at the source's own width,
-  marked `native`, since scaling either up adds nothing. Contact-sheet widths
-  now run 800–6144 px (they were three fixed values), and grids 4×4 through 8×8,
-  defaulting to 5×5.
-- **Snapshots can be saved at a chosen size.** `S` and the camera button are
-  unchanged — one press, at the source's own resolution, because the common case
-  is grabbing a frame rather than configuring one. A new **Save Snapshot As…**
-  on the viewer's right-click menu asks for a width first, from 320 px up to the
-  source's own, and says the pixel size the PNG will have. Nothing above the
-  source is offered, since scaling a still up adds nothing; the wheel opens one
-  rung below native, which is "smaller than the original, but not tiny". Unlike
-  a GIF this is a canvas draw rather than an encode, so it needs no server, has
-  no size cap of its own, and is saved the moment it is asked for.
-- **How much of a filename has to match is now a dial, not three named stops.**
-  Grouping compares filename stems, and the sensitivity was `narrow` /
-  `balanced` / `wide` — too few stops, and not points on one scale: `balanced`
-  folded a trailing rendition tag while `wide` switched to an unrelated key, so
-  "one step wider" meant two different things and could split as readily as
-  merge. A folder now sits at a level, and each step compares one segment less
-  of every name in it, up to a maximum that folder's own filenames decide. The
-  default reproduces the old `balanced` exactly, so an existing library regroups
-  nothing; a plan left open across the upgrade has its stored mode translated,
-  with `wide` landing on that folder's maximum.
-- **The review's row controls are one click, not two.** A `...` menu per row
-  collected the bundle↔collection conversion and the addition's destination
-  switch; both are now beside the name they act on. The row's own kind glyph
-  *is* the convert control — one click, in the place the kind is already shown,
-  labelled `Convert to collection` / `Convert to bundle` rather than the
-  sentence-long menu items it replaced. Renaming stays a double-click on the
-  title, which is what it always was. Each row also says how sure the suggester
-  is in words that mean something — `confident` / `likely` / `guess`, where the
-  first of those used to read `matched`, which did not say what had matched.
-- **Narrow and Widen are visible again, on the folder they belong to.** They had
-  moved into a row's overflow menu, where a folder-level control does not belong
-  and where a folder-level *value* cannot be shown at all — the level was
-  inferable only from which end was greyed out. Each folder's row now states it
-  as text ("stem 2 of 6") beside plain `Narrow` and `Widen` buttons, with
-  `Reset` when there is something to reset to. Every tooltip says what the
-  button does to the filename match and then what that does to the bundles, and
-  each end of the dial explains why it stops. A collection suggestion for a
-  folder is that folder's header, so it carries the dial and is set off from the
-  rows beneath it; a leaf folder that is one bundle carries its own.
-- **Long grouping plans can now be folded without changing the plan.** Each
-  collection can hide its descendant proposals and each bundle can hide its
-  file list, with Collapse all / Expand all controls beside selection. Reviews
-  still open fully expanded, and folding is presentation-only: selection
-  counts, placement, drag-and-drop, and the accepted bundle ids are unchanged.
-- **A multi-file import can now be stopped from the sidebar.** Browser uploads
-  abort their in-flight request, while the desktop shell carries the same stop
-  across IPC into the Rust reader streaming the current file; both stop the
-  large file already underway instead of only suppressing the next one. Import
-  rows share the background-job area and its waiting/stopping language without
-  hiding simultaneous jobs, show the current filename and batch count, and
-  finish with an honest partial summary. Files whose requests already completed
-  stay imported and individually undoable; skipped and never-attempted files are
-  counted separately. A server-side disconnect regression test fixes the safety
-  premise in place: Starlette's mid-body disconnect removes the staging `.part`
-  and fails that file's journal entry.
-- **Files can be dropped onto the Bundle Inspector to add them to that bundle.**
-  The whole sidebar is now the same write-gated import-and-link target as the
-  bundle card, with the same hover treatment and the same destination picker
-  defaulting to the bundle’s folder. The docked inspector in the media viewer
-  closes the viewer before opening that picker so the next step is visible.
-- **Any running job can now be stopped from the sidebar.** Scan, metadata,
-  thumbnails and storyboards all show a stop control on the row they are running
-  on. The server could already cancel a job; nothing in the app ever asked it
-  to, so a run you no longer wanted had to be waited out or the server killed.
-  Stopping is prompt rather than eventual: a job spending minutes inside a
-  single ffmpeg call — one storyboard file over a network share is about half a
-  minute — stops there instead of at the next checkpoint behind it.
+- **Range playback and looping.** Mark a span with the player controls or
+  keyboard, play it once, save it as a GIF, or arm a persistent loop. Ordinary
+  playback remains unconfined. The magnified range track supports zooming,
+  panning, frame/second stepping, and accurate in/out adjustment. See
+  [ADR-0026](docs/adr/0026-armed-range-loop.md).
+- **Collapsed folder members.** A directory can appear as one reversible,
+  metadata-only bundle row while its files retain membership and metadata.
+  Folder contents can be inspected without expanding them, and scans preserve
+  collapsed membership across added files and directory moves. Grouping can
+  propose large photo folders this way without producing thousands of rows.
+- **Grouping review controls.** Suggested collections, bundles, folders, and
+  repeated runs can be folded and inspected without changing the plan. Folder
+  matching uses a visible multi-step stem dial; conversion and placement
+  controls are directly accessible; the collection destination is a searchable,
+  foldable tree; and the review supports keyboard operation.
+- **Import-to-bundle workflow.** File ▸ Add Files to Library works from any
+  surface, asks for a destination, can create a folder, handles collisions with
+  Replace / Skip / Keep both, and offers to add the import to an existing or new
+  bundle. File Browser drag-in and Add Files Here provide the same post-import
+  choices and batch Undo. Existing library files are refused as imports and
+  point to Move to instead.
+- **Import and job cancellation.** Browser and desktop multi-file imports can be
+  stopped during the active transfer, with completed files retained and partial
+  results reported. Scan, metadata, thumbnail, and storyboard jobs can also be
+  stopped from their own sidebar rows.
+- **File and collection navigation.** Create a collection from all confirmed
+  bundles below a File Browser folder, locate a bundle in File Browser, and use
+  desktop shortcuts or menus to reveal the current selection in Finder or open
+  it in its default app. Locally served libraries adopt their verified path
+  automatically; remote libraries still require an explicit mapping.
+- **Missing-file cleanup.** Forget one missing file or all missing files in a
+  bundle without dissolving the surviving bundle. Missing files no longer offer
+  a second, misleading Remove from Bundle action.
+- **Taxonomy management.** All Tags now creates hierarchical tags and tag
+  groups, edits group membership by menu or drag, renames and deletes groups,
+  and expands or collapses the visible hierarchy.
+- **Export controls.** Save resized snapshots, GIFs from marked spans, and
+  contact sheets from broader size/grid ladders. Optional text or raster-image
+  watermarks apply only to exported copies and are stored locally.
+- **Inspector organization.** Notes can be reordered by drag or keyboard; all
+  inspector sections can be folded; folder rows can be inspected in place; and
+  Collections headings can expand or collapse their tree instead of hiding it.
 
 ### Changed
 
-- **The side panels' scrollbars lie over the content instead of beside it.** The
-  sidebar and the inspector used the platform scrollbar: sixteen pixels wide,
-  appearing the moment content outgrew the window and shoving everything
-  sideways to make room. They now draw their own — a thin translucent thumb,
-  visible on hover, draggable, and costing the panel **no width at all**, so
-  nothing moves when it comes and goes.
+- **The desktop bundle identifier is release-safe.** The pre-release application
+  identity is now `dev.cairndex.desktop`, avoiding Tauri's ambiguous `.app`
+  suffix before compatibility constraints exist.
 
-  A native scrollbar cannot do this: it paints in the gutter, outside the
-  content box, so it always costs width. Reserving that permanently only trades
-  the jump for a constant loss, and `overflow: overlay`, which would have done
-  it in one line, has been removed from Chromium.
-
-- **Every scrollbar in the app is half-transparent now**, not just the two side
-  panels: the grid, the File Browser, dialogs, menus, pickers and the note boxes
-  all share one pair of colour tokens. The widths still differ where a layout
-  depends on them — a note box's bar is 5px because its row controls are placed
-  to sit exactly beside it — but nothing frames a panel in a solid bar any more.
-
-- **What the owner is waiting for runs first.** One worker runs one job at a
-  time, so a storyboard pass — a sweep over every video in the library — held
-  the queue against everything behind it: pressing Update during one queued a
-  scan that could not start until the prefetch had finished. Jobs are now
-  claimed in order of what they are for (scan, then metadata and thumbnails,
-  then storyboards) and stay first-come within each kind. That alone would not
-  help the case that prompted it, since the long job is already running, so a
-  running pass also *stands aside* at its next checkpoint when more urgent work
-  is waiting, and goes back to the queue to resume afterwards. Standing aside is
-  neither a cancellation nor a failure: the job keeps its identity, reports
-  itself as waiting, and picks up where a fresh sweep leaves off — every
-  library-wide pass skips work that is already current.
-
-- **A grouping suggestion no longer says how sure it is.** Every bundle row
-  carried a confidence band in words — confident / likely / guess — and it was
-  wrong often enough that stating certainty was the misleading part. What
-  remains is the evidence rather than the confidence: a row grouped from its
-  folder rather than from matching names is still flagged, still says so in the
-  suggester's own words, and is still counted above the list.
-
-- **A file that was never bundled is never "missing".** Unbundled is the pending
-  zone — a scan stages every file it finds there, and bundling is what registers
-  a file in the library. So a staged file deleted outside Cairndex was reported
-  as a loss it made no sense to report: Missing Files filled with files the owner
-  had deleted on purpose, and the sidebar badge counted them, which for a library
-  used partly as a file browser is a permanent warning about nothing (owner,
-  2026-08-24).
-
-  Missing Files and its badge now cover **registered bundles only**, and a scan
-  drops the staging rows of files it can prove are gone. Two things have to hold
-  before anything is dropped, both read off that scan:
-
-  - **it read every directory it tried.** A listing that fails is a mount that
-    dropped, not a folder that emptied — and that failure used to be discarded.
-  - **the file's own filesystem is still the one mounted where it was.** A
-    dropped SMB mount takes its mountpoint directory with it, so a vanished
-    folder proves nothing by itself; but the ancestor that survives is then on
-    the outer filesystem, whose device id is not the one the file was last seen
-    on. An unmounted mountpoint left behind as an empty folder fails the same
-    check.
-
-  Nothing waits, counts scans, or keeps a timestamp: proof is what licenses the
-  delete, and where it is missing the row simply stays. A **registered** bundle's
-  missing file is never touched, nor is any staged row carrying something the
-  owner made — a tag, rating, note, source, collection, watch position, chosen
-  cover frame, or a cover/subtitle reference. Those stay, and Forget clears them
-  by hand.
-
-  The scan-complete message says how many it dropped — *"Scan complete: 0 linked
-  files are missing. Forgot 2 unbundled files that are gone."* — and says nothing
-  about forgetting when there was nothing to forget.
-
-- **The layout buttons have icons that mean something.** Card and Justified were
-  `▦` and `▥` — box-drawing glyphs that are near indistinguishable at 15px and
-  say nothing about the layout they select. Each is now a drawn icon: **Card** is
-  a single card, cover above and title below; **Justified** is rows of unequal
-  widths flush to both edges; **List** is a thumbnail beside its line of text. No
-  two share a silhouette, which matters more than any one of them being clever —
-  they sit in one segmented control at 15px. The File Browser's two share them,
-  so the same control means the same thing on both surfaces.
-
-- **The "Grid" layout is now called "Card".** Both it and Justified are grids;
-  what distinguishes this one is that every item is a card of one fixed shape.
-  The stored preference value is unchanged, so nothing needs migrating.
-
-- **The card-size slider reaches further at both ends** — 140–640 px instead of
-  80–360. The smallest cards were too small to read and the largest not large
-  enough to look at. Justified rows also aim higher within that range (0.7 of the
-  slider value rather than 0.6): the two layouts are judged separately, and
-  Justified was the one still reading small, having no title block under each
-  tile to give it weight. A zoom saved outside the range is clamped on read,
-  since a value the slider cannot express would leave the thumb at one end
-  showing cards from somewhere else.
-
-- **Snapshot and GIF watermarks sit closer to the corner.** The inset was wide
-  enough that the mark read as floating in the bottom-right rather than sitting
-  in it; it is now near 1% of the export's width — a corner inset rather than a
-  margin. Contact sheets are unchanged: their mark takes the header's own
-  padding, so it stays level with the metadata rows.
-- **A contact sheet's watermark sits at the top of its header, not adrift below
-  it.** The mark derived its inset from its own size rather than using the
-  header's padding, so it started lower than the metadata rows beside it. Worse,
-  a picture mark is scaled to the sheet's _width_, which knows nothing of how
-  tall the header is — a tall logo overflowed the band, and since the frame grid
-  is drawn afterwards, the grid painted over the overflow and shaved the mark's
-  bottom off. A mark is now fitted to the band that holds it and shares the
-  header's own padding, so it lines up with the first metadata row and can never
-  be clipped by whatever is drawn next.
-- **The contact sheet's fixed Cairndex brand block is retired.** Every sheet
-  carried a blue-accented `EXPORTED FROM CAIRNDEX` lockup in its header whether
-  or not the owner wanted one; that is replaced by the opt-in watermark above,
-  which is off by default. A sheet exported without one now has no branding at
-  all, and its metadata rows spread into the width the block used to occupy.
-  The header's height is unchanged — it was always set by the three metadata
-  rows, not by what sat beside them.
-- **"Scan new files" now scans, and only scans.** It sat in the same menu as
-  "Suggest grouping" and did that item's work too, ending a scan by opening the
-  grouping review dialog nobody had asked for. The scan job takes a
-  `suggest_grouping` flag (`POST …/jobs/scan?suggest_grouping=false`), which the
-  menu item sends and the combined ⟳ Update does not, so Update is unchanged.
-- **A newly created library indexes itself.** A folder that had only just become
-  a library held nothing, so every view was empty and playback had no metadata
-  to decide from until the owner found two menu items. Creating one now enqueues
-  discovery and then metadata, reported in the sidebar like any other job.
-  Deliberately not the full Update: no grouping pass, so no review dialog opens
-  over a library just added, and no storyboards, which stay a deliberate action.
-  Registering a library that already exists is untouched — it arrives with its
-  own database, and re-reading a multi-terabyte tree unasked is what ⟳ Update is
-  for.
-- **Export artifacts now reach the desktop shell as raw bytes rather than as
-  JSON.** `save_export_file` took its bytes as a JSON number array, which turned
-  a few-megabyte artifact into tens of megabytes serialized on the main thread —
-  acceptable while the seam had no callers, not once a real export used it. The
-  bytes travel as Tauri's raw IPC body with the suggested name in a
-  percent-encoded header; the destination still comes only from the OS dialog.
-  Contact sheets and snapshots take the same path.
-- **A bundle is named by the shortest prefix its files share.** A release video
-  and its cover carry the release's own identifier, so a folder holding
-  `n0203 - a long title.mp4` and `n0203.jpg` is now "n0203" rather than the
-  video's whole filename. Sidecars join the comparison whenever there is at most
-  one video; with several videos they are still excluded, because a cover named
-  for the folder would drag the shared prefix shorter than the thing it names.
-  Files sharing no prefix are still named after the video.
-- **The folder's Split/Merge actions name the current matching mode and can
-  reset to balanced.** The mode used to sit beside the old icon pair and nowhere
-  else, so moving those into the row menu left it inferable only from which end
-  was greyed out — and balanced, previously a directly selectable state, was
-  unreachable from either end.
-- **Grouping review shows each suggestion's confidence instead of filtering by
-  it.** A two-tab All / "Needs a look" filter meant a *mis*-scored row — one the
-  suggester was sure about and wrong about — was not merely unflagged but
-  actively hidden from the view that claimed to show what needed deciding, and
-  the rows that remained carried no signal at all. Every row now states its own
-  band (matched / likely / guessed), the guessed ones keep their warm edge and
-  reason, the toolbar counts them, and nothing is hidden.
-- **Bundle and collection can always be converted into each other.** The client
-  used to withhold the conversion from a single-subject bundle already inside a
-  collection for its own folder — which is exactly the row an owner reaches for
-  it on, a folder holding one release today that should be a collection. The
-  server's bound is now whether the conversion renames anything rather than
-  where the row sits, so a folder-named bundle becomes a folder-named collection
-  holding a release named after itself, and only the conversion that would
-  change no name is refused. A row whose edits are all unavailable now opens an
-  empty menu saying so, rather than rendering no menu button at all.
-
-- **Runs of identical suggestions collapse to one line, and the review can be
-  driven from the keyboard.** A folder of numbered clips produced a row each,
-  all treated identically by the suggester; three or more in a row now read as
-  "SET-025-01 … SET-025-04 · 4 bundles, same shape · each 2 files · video,
-  image", with one checkbox for the run and "Show all 4" when one needs a closer
-  look. Suggestions the suggester is unsure about are never folded away, and
-  they break a run rather than hiding inside it. The tree is also a single tab
-  stop now: arrows move between rows, left and right fold, space accepts or
-  skips the focused row, and Cmd/Ctrl+Enter applies without reaching for the
-  footer.
-- **A grouping row's controls are named rather than glyphs.** They were four
-  icon-only buttons — a refresh glyph, an ungroup glyph, and a `>< <>` pair —
-  rendered after variable-length text, so they landed at a different x on every
-  row and were discoverable only by hovering for a tooltip. Every one of them now
-  either says what it does or sits where its meaning is already shown; the
-  tooltip machinery that existed to caption them is gone with them. See the two
-  entries above for where each ended up.
-- **The grouping review's chrome stopped competing with its contents.** The
-  three-line preamble folds behind a one-line summary, the dialog holds a fixed
-  height so folding a row no longer slides the footer under the pointer,
-  notices occupy a reserved line rather than pushing the list down mid-click,
-  and Accept names what it will do — "Accept 3 bundles + 1 addition" — with the
-  skipped rows spelled out beside it rather than left unexplained.
-- **The grouping review now leads with what needs deciding.** The suggester
-  already scores its own certainty, so the toolbar counts the suggestions it is
-  unsure about and can filter to just those; a flagged row carries a warm left
-  edge and says why it was grouped. Filtering is view-only — selection and
-  Accept still cover the whole plan. Bundle rows state what they contain
-  ("3 files · video, subtitle, image") with the file list one click away rather
-  than open by default, and a nested row's placement control drops its printed
-  destination, which only ever repeated the row it is drawn inside. Root rows
-  keep the full label, every control keeps its accessible name, and a file drag
-  reveals every list so nothing becomes an invisible drop target.
-- **Grouping destinations now use a collection tree instead of a repeated-path
-  dropdown.** The proposal row shows only its direct destination, while the
-  bounded picker mirrors the collection hierarchy with indentation and
-  independently foldable branches. Search keeps pinyin matching and adds only
-  the direct parent needed to disambiguate a result; full paths remain available
-  to assistive technology and as tooltips without consuming every visible row.
-- **Job progress moved to the bottom of the sidebar, beside the file-transfer
-  indicator, and survives a page refresh.** It used to sit under the Update
-  button that started it and vanish on reload, which is misleading twice over:
-  these jobs outlive that button — a storyboard pass keeps running after Update
-  reports done — and the work continues whether or not the page that started it
-  is still open. **Every running job is now shown, not just the newest**, since
-  scan, probe, thumbnail and storyboard jobs overlap and a single slot hid
-  whichever lost.
-- **Release notes come from the changelog rather than the pull-request list.**
-  GitHub's generated notes describe a release only when every change arrived as
-  a PR; v0.1.1 was mostly merged directly onto `main` after the repository was
-  recreated, so they named one PR for a release carrying a feature, eleven fixes
-  and a breaking change, and the notes had to be rewritten by hand. The release
-  body is now the install/licensing preamble plus that version's own changelog
-  section, extracted by `infra/release_notes.py`. A missing section fails the
-  release job — the procedure already said to move `Unreleased` under the new
-  version before tagging, and this is what makes forgetting it visible while it
-  can still be fixed.
-
-- **Storyboard generation no longer decodes every frame of every video.** The
-  sampling filter it used (`fps=1/n`) forces ffmpeg to decode a video linearly
-  from start to finish, so generating trickplay sheets cost a full decode per
-  file and a full read of every video in the library — which is why an owner's
-  run over a library on a network share took as long as it did. Sampling now
-  decodes **only keyframes** (`-skip_frame nokey`). Measured on 5-minute 720p
-  fixtures: **2.9× faster** on an H.264 source keyed every 2s (producing the
-  identical 150 tiles), **6.2×** on one keyed every 10s, and **13.4×** on HEVC —
-  the harder the video is to decode, the more this saves, and it holds the whole
-  library's read down to one sequential pass per file. Seeking to each cue
-  instead was measured too and rejected: storyboard cues are spaced about as far
-  apart as a keyframe, so each seek re-reads a group its neighbours already read
-  and the whole run came out *3× slower* than the full decode it replaced.
-  (Contact sheets sample far more sparsely and correctly still seek.) **On a
-  library over a network share, expect the run to finish at the share's read
-  speed rather than in a fraction of the old time**: skipping the decode does
-  not skip the read — ffmpeg still streams each file once — so the transfer is
-  now the whole cost, where before it was hidden behind decoding.
-- **A storyboard cue now states the time of the frame it is actually showing.**
-  Tiles land on the keyframe at or before each sample point, so a cue can cover
-  an uneven slice of the timeline — the VTT says which slice rather than
-  claiming an exact grid it did not sample. Scrubbing is therefore only as fine
-  as the source's keyframes: a video keyed every 10s gets a tile every 10s where
-  it would previously have had one every 2s. Sheets get correspondingly smaller.
-  A video whose keyframes cannot describe it at all — a single-keyframe encode —
-  still gets one full decode rather than a one-tile storyboard. Set
-  `CAIRNDEX_STORYBOARD_SAMPLING=exact` to decode in full everywhere, which is
-  only worth it for a local library.
-- **Storyboard cache format v3.** Existing sheets stay in place but are ignored,
-  as with any format change; one Update/storyboards run regenerates them. The
-  sampling mode is part of the cache key too, so switching it retires cached
-  sheets rather than leaving a library holding a mix of two qualities.
-
-- **Every inspector section folds.** Notes, Tags, Collections, Moments and Files
-  each get a heading you can click to fold them away — anywhere on the row, with
-  the chevron on the right appearing only under the pointer, so a rail of
-  headings reads as labels rather than as controls. The single-line facts above
-  them stay put. What is folded is remembered across bundles and across the
-  shell's rail and the viewer's docked one, because it is a view preference
-  rather than something about a bundle.
-
-- **The range track zooms.** With the pointer over the magnified track, the wheel
-  zooms it around the cursor and ⌥-wheel pans it — and scrolling counts as using
-  the player, so the controls no longer fade out from under the pointer
-  mid-adjustment. **Anywhere else over the media, the wheel is the volume**, in
-  the same 5% steps the arrow keys use; the range track takes the wheel first,
-  and panes that scroll keep it — so a minute-long span can be
-  worked at frame scale instead of a tenth of a second per pixel. Double-click
-  puts it back to fitting the selection, and a hand-set window that the selection
-  has left re-fits itself rather than stranding you on empty timeline.
+- **Grouping is clearer and more scalable.** Suggestions show their evidence
+  and contents instead of an unreliable confidence label, repeated shapes
+  collapse to compact runs, destinations use a hierarchy rather than repeated
+  paths, and bundle names use the shortest meaningful shared prefix. Bundle ↔
+  collection conversion is available whenever it can produce a distinct result.
+- **Grouping storage and execution are bounded.** Plans live on server-local
+  storage instead of network library databases, use batched writes and edits,
+  prune superseded plans incrementally, avoid rebuilding identical plans, and
+  find folder-local candidates through indexed lookups rather than full-table or
+  quadratic scans.
+- **Scans distinguish unbundled staging from registered data.** Proven-gone,
+  metadata-free staging rows are forgotten only after a complete scan on the
+  same mounted filesystem. Registered or owner-edited records remain until the
+  owner explicitly forgets them. Scan-only no longer opens grouping review, and
+  a new empty library queues discovery and metadata automatically.
+- **Foreground work is prioritized.** Scan, metadata, and thumbnail work can
+  pre-empt a library-wide storyboard pass at safe checkpoints; paused jobs keep
+  their identity and resume. Every active job appears at the bottom of the
+  sidebar and survives a page refresh.
+- **Storyboards use keyframe sampling by default.** This avoids decoding every
+  frame, records actual cue times, and keys cache format v3 by sampling mode.
+  Sparse-keyframe sources receive correspondingly sparse previews, single-
+  keyframe sources fall back to exact decoding, and
+  `CAIRNDEX_STORYBOARD_SAMPLING=exact` restores full decoding. Network storage
+  can still be limited by the required sequential read. Benchmarks and cache
+  invariants are recorded in `docs/performance.md`.
+- **HDR transcodes are tone mapped when supported.** HDR10 and HLG sources are
+  converted to SDR instead of interpreting HDR values as ordinary gamma.
+  Unsupported ffmpeg builds and Dolby Vision are reported rather than guessed;
+  `CAIRNDEX_FFMPEG_TONEMAP=off` disables the conversion. High-resolution tone
+  mapping remains compute-intensive, so lower playback quality may be needed.
+- **Playback capability and recovery are more accurate.** Direct-play detection,
+  HEVC `hev1` handling, conversion fallback, session recovery, range-at-EOF,
+  stalled-playback reporting, and desktop relay behavior now use the actual
+  source/runtime state. File Browser playback no longer depends on a prior scan
+  or metadata job, and the info panel reports the chosen path and failures.
+- **Export transport is binary.** Desktop export bytes use the raw Tauri IPC
+  body instead of a JSON number array. Contact sheets no longer add fixed
+  Cairndex branding; optional watermarks align within the export safely.
+- **Layout controls are consistent.** Grid is now Card, Card / Justified / List
+  use distinct shared icons, card sizing has a useful wider range, and app
+  scrollbars use compact translucent styling without shifting side-panel
+  content.
+- **Release notes come from this changelog.** Tag builds fail if their versioned
+  changelog section is absent, avoiding incomplete PR-list-generated notes.
 
 ### Fixed
 
-- **Marking and forgetting a moment no longer lag.** Forgetting one takes the row
-  away on the click instead of a round trip later, and marking one puts the new
-  row in from the answer the save already returned rather than throwing the list
-  away and fetching it again. Marking also stopped refreshing the bundle's tags
-  and the tag and bundle counts — a moment saved without tags cannot have changed
-  any of them, and on a large library those were the slow part.
-- **A saved moment appears in the rail straight away.** Marking one wrote it
-  correctly but the row did not show up until the app was reloaded, because the
-  frame being decoded for its preview was holding the save itself invisible for as
-  long as that took. The preview is now built well clear of the save.
-- **The viewer's controls no longer disappear from under the pointer.** Resting
-  the cursor on a control while you read it let the chrome idle out after a couple
-  of seconds — and hiding it also makes it unclickable, so the next click passed
-  straight through to the picture and was spent bringing the controls back. It
-  read as the first click on **Save Moment** doing nothing and the second one
-  working, and was true of every button down there. A pointer sitting on a control
-  now counts as someone about to use it.
-- **Tagging a moment is as quick as tagging a bundle.** The pill now appears on
-  the click rather than a round trip and three refetches later — the same
-  optimistic write the bundle's own tag picker has always had.
-
-- **A moment row shows one tag in full, and `+N` for the rest.** It used to clip
-  the second one against the edge of its region, which read as a rendering fault
-  rather than as "there is more"; the count opens the picker, where they all are.
-
-- **The range bar's actions fit on one line.** Squeezed into the column beside
-  the In/Out steppers they had barely half the bar's width, so **Save GIF…**
-  wrapped onto a second line below **Save Moment** — which made the two look out
-  of order. They span the bar now.
-
-- **A moment row lines up.** The timecode, the tags and the actions were a mix of
-  baseline-aligned text and centred icons at three different heights: a CJK tag
-  pill is taller than a Latin one, and the `⋯` glyph sat low in its box. Every
-  item in the row is now the same height and shares one centre line.
-
-- **A moment row uses the whole width it has.** The tag region shared the free
-  space with an invisible spacer, so it gave up half the row — visible as a gap
-  on the right, and as an add button that disappeared long before the row was
-  actually full. The add button is also round now, with the `+` centred in it,
-  and appears with the row's other controls rather than sitting there always.
-
-- **The range bar no longer claims a 30-second limit.** There is none on a range
-  or on a moment; it is the GIF export that is bounded, and it now says so by
-  greying out **Save GIF…** with the reason in its tooltip, rather than by a
-  "max 30 s" notice beside the length that read as a limit on the marks.
-
-- **The docked inspector's bottom is reachable again.** The player's control bar
-  is absolutely positioned and spanned the whole window, so it lay *over* the
-  lower part of the inspector docked beside it — anything low enough in that pane
-  could not be clicked or hovered at all. The top bar already stopped at the rail;
-  now the control bar does too.
-
-- **A right-click menu no longer dismisses itself.** Opening one from a control
-  near the edge of a scrolling panel — the inspector's rails, most of all — could
-  close it instantly: clicking the button scrolls it into view, and any scroll
-  dismissed the menu. The dismissal now starts a frame later, so the gesture that
-  opens a menu is allowed to scroll.
-
-- **A moment's thumbnail no longer covers the whole window.** The frame beside
-  each saved moment is a storyboard tile, and it was borrowing the hover preview's
-  filling style — which is `position: absolute; inset: 0`. That fills a positioned
-  card, but the inspector row has no positioned ancestor, so the tile escaped to
-  the viewport and drew a full-window video frame over the app: the inspector
-  looked like it had not opened, and clicks fell through to the grid behind it, so
-  a single click on a bundle could land as a double-click and open the player. It
-  only happened for a bundle that had a moment *and* a generated storyboard.
-  The tile now brings its own style and its own containing block, and
-  `StoryboardTile` no longer hard-codes one consumer's class.
-
-- **The click after dismissing a right-click menu no longer opens what it lands
-  on.** Dismissing a menu is deliberately invisible to the app — the click stops
-  at the menu rather than also acting on whatever is underneath. But it was not
-  invisible to the browser's click counter, so the *next* click arrived as the
-  second half of a double-click: on a bundle card that meant one click opened the
-  media viewer, and on the viewer's stage it meant one click closed it. A control
-  clicked right after a dismissal could also look dead, because its click was the
-  swallowed one. Genuine double-clicks are unaffected.
-
-- **A folder row goes when its last file leaves the bundle.** Removing files
-  from a bundle one at a time used to leave the folder behind reading "Folder ·
-  0 files" — a row standing for nothing, with no way to fill it. Trashing is
-  unaffected and deliberately so: a trashed file is still a member, so a folder
-  entirely in the trash keeps its row and Put back finds it there.
-
-- **Suggestion rows at the same level line up again.** A collection row carried
-  4px of horizontal padding that a bundle row did not, so two suggestions at the
-  same depth sat 4px apart and read as parent and child. The padding is what
-  gives the folder-header background and the drop highlight room to breathe, so
-  it stays — pulled back out with a matching negative margin, the same way the
-  amber "needs a look" bar already cancels its own.
-
-  While checking that, a second one: the amber bar hangs 6px into the left
-  margin, and only nested rows had room for it — on a **top-level** row it was
-  simply not drawn, which is the row most likely to be read first. The tree now
-  reserves the space.
-
-- **A work with an album subfolder is one bundle, and converting no longer
-  loses it.** Two owner-reported faults in the folder suggestion, found by
-  running it on a real library.
-
-  A folder holding a video and a subfolder of images was suggested as a
-  *collection* — the video one bundle, the images another — so the thing being
-  looked at had no single row at all. It is now one bundle: the video, and the
-  subfolder as a folder row beside it. That is the original ask stated exactly
-  ("every item in the folder in a bundle, along with other files not in the
-  folder"), and it had been missed. Merging is deliberately narrow: it happens
-  only when the folder's own media is one subject and every subfolder is an
-  album, so two videos beside a folder, or a subfolder holding its own film with
-  sidecars, still read as a collection.
-
-  **Convert to bundle** then destroyed the folder row it had just been given.
-  Converting merges the descendants' files into one bundle, and the folder row
-  is a statement about how some of those files are drawn — so it now comes
-  along, which matters most for exactly the action people take on a folder that
-  has one.
-
-  The dialog also draws a folder row *after* the loose files rather than before,
-  which is where the bundle inspector puts it once applied. The two surfaces were
-  showing the same bundle in two orders.
-
-- **Two jobs on screen no longer share one progress row.** Pressing Update while
-  a storyboard pass was running left a single row whose label, count and bar each
-  belonged to a different job every half second. Both flows were reporting into
-  one slot, on the assumption that one maintenance flow runs at a time — which
-  the Update flow breaks itself, since it hands metadata and storyboards to
-  background watchers and returns. Each job now keeps its own row. Enqueuing also
-  wakes the queue list, which stops polling while it is empty: until it did,
-  anything the client was not itself watching — a second job, work started from
-  another window, a reload mid-run — showed nothing at all.
-
-  Update reads **Waiting…** while its scan is still queued, rather than claiming
-  to be updating: a scan jumps the queue now, but the job already running keeps
-  the worker until its next checkpoint.
-
-- **Creating a bundle no longer slows down as the library grows.** It took about
-  five seconds on the owner's library (2026-08-26). Almost none of that was the
-  bundle: every FTS search-index maintenance trigger located a bundle's row with
-  `WHERE bundle_id = ?`, and `bundle_id` is `UNINDEXED` in an FTS5 table, which
-  supports no secondary indexes — so each one scanned the whole index. A single
-  create fires around ten of them (a file moving between bundles reindexes both).
-
-  Measured on a synthetic 60k-bundle library: one create cost **94 ms** with the
-  triggers and **6 ms** without, and the scan alone was 8.5 ms against 0.0 ms for
-  the same delete keyed by rowid. Every trigger now keys on the bundle's own
-  integer rowid, which the FTS row shares: **94 ms → 21 ms**, and the remaining
-  cost is flat in library size rather than linear (15 ms at 4 bundles, 7 ms at
-  60k). On the first open after this change the index is rebuilt once — about
-  0.5 s for 60k bundles — because rowids assigned by the old scheme bear no
-  relation to their bundles.
-
-  The module's own comment blamed "a correlated view" for trigger cost, which is
-  what sent this investigation the wrong way at first; the view side measures
-  2.1 ms. That comment has been corrected in place.
-
-- **Bundle suggestions no longer read the whole file table to find a folder.**
-  Every candidate lookup behind the bundling dialogs matched `relative_path LIKE
-  'folder/%'`, and SQLite cannot use an index for `LIKE` under its default
-  case-insensitive rules — nor with the `ESCAPE` clause that spelling carried,
-  which disables the optimization outright. So each distinct folder in the
-  selection cost one full read of `asset_files`, paid on dialog open, and paid in
-  full even when the folder matched nothing. On a synthetic 100k-file library
-  that was 5.0 ms per folder against 0.06 ms for the indexed form — and far worse
-  on network-mounted storage, where the difference is a whole-table read versus a
-  few index pages.
-
-  Both directions now resolve through the existing `asset_files.directory_path`
-  index: an equality probe per enclosing folder, and a half-open range per
-  subtree. A test asserts the query plan names that index, because a regression
-  here does not necessarily show up as a scan of `asset_files` — the planner may
-  drive from `asset_bundles` instead and test each bundle's files, which is
-  equally slow and reads as innocent.
-
-- **A file added below a bundle's folder now finds that bundle.** Folder locality
-  was an exact-match test, so a file landing in a subfolder of where a bundle
-  lives earned no locality credit at all and surfaced only if the filenames
-  happened to overlap. Suggestions now walk up to three enclosing folders,
-  scoring closer folders higher, with the folder distance named in the reason
-  ("same folder", "parent folder", "2 folders up"). The library root is
-  deliberately excluded: it encloses every path, so matching on it is evidence of
-  nothing.
-
-- **A bundle that is gone empties the inspector instead of describing it.** After
-  a Forget — or a scan dropping a staged row — the right-hand panel kept the
-  bundle it had been showing: title, file rows, missing badge and all, for
-  something no longer in the library (owner, 2026-08-24). A detail request that
-  comes back "not found" is now a normal answer rather than an error, so the
-  panel says *"That bundle is no longer in the library."* — still distinct from
-  "Loading…", which is what an unloaded bundle says. Forgetting a bundle's last
-  file also clears the selection and closes its album view, the way deleting a
-  bundle already did.
-
-- **Deleting a bundle that holds a missing file no longer leaves the file
-  behind as a new card.** Dissolving a bundle returns each of its files to
-  Unbundled as a fresh one-file bundle — which it was doing for *missing* files
-  too, so the card you deleted came straight back under a new id, in Missing
-  Files, and took a second delete to shift. A missing file has nothing on disk
-  to fall back with, so it now goes with the bundle. Removing a missing file
-  from a bundle drops it the same way, and takes the bundle with it if that was
-  its last file, rather than leaving an empty one to sit in Unbundled.
-
-- **Open in Default App and Reveal in Finder are on every bundle card, whatever
-  format its file is.** Both were absent from a card's menu whenever the web
-  viewer could not stage that card's file — a present file in a format Cairndex
-  cannot show, and every card in the Missing Files view — because the menu read
-  the *playback* path, which the server fills only for a file the viewer can
-  play. Handing a file Cairndex cannot show to an application that can is one of
-  the better reasons to want Finder, so that was exactly backwards; and rows
-  that vanish read as features that were never built, which is how this started
-  (owner, 2026-08-23). ⌘↩ and ⇧↩ resolved a selected bundle through the same
-  field, so they had the same hole.
-
-  A bundle summary now carries the file it stands for **on disk** — its playback
-  cursor, else the source of the cover you are looking at, else its first file —
-  and the menu and the shortcuts read that. Whether Cairndex can play something
-  no longer has any bearing on whether the OS can be handed it. Nothing about
-  playback moved: the `resume_*` fields still describe only what can be played,
-  and the viewer, hover previews and card metadata still read those.
-
-  A file that genuinely is not there still refuses, and now says why instead of
-  disappearing: the shell resolves the path against the real filesystem when the
-  action runs, so a missing file answers that it does not exist at its mapped
-  location, and an unmounted volume asks to be reconnected. That check is
-  deliberately not the library's own `missing` flag — a snapshot from the last
-  scan, which would refuse a file that has since come back.
-
-- **Opening the Random tab is no longer the slowest thing in the app.** A page
-  of the bundle grid summarized one bundle at a time — a query per row, so a
-  100-row page cost 100 extra round trips on top of the two that fetched it.
-  That is the shape this library cannot afford: the owner's library is on an SMB
-  share at ~36 ms a round trip, where **statements are the cost, not
-  milliseconds** (the 2026-08-13 finding, which fixed the grouping code and
-  should have been read as a constraint on the whole read path). Every view paid
-  it, but Random paid it worst: its rows are scattered across the table by
-  design, so not one of those per-row lookups lands on a page an earlier row
-  already warmed, and it is the one view a session cannot arrive at pre-warmed.
-
-  A page now loads its files, watch progress and cursor selections once, so it
-  costs **four statements regardless of how many bundles are on it**. Measured
-  read-only against the owner's library: **56 statements and 145–185 ms → 4
-  statements and 13 ms**, warm; cold, at the 36 ms round trip the share
-  actually charges, the same page goes from roughly 3.7 s of waiting to 0.15 s.
-  Continue Watching had the same per-row load and gets the same fix. A test pins
-  the statement count so it cannot creep back a row at a time.
-
-- **⌘H hides the desktop app.** It did nothing, because the shell builds its
-  whole menu bar from the shared keymap table and that table's App menu had no
-  **Hide** item — and on macOS the Hide item *is* where ⌘H comes from. The App
-  menu now carries the standard trio: Hide Cairndex (⌘H), Hide Others (⌘⌥H) and
-  Show All. Their accelerators belong to the OS rather than the table, so the
-  test that stops an app shortcut shadowing a built-in one knows about them now
-  too.
-
-- **The Justified layout's rows are the size they claim to be, and its last row
-  no longer towers over the rest.** Two faults in one packing rule. It always
-  broke a row *after* the tile that overflowed it, so a wide cover arriving at
-  the end dragged the whole row down — measured at 74–100% of the target height,
-  every row under it, which is why the view read as too small however far the
-  size slider went. It now breaks on whichever side of the target is closer, and
-  measured on the same content lands within 10% of it. And a short last row was
-  allowed 1.3× the target while full rows undershot, so the final row — a single
-  bundle, often — could be nearly twice the height of the row above it. It is
-  now capped at that row's own height, and simply stops short of the right edge
-  the way a justified gallery should.
-
-- **Covers no longer sit in a black frame.** Two separate causes, one per
-  layout. The **Card** layout's cover frame was 1.61:1 — not a shape any camera
-  produces — because its height was whatever remained after the title block, so
-  the frame's real proportions depended on the meta's font metrics and the card's
-  border. It is now exactly **16:9**, declared in CSS rather than arrived at by
-  arithmetic, so a 16:9 cover fills it and only a genuinely different cover
-  letterboxes. The **Justified** layout shaped each tile from the file under the
-  playback cursor, which is the file that *plays*, not the one the cover comes
-  from — those follow different rules, so a chosen cover or an image leading a
-  video bundle put the cover in bars. Tiles now take the shape of their own
-  cover, which the browse response reports as `cover_width`/`cover_height`.
-
-- **A toolbar action no longer sits in the middle of the row.** Random's
-  **Shuffle** button occupied the sort control's slot — for a good reason, since
-  Random has no sort — which put it between the search box and the layout
-  buttons. The residents (filter, search, sort, layout, zoom) are furniture whose
-  positions are worth learning, so an action appearing among them shifts the lot.
-  Actions now sit immediately left of the residents, which is where the File
-  Browser's **Add Files Here** / **New Folder** and Trash's **Empty Trash…**
-  already were.
-
-- **A collection can be renamed again.** The inline rename box existed but
-  nothing ever reopened it: it appeared once, on a row, in the seconds after
-  that collection was created — so a collection named by accident, or named
-  before the right name was obvious, was stuck with it. **Rename Collection** is
-  now on a sidebar row's context menu and on a folder card's in the grid; both
-  open the same box, unfolding the tree to reach it when the row is inside a
-  folded branch. Only for one collection at a time, since renaming is a single
-  name in a single box.
-
-- **Right-clicking no longer leaves a highlighted word behind.** WebKit selects
-  the word under the cursor when a context menu opens — Chromium does not — so in
-  the desktop app every right-click on a card title, a sidebar row or a tag left
-  a stray highlight, sometimes only the fragment of a word the cursor landed in.
-  Nothing ever acted on it: those surfaces replace the native menu, and none of
-  our menus has a Copy item. The selection is now dropped as the menu opens,
-  everywhere in the app at once, and left alone inside a text field, where the
-  caret and any selection are the point.
-
-- **A bundle's note box can be dragged smaller again.** Bringing a tall note
-  down takes several short drags of its grip, and the second one always sprang
-  it back to full height: a drag is also a press and release on the same spot,
-  so two in quick succession are a double-click as far as the browser is
-  concerned — and double-clicking the grip means *fit to text*. The box simply
-  read as un-shrinkable. A double-click now only fits when neither half of it
-  moved the box, which is tracked as gestures rather than elapsed time because
-  the double-click threshold is a system setting no timeout reliably outlasts.
-
-- **The viewer's info panel no longer runs the full height of the window.** Its
-  file list grew one row per file with nothing to stop it, so a bundle with two
-  dozen files buried the metadata above it and covered the whole right side of
-  the picture. The list is now capped at about half the player's height and
-  scrolls inside that cap; the metadata stays where it was.
-
-- **Dismissing the viewer's right-click menu no longer starts the video.** The
-  click that closed the menu also landed on the player underneath, so cancelling
-  a menu began playback — and because the menu opens at the cursor, the click
-  before that one hit the menu itself and appeared to do nothing. The menu now
-  keeps hold of the whole gesture that dismissed it, rather than only the part
-  that arrived before it closed. It behaved in Chrome and misbehaved in the
-  desktop app, which is what a timing-dependent fix looks like from the outside.
-
-- **Placing a grouping suggestion inside an existing collection no longer draws
-  that collection's parent a second time.** Choosing a destination materializes
-  the destination's ancestry as read-only "Existing" rows, and it built that path
-  from scratch every time — so a plan whose own top-level row is a folder called
-  `Archive`, placed into the existing `Archive ▸ Talent`, grew a *second*
-  top-level `Archive` beside the first, and the review appeared to be inventing a
-  hierarchy it was already showing. The path now stops where the plan already
-  speaks for the same collection: the row on screen is adopted as the branch head
-  and pinned to that collection, staying editable — its title, its stem dial and
-  its own placement are untouched — and only the levels below it are added. Apply
-  was never wrong here (an unlinked collection suggestion resolves to the
-  existing collection of the same name under the same parent, so both rows always
-  led to the one collection); the tree was.
-
-  Two smaller consequences of the pin. A row that stands for a collection is now
-  **refused as a destination for itself** — it would have become its own parent,
-  and a self-parented row leaves the tree altogether. And a pinned row keeps the
-  title the owner typed: refreshing the structural snapshot from the live
-  collection tree, which is right for an "Existing" row, would have quietly
-  reverted a rename on an editable one.
-
-- **Narrow and Widen no longer reset the folder they sit on.** The dial re-suggests
-  one folder's grouping, and it did that by replacing every row for that folder —
-  the folder's own row included. So renaming a collection suggestion, placing it
-  inside an existing collection, and then nudging the dial silently undid both:
-  the row came back with the folder's name and the suggester's parent, and the
-  "Existing" path the placement had built was pruned for leading nowhere. The
-  folder's row is kept now, and the re-suggested bundles hang under it. Only what
-  is *inside* the collection is redone, which is all the dial ever claimed to do.
-
-  Two folds of the same rule. A collection *inside* the folder — one the owner made
-  with "convert to collection" from a bundle there — is still grouping, so the dial
-  still redoes it. And a folder the suggester insists is a single bundle, made a
-  collection by hand, keeps that collection: its one re-suggested bundle now goes
-  inside the row instead of beside it, where it used to leave the row childless and
-  delete it — so a control that could not regroup that folder at all was dissolving
-  the conversion.
-
-||||||| parent of 501947ef (fix(viewer): cancelling the right-click menu no longer plays the video)
-- **A GIF export saved from the desktop app no longer fails with a 404.** The
-  finished artifact is fetched through the shell's loopback media relay, the
-  same way a contact sheet is, so that the bearer never has to travel in a URL —
-  but the relay's route allowlist did not name it, so the shell answered its own
-  404 before the request ever reached the server. Exactly the failure contact
-  sheets shipped with in 2026-07, repeated by a route added since. The web app
-  was unaffected, which is why it went unnoticed. Only the download is relayed;
-  create, poll, and delete carry their own auth, and the relay still refuses
-  anything but GET and HEAD.
-
-- **A playback session that died no longer surrenders to the unplayable card.**
-  When a session's segments stop resolving — the ordinary consequence of it
-  being reaped after a long pause — the client is supposed to request a fresh
-  decision and carry on. It stopped doing so in 2026-07, when failures began
-  being classified by the element's `MediaError` so that a file the browser
-  genuinely cannot decode would skip the retry budget. The two collided: an HLS
-  element reports `MEDIA_ERR_SRC_NOT_SUPPORTED` for a segment that 404s just as
-  it does for a codec it refuses, so a dead session was read as a bad file and
-  went straight to the card. An HLS failure now goes to the bounded re-attach
-  budget first, and only the engine — which alone saw whether hls.js called the
-  fatal a media error or a network one — can refuse outright. Direct playback is
-  untouched, which is the case that classification was written for.
-
-- **A video the browser cannot decode is now converted instead of refused.** The
-  playback decision compared the source's container and codec *family* against
-  what the client advertised, and nothing else — so a 10-bit source passed,
-  because every capability probe string a browser answers (`avc1.640028`,
-  `hvc1.1.6.L93.B0`) describes an 8-bit profile. High 10 H.264 is the worst
-  case: no browser decodes it at all, and it arrived on the direct path and
-  failed with "This video can't be played here." Colour depth and Dolby Vision
-  now take part in the decision, clients advertise the depths they separately
-  confirmed, and a source that fails either is transcoded — which is what the
-  server was there to do. A client that does confirm 10-bit still plays it
-  directly, and a 10-bit file in the wrong container still only pays for a
-  remux.
-- **Playback no longer waits for the metadata job to have run.** The decision
-  reads codec, depth and duration off the file's row, and with none of them
-  present it had to guess "play it directly" — so a freshly scanned library
-  handed every file straight to the browser, and anything the browser could not
-  decode failed until the owner found **Collect metadata**. A file whose
-  metadata is missing or from an older probe is now probed on the way to the
-  decision: one file, bounded, written back, and silent if it fails.
-- **The File Browser can play a library that was never scanned.** A path with no
-  index row skipped the decision entirely and fell through to a native read, so
-  file-browser-only use could show only what the browser itself decodes. A bare
-  path now gets the same decision and the same remux/transcode sessions, with an
-  on-demand probe standing in for stored metadata. What still needs a row stays
-  absent for an unindexed path: subtitles, storyboards, resume, and cover frames.
-- **A contact sheet cut from the File Browser prints its real dimensions.** The
-  listing carried codecs and duration but not width, height or frame rate, so
-  the sheet's Details row read `— / —` where the same file cut from the Bundle
-  Browser read the real numbers. The listing now carries all three (and colour
-  depth, so hover preview judges direct playability the way the server does).
-- **HEVC files tagged `hev1` now play directly instead of being converted.** The
-  two HEVC tags differ only in where the stream's parameter sets are allowed to
-  live, and Safari — so the desktop app — plays only `hvc1`. That single refusal
-  was why such a file needed a server-side conversion at all, and everything that
-  followed from one: an ffmpeg process, a session that could expire, the pauses
-  and stalls when it did. The five bytes of header that distinguish the two tags
-  are now rewritten as the file streams, which is byte-for-byte what the
-  conversion produced — so the file plays directly, immediately, with nothing
-  running on the server. A file whose parameter sets are *not* provably complete
-  in its header is left alone and converted as before, because relabelling that
-  one would break playback partway through.
-- **A video left open no longer has its playback session deleted underneath it.**
-  The server reaps a session with no playlist or segment fetch for 60 seconds —
-  and a *paused* video fetches nothing, so leaving the viewer open was enough to
-  lose it. Seeking past the buffered region then found a hole, and with the
-  playlist gone too the player ended the stream and reported the duration as
-  whatever had been buffered: 18:31 for a 68-minute video, with the controls
-  dead. A held session is now kept warm for as long as the player holds it, and
-  a touch that comes back "no such session" establishes a fresh one at the live
-  playhead instead of waiting for playback to trip over the gap.
-- **The info panel says how the video is actually playing.** A **Playback** row
-  now reads Direct play, Remuxing or Transcoding, tags the latter two with an
-  `HLS session` badge, and prints the server's own reason for choosing it
-  underneath — "hevc video codec is not in client capabilities", say. The server
-  had always decided this and always explained itself; none of it reached the
-  screen, so the difference between a file streaming untouched and one burning an
-  ffmpeg process behind it was invisible. That gap mattered more once `hev1` HEVC
-  began playing directly, because the files that used to need a session mostly
-  stopped needing one. To exercise the other path deliberately, pick a quality
-  below the source's own height from the player's settings menu — the row flips
-  to Transcoding while you watch.
-- **A refused HEVC relabel now says why, in the Playback row.** "hev1 codec tag
-  is not in client capabilities" was true and useless: it did not distinguish a
-  file whose header cannot be relabelled from a client that would not take the
-  result anyway, and both fell back to a session in silence. The reason now names
-  which — "this client plays no HEVC tag progressively", or "its header carries
-  no VPS, so the decoder needs them in-band". A third case is called out
-  explicitly rather than left silent: a file whose container header disagrees
-  with its probed codec tag, which is a defect here rather than a property of the
-  file.
-- **A clip range whose end sits on the file's own end now behaves.** Marking an
-  in-point late in a video slides the span so its out-point lands on the
-  duration — and from there the media ended itself before the range could act, so
-  Loop never came round, the playhead parked at the far right, the viewer stepped
-  on to the next file, and the next press of play restarted the whole video with
-  the marked span silently ignored. `pause` and `ended` have distinct owners now:
-  the pause the media performs at its own end belongs to the range, Loop comes
-  round from it, and a non-looping span parks at the in-point so the next press
-  replays the span.
-- **A video that quietly stops now says so instead of freezing.** The load
-  watchdog stops caring once metadata arrives, and after that the only thing
-  that reaches the failure path is the media element's own `error` event — which
-  a progressive read that simply dies never fires. The result was the last frame
-  on screen with a live control bar, no message, no retry, and nothing being
-  requested: play and seek appeared to do nothing at all. A stalled read is
-  detected now and ends in the ordinary "Playback interrupted / Try again" card.
-  It watches progressive sources only, counts bytes landing in *any* buffered
-  range as progress, and ignores a gap left by a sleeping machine — each of
-  which would otherwise interrupt playback that was actually fine. It shows the
-  card straight away rather than reloading first: a stalled read is already dead,
-  and reloading it churned the control bar through `3:32 / 0:00` three times
-  before saying anything, which read as a worse freeze than the silence.
-- **A failed recovery no longer swallows every error after it.** The flag that
-  suppresses the burst of errors around one reload was cleared only when a new
-  source arrived, and two of the ways a retry can end don't produce one — so
-  after a single failed recovery the player would ignore every later failure,
-  leaving a frozen frame with no card and no way back short of reopening the
-  video.
-- **The desktop app can play a File Browser video that needs converting.** The
-  shell's media relay allowlists routes explicitly, and the path-scoped playback
-  sessions added in the previous entry were not on the list, so it answered its
-  own 404 before the server ever saw the request — working in a browser and
-  failing in the app.
-- **An unbundled video in the viewer shows its own details, not a bundle's.** A
-  scan stages every new file into a provisional one-file bundle, so an unbundled
-  file has a `bundle_id` like any other — and the viewer's docked pane took that
-  as licence to show the Bundle Inspector, stating that the file was in a bundle
-  when it was not. Only a *confirmed* bundle gets the bundle pane now; an
-  unbundled file, and a File Browser path that was never indexed, get the file
-  inspector instead. The toggle is named for whichever it will open, and it is
-  no longer disabled for an unindexed path — that path has details too. The file
-  inspector also reads real dimensions and frame rate for a File Browser row now
-  that the listing carries them.
-- **Two playback-position writes landing together no longer fail one of them.**
-  The player saves progress periodically *and* on completion, which on a short
-  file arrive at once — and the write was read-then-insert, so both found no row,
-  both inserted, and the second hit the primary key and returned a 500. It is
-  one `ON CONFLICT DO UPDATE` statement now, so whichever arrives second updates.
-  Last-write-wins is unchanged.
-- **A snapshot's filename no longer mangles the source's extension into its
-  stem.** `clip.mp4` produced `clip_mp4.png`; it now produces `clip.png`,
-  matching how GIF exports are named.
-- **A collection's count now says what opening it will show.** The badge counted
-  everything in the collection's whole subtree while the grid beside it listed only
-  that collection's own bundles, so a parent read `1` next to an empty grid whenever
-  its one bundle sat in a child — and moving a bundle from a parent into its own
-  child left the parent's number motionless while the grid lost a card, which read
-  as a count that refused to update. The badge now follows the grid: a collection's
-  own bundles, or the subtree total when **Show subcollection contents** is on.
-  Both figures come from the same request, so the toggle costs no round trip, and
-  the collection inspector still shows the two side by side as it always did.
-- **A drop that lands quickly after it starts no longer does nothing.** Dropping
-  bundles on a collection re-read the dragged ids from React state, which a fast
-  drag outruns — the app keeps a synchronous copy for exactly this reason and every
-  other part of the drop path already used it. When the two disagreed the write was
-  never sent at all: no card moved, no count changed, and nothing later corrected it
-  because nothing had happened.
-- **Holding ⌥ while dropping bundles on a collection copies them instead of
-  moving them.** It was meant to already, and mostly moved. The app read the
-  modifier off the drop event's `altKey`, which a native macOS drag does not
-  reliably deliver: the window server owns the keyboard for the duration, and
-  whether the flag reaches the page depends on the browser engine — Chrome passes
-  it through, the desktop shell's WKWebView does not. That is a limit on web
-  content, not on macOS; every native app tracks ⌥ mid-drag by reading the
-  system's own event state. So the desktop shell now reads it the same way and the
-  app asks the shell for the duration of each drag (ADR-0023), which is what makes
-  ⌥ work mid-drag there at all. The browser build keeps using the drag events'
-  own flags, and both fall back to the modifier state at `dragstart` — read before
-  the drag takes the keyboard — so holding ⌥ *before* starting a drag works with
-  no host at all. The default is move: a wrong move is one undo, while a wrong
-  copy quietly duplicates membership. The cursor's copy badge follows the same
-  answer, so it can no longer promise a copy the drop won't perform.
-- **A collection opened after a drop shows what is in it, not what was.** Dropping
-  bundles on a collection rewrote the cached listings it could work out and marked
-  the rest stale — but a stale listing is still served the instant its view opens,
-  refetching behind it, so any listing the rewrite quietly skipped showed its
-  pre-drop contents while the count beside it had already moved. Listings the
-  rewrite cannot prove — one carrying a filter or a search, an arrival with no
-  cached card to draw, a drag whose memberships had not loaded yet, and
-  Uncategorized or Untagged — are now dropped instead, so the next open fetches
-  them. The grid on screen still refetches in place rather than blanking. A browse
-  fetch already in flight when the drop lands is also cancelled: it used to answer
-  afterwards with the pre-drop page, overwrite the rewrite, and take the reconciling
-  refetch down with it as a duplicate request.
-- **A sidebar count no longer includes bundles the listing beside it hides.** Both
-  the per-collection and per-tag counts totted up membership rows without asking
-  what was on the other end, so an unbundled file — which belongs to the Unbundled
-  view and no other — was counted against every collection and tag it was filed
-  into. Opening that collection showed one fewer than its own badge claimed. A tag
-  carried only by unbundled files now reports 0 rather than dropping out of the
-  picker.
-- **Accepting a selection keeps the review open on what is left.** Reviewing a long
-  plan happens in batches, and every accept used to end the dialog, so carrying on
-  meant reopening it. Accepting now confirms the chosen bundles and immediately
-  suggests again for whatever is still unbundled, saying what it accepted and how
-  much is left. The rows the owner skipped stay skipped — a second accept must not
-  be one click away from confirming exactly what was just declined. A conflict, or
-  nothing left to suggest, still ends the review with its summary.
-- **A folder states its destination once instead of on every row beneath it.** The
-  placement pill repeated the same answer as many times as the folder had
-  suggestions. Rows inside a folder now fade theirs out at rest and show it on
-  hover or focus — faded rather than dropped, because it is the keyboard path for
-  moving a single row out of its folder.
-- **Superseded grouping plans are deleted rather than kept forever.** They were
-  marked and never removed, accumulating one per regeneration with a full set of
-  proposal and file rows each — 116 of them holding 5,455 rows for a 412-file
-  library. Applied plans stay, since they record what was applied.
-- **A folder holding thousands of releases no longer groups in quadratic time.**
-  Sidecars were matched by scanning every candidate bundle for every sidecar, with
-  a nested scan over each bundle's stems inside that — so one folder of 1,600
-  subjects spent 10.2 million string comparisons and 4.3 seconds, and a folder of
-  several thousand took minutes. Every group is keyed by exactly one stem, so
-  matching is now a dictionary lookup per sidecar plus one per prefix of its own
-  name: 1,600 subjects in 73 ms instead of 1,671, and growth is linear. Narrow and
-  Widen re-run the whole suggester, so they carried the same cost per click.
-- **The grouping phase of a scan reports what it is doing.** It was a single
-  opaque call, so on a large library the progress bar animated for a long time
-  under one unchanging label, which reads as a hang. Matching filenames and
-  writing the suggestions are now separate steps, and the second counts its rows.
-- **Accepting a selection no longer throws the plan away and builds a new one.**
-  A partial accept used to close the plan, so carrying on meant generating a fresh
-  one: two sequential round trips per accept — 942 ms then 851 ms on the owner's
-  library — returning an entirely new set of proposal ids. Fold state is keyed on
-  those ids, so every collapsed folder reset and the tree jumped under the cursor.
-
-  A plan now closes when it has nothing left to review rather than when part of it
-  was accepted. Accepting retires the rows it confirmed, plus any collection left
-  holding nothing, and leaves the rest exactly where they were. One request instead
-  of two (**1,793 ms → ~750 ms**), the surviving rows keep their ids, and nothing
-  re-folds. Applying the *whole* plan is unchanged, including its documented
-  idempotency.
-
-- **A collapsed run's "Show all N" no longer floats off on its own.** It was pushed
-  right with `margin-left: auto` in a row that wraps, and an auto margin on a
-  wrapped flex item pins it to the right of an otherwise empty line — so once a row
-  above it changed height the button appeared detached from every row. It now flows
-  after the run's summary text and stays with its row at any width.
-- **Converting a bundle into a collection forgets that folder's stem level.** The
-  split it performs is per video subject, not by the dial's stem key — deliberately,
-  since a dial wide enough to merge everything would otherwise make "convert to
-  collection" produce a collection of one. But the dial was left reading its widest
-  beside rows the widest would never have produced: a folder split in two under a
-  setting saying those two match. The override is dropped, so the dial reads the
-  default that the split actually corresponds to, and Narrow/Widen still work from
-  there.
-- **Widening a folder no longer dissolves its collection.** Once a folder's files
-  all matched, the suggester collapsed the folder into a single bundle named after
-  the folder. That did three wrong things at once: it destroyed a collection the
-  owner wanted to keep, it duplicated the convert control that dissolves one
-  deliberately, and it left the dial at its widest on a row that was no longer a
-  folder — so converting back stranded the setting. Widening now keeps the folder
-  as a collection and puts the matched files in one bundle *inside* it, named by the
-  stem that matched them. Collapsing a folder into a bundle remains available as
-  what it always was: the explicit convert control.
-
-  The collapse is still right when the *suggester* finds a single group — no
-  collection wrapper around one bundle — so the rule is now "a bundle takes its
-  folder's name only if the owner did not widen it there".
-
-- **The stem dial says what it is matching on, and its buttons stop moving.**
-  `Narrow`/`Widen` sat beside a "stem 2 of 3" label and a `Reset` button that only
-  appeared away from the default; the row is right-aligned, so the label's width
-  changed with its numbers and `Reset` appearing slid both buttons sideways —
-  under a cursor about to click one of them. The label and `Reset` are gone, leaving
-  two fixed-width buttons that cannot move. `Narrow` walks back to the default.
-
-  The label also said nothing: the top of the dial depends on the folder's own
-  filenames — 2 to 15 across one real library — so "of 3" was an ordinal with no
-  readable meaning. A plan now reports, per folder, the **stem it is actually
-  matching on**, sliced out of one of that folder's filenames so the separators are
-  the ones on disk (`STUDIO-025`, not the comparison key's `studio 025`). Adjusting
-  a folder now says so: *"Genre/Studio now matches on names like “STUDIO-025” — 12
-  bundles."*
-
-- **Grouping plans moved out of the library, onto the server's own disk**
-  (ADR-0022). A plan is a snapshot of a suggestion run — regenerable from the
-  library at any moment, and by far its heaviest writer: ~1,100 rows rewritten
-  whenever the input changes, and touched again on every rename, reparent, convert,
-  Narrow and Widen. Sending that across a network share was the wrong shape of
-  problem to keep optimizing. The three tables are now a SQLite database under the
-  data directory, attached to every library connection as schema `plans`, so a
-  query can still join a plan to the library rows it describes.
-
-  | | before | after |
-  | --- | --- | --- |
-  | write a 340-proposal plan | 4,614 ms | **78 ms** |
-  | prune superseded plans | 1,431 ms | **12 ms** |
-  | one Narrow/Widen | ~1,000 ms | **66 ms** |
-
-  The file lives beside `registry.db` — `~/Library/Application Support/dev.cairndex.app/local-server/plans/`
-  in the packaged desktop app, `/data/plans/` under Docker, `apps/server/var/plans/`
-  in development. **A plan lasts as long as the server that made it:** the directory
-  is cleared at startup, so restarting means pressing Update again. That is a
-  deliberate trade for simplicity — the file is keyed on a path, so it is orphaned by
-  a moved library and by a symlinked mount that was offline when its digest was
-  computed, not only by deregistration, and clearing wholesale collects all of it
-  without a sweep or a grace period. What it costs is a review in progress across a
-  restart. Deregistering a library still leaves its plans alone, so remove-and-re-add
-  stays reversible within a run.
-
-  A library upgrading hands its plans over on first open — copied out, then the
-  in-library tables dropped, in that order and inside a savepoint, so an
-  interruption leaves them where they were. A plan no longer travels with its
-  library: carry the library elsewhere and Update writes a fresh one.
-
-- **Superseded plans are actually pruned now.** Two bounds sized for the old cost
-  had between them stopped the backlog draining: pruning ran only when a scan wrote
-  a *new* plan — so the steady state, Update finding nothing changed and keeping the
-  open plan, never pruned at all — and it deleted at most four per run. The owner's
-  library had 135 plans holding 5.6 MB. Pruning now runs on every Update, and 135
-  became 20 (the rest are applied plans, kept deliberately) inside a 2.7 s Update.
-- **A scan walks the library once, in parallel, instead of twice in sequence.**
-  Two things made discovery cost more than the whole rest of the scan on a library
-  over a network share. It walked the entire tree a second time purely to count
-  files for the progress bar — now the rows already present are the estimate, and a
-  first scan says "unknown" and reports its running count rather than inventing a
-  total. And each directory listing waited for the one before it, though those are
-  round trips rather than work: sixteen at a time, with each file's `stat` taken by
-  the worker that listed it, took the owner's scan from 7.1 s to 2.6 s and its walk
-  from 6.3 s to 1.3 s.
-- **Writing a grouping plan to a library on a network share went from over ten
-  minutes to under five seconds.** Two causes, both invisible on local disk:
-
-  SQLite's page cache defaults to 2 MiB, which is smaller than a modestly used
-  library database. `grouping_proposals.parent_proposal_id` references its own
-  table, so with foreign keys enforced SQLite seeks the primary-key index once per
-  inserted row — while the inserts themselves evict exactly those index pages. Each
-  re-read is then a network round trip. Raising the per-connection ceiling to
-  32 MiB (a ceiling, not an allocation — SQLite grows it lazily) took that insert
-  from over ten minutes to 5.2 s.
-
-  And none of the grouping foreign keys had an index on the child column, so every
-  `ON DELETE` cascade was a full table scan per deleted row. Indexing the three of
-  them took the insert to 236 ms and pruning four superseded plans from 6.4 s to
-  1.4 s. A test now binds every grouping foreign key to an index, so a later one
-  added without cannot pass unnoticed.
-
-  Both are general: they make every write to a network-hosted library faster, not
-  just plans.
-
-- **Update no longer rewrites a plan that would come out identical.** A plan is a
-  snapshot of suggestions over the files not yet in a confirmed bundle; if nothing
-  in the library has been touched since it was written, regenerating produces the
-  same few hundred rows and supersedes the plan the owner was working through. On a
-  library whose database sits on a network share that rewrite measured **seven
-  minutes, every press of Update** — the cost is journaled page writes, not
-  statement count. Now the open plan is kept, which also means selections and edits
-  survive an Update. The test is "was anything modified since", not the scan's own
-  summary: `ScanSummary.updated` counts every row *examined*, so it is non-zero for
-  any library with files in it, and a timestamp also catches a bundle deleted or
-  fast-added through the UI between scans.
-- **A first scan no longer inserts one row at a time.** Every new file cost two
-  INSERT round trips — `session.add(bundle); session.flush()` inside the loop, just
-  so the file could learn its bundle's id, which is knowable before the insert.
-  1,803 statements for 900 files became 5.
-- **Superseded plans are pruned a few per run rather than all at once.** The delete
-  cascades through proposals and their file rows, so clearing a long backlog in one
-  go is itself minutes of writes on a network share. The backlog drains over the
-  next few generations instead.
-- **Suggesting a grouping no longer writes the plan one row at a time.** The plan
-  was persisted with a flush inside its loop, purely to learn the id it was about
-  to need for that row's files — but ids are ULIDs from a plain Python callable,
-  so they are known before the insert. And because each row's files were linked by
-  foreign key rather than through the relationship, serializing the response then
-  fetched every row's files back in its own query. Between them that was 10,400
-  SQL statements for a 3,600-suggestion plan; it is now four batched inserts and a
-  handful of reads, and the plan appears in 1.6s instead of 4.2s. The same
-  per-row flush is gone from the bundle↔collection conversion and the
-  Narrow/Widen splice.
-- **Editing a large grouping plan is no longer measured in seconds.** On a
-  library of ~20,000 files a conversion took over ten seconds. Two independent
-  causes. On the client, folding a collection or closing a file list *hid* the
-  rows rather than unmounting them, so every render of the plan still built and
-  reconciled them — with file lists closed by default that was every file in the
-  plan, a third of ~94,000 DOM nodes at 2,800 suggestions; folding now unmounts,
-  and a plan longer than 400 suggestions opens folded, which is how one is read
-  anyway. On the server, every mutation read the whole plan twice because the
-  open-plan check went through the eager loader that exists for serializing a
-  response, and merging a collection then fetched each descendant's files in its
-  own query. Measured on a synthetic 2,700-suggestion plan: opening 2.2s → 0.75s,
-  a conversion 5.0s → 0.8s on the client, and 0.4s → 0.1s on the server.
-- **An identically named video and cover no longer lose their name's last
-  segment.** `_shared_stem_title` trimmed at the last delimiter even when every
-  filename *was* the shared part, so a pair like `A - B - 4K.mp4` / `A - B - 4K.jpg`
-  would have been titled "A - B". Latent until sidecars joined the comparison.
-- **A library created before the latest grouping columns opens again.**
-  `grouping_proposals.is_collection_context` reached the model and the startup
-  backfill but never the additive-column list, so an existing library never
-  gained it and the first proposal insert after a scan failed with
-  "table grouping_proposals has no column named is_collection_context". A new
-  test binds the model to that list and fails for any future column added to one
-  and not the other.
-- **A popover left open no longer desynchronises a checkbox from what will be
-  applied.** Dismissing a picker stopped the click reaching React but not the
-  browser, so on a controlled input the DOM toggled while application state did
-  not: a grouping row could untick itself while staying selected, and Accept
-  then confirmed a bundle the owner had watched themselves skip. The dismissing
-  click is now fully swallowed, and a keyboard-activated one closes the popover
-  instead of being ignored — before, any popover opened by keyboard swallowed
-  every subsequent click in its dialog until Escape.
-- **The grouping review's Cmd/Ctrl+Enter now applies only when Accept would.**
-  It reproduced none of the button's conditions, so it applied a plan
-  mid-rename, with nothing selected, on an already-applied plan, and again on
-  key auto-repeat while the first apply was still in flight.
-- **Folder actions no longer appear on a read-only existing-collection row**, and
-  a stem mode this build does not recognise now offers no folder actions at all
-  rather than a "Merge" that splits.
-- **Narrowing the review to uncertain suggestions no longer changes what a
-  collection checkbox does.** It displayed whole-subtree state while toggling
-  only the visible rows, so it oscillated between checked and mixed, never
-  reached unchecked, and silently moved hidden rows' selection. The filter also
-  falls back to the whole plan once nothing is flagged, instead of leaving a
-  blank list under a tab that was both pressed and disabled.
-- **A rolled-up run keeps its folder's actions, can be folded back, and is a
-  drop target during a file drag.** It previously hid the Split/Merge pair for
-  exactly the over-fragmented folder that needed them, could be expanded but
-  never re-collapsed, and rendered no rows at all mid-drag. Its expansion also
-  survives an in-place re-suggestion now, because runs are keyed by content
-  rather than by ids that regeneration reissues.
-- **The grouping review's row menu is operable by keyboard**, with focus moving
-  into it on open, arrows between items, and focus returning to the trigger on
-  close; arrow navigation no longer stops when focus lands on a row control; and
-  Collapse all is disabled on a plan with no collections rather than enabled and
-  inert.
-
-- **Nested grouping suggestions now apply to the intended collection path.**
-  Collection rows are tri-state bulk selectors rather than accepted work, so an
-  individually selected inner bundle carries its full ancestor path without
-  selecting sibling bundles. Existing collection context is labeled, read-only,
-  and resolved by stable id; if it disappeared or moved, apply reports a conflict
-  instead of creating a duplicate at the top level. New bundles and collection
-  suggestions can be placed explicitly with a keyboard-accessible selector or
-  drag-and-drop, including back to the top level. The selector now lists only
-  collections already persisted in the current library; speculative collection
-  suggestions remain editable in the review tree but are never presented as
-  settled destinations.
-- **Clicking elsewhere in the Bundle Inspector now leaves the active note.**
-  The desktop webview could keep a note textarea focused when a pointer press
-  landed on non-interactive inspector content. The inspector now blurs that
-  editor explicitly, which removes its text selection and commits the latest
-  note through the existing blur-save path.
-- **A bundle converted into a collection could fail when immediately accepted.**
-  The conversion response could expose its new child proposal IDs before the
-  request-finalizer commit made them visible to the next database session, and
-  its ORM snapshot could reuse the pre-conversion proposal list. Conversion now
-  commits and reloads the complete plan before responding; applying also commits
-  before the client refreshes bundle and collection views.
-- **Large storyboard runs no longer fail partway through with “Cannot operate on
-  a closed database.”** The library pass held a streaming SQLite result open
-  while each file could spend minutes in ffmpeg and each progress checkpoint
-  committed the same session. Candidate rows are now fully buffered in bounded,
-  keyset-paged batches, so no database cursor crosses an ffmpeg or checkpoint
-  boundary.
-- **Grouping suggestions no longer wait behind media metadata collection.** The
-  scan job had already generated and persisted its plan, but Update withheld the
-  review until every file finished ffprobe. Review now opens as soon as scan
-  completes while metadata continues in the sidebar job area. Storyboards remain
-  chained after a successful probe because they need duration metadata; a probe
-  failure leaves grouping usable and does not start an ineligible storyboard
-  pass.
-- **Desktop Add Library no longer turns a successful registration into an
-  apparent failure when the library list cannot refresh.** The confirmation now
-  remains visible with an explicit “library was added” result, the committed Add
-  action is replaced by Retry refresh, and a successful retry shows the new
-  library without registering it again. A failed initial library-list request
-  is reported as a load error with its own retry instead of “No libraries yet.”
-  The active desktop API base also survives Vite hot-module replacement, so a
-  development refresh continues to target the local sidecar or selected remote
-  server instead of falling through Vite’s port-8000 proxy.
-- **The Trash listing no longer waits on a recursive SMB filesystem walk.**
-  Loading Trash previously statted every displayed entry and then walked and
-  statted the entire trash tree again before returning any rows. File sizes are
-  now captured in the operation journal and older linked entries use database
-  metadata, so the listing itself performs no trash-filesystem reads. An exact
-  total is omitted for legacy or directory deletions whose size was never
-  recorded rather than delaying the screen or understating permanent deletion.
-- **Moving a Bundle Inspector file to Trash now removes its row immediately.**
-  The UI previously waited for the journaled move to finish and then for a
-  second bundle-file request, exposing the full latency of a network-mounted
-  library. Active bundle-file caches now update optimistically while the same
-  recoverable server operation runs, and roll back if that operation fails.
-- **Bundle Inspector file rows now offer Move to Trash in write mode.** The
-  bundle album already exposed the journaled, recoverable deletion, but the
-  same file's inspector menu omitted it. The write-gated action now travels
-  through the shared inspector action context, so it is available in both the
-  shell rail and the inspector docked beside the media viewer, and absent when
-  write mode is off. A trashed member now immediately leaves the bundle’s file
-  list, cover fallback and playback playlist; its hidden relationship remains
-  intact so Put Back restores that same file to the same bundle.
-- **A job whose server stopped mid-run stayed "running" forever.** Restarting
-  the server — or a dev-mode reload — left the row in the sidebar as work in
-  progress that had died an hour earlier, and it could not be dismissed:
-  cancelling it did nothing because nothing was alive to notice, and it did not
-  even stop a re-run from queueing a second copy. Those rows are now closed out
-  as interrupted when the server starts, which is the moment it is knowable.
-  Re-running is safe and cheap — every library-wide job skips work that is
-  already current.
-- **Waiting looked exactly like working.** A queued job rendered the same moving
-  bar as a running one, so pressing Update twice gave two identical rows with no
-  way to tell which was live. A queued job now says it is waiting, with a still
-  bar; a job that has been asked to stop says that instead.
-- **Cancelling a queued job left it queued.** It was flagged and then started
-  anyway when a worker got to it. It ends immediately instead — nothing was
-  running it to notice the flag.
-- **An interrupted storyboard pass left its scratch directory behind.** Cleanup
-  ran on the failure path, and a stop is not a failure, so every killed run
-  leaked one. Cleanup moved to where it always happens, and a library pass now
-  sweeps whatever earlier interruptions left.
-- **A cancelled job stayed on screen until the page was refreshed**, reading as
-  though the stop had not taken. The server had already dropped it; the app was
-  holding the last snapshot on purpose, which is right for a *failure* — nobody
-  asked for it, and that row carries the only account of it — and wrong for a
-  stop someone requested. Failures still stay.
-- **A maintenance error was reported at the top of the sidebar**, under the
-  button that started the work, while the job it referred to was reported at the
-  bottom with the transfer indicator. It now sits with the job rows: the message
-  outlives the button, since a storyboard pass reports long after Update says it
-  is done.
-- **The Bundle Inspector docked beside a playing file is the shell's own.** It
-  was already the same component, and behaved like a different pane: a narrower
-  fixed width, its own border and background, a shorter right-click menu, and
-  tag edits that finished with no sign they had. It was not forked but starved —
-  the shell passed eleven handlers, the viewer passed a bundle id, so every
-  action gated on one of them had nothing to render from. Those handlers are no
-  longer props restated at two call sites; they are one object the shell
-  provides and the inspector reads wherever it appears, so an action added later
-  reaches both surfaces at once. The rail also takes its width from the same
-  variable as the shell's, so resizing one resizes both. Four actions genuinely
-  mean something different inside an open viewer and are resolved rather than
-  dropped: Play steps within the playlist instead of stacking a second viewer;
-  Locate, Add files and Filter by tag close the viewer first, because they take
-  you somewhere in the shell; and transient messages route to the viewer's own
-  notice anchor, which sits above it. Right-clicking inside the rail no longer
-  opens the playback menu on top of the menu you asked for. When the rail is
-  open, the viewer's three top-right buttons now stay inset on the media side
-  instead of sitting over the inspector.
-- **A bundle filed into a collection is there when you open it.** The count
-  moved immediately and the contents did not: opening the collection rendered
-  its cached listing — without the bundle — until a refetch came back, so the
-  number beside the name disagreed with what was under it, and a collection that
-  had been empty showed nothing at all. Only collections you had already visited
-  were affected, which is why it looked intermittent. The optimistic projection
-  already pulled moved bundles out of the listings they left; it now also puts
-  them into the ones they join, following the same subtree rule as the counts —
-  a listing showing subcollection contents gains a bundle filed into a child,
-  the same collection showing only its own does not. Filtered and searched
-  listings are left to the refetch rather than guessed at. The collection
-  picker's checkbox now projects the same way a drop does.
-- **Collection covers appear when there is one, and change when it does.** Two
-  faults, both ending in a folder glyph. The card remembered a failed cover
-  image forever, so the 404 every collection answers before its thumbnail exists
-  — or while it has no bundles — pinned the glyph in place through bundles being
-  filed in and through a cover being chosen. And the server never changed the
-  URL: a collection's auto-picked cover is derived from its membership, but
-  filing a bundle in touched no collection row, so the cache key stayed
-  identical and the browser kept serving what it had. Both sides of a move, and
-  their parent collections, now get a fresh key.
-- **Collection cover art fills the folder card.** The cover slot could collapse
-  to the height of the metadata footer even while the card stayed wide, leaving
-  only a shallow strip of artwork. Its width is now explicit and it cannot
-  flex-shrink, so the 16:10 cover frame stays visible at the card's full width.
-- **Empty bundle notes start at one line.** The note editor now begins with a
-  single-row box instead of the browser's default multi-row textarea. Its CSS
-  minimum is 34 px rather than the former 44 px, with one line's padding; the
-  existing auto-grow still expands the box when the text wraps or overflows.
-  The earlier saved height preference is reset, so notes already held open by a
-  stale fixed size adopt the compact default too; new explicit resizes persist.
-  Stacked note boxes now sit 4 px apart instead of 6 px.
-- **Collection pills in the Bundle Inspector now open their collection.** The
-  name side navigates to that collection without changing bundle membership;
-  the × remains a separate removal action. From the docked player inspector,
-  navigation closes the viewer first so the destination is visible.
-- **The bundled desktop no longer strands its first library queries or mounts
-  an unavailable library.** Cold starts hold at registry-availability and
-  ownership checks, then mount the workspace once.
-  The Tauri development root also skips React StrictMode replay: TanStack Query
-  correctly aborted the replayed first request burst, but WKWebView could strand
-  its immediate replacements at “Loading library…” until navigation issued a
-  fresh query. Browser development stays under StrictMode, so the shared
-  frontend keeps those checks without making `just bundled` unreliable. If a
-  remembered library is offline, the app now opens another available library;
-  if none is available, it shows Retry and Manage Libraries without issuing
-  ownership, authorization, or content requests against the offline row. A
-  foreground-only five-second probe also recovers automatically when its drive
-  or network share returns, and the recovery screen does not expose the raw
-  registry id or path.
-- **Stopping `just dev` no longer strands a library ownership lease.** Its
-  Ctrl-C trap killed the whole process group, including Uvicorn's reloader and
-  worker at once, so FastAPI did not always reach the lifespan shutdown that
-  marks mounted libraries released. The next bundled desktop then treated the
-  dead source server as a fresh foreign owner, waited five minutes for the lease
-  to become stale, and still required the normal confirmed takeover. The recipe
-  now signals only its two direct children and waits for Uvicorn to release the
-  lease before returning; a scratch-library smoke test covers the full command.
-- **Files now locate their counterpart in either browser.** Selecting a file
-  inside an open bundle offers **Locate in File Browser**, which opens its
-  physical directory and highlights it. Selecting an indexed, bundled file in
-  File Browser offers **Locate in Bundle Browser** in both its inspector and
-  right-click menu, which opens its one owning bundle. Both are ordinary
-  Cairndex navigation and work in the web build;
-  **Open in Default App** and **Reveal in Finder** remain desktop-only. The File
-  Browser menu starts with its desktop Open/Reveal section, followed by write
-  actions when enabled, and finishes with separate **Copy Path** and
-  **Save Contact Sheet…** sections when that video export is available. The
-  matching in-bundle file menu now follows the same native, write,
-  bundle-navigation, and export grouping.
-- **Setting a cover frame for a video no longer re-covers the whole bundle.**
-  Choosing a nicer frame for one video also made that video represent the
-  bundle. Which member speaks for the bundle stays the separate, explicit choice
-  it already had an affordance for — the star beside each row in the inspector's
-  file list. The two compose: set a frame, then star the file. The viewer's menu
-  now says "Set Frame as Video Cover". Its cover actions lead their section, and
-  the redundant Frame Back/Forward context-menu rows are gone.
-- **Collection counts now move with the drop.** Dragging a bundle into a
-  collection left every number beside the collections on its old value until a
-  refetch came back — plainly visible on a library whose database lives on a
-  network share. The counts are now worked out on the spot from the collection
-  tree the app already holds: the collections counting a bundle are each of its
-  memberships plus every ancestor, so filing into a subcollection raises the
-  child and its parents while a move between a parent and its own child leaves
-  the shared ancestors alone — the case a naive ±1 would have got wrong, and the
-  reason this was left waiting for the server. The same applies to the collection
-  picker, to Uncategorized and Untagged, and to tag counts in the tag picker. The
-  server's answer still reconciles it, and a rejected write puts every number
-  back.
-- **Nesting one collection inside another left the counts on the old tree.**
-  Dropping a collection into another changes what every collection above it — on
-  both sides of the move — counts, and nothing was refreshing those numbers, so
-  they sat wrong until something unrelated happened to refetch them.
-- **The collection inspector's own figures never refreshed.** "Bundles (here)",
-  "Bundles (total)" and "Subcollections" came from a query nothing in the app
-  invalidated: filing a bundle into that collection, deleting one, adding a
-  subcollection, or running a scan all left the pane showing whatever it had said
-  when it opened. They now move with the sidebar's count, immediately for a
-  membership change and on a refetch for everything else.
-- **A library served from the container stopped opening from any machine using a
-  network share.** Opening it returned HTTP 500 with a traceback ending at a
-  SQLite pragma, on a library whose files read fine and whose folder was
-  writable. Cairndex was setting `journal_mode=WAL` on every database
-  connection, believing it a per-connection setting; it is not — WAL is recorded
-  in the database *file header* and travels with the library folder. A WAL
-  database cannot be opened over SMB or NFS **at all**, not even read-only,
-  because WAL needs a shared-memory index that network filesystems cannot
-  provide. Setting the pragma from a machine on the share had always failed
-  silently, so nothing looked wrong; the first server with local access to the
-  storage flipped the file for good, and only a machine with local access could
-  flip it back.
-
-  **A library now uses WAL while a server has it open and a rollback journal at
-  rest**, so a closed library is a single portable file that opens anywhere
-  (ADR-0021). A library on a filesystem that cannot host WAL is never put into
-  it, and the server checks what SQLite actually did rather than assuming the
-  pragma worked. The server's own `registry.db` keeps WAL: it never leaves the
-  server's disk.
-
-  **One case still needs care.** An *unclean* stop — `docker kill`, a power cut,
-  the OOM killer — never reaches the conversion and leaves the library in WAL, so
-  stop containers with `docker stop`. Nothing is lost when it happens: no data is
-  at risk, and restarting the server that crashed and stopping it cleanly
-  converts the library back. If one is locked out, the error now says so — HTTP
-  409 `library_database_unopenable`, distinguishing a journal-mode problem from a
-  permissions one and carrying the command that fixes it, where before it was a
-  bare 500. `docs/deployment.md` has the full procedure.
-
-  **Creating a library was its own version of the same bug**, caught deploying
-  this fix against a real container rather than only the test suite: a fresh
-  `POST /libraries/create` followed by nothing but a clean `docker compose
-  stop` still left the file in WAL. Creating a library bootstraps its schema
-  through a one-shot database connection that the shutdown path never knew
-  about, so a library nobody had opened yet was orphaned in WAL by a shutdown
-  that was, in every other respect, clean. Every one-shot open of a library
-  database — creation, and each of the offline `devtools` maintenance
-  scripts — now converts back on its own before disposing its connection.
-
-- **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
-  that said nothing about what was happening or how far along it was. Two causes,
-  both in the reporting rather than the work: a phase change could not clear the
-  previous phase's total, so a finished discovery pass left its count frozen on
-  screen through the phases after it; and progress was only reported every 200
-  files, so any library smaller than that reported nothing at all until the scan
-  was already over. **Progress now moves on any library size and names what it is
-  doing** — "Discovering files", "Reconciling moves", "Generating thumbnails" —
-  with a count when the work has one.
+- **Backup and restore safety.** Backup names include library identity so
+  multiple libraries cannot overwrite one another. The recovery harness proves
+  registry and library backups can be restored and reopened; the restore helper
+  rejects WAL sidecars, integrity-checks input, installs atomically, and retains
+  the previous destination.
+- **Moment correctness and responsiveness.** New and deleted moments update
+  immediately; exact posters are queued after database commit; tag mutations are
+  optimistic; previews, menus, rows, range controls, and the docked inspector no
+  longer clip, cover controls, misalign, or intercept the next click.
+- **Collapsed folders remain valid.** Added files join the represented bundle,
+  moved directories repair the stored row, scattered contents expand safely,
+  empty representations disappear, and preview-only disclosure never changes a
+  grouping decision.
+- **Grouping application is stable.** Nested destinations, collection
+  conversion, selective acceptance, stem-dial edits, folder actions, rolled-up
+  runs, and keyboard apply now preserve the intended plan. Superseded plans are
+  deleted, large plans avoid per-row database work, and legacy libraries receive
+  the current grouping schema.
+- **Bundle and missing-file state stays coherent.** Deleting or moving a bundle,
+  forgetting missing members, and opening a recently removed bundle now update
+  the inspector and database consistently. Bundle creation and folder-local
+  suggestions no longer slow with total library size.
+- **Collection state refreshes after mutation.** Counts, covers, inspector
+  figures, tree nesting, pills, and opened collection contents update after
+  drops, moves, copies, cover changes, and hierarchy edits. Option-drag copies
+  membership without moving it.
+- **Bundle Browser layout and performance.** Random and collection views avoid
+  unnecessary full result work; Justified rows honor their target size; covers
+  are no longer letterboxed; toolbars, note editors, context selection, and
+  collection rename use stable geometry and focus behavior.
+- **File Browser actions are safer.** Held listings are inert during folder
+  navigation, bundle choices survive same-folder refetches, drag/drop cannot
+  race its start state, Trash operations update inspector rows, and file/bundle
+  locating works in both directions.
+- **Desktop menus and startup are reliable.** Context commands appear for every
+  eligible bundle, ⌘H hides the app, menus do not trigger underlying player
+  actions, successful library registration is not converted into an error, and
+  initial sidecar queries wait for startup and authentication state.
+- **Playback no longer leaks sessions or connections.** Playback-position writes
+  tolerate concurrency, long-open sessions are retained, failed recovery can be
+  retried, unbundled files show their own metadata, and desktop conversion works
+  through the scoped media relay.
+- **Export output matches its request.** Snapshot names preserve the source
+  extension correctly, contact sheets report real dimensions, GIF downloads use
+  the correct desktop route, and watermarks fit and align without clipping.
+- **Job lifecycle and progress are accurate.** Queued cancellation takes effect,
+  interrupted ffmpeg work and scratch data are cleaned up, stopped jobs disappear
+  promptly, multiple simultaneous jobs keep separate rows, restart marks orphaned
+  work interrupted, and scan phases report progress for libraries of any size.
+- **Database and container shutdown are clean.** Large storyboard runs no longer
+  exhaust SQLite connections, local development releases ownership leases,
+  one-shot library maintenance restores journal mode before disconnecting, and
+  container-served libraries reopen without leftover WAL state.
 
 ### Security
 
-- **Publication now has a mandatory pre-push privacy gate.** The canonical agent
-  instructions require an object-level audit of every ref before a first public push,
-  history rewrite, or pull request; detect binary types without trusting filenames;
-  inspect Docker contexts and images; and use only visually reviewed synthetic data in
-  screenshots and fixtures. A historical private screenshot stored under an
-  extensionless flag-like filename was removed from all controllable local history and
-  garbage-collected. The existing public GitHub pull-request refs remain a separate
-  remote-remediation problem until GitHub Support purges them or the repository is
-  recreated.
+- **Published artifacts have SBOMs and cryptographic provenance.** Releases
+  attach an SPDX inventory of the verified app payload plus build-provenance and
+  SBOM attestations for the DMG. Container publication inventories the exact
+  smoke-tested image and attaches both attestations to its immutable GHCR digest.
+- **Dependency audits are release gates.** CI audits both npm projects, the
+  complete Python lock, and the Rust lock, and pins vulnerable transitive web
+  tooling to patched versions. A documented exception covers the Linux-only GTK
+  advisory `RUSTSEC-2024-0429`, whose API Cairndex does not call and which is not
+  present in the macOS artifact; all other Rust advisories remain fatal.
+- **Automated security maintenance covers the repository.** Dependabot checks
+  Actions, Python, npm, Cargo, and Docker; pull requests reject newly introduced
+  high-severity vulnerable dependencies; CodeQL analyzes Python and
+  JavaScript/TypeScript; non-GitHub workflow actions are pinned to immutable
+  commits; and private vulnerability reporting explicitly forbids uploading real
+  owner data.
+- **Docker builds prove private local state is excluded.** The build gate plants
+  synthetic canaries in sensitive local paths, builds development and production
+  images, bounds context size, and inspects every image. Ignore rules cover
+  nested databases, environments, caches, dependencies, tests, and generated
+  sidecars. The production stage copies only runtime source and license notices,
+  and the gate rejects residual Python caches even when no canary is present.
+- **Publication has a mandatory object-level privacy gate.** Before a first
+  public push, rewritten history, pull request, or release, agents must inspect
+  every published ref and object, detect binary content independently of file
+  extensions, validate Docker contexts/images, and use only visually reviewed
+  synthetic fixtures and screenshots. Tracked pre-commit, commit-message, and
+  pre-push hooks now enforce the local scan with an untracked owner-literal
+  profile. A separate PR workflow scans the exact commit graph plus PR title and
+  body using the trusted base-branch implementation, so a PR cannot weaken its
+  own check. New binaries fail unless their bytes, path, purpose, and synthetic
+  or redistributable provenance are explicitly inventoried.
+- **Privacy failures do not echo sensitive-derived diagnostics.** A failed
+  publication scan reports only its finding count, keeping matched content and
+  any diagnostic strings derived from it out of CI and terminal logs.
 
 ### Internal
 
-- **Browser tests for the grouping dialog's folder rows.** Both layout faults
-  the owner found were invisible to the unit suite by construction — jsdom
-  applies no stylesheet, so `vitest` renders the same markup and sees nothing
-  wrong. Four Playwright tests now cover the class: sibling rows share one
-  indent, the attention bar is not clipped off a top-level row, a folder row
-  sits above the files it covers and its files are indented under it, and
-  looking inside a folder decides nothing.
-
-  Asserted as relationships (these rows share an x; this row is above those)
-  rather than pixel values, so restyling does not break them. Each was
-  mutation-checked against the bug it exists for: reverting a fix fails its test
-  and only its test.
-
-- **A bundle may record that one of its directories is a single member** — the
-  storage and the two operations behind plan 6, with no UI yet, so nothing
-  user-visible changes. A new `bundle_directory_members` table names which
-  directories stand in for their files, and three library-scoped endpoints under
-  `/bundles/{id}/directory-members` list, collapse and expand them. Metadata-only
-  and outside the write-mode gate: nothing on disk is touched.
-
-  The table stores **no contents**. Membership stays on `asset_files.bundle_id`
-  and which files a folder covers is derived from the existing
-  `directory_path` index, so collapsing is one row inserted, expanding is one row
-  deleted, and neither can lose a file row, an id, a rating or a resume position.
-  Reversibility therefore needs no undo journal — which was the question the plan
-  called the one most worth designing up front.
-
-  The subtree match is a key range rather than a `LIKE`, so it always uses the
-  index and a folder whose real name contains `%` or `_` cannot widen it.
-
-- **`cairndex.devtools.benchmark_storyboards`** generates fixtures of known GOP
-  length with ffmpeg and times each sampling mode over them, reporting wall
-  clock, tiles, cues and sheet bytes. The numbers above come from it and are
-  recorded in `docs/performance.md`.
-- **The sheet count is now asserted, not assumed.** Sampling at irregular
-  intervals made the image muxer's default rate sync duplicate sheets to fill a
-  constant frame rate — 300 files for 30 tiles in the benchmark — which would
-  have pointed every cue past the first sheet at a copy of it. Generation pins
-  the sync mode, and a test fails if a pass writes more sheets than its tiles
-  fill.
+- **Release metadata is synchronized.** Root, server, web, desktop, npm, Cargo,
+  and Tauri versions must agree with each other and with a release tag. Manual
+  release dispatch must also run from the tag it names. The release candidate is
+  synchronized at `0.2.0`.
+- **Privacy checks are reproducible.** `just privacy-range`,
+  `just privacy-history`, and `just privacy-pr` distinguish ordinary branch
+  diffs from first-publication/rewritten-history audits and scan metadata files
+  without unsafe shell interpolation.
+- **Container smoke tests identify the exact image.** Default local runs build a
+  commit-specific disposable tag; publication smoke-tests once, verifies every
+  final tag points to those bytes, and pushes without rebuilding. Release images
+  also assert their embedded build commit.
+- **Packaged desktop validation is self-contained.** Sidecars carry package
+  metadata, app bundles include complete third-party license notices, and smoke
+  tests verify the reported version plus required media tooling.
+- **Grouping review has browser-level layout coverage.** Playwright checks row
+  indentation, unclipped attention state, folder/file ordering, and read-only
+  folder inspection using geometric relationships rather than brittle pixels.
+- **Collapsed folder membership has an indexed storage contract.**
+  `bundle_directory_members` stores only represented directories; file
+  membership and metadata remain on `asset_files`, and subtree lookups use an
+  index-safe key range so `%` and `_` in real names cannot widen a match.
+- **Storyboard performance is reproducible.** The benchmark tool creates
+  synthetic known-GOP fixtures and records wall time, tiles, cues, and sheet
+  sizes. Tests assert sheet counts so irregular sampling cannot silently create
+  duplicate sheets.
 
 ## [0.1.1] — 2026-07-30
 
@@ -3353,7 +1698,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Cairndex is MIT licensed** ([`LICENSE`](LICENSE)), ahead of the first public
   release (ADR-0019 §4). Binary desktop releases additionally bundle static
-  ffmpeg/ffprobe builds, which are GPL-2.0-or-later and carry their own source
+  ffmpeg/ffprobe builds, which are GPL-3.0-or-later and carry their own source
   offer — Cairndex invokes them as separate executables, so its own terms are
   unaffected. The `LICENSE` file states both.
 

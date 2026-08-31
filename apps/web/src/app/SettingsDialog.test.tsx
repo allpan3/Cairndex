@@ -149,3 +149,32 @@ test('surfaces validation detail and resets pairing mutation state', async () =>
   expect(screen.getByLabelText('Pairing code')).toHaveValue('')
   expect(screen.getByRole('button', { name: 'Approve device' })).toBeDisabled()
 })
+
+test('shows release version and build commit in About', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      if (url === '/api/v1/auth/devices') return Promise.resolve(response(200, []))
+      if (url === '/api/v1/health') {
+        return Promise.resolve(
+          response(200, {
+            status: 'ok',
+            app_name: 'Cairndex',
+            version: '0.1.1',
+            build_commit: 'abcdef0123456789',
+            environment: 'production',
+            api_features: ['pairing', 'progress'],
+            write_mode: 'allowed',
+          }),
+        )
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }),
+  )
+  renderSettings([], null)
+
+  fireEvent.click(screen.getByRole('button', { name: 'About' }))
+
+  expect(await screen.findByText('0.1.1')).toBeInTheDocument()
+  expect(screen.getByText('abcdef0123456789')).toBeInTheDocument()
+})

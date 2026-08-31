@@ -3219,6 +3219,25 @@ code {
   display: flex;
   gap: 8px;
 }
+.about-build {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.about-build > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+}
+.about-build dt {
+  color: var(--text-muted);
+}
+.about-build dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 .pair-device {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);

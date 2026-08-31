@@ -11,10 +11,11 @@ name: Publish image
 #
 # The image is **smoke-tested before it is pushed**, not after. It is built to
 # the runner's local daemon first, `infra/docker/smoke.sh` starts it and
-# exercises a real scan, and only then is it pushed — the second build step
-# reuses the layer cache, so it costs seconds. The alternative, publishing and
-# then testing, means a broken image is reachable by anyone who pulls in
-# between, and `:latest` would have to be rolled back rather than never moved.
+# exercises a real scan, and only then are those exact local image tags pushed.
+# There is no post-test rebuild that could resolve different base or dependency
+# bytes. The alternative, publishing and then testing, means a broken image is
+# reachable by anyone who pulls in between, and `:latest` would have to be
+# rolled back rather than never moved.
 # This whole workflow exists downstream of a month in which a build-only CI job
 # stayed green while the image's entrypoint ran a no-op migration command and
 # the dev image had no ffmpeg at all.
@@ -35,6 +36,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 env:
   # github.repository would be "allpan3/Cairndex" — GHCR requires a lowercase
@@ -48,6 +51,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      # A version tag publishes the same product as the desktop workflow. An
+      # arbitrary manual label such as `edge` is deliberately not a release.
+      - name: Verify release tag matches repository version
+        if: github.event_name == 'push'
+        run: python3 infra/release_version.py --tag "${{ github.ref_name }}"
 
       # Non-GitHub-owned actions are pinned by commit SHA, as in release.yml:
       # this produces an artifact that machines pull and run unattended, so a
@@ -81,7 +90,11 @@ jobs:
           context: .
           file: infra/docker/production.Dockerfile
           load: true
-          tags: cairndex:candidate
+          tags: |
+            cairndex:candidate
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: CAIRNDEX_BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -90,6 +103,42 @@ jobs:
       # checks that a graceful stop released the ownership lease.
       - name: Smoke-test the candidate
         run: ./infra/docker/smoke.sh cairndex:candidate
+        env:
+          CAIRNDEX_EXPECTED_BUILD_COMMIT: ${{ github.sha }}
+
+      # Scan the exact local image that passed the smoke test, before any
+      # registry operation can change what the tag names. The uploaded JSON is
+      # the portable copy; the post-push attestation binds the same document to
+      # the immutable GHCR digest.
+      - name: Generate image SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: cairndex:candidate
+          format: spdx-json
+          output-file: cairndex-container.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+      - name: Verify the SPDX SBOM
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("cairndex-container.spdx.json")
+          document = json.loads(path.read_text())
+          if not str(document.get("spdxVersion", "")).startswith("SPDX-"):
+              raise SystemExit(f"invalid SPDX document: {path}")
+          if not document.get("packages"):
+              raise SystemExit(f"SBOM contains no packages: {path}")
+          if path.stat().st_size > 16 * 1024 * 1024:
+              raise SystemExit(f"SBOM exceeds GitHub's 16 MiB attestation limit: {path}")
+          print(f"SPDX OK: {len(document['packages'])} packages in {path}")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cairndex-container-sbom-${{ inputs.tag || github.ref_name }}
+          path: cairndex-container.spdx.json
+          if-no-files-found: error
 
       # Login happens here rather than at the top: nothing before this point
       # needs the registry, and a failed smoke test should not have left an
@@ -100,17 +149,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Same context, same cache, so this re-tags what was just tested rather
-      # than compiling anything again.
-      - name: Push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      # Push the local tags attached to the image that passed the smoke test.
+      # A second build could resolve a changed base image or dependency and
+      # publish bytes that were never run.
+      - name: Push the tested image
+        id: push
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          candidate_id=$(docker image inspect cairndex:candidate --format '{{.Id}}')
+          manifest_digest=''
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            test "$(docker image inspect "$tag" --format '{{.Id}}')" = "$candidate_id"
+            docker push "$tag"
+            repository="${tag%:*}"
+            repo_digest=$(docker image inspect "$tag" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+              | awk -v prefix="${repository}@" 'index($0, prefix) == 1 { print; exit }')
+            [ -n "$repo_digest" ] || { echo "::error::No registry digest recorded for $tag"; exit 1; }
+            pushed_digest="${repo_digest#*@}"
+            [[ "$pushed_digest" == sha256:* ]] \
+              || { echo "::error::Unexpected registry digest: $pushed_digest"; exit 1; }
+            if [ -n "$manifest_digest" ] && [ "$manifest_digest" != "$pushed_digest" ]; then
+              echo "::error::Published tags do not share one tested digest"
+              exit 1
+            fi
+            manifest_digest="$pushed_digest"
+          done <<< "$IMAGE_TAGS"
+          [ -n "$manifest_digest" ] || { echo "::error::No image tags were published"; exit 1; }
+          echo "digest=$manifest_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@v3
         with:
-          context: .
-          file: infra/docker/production.Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Attest image SBOM
+        uses: actions/attest-sbom@v3
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: cairndex-container.spdx.json
+          push-to-registry: true
 
       - name: Summary
         run: |
@@ -120,6 +203,8 @@ jobs:
             echo '```'
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
+            echo
+            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
             echo
             echo "Pull on the server with \`docker compose pull && docker compose up -d\`."
           } >> "$GITHUB_STEP_SUMMARY"

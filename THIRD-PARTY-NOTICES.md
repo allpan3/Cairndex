@@ -8,6 +8,11 @@ not.
 Nothing here applies to a Cairndex you built yourself from source, or to the
 Docker image, which uses the base image's own ffmpeg rather than a bundled one.
 
+The desktop app carries this notice, Cairndex's MIT license, and the complete
+GPLv3 and LGPLv3 license texts under
+`Cairndex.app/Contents/Resources/licenses/`. GitHub Releases attach the same
+four files beside the DMG and checksum.
+
 ---
 
 ## FFmpeg (ffmpeg, ffprobe) — bundled in the macOS desktop app
