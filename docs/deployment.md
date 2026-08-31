@@ -67,6 +67,13 @@ resolve a changed base image or dependency and publish bytes that were never
 run. Publishing first and testing after would leave a broken image pullable in
 between, with `:latest` already moved.
 
+After the smoke test, the workflow generates an SPDX JSON SBOM from that local
+candidate and uploads it as a workflow artifact. Once the tested tags are
+pushed, it resolves their shared immutable `sha256:` manifest digest and binds
+both build provenance and the SBOM to that digest as GHCR attestations. A tag is
+therefore only a convenient name; the digest is the release identity that the
+attestations verify.
+
 Two things to know about GHCR:
 
 - **Check the package is public before the server tries to pull.** Published
@@ -1041,7 +1048,9 @@ builds the app and DMG, and refuses to continue on a bad bundle signature or a
 binary of the wrong architecture. It also verifies the app bundle and then
 mounts the DMG read-only to prove both contain the MIT license, third-party
 notice, GPLv3 text, and LGPLv3 text. The draft carries the `.dmg`, its
-`.sha256`, and the same four license/notice files beside it.
+`.sha256`, an SPDX JSON inventory of the app payload inside it, and the same
+four license/notice files beside it. GitHub build-provenance and SBOM
+attestations bind the downloadable DMG to that workflow run and SBOM.
 
 #### The procedure
 
@@ -1081,14 +1090,14 @@ gh run watch <run-id> --exit-status
 ```
 
 **4. Review the draft** at `gh release view v0.1.0 --web`. The Apple Silicon
-DMG and its `.sha256` should be attached — one of each, since Intel was dropped
-from the matrix after the first run (2026-07-23) — together with `LICENSE`,
-`THIRD-PARTY-NOTICES.md`, `GPL-3.0.txt`, and `LGPL-3.0.txt`. Restoring Intel
-means uncommenting the matrix entry in `release.yml` and this step then expects
-two DMGs and checksums. Download the DMG and actually open it — the workflow
-proves the bundle is signed, correctly architected, and carries its notices, but
-only a real download carries `com.apple.quarantine`, which is the one thing
-local builds never reproduce.
+DMG, its `.sha256`, and its `.app.spdx.json` should be attached — one of each,
+since Intel was dropped from the matrix after the first run (2026-07-23) —
+together with `LICENSE`, `THIRD-PARTY-NOTICES.md`, `GPL-3.0.txt`, and
+`LGPL-3.0.txt`. Restoring Intel means uncommenting the matrix entry in
+`release.yml` and this step then expects two sets. Download the DMG and actually
+open it — the workflow proves the bundle is signed, correctly architected, and
+carries its notices, but only a real download carries `com.apple.quarantine`,
+which is the one thing local builds never reproduce.
 
 **5. Publish** when satisfied:
 

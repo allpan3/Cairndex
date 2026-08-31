@@ -51,6 +51,13 @@
 > prior bytes. Docker CI proves live registry/library backup, simulated database loss,
 > restore, and reopen; the same script accepts an older source image for a release
 > upgrade rehearsal. Documentation no longer claims arbitrary downgrades are safe.
+>
+> Release artifacts now carry verifiable supply-chain metadata. The macOS workflow
+> inventories the verified app payload as SPDX JSON, attaches it to the draft release,
+> and creates build-provenance and SBOM attestations for the DMG. Image publication
+> inventories the exact smoke-tested local candidate, uploads that SBOM as a workflow
+> artifact, resolves the digest after pushing the tested tags, and writes provenance
+> and SBOM attestations against that immutable GHCR digest.
 
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
