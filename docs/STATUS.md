@@ -83,6 +83,30 @@
 > be force-pushed only with explicit owner confirmation for that operation,
 > `--force-with-lease`, and a fresh privacy pass.
 
+> **Release-hardening verification complete locally (2026-08-31).** Branch
+> `chore/release-hardening` is implemented through `3f990be9` plus this status
+> receipt; nothing is pushed and no PR, tag, release, or image publication was
+> created. The synchronized candidate is `0.2.0` with desktop identifier
+> `dev.cairndex.desktop`. Full gates passed: backend Ruff/format/mypy and 1,258
+> tests (one skipped), frontend lint/format/types plus 1,112 tests and production
+> build, and Rust format/Clippy plus 120 tests. Both npm projects and the Python
+> lock report zero known vulnerabilities; RustSec remains CI-enforced with only
+> the documented Linux GTK exception.
+>
+> The packaged `0.2.0` sidecar smoke test passed. A macOS app and Apple Silicon
+> DMG built with exact commit `3f990be911ad71062c1069d6182d9aae675106af`;
+> both carry all notices, the app has a valid ad-hoc signature, and its embedded
+> version, identifier, and build commit match. Docker development/production
+> context and residue checks, production smoke, and same-image backup/restore
+> passed; the disposable candidate image was removed afterward. The exact
+> proposed PR title/body and the base-to-head object range passed the local
+> owner-pattern scan, as did every object reachable from HEAD.
+>
+> Next publication step is deliberately two-stage. The first PR must use the
+> locally audited title/body because the trusted workflow is not on `main` yet.
+> Once that PR lands, require `publication-privacy/trusted` on `main`; every
+> later PR then receives the immutable base-branch scan before merge.
+
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
 > screenshot. It had been removed from the working tree long ago, but both retained
