@@ -780,6 +780,14 @@ an amd64 image for the NAS from an Apple Silicon Mac.
   sync. `python3 infra/release_version.py` checks every source; passing
   `--tag vX.Y.Z` also checks the release tag.
 
+`/api/v1/health`, OpenAPI, and **Settings → About** read the application version
+from installed Python package metadata. Packaged sidecars explicitly carry that
+metadata. Release workflows also supply the public commit as
+`CAIRNDEX_BUILD_COMMIT`; for an equivalent local diagnostic build, set that
+variable to `git rev-parse HEAD` while running the Tauri build. The health
+schema rejects anything that is not a 7-64 character hexadecimal SHA because
+the endpoint is unauthenticated.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push/PR: dependency audits; backend

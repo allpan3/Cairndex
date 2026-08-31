@@ -213,11 +213,11 @@ cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
 open /Applications/Cairndex.app
 ```
 
-Cairndex displays no version anywhere, so a stale install is indistinguishable
-from a current one by looking at it. **When in doubt, rebuild and reinstall** —
-it takes under a minute and is more reliable than trying to work out what you are
-running. After every rebuild, re-check which copy owns the `cairndex://` scheme;
-each build re-registers the build-directory bundle. See
+Cairndex shows the server/package version and release commit under **Settings →
+About**. A development build records no commit unless
+`CAIRNDEX_BUILD_COMMIT=<git-sha>` was set while compiling the desktop shell.
+After every rebuild, re-check which copy owns the `cairndex://` scheme; each
+build re-registers the build-directory bundle. See
 [docs/deployment.md](docs/deployment.md#installing-and-updating-your-local-build).
 
 ## Quickstart (Docker)

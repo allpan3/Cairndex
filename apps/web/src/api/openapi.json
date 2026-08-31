@@ -3619,12 +3619,27 @@
             "title": "App Name",
             "type": "string"
           },
+          "build_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Commit"
+          },
           "environment": {
             "title": "Environment",
             "type": "string"
           },
           "status": {
             "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
             "type": "string"
           },
           "write_mode": {
@@ -3635,6 +3650,8 @@
         "required": [
           "status",
           "app_name",
+          "version",
+          "build_commit",
           "environment",
           "api_features",
           "write_mode"
@@ -6871,7 +6888,7 @@
   },
   "info": {
     "title": "Cairndex",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10426,7 +10443,7 @@
         ]
       },
       "post": {
-        "description": "Mark a moment, and start decoding the frame it marks.\n\nThe poster is queued here rather than left to the first hover, because it is\nthe *picture* rather than the motion: one keyframe seek and one JPEG, and\nwithout it the first hover of a brand-new moment shows the stale storyboard\ntile \u2014 the frame from up to 30 seconds before the mark, which is the thing\nthe owner reported twice. The clip stays lazy (owner's choice, 2026-08-30):\nit is the expensive one, and a range has the streaming path to fall back on\nwhile it builds.\n\nBest-effort by construction. A failed build leaves no fingerprint, so the\nhover route simply tries again.",
+        "description": "Mark a moment, and start decoding the frame it marks.\n\nThe poster is queued here rather than left to the first hover, because it is\nthe *picture* rather than the motion: one keyframe seek and one JPEG, and\nwithout it the first hover of a brand-new moment shows the stale storyboard\ntile \u2014 the frame from up to 30 seconds before the mark, which is the thing\nthe owner reported twice. The clip stays lazy (owner's choice, 2026-08-30):\nit is the expensive one, and a range has the streaming path to fall back on\nwhile it builds.\n\nQueued through `moment_previews.schedule`, *not* as a background task on this\nresponse: a background task runs before the session dependency commits, so\nthe poster would hold its own moment's write invisible until ffmpeg finished\n\u2014 and the rail's refetch, twenty milliseconds later, would read an empty list\nand never ask again.\n\nBest-effort by construction. A failed build leaves no fingerprint, so the\nhover route simply tries again.",
         "operationId": "create_moment_api_v1_libraries__library_id__bundles__bundle_id__moments_post",
         "parameters": [
           {

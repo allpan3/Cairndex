@@ -1080,7 +1080,10 @@ git push origin v0.1.0
 The push triggers the workflow. Do **not** also dispatch it manually — that
 would build the same tag twice, and macOS minutes are the expensive kind (see
 the cost note below). `workflow_dispatch` is for re-running a tag that already
-exists, after fixing a workflow-level failure.
+exists, after fixing a workflow-level failure. Dispatch from that tag as well as
+entering it as the input (`gh workflow run Release --ref v0.1.0 -f
+tag=v0.1.0`); preflight rejects a mismatch so build provenance cannot name the
+default branch while the checkout actually builds a tag.
 
 **3. Watch the run.**
 
@@ -1196,6 +1199,9 @@ want an Authenticode certificate on the same env-gated pattern.
 
 ## Health check
 
-`GET /api/v1/health` returns `{"status": "ok", "api_features": [...], ...}` and backs the image's
-Docker `HEALTHCHECK` (and any NAS container-manager liveness probe). No
-authentication is required for this endpoint.
+`GET /api/v1/health` returns the liveness state, API capabilities, synchronized
+package version, and (for release artifacts) the public source commit. The same
+version is OpenAPI's `info.version` and appears under **Settings → About**. This
+endpoint backs the image's Docker `HEALTHCHECK` and any NAS container-manager
+liveness probe. No authentication is required, so `build_commit` accepts only a
+hexadecimal Git SHA and never reflects arbitrary environment text.
