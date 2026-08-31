@@ -10,7 +10,7 @@
 # See docs/deployment.md and docker-compose.prod.yml.
 
 # --- Stage 1: build the frontend into static assets ---------------------------
-FROM node:22-bookworm-slim AS web
+FROM node:26-bookworm-slim AS web
 WORKDIR /web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci

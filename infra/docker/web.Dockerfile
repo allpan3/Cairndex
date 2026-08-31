@@ -5,7 +5,7 @@
 # (see docker-compose.yml). Node 22 satisfies Vite 8's engine requirement
 # (^20.19 || >=22.12).
 
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 WORKDIR /app
 
