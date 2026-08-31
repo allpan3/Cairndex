@@ -79,9 +79,9 @@
 > base-branch implementation; binary SHA-256/path/purpose/provenance is explicit.
 > It posts `publication-privacy/trusted` to the exact PR head. The workflow must
 > first land on `main`, after which that context should become a required `main`
-> rule. Force-pushing `main` remains forbidden; another branch may
-> be force-pushed only with explicit owner confirmation for that operation,
-> `--force-with-lease`, and a fresh privacy pass.
+> rule. Any force-push, including one to `main`, requires explicit owner
+> confirmation naming the exact target in the current task, `--force-with-lease`,
+> and a fresh privacy pass; confirmation cannot remove GitHub PR refs.
 
 > **Release-hardening verification complete locally (2026-08-31).** Branch
 > `chore/release-hardening` is implemented through `3f990be9` plus this status
