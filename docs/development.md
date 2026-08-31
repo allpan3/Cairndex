@@ -814,3 +814,8 @@ npm, Cargo, and Docker dependencies weekly; grouped minor/patch updates keep its
 pull-request volume bounded. Vulnerability reports belong in GitHub's private
 reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
 issue containing real owner data.
+
+Every third-party workflow action outside GitHub's own `actions/*` and
+`github/*` namespaces is pinned to an immutable commit SHA. Keep the human
+version comment beside each pin, and let Dependabot propose reviewed updates;
+do not replace a pin with a moving major, tag, or branch.

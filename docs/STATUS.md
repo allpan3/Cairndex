@@ -42,7 +42,9 @@
 > scheduled/PR CodeQL analysis for Python and JavaScript/TypeScript. Secret scanning
 > and push protection were already enabled on the recreated public repository;
 > Dependabot alerts/security updates and private vulnerability reporting are enabled.
-> CI now audits both npm lockfiles, the complete Python lock, and the Rust lock. Four
+> Every non-GitHub workflow action is pinned to an immutable commit, with Dependabot
+> responsible for reviewed updates. CI now audits both npm lockfiles, the complete
+> Python lock, and the Rust lock. Four
 > vulnerable web build-tool transitive dependencies are pinned to patched versions.
 > The sole remaining advisory is `RUSTSEC-2024-0429` in Linux-only GTK/glib 0.18:
 > Cairndex does not call the affected iterator API, it is absent from the macOS release

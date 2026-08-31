@@ -181,8 +181,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Automated security maintenance covers the repository.** Dependabot checks
   Actions, Python, npm, Cargo, and Docker; pull requests reject newly introduced
   high-severity vulnerable dependencies; CodeQL analyzes Python and
-  JavaScript/TypeScript; and private vulnerability reporting explicitly forbids
-  uploading real owner data.
+  JavaScript/TypeScript; non-GitHub workflow actions are pinned to immutable
+  commits; and private vulnerability reporting explicitly forbids uploading real
+  owner data.
 - **Docker builds prove private local state is excluded.** The build gate plants
   synthetic canaries in sensitive local paths, builds development and production
   images, bounds context size, and inspects every image. Ignore rules cover
