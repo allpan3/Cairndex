@@ -11,10 +11,11 @@ name: Publish image
 #
 # The image is **smoke-tested before it is pushed**, not after. It is built to
 # the runner's local daemon first, `infra/docker/smoke.sh` starts it and
-# exercises a real scan, and only then is it pushed — the second build step
-# reuses the layer cache, so it costs seconds. The alternative, publishing and
-# then testing, means a broken image is reachable by anyone who pulls in
-# between, and `:latest` would have to be rolled back rather than never moved.
+# exercises a real scan, and only then are those exact local image tags pushed.
+# There is no post-test rebuild that could resolve different base or dependency
+# bytes. The alternative, publishing and then testing, means a broken image is
+# reachable by anyone who pulls in between, and `:latest` would have to be
+# rolled back rather than never moved.
 # This whole workflow exists downstream of a month in which a build-only CI job
 # stayed green while the image's entrypoint ran a no-op migration command and
 # the dev image had no ffmpeg at all.
@@ -81,7 +82,10 @@ jobs:
           context: .
           file: infra/docker/production.Dockerfile
           load: true
-          tags: cairndex:candidate
+          tags: |
+            cairndex:candidate
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -100,17 +104,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Same context, same cache, so this re-tags what was just tested rather
-      # than compiling anything again.
-      - name: Push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: infra/docker/production.Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+      # Push the local tags attached to the image that passed the smoke test.
+      # A second build could resolve a changed base image or dependency and
+      # publish bytes that were never run.
+      - name: Push the tested image
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          candidate_id=$(docker image inspect cairndex:candidate --format '{{.Id}}')
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            test "$(docker image inspect "$tag" --format '{{.Id}}')" = "$candidate_id"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
 
       - name: Summary
         run: |

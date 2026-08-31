@@ -722,8 +722,24 @@ docker compose up --build --force-recreate
 mount, no reload, SPA served by the backend. `just docker-smoke` starts it
 against a throwaway library, creates one through the API, scans a generated
 video, and checks that a graceful stop releases the lease; CI runs the same
-script after building. See [deployment.md](deployment.md) for the deployment
-itself, including building an amd64 image for the NAS from an Apple Silicon Mac.
+script. With no image argument the smoke script always builds a fresh,
+commit-specific image and removes it afterward. Pass an image tag only when you
+deliberately want to test an already-built candidate:
+
+```bash
+./infra/docker/smoke.sh                 # fresh build, smoke, cleanup
+./infra/docker/smoke.sh cairndex:local  # smoke this exact local image
+```
+
+`infra/docker/build-and-check.sh` is the CI build gate. It places synthetic
+private-data canaries in runtime database, environment, virtualenv, dependency,
+and sidecar packaging paths; builds both development images and the production
+image; verifies the canaries are absent from every image; and rejects a build
+context larger than 50 MiB by default. Override the ceiling only for a reviewed,
+intentional context growth with `CAIRNDEX_DOCKER_CONTEXT_LIMIT_BYTES`.
+
+See [deployment.md](deployment.md) for the deployment itself, including building
+an amd64 image for the NAS from an Apple Silicon Mac.
 
 ## Repository conventions
 
@@ -740,5 +756,5 @@ itself, including building an amd64 image for the NAS from an Apple Silicon Mac.
 
 `.github/workflows/ci.yml` runs on every push/PR: backend lint + type-check +
 tests, frontend lint + type-check + unit tests, macOS and Ubuntu desktop checks,
-a macOS Tauri bundle, and a Docker image build validation. PRs should be green
-before merge.
+a macOS Tauri bundle, and Docker context/privacy/build/smoke validation. PRs
+should be green before merge.

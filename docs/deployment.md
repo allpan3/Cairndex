@@ -59,10 +59,13 @@ which publishes exactly the tag you name and never touches `latest`. It does
 **not** run on pushes to `main`: publication should be a deliberate act, the same
 reason `release.yml` produces a *draft* release rather than a published one.
 
-The image is smoke-tested before it is pushed, not after — built to the runner's
-local daemon, put through `infra/docker/smoke.sh`, and only then pushed, with the
-second build reusing the layer cache. Publishing first and testing after would
-leave a broken image pullable in between, and `:latest` already moved.
+The image is smoke-tested before it is pushed, not after — built and tagged in
+the runner's local daemon, put through `infra/docker/smoke.sh`, checked so every
+final registry tag still resolves to that exact tested image ID, and only then
+pushed. There is no second build between test and publication: a rebuild could
+resolve a changed base image or dependency and publish bytes that were never
+run. Publishing first and testing after would leave a broken image pullable in
+between, with `:latest` already moved.
 
 Two things to know about GHCR:
 
@@ -215,12 +218,25 @@ prefer building there when you can.
 just docker-smoke
 ```
 
-Starts the production image against a throwaway library, waits for health,
+With no argument, builds a fresh commit-specific production image, starts it
+against a throwaway library, waits for health,
 checks the SPA is served and ffmpeg/ffprobe are present, creates a library
 through the API, generates a video and scans it, asserts a cover was produced
 (which is what proves the media pipeline, not just the web layer), then stops
 the container and asserts the ownership lease was released and the WAL folded
-back in. CI runs the same script after building.
+back in. The temporary image is removed at exit. To smoke an already-built
+publication candidate without rebuilding it, pass that image tag explicitly:
+
+```bash
+./infra/docker/smoke.sh cairndex:candidate
+```
+
+CI first runs `infra/docker/build-and-check.sh`. That gate creates synthetic
+private-data canaries in every ignored runtime, environment, dependency, and
+sidecar packaging path, builds both development contexts and the production
+context, checks all three images for a leaked canary, and rejects any context
+larger than 50 MiB by default. It then passes the built production image
+explicitly to the smoke test.
 
 This exists because *building* an image proves very little. The Docker CI job
 was green for a month while the production entrypoint ran a migration command

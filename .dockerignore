@@ -4,7 +4,7 @@
 
 .git
 .github
-**/.venv
+**/.venv*
 **/node_modules
 **/__pycache__
 **/.mypy_cache
@@ -15,6 +15,11 @@
 apps/web/dist
 apps/web/build
 **/.vite
+
+# Local sidecar bundles and downloaded platform tools are rebuilt deliberately
+**/packaging/build
+**/packaging/dist
+**/packaging/vendor
 
 # App data, databases, caches, media — never copy into an image
 var/
@@ -28,9 +33,9 @@ storage/
 **/*.db-shm
 
 # Secrets and local env
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Tests, docs, demos, and reference assets aren't needed at runtime
 **/tests

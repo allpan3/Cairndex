@@ -1,7 +1,10 @@
 node_modules
 dist
+build
+.vite
 coverage
 playwright-report
 test-results
-blob-report
-.vite
+.env
+.env.*
+!.env.example

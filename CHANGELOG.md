@@ -1843,6 +1843,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- **Docker builds now prove private local state stays outside every image.** The
+  build gate seeds synthetic canaries into runtime database, environment,
+  virtualenv, dependency, and sidecar packaging paths; builds both development
+  images and the production image; rejects an unexpectedly large context; and
+  inspects all three images for leaks. The ignore rules now cover nested local
+  environments, databases, virtualenv variants, and generated sidecar bundles.
+
 - **Publication now has a mandatory pre-push privacy gate.** The canonical agent
   instructions require an object-level audit of every ref before a first public push,
   history rewrite, or pull request; detect binary types without trusting filenames;
@@ -1854,6 +1861,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   recreated.
 
 ### Internal
+
+- **Container smoke tests no longer reuse a stale image by accident.** Running
+  the smoke script without an argument always builds a commit-specific image and
+  removes it afterward. An explicit image tag is the only reuse path. GHCR
+  publication now tags and tests the candidate once, verifies every final tag has
+  that tested image ID, and pushes those bytes without a post-test rebuild.
 
 - **Browser tests for the grouping dialog's folder rows.** Both layout faults
   the owner found were invisible to the unit suite by construction — jsdom
