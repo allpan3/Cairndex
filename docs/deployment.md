@@ -371,6 +371,15 @@ an upgrade — starting the new image is the whole procedure. The entrypoint use
 to call `alembic upgrade head`, which had quietly become a no-op that still
 printed a line claiming migrations were applied.
 
+That is a forward-upgrade statement, not a blanket downgrade promise. Before an
+update, take and copy off-box the registry and every library backup described
+below, record the image tag you are leaving, and read the target version's
+compatibility notes. If the candidate fails, stop it. Start the older image only
+when the changelog explicitly says the schema remains backward-compatible;
+otherwise restore the pre-upgrade database set first. Never run two image
+versions against one library to test a rollback — the one-owner rule still
+applies.
+
 ### One server per library
 
 A library may be served by exactly one Cairndex server at a time (ADR-0018). Each
@@ -588,7 +597,10 @@ runs against whatever the library holds at open, so a library nobody opens is
 never swept.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
-online backup API and integrity-checks it:
+online backup API and integrity-checks it. Registry backups are named
+`registry-…`; library backups include the portable library UUID, so two
+different `library.db` files cannot overwrite each other even when backed up in
+the same second. `mktemp` adds a final unique suffix for concurrent runs:
 
 ```bash
 # Back up server-local registry state.
@@ -601,8 +613,37 @@ docker exec <container> /app/infra/backup.sh /libraries/main/.cairndex/library.d
 docker cp <container>:/data/backups ./backups
 ```
 
-Restore is a file copy while the app is **stopped**: `down`, replace the relevant
-`registry.db` and/or `library.db` with backup copies, then `up -d`.
+Restore is deliberately guarded and atomic. Stop the app first, make the backup
+files available read-only at `/restore`, then restore the registry and/or each
+library database through the image helper:
+
+```bash
+docker compose down
+
+docker compose run --rm --no-deps \
+  -v "$PWD/backups:/restore:ro" \
+  --entrypoint /app/infra/restore.sh app \
+  --stopped /restore/<registry-backup> /data/registry.db
+
+docker compose run --rm --no-deps \
+  -v "$PWD/backups:/restore:ro" \
+  --entrypoint /app/infra/restore.sh app \
+  --stopped /restore/<library-backup> /libraries/main/.cairndex/library.db
+
+docker compose up -d
+```
+
+The explicit `--stopped` is an acknowledgement, not process detection. The
+helper refuses a destination with `-wal`/`-shm` sidecars, integrity-checks a
+fresh temporary copy, fsyncs it, and atomically replaces the destination. If a
+destination existed, its exact previous bytes remain beside it as
+`*.pre-restore-*` until you remove them after verifying the recovery.
+
+`infra/docker/backup-restore-smoke.sh <candidate> [source]` automates the full
+acceptance path with synthetic state. With one image it proves hot backup,
+destructive-loss simulation, restore, and reopen. Passing an older source image
+creates the state and backups there, then restores and opens them with the
+candidate — the pre-release upgrade rehearsal.
 
 ### Remote access and security
 
