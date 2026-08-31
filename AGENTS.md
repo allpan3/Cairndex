@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file is the canonical operating guide for coding agents working in this repository. It defines how agents should plan, modify, test, document, and report work.
+This file is the canonical operating guide for coding agents working in this repository. It defines how agents should plan, modify, test, document, and report work. `CLAUDE.md` must remain a symlink to this file so every coding agent receives one instruction source; never recreate it as a separate guide.
 
 Product context lives in [`docs/product-brief.md`](docs/product-brief.md). Current project state lives in [`docs/STATUS.md`](docs/STATUS.md). Consequential architecture decisions live in [`docs/adr/`](docs/adr/).
 
@@ -118,13 +118,60 @@ Record performance baselines for representative libraries before claiming large-
   library names, absolute paths, and the contents of screenshots the owner supplies.
   That is the same private data the rule above treats as user-owned — it does not stop
   being user data because it is a *string* rather than a file. It belongs in no commit,
-  message, changelog entry, doc, test fixture, PR title or PR description.
+  message, changelog entry, doc, test fixture, branch name, PR title, PR description,
+  review, comment, workflow artifact, container image, release asset, or screenshot.
+- Bug reports arrive as user data. Reproduce the defect's shape with invented names and
+  synthetic media; do not quote the owner's values back into fixtures or prose. A
+  screenshot is evidence to inspect, not an asset to copy or transcribe. Every UI image
+  or video intended for publication must be recreated against synthetic data and
+  visually checked edge to edge for unrelated windows, notifications, account state,
+  filenames, paths, browser content, and metadata.
 - Use a non-root container user where practical.
 - Validate all file paths against the active library root.
 - Do not expose arbitrary host command execution.
 - Preserve the single-owner model unless the owner explicitly requests multi-user work.
 - Optional owner passphrase lock is acceptable as a lightweight access guard; full multi-user RBAC is not an MVP goal.
 - Clearly document that direct public internet exposure is unsupported unless hardened separately.
+
+### Mandatory publication privacy gate
+
+A push, pull request, tag, release, workflow artifact, or published container image is
+a publication boundary. Treat it as irreversible. Deleting a branch or force-pushing
+rewritten commits does not remove commits retained by GitHub pull-request refs, caches,
+forks, Actions artifacts, or existing clones. CI that runs after a push is too late to
+be the first privacy check.
+
+Before **every push** and before creating or updating a pull request:
+
+1. Identify the exact refs and commit range that will become reachable. For the first
+   push to a public repository, after a history rewrite, or after changing remotes, audit
+   every object reachable from every ref that will be pushed — not only the working tree
+   or the latest diff.
+2. Inspect staged and committed paths, commit messages, author/committer metadata, PR
+   text, docs, fixtures, and generated artifacts for user data and secrets. Search for
+   both known private values and credential patterns, but never treat a zero-match text
+   search as sufficient.
+3. Enumerate blobs with their detected type and size. Do not trust filenames or
+   extensions: an image may have no extension or a flag-like name. Every new image,
+   video, archive, database, model, or other binary needs an explicit repository purpose
+   and a synthetic provenance. Unexpected root files and unexplained large blobs fail
+   the gate. App icons and other established assets are not a blanket allowlist for new
+   binaries.
+4. Inspect Docker build contexts and the contents of publishable images for ignored
+   databases, `.env` files, virtual environments, caches, packaging output, local
+   libraries, and sidecar build directories. Git ignore rules do not protect Docker
+   contexts.
+5. State the privacy-gate result before pushing. If the complete reachable history and
+   publication metadata were not inspected, do not push and do not open the PR. Owner
+   authorization to open a PR is not a waiver of this gate.
+
+If user data is found in an unpushed commit, rewrite it out of every affected local ref
+and prove the old blob and commits are unreachable before pushing. If it is found after
+publication, stop all pushes, PRs, tags, releases, and image publication; make the
+repository private when possible; enumerate branches, tags, pull-request refs, forks,
+Actions artifacts, releases, packages, and caches; then use GitHub Support's sensitive-
+data removal process or recreate the public repository from audited history. Rotate any
+exposed credential. A normal force-push alone is not remediation.
 
 ## Code quality standards
 
@@ -216,9 +263,13 @@ Use a dedicated branch for each meaningful feature or fix unless the owner expli
 
 Do not combine unrelated large features in one branch.
 
+Do not open, merge, or close a pull request until the owner explicitly asks. Work on a
+branch and prepare a PR-style summary without publishing the PR by default. Follow-up
+work for an open PR belongs on that PR's branch unless it is genuinely independent.
+
 Commit frequently at meaningful checkpoints. Commits should be small enough to review and should normally leave the branch buildable. Use descriptive conventional-style messages when practical. Do not create meaningless `update` or `changes` commits.
 
-Every PR should include problem and scope, design summary, screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, and follow-up work explicitly out of scope.
+Every PR should include problem and scope, design summary, synthetic-data screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, the publication privacy-gate result, and follow-up work explicitly out of scope.
 
 Never force-push `main`. Force-push only non-main branches and use `--force-with-lease`.
 
@@ -269,10 +320,14 @@ At the end of a branch or direct-to-main task:
 
 1. run the full relevant gate, or clearly state what was not run;
 2. verify the feature manually where practical;
-3. add screenshots/video for UI work where helpful;
+3. add privacy-reviewed screenshots/video made only with synthetic data for UI work where helpful;
 4. update `docs/STATUS.md` when project status or next tasks changed;
 5. prepare a PR-style or commit-style summary;
 6. do not claim completion unless it was actually run or verified.
+
+For a substantial handoff, record the branch and latest commit, completed work, tests
+run, known issues, unresolved decisions, and the next recommended task in
+`docs/STATUS.md` when those facts affect ongoing project state.
 
 Ask the product owner only when a decision is genuinely blocking, destructive, hard to migrate, or materially changes the agreed product model. For non-blocking ambiguity, choose the safest metadata-only default, document the assumption, and proceed incrementally.
 
