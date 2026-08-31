@@ -1,5 +1,23 @@
 # Project status
 
+> **Repository privacy incident (2026-08-30): local history is clean; the public
+> remote is not.** An extensionless, flag-like file named `-D` was a private desktop
+> screenshot. It had been removed from the working tree long ago, but both retained
+> histories still carried its blob and every live pull request inherited one of the
+> introducing commits. `git filter-repo --path=-D --invert-paths` rewrote all 1,156
+> locally controllable commits and refs, expired reflogs, and garbage-collected the old
+> blob and commits; object lookup, full-history path search, and `git fsck` now prove
+> they are absent locally. **Nothing was pushed.** GitHub's existing `refs/pull/*`
+> still retain the old remote commits, so an ordinary force-push cannot make the public
+> repository clean. Remote remediation must be either a Support-assisted sensitive-data
+> purge after pushing audited rewritten refs, or another public repository recreation
+> with the current repository made private/archived.
+>
+> `AGENTS.md` now contains the full agent procedure formerly split across
+> `CLAUDE.md`, plus a mandatory object/binary/Docker privacy gate before every push or
+> PR. `CLAUDE.md` is a symlink to `AGENTS.md`, preventing the two instruction sources
+> from drifting again.
+
 > **Repository note (2026-08-09): the repository was recreated a second time.**
 > The 2026-07-30 recreation (below) removed user data from the _old_ repo, but the
 > same strings came back in with the source that was pushed to the new one — a

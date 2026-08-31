@@ -1841,6 +1841,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   doing** — "Discovering files", "Reconciling moves", "Generating thumbnails" —
   with a count when the work has one.
 
+### Security
+
+- **Publication now has a mandatory pre-push privacy gate.** The canonical agent
+  instructions require an object-level audit of every ref before a first public push,
+  history rewrite, or pull request; detect binary types without trusting filenames;
+  inspect Docker contexts and images; and use only visually reviewed synthetic data in
+  screenshots and fixtures. A historical private screenshot stored under an
+  extensionless flag-like filename was removed from all controllable local history and
+  garbage-collected. The existing public GitHub pull-request refs remain a separate
+  remote-remediation problem until GitHub Support purges them or the repository is
+  recreated.
+
 ### Internal
 
 - **Browser tests for the grouping dialog's folder rows.** Both layout faults
