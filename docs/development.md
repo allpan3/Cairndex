@@ -751,6 +751,18 @@ image; verifies the canaries are absent from every image; and rejects a build
 context larger than 50 MiB by default. Override the ceiling only for a reviewed,
 intentional context growth with `CAIRNDEX_DOCKER_CONTEXT_LIMIT_BYTES`.
 
+The Docker job also runs the recovery acceptance path:
+
+```bash
+./infra/docker/backup-restore-smoke.sh cairndex:candidate
+./infra/docker/backup-restore-smoke.sh cairndex:candidate ghcr.io/example/previous:tag
+```
+
+The first form creates, backs up, removes, restores, and reopens synthetic state
+with one candidate. The second creates and backs up with the older source image,
+then restores and opens with the candidate; use it before release when a real
+previous image exists.
+
 See [deployment.md](deployment.md) for the deployment itself, including building
 an amd64 image for the NAS from an Apple Silicon Mac.
 

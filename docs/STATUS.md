@@ -37,6 +37,14 @@
 > Dependabot alerts/security updates and private vulnerability reporting are enabled.
 > `main` still has no branch rule: choosing PR/approval/admin-bypass semantics is a
 > separate owner decision because the wrong rule can lock out a solo maintainer.
+>
+> Backup/recovery acceptance is now executable. Library backups include the portable
+> UUID and a unique suffix instead of every library competing for `library-<second>.db`.
+> The image ships a stopped-only restore helper that rejects WAL sidecars, validates a
+> temporary SQLite copy, fsyncs and atomically replaces the destination, and preserves
+> prior bytes. Docker CI proves live registry/library backup, simulated database loss,
+> restore, and reopen; the same script accepts an older source image for a release
+> upgrade rehearsal. Documentation no longer claims arbitrary downgrades are safe.
 
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop

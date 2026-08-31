@@ -789,6 +789,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Backups from multiple libraries can no longer overwrite each other.** Every
+  library database used the basename `library.db`, and the backup filename had
+  only that basename plus second-resolution time. Two libraries backed up to one
+  directory in the same second therefore targeted the same file. Names now
+  include the portable library UUID plus a unique suffix; no owner title or path
+  leaks into the filename.
+
 - **Desktop distributions now carry and verify their complete license notices.**
   `LICENSE` no longer misstates the pinned FFmpeg build as GPL-2.0-or-later; its
   `--enable-gpl --enable-version3` configuration is GPL-3.0-or-later, matching
@@ -1876,6 +1883,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   recreated.
 
 ### Internal
+
+- **Docker CI now proves backup, restore, and reopen rather than documenting
+  them on faith.** It creates synthetic registry/library state, takes hot online
+  backups, stops cleanly, removes both working databases, restores them through
+  the candidate image, and verifies the original library and bundle reopen. The
+  same harness accepts an older source image for a pre-release upgrade rehearsal.
+  The image now ships a guarded restore helper that rejects WAL sidecars,
+  integrity-checks and atomically installs the backup, and preserves the prior
+  destination beside it.
 
 - **Release versions can no longer drift between the tag and the artifact.** A
   root `VERSION` is checked against the server, web, desktop, npm lock, Cargo

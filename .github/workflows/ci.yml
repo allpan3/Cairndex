@@ -311,3 +311,5 @@ jobs:
       # graceful shutdown releasing the ownership lease.
       - name: Smoke-test the production image
         run: ./infra/docker/smoke.sh cairndex:ci
+      - name: Backup and restore acceptance
+        run: ./infra/docker/backup-restore-smoke.sh cairndex:ci
