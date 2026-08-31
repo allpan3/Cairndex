@@ -189,6 +189,19 @@ jobs:
             [ "$actual" = "$expected" ] || { echo "::error::$binary is $actual, expected $expected"; exit 1; }
           done
 
+      # Check both the build tree and the actual disk image. A correct source
+      # checkout does not discharge a binary distribution's license notice
+      # obligations if the files are absent from what users download.
+      - name: Verify bundled license texts
+        run: |
+          set -euo pipefail
+          bundle="apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          ./infra/verify_macos_distribution.sh "$bundle/macos/Cairndex.app"
+          dmg=$(find "$bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          test -n "$dmg"
+          ./infra/verify_macos_distribution.sh "$dmg"
+        working-directory: ${{ github.workspace }}
+
       # Tauri names the DMG with its own version and arch; rename to something
       # a download page can show, and publish a checksum beside it so a user can
       # verify what they got.
@@ -282,4 +295,7 @@ jobs:
           files: |
             artifacts/*.dmg
             artifacts/*.dmg.sha256
+            LICENSE
             THIRD-PARTY-NOTICES.md
+            licenses/GPL-3.0.txt
+            licenses/LGPL-3.0.txt

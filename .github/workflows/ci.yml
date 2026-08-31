@@ -292,6 +292,8 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build -- --bundles app
         working-directory: apps/desktop
+      - name: Verify bundled license texts
+        run: ../../../infra/verify_macos_distribution.sh target/release/bundle/macos/Cairndex.app
 
   docker:
     name: Docker build

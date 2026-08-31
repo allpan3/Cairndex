@@ -789,6 +789,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Desktop distributions now carry and verify their complete license notices.**
+  `LICENSE` no longer misstates the pinned FFmpeg build as GPL-2.0-or-later; its
+  `--enable-gpl --enable-version3` configuration is GPL-3.0-or-later, matching
+  the manifest and third-party notice. The app now embeds Cairndex's MIT license,
+  the third-party notice, and complete GPLv3/LGPLv3 texts. CI checks the app;
+  release builds also mount and check the DMG, then attach the four texts beside
+  the artifact.
+
 - **Marking and forgetting a moment no longer lag.** Forgetting one takes the row
   away on the click instead of a round trip later, and marking one puts the new
   row in from the answer the save already returned rather than throwing the list
@@ -3374,7 +3382,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Cairndex is MIT licensed** ([`LICENSE`](LICENSE)), ahead of the first public
   release (ADR-0019 §4). Binary desktop releases additionally bundle static
-  ffmpeg/ffprobe builds, which are GPL-2.0-or-later and carry their own source
+  ffmpeg/ffprobe builds, which are GPL-3.0-or-later and carry their own source
   offer — Cairndex invokes them as separate executables, so its own terms are
   unaffected. The `LICENSE` file states both.
 

@@ -124,7 +124,9 @@ app at a server you already run (a NAS, say) works the same as it always has.
 
 The bundled ffmpeg is GPL-licensed and redistributing it carries source
 obligations that Cairndex's own MIT license does not — see
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The app itself also carries
+that notice, Cairndex's MIT license, and the full GPLv3/LGPLv3 texts under its
+`Contents/Resources/licenses/` directory.
 
 ## Repository layout
 

@@ -997,9 +997,10 @@ feature, eleven fixes and a breaking change — and had to be rewritten by hand.
 
 The build job fetches the pinned ffmpeg, builds and smoke-tests the sidecar,
 builds the app and DMG, and refuses to continue on a bad bundle signature or a
-binary of the wrong architecture. The draft carries the `.dmg`, its `.sha256`,
-and `THIRD-PARTY-NOTICES.md` — which has to travel with the artifact, since it
-bundles a GPL ffmpeg.
+binary of the wrong architecture. It also verifies the app bundle and then
+mounts the DMG read-only to prove both contain the MIT license, third-party
+notice, GPLv3 text, and LGPLv3 text. The draft carries the `.dmg`, its
+`.sha256`, and the same four license/notice files beside it.
 
 #### The procedure
 
@@ -1039,13 +1040,14 @@ gh run watch <run-id> --exit-status
 ```
 
 **4. Review the draft** at `gh release view v0.1.0 --web`. The Apple Silicon
-DMG, its `.sha256`, and `THIRD-PARTY-NOTICES.md` should be attached — one of
-each, since Intel was dropped from the matrix after the first run (2026-07-23);
-restoring it means uncommenting the matrix entry in `release.yml` and this
-step then expects two of each. Download the DMG and actually open it — the
-workflow proves the bundle is signed and correctly architected, but only a real
-download carries `com.apple.quarantine`, which is the one thing local builds
-never reproduce.
+DMG and its `.sha256` should be attached — one of each, since Intel was dropped
+from the matrix after the first run (2026-07-23) — together with `LICENSE`,
+`THIRD-PARTY-NOTICES.md`, `GPL-3.0.txt`, and `LGPL-3.0.txt`. Restoring Intel
+means uncommenting the matrix entry in `release.yml` and this step then expects
+two DMGs and checksums. Download the DMG and actually open it — the workflow
+proves the bundle is signed, correctly architected, and carries its notices, but
+only a real download carries `com.apple.quarantine`, which is the one thing
+local builds never reproduce.
 
 **5. Publish** when satisfied:
 

@@ -27,11 +27,15 @@ Third-party components distributed with binary releases
 
 Desktop release artifacts bundle static **ffmpeg** and **ffprobe** binaries
 (ADR-0019 §3). Those builds include libx264 and are licensed under the **GNU
-General Public License v2 or later**, not MIT. Cairndex invokes them as separate
+General Public License v3 or later**, not MIT. Cairndex invokes them as separate
 executables via `subprocess`, which is aggregation rather than a derived work,
 so the GPL does not extend to Cairndex's own source — but each release that
 ships those binaries must carry the corresponding source, or a written offer for
 it, alongside the download.
+
+The pinned builds enable both `--enable-gpl` and `--enable-version3`, so their
+effective license is the **GNU General Public License v3 or later**. The full
+GPLv3 and LGPLv3 texts shipped with binary distributions live under `licenses/`.
 
 See `apps/server/packaging/ffmpeg-manifest.json` for the exact upstream builds a
 given release used.
