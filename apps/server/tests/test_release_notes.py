@@ -96,8 +96,7 @@ def test_empty_section_is_an_error():
 
 
 def test_the_real_changelog_has_the_released_version():
-    # Guards the actual file: this is the section v0.1.1's release body came
-    # from, and the format the script depends on.
+    # Guards the actual file and the format the release extractor depends on
     changelog = (_SCRIPT.parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
-    body = release_notes.extract(changelog, "0.1.1")
+    body = release_notes.extract(changelog, "0.2.0")
     assert "###" in body

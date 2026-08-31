@@ -5,7 +5,7 @@ package metadata is duplicated because Python, npm, Cargo, and Tauri each need
 their own native file, so this gate makes that duplication explicit and safe.
 
     python3 infra/release_version.py
-    python3 infra/release_version.py --tag v0.1.1
+    python3 infra/release_version.py --tag v0.2.0
 """
 
 from __future__ import annotations

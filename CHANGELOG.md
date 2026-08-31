@@ -8,6 +8,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-08-31
+
 ### Added
 
 - **Build identity and release diagnostics.** Settings → About, `/api/v1/health`,
@@ -64,6 +68,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Collections headings can expand or collapse their tree instead of hiding it.
 
 ### Changed
+
+- **The desktop bundle identifier is release-safe.** The pre-release application
+  identity is now `dev.cairndex.desktop`, avoiding Tauri's ambiguous `.app`
+  suffix before compatibility constraints exist.
 
 - **Grouping is clearer and more scalable.** Suggestions show their evidence
   and contents instead of an unreliable confidence label, repeated shapes
@@ -200,8 +208,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - **Release metadata is synchronized.** Root, server, web, desktop, npm, Cargo,
   and Tauri versions must agree with each other and with a release tag. Manual
-  release dispatch must also run from the tag it names. The repository remains
-  at the current `0.1.1` baseline until the owner chooses the next version.
+  release dispatch must also run from the tag it names. The release candidate is
+  synchronized at `0.2.0`.
 - **Container smoke tests identify the exact image.** Default local runs build a
   commit-specific disposable tag; publication smoke-tests once, verifies every
   final tag points to those bytes, and pushes without rebuilding. Release images

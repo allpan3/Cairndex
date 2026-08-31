@@ -856,7 +856,7 @@ codesign -dv src-tauri/target/release/bundle/macos/Cairndex.app
 # → TeamIdentifier=not set
 
 spctl --assess --type open --context context:primary-signature -vv \
-  src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+  src-tauri/target/release/bundle/dmg/Cairndex_0.2.0_aarch64.dmg
 # → rejected
 # → source=no usable signature
 ```
@@ -1002,7 +1002,7 @@ codesign -dv "$DMG" 2>&1 | grep -E 'Signature|Authority' || \
 Then notarize and staple the DMG:
 
 ```bash
-DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.2.0_aarch64.dmg
 xcrun notarytool submit "$DMG" --keychain-profile "cairndex-notary" --wait
 xcrun stapler staple "$DMG"
 ```
@@ -1024,7 +1024,7 @@ Notes for when this is picked up:
   one; Cairndex currently needs none beyond the default.
 - Notarization requires the app to be signed with a **Developer ID Application**
   certificate specifically — an "Apple Development" certificate is rejected.
-- The `dev.cairndex.app` bundle identifier is owner-specified and must match the
+- The `dev.cairndex.desktop` bundle identifier is owner-specified and must match the
   identifier registered under the team.
 - Auto-update is **deferred**, not part of this pipeline (see
   [plan 3 §3](plans/03-macos-desktop-app.md)). The public repository removes the
@@ -1064,7 +1064,7 @@ is wrong is more annoying to undo than to get right.
   `python3 infra/release_version.py`; it names every stale source. The release
   workflow repeats that check against the tag on a Linux runner **before** it
   starts the macOS build, so a `v0.2.0` tag can no longer silently produce a
-  `Cairndex_0.1.0_*.dmg` or spend macOS minutes before failing.
+  mismatched DMG or spend macOS minutes before failing.
 - `CHANGELOG.md` — move `Unreleased` entries under the new version. **This is
   enforced**: the release body is that section, extracted by
   `infra/release_notes.py`, and the job fails if `## [<version>]` is missing
@@ -1075,16 +1075,16 @@ is wrong is more annoying to undo than to get right.
 **2. Tag and push.** Annotated, so the tag carries its own description:
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0 — <summary>"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "v0.2.0 — <summary>"
+git push origin v0.2.0
 ```
 
 The push triggers the workflow. Do **not** also dispatch it manually — that
 would build the same tag twice, and macOS minutes are the expensive kind (see
 the cost note below). `workflow_dispatch` is for re-running a tag that already
 exists, after fixing a workflow-level failure. Dispatch from that tag as well as
-entering it as the input (`gh workflow run Release --ref v0.1.0 -f
-tag=v0.1.0`); preflight rejects a mismatch so build provenance cannot name the
+entering it as the input (`gh workflow run Release --ref v0.2.0 -f
+tag=v0.2.0`); preflight rejects a mismatch so build provenance cannot name the
 default branch while the checkout actually builds a tag.
 
 **3. Watch the run.**
@@ -1094,7 +1094,7 @@ gh run list --workflow=Release --limit 1
 gh run watch <run-id> --exit-status
 ```
 
-**4. Review the draft** at `gh release view v0.1.0 --web`. The Apple Silicon
+**4. Review the draft** at `gh release view v0.2.0 --web`. The Apple Silicon
 DMG, its `.sha256`, and its `.app.spdx.json` should be attached — one of each,
 since Intel was dropped from the matrix after the first run (2026-07-23) —
 together with `LICENSE`, `THIRD-PARTY-NOTICES.md`, `GPL-3.0.txt`, and
@@ -1107,7 +1107,7 @@ which is the one thing local builds never reproduce.
 **5. Publish** when satisfied:
 
 ```bash
-gh release edit v0.1.0 --draft=false
+gh release edit v0.2.0 --draft=false
 ```
 
 #### Backing out
@@ -1116,9 +1116,9 @@ A draft release is not visible to anyone, so a bad build costs nothing but
 minutes — delete the draft and the tag, fix, and re-tag:
 
 ```bash
-gh release delete v0.1.0 --yes --cleanup-tag   # removes the draft and the tag
+gh release delete v0.2.0 --yes --cleanup-tag   # removes the draft and the tag
 # or, if no release object exists yet:
-git push origin --delete v0.1.0 && git tag -d v0.1.0
+git push origin --delete v0.2.0 && git tag -d v0.2.0
 ```
 
 Once a release is **published**, do not re-point the tag. People may already
