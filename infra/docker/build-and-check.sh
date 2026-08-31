@@ -11,6 +11,10 @@ LOG_DIR="$(mktemp -d)"
 SERVER_CANARIES=(
     "apps/server/var/${CANARY}"
     "apps/server/.venv-${CANARY}"
+    "apps/server/.uv-cache/${CANARY}"
+    "apps/server/.cache/${CANARY}"
+    "apps/server/__pycache__/${CANARY}"
+    "apps/server/tests/${CANARY}"
     "apps/server/packaging/build/${CANARY}"
     "apps/server/packaging/dist/${CANARY}"
     "apps/server/packaging/vendor/${CANARY}"
@@ -106,4 +110,24 @@ for image in cairndex-server cairndex-web "$PRODUCTION_IMAGE"; do
     fi
 done
 
-echo "CONTEXT OK: dev and production images exclude canaries and stay under the ceiling"
+# Canaries prove the named local paths are ignored. Also reject residue that a
+# package tool or earlier local run may have created under a different name.
+for image in cairndex-server "$PRODUCTION_IMAGE"; do
+    found=$(docker run --rm --entrypoint sh "$image" -c \
+        "find /app \( -name '.uv-cache' -o -name '.cache' -o -name '__pycache__' -o -name '*.pyc' -o -name '*.pyo' -o -name 'tests' \) -print -quit")
+    if [[ -n "$found" ]]; then
+        echo "CONTEXT FAIL: $image contains local/build residue $found" >&2
+        exit 1
+    fi
+done
+
+# GHCR is a binary distribution, so the runtime image must carry the same
+# inspectable project/copyleft notices as the desktop artifact.
+docker run --rm --entrypoint sh "$PRODUCTION_IMAGE" -c \
+    "test -f /app/LICENSE \
+        && test -f /app/THIRD-PARTY-NOTICES.md \
+        && test -f /app/licenses/GPL-3.0.txt \
+        && test -f /app/licenses/LGPL-3.0.txt" \
+    || { echo "CONTEXT FAIL: production image is missing license notices" >&2; exit 1; }
+
+echo "CONTEXT OK: images exclude canaries/residue, carry notices, and stay under the ceiling"

@@ -10,6 +10,11 @@
 **/.mypy_cache
 **/.ruff_cache
 **/.pytest_cache
+**/.uv-cache
+**/.cache
+**/*.pyc
+**/*.pyo
+**/*.egg-info
 
 # Frontend/build outputs (rebuilt in the image)
 apps/web/dist

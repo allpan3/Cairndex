@@ -60,10 +60,16 @@ ENV PATH=/opt/venv/bin:$PATH \
 
 WORKDIR /app
 # The venv installs the project editable against /app, so the source must live
-# at the same path it did during install (see stage 2).
+# at the same path it did during install (see stage 2). Copy only that runtime
+# source rather than the build-stage workdir: lockfiles, packaging helpers, and
+# dependency caches have no purpose in a published image.
 COPY --from=server /opt/venv /opt/venv
-COPY --from=server /app /app
+COPY --from=server /app/src /app/src
 COPY --from=web /web/dist /app/web
+# A container image is a distribution too. Keep its project and transitive
+# license notices inspectable without requiring the source checkout.
+COPY LICENSE THIRD-PARTY-NOTICES.md /app/
+COPY licenses/ /app/licenses/
 # Operator scripts (build context is the repo root, so infra/ is available
 # here even though the server stage's /app only holds apps/server). The
 # entrypoint preflights the writable mounts; backup.sh is the documented backup

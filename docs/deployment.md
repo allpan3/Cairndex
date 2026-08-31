@@ -241,9 +241,11 @@ publication candidate without rebuilding it, pass that image tag explicitly:
 CI first runs `infra/docker/build-and-check.sh`. That gate creates synthetic
 private-data canaries in every ignored runtime, environment, dependency, and
 sidecar packaging path, builds both development contexts and the production
-context, checks all three images for a leaked canary, and rejects any context
-larger than 50 MiB by default. It then passes the built production image
-explicitly to the smoke test.
+context, checks all three images for a leaked canary, rejects residual Python
+caches, verifies the production image contains the project and copyleft license
+notices, and rejects any context larger than 50 MiB by default. The production
+stage copies only installed runtime source and those notices from its build
+stages. CI then passes that exact image explicitly to the smoke test.
 
 This exists because *building* an image proves very little. The Docker CI job
 was green for a month while the production entrypoint ran a migration command
