@@ -774,3 +774,11 @@ an amd64 image for the NAS from an Apple Silicon Mac.
 tests, frontend lint + type-check + unit tests, macOS and Ubuntu desktop checks,
 a macOS Tauri bundle, and Docker context/privacy/build/smoke validation. PRs
 should be green before merge.
+
+CodeQL analyzes Python and JavaScript/TypeScript on pushes, pull requests, and a
+weekly schedule. Dependency review rejects a pull request that introduces a
+known high-or-critical vulnerability. Dependabot checks GitHub Actions, Python,
+npm, Cargo, and Docker dependencies weekly; grouped minor/patch updates keep its
+pull-request volume bounded. Vulnerability reports belong in GitHub's private
+reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
+issue containing real owner data.

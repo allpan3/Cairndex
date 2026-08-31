@@ -29,6 +29,14 @@
 > MIT license, third-party notice, GPLv3 text, and LGPLv3 text in the app. macOS CI
 > verifies the app resources, while the release workflow additionally mounts and
 > checks the finished DMG and attaches the same texts beside it.
+>
+> Repository security automation now covers weekly dependency updates across all
+> five package ecosystems, pull-request dependency review at high severity, and
+> scheduled/PR CodeQL analysis for Python and JavaScript/TypeScript. Secret scanning
+> and push protection were already enabled on the recreated public repository;
+> Dependabot alerts/security updates and private vulnerability reporting are enabled.
+> `main` still has no branch rule: choosing PR/approval/admin-bypass semantics is a
+> separate owner decision because the wrong rule can lock out a solo maintainer.
 
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
