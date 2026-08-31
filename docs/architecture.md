@@ -164,6 +164,9 @@ Content endpoints are scoped to one library:
   `/tag-groups`, `/smart-collections`, `/filters`, `/file-browser`, `/fast-add`,
   `/grouping`, `/jobs`, `/files`, and playback/subtitle routes operate on the
   selected library's `library.db` and library root.
+- `/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments` is
+  bundle-scoped and metadata-only (plan 7). Its own router module rather than
+  more of `bundles.py`: the two share a URL prefix and nothing else.
 - `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
   queue.
 - `GET|PUT /api/v1/libraries/{id}/write-mode` is registry-level too (ADR-0013):
@@ -447,6 +450,11 @@ The implemented schema is documented in `docs/data-model.md`. Core objects:
   remains in `PlaybackProgress` (ADR-0016).
 - `GroupingPlan` / `GroupingProposal` / `GroupingProposalFile` — durable,
   reviewable grouping suggestions.
+- `Moment` — one instant (`end_s IS NULL`) or one span the owner marked inside
+  a video, with an optional comment and its own tags. Keyed by `AssetFile.id`
+  with a denormalized `bundle_id` synced by the same re-parent hook
+  `PlaybackProgress` uses. A moment's tags propagate to its bundle additively
+  (ADR-0025); a range moment is the loop pair the player's clip range loops.
 
 Current schema note: source/origin hyperlink metadata exists at file level
 (`AssetFile.source`). Bundle-level source links are deferred until there is a
@@ -601,7 +609,16 @@ fragment:
 storyboard/sb_001.jpg?v={format-and-fingerprint-token}#xywh={x},{y},{w},{h}
 ```
 
-Clients should resolve that relative to the VTT URL using normal URL rules. The
+Clients should resolve that relative to the VTT URL using normal URL rules.
+
+Three surfaces consume the sheets, all cropping client-side rather than asking the
+server for a frame: the seek-bar hover tooltip, the grid's hover preview, and each
+**moment** row in the Bundle Inspector (plan 7). The last is why a moment
+needs no thumbnail of its own — the sheet already exists for every scanned video,
+and the crop is the same `StoryboardTile` the other two use. A video whose
+storyboard has not been generated yet simply draws the row without one.
+
+The
 VTT is an application index for trickplay loaders, not a browser `<track>`.
 After a storyboard format change, existing libraries require an explicit
 Update/storyboards run; request handlers never generate derivatives on demand.

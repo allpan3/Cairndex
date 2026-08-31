@@ -43,3 +43,5 @@ design, subtitle modeling, and similar structural choices called out in
 | [0022](0022-grouping-plans-in-a-server-local-database.md) | Grouping plans live in a server-local database, attached to each library | accepted |
 | [0023](0023-native-modifier-state-during-drag.md) | Read modifier state natively during a drag | accepted |
 | [0024](0024-directory-groups-in-bundles.md) | Directory groups — a folder of files as one row | superseded by [plan 6](../plans/06-folder-as-bundle-member.md) |
+| [0025](0025-moment-tag-propagation.md) | A moment's tag propagates to its bundle, one way | accepted |
+| [0026](0026-armed-range-loop.md) | An armed range loop confines ordinary playback | accepted |
