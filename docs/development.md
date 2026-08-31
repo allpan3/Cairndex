@@ -424,6 +424,19 @@ build's configure line and component versions are **committed** under
 `packaging/ffmpeg-build-info/` rather than linked upstream. Re-pinning means
 committing the new `versions.txt` for both architectures alongside the digests.
 
+The desktop resource map also embeds `LICENSE`, `THIRD-PARTY-NOTICES.md`, and
+the complete GPLv3/LGPLv3 texts from `licenses/`. After any packaging or license
+change, verify the built app directly:
+
+```bash
+./infra/verify_macos_distribution.sh \
+  apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app
+```
+
+The same script accepts a DMG, mounts it read-only, and verifies the app inside.
+macOS CI checks the app bundle; the release workflow checks both the app and the
+DMG before drafting a release.
+
 **Run the smoke test after any dependency change.** The unit suite imports from
 source, where every module is present, so it structurally cannot catch a frozen
 bundle missing a dynamically resolved import — that only surfaces when the code

@@ -23,6 +23,12 @@
 > require the `v*` tag to match. The desktop release validates version metadata and
 > the changelog on Linux before starting any macOS build. This does **not** choose the
 > next release number.
+>
+> Distribution licensing is now self-contained. The stale GPL-2.0-or-later line in
+> `LICENSE` is corrected to the manifest's GPL-3.0-or-later result. Tauri embeds the
+> MIT license, third-party notice, GPLv3 text, and LGPLv3 text in the app. macOS CI
+> verifies the app resources, while the release workflow additionally mounts and
+> checks the finished DMG and attaches the same texts beside it.
 
 > **Repository privacy incident (2026-08-30): local history is clean; the public
 > remote is not.** An extensionless, flag-like file named `-D` was a private desktop
