@@ -12,7 +12,9 @@
 > contexts now exclude nested environment files, runtime databases, virtualenvs, and
 > sidecar build/vendor output. CI seeds synthetic private-data canaries into each risky
 > path, builds all development and production images, rejects a context above 50 MiB,
-> and inspects every image for leaks. The production smoke path builds a fresh,
+> and inspects every image for leaks. The gate also excludes and rejects residual
+> Python/uv caches and tests, while the production stage copies only runtime source
+> plus the project/copyleft license payload. The production smoke path builds a fresh,
 > commit-specific image by default and deletes it afterward; passing an explicit image
 > tag is the only reuse path. Image publication now smoke-tests the exact tagged image
 > IDs that it pushes rather than rebuilding after the test.

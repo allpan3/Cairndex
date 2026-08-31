@@ -745,11 +745,13 @@ deliberately want to test an already-built candidate:
 ```
 
 `infra/docker/build-and-check.sh` is the CI build gate. It places synthetic
-private-data canaries in runtime database, environment, virtualenv, dependency,
-and sidecar packaging paths; builds both development images and the production
-image; verifies the canaries are absent from every image; and rejects a build
-context larger than 50 MiB by default. Override the ceiling only for a reviewed,
-intentional context growth with `CAIRNDEX_DOCKER_CONTEXT_LIMIT_BYTES`.
+private-data canaries in runtime database, environment, virtualenv, cache, test,
+dependency, and sidecar packaging paths; builds both development images and the
+production image; verifies the canaries are absent from every image; rejects
+residual Python caches independently of canary names; verifies the production
+license payload; and rejects a build context larger than 50 MiB by default.
+Override the ceiling only for a reviewed, intentional context growth with
+`CAIRNDEX_DOCKER_CONTEXT_LIMIT_BYTES`.
 
 The Docker job also runs the recovery acceptance path:
 

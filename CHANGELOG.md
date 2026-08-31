@@ -186,7 +186,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Docker builds prove private local state is excluded.** The build gate plants
   synthetic canaries in sensitive local paths, builds development and production
   images, bounds context size, and inspects every image. Ignore rules cover
-  nested databases, environments, caches, dependencies, and generated sidecars.
+  nested databases, environments, caches, dependencies, tests, and generated
+  sidecars. The production stage copies only runtime source and license notices,
+  and the gate rejects residual Python caches even when no canary is present.
 - **Publication has a mandatory object-level privacy gate.** Before a first
   public push, rewritten history, pull request, or release, agents must inspect
   every published ref and object, detect binary content independently of file
