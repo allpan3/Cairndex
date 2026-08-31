@@ -272,6 +272,14 @@ Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
 - [docs/STATUS.md](docs/STATUS.md) — current milestone and known issues
 - [CHANGELOG.md](CHANGELOG.md)
 
+## Security
+
+Report vulnerabilities through
+[GitHub private vulnerability reporting](https://github.com/allpan3/Cairndex/security/advisories/new),
+not a public issue. Do not attach real library media or identifying metadata;
+reduce reports to synthetic data. See [SECURITY.md](SECURITY.md) for supported
+versions, deployment boundaries, and reporting details.
+
 ## License
 
 Cairndex is released under the [MIT License](LICENSE) (owner decision,

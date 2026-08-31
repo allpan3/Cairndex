@@ -1851,6 +1851,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- **Automated dependency and static security review now covers the public
+  repository.** Dependabot checks GitHub Actions, Python, both npm projects,
+  Cargo, and Docker weekly; pull requests reject newly introduced high-severity
+  vulnerable dependencies; and CodeQL analyzes Python and JavaScript/TypeScript
+  on changes and weekly. Private vulnerability reporting is documented with an
+  explicit prohibition on uploading real owner data to an issue or report.
+
 - **Docker builds now prove private local state stays outside every image.** The
   build gate seeds synthetic canaries into runtime database, environment,
   virtualenv, dependency, and sidecar packaging paths; builds both development
