@@ -52,11 +52,17 @@ overlap.
 
 ### 4. Backup = SQLite online backup of app-data only
 
+**Amended by ADR-0008:** persistent content metadata moved from the one app-data
+database into each library's `.cairndex/library.db`. The online-backup decision
+still applies, but a complete backup set is now the registry plus every library
+database (and `.cairndex/trash/` when write mode is used). `restore.sh` replaces
+the original unguarded file-copy procedure with a stopped-only atomic restore.
+
 `infra/backup.sh` uses SQLite's online backup API (via `python3`, always present
 in image and host) to make a consistent hot copy of `cairndex.db` while the app
 writes (WAL mode) — a plain `cp` of a WAL database can capture a torn state. The
 copy is integrity-checked. Only the database is backed up; the derived-media
-cache is regenerable. Restore is a file copy while the app is stopped.
+cache is regenerable.
 
 ### 5. No authentication yet; not for public exposure
 

@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -28,6 +29,20 @@ class Settings(BaseSettings):
 
     app_name: str = "Cairndex"
     environment: str = "development"
+    # Public source identity for a packaged build. Health is unauthenticated, so
+    # accept only a commit-shaped value rather than reflecting arbitrary env text
+    build_commit: str | None = None
+
+    @field_validator("build_commit", mode="before")
+    @classmethod
+    def normalize_build_commit(cls, value: object) -> str | None:
+        """Return a lowercase commit SHA, or reject unsafe diagnostic text."""
+        if value is None or not str(value).strip():
+            return None
+        normalized = str(value).strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{7,64}", normalized):
+            raise ValueError("build_commit must be a 7-64 character hexadecimal commit SHA")
+        return normalized
 
     # Exact HTTP(S) origins explicitly trusted for cross-origin API access
     cors_extra_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)

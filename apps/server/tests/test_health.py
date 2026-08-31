@@ -1,3 +1,5 @@
+from importlib.metadata import version
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,7 +16,40 @@ def test_health_returns_ok() -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["app_name"] == "Cairndex"
+    assert body["version"] == version("cairndex-server")
+    assert body["build_commit"] is None
     assert body["api_features"] == ["trickplay", "hls", "progress", "pairing"]
+
+
+def test_openapi_reports_the_release_version() -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == version("cairndex-server")
+
+
+def test_health_accepts_only_commit_shaped_build_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAIRNDEX_BUILD_COMMIT", "ABCDEF0123456789")
+    get_settings.cache_clear()
+    try:
+        response = TestClient(create_app()).get("/api/v1/health")
+
+        assert response.status_code == 200
+        assert response.json()["build_commit"] == "abcdef0123456789"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_invalid_build_identity_is_not_started(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CAIRNDEX_BUILD_COMMIT", "release-from-private-workspace")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="hexadecimal commit SHA"):
+            create_app()
+    finally:
+        get_settings.cache_clear()
 
 
 def test_health_is_unversioned_outside_v1() -> None:

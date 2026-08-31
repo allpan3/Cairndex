@@ -91,9 +91,35 @@ bundled:
 
 # ---------------------------------------------------------------------- check --
 
-# Everything: server, web, desktop. What CI checks.
+# Everything: release metadata, server, web, desktop. What CI checks.
 [group('check')]
-check: check-server check-web check-desktop
+check: check-release check-server check-web check-desktop
+
+[group('check')]
+check-release:
+    python3 infra/release_version.py
+
+# Install fail-closed staged, commit-message, and pre-push privacy hooks
+[group('check')]
+install-privacy-hooks:
+    python3 infra/privacy_gate.py --install-hooks
+
+# Scan every object this branch would add to the selected base
+[group('check')]
+privacy-range base="origin/main" head="HEAD":
+    python3 infra/privacy_gate.py --base {{base}} --head {{head}} --require-private-patterns
+
+# Scan every object reachable from a rewritten or first-published ref
+[group('check')]
+privacy-history head="HEAD":
+    python3 infra/privacy_gate.py --all-history --head {{head}} --require-private-patterns
+
+# Scan the commit range and exact proposed pull-request text before creation
+[group('check')]
+privacy-pr base title_file body_file head="HEAD":
+    python3 infra/privacy_gate.py --base {{base}} --head {{head}} \
+      --pr-title-file {{title_file}} --pr-body-file {{body_file}} \
+      --require-private-patterns
 
 [group('check')]
 check-server:

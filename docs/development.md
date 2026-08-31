@@ -424,6 +424,19 @@ build's configure line and component versions are **committed** under
 `packaging/ffmpeg-build-info/` rather than linked upstream. Re-pinning means
 committing the new `versions.txt` for both architectures alongside the digests.
 
+The desktop resource map also embeds `LICENSE`, `THIRD-PARTY-NOTICES.md`, and
+the complete GPLv3/LGPLv3 texts from `licenses/`. After any packaging or license
+change, verify the built app directly:
+
+```bash
+./infra/verify_macos_distribution.sh \
+  apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app
+```
+
+The same script accepts a DMG, mounts it read-only, and verifies the app inside.
+macOS CI checks the app bundle; the release workflow checks both the app and the
+DMG before drafting a release.
+
 **Run the smoke test after any dependency change.** The unit suite imports from
 source, where every module is present, so it structurally cannot catch a frozen
 bundle missing a dynamically resolved import — that only surfaces when the code
@@ -722,8 +735,38 @@ docker compose up --build --force-recreate
 mount, no reload, SPA served by the backend. `just docker-smoke` starts it
 against a throwaway library, creates one through the API, scans a generated
 video, and checks that a graceful stop releases the lease; CI runs the same
-script after building. See [deployment.md](deployment.md) for the deployment
-itself, including building an amd64 image for the NAS from an Apple Silicon Mac.
+script. With no image argument the smoke script always builds a fresh,
+commit-specific image and removes it afterward. Pass an image tag only when you
+deliberately want to test an already-built candidate:
+
+```bash
+./infra/docker/smoke.sh                 # fresh build, smoke, cleanup
+./infra/docker/smoke.sh cairndex:local  # smoke this exact local image
+```
+
+`infra/docker/build-and-check.sh` is the CI build gate. It places synthetic
+private-data canaries in runtime database, environment, virtualenv, cache, test,
+dependency, and sidecar packaging paths; builds both development images and the
+production image; verifies the canaries are absent from every image; rejects
+residual Python caches independently of canary names; verifies the production
+license payload; and rejects a build context larger than 50 MiB by default.
+Override the ceiling only for a reviewed, intentional context growth with
+`CAIRNDEX_DOCKER_CONTEXT_LIMIT_BYTES`.
+
+The Docker job also runs the recovery acceptance path:
+
+```bash
+./infra/docker/backup-restore-smoke.sh cairndex:candidate
+./infra/docker/backup-restore-smoke.sh cairndex:candidate ghcr.io/example/previous:tag
+```
+
+The first form creates, backs up, removes, restores, and reopens synthetic state
+with one candidate. The second creates and backs up with the older source image,
+then restores and opens with the candidate; use it before release when a real
+previous image exists.
+
+See [deployment.md](deployment.md) for the deployment itself, including building
+an amd64 image for the NAS from an Apple Silicon Mac.
 
 ## Repository conventions
 
@@ -734,11 +777,76 @@ itself, including building an amd64 image for the NAS from an Apple Silicon Mac.
   branch as any user-visible or operational change.
 - Record consequential decisions in `docs/adr/` (see `docs/adr/README.md`).
 - Do not commit source media, databases, caches, thumbnails, or secrets —
-  enforced by `.gitignore`, but review diffs before pushing regardless.
+  `.gitignore` is only a convenience and is not a publication boundary.
+- Install the repository's staged-content, commit-message, and pre-push privacy
+  hooks once per clone with `just install-privacy-hooks`. Add known owner data to
+  Git's untracked `cairndex-private-patterns` file; the scanner never prints a
+  matched literal.
+- Keep the root `VERSION`, Python, npm, Cargo, lockfile, and Tauri versions in
+  sync. `python3 infra/release_version.py` checks every source; passing
+  `--tag vX.Y.Z` also checks the release tag.
+
+`/api/v1/health`, OpenAPI, and **Settings → About** read the application version
+from installed Python package metadata. Packaged sidecars explicitly carry that
+metadata. Release workflows also supply the public commit as
+`CAIRNDEX_BUILD_COMMIT`; for an equivalent local diagnostic build, set that
+variable to `git rev-parse HEAD` while running the Tauri build. The health
+schema rejects anything that is not a 7-64 character hexadecimal SHA because
+the endpoint is unauthenticated.
+
+Before pushing ordinary branch work, run `just privacy-range origin/main HEAD`.
+For a recreated repository, rewritten history, changed remote, first tag, or
+first push of a ref, run `just privacy-history HEAD` instead. Before creating or
+editing a PR, put the exact proposed title and body in files and run:
+
+```bash
+just privacy-pr origin/main /tmp/pr-title.txt /tmp/pr-body.md HEAD
+```
+
+The range scanner reads newly reachable Git objects, including blobs introduced
+and deleted by an intermediate commit. It scans commit metadata, paths, text,
+credential shapes, configured private literals, and binary bytes. The reviewed
+binary allowlist records an immutable SHA-256, expected path, purpose, and
+provenance; a new or moved binary fails until it receives deliberate review.
+Do not use `--no-verify` or weaken the profile to make a finding disappear.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push/PR: backend lint + type-check +
-tests, frontend lint + type-check + unit tests, macOS and Ubuntu desktop checks,
-a macOS Tauri bundle, and a Docker image build validation. PRs should be green
-before merge.
+`.github/workflows/ci.yml` runs on every push/PR: dependency audits; backend
+lint, type-check, and tests; frontend lint, type-check, unit tests, and browser
+e2e; macOS and Ubuntu desktop checks; a macOS Tauri bundle; and Docker
+context/privacy/build/smoke/recovery validation. PRs should be green before
+merge. The audit job checks both npm lockfiles at high severity, the complete
+Python lock, and the Rust lock.
+
+The Rust audit carries one narrow exception: `RUSTSEC-2024-0429` applies to
+`glib::VariantStrIter` in `glib` 0.18.5. Cairndex does not call that API, the
+crate enters only through Tauri/wry's Linux GTK 0.18 dependency graph, and it is
+not part of the Apple Silicon release artifact. The first patched glib line is
+0.20, which GTK 0.18 cannot accept. Keep the exception until Tauri's Linux GTK
+line moves, then remove it rather than broadening it; every other Rust advisory
+still fails CI.
+
+`.github/workflows/privacy.yml` runs independently for every push to `main` and
+for PR open, synchronization, reopen, edit, and ready-for-review events. Its
+`pull_request_target` path executes the base branch's trusted workflow and
+scanner, fetches but never checks out PR objects, grants no contents write, and
+posts `publication-privacy/trusted` to the exact PR head. Changing the scanner
+in a PR therefore cannot make that PR pass. Require that context in the `main`
+ruleset after the workflow first reaches `main`. GitHub has no access to the
+owner's local literal profile, so a green remote check complements rather than
+replaces the pre-publication local gate. A PR that deliberately changes the
+binary/root allowlist must land before a separate PR uses the new allowance.
+
+CodeQL analyzes Python and JavaScript/TypeScript on pushes, pull requests, and a
+weekly schedule. Dependency review rejects a pull request that introduces a
+known high-or-critical vulnerability. Dependabot checks GitHub Actions, Python,
+npm, Cargo, and Docker dependencies weekly; grouped minor/patch updates keep its
+pull-request volume bounded. Vulnerability reports belong in GitHub's private
+reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
+issue containing real owner data.
+
+Every third-party workflow action outside GitHub's own `actions/*` and
+`github/*` namespaces is pinned to an immutable commit SHA. Keep the human
+version comment beside each pin, and let Dependabot propose reviewed updates;
+do not replace a pin with a moving major, tag, or branch.

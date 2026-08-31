@@ -1,0 +1,67 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /apps/server
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python-runtime:
+        dependency-type: production
+        update-types: ["minor", "patch"]
+      python-development:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      web-runtime:
+        dependency-type: production
+        update-types: ["minor", "patch"]
+      web-development:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      desktop-npm:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      desktop-rust:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: docker
+    directory: /infra/docker
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      container-bases:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

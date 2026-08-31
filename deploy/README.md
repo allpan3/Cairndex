@@ -160,14 +160,27 @@ docker compose logs app
 
 ## Updating
 
+Take hot backups before pulling, and copy them off the container host:
+
+```bash
+docker compose exec app /app/infra/backup.sh /data/registry.db /data/backups
+docker compose exec app /app/infra/backup.sh \
+  /libraries/main/.cairndex/library.db /data/backups
+docker compose cp app:/data/backups ./backups
+```
+
+Repeat the library command for every registered library. Then update:
+
 ```bash
 docker compose pull && docker compose up -d
 ```
 
 There is no migration step. The registry database is created on first open and
 each library's schema is patched additively when that library opens, so
-upgrading is just starting the new image. Downgrading is likewise just starting
-an older one, within the compatibility notes in `CHANGELOG.md`.
+upgrading is starting the new image. A downgrade is not automatically safe:
+read the target release's compatibility note. If backward compatibility is not
+explicit, stop the app and restore the complete pre-upgrade database set before
+starting the older image.
 
 Pin `CAIRNDEX_IMAGE_TAG` in `.env` if you would rather updates be a version you
 choose than whatever `:latest` points at today.
@@ -200,6 +213,25 @@ Back up:
 Because those files are owned by uid 10001, a backup job running as your own
 account may be denied. Run it with enough privilege, share a group with 10001,
 or read the package through a container.
+
+Backups from different libraries are named with their library UUID and a unique
+suffix, so they cannot overwrite one another in `/data/backups`. To restore,
+keep the app down and use the image's guarded helper rather than copying over a
+possibly live SQLite file:
+
+```bash
+docker compose down
+docker compose run --rm --no-deps \
+  -v "$PWD/backups:/restore:ro" \
+  --entrypoint /app/infra/restore.sh app \
+  --stopped /restore/<backup-file> /data/registry.db
+docker compose up -d
+```
+
+For a library backup, replace the destination with its container path, such as
+`/libraries/main/.cairndex/library.db`. The helper refuses WAL sidecars,
+integrity-checks and atomically installs the backup, and retains an existing
+destination as `*.pre-restore-*` for rollback.
 
 ## When something is refused
 

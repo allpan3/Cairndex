@@ -40,11 +40,17 @@
 # If a new dependency ever does need an entry here, the smoke test is what will
 # say so. Add the entry with the failure it fixes named in a comment.
 
+from PyInstaller.utils.hooks import copy_metadata
+
 analysis = Analysis(
     ["sidecar_entry.py"],
     pathex=["../src"],
     binaries=[],
-    datas=[],
+    # `cairndex.version` reads the one authoritative package version through
+    # importlib.metadata. PyInstaller does not copy distribution metadata merely
+    # because it found the package, so include this deliberately and let the
+    # packaged-sidecar smoke test verify the reported version.
+    datas=copy_metadata("cairndex-server"),
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],

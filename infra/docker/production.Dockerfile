@@ -35,6 +35,7 @@ RUN uv sync --frozen --no-dev
 
 # --- Stage 3: minimal hardened runtime ----------------------------------------
 FROM python:3.12-slim AS runtime
+ARG CAIRNDEX_BUILD_COMMIT=""
 
 # ffmpeg/ffprobe: media probing (Phase 2), thumbnails (Phase 2), and subtitle
 # conversion (Phase 6) shell out to them via PATH. Curl is for the healthcheck.
@@ -53,22 +54,30 @@ RUN groupadd --gid 10001 app \
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     CAIRNDEX_ENVIRONMENT=production \
+    CAIRNDEX_BUILD_COMMIT=$CAIRNDEX_BUILD_COMMIT \
     CAIRNDEX_STATIC_DIR=/app/web \
     CAIRNDEX_DATA_DIR=/data
 
 WORKDIR /app
 # The venv installs the project editable against /app, so the source must live
-# at the same path it did during install (see stage 2).
+# at the same path it did during install (see stage 2). Copy only that runtime
+# source rather than the build-stage workdir: lockfiles, packaging helpers, and
+# dependency caches have no purpose in a published image.
 COPY --from=server /opt/venv /opt/venv
-COPY --from=server /app /app
+COPY --from=server /app/src /app/src
 COPY --from=web /web/dist /app/web
+# A container image is a distribution too. Keep its project and transitive
+# license notices inspectable without requiring the source checkout.
+COPY LICENSE THIRD-PARTY-NOTICES.md /app/
+COPY licenses/ /app/licenses/
 # Operator scripts (build context is the repo root, so infra/ is available
 # here even though the server stage's /app only holds apps/server). The
 # entrypoint preflights the writable mounts; backup.sh is the documented backup
 # tool.
 COPY infra/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY infra/backup.sh /app/infra/backup.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh
+COPY infra/restore.sh /app/infra/restore.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh /app/infra/restore.sh
 
 # Writable app-data dir (SQLite DB + derived-media cache) — a mounted volume in
 # production, owned by the non-root user. Kept outside any storage root.
