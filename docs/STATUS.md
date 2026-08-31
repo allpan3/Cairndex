@@ -23,6 +23,11 @@
 > require the `v*` tag to match. The desktop release validates version metadata and
 > the changelog on Linux before starting any macOS build. This does **not** choose the
 > next release number.
+> `/api/v1/health` and OpenAPI now expose that synchronized package version, and
+> Settings has an About page showing the version plus the public build commit.
+> Container publication embeds the workflow commit through a Docker build argument;
+> the desktop shell embeds it at compile time and passes it to its sidecar. Development
+> builds report no commit unless one is supplied explicitly.
 >
 > Distribution licensing is now self-contained. The stale GPL-2.0-or-later line in
 > `LICENSE` is corrected to the manifest's GPL-3.0-or-later result. Tauri embeds the

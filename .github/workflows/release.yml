@@ -46,6 +46,12 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            test "$(git rev-parse HEAD)" = "${{ github.sha }}" || {
+              echo "::error::Dispatch this workflow from the same tag passed as the tag input"
+              exit 1
+            }
+          fi
           python3 infra/release_version.py --tag "$TAG"
           python3 infra/release_notes.py "$TAG" >/dev/null
 
@@ -57,6 +63,8 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+    env:
+      CAIRNDEX_BUILD_COMMIT: ${{ github.sha }}
     # macOS minutes bill at 10x, and the app+DMG step is compile-bound with no
     # progress output, so a wedged Tauri DMG bundler (it drives Finder over
     # AppleScript — the documented reason CI skips DMG) would otherwise burn

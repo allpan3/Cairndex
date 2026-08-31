@@ -94,6 +94,7 @@ jobs:
             cairndex:candidate
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: CAIRNDEX_BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -102,6 +103,8 @@ jobs:
       # checks that a graceful stop released the ownership lease.
       - name: Smoke-test the candidate
         run: ./infra/docker/smoke.sh cairndex:candidate
+        env:
+          CAIRNDEX_EXPECTED_BUILD_COMMIT: ${{ github.sha }}
 
       # Scan the exact local image that passed the smoke test, before any
       # registry operation can change what the tag names. The uploaded JSON is

@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Settings now identifies the build being run.** About shows the synchronized
+  package version and, for release artifacts, the public source commit. The
+  same values are available from `/api/v1/health`, while OpenAPI reports the
+  package version; development builds clearly say when no commit was recorded.
+
 - **Moments — save the frames and spans that matter inside a video.** Press
   <kbd>B</kbd> while watching to mark the frame you are on; with a range marked in
   the clip bar, it saves the range instead. Saved moments appear in the Bundle

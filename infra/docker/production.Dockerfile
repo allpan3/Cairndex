@@ -35,6 +35,7 @@ RUN uv sync --frozen --no-dev
 
 # --- Stage 3: minimal hardened runtime ----------------------------------------
 FROM python:3.12-slim AS runtime
+ARG CAIRNDEX_BUILD_COMMIT=""
 
 # ffmpeg/ffprobe: media probing (Phase 2), thumbnails (Phase 2), and subtitle
 # conversion (Phase 6) shell out to them via PATH. Curl is for the healthcheck.
@@ -53,6 +54,7 @@ RUN groupadd --gid 10001 app \
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     CAIRNDEX_ENVIRONMENT=production \
+    CAIRNDEX_BUILD_COMMIT=$CAIRNDEX_BUILD_COMMIT \
     CAIRNDEX_STATIC_DIR=/app/web \
     CAIRNDEX_DATA_DIR=/data
 

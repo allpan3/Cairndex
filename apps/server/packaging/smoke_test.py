@@ -31,6 +31,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,16 @@ def write_fixtures(library_root: Path) -> None:
 def check(port: int, library_root: Path) -> None:
     if anonymous_status(port, "/api/v1/health") != 200:
         raise SmokeFailure("health should be reachable without the owner token")
+    status, health = request(port, "/api/v1/health")
+    if status != 200 or health is None:
+        raise SmokeFailure(f"could not read packaged health response: HTTP {status}")
+    expected_version = version("cairndex-server")
+    if health.get("version") != expected_version:
+        raise SmokeFailure(
+            f"packaged version is {health.get('version')!r}, expected {expected_version!r}"
+        )
+    if "build_commit" not in health:
+        raise SmokeFailure("packaged health response omitted build_commit")
     if anonymous_status(port, "/api/v1/libraries") != 401:
         raise SmokeFailure("the API must refuse an unauthenticated request")
 

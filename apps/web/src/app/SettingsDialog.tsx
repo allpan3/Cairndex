@@ -1,7 +1,8 @@
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  fetchHealth,
   pollDevicePairing,
   startDevicePairing,
   type DeviceRead,
@@ -40,7 +41,9 @@ export function SettingsDialog({
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
-  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance' | 'exports'>('devices')
+  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance' | 'exports' | 'about'>(
+    'devices',
+  )
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -84,8 +87,16 @@ export function SettingsDialog({
             >
               Appearance
             </button>
+            <button
+              className={`settings-nav__item${page === 'about' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('about')}
+            >
+              About
+            </button>
           </nav>
-          {page === 'appearance' ? (
+          {page === 'about' ? (
+            <AboutPage />
+          ) : page === 'appearance' ? (
             <AppearancePage />
           ) : desktop && page === 'libraries' ? (
             <LibraryMappingsPage libraries={libraries} />
@@ -99,6 +110,43 @@ export function SettingsDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Release identity for support and stale-install diagnosis. */
+function AboutPage() {
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: ({ signal }) => fetchHealth(signal),
+    staleTime: Infinity,
+  })
+  return (
+    <section className="devices-page" aria-labelledby="about-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="about-title">About Cairndex</h3>
+          <p>Build information for release verification and support.</p>
+        </div>
+      </div>
+      {health.isLoading && <div className="inspector__empty">Loading build information…</div>}
+      {health.error && (
+        <div className="modal__error" role="alert">
+          {health.error.message}
+        </div>
+      )}
+      {health.data && (
+        <dl className="about-build">
+          <div>
+            <dt>Version</dt>
+            <dd>{health.data.version}</dd>
+          </div>
+          <div>
+            <dt>Build commit</dt>
+            <dd>{health.data.build_commit ?? 'Not recorded (development build)'}</dd>
+          </div>
+        </dl>
+      )}
+    </section>
   )
 }
 

@@ -19,6 +19,7 @@ from cairndex.persistence.engine import discard_all_plans
 from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
 from cairndex.registry.library_engine import close_library_engines
+from cairndex.version import APP_VERSION
 
 
 @asynccontextmanager
@@ -78,7 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
     # Packaged Tauri origins are trusted; development origins require explicit opt-in
     app.add_middleware(
         CORSMiddleware,

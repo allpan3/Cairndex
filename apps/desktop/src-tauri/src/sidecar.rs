@@ -53,6 +53,9 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(15);
 // can set this app's environment is already running as the user, which is
 // outside the threat model the loopback token addresses.
 const DEV_BINARY_ENV: &str = "CAIRNDEX_SIDECAR_BIN";
+// Release workflows set this while compiling the shell. Passing the compiled
+// value to the sidecar makes Settings diagnostics identify the whole app build
+const BUILD_COMMIT: Option<&str> = option_env!("CAIRNDEX_BUILD_COMMIT");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -404,6 +407,10 @@ fn launch(binary: &Path, data_dir: &Path) -> Result<(Child, LocalServerInfo), Si
         // process list, and this token is the sidecar's only access gate.
         .env("CAIRNDEX_LOCAL_TOKEN", &token)
         .env("CAIRNDEX_DATA_DIR", data_dir);
+
+    if let Some(build_commit) = BUILD_COMMIT {
+        command.env("CAIRNDEX_BUILD_COMMIT", build_commit);
+    }
 
     // Bundled media tools sit beside the binary. Without these the sidecar falls
     // back to PATH — which, for an app launched from Finder, is launchd's
@@ -881,6 +888,11 @@ mod tests {
             .send()
             .expect("health request");
         assert!(health.status().is_success());
+        let health: serde_json::Value = health.json().expect("health json");
+        match BUILD_COMMIT {
+            Some(expected) => assert_eq!(health["build_commit"], expected),
+            None => assert!(health["build_commit"].is_null()),
+        }
 
         // Everything else demands the token this run generated.
         let anonymous = client

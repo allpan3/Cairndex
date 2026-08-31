@@ -196,6 +196,8 @@ jobs:
   desktop-linux:
     name: Desktop Rust (Ubuntu)
     runs-on: ubuntu-latest
+    env:
+      CAIRNDEX_BUILD_COMMIT: ${{ github.sha }}
     defaults:
       run:
         working-directory: apps/desktop/src-tauri
@@ -246,6 +248,8 @@ jobs:
   desktop-macos:
     name: Desktop shell (macOS)
     runs-on: macos-latest
+    env:
+      CAIRNDEX_BUILD_COMMIT: ${{ github.sha }}
     # Free on a public repo, but a hung Tauri build would still occupy a runner
     # for GitHub's default six hours. Observed cold-cache wall time is ~4.5 min.
     timeout-minutes: 30

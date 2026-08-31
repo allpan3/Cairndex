@@ -100,6 +100,19 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 api /health >/dev/null 2>&1 || fail "server never became healthy"
+if [[ -n "${CAIRNDEX_EXPECTED_BUILD_COMMIT:-}" ]]; then
+    health_json=$(api /health)
+    python3 -c '
+import json, sys
+
+health = json.load(sys.stdin)
+expected = sys.argv[1].lower()
+actual = health.get("build_commit")
+if actual != expected:
+    raise SystemExit(f"health build_commit is {actual!r}, expected {expected!r}")
+' "$CAIRNDEX_EXPECTED_BUILD_COMMIT" <<<"$health_json" \
+        || fail "image health did not report the expected build commit"
+fi
 
 step "SPA is served"
 spa_status=$(curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/")
