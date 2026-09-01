@@ -87,6 +87,29 @@ def test_commit_identity_email_is_public_metadata():
     assert findings == ["commit fixture:6: non-placeholder email address"]
 
 
+# Allow only Dependabot's known GitHub service sign-off, not arbitrary message emails
+def test_dependabot_public_service_signoff_is_not_private_content():
+    metadata = (
+        b"tree 0000000000000000000000000000000000000000\n"
+        b"author Synthetic Maintainer <you@example.com> 1 +0000\n"
+        b"committer Synthetic Maintainer <you@example.com> 1 +0000\n\n"
+        b"Bump a synthetic dependency\n\n"
+    )
+    service_email = b"support" + b"@github.com"
+    trailer = b"Signed-off-by: dependabot[bot] <" + service_email + b">\n"
+    assert privacy_gate.scan_commit(metadata + trailer, "fixture", []) == []
+
+    mention = metadata + b"Mention " + service_email + b" here\n"
+    assert privacy_gate.scan_commit(mention, "fixture", []) == [
+        "commit fixture:7: non-placeholder email address"
+    ]
+
+    other_signer = metadata + b"Signed-off-by: other[bot] <" + service_email + b">\n"
+    assert privacy_gate.scan_commit(other_signer, "fixture", []) == [
+        "commit fixture:7: non-placeholder email address"
+    ]
+
+
 # Never echo diagnostics derived from private input at the publication boundary
 def test_failure_report_withholds_finding_details(capsys):
     private_derived_finding = "fixture:1: owner-only-catalogue-name"
