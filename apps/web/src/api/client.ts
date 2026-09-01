@@ -440,6 +440,8 @@ export const requestPlaybackDecision = (
           caps: payload.caps,
           audio_stream_index: payload.audio_stream_index,
           max_height: payload.max_height,
+          force_hls: payload.force_hls,
+          start_s: payload.start_s,
         },
   ).then((decision) => ({
     ...decision,

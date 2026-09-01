@@ -46,10 +46,105 @@ export interface StallSample {
 
 /** `HTMLMediaElement.HAVE_METADATA`, spelled out so this module needs no DOM. */
 const HAVE_METADATA = 1
+/** `HTMLMediaElement.HAVE_FUTURE_DATA`, spelled out so this module needs no DOM. */
+const HAVE_FUTURE_DATA = 3
 
 export interface StallDetector {
   /** Record one sample; true means playback has been stuck past the threshold. */
   observe: (sample: StallSample, now: number) => boolean
+}
+
+export interface UnderfeedDetector {
+  /** Record one sample; true means progressive playback stayed below real time. */
+  observe: (sample: StallSample, now: number) => boolean
+}
+
+export interface SeekStallDetector {
+  /** Record one sample; true means a progressive seek did not finish promptly. */
+  observe: (sample: StallSample, now: number) => boolean
+}
+
+/** Detect a progressive seek that stays unresolved past a short recovery window. */
+export function createSeekStallDetector(
+  thresholdMs: number,
+  maxSampleGapMs = thresholdMs,
+): SeekStallDetector {
+  let seekStartedAt: number | null = null
+  let lastSampleAt: number | null = null
+
+  return {
+    observe(sample, now) {
+      const gapped = lastSampleAt !== null && now - lastSampleAt > maxSampleGapMs
+      lastSampleAt = now
+      const inactive =
+        sample.paused ||
+        sample.ended ||
+        sample.playbackRate === 0 ||
+        sample.readyState < HAVE_METADATA
+
+      if (inactive || !sample.seeking || gapped) {
+        seekStartedAt = !inactive && sample.seeking ? now : null
+        return false
+      }
+      if (seekStartedAt === null) {
+        seekStartedAt = now
+        return false
+      }
+      if (now - seekStartedAt < thresholdMs) return false
+      seekStartedAt = now
+      return true
+    },
+  }
+}
+
+/** Detect sustained progressive playback that cannot keep up with its requested rate. */
+export function createUnderfeedDetector(
+  thresholdMs: number,
+  minimumProgressRatio = 0.75,
+  maxSampleGapMs = thresholdMs,
+): UnderfeedDetector {
+  let windowStartedAt: number | null = null
+  let windowStartedTime = Number.NaN
+  let lastSampleAt: number | null = null
+
+  const reset = (sample: StallSample, now: number) => {
+    windowStartedAt = now
+    windowStartedTime = sample.currentTime
+  }
+
+  return {
+    observe(sample, now) {
+      const gapped = lastSampleAt !== null && now - lastSampleAt > maxSampleGapMs
+      lastSampleAt = now
+      const idle =
+        sample.paused ||
+        sample.seeking ||
+        sample.ended ||
+        sample.playbackRate === 0 ||
+        sample.readyState < HAVE_METADATA
+
+      // HAVE_FUTURE_DATA is the browser's own verdict that decoding can advance
+      if (idle || gapped || sample.readyState >= HAVE_FUTURE_DATA) {
+        reset(sample, now)
+        return false
+      }
+      if (windowStartedAt === null || sample.currentTime < windowStartedTime) {
+        reset(sample, now)
+        return false
+      }
+
+      const elapsedMs = now - windowStartedAt
+      const expected = (elapsedMs / 1000) * sample.playbackRate
+      const actual = sample.currentTime - windowStartedTime
+      if (expected <= 0 || actual >= expected * minimumProgressRatio) {
+        reset(sample, now)
+        return false
+      }
+      if (elapsedMs < thresholdMs) return false
+      reset(sample, now)
+      return true
+    },
+  }
 }
 
 /**

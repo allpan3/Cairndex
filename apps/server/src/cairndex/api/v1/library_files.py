@@ -96,14 +96,12 @@ def serve_file(
         target = file_browser_service.resolve_entry_path(db, path)
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     relabel = hevc_relabel.relabel_for(target)
-    if relabel is None:
-        return FileResponse(str(target), media_type=media_type, filename=target.name)
     return ranged_stream.ranged_file_response(
         target,
         media_type=media_type,
-        size=target.stat().st_size,
         range_header=request.headers.get("range"),
-        patch=relabel.apply,
+        patch=relabel.apply if relabel is not None else None,
+        filename=target.name,
     )
 
 

@@ -1,13 +1,14 @@
-"""Range-aware file streaming with an optional byte patch.
+"""Range-aware media streaming with bounded, playback-sized chunks.
 
-``FileResponse`` handles HTTP Range perfectly well and is what every other
-read-only route here uses. It cannot help when the bytes on the way out must
-differ from the bytes on disk — which is what relabelling ``hev1`` HEVC as
-``hvc1`` needs (see ``hevc_relabel``): five bytes of header rewritten, the rest
-of a multi-gigabyte file passed through untouched.
+Starlette's ``FileResponse`` emits 64 KiB chunks. Per-chunk response overhead
+can throttle that path below normal high-bitrate video rates, even when storage
+and the network are fast. This implementation uses larger bounded chunks and
+also supports rewriting bytes on the way out, which is what relabelling
+``hev1`` HEVC as ``hvc1`` needs (see ``hevc_relabel``): five bytes of header
+rewritten, the rest of a multi-gigabyte file passed through untouched.
 
-So this is deliberately the *smallest* Range implementation that serves a media
-element correctly, and nothing more:
+The byte-patched fallback is deliberately the *smallest* Range implementation
+that serves a media element correctly, and nothing more:
 
 - one range per request, which is all a media element ever asks for. A
   multi-range request is answered with the whole body, which is a legal response
@@ -23,12 +24,18 @@ import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import FileResponse, Response, StreamingResponse
 
-# Big enough that a large file is not thousands of reads, small enough that a
-# patch near the start is not delayed behind megabytes of buffering.
-_CHUNK_BYTES = 256 * 1024
+# Amortize response overhead while keeping memory bounded per concurrent stream
+_CHUNK_BYTES = 1024 * 1024
+
+
+# Keep FileResponse semantics while sizing direct-play writes for video throughput
+class _MediaFileResponse(FileResponse):
+    chunk_size = _CHUNK_BYTES
+
 
 # `bytes=start-end`, `bytes=start-`, or `bytes=-suffix`. Anything else — including
 # a comma, which means multiple ranges — deliberately does not match.
@@ -85,18 +92,23 @@ def ranged_file_response(
     path: Path,
     *,
     media_type: str,
-    size: int,
     range_header: str | None = None,
     patch: BytePatch | None = None,
+    filename: str | None = None,
 ) -> Response:
-    """Serve ``path`` honouring one Range, optionally rewriting bytes on the way.
-
-    ``size`` is passed in rather than stat'd here so the caller can reuse a stat
-    it has already paid for, and so the length it advertises cannot disagree with
-    the length it serves.
-    """
+    """Serve ``path`` honouring one Range, optionally rewriting bytes on the way."""
+    if patch is None:
+        return _MediaFileResponse(str(path), media_type=media_type, filename=filename)
+    size = path.stat().st_size
     resolved = _resolve_range(range_header, size)
     common = {"Accept-Ranges": "bytes"}
+    if filename is not None:
+        encoded = quote(filename)
+        common["Content-Disposition"] = (
+            f"attachment; filename*=utf-8''{encoded}"
+            if encoded != filename
+            else f'attachment; filename="{filename}"'
+        )
     if resolved == "unsatisfiable":
         return Response(
             status_code=416,

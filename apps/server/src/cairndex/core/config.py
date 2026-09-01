@@ -185,6 +185,12 @@ class Settings(BaseSettings):
     # players can't exhaust the box; starting one beyond this returns 429.
     transcode_max_sessions: int = 2
 
+    # Prefer copy-only HLS over progressive HTTP when both can carry the source.
+    # The server default stays direct for loopback desktop/development use;
+    # production Docker compose enables this because remote browsers can issue
+    # enough short Range requests to starve otherwise fast NAS delivery.
+    prefer_hls: bool = False
+
     # Seconds without a playlist/segment fetch before an HLS session is reaped
     # (killed + its transcode dir deleted). Player close also tears sessions down.
     transcode_idle_timeout: float = 60.0
