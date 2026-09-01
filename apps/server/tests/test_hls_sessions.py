@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.api.v1.playback_sessions import get_manager
+from cairndex.core.config import get_settings
 from cairndex.core.errors import CapacityError, ValidationError
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.media import hls
@@ -54,8 +55,10 @@ _STUB_SOURCE = textwrap.dedent(
     # Exit promptly on SIGTERM like ffmpeg (PEP 475 would otherwise resume sleep).
     signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     out.mkdir(parents=True, exist_ok=True)
-    (out / "init.mp4").write_bytes(b"init")
-    for i in range(start, count):
+    window = int(sys.argv[5])
+
+    (out / sys.argv[6]).write_bytes(b"init")
+    for i in range(start, min(count, start + window)):
         (out / (str(i) + ".m4s")).write_bytes(("seg" + str(i)).encode())
         time.sleep(delay)
     """
@@ -78,6 +81,8 @@ def _stub_builder(stub_script: Path, delay: float) -> hls.CommandBuilder:
             str(start_number),
             str(session.segment_count),
             str(delay),
+            str(session.run_window),
+            session.run_init_name,
         ]
 
     return build
@@ -196,6 +201,88 @@ def test_backward_seek_restarts_encoder(make_manager: ManagerFactory) -> None:
     # A segment before the current run can never be produced by it → restart.
     assert manager.serve_artifact("lib", session.id, "10.m4s").read_bytes() == b"seg10"
     assert session.run_start == 10
+
+
+def test_each_encoder_run_is_bounded_to_the_playback_window(
+    make_manager: ManagerFactory,
+) -> None:
+    manager = make_manager(delay=0.0, ahead_window=2)
+    session = _create(manager, duration=600.0)
+
+    assert session.process is not None
+    session.process.wait(timeout=5.0)
+    assert sorted(path.name for path in session.output_dir.glob("*.m4s")) == [
+        "0.m4s",
+        "1.m4s",
+        "2.m4s",
+    ]
+
+    assert manager.serve_artifact("lib", session.id, "3.m4s").read_bytes() == b"seg3"
+    assert session.run_start == 3
+
+
+def test_init_waits_for_the_first_complete_media_segment(tmp_path: Path) -> None:
+    def partial_init_builder(session: HlsSession, start_number: int, _start_s: float) -> list[str]:
+        script = textwrap.dedent(
+            """
+            import pathlib, sys, time
+
+            out = pathlib.Path(sys.argv[1])
+            init = out / sys.argv[2]
+            init.write_bytes(b"partial")
+            time.sleep(0.2)
+            init.write_bytes(b"complete")
+            (out / (sys.argv[3] + ".m4s")).write_bytes(b"segment")
+            """
+        )
+        return [
+            sys.executable,
+            "-c",
+            script,
+            str(session.output_dir),
+            session.run_init_name,
+            str(start_number),
+        ]
+
+    manager = SessionManager(
+        transcode_dir=tmp_path / "transcode",
+        command_builder=partial_init_builder,
+        keyframe_prober=lambda _src, _t: None,
+        start_reaper=False,
+        segment_wait=2.0,
+    )
+    try:
+        session = _create(manager)
+        started = time.monotonic()
+        init = manager.serve_artifact("lib", session.id, "init.mp4")
+        assert init.read_bytes() == b"complete"
+        assert time.monotonic() - started >= 0.15
+    finally:
+        manager.shutdown()
+
+
+def test_init_follows_an_immediate_far_seek_restart(make_manager: ManagerFactory) -> None:
+    manager = make_manager(delay=0.2, ahead_window=1, segment_wait=5.0)
+    session = _create(manager, duration=600.0)
+    result: dict[str, Path | Exception] = {}
+
+    def fetch_init() -> None:
+        try:
+            result["init"] = manager.serve_artifact("lib", session.id, "init.mp4")
+        except Exception as exc:  # noqa: BLE001
+            result["init"] = exc
+
+    thread = threading.Thread(target=fetch_init)
+    thread.start()
+    time.sleep(0.05)
+    assert manager.serve_artifact("lib", session.id, "50.m4s").read_bytes() == b"seg50"
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    init = result["init"]
+    assert isinstance(init, Path)
+    assert init.name == session.run_init_name
+    assert init.read_bytes() == b"init"
 
 
 # --- concurrency + lifecycle ------------------------------------------------
@@ -320,6 +407,7 @@ def test_ffmpeg_command_remux_copies_video(monkeypatch: pytest.MonkeyPatch, tmp_
     assert _value_after(args, "-c:a") == "aac"  # AAC fallback
     assert _value_after(args, "-hls_segment_type") == "fmp4"
     assert _value_after(args, "-start_number") == "0"
+    assert _value_after(args, "-t") == "30"
     assert "-ss" not in args  # no input seek at the start
 
 
@@ -519,6 +607,44 @@ def test_real_ffmpeg_remux_and_transcode_produce_segments(tmp_path: Path) -> Non
         manager.shutdown()
 
 
+@requires_ffmpeg
+def test_real_ffmpeg_remux_stops_at_the_bounded_window(tmp_path: Path) -> None:
+    source = tmp_path / "long.mkv"
+    try:
+        _make_mkv(source, duration=24)
+    except subprocess.CalledProcessError:  # pragma: no cover - libx264 unavailable
+        pytest.skip("ffmpeg build cannot encode libx264/aac")
+
+    manager = SessionManager(
+        transcode_dir=tmp_path / "transcode",
+        ahead_window=1,
+        start_reaper=False,
+        segment_wait=30.0,
+    )
+    try:
+        session = manager.create_session(
+            library_id="lib",
+            file_id="f",
+            source_path=source,
+            duration=24.0,
+            kind="remux",
+            params=SessionParams(),
+        )
+        assert manager.serve_artifact("lib", session.id, "init.mp4").stat().st_size > 0
+        assert session.process is not None
+        session.process.wait(timeout=10.0)
+        assert manager.serve_artifact("lib", session.id, "1.m4s").stat().st_size > 0
+        produced = sorted(session.output_dir.glob("*.m4s"))
+        assert [path.name for path in produced] == ["0.m4s", "1.m4s"], [
+            (path.name, path.stat().st_size) for path in produced
+        ]
+
+        assert manager.serve_artifact("lib", session.id, "2.m4s").stat().st_size > 0
+        assert session.run_start == 2
+    finally:
+        manager.shutdown()
+
+
 # --- lock discipline, encoder failure, keyframe playlist --------------------
 def test_teardown_is_prompt_during_an_in_flight_wait(make_manager: ManagerFactory) -> None:
     # The lock must not be held across the stat-poll wait, so teardown can kill
@@ -664,6 +790,74 @@ def test_decision_non_direct_starts_session_and_serves_it(
 
     assert client.delete(seg_base).status_code == 204
     assert client.get(playlist_url).status_code == 404
+
+
+def test_direct_decision_can_recover_as_copy_only_hls_at_the_playhead(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    manager = make_manager(delay=0.0)
+    _use_stub_manager(client, manager)
+    file_id = _video_row(session, library_root, name="movie.mp4")
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+        json={
+            "caps": {
+                "protocols": ["progressive", "hls"],
+                "containers": ["mp4"],
+                "video_codecs": ["h264"],
+                "audio_codecs": ["aac"],
+            },
+            "force_hls": True,
+            "start_s": 14.0,
+        },
+    ).json()
+
+    assert decision["method"] == "remux"
+    assert decision["stream_url"] is None
+    assert "copy-only HLS" in decision["reason"]
+    created = manager.get(library_id, decision["session"]["id"])
+    assert created.kind == "remux"
+    assert created.run_start == 2
+
+
+def test_deployment_can_prefer_copy_only_hls_from_initial_play(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = make_manager(delay=0.0)
+    _use_stub_manager(client, manager)
+    file_id = _video_row(session, library_root, name="movie.mp4")
+    monkeypatch.setenv("CAIRNDEX_PREFER_HLS", "true")
+    get_settings.cache_clear()
+
+    try:
+        decision = client.post(
+            f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+            json={
+                "caps": {
+                    "protocols": ["progressive", "hls"],
+                    "containers": ["mp4"],
+                    "video_codecs": ["h264"],
+                    "audio_codecs": ["aac"],
+                }
+            },
+        ).json()
+    finally:
+        get_settings.cache_clear()
+
+    assert decision["method"] == "remux"
+    assert decision["stream_url"] is None
+    assert "prefers copy-only HLS" in decision["reason"]
+    assert manager.get(library_id, decision["session"]["id"]).kind == "remux"
 
 
 def test_beacon_teardown_alias_tears_down_session(
@@ -884,6 +1078,52 @@ def test_an_unindexed_directly_playable_path_streams_from_the_path_reader(
     # The path-scoped reader, not a file-id stream endpoint: there is no row.
     assert decision["stream_url"] == f"/api/v1/libraries/{library_id}/file?path=clip.mp4"
     assert client.get(decision["stream_url"]).status_code == 200
+
+
+def test_an_unindexed_direct_path_can_recover_as_hls(
+    client: TestClient,
+    library_id: str,
+    library_root: Path,
+    make_manager: ManagerFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairndex.media import probe_service
+
+    manager = make_manager(delay=0.0)
+    _use_stub_manager(client, manager)
+    (library_root / "clip.mp4").write_bytes(b"synthetic video placeholder")
+    monkeypatch.setattr(
+        probe_service,
+        "probe_path",
+        lambda _path: {
+            "duration": 30.0,
+            "width": 640,
+            "height": 360,
+            "video_codec": "h264",
+            "audio_codec": "aac",
+        },
+    )
+
+    decision = client.post(
+        f"/api/v1/libraries/{library_id}/file-browser/playback-decision",
+        json={
+            "path": "clip.mp4",
+            "caps": {
+                "protocols": ["progressive", "hls"],
+                "containers": ["mp4"],
+                "video_codecs": ["h264"],
+                "audio_codecs": ["aac"],
+            },
+            "force_hls": True,
+            "start_s": 14.0,
+        },
+    ).json()
+
+    assert decision["method"] == "remux"
+    assert decision["stream_url"] is None
+    created = manager.get(library_id, decision["session"]["id"])
+    assert created.kind == "remux"
+    assert created.run_start == 2
 
 
 @requires_ffmpeg

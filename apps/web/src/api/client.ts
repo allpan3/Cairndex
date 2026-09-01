@@ -79,13 +79,7 @@ export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionReq
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView =
-  | 'all'
-  | 'recent'
-  | 'uncategorized'
-  | 'untagged'
-  | 'missing'
-  | 'unbundled'
-  | 'random'
+  'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled' | 'random'
 export type BundleSort =
   | 'date_added'
   | 'date_modified'
@@ -440,6 +434,8 @@ export const requestPlaybackDecision = (
           caps: payload.caps,
           audio_stream_index: payload.audio_stream_index,
           max_height: payload.max_height,
+          force_hls: payload.force_hls,
+          start_s: payload.start_s,
         },
   ).then((decision) => ({
     ...decision,

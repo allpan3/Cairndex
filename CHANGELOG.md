@@ -8,7 +8,36 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Security
+
+- **Dependabot privacy checks.** The publication gate recognizes Dependabot's
+  exact public GitHub service sign-off without treating it as owner data. Other
+  email addresses in commit messages remain blocked.
+
+## [0.2.1] — 2026-08-31
+
+### Fixed
+
+- **Direct-play recovery.** Indexed and File Browser videos use bounded 1 MiB
+  response chunks. When a progressive source still cannot advance in real time
+  or a seek remains unresolved, the player keeps the playhead and switches to a
+  copy-only HLS remux instead of freezing or asking the NAS to transcode. HTTP
+  ranges, filename headers, and byte-patched HEVC playback remain supported.
+  Production Docker deployments now prefer that copy-only HLS path from initial
+  play because a failed progressive source can become indistinguishable from an
+  intentional pause; local and desktop servers retain direct playback by default.
+  Each ffmpeg run is limited to the requested fragment plus a small lookahead,
+  so a remux no longer races to duplicate the complete source and contend with
+  playback for NAS storage. Generation-specific init fragments are served only
+  after their first media fragment is complete, preventing a seek/restart race
+  from exposing a partially written init. Opening from a saved moment now sends
+  that timestamp with the initial playback decision and seeds hls.js with the
+  same start position. The browser therefore targets the saved window as part of
+  its initial load instead of depending on a separate post-metadata seek; hls.js
+  may still perform its normal leading timeline probes first.
+- **Desktop release integrity.** Desktop packaging now rejects a staged local
+  server that predates the source or belongs to a different release version,
+  instead of embedding stale server code behind the current app version.
 
 ## [0.2.0] — 2026-08-31
 
@@ -211,6 +240,10 @@ _Nothing yet._
 - **Privacy failures do not echo sensitive-derived diagnostics.** A failed
   publication scan reports only its finding count, keeping matched content and
   any diagnostic strings derived from it out of CI and terminal logs.
+- **Git identity metadata is distinguished from repository content.** The
+  publication gate accepts standard author and committer email headers while
+  continuing to reject personal email addresses in messages, paths, PR text,
+  tracked files, and artifacts.
 
 ### Internal
 

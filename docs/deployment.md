@@ -267,6 +267,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_STORYBOARD_MIN_DURATION` | `10`            | Minimum probed video duration, in seconds, before storyboard generation is attempted.                                                                              |
 | `CAIRNDEX_STORYBOARD_SAMPLING`     | `keyframe`      | `keyframe` decodes only keyframes, so tiles land on the keyframe at or before each sample point and scrubbing is as fine as the source's GOP. `exact` decodes every frame for exact interval boundaries — several times slower per video, and worth it only for a local library (docs/performance.md). The mode is part of the storyboard cache key, so changing it retires every cached sheet — trickplay is unavailable for a library until an Update/storyboards run rebuilds it. |
 | `CAIRNDEX_TRANSCODE_MAX_SESSIONS`  | `2`             | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use.                     |
+| `CAIRNDEX_PREFER_HLS`              | `false`         | Prefer copy-only HLS over direct progressive delivery when the client supports HLS. Production Compose defaults this to `true`; set `false` only when remote direct playback is proven reliable. Video is not re-encoded. |
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 | `CAIRNDEX_WRITE_MODE`              | `allowed`       | Deployment master switch for guarded file operations (ADR-0013). `allowed` lets the per-library opt-in decide; `disabled` forces every library read-only.          |
@@ -351,7 +352,8 @@ the holder's write has to propagate before this machine can see it. `CAIRNDEX_LE
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before
 restarting ffmpeg), `CAIRNDEX_TRANSCODE_AHEAD_WINDOW` (default `5`, segments a
-request may lead the encoder before a far-seek restart), and
+request may lead the encoder before a far-seek restart and the maximum lookahead
+one bounded ffmpeg run produces), and
 `CAIRNDEX_TRANSCODE_KEYFRAME_TIMEOUT` (default `60`, ffprobe deadline for the
 one-time remux keyframe scan).
 
@@ -359,9 +361,11 @@ one-time remux keyframe scan).
 under `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` — server-local, ephemeral
 runtime state, **never** inside a library package (ADR-0014). It is created on
 demand, reaped when sessions end/idle/shut down, and safe to wipe between runs;
-no backup is needed. Size it for roughly `MAX_SESSIONS × the video length being
-watched` (a session holds the segments it has produced so far — a whole movie's
-worth in the worst case of a fully-scrubbed transcode); on the `/data` volume a
+no backup is needed. Each ffmpeg process produces only one bounded lookahead
+window rather than racing to copy the whole source. A session retains fragments
+it has already produced for backward seeks, so size the directory for roughly
+`MAX_SESSIONS × the video length actually watched or scrubbed` (a whole movie's
+worth remains the worst case after traversing the whole timeline); on the `/data` volume a
 few GB of headroom is ample for the default 2-session bound.
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),

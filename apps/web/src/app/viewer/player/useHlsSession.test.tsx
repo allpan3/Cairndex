@@ -113,6 +113,22 @@ test('a remux decision starts an HLS source and tears the session down on unmoun
   expect(mocks.deletePlaybackSession).toHaveBeenCalledWith({ kind: 'file', fileId: 'f1' }, 's1')
 })
 
+test('a saved-moment open starts the first HLS session at that moment', async () => {
+  const { result } = renderHook(() =>
+    useHlsSession({
+      ...options('f1'),
+      initialStartAt: 42.5,
+    }),
+  )
+
+  await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
+  expect(mocks.requestPlaybackDecision.mock.calls[0]?.[1]).toMatchObject({
+    force_hls: false,
+    start_s: 42.5,
+  })
+  expect(result.current.source?.startAt).toBe(42.5)
+})
+
 test('beacons the live session on web pagehide', async () => {
   const { result } = render('f1')
   await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
@@ -184,6 +200,41 @@ test('a direct decision plays natively without starting a session', async () => 
 
   unmount()
   expect(mocks.deletePlaybackSession).not.toHaveBeenCalled()
+})
+
+test('an underfeeding direct source switches to copy-only HLS at the playhead', async () => {
+  mocks.requestPlaybackDecision
+    .mockResolvedValueOnce(directDecision())
+    .mockResolvedValueOnce(remuxDecision('fallback'))
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.source?.kind).toBe('native'))
+
+  act(() => expect(result.current.fallbackToHls()).toBe(true))
+  await waitFor(() => expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(2))
+  expect(mocks.requestPlaybackDecision.mock.calls[1]?.[1]).toMatchObject({
+    force_hls: true,
+    start_s: 12.5,
+  })
+  await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
+  expect(result.current.source).toMatchObject({
+    src: '/s/fallback/index.m3u8',
+    startAt: 12.5,
+  })
+})
+
+test('a client without HLS keeps its direct source', async () => {
+  mocks.requestPlaybackDecision.mockResolvedValue(directDecision())
+  const progressiveCaps = { ...CAPS, protocols: ['progressive'] }
+  const { result } = renderHook(() =>
+    useHlsSession({
+      ...options('f1'),
+      caps: progressiveCaps,
+    }),
+  )
+  await waitFor(() => expect(result.current.source?.kind).toBe('native'))
+
+  act(() => expect(result.current.fallbackToHls()).toBe(false))
+  expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(1)
 })
 
 test('reports the method the server chose, so the info panel can name it', async () => {

@@ -3672,6 +3672,11 @@ export interface components {
             /** Audio Stream Index */
             audio_stream_index?: number | null;
             caps: components["schemas"]["ClientCapabilities"];
+            /**
+             * Force Hls
+             * @default false
+             */
+            force_hls: boolean;
             /** Max Height */
             max_height?: number | null;
             /** Path */
@@ -4549,8 +4554,15 @@ export interface components {
             /** Burn Subtitle Track Id */
             burn_subtitle_track_id?: string | null;
             caps: components["schemas"]["ClientCapabilities"];
+            /**
+             * Force Hls
+             * @default false
+             */
+            force_hls: boolean;
             /** Max Height */
             max_height?: number | null;
+            /** Start S */
+            start_s?: number | null;
         };
         /** PlaybackDecisionResponse */
         PlaybackDecisionResponse: {

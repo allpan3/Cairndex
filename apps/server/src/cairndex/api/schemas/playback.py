@@ -140,6 +140,19 @@ class PlaybackDecisionRequest(BaseModel):
     audio_stream_index: int | None = None
     burn_subtitle_track_id: str | None = None
     max_height: int | None = None
+    # Recover a direct source that cannot keep up over progressive HTTP without
+    # changing its codecs: the server starts a copy-only HLS remux instead.
+    force_hls: bool = False
+    start_s: float | None = None
+
+    @field_validator("start_s")
+    @classmethod
+    def finite_non_negative(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("start_s must be a finite non-negative number")
+        return value
 
 
 # Playback decision for a File Browser path that need not be indexed at all.
@@ -151,6 +164,7 @@ class FileBrowserPlaybackDecisionRequest(BaseModel):
     caps: ClientCapabilities
     audio_stream_index: int | None = None
     max_height: int | None = None
+    force_hls: bool = False
     start_s: float | None = None
 
     @field_validator("start_s")

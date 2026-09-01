@@ -156,9 +156,11 @@ Before **every push** and before creating or updating a pull request:
    every object reachable from every ref that will be pushed — not only the working tree
    or the latest diff.
 2. Inspect staged and committed paths, commit messages, author/committer metadata, PR
-   text, docs, fixtures, and generated artifacts for user data and secrets. Search for
-   both known private values and credential patterns, but never treat a zero-match text
-   search as sufficient.
+   text, docs, fixtures, and generated artifacts for user data and secrets. A standard
+   Git author/committer email is intentional public identity metadata; the same address
+   appearing in a message, path, PR, doc, fixture, or artifact is still scanned as
+   content. Search for both known private values and credential patterns, but never
+   treat a zero-match text search as sufficient.
 3. Enumerate blobs with their detected type and size. Do not trust filenames or
    extensions: an image may have no extension or a flag-like name. Every new image,
    video, archive, database, model, or other binary needs an explicit repository purpose

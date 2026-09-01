@@ -731,7 +731,11 @@ Clients declare a capability profile (containers, video/audio codecs,
   The response also carries duration, audio streams, subtitles, chapters,
   `storyboard_url`, and resume `progress`. For `direct` it returns a
   `stream_url`; for remux/transcode it **starts an HLS session** and returns
-  `{session {id, playlist_url}}`.
+  `{session {id, playlist_url}}`. A client that already received `direct` may
+  repeat the decision with `force_hls` and `start_s` when progressive delivery
+  proves unhealthy. If that client declared HLS support, the server preserves
+  the codecs and starts a copy-only remux at the requested source segment;
+  otherwise the original decision is unchanged.
 - **An `hev1` source is relabelled rather than remuxed.** AVFoundation refuses
   the `hev1` four-character code at every colour depth while MediaSource accepts
   it, which is the only reason such a file needed a session: MSE is the only route
@@ -778,12 +782,17 @@ Clients declare a capability profile (containers, video/audio codecs,
   returns a VOD fMP4 playlist computed up front from the known duration (6 s
   target); `GET .../{session_id}/{init.mp4|{n}.m4s}` serves the shared init
   segment and media segments; `DELETE .../{session_id}` tears the session down.
-  One ffmpeg per session writes segments sequentially; serving a segment ahead
-  of the encoder waits (bounded), and a far seek kills and restarts ffmpeg at
-  the requested segment (`-ss` + `-start_number`). Remux copies video with an
-  AAC audio fallback and accepts keyframe drift; transcode uses `libx264`
-  `veryfast` with `force_key_frames` for exact 6 s boundaries and a capped
-  ladder honoring `max_height`.
+  One ffmpeg per session writes only the requested segment plus the configured
+  lookahead, then exits; the next uncached segment starts another bounded run.
+  This keeps copy-remux from duplicating the whole source at disk speed on the
+  NAS. Serving a segment ahead of the encoder waits (bounded), and a far seek
+  kills and restarts ffmpeg at the requested segment (`-ss` + `-start_number`).
+  Each run writes a distinct init file, and the stable init route publishes it
+  only after the first complete media fragment proves the init is closed. Remux copies video with an
+  AAC audio fallback; its playlist follows source keyframes found by a bounded
+  probe, with a uniform-grid fallback when probing fails. Transcode uses
+  `libx264` `veryfast` with `force_key_frames` for exact 6 s boundaries and a
+  capped ladder honoring `max_height`.
 - Session output is **server-local and ephemeral** under
   `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` — never inside a library
   package. Concurrency is bounded (`CAIRNDEX_TRANSCODE_MAX_SESSIONS`, default 2;
@@ -813,7 +822,23 @@ exit, and transparent re-attach at the current playhead when a session idles out
 (segment/playlist 404 or an hls.js fatal error). Quality (`max_height` ladder),
 audio-track, and subtitle burn-in choices re-decide and start a new session at
 the current position rather than switching in-stream; resume/watch-progress
-works unchanged over the 1:1 VOD timeline.
+works unchanged over the 1:1 VOD timeline. Native progressive delivery is also
+observed: a seek that remains unresolved for 3 seconds, sustained playback below
+75% of real time for 8 seconds, or a dead read transparently re-decides with
+`force_hls` at the live playhead before surfacing the existing interrupted card.
+This is a delivery fallback, not a format fallback, so it remuxes without video
+encoding. A deployment can set `CAIRNDEX_PREFER_HLS=true` to make that copy-only
+HLS decision from initial play instead. Production Docker Compose does so by
+default because remote progressive playback can generate enough short Range
+requests to starve despite ample aggregate NAS throughput. A viewer opened from
+a saved moment seeds the hook's first `startAt`, sends the same value as
+`start_s` in that initial decision, and configures hls.js `startPosition` before
+auto-loading begins. An HLS-first deployment therefore creates its first bounded
+generation near the moment and gives the client that same initial load target,
+instead of relying on a separate post-metadata seek to redirect an already
+running pipeline. hls.js may still request leading fragments to establish its
+timeline before fetching that target; those probes are distinct from choosing
+time zero as the intended playback position.
 
 ## 9. Filtering and Smart Collections
 

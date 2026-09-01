@@ -1,4 +1,32 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
+
+const hlsMock = vi.hoisted(() => ({
+  configs: [] as Array<Record<string, unknown>>,
+}))
+
+vi.mock('hls.js', () => {
+  /** Minimal hls.js surface needed to observe engine startup configuration. */
+  class MockHls {
+    static Events = { ERROR: 'error' }
+    static ErrorTypes = { MEDIA_ERROR: 'mediaError', NETWORK_ERROR: 'networkError' }
+
+    static isSupported(): boolean {
+      return true
+    }
+
+    constructor(config: Record<string, unknown>) {
+      hlsMock.configs.push(config)
+    }
+
+    on(): void {}
+    loadSource(): void {}
+    attachMedia(): void {}
+    recoverMediaError(): void {}
+    destroy(): void {}
+  }
+
+  return { default: MockHls }
+})
 
 import {
   createEngine,
@@ -12,6 +40,10 @@ function engineFor(source: PlaybackSource) {
   const video = document.createElement('video')
   return createEngine(video, source)
 }
+
+afterEach(() => {
+  hlsMock.configs.length = 0
+})
 
 test('direct progressive sources use the native engine', () => {
   expect(engineFor({ src: '/f/stream', mimeType: 'video/mp4' })).toBeInstanceOf(NativeEngine)
@@ -45,6 +77,21 @@ test('MSE HLS sources use the hls.js engine', () => {
     kind: 'hls',
   })
   expect(noFlag).toBeInstanceOf(HlsEngine)
+})
+
+test('MSE HLS starts loading at the requested playhead', async () => {
+  const video = document.createElement('video')
+  const engine = new HlsEngine(video)
+
+  engine.load({
+    src: '/s/index.m3u8',
+    mimeType: 'application/vnd.apple.mpegurl',
+    kind: 'hls',
+    startAt: 42.5,
+  })
+
+  await vi.waitFor(() => expect(hlsMock.configs).toHaveLength(1))
+  expect(hlsMock.configs[0]).toMatchObject({ startPosition: 42.5 })
 })
 
 test('base engine applies pitch preservation independently of playback rate', () => {
