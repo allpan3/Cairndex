@@ -1,5 +1,87 @@
 # Project status
 
+> **Progressive-playback recovery hotfix validated (`0.2.1`, 2026-08-31).** A
+> production NAS deployment could open an ordinary direct-play video but either
+> advanced below real time after its first frames or froze immediately after a
+> seek. Bounded range requests from the same client sustained roughly 60 MB/s,
+> well above the source bitrate, while browser playback generated many short or
+> aborted `206` requests and remained starved without reporting a media error.
+> The local server hid that progressive-request latency because every HTTP round
+> trip was loopback; moving only the server process onto the NAS exposed it even
+> though the media was on the same storage in both setups.
+>
+> The earlier 1 MiB response-chunk change remains a useful direct-stream
+> improvement, but the real browser reproduction proved it was not sufficient.
+> The player now watches native progressive delivery separately from HLS. A seek
+> still unresolved after 3 seconds, playback below 75% of real time for 8
+> seconds, or the existing dead-read detector first asks the server to preserve
+> the playhead and replace direct delivery with a copy-only HLS remux. It does
+> not re-encode video. Indexed and File Browser decisions both accept the
+> recovery request and start the remux at the requested source segment; a client
+> without HLS support retains the existing direct/error behavior.
+>
+> The first real NAS owner replay still froze. The captured element was paused
+> with decoded data buffered, so all three detectors treated it as an intentional
+> pause and no HLS decision was requested; NAS logs instead showed hundreds of
+> direct `206` requests. A paused media element carries no reliable signal that
+> distinguishes this failure from the owner's pause. Production Docker therefore
+> now sets `CAIRNDEX_PREFER_HLS=true`: compatible sources begin as copy-only HLS,
+> while the server default remains direct for loopback desktop and development
+> use.
+>
+> The HLS-first private image was then deployed successfully and the owner still
+> reported a freeze, so it is not accepted as fixed. The healthy container and
+> browser did use HLS. Fresh controlled replays in that same browser began
+> advancing within about one second after immediate long-distance and rapid
+> repeated seeks, so the permanent freeze was not reproduced. The replay did
+> expose two concrete server defects: one short session generated **1.3 GB / 137
+> fragments** because copy-remux ffmpeg raced toward EOF instead of staying near
+> the playhead, and `init.mp4` could be returned as soon as it was merely nonempty
+> while ffmpeg was still writing or replacing it during a seek restart. The
+> follow-up caps every ffmpeg run to the requested fragment plus the configured
+> lookahead (also time-bounded around the normal 6-second target), gives each run
+> a distinct init file, and serves that init only after the first temp-file media
+> fragment proves it complete. The replacement amd64 image was smoke-tested and
+> deployed to the NAS. Controlled playback survived an immediate long-distance
+> seek and the next bounded-window handoff; the owner reports ordinary playback
+> is better, but also reported that entering through a saved moment still failed.
+> That entry path still created its first HLS generation at time zero and sought
+> only after metadata loaded. Sending the saved timestamp in the initial playback
+> decision made the server start near the moment, but its deployed live replay
+> proved hls.js still fetched fragments 0 and 1 before the post-metadata seek. That
+> cancelled the correctly positioned server run and left the element at the saved
+> timestamp with no buffered range. The current follow-up also configures hls.js's
+> initial `startPosition`, making the saved window part of the initial client load
+> rather than a separate post-metadata redirect. Its deployed replay still showed
+> hls.js's normal leading timeline probes, but the requested saved window then
+> buffered and advanced; a second saved-moment jump in the open viewer also
+> buffered and advanced. The owner then confirmed that saved-moment entry and
+> subsequent streaming both work, accepting the deployed behavior for release.
+>
+> Release inspection also caught a stale `0.2.0` local-server sidecar inside an
+> otherwise `0.2.1` desktop build. The pre-bundle gate now rejects staged
+> sidecars that predate the server source or whose packaged version differs from
+> root `VERSION`. After rebuilding, the frozen `0.2.1` sidecar passed its
+> packaged smoke test; the app and mounted DMG both carry that sidecar, the
+> synchronized version, required notices, and a valid ad-hoc signature.
+>
+> The earlier candidate passed backend Ruff/format/mypy and 1,264 tests (one skipped),
+> frontend lint/format/types plus 1,121 tests and production build, all 146
+> Playwright tests, Docker context/canary/residue inspection, and production
+> startup/scan/direct-range/arbitrary-UID plus backup/restore smoke. The
+> bounded-run follow-up passes its focused HLS suite (**55 passed**), the full
+> backend gate (**1,269 passed, 1 skipped**), real-ffmpeg bounded-window coverage,
+> and the exact amd64 production Docker smoke. The first saved-moment start
+> follow-up passed the full frontend gate: lint, format, types, production build,
+> **1,122** unit tests, and **143** Playwright flows, and its exact amd64 image was
+> deployed successfully. The live replay exposed the remaining hls.js startup
+> request described above. The corrected client passes lint, format, types,
+> production build, **1,123** unit tests, and all **146** Playwright flows. Its
+> exact amd64 private candidate passed the production Docker smoke and the two
+> controlled NAS saved-moment replays described above, followed by the owner's
+> acceptance replay. The published `v0.2.0` tag remains untouched; `v0.2.1`
+> publication follows this validated branch.
+
 > **Repository privacy incident resolved (2026-08-30).** The live public repository
 > is the newly created `allpan3/Cairndex`; its clean `main` starts at
 > `52c8f6785ad2faad886bd56f0575a279f880b169`. The contaminated repository is now
