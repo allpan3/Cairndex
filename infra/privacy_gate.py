@@ -83,6 +83,12 @@ _COMMIT_IDENTITY_EMAIL = re.compile(
     r"^(?P<prefix>(?:author|committer) .+ <)[^<>\r\n]+(?P<suffix>> \d+ [+-]\d{4})$",
     re.MULTILINE,
 )
+_DEPENDABOT_PUBLIC_SIGNOFF_EMAIL = re.compile(
+    r"^(?P<prefix>Signed-off-by:[ \t]+dependabot\[bot\][ \t]+<)"
+    + r"support"
+    + r"@github\.com(?P<suffix>>[ \t]*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _BINARY_MAGIC = (
     b"\x89PNG\r\n\x1a\n",
     b"\xff\xd8\xff",
@@ -315,6 +321,9 @@ def scan_text(text: str, label: str, private_patterns: list[str]) -> list[str]:
 def scan_commit(data: bytes, oid: str, private_patterns: list[str]) -> list[str]:
     metadata = data.decode("utf-8", errors="replace")
     metadata = _COMMIT_IDENTITY_EMAIL.sub(r"\g<prefix>you@example.com\g<suffix>", metadata)
+    metadata = _DEPENDABOT_PUBLIC_SIGNOFF_EMAIL.sub(
+        r"\g<prefix>noreply@github.com\g<suffix>", metadata
+    )
     return scan_text(metadata, f"commit {oid[:12]}", private_patterns)
 
 
