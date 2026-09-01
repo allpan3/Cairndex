@@ -14,6 +14,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   exact public GitHub service sign-off without treating it as owner data. Other
   email addresses in commit messages remain blocked.
 
+### Internal
+
+- **Current CI and attestation actions.** GitHub-hosted workflows use the current
+  setup, cache, dependency-review, Buildx, and SBOM actions. Release and image
+  publication now use the unified `actions/attest` v4 interface for both SLSA
+  provenance and SBOM attestations instead of deprecated wrapper actions.
+
 ## [0.2.1] — 2026-08-31
 
 ### Fixed

@@ -262,11 +262,11 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Attest DMG build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest@v4
         with:
           subject-path: release-artifacts/*.dmg
       - name: Attest the DMG's app SBOM
-        uses: actions/attest-sbom@v4
+        uses: actions/attest@v4
         with:
           subject-path: release-artifacts/*.dmg
           sbom-path: release-artifacts/Cairndex_${{ matrix.arch_suffix }}.app.spdx.json
