@@ -1,10 +1,7 @@
-"""Range-aware streaming with a byte patch.
+"""Range-aware media streaming with playback-sized chunks and byte patches.
 
-Everything else read-only here uses ``FileResponse``, which handles Range fine.
-This exists only because the bytes leaving must sometimes differ from the bytes
-on disk (``hevc_relabel``), so the tests are about the two things that then have
-to be true at once: the Range arithmetic is right, and the patch lands at the
-right absolute offset regardless of how the range was cut.
+The tests lock down the Range arithmetic, bounded chunk size, response headers,
+and absolute patch offsets used by direct video playback.
 """
 
 from __future__ import annotations
@@ -17,19 +14,27 @@ from starlette.responses import Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from cairndex.media import ranged_stream
 from cairndex.media.ranged_stream import ranged_file_response
 
 BODY = bytes(range(256)) * 8  # 2048 deterministic bytes
 
 
-def _client(path: Path, patch=None) -> TestClient:  # type: ignore[no-untyped-def]
+# Exercise the custom byte-patched response without changing fixture content
+def _identity(chunk: bytes, _offset: int) -> bytes:
+    return chunk
+
+
+def _client(  # type: ignore[no-untyped-def]
+    path: Path, patch=_identity, filename=None
+) -> TestClient:
     def endpoint(request: Request) -> Response:
         return ranged_file_response(
             path,
             media_type="video/mp4",
-            size=path.stat().st_size,
             range_header=request.headers.get("range"),
             patch=patch,
+            filename=filename,
         )
 
     return TestClient(Starlette(routes=[Route("/f", endpoint)]))
@@ -49,6 +54,14 @@ def test_no_range_serves_the_whole_body(tmp_path: Path) -> None:
     assert response.headers["accept-ranges"] == "bytes"
     assert response.headers["content-length"] == str(len(BODY))
     assert "content-range" not in response.headers
+
+
+def test_filename_preserves_file_response_content_disposition(tmp_path: Path) -> None:
+    response = _client(_fixture(tmp_path), filename="clip sample.mp4").get("/f")
+
+    assert response.headers["content-disposition"] == (
+        "attachment; filename*=utf-8''clip%20sample.mp4"
+    )
 
 
 def test_a_range_serves_exactly_that_span(tmp_path: Path) -> None:
@@ -106,6 +119,17 @@ def test_a_malformed_range_gets_the_whole_body(tmp_path: Path) -> None:
     assert response.content == BODY
 
 
+def test_large_media_streams_in_one_mib_chunks(tmp_path: Path) -> None:
+    path = tmp_path / "large.mp4"
+    path.write_bytes(b"x" * (2 * 1024 * 1024 + 17))
+
+    response = ranged_file_response(path, media_type="video/mp4")
+    chunks = list(ranged_stream._stream(path, 0, path.stat().st_size - 1, _mark_offsets()))
+
+    assert response.chunk_size == 1024 * 1024  # type: ignore[attr-defined]
+    assert [len(chunk) for chunk in chunks] == [1024 * 1024, 1024 * 1024, 17]
+
+
 # --- the patch ---------------------------------------------------------------
 def _mark_offsets(*offsets: int):  # type: ignore[no-untyped-def]
     """A patch that writes 0xFF at the given absolute file offsets."""
@@ -154,10 +178,10 @@ def test_a_range_that_misses_the_patch_is_untouched(tmp_path: Path) -> None:
 def test_the_patch_survives_a_chunk_boundary(tmp_path: Path) -> None:
     """A patch straddling the read size must still land — the file is chunked."""
     big = tmp_path / "big.mp4"
-    payload = bytes(range(256)) * 4096  # 1 MiB, several chunks
+    payload = bytes(range(256)) * (12 * 1024)  # 3 MiB, several chunks
     big.write_bytes(payload)
-    # Either side of the 256 KiB chunk boundary.
-    offsets = (256 * 1024 - 1, 256 * 1024, 256 * 1024 + 1)
+    # Either side of the 1 MiB chunk boundary
+    offsets = (1024 * 1024 - 1, 1024 * 1024, 1024 * 1024 + 1)
 
     response = _client(big, _mark_offsets(*offsets)).get("/f")
 

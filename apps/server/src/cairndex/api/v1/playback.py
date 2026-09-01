@@ -3,8 +3,8 @@
 Library-scoped (ADR-0008): all routes live under
 ``/api/v1/libraries/{library_id}/...``. The manifest lists each video with a
 ``playable`` flag/reason so the UI can show a fallback state instead of a silent
-failure (AGENTS.md §6.1). Streaming is delegated to Starlette's ``FileResponse``,
-which honors HTTP Range (206 + Content-Range). Subtitles are served as WebVTT.
+failure (AGENTS.md §6.1). Video uses bounded, range-aware media streaming;
+subtitles are served as WebVTT.
 """
 
 import math
@@ -315,16 +315,12 @@ def stream_file(file_id: str, access: LibraryAccessDep, request: Request) -> Res
 def _video_response(path: Path, media_type: str, filename: str, request: Request) -> Response:
     """Serve video bytes, patched to ``hvc1`` when that is provably equivalent."""
     relabel = hevc_relabel.relabel_for(path)
-    if relabel is None:
-        # Nothing to rewrite: FileResponse remains the better-tested path, and it
-        # sets Content-Disposition from `filename` as this route always has.
-        return FileResponse(str(path), media_type=media_type, filename=filename)
     return ranged_stream.ranged_file_response(
         path,
         media_type=media_type,
-        size=path.stat().st_size,
         range_header=request.headers.get("range"),
-        patch=relabel.apply,
+        patch=relabel.apply if relabel is not None else None,
+        filename=filename,
     )
 
 

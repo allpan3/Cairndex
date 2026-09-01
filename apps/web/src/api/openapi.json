@@ -2830,6 +2830,11 @@
           "caps": {
             "$ref": "#/components/schemas/ClientCapabilities"
           },
+          "force_hls": {
+            "default": false,
+            "title": "Force Hls",
+            "type": "boolean"
+          },
           "max_height": {
             "anyOf": [
               {
@@ -5163,6 +5168,11 @@
           "caps": {
             "$ref": "#/components/schemas/ClientCapabilities"
           },
+          "force_hls": {
+            "default": false,
+            "title": "Force Hls",
+            "type": "boolean"
+          },
           "max_height": {
             "anyOf": [
               {
@@ -5173,6 +5183,17 @@
               }
             ],
             "title": "Max Height"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
           }
         },
         "required": [
@@ -6888,7 +6909,7 @@
   },
   "info": {
     "title": "Cairndex",
-    "version": "0.1.1"
+    "version": "0.2.1"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -149,10 +149,10 @@ export class HlsEngine extends BaseVideoEngine {
 
   load(source: PlaybackSource): void {
     this.video.crossOrigin = 'anonymous'
-    void this.attach(source.src)
+    void this.attach(source.src, source.startAt)
   }
 
-  private async attach(url: string): Promise<void> {
+  private async attach(url: string, startAt?: number): Promise<void> {
     let Hls: typeof import('hls.js').default
     try {
       Hls = (await import('hls.js')).default
@@ -165,7 +165,10 @@ export class HlsEngine extends BaseVideoEngine {
       this.fail()
       return
     }
-    const hls = new Hls({ enableWorker: true, lowLatencyMode: false })
+    // Pick the saved fragment before auto-loading can fetch segment zero
+    const startPosition =
+      typeof startAt === 'number' && Number.isFinite(startAt) ? Math.max(0, startAt) : -1
+    const hls = new Hls({ enableWorker: true, lowLatencyMode: false, startPosition })
     this.hls = hls
     hls.on(Hls.Events.ERROR, (_event, data) => this.onHlsError(Hls, hls, data))
     hls.loadSource(url)

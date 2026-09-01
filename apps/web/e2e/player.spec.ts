@@ -2969,8 +2969,9 @@ test('Loop arms the range loop, and survives a pause', async ({ page }) => {
 // The whole feature end to end: mark a frame and a span, see them in the docked
 // rail and on the seek track, comment on one, loop the other, forget it (plan 7).
 test('moments are marked in the player and read back in the inspector', async ({ page }) => {
+  const decisions: Record<string, unknown>[] = []
   await mockMedia(page)
-  await mockApi(page)
+  await mockApi(page, { onDecision: (_fileId, body) => decisions.push(body) })
   await page.goto('/')
 
   const video = await openMovie(page)
@@ -3078,6 +3079,16 @@ test('moments are marked in the player and read back in the inspector', async ({
   await page.getByRole('menuitem', { name: 'Delete Moment' }).click()
   await expect(rail.locator('.moment-row__time')).toHaveText(['0:30'])
   await expect(page.locator('.mv-seek__moment-band')).toHaveCount(0)
+
+  // Opening from the shell must start the first HLS generation at the moment.
+  // Starting at zero and seeking only after metadata created throwaway work and
+  // made NAS playback depend on an immediate generation restart winning a race.
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  decisions.length = 0
+  await page.getByRole('button', { name: 'Play from 0:30' }).click()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+  await expect.poll(() => decisions.at(-1)?.start_s).toBe(30)
+  await expect(page.locator('.mv-time')).toContainText('0:30')
 })
 
 test('Play Range plays the span, and Space is ordinary playback', async ({ page }) => {
