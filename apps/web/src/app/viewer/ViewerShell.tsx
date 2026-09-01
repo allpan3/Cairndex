@@ -48,7 +48,11 @@ import { ClipExportDialog } from '../ClipExportDialog'
 import { SnapshotDialog } from '../SnapshotDialog'
 import { saveSnapshot } from '../snapshotExport'
 import type { CoverFrameActions } from './player/SettingsMenu'
-import { createStallDetector } from './player/stallDetector'
+import {
+  createSeekStallDetector,
+  createStallDetector,
+  createUnderfeedDetector,
+} from './player/stallDetector'
 import { describePlayback, type PlaybackDescription } from './player/playbackInfo'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
@@ -82,6 +86,13 @@ const LOAD_WATCHDOG_MS = 15_000
 // second, which is cheap and fine-grained enough to date the stall.
 const STALL_WATCHDOG_MS = 15_000
 const STALL_SAMPLE_MS = 1_000
+// A healthy progressive seek on the measured NAS link completes well below a
+// second. Three seconds gives ordinary range setup room while recovering long
+// before the existing generic stall card would appear.
+const SEEK_STALL_WATCHDOG_MS = 3_000
+// Some progressive reads keep delivering bytes yet advance below real time.
+// Eight seconds distinguishes that sustained failure from one short refill.
+const UNDERFEED_WATCHDOG_MS = 8_000
 
 /** Cover-frame actions the owning surface supplies, when the item is indexed. */
 export interface ShellCoverActions {
@@ -236,6 +247,7 @@ export function ViewerShell({
     directMimeType: playable?.mime_type ?? null,
     caps,
     getCurrentTime,
+    initialStartAt: startAt?.fileId === fileId ? startAt.time : null,
   })
   const source = hls.source
   const resumePosition =
@@ -530,7 +542,7 @@ export function ViewerShell({
   }, [bundleId, fileId, playableDuration, player, qc])
   const visibleResume =
     resumeNotice && resumeNotice.key === currentKey ? resumeNotice.position : null
-  const { reattach, retry: retryPlayback } = hls
+  const { fallbackToHls, reattach, retry: retryPlayback } = hls
   const handleStageError = useCallback(
     (mediaError?: MediaError | null, stageFailure?: StageFailure | null) => {
       // A format the engine has already refused cannot be recovered by opening
@@ -650,25 +662,35 @@ export function ViewerShell({
     // time, so "bytes are still arriving" is invisible here in a way it is not
     // for a progressive read.
     if (!video || !source || source.kind === 'hls') return
-    const detector = createStallDetector(STALL_WATCHDOG_MS, STALL_SAMPLE_MS * 4)
+    const stallDetector = createStallDetector(STALL_WATCHDOG_MS, STALL_SAMPLE_MS * 4)
+    const seekDetector = createSeekStallDetector(SEEK_STALL_WATCHDOG_MS, STALL_SAMPLE_MS * 4)
+    const underfeedDetector = createUnderfeedDetector(
+      UNDERFEED_WATCHDOG_MS,
+      0.75,
+      STALL_SAMPLE_MS * 4,
+    )
     const id = window.setInterval(() => {
       // Every range, not the last one: seeking forward and back leaves several,
       // and the one being refilled is often not the furthest along.
       const ranges = video.buffered
       let bufferedSeconds = 0
       for (let i = 0; i < ranges.length; i++) bufferedSeconds += ranges.end(i) - ranges.start(i)
-      const stalled = detector.observe(
-        {
-          paused: video.paused,
-          seeking: video.seeking,
-          ended: video.ended,
-          playbackRate: video.playbackRate,
-          readyState: video.readyState,
-          currentTime: video.currentTime,
-          bufferedSeconds,
-        },
-        performance.now(),
-      )
+      const sample = {
+        paused: video.paused,
+        seeking: video.seeking,
+        ended: video.ended,
+        playbackRate: video.playbackRate,
+        readyState: video.readyState,
+        currentTime: video.currentTime,
+        bufferedSeconds,
+      }
+      const now = performance.now()
+      const seekStalled = seekDetector.observe(sample, now)
+      const underfed = underfeedDetector.observe(sample, now)
+      const stalled = stallDetector.observe(sample, now)
+      // Progressive delivery is the failing layer, not the codecs. Keep the
+      // playhead and ask the server for copy-only HLS before showing an error.
+      if ((seekStalled || underfed || stalled) && fallbackToHls()) return
       // Straight to the card, deliberately *not* through handleStageError.
       //
       // That path reloads the element first, which is right for a transient
@@ -682,12 +704,14 @@ export function ViewerShell({
       //
       // The card's own "Try again" performs exactly that reload — under the
       // owner's hand, with the state explained rather than mid-churn.
-      if (stalled && currentKey) setFailure({ key: currentKey, kind: 'interrupted' })
+      if ((seekStalled || stalled) && currentKey) {
+        setFailure({ key: currentKey, kind: 'interrupted' })
+      }
     }, STALL_SAMPLE_MS)
     return () => window.clearInterval(id)
     // `currentKey` is what the failure is filed under, so a step to another file
     // must rebuild the detector rather than report against the previous one.
-  }, [source, videoElement, currentKey])
+  }, [source, videoElement, currentKey, fallbackToHls])
 
   const step = useCallback(
     (delta: number) => {

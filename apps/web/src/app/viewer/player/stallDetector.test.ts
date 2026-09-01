@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest'
 
-import { createStallDetector, type StallSample } from './stallDetector'
+import {
+  createSeekStallDetector,
+  createStallDetector,
+  createUnderfeedDetector,
+  type StallSample,
+} from './stallDetector'
 
 const THRESHOLD = 15_000
 
@@ -187,4 +192,78 @@ test('the first sample never fires, however late the clock starts', () => {
   const detector = createStallDetector(THRESHOLD)
 
   expect(detector.observe(playing(), 900_000)).toBe(false)
+})
+
+test('a progressive seek that does not finish reports promptly', () => {
+  const detector = createSeekStallDetector(3_000)
+  const seeking = playing({ seeking: true, readyState: 1, currentTime: 90 })
+
+  expect(detector.observe(seeking, 0)).toBe(false)
+  expect(detector.observe(seeking, 2_999)).toBe(false)
+  expect(detector.observe(seeking, 3_000)).toBe(true)
+})
+
+test('a completed seek and a background sampling gap discard seek-stall evidence', () => {
+  const detector = createSeekStallDetector(3_000, 4_000)
+  const seeking = playing({ seeking: true, readyState: 1, currentTime: 90 })
+
+  detector.observe(seeking, 0)
+  expect(detector.observe(playing({ currentTime: 90 }), 2_000)).toBe(false)
+  expect(detector.observe(seeking, 3_000)).toBe(false)
+  expect(detector.observe(seeking, 10_000)).toBe(false)
+  expect(detector.observe(seeking, 13_000)).toBe(true)
+})
+
+test('paused seeking does not trigger automatic delivery changes', () => {
+  const detector = createSeekStallDetector(3_000)
+
+  for (let now = 0; now <= 30_000; now += 1_000) {
+    expect(detector.observe(playing({ paused: true, seeking: true }), now)).toBe(false)
+  }
+})
+
+test('sustained progressive underfeeding is detected even while bytes keep arriving', () => {
+  const detector = createUnderfeedDetector(8_000)
+
+  for (let i = 0; i < 8; i++) {
+    expect(
+      detector.observe(
+        playing({
+          readyState: 2,
+          currentTime: 10 + i * 0.35,
+          bufferedSeconds: 30 + i * 0.5,
+        }),
+        i * 1000,
+      ),
+    ).toBe(false)
+  }
+  expect(
+    detector.observe(playing({ readyState: 2, currentTime: 12.8, bufferedSeconds: 34 }), 8_000),
+  ).toBe(true)
+})
+
+test('just-in-time progressive playback does not count as underfeeding', () => {
+  const detector = createUnderfeedDetector(8_000)
+
+  for (let i = 0; i < 60; i++) {
+    expect(
+      detector.observe(
+        playing({ readyState: 2, currentTime: 10 + i, bufferedSeconds: 30 + i }),
+        i * 1000,
+      ),
+    ).toBe(false)
+  }
+})
+
+test('future data, seeking, and background gaps reset underfeed evidence', () => {
+  const detector = createUnderfeedDetector(8_000, 0.75, 4_000)
+  for (let i = 0; i < 7; i++)
+    detector.observe(playing({ readyState: 2, currentTime: 10 + i * 0.25 }), i * 1000)
+
+  expect(detector.observe(playing({ readyState: 3, currentTime: 12 }), 7_000)).toBe(false)
+  expect(detector.observe(playing({ readyState: 2, currentTime: 12, seeking: true }), 8_000)).toBe(
+    false,
+  )
+  expect(detector.observe(playing({ readyState: 2, currentTime: 12.1 }), 20_000)).toBe(false)
+  expect(detector.observe(playing({ readyState: 2, currentTime: 13 }), 27_000)).toBe(false)
 })

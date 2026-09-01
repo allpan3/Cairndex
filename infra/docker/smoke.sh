@@ -4,9 +4,9 @@
 # Building an image only proves the Dockerfile is syntactically fine and the
 # dependencies resolve. It says nothing about whether the thing starts, whether
 # ffmpeg is present, whether the non-root user can write the volumes it is
-# given, or whether the read-only root filesystem leaves anything important
-# unwritable. Those are exactly the ways this image can rot while CI stays
-# green, so they are what this checks.
+# given, whether direct video ranges are served, or whether the read-only root
+# filesystem leaves anything important unwritable. Those are exactly the ways
+# this image can rot while CI stays green, so they are what this checks.
 #
 #   ./infra/docker/smoke.sh                    # build fresh, test, remove image
 #   ./infra/docker/smoke.sh <image-tag>        # test an explicitly built image
@@ -35,6 +35,8 @@ ALT_CONTAINER="${CONTAINER}-altuid"
 ALT_LIBRARY_DIR="$(mktemp -d)"
 ALT_DATA_DIR="$(mktemp -d)"
 ALT_PORT=$((PORT + 1))
+RANGE_HEADERS=""
+RANGE_BODY=""
 
 cleanup() {
     docker rm -f "$CONTAINER" "$ALT_CONTAINER" >/dev/null 2>&1 || true
@@ -45,6 +47,8 @@ cleanup() {
     rm -rf "$LIBRARY_DIR"
     # The alternate-uid run wrote as *this* user, so no container is needed.
     rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR"
+    [[ -z "$RANGE_HEADERS" ]] || rm -f "$RANGE_HEADERS"
+    [[ -z "$RANGE_BODY" ]] || rm -f "$RANGE_BODY"
     if [[ "$BUILT_IMAGE" == true ]]; then
         docker image rm "$IMAGE" >/dev/null 2>&1 || true
     fi
@@ -87,6 +91,7 @@ chmod 777 "$LIBRARY_DIR"
 step "starting container (read-only root fs, non-root user)"
 docker run -d --name "$CONTAINER" \
     -p "127.0.0.1:${PORT}:8000" \
+    -e CAIRNDEX_PREFER_HLS=true \
     -v "${CONTAINER}-data:/data" \
     -v "${LIBRARY_DIR}:/libraries/main:rw" \
     --read-only --tmpfs /tmp \
@@ -151,6 +156,45 @@ done
 has_cover=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"view":"unbundled"}' \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["has_cover"])')
 [ "$has_cover" = "True" ] || fail "scanned video produced no cover (media pipeline broken)"
+
+step "direct video supports bounded byte ranges"
+bundle_id=$(post_json "/libraries/${library_id}/bundles/browse" \
+    '{"limit":10,"view":"unbundled"}' \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])')
+stream_path=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["stream_url"])')
+RANGE_HEADERS=$(mktemp)
+RANGE_BODY=$(mktemp)
+range_status=$(curl -fsS -D "$RANGE_HEADERS" -o "$RANGE_BODY" -w '%{http_code}' \
+    -H 'Range: bytes=0-1023' "http://127.0.0.1:${PORT}${stream_path}") \
+    || fail "direct video range request failed"
+[ "$range_status" = "206" ] || fail "direct video range returned $range_status instead of 206"
+[ "$(wc -c <"$RANGE_BODY" | tr -d ' ')" = "1024" ] \
+    || fail "direct video range returned the wrong body length"
+# curl preserves the CR in HTTP header line endings
+grep -Eqi '^accept-ranges: bytes[[:space:]]*$' "$RANGE_HEADERS" \
+    || fail "direct video response omitted Accept-Ranges"
+grep -Eqi '^content-range: bytes 0-1023/[0-9]+[[:space:]]*$' "$RANGE_HEADERS" \
+    || fail "direct video response returned the wrong Content-Range"
+rm -f "$RANGE_HEADERS" "$RANGE_BODY"
+RANGE_HEADERS=""
+RANGE_BODY=""
+
+step "production playback preference serves copy-only HLS"
+file_id=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["file_id"])')
+hls_decision=$(post_json "/libraries/${library_id}/files/${file_id}/playback-decision" \
+    '{"caps":{"protocols":["progressive","hls"],"containers":["mp4"],"video_codecs":["h264"],"audio_codecs":["aac"]}}')
+hls_method=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["method"])' <<<"$hls_decision")
+[ "$hls_method" = "remux" ] || fail "HLS preference returned $hls_method instead of remux"
+playlist_path=$(python3 -c \
+    'import json,sys; print(json.load(sys.stdin)["session"]["playlist_url"])' \
+    <<<"$hls_decision")
+session_path="${playlist_path%/index.m3u8}"
+api "${playlist_path#/api/v1}" >/dev/null || fail "preferred HLS playlist was unavailable"
+api "${session_path#/api/v1}/init.mp4" >/dev/null || fail "preferred HLS init was unavailable"
+api "${session_path#/api/v1}/0.m4s" >/dev/null || fail "preferred HLS segment was unavailable"
+api "${session_path#/api/v1}" -X DELETE >/dev/null || fail "preferred HLS session teardown failed"
 
 step "graceful stop releases the ownership lease"
 docker stop --timeout 30 "$CONTAINER" >/dev/null

@@ -106,6 +106,7 @@ def test_stream_supports_range_requests(
     assert full.status_code == 200
     assert len(full.content) == 1024
     assert full.headers.get("accept-ranges") == "bytes"
+    assert full.headers["content-disposition"] == 'attachment; filename="movie.mp4"'
 
     partial = client.get(f"{base}/files/{video.id}/stream", headers={"Range": "bytes=0-9"})
     assert partial.status_code == 206

@@ -31,6 +31,7 @@ from cairndex.api.schemas.playback import (
     PlaybackSessionRef,
 )
 from cairndex.api.v1.playback import _chapters, _track_read
+from cairndex.core.config import get_settings
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import MediaKind
@@ -62,6 +63,21 @@ def _profile(caps: ClientCapabilities) -> playback.CapabilityProfile:
         max_height=caps.max_height,
         native_hls=caps.native_hls,
     )
+
+
+def _delivery_decision(
+    decision: playback.PlaybackDecision, caps: ClientCapabilities, force_hls: bool
+) -> playback.PlaybackDecision:
+    """Turn direct delivery into copy-only HLS on recovery or deployment policy."""
+    prefer_hls = get_settings().prefer_hls
+    if (force_hls or prefer_hls) and decision.method == "direct" and "hls" in caps.protocols:
+        reason = (
+            "Progressive playback could not keep up; using copy-only HLS"
+            if force_hls
+            else "This deployment prefers copy-only HLS over progressive playback"
+        )
+        return playback.PlaybackDecision("remux", reason)
+    return decision
 
 
 def _duration(meta: dict[str, Any]) -> float | None:
@@ -376,6 +392,7 @@ def playback_decision(
         max_height=payload.max_height,
     )
     meta = ctx.meta
+    decision = _delivery_decision(ctx.decision, payload.caps, payload.force_hls)
     duration = _duration(meta)
     tracks = sub_service.list_tracks_for_video(db, file_id)
     from cairndex.media import storyboards
@@ -384,8 +401,8 @@ def playback_decision(
 
     stream_url: str | None = None
     session_ref: PlaybackSessionRef | None = None
-    reason = ctx.decision.reason
-    if ctx.decision.method == "direct":
+    reason = decision.reason
+    if decision.method == "direct":
         stream_url = f"/api/v1/libraries/{library_id}/files/{file_id}/stream"
     elif duration is None or duration <= 0:
         # A VOD session needs a known duration; a legacy/un-probed row can't get
@@ -402,14 +419,14 @@ def playback_decision(
             audio_stream_index=payload.audio_stream_index,
             burn_subtitle_track_id=payload.burn_subtitle_track_id,
             max_height=payload.max_height,
-            start_s=0.0,
+            start_s=payload.start_s or 0.0,
         )
         session_ref = PlaybackSessionRef(
             id=created.id, playlist_url=_playlist_url(library_id, file_id, created.id)
         )
 
     return PlaybackDecisionResponse(
-        method=ctx.decision.method,
+        method=decision.method,
         reason=reason,
         stream_url=stream_url,
         session=session_ref,
@@ -601,6 +618,7 @@ def file_browser_playback_decision(
     decision = _with_colour_note(
         decision, meta.get("hdr") if isinstance(meta.get("hdr"), str) else None
     )
+    decision = _delivery_decision(decision, payload.caps, payload.force_hls)
 
     duration = _duration(meta)
     stream_url: str | None = None
