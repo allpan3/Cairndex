@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import {
   beaconPlaybackProgress,
   fetchPlaybackManifest,
+  requestPlaybackDecision,
   resolveApiUrl,
   setActiveLibraryId,
   setApiBaseUrl,
@@ -89,6 +90,50 @@ test('resolves nested playback URLs from the configured server', async () => {
   expect(manifest.videos[0]?.subtitles[0]?.src).toBe(
     'http://127.0.0.1:8000/api/v1/libraries/lib1/subtitles/sub1/vtt',
   )
+})
+
+test('path playback forwards forced-HLS recovery and its playhead', async () => {
+  setActiveLibraryId('lib1')
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        method: 'remux',
+        reason: 'copy-only HLS',
+        stream_url: null,
+        session: { id: 'session1', playlist_url: '/session1/index.m3u8' },
+        duration: 120,
+        audio_streams: [],
+        subtitles: [],
+        chapters: [],
+        storyboard_url: null,
+        progress: null,
+      }),
+      { status: 200 },
+    ),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+
+  await requestPlaybackDecision(
+    { kind: 'path', path: 'Synthetic/clip.mp4' },
+    {
+      caps: {
+        protocols: ['progressive', 'hls'],
+        containers: ['mp4'],
+        video_codecs: ['h264'],
+        audio_codecs: ['aac'],
+        max_height: null,
+        native_hls: false,
+      },
+      force_hls: true,
+      start_s: 42.5,
+    },
+  )
+
+  expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+    path: 'Synthetic/clip.mp4',
+    force_hls: true,
+    start_s: 42.5,
+  })
 })
 
 // Pagehide progress beacons target the configured server, not the Tauri origin

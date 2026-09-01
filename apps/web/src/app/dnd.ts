@@ -9,8 +9,7 @@
 // I'm holding" needs to know which of the three is under the cursor — while
 // `ids` is what actually moves. For a plain unselected drag both agree: [id].
 export type DragItem =
-  | { kind: 'bundles'; ids: string[] }
-  | { kind: 'collection'; id: string; ids: string[] }
+  { kind: 'bundles'; ids: string[] } | { kind: 'collection'; id: string; ids: string[] }
 
 // Where a drop will land relative to the hovered item: reorder before/after it,
 // or move *into* it (reparent a collection / add a bundle).
@@ -303,8 +302,7 @@ export function seamFor(
  * lands in front of.
  */
 export type TreeDrop =
-  | { kind: 'into'; id: string }
-  | { kind: 'gap'; parentId: string | null; beforeId: string | null }
+  { kind: 'into'; id: string } | { kind: 'gap'; parentId: string | null; beforeId: string | null }
 
 export function sameTreeDrop(a: TreeDrop | null, b: TreeDrop | null): boolean {
   if (a === null || b === null) return a === b

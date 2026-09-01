@@ -1,6 +1,6 @@
 [package]
 name = "cairndex-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cross-platform desktop shell for Cairndex"
 authors = ["Cairndex contributors"]
 edition = "2021"
@@ -26,7 +26,7 @@ muda = { version = "=0.19.3", default-features = false }
 # entirely in Rust via `mappings.rs`; the plugin only exposes a JS command that
 # would require handing absolute filesystem paths to the web layer (plan 3 §6/§10).
 drag = "2.1.1"
-getrandom = "0.3"
+getrandom = "0.4"
 percent-encoding = "2.3.2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

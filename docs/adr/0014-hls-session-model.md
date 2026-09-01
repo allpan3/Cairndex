@@ -58,8 +58,16 @@ have a timeout and be killed on teardown.
 
 3. **VOD playlist computed up front; restart on far seek.** The playlist is a
    full `#EXT-X-PLAYLIST-TYPE:VOD` fMP4/CMAF playlist computed by the server (not
-   by ffmpeg). One ffmpeg per session writes `init.mp4` + `{n}.m4s` segments
-   sequentially. Serving segment `n`: exists → serve; within a small window
+   by ffmpeg). One ffmpeg per session writes a generation-specific init plus
+   `{n}.m4s` segments sequentially. A run is capped to the requested fragment
+   plus the configured lookahead (and approximately the equivalent number of
+   6-second targets), then exits; the next uncached fragment starts the next
+   bounded run. This prevents a copy-only remux from racing to EOF, duplicating
+   a multi-GB source, and contending with playback for the same NAS storage.
+   The stable `init.mp4` route returns the current generation's physical init
+   only after its first temp-file media fragment exists, proving ffmpeg finished
+   writing the init; an immediate seek/restart therefore cannot expose a partial
+   or concurrently replaced file. Serving segment `n`: exists → serve; within a small window
    ahead of the encoder frontier → bounded async wait; before the current run
    or far ahead → kill ffmpeg and restart at `segment_starts[n]` (`-ss` seek +
    `-start_number n`). Segment boundaries differ by method:
@@ -155,6 +163,26 @@ have a timeout and be killed on teardown.
   ratification this ADR is **proposed**.
 
 ## Amendment history
+
+**2026-08-31 — direct delivery may recover into copy-only HLS.** A source can
+pass the capability matrix yet still fail operationally as native progressive
+HTTP: the observed remote browser issued many short or aborted range requests,
+advanced below real time, and could remain stuck in `seeking`, while the same
+bounded ranges had ample aggregate throughput. Loopback delivery hid the
+round-trip cost. The client now observes progressive delivery and may repeat a
+direct decision with `force_hls` plus its `start_s`. A server that sees both the
+request and declared HLS support changes only `direct` to `remux`; existing
+remux/transcode decisions and clients without HLS are unchanged. The remux uses
+the source codecs and existing bounded session model, beginning at the segment
+containing the live playhead. This avoids making a slow NAS CPU encode video to
+solve an HTTP delivery problem.
+
+The same operational failure can leave the media element paused, which is
+indistinguishable from an intentional user pause and therefore cannot safely
+trigger an automatic delivery change. `CAIRNDEX_PREFER_HLS=true` applies the
+same copy-only remux from initial play. The server default remains false for
+loopback desktop/development use; production Docker Compose defaults it to true
+so remote NAS playback does not depend on progressive Range behavior.
 
 **2026-08-16 — a session's source need not be an indexed file.** The decision
 above assumes every session names an `AssetFile`, because that was the only way

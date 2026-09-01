@@ -77,6 +77,10 @@ services:
       # `disabled` forces every library read-only and makes the per-library
       # toggle un-flippable.
       CAIRNDEX_WRITE_MODE: ${CAIRNDEX_WRITE_MODE:-allowed}
+      # A remote browser can starve on many short progressive Range requests
+      # even when the NAS is fast. HLS copies the source codecs into bounded
+      # segments; set false only when direct playback is proven reliable.
+      CAIRNDEX_PREFER_HLS: ${CAIRNDEX_PREFER_HLS:-true}
     volumes:
       # Server-local runtime state: registry.db, transcode scratch, backups.
       # Per-library content metadata lives in each library's own .cairndex/.
