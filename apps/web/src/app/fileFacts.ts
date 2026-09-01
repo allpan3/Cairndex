@@ -134,8 +134,7 @@ function entryStatus(entry: FileBrowserEntry): string {
  * bundle gets the bundle pane; everything else describes the file.
  */
 export type ViewerInspectorTarget =
-  | { kind: 'bundle'; bundleId: string }
-  | { kind: 'file'; facts: FileFacts }
+  { kind: 'bundle'; bundleId: string } | { kind: 'file'; facts: FileFacts }
 
 /** For a File Browser row, indexed or not. */
 export function inspectorTargetForEntry(

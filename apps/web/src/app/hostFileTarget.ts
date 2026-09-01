@@ -5,8 +5,7 @@ import type { AppMode } from './types'
  *  cannot. Shared by Open in Default App and Reveal in Finder: they take the
  *  same selection and differ only in what the OS then does with it. */
 export type HostFileTarget =
-  | { kind: 'file'; relativePath: string }
-  | { kind: 'none'; reason: 'no-selection' | 'directory' }
+  { kind: 'file'; relativePath: string } | { kind: 'none'; reason: 'no-selection' | 'directory' }
 
 export interface HostFileTargetContext {
   /** Which surface is on screen — it decides whose selection counts. */
