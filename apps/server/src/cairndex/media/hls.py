@@ -1,11 +1,13 @@
 """Interactive HLS remux/transcode session manager (plan 1 §6.2, ADR-0014).
 
 When a source can't be played directly (§6.1), we deliver it as HLS: one
-``ffmpeg`` per session writes fMP4/CMAF segments sequentially into a server-local
+``ffmpeg`` per session writes a bounded fMP4/CMAF segment window into a server-local
 ephemeral directory, and we serve those segments on demand. The playlist is a
 **VOD** playlist computed up front so players get instant duration and free
-native seeking; a seek far ahead of the encoder kills ffmpeg and restarts it at
-the requested segment (``-ss`` + ``-start_number``).
+native seeking; the next uncached window or a far seek restarts ffmpeg at the
+requested segment (``-ss`` + ``-start_number``). Each run has a distinct init
+file that is published through the stable route only after its first complete
+media fragment proves the init is closed.
 
 Segment boundaries: transcode forces exact 6 s keyframes, so its playlist is a
 uniform 6 s grid. Remux copies video and can only split at existing keyframes, so
@@ -131,10 +133,18 @@ class HlsSession:
     segment_starts: list[float]  # source start time of each segment
     playlist: str  # VOD playlist, computed once at creation
     params: SessionParams
+    # One ffmpeg run emits the requested segment plus this bounded lookahead.
+    # Without the cap a copy-only remux races to EOF, duplicating a multi-GB
+    # source and saturating the same NAS storage that playback is reading.
+    run_window: int = DEFAULT_AHEAD_WINDOW + 1
     # Runtime state, guarded by ``lock``.
     lock: threading.Lock = field(default_factory=threading.Lock)
     process: subprocess.Popen[bytes] | None = None
     run_start: int = 0  # start_number of the current ffmpeg run
+    run_end: int = 0  # exclusive planned segment bound of the current run
+    run_generation: int = 0
+    run_init_name: str = "init-0.mp4"
+    finalized_generation: int = 0
     last_access: float = 0.0  # monotonic clock; drives idle reaping
     closed: bool = False
     failed: bool = False
@@ -219,6 +229,38 @@ def _segment_index_for(segment_starts: list[float], start_s: float) -> int:
     return max(0, min(index, len(segment_starts) - 1))
 
 
+def _run_end_index(session: HlsSession, start_number: int) -> int:
+    """Exclusive segment bound for one capped run from ``start_number``."""
+    start_s = session.segment_starts[start_number]
+    count_limit = min(session.segment_count, start_number + session.run_window)
+    time_limit = start_s + SEGMENT_DURATION * session.run_window
+    time_index = bisect.bisect_left(
+        session.segment_starts,
+        time_limit,
+        lo=start_number + 1,
+    )
+    return max(start_number + 1, min(count_limit, time_index))
+
+
+def _run_duration(session: HlsSession, start_number: int) -> float:
+    """Source duration one bounded ffmpeg run may emit from ``start_number``."""
+    start_s = session.segment_starts[start_number]
+    end_index = _run_end_index(session, start_number)
+    end_s = (
+        session.duration
+        if end_index >= session.segment_count
+        else session.segment_starts[end_index]
+    )
+    span = end_s - start_s
+    # Stopping exactly on an internal keyframe lets the HLS muxer open the next
+    # numbered segment and leave a header-only/truncated artifact that later
+    # looks cache-valid. Stop one millisecond before that boundary; EOF keeps its
+    # complete tail.
+    if end_index < session.segment_count:
+        span -= 0.001
+    return max(0.001, span)
+
+
 # --- ffmpeg command construction (plan 1 §6.2 templates) --------------------
 # Capped software ladder: (max height, video maxrate, bufsize). The tier whose
 # height does not exceed the target cap sets the bitrate; veryfast keeps NAS CPUs
@@ -301,6 +343,10 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
     args += ["-i", str(session.source_path)]
     if start_s > 0 and burning:
         args += ["-ss", f"{start_s:g}"]  # output-side seek keeps burn-in in sync
+    # Limit every run to a small playback window. The next requested segment
+    # starts another run; remux therefore copies only what the player is about
+    # to consume instead of writing the complete source as fast as the NAS can.
+    args += ["-t", f"{_run_duration(session, start_number):g}"]
 
     args += ["-map", "0:v:0"]
     if session.params.audio_stream_index is not None:
@@ -352,7 +398,7 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
         "-hls_segment_type",
         "fmp4",
         "-hls_fmp4_init_filename",
-        INIT_NAME,
+        session.run_init_name,
         "-hls_flags",
         "independent_segments+temp_file",
         "-hls_segment_filename",
@@ -462,6 +508,7 @@ class SessionManager:
                 segment_starts=segment_starts,
                 playlist=playlist,
                 params=params,
+                run_window=max(1, self._ahead_window + 1),
                 last_access=self._clock(),
             )
             self._sessions[session_id] = session
@@ -562,46 +609,72 @@ class SessionManager:
         return self._serve_segment(session, index)
 
     def _serve_init(self, session: HlsSession) -> Path:
-        path = session.output_dir / INIT_NAME
-        if _exists_nonempty(path):
-            return path
-        with session.lock:
-            if session.closed:
-                raise NotFoundError("playback session was torn down")
-            self._ensure_running(session)
-        if self._wait_for(session, path):
-            return path
-        self._raise_if_failed(session)
+        """Return the current run's init only after its first segment is complete."""
+        deadline = self._clock() + self._segment_wait
+        while self._clock() < deadline:
+            with session.lock:
+                if session.closed:
+                    raise NotFoundError("playback session was torn down")
+                self._finalize_finished_run(session)
+                self._ensure_running(session)
+                generation = session.run_generation
+                init_path = session.output_dir / session.run_init_name
+                first_segment = session.output_dir / _segment_name(session.run_start)
+            # ffmpeg writes the init directly, so non-empty does not mean
+            # complete. A temp-file media segment appears only after the init is
+            # closed, which gives us the safe publication point.
+            if self._wait_for(
+                session,
+                first_segment,
+                run_generation=generation,
+                deadline=deadline,
+            ):
+                with session.lock:
+                    if generation == session.run_generation and _exists_nonempty(init_path):
+                        return init_path
+            self._raise_if_failed(session)
         raise NotFoundError("init segment is unavailable")
 
     def _serve_segment(self, session: HlsSession, index: int) -> Path:
         seg = session.output_dir / _segment_name(index)
-        if _exists_nonempty(seg):
-            return seg
+        with session.lock:
+            self._finalize_finished_run(session)
+            # A duration cap that lands on a keyframe can make ffmpeg open the
+            # next numbered fragment and leave only mux headers/audio lead-in.
+            # `_start_run` removed any older file at this boundary, so while
+            # this generation owns it the artifact is never a valid cache hit.
+            boundary_extra = index == session.run_end and index < session.segment_count
+            if boundary_extra:
+                with contextlib.suppress(OSError):
+                    seg.unlink()
+            elif _exists_nonempty(seg):
+                return seg
         # First pass waits on the current run (if the segment is within reach);
         # a second pass forces a fresh restart at the segment. Between passes we
         # surface a genuine ffmpeg failure instead of a misleading restart loop.
-        self._prepare_run(session, index, force_restart=False)
-        if self._wait_for(session, seg):
+        generation = self._prepare_run(session, index, force_restart=False)
+        if self._wait_for(session, seg, run_generation=generation):
             return seg
         self._raise_if_failed(session)
-        self._prepare_run(session, index, force_restart=True)
-        if self._wait_for(session, seg):
+        generation = self._prepare_run(session, index, force_restart=True)
+        if self._wait_for(session, seg, run_generation=generation):
             return seg
         self._raise_if_failed(session)
         raise NotFoundError(f"segment {index} is unavailable")
 
-    def _prepare_run(self, session: HlsSession, index: int, *, force_restart: bool) -> None:
+    def _prepare_run(self, session: HlsSession, index: int, *, force_restart: bool) -> int:
         """Ensure a run that will produce ``index`` (brief lock, no blocking wait)."""
         with session.lock:
             if session.closed:
                 raise NotFoundError("playback session was torn down")
+            self._finalize_finished_run(session)
             if _exists_nonempty(session.output_dir / _segment_name(index)):
-                return
+                return session.run_generation
             frontier = self._frontier(session)
             within_reach = session.run_start <= index <= frontier + self._ahead_window
             if force_restart or not within_reach or not self._process_alive(session):
                 self._start_run(session, index)
+            return session.run_generation
 
     def _raise_if_failed(self, session: HlsSession) -> None:
         """Raise if the current run exited nonzero (a real encoder failure)."""
@@ -617,13 +690,37 @@ class SessionManager:
         """(Re)start ffmpeg at ``start_number`` (caller holds ``session.lock``)."""
         self._kill(session)
         session.run_start = start_number
+        session.run_end = _run_end_index(session, start_number)
+        session.run_generation += 1
+        session.run_init_name = f"init-{session.run_generation}.mp4"
+        # A previous bounded run may have opened this generation's first number
+        # as its boundary extra. Never let `_wait_for` accept those stale bytes.
+        with contextlib.suppress(OSError):
+            (session.output_dir / _segment_name(start_number)).unlink()
+        if session.run_end < session.segment_count:
+            with contextlib.suppress(OSError):
+                (session.output_dir / _segment_name(session.run_end)).unlink()
         start_s = session.segment_starts[start_number]
         args = self._command_builder(session, start_number, start_s)
         session.process = self._launcher(args)
 
+    def _finalize_finished_run(self, session: HlsSession) -> None:
+        """Remove an ffmpeg boundary extra once the current run has exited."""
+        proc = session.process
+        if (
+            proc is None
+            or proc.poll() is None
+            or session.finalized_generation == session.run_generation
+        ):
+            return
+        session.finalized_generation = session.run_generation
+        if proc.returncode == 0 and session.run_end < session.segment_count:
+            with contextlib.suppress(OSError):
+                (session.output_dir / _segment_name(session.run_end)).unlink()
+
     def _ensure_running(self, session: HlsSession) -> None:
-        has_init = _exists_nonempty(session.output_dir / INIT_NAME)
-        if not self._process_alive(session) and not has_init:
+        has_first_segment = _exists_nonempty(session.output_dir / _segment_name(session.run_start))
+        if not self._process_alive(session) and not has_first_segment:
             self._start_run(session, session.run_start)
 
     def _process_alive(self, session: HlsSession) -> bool:
@@ -652,18 +749,27 @@ class SessionManager:
                 highest = max(highest, int(match.group(1)))
         return highest
 
-    def _wait_for(self, session: HlsSession, path: Path) -> bool:
+    def _wait_for(
+        self,
+        session: HlsSession,
+        path: Path,
+        *,
+        run_generation: int | None = None,
+        deadline: float | None = None,
+    ) -> bool:
         """Poll (bounded, lock-free) for a complete ``path``; stop early once ffmpeg exits.
 
         Requires a non-empty file: ffmpeg opens the fMP4 init segment and writes
         it in stages, so an existence-only check can serve a truncated init.
         """
-        deadline = self._clock() + self._segment_wait
+        wait_deadline = deadline if deadline is not None else self._clock() + self._segment_wait
         while True:
+            if run_generation is not None and session.run_generation != run_generation:
+                return False
             if _exists_nonempty(path):
                 return True
             alive = self._process_alive(session)
-            if self._clock() >= deadline:
+            if self._clock() >= wait_deadline:
                 return _exists_nonempty(path)
             if not alive:
                 # One last look: the file may have landed as ffmpeg exited.

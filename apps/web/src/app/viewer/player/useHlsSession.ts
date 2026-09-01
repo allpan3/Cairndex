@@ -110,6 +110,8 @@ export interface UseHlsSessionOptions {
   caps: ClientCapabilities
   /** Read the live playhead when switching quality/audio or re-attaching. */
   getCurrentTime: () => number
+  /** Saved-moment time requested before this file's first decision. */
+  initialStartAt?: number | null
 }
 
 export interface HlsSessionState {
@@ -126,6 +128,8 @@ export interface HlsSessionState {
   setParam: <K extends keyof SwitchParams>(key: K, value: SwitchParams[K]) => void
   /** Transparently re-request a decision at the playhead; true if it applies. */
   reattach: () => boolean
+  /** Replace an underfeeding direct source with copy-only HLS at the playhead. */
+  fallbackToHls: () => boolean
   /** Signal that playback resumed so the re-attach budget can be refunded. */
   notePlaying: () => void
   /** Re-run the decision from the start (e.g. after an 'unavailable' timeout). */
@@ -155,6 +159,7 @@ export function useHlsSession({
   directMimeType,
   caps,
   getCurrentTime,
+  initialStartAt = null,
 }: UseHlsSessionOptions): HlsSessionState {
   // A row wins over a path: an indexed File Browser entry should reach the same
   // subtitles, storyboards and resume the Bundle Browser gives it.
@@ -179,6 +184,8 @@ export function useHlsSession({
 
   const paramsRef = useRef<SwitchParams>(DEFAULT_PARAMS)
   const startAtRef = useRef(0)
+  const forceHlsRef = useRef(false)
+  const methodRef = useRef<PlaybackMethod | null>(null)
   // The target is kept with the session id: teardown has to address the route
   // the session came from, and by then the current target may have moved on.
   const liveSessionRef = useRef<{ target: PlaybackTarget; sessionId: string } | null>(null)
@@ -212,7 +219,12 @@ export function useHlsSession({
     if (freshFile) {
       lastSourceRef.current = sourceKey
       paramsRef.current = DEFAULT_PARAMS
-      startAtRef.current = 0
+      startAtRef.current =
+        typeof initialStartAt === 'number' && Number.isFinite(initialStartAt)
+          ? Math.max(0, initialStartAt)
+          : 0
+      forceHlsRef.current = false
+      methodRef.current = null
       reattachCountRef.current = 0
       reattachAtRef.current = Number.NEGATIVE_INFINITY
       reattachingRef.current = false
@@ -278,6 +290,10 @@ export function useHlsSession({
         audio_stream_index: active.audioStreamIndex,
         burn_subtitle_track_id: active.burnSubtitleTrackId,
         max_height: active.maxHeight,
+        force_hls: forceHlsRef.current,
+        // A saved-moment open should create its first HLS generation at that
+        // point, not create one at zero and immediately kill it with a far seek
+        start_s: startAt > 0 ? startAt : null,
       }
       try {
         return await requestPlaybackDecision(target, payload, controller.signal)
@@ -307,6 +323,7 @@ export function useHlsSession({
         const replaced = liveSessionRef.current
         setReason(decision.reason)
         setMethod(decision.method as PlaybackMethod)
+        methodRef.current = decision.method as PlaybackMethod
         setAudioStreams(decision.audio_streams)
         if (decision.method === 'direct') {
           liveSessionRef.current = null
@@ -328,7 +345,7 @@ export function useHlsSession({
             startAt,
           })
           setStatus('ready')
-        } else if (directPlayable && directStreamUrl) {
+        } else if (directPlayable && directStreamUrl && !forceHlsRef.current) {
           // Non-direct decision with no session (e.g. an un-probed row): fall
           // back to the native stream when the source is directly playable.
           liveSessionRef.current = null
@@ -336,6 +353,7 @@ export function useHlsSession({
           setStatus('ready')
         } else {
           liveSessionRef.current = null
+          setSource(null)
           setStatus('error')
         }
         // Tear down the session this decision replaced (a switch/re-attach).
@@ -353,7 +371,7 @@ export function useHlsSession({
         // session teardown). A non-degradable file keeps its live session tracked
         // (torn down on close/switch/idle) rather than orphaning a working stream
         // on a transient blip.
-        if (directPlayable && directStreamUrl) {
+        if (directPlayable && directStreamUrl && !forceHlsRef.current) {
           void teardownLive()
           setSource(nativeSource(directStreamUrl))
           setStatus('ready')
@@ -363,9 +381,11 @@ export function useHlsSession({
           // Surface a distinct, retryable "server unavailable" state instead of
           // the format-oriented "can't play" card.
           liveSessionRef.current = null
+          if (forceHlsRef.current) setSource(null)
           setReason(PLAYBACK_UNAVAILABLE_REASON)
           setStatus('unavailable')
         } else {
+          if (forceHlsRef.current) setSource(null)
           setStatus('error')
         }
       })
@@ -375,7 +395,17 @@ export function useHlsSession({
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [target, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
+  }, [
+    target,
+    enabled,
+    epoch,
+    directPlayable,
+    directStreamUrl,
+    directMimeType,
+    caps,
+    initialStartAt,
+    teardownLive,
+  ])
 
   // Keep a held session warm for as long as the player holds it, and treat the
   // touch as the liveness check it inherently is (see SESSION_KEEPALIVE_MS).
@@ -459,6 +489,20 @@ export function useHlsSession({
     setEpoch((current) => current + 1)
   }, [])
 
+  const fallbackToHls = useCallback((): boolean => {
+    if (forceHlsRef.current) return true
+    if (
+      methodRef.current !== 'direct' ||
+      target === null ||
+      !(caps.protocols ?? []).includes('hls')
+    )
+      return false
+    forceHlsRef.current = true
+    startAtRef.current = Math.max(0, getCurrentTimeRef.current())
+    setEpoch((current) => current + 1)
+    return true
+  }, [caps.protocols, target])
+
   const reattach = useCallback((): boolean => {
     // A re-attach is already in flight — swallow the extra stage error(s) that a
     // single failure burst produces instead of spending another budget slot or
@@ -487,6 +531,7 @@ export function useHlsSession({
     params,
     setParam,
     reattach,
+    fallbackToHls,
     notePlaying,
     retry,
   }
