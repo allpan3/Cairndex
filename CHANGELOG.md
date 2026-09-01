@@ -8,7 +8,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Security
+
+- **Dependabot privacy checks.** The publication gate recognizes Dependabot's
+  exact public GitHub service sign-off without treating it as owner data. Other
+  email addresses in commit messages remain blocked.
 
 ## [0.2.1] — 2026-08-31
 
