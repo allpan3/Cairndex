@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchHealth, type HealthStatus } from './api/client'
 
 export type HealthState =
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: HealthStatus }
-  | { kind: 'error'; message: string }
+  { kind: 'loading' } | { kind: 'ok'; data: HealthStatus } | { kind: 'error'; message: string }
 
 /**
  * Probe the backend health endpoint once on mount.

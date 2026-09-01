@@ -79,13 +79,7 @@ export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionReq
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView =
-  | 'all'
-  | 'recent'
-  | 'uncategorized'
-  | 'untagged'
-  | 'missing'
-  | 'unbundled'
-  | 'random'
+  'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled' | 'random'
 export type BundleSort =
   | 'date_added'
   | 'date_modified'
