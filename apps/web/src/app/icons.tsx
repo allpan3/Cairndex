@@ -411,6 +411,23 @@ export const IconLayoutJustified = () => (
   </Svg>
 )
 
+/** Sidebar toggle: the shell with its left column marked. Paired with
+ *  `IconPanelRight` so the two panel toggles read as one family. */
+export const IconPanelLeft = () => (
+  <Svg>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="9" y1="4" x2="9" y2="20" />
+  </Svg>
+)
+
+/** Inspector toggle: the shell with its right column marked. */
+export const IconPanelRight = () => (
+  <Svg>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="15" y1="4" x2="15" y2="20" />
+  </Svg>
+)
+
 /** List layout: rows of a thumbnail and its line of text. */
 export const IconLayoutList = () => (
   <Svg>

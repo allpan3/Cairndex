@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import type { BundleSummary } from '../api/client'
+import type { BundleSort, BundleSummary, SortOrder } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
@@ -10,6 +10,7 @@ import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
 import { DRAG_BUNDLES, sameTarget, seamFor } from './dnd'
 import { selectionTargets, suppressShiftSelection } from './selection'
+import { SortHeaderCell } from './SortHeader'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -20,6 +21,10 @@ interface BrowserProps {
   total: number
   layout: LayoutMode
   zoom: number
+  // The active sort, so the list view's headers can show and change it.
+  sort: BundleSort
+  order: SortOrder
+  onSort: (sort: BundleSort, order: SortOrder) => void
   selectedIds: Set<string>
   onSelect: (id: string, e: React.MouseEvent) => void
   // Fired continuously while a marquee drag is in progress (and once more on
@@ -381,7 +386,9 @@ export function Browser(props: BrowserProps) {
         </div>
       )}
 
-      {showGrid && layout === 'list' && <ListHeader />}
+      {showGrid && layout === 'list' && (
+        <ListHeader sort={props.sort} order={props.order} onSort={props.onSort} />
+      )}
       {showGrid && (
         <div
           ref={wrapperRef}
@@ -469,15 +476,40 @@ export function Browser(props: BrowserProps) {
   )
 }
 
-function ListHeader() {
+/** The list view's column headers. The three that name a sort the browse query
+ *  actually supports are clickable; Dimensions and Type have no server-side
+ *  order behind them, so they stay plain rather than pretending. */
+function ListHeader({
+  sort,
+  order,
+  onSort,
+}: {
+  sort: BundleSort
+  order: SortOrder
+  onSort: (sort: BundleSort, order: SortOrder) => void
+}) {
   return (
     <div className="list-row list-row--head" style={{ position: 'sticky', height: 36 }}>
       <span />
-      <span>Name</span>
+      <SortHeaderCell label="Name" value="title" sort={sort} order={order} onSort={onSort} />
       <span className="list-cell">Dimensions</span>
       <span className="list-cell">Type</span>
-      <span className="list-cell">Size</span>
-      <span className="list-cell">Date Added</span>
+      <SortHeaderCell
+        label="Size"
+        value="size"
+        sort={sort}
+        order={order}
+        onSort={onSort}
+        className="list-cell"
+      />
+      <SortHeaderCell
+        label="Date Added"
+        value="date_added"
+        sort={sort}
+        order={order}
+        onSort={onSort}
+        className="list-cell"
+      />
     </div>
   )
 }

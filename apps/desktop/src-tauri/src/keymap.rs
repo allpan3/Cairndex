@@ -137,6 +137,37 @@ mod tests {
         }
     }
 
+    /// "Cmd+X" and "CmdOrCtrl+X" are the same accelerator on macOS, and this pins
+    /// it. muda's parser maps them to two *different* `keyboard_types` bits —
+    /// "Cmd"/"Command"/"Super" to `META`, "CmdOrCtrl" to `SUPER` — and its macOS
+    /// modifier mask translates only `SUPER` into Command, which reads like a bug
+    /// that would silently drop Command from any `Cmd+…` accelerator. It is not:
+    /// both public constructors (`Accelerator::new`, `KeyAccelerator::new`, the
+    /// latter being what string parsing goes through) fold `META` into `SUPER`
+    /// first, and the fields are crate-private, so no `META` value can reach that
+    /// mask. Believing otherwise cost a day and a reverted vendored dependency
+    /// (ADR-0027); this test is here so the next reader does not repeat it.
+    #[test]
+    fn cmd_and_cmdorctrl_mean_the_same_thing() {
+        use muda::accelerator::{Accelerator, Code, Modifiers};
+
+        let explicit: Accelerator = "Cmd+F".parse().expect("Cmd+F parses");
+        let portable: Accelerator = "CmdOrCtrl+F".parse().expect("CmdOrCtrl+F parses");
+
+        // Both carry Command, which is what the macOS mask translates.
+        assert!(explicit.matches(Modifiers::SUPER, Code::KeyF));
+        assert!(portable.matches(Modifiers::SUPER, Code::KeyF));
+        // Neither keeps META, and the ids match — the id hashes the normalized
+        // modifiers plus the key, so equality means one accelerator, not two.
+        assert!(!explicit.matches(Modifiers::META, Code::KeyF));
+        assert_eq!(explicit.id(), portable.id());
+
+        // And the combination the View menu records for Full Screen resolves to
+        // Control+Command, not Control alone.
+        let full_screen: Accelerator = "Ctrl+Cmd+F".parse().expect("Ctrl+Cmd+F parses");
+        assert!(full_screen.matches(Modifiers::CONTROL | Modifiers::SUPER, Code::KeyF));
+    }
+
     // A menu item that neither dispatches, acts natively, nor is predefined would
     // render as a dead entry the user can click with no effect.
     #[test]
@@ -237,7 +268,6 @@ mod tests {
         assert_eq!(action_for_id("settings"), Some("settings"));
         assert_eq!(action_for_id("play-pause"), Some("play-pause"));
         // Shell-owned: handled in Rust, never emitted to the SPA.
-        assert_eq!(action_for_id("fullscreen"), None);
         assert_eq!(action_for_id("quit"), None);
         // Disabled placeholder.
         assert_eq!(action_for_id("help-placeholder"), None);
@@ -256,6 +286,13 @@ mod tests {
                 .map(|(_, id)| *id)
                 .collect::<Vec<_>>(),
             vec!["open-file", "reveal-file"]
+        );
+        assert_eq!(
+            items_requiring("new-folder")
+                .iter()
+                .map(|(_, id)| *id)
+                .collect::<Vec<_>>(),
+            vec!["new-folder"]
         );
         // Split groups: an image bundle enables `viewer` only, since the rest need
         // a PlayerController that image playback never creates.

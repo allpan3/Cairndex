@@ -125,10 +125,20 @@ beforeEach(() => {
   listingIsStale = false
 })
 
+// New Folder left the toolbar for the File menu and the context menus, so the
+// tests reach it where it now lives: the background menu of the folder in view.
+const openNewFolder = () => {
+  fireEvent.contextMenu(document.querySelector('.file-browser__body') as HTMLElement)
+  fireEvent.click(screen.getByText('New Folder'))
+}
+
 test('a read-only library looks exactly as it did before write mode existed', () => {
   renderBrowser(false)
 
   expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull()
+  // …and the background menu that would offer it does not open at all.
+  fireEvent.contextMenu(document.querySelector('.file-browser__body') as HTMLElement)
+  expect(screen.queryByText('New Folder')).toBeNull()
 
   fireEvent.contextMenu(row('Season 1'))
   // A folder's menu opens read-only now — it carries Copy Path, and New
@@ -280,7 +290,7 @@ test('a collision asks instead of failing, and keeping both re-issues the rename
 test('New Folder creates it inside the directory being browsed', async () => {
   renderBrowser()
 
-  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  openNewFolder()
   const field = screen.getByLabelText('New folder name')
   fireEvent.change(field, { target: { value: 'Extras' } })
   fireEvent.keyDown(field, { key: 'Enter' })
@@ -298,7 +308,7 @@ test('New Folder creates it inside the directory being browsed', async () => {
 test('a failed operation reports the reason and offers no undo', async () => {
   renderBrowser()
 
-  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  openNewFolder()
   fireEvent.keyDown(screen.getByLabelText('New folder name'), { key: 'Enter' })
 
   const handlers = mkdir.mock.calls[0]?.[1] as { onError: (failure: unknown) => void }

@@ -1,53 +1,50 @@
 import { createPortal } from 'react-dom'
 
-import type { BundleSort, SortOrder } from '../api/client'
+import type { SortOrder } from '../api/client'
+import type { SortOption } from './types'
 import { usePopover } from './usePopover'
 
-// Manual first (the default order); the rest mirror the previous toolbar list.
-const SORTS: { value: BundleSort; label: string }[] = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'date_added', label: 'Date Added' },
-  { value: 'date_modified', label: 'Date Modified' },
-  { value: 'date_opened', label: 'Date Opened' },
-  { value: 'title', label: 'Title' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'size', label: 'Size' },
-  { value: 'file_count', label: 'File Count' },
-]
-
-interface SortControlProps {
-  sort: BundleSort
+interface SortControlProps<T extends string> {
+  sort: T
   order: SortOrder
-  onChange: (sort: BundleSort, order: SortOrder) => void
-  /** Restricts the offered sorts. The Recent view passes the date orders: what
-   *  makes it "recent" is *which* date it ranks by, so Title or Size there would
-   *  just be the All view under another name. Omitted = every sort. */
-  allowed?: BundleSort[]
-  // #8: when true, each collection/view keeps its own last-used sort.
-  perCollection: boolean
-  onPerCollection: (value: boolean) => void
+  onChange: (sort: T, order: SortOrder) => void
+  /** The sorts this surface offers, in menu order. */
+  options: SortOption<T>[]
+  // #8: when set, this surface's scope keeps its own last-used sort — a
+  // collection in the Bundle Browser, a directory in the File Browser. Omitted
+  // where there is no scope to remember against (the unbundled queue).
+  perCollection?: boolean
+  onPerCollection?: (value: boolean) => void
+  /** Wording for that checkbox; the scope has a different name per surface. */
+  scopeLabel?: string
 }
 
 /**
  * The toolbar sort control: a button showing the active sort that opens a pane
- * with the sort field, an ascending/descending toggle, and a "remember per
- * collection" checkbox. Replaces the old inline sort <select> + order button.
+ * with the sort field, an ascending/descending toggle, and (where the surface
+ * has collections) a "remember sort per collection" checkbox.
+ *
+ * Shared by both browsers, which is the point: the File Browser used a bare
+ * `<select>` plus a separate arrow button, so the two toolbars neither looked
+ * nor behaved alike (owner, 2026-09-01).
  */
-export function SortControl({
+export function SortControl<T extends string>({
   sort,
   order,
   onChange,
-  allowed,
+  options,
   perCollection,
   onPerCollection,
-}: SortControlProps) {
+  scopeLabel = 'Remember sort per collection',
+}: SortControlProps<T>) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
-  const sorts = allowed ? SORTS.filter((s) => allowed.includes(s.value)) : SORTS
-  const label = SORTS.find((s) => s.value === sort)?.label ?? 'Sort'
+  const active = options.find((s) => s.value === sort)
+  const label = active?.label ?? 'Sort'
   // Manual has no direction — the arrangement is the order. Offering ascending/
   // descending over it created two readings of one order, and drag-reorder can
   // only be correct under one of them.
-  const directionless = sort === 'manual'
+  const directionless = active?.directionless === true
+  const scoped = perCollection !== undefined && onPerCollection !== undefined
 
   return (
     <div className="picker" ref={ref}>
@@ -74,7 +71,7 @@ export function SortControl({
             style={{ top: pos.top, right: pos.right, bottom: pos.bottom, maxHeight: pos.maxHeight }}
           >
             <div className="sortctl__section">
-              {sorts.map((s) => (
+              {options.map((s) => (
                 <button
                   key={s.value}
                   className={`sortctl__opt${s.value === sort ? ' sortctl__opt--on' : ''}`}
@@ -104,15 +101,17 @@ export function SortControl({
                 </button>
               </div>
             )}
-            <div className="sortctl__sep" />
-            <label className="sortctl__scope">
-              <input
-                type="checkbox"
-                checked={perCollection}
-                onChange={(e) => onPerCollection(e.target.checked)}
-              />
-              Remember sort per collection
-            </label>
+            {scoped && <div className="sortctl__sep" />}
+            {scoped && (
+              <label className="sortctl__scope">
+                <input
+                  type="checkbox"
+                  checked={perCollection}
+                  onChange={(e) => onPerCollection(e.target.checked)}
+                />
+                {scopeLabel}
+              </label>
+            )}
           </div>,
           document.body,
         )}

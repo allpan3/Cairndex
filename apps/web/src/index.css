@@ -1,4 +1,10 @@
 :root {
+  /* The height of a surface's top row — every content toolbar and the sidebar's
+     own title strip — so one line of controls runs across the whole window. The
+     shell centres the window's traffic lights against it
+     (`trafficLightPosition` in tauri.conf.json): change this and change that. */
+  --toolbar-h: 44px;
+
   /* Dark, desktop-class palette (AGENTS.md §8 — Eagle-inspired). */
   /* --bg is mirrored in apps/desktop/src-tauri/tauri.conf.json as the window's
      backgroundColor, so the shell paints this instead of white before the SPA's
@@ -200,24 +206,42 @@ button {
  * the window from (the toolbars and the brand row carry
  * `data-tauri-drag-region`). Everything is scoped to the attribute
  * `markOverlayTitleBar` sets, so the browser build is unchanged. */
+/* The sidebar's top row. It holds the sidebar's own toggle, and in the desktop
+   shell it also reserves the corner the window's traffic lights float over. Its
+   height matches a content toolbar's, so the toggle here and the Back/Forward
+   pair over there sit on one line across the whole window. */
 .sidebar__titlebar {
   flex: none;
-  height: 0;
+  display: flex;
+  align-items: center;
+  /* Against the panel's inner edge, where a panel's own collapse control lives
+     (owner, 2026-09-01) — and, in the shell, as far from the traffic lights as
+     the strip allows. */
+  justify-content: flex-end;
+  height: var(--toolbar-h, 44px);
 }
 :root[data-titlebar='overlay'] .sidebar__titlebar {
-  /* The traffic lights sit ~13px down and end ~x=78 — clear of the brand once
-     the row below them starts here. The sidebar gives up its own top padding so
-     this strip reaches the window's edge: padding there would be a dead band
-     right beside the lights, which is the first place a hand goes to move a
-     window. The negative margins cancel the sidebar's side padding too, so the
-     strip runs edge to edge — a 8px dead seam at the window corner would be the
-     same bug in miniature. */
-  height: 34px;
+  /* The sidebar gives up its own top padding so this strip reaches the window's
+     edge: padding there would be a dead band right beside the traffic lights,
+     which is the first place a hand goes to move a window. The negative margins
+     cancel the sidebar's side padding too, so the strip runs edge to edge — an
+     8px dead seam at the window corner would be the same bug in miniature. The
+     right-hand padding puts the toggle back inside the panel's own margin. */
   margin: 0 -8px;
+  padding: 0 8px;
 }
-:root[data-titlebar='overlay'] .sidebar {
-  padding-top: 0;
+/* With the sidebar hidden there is no sidebar corner to reserve, and the centre
+   column starts at the window's edge — so its first row runs straight under the
+   traffic lights, which is where the sidebar toggle sits (owner, 2026-09-01).
+   The lights end at ~x=72; the padding replaces the corner the sidebar was
+   giving up and leaves a clear gap after them, rather than seating the first
+   control against the window buttons (owner, 2026-09-01). Scoped to the overlay
+   title bar, so the browser build keeps its flush toolbars. */
+:root[data-titlebar='overlay'] .app--no-sidebar .center .toolbar:first-child,
+:root[data-titlebar='overlay'] .app--no-sidebar .center .alltags__toolbar {
+  padding-left: 100px;
 }
+
 /* Nothing may cover the lights, and a scrolled sidebar must not slide content
    under them either. */
 :root[data-titlebar='overlay'] .sidebar__brand {
@@ -258,7 +282,10 @@ button {
   background: var(--bg-2);
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  padding: 12px 8px;
+  /* No top padding: the title strip below is a full toolbar-height row and
+     provides it, and only a strip that reaches the window's edge can align with
+     the content's toolbar (and, in the shell, sit under the traffic lights). */
+  padding: 0 8px 12px;
   user-select: none;
   /* A column so the footer can claim the leftover space and sit at the bottom
      instead of trailing whatever the nav sections happen to end at. */
@@ -372,11 +399,27 @@ button {
   min-width: 0;
   min-height: 0;
   background: var(--bg);
+  /* A query container, so the toolbar inside can drop what it cannot fit as the
+     *column* narrows — which is what a window resize and a panel drag both do,
+     and what a viewport media query cannot see. Containment makes this element a
+     containing block for `position: fixed` descendants, so nothing fixed may
+     render inside it: the menus, pickers, dialogs, toasts, drag badge and the
+     media viewer are all portaled to the body or mounted at the app root, and
+     must stay that way. */
+  container-type: inline-size;
+  container-name: surface;
 }
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 8 rather than 10: with a toggle at each end the row carries a dozen controls,
+     and two pixels a gap is the cheapest of the places to find that width. */
+  gap: 8px;
+  /* Fixed rather than implied by its padding, because the sidebar's title strip
+     matches it — one line of controls across the window, and one number for the
+     traffic lights to be centred against (see `trafficLightPosition`). */
+  height: var(--toolbar-h, 44px);
+  box-sizing: border-box;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
@@ -404,6 +447,10 @@ button {
 }
 .toolbar input[type='search'] {
   width: 200px;
+  /* An input's automatic minimum comes from its `size` (20 characters), which is
+     wider than the field ever needs to be in a tight row. Overriding it is what
+     lets the search box give up space before the breadcrumb trail does. */
+  min-width: 80px;
 }
 /* Back/Forward history — a compact seg pair leading each surface's top bar. */
 .nav-history button {
@@ -437,10 +484,122 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
+/* The sidebar/inspector toggles at each end of a toolbar. Every icon button in
+   a toolbar draws its glyph at the shared 16px `.icon` size; the filter toggle
+   used to draw at 15, which is the sort of near-miss that reads as sloppy
+   without being obviously wrong (owner, 2026-09-01). */
+.toolbar__panel-toggle {
+  padding: 5px 8px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.toolbar__panel-toggle.is-active {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+/* What a toolbar gives up as its column narrows, in order: the title
+   ellipsizes, then the item count goes, then the zoom slider. Everything after
+   that is a control with no other home — the panel toggles, the layout group,
+   the sort control, the search field — so the row clips rather than painting
+   over the inspector beside it. Before this the row simply overflowed: the zoom
+   slider collapsed to nothing and the inspector toggle was drawn on top of the
+   panel it governs (owner, 2026-09-01). */
+.toolbar {
+  overflow: hidden;
+}
+.toolbar__title {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container surface (max-width: 700px) {
+  .toolbar .toolbar__count {
+    display: none;
+  }
+}
+@container surface (max-width: 620px) {
+  .toolbar .zoom {
+    display: none;
+  }
+}
+/* A row carrying an action — the File Browser's Add Files Here, Trash's Empty
+   Trash… — is ~100px heavier, so it reaches the same point sooner and gives the
+   same two things up there. */
+@container surface (max-width: 760px) {
+  .toolbar:has(.btn) .toolbar__count {
+    display: none;
+  }
+}
+@container surface (max-width: 700px) {
+  .toolbar:has(.btn) .zoom {
+    display: none;
+  }
+}
+/* Narrower still: the File Browser's Add Files Here goes too, and the two
+   flexible things left — the breadcrumb trail, which scrolls, and the search
+   field — drop to a smaller floor. That keeps the controls with no other home
+   (sort, layout, both panel toggles) on the row down to the narrowest column
+   the app allows. Adding files stays reachable from File ▸ Add Files to
+   Library… and the sidebar's ⋯ menu; Trash's own action is deliberately not
+   matched here, because hiding it mid-confirmation would strip the buttons the
+   confirmation is asking about. */
+@container surface (max-width: 560px) {
+  .center .toolbar {
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .center .file-browser .toolbar .btn {
+    display: none;
+  }
+  /* One class more specific than the base rules further down the sheet, which
+     would otherwise win on order and pin these at their comfortable floors. */
+  .center .toolbar input[type='search'] {
+    min-width: 72px;
+  }
+  .center .file-browser__crumbs {
+    min-width: 40px;
+  }
+  /* The surface's name goes last of the text: the sidebar's highlighted row
+     already says which view is open, and the Bundle Browser's third layout
+     button makes its row the tightest of the two. */
+  .center .toolbar .toolbar__title {
+    display: none;
+  }
+}
+
+/* One height for every boxed control in a toolbar — segmented groups, actions,
+   the search field, the sort control. They were each sized by their own padding
+   and font, so the File Browser's row in particular stepped between 22px and
+   29px across five controls, and a tight window wrapped its button labels to a
+   second line (owner, 2026-09-01). The zoom slider is deliberately outside this:
+   it is a track, not a box. */
+.toolbar .btn,
+.toolbar .seg,
+.toolbar input[type='search'],
+.toolbar select {
+  height: 28px;
+}
+/* Buttons and segmented groups hold their width; the search field is the one
+   control that gives way, so a tight row squeezes it rather than the breadcrumb
+   trail beside it — which scrolls, and whose leading crumb would end up under
+   the item count. */
+.toolbar .btn,
+.toolbar .seg {
+  flex: 0 0 auto;
+}
+.toolbar .btn {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
 .zoom {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
 }
 .zoom input[type='range'] {
   width: 84px;
@@ -451,10 +610,6 @@ button {
   position: relative;
   padding: 5px 8px;
   cursor: pointer;
-}
-.toolbar__filter-toggle .icon {
-  width: 15px;
-  height: 15px;
 }
 .toolbar__filter-toggle.is-active {
   background: var(--accent-soft);
@@ -1480,6 +1635,43 @@ button {
   z-index: 1;
   cursor: default;
 }
+/* --- Sortable column headers (both list views) --------------------------- */
+/* The header cell stays the grid item; the button inside it is what takes the
+   click, so keyboard focus lands on something with a role and the cell keeps its
+   column alignment. Transparent and inheriting, so a header still reads as a
+   header rather than a row of small buttons. */
+.colhead {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colhead:hover {
+  color: var(--text-strong);
+}
+.colhead--on {
+  color: var(--text-strong);
+}
+/* Reserved even when empty, so the labels do not shift as the sort moves. */
+.colhead__dir {
+  min-width: 8px;
+  font-size: 11px;
+}
+/* A numeric column's header sits with its numbers, at the right edge. */
+.file-table__num .colhead {
+  justify-content: flex-end;
+  width: 100%;
+}
+
 .list-row__thumb {
   width: 48px;
   height: 24px;
@@ -3436,11 +3628,17 @@ code {
      2026-07-30). Still capped by viewport width. */
   width: min(1100px, 96vw);
 }
-/* Fixed, not max: the list is the thing being scanned, and letting the dialog
-   grow and shrink with its contents moved the footer under the pointer every
-   time a row folded or a filter narrowed the view. */
+/* Follows its content between a floor and a cap. It was a flat
+   `height: min(88vh, 900px)`, so a three-row plan sat in a full-height box with
+   two thirds of it empty below the buttons (owner, 2026-09-01). The floor is
+   what keeps the reason for the fixed height answered: inside a short plan,
+   folding a row or narrowing a filter moves nothing, because the floor absorbs
+   it — and a plan long enough to reach the cap is pinned there, where the body
+   scrolls and the footer never moves at all. */
 .grp-modal {
-  height: min(88vh, 900px);
+  height: auto;
+  min-height: min(260px, 88vh);
+  max-height: min(88vh, 900px);
 }
 .grp-intro-details > summary {
   cursor: pointer;
@@ -5816,6 +6014,11 @@ code {
      every crumb reachable. */
   overflow-x: auto;
   overflow-y: hidden;
+  /* A floor of roughly one crumb. The trail scrolls, so it is the first thing a
+     tight row squeezes — and squeezed to nothing it leaves the library-root
+     crumb scrolled out from under the pointer, which is how it became
+     unclickable when the panel toggles joined the row (owner, 2026-09-01). */
+  min-width: 96px;
   scrollbar-width: none;
   gap: 2px;
   /* Right-aligned by an auto margin on the first crumb, not
@@ -5864,6 +6067,12 @@ code {
   overflow: auto;
   min-height: 0;
   position: relative;
+  /* The listing's scroll container is focusable only so F2/Enter/Delete reach
+     it; it is not a tab stop. Clicking a row focuses it, and the next key press
+     makes WebKit paint a focus ring around the whole listing — which reads as
+     the window frame lighting up as you arrow through files (owner,
+     2026-09-01). The selected row is the focus indicator here. */
+  outline: none;
 }
 .file-browser__body--dragging {
   user-select: none;
@@ -6456,8 +6665,17 @@ code {
 .sortctl__dir {
   color: var(--text-muted);
 }
+/* Narrow: its widest option is two short words, and at the shared picker width
+   the pane was mostly empty (owner, 2026-09-01). The scope checkbox's label
+   wraps rather than setting the width — two words a line reads fine, and the
+   options are what the pane is for. */
 .sortctl__panel {
-  width: 220px;
+  /* Sized to its options rather than to the scope checkbox's sentence, which is
+     what kept the pane wide with most of it empty (owner, 2026-09-01). At this
+     width that label breaks two words a line — "Remember sort / per collection"
+     — instead of stranding one word on the second, and the widest option
+     ("Date Modified", with its tick and padding) still fits on one line. */
+  width: 160px;
   padding: 6px;
 }
 .sortctl__section {

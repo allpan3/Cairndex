@@ -344,6 +344,13 @@
 > [ADR-0025](adr/0025-moment-tag-propagation.md) and
 > [ADR-0026](adr/0026-armed-range-loop.md).
 >
+> **Eight owner UI reports are built on `feat/browser-ui-fixes`** (2026-09-01)
+> and awaiting the owner's pass — toolbar sizing, sortable list headers, panel
+> toggles, ⌘S/⌘I, the duplicated Full Screen item, item size in the File
+> Browser, New Folder in the menu bar, arrow-key navigation, and rename-on-
+> click-away. See the first section below; one item needs the owner's eyes on a
+> real menu bar.
+>
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
 > need the owner: a pass on a genuinely
@@ -356,6 +363,185 @@
 > bundle, so an album of 1000 photos is one row) is no longer parked: its
 > deferral expired with v0.1.0 and its design questions are settled. It is
 > designed and unbuilt — see the branch section below.
+
+## Open on branch: eight owner UI reports in both browsers (`feat/browser-ui-fixes`, 2026-09-01)
+
+Branch `feat/browser-ui-fixes`, latest commit `939f599f`. Eight items the owner
+reported in one pass, all UI:
+
+1. **Toolbar controls now share one height and one icon size.** Every boxed
+   control inside a `.toolbar` — segmented groups, `.btn` actions, the search
+   field, `<select>` — is 28px, and the filter toggle's 15px icon override is
+   gone so every toolbar glyph is the shared 16px `.icon`. The File Browser's
+   two actions also stopped wrapping their labels onto a second line in a tight
+   window (they were 36px tall against 28px neighbours).
+2. **List-view column headers sort.** New shared `SortHeaderCell`
+   (`app/SortHeader.tsx`): click a column to sort by it, click the active column
+   to reverse. Used by both list views; a bundle's Dimensions and Type stay
+   plain because no browse order backs them.
+3. **Sidebar/inspector toggles.** `app/PanelToggles.tsx`, passed by `App` into
+   each surface's toolbar as `leading`/`trailing` (Bundle Browser, File Browser,
+   Trash). Their accelerators moved to ⌘S / ⌘I.
+4. **Full Screen is the system's predefined item.** The custom `fullscreen`
+   entry is gone from `keymap.json`; the View menu carries
+   `{"predefined": "fullscreen"}` with the label *Enter Full Screen* and the
+   OS's ⌃⌘F. AppKit adds its own item unless one is bound to
+   `toggleFullScreen:`, which is why the owner saw two. **Not verified live** —
+   see the open item below.
+5. **Item size applies to the surface in view.** `zoom-in`/`zoom-out` are
+   handled by `FileList` while it is mounted (its own `FILE_ZOOM_MIN/MAX`), and
+   `App` ignores them in file mode. The menu labels say *Item Size*, since the
+   zoom drives row height in list layouts as well as card width.
+6. **New Folder left the toolbar for File ▸ New Folder**, gated by a new
+   `new-folder` enablement group (`set_new_folder_menu_enabled` in Rust,
+   `useDesktopNewFolderAvailability` in the SPA) so it is live only where a
+   folder can be created. The context-menu entries are unchanged.
+7. **Arrow keys.** `FileList` walks its own listing from a `window` listener —
+   the scroll container is focusable but nothing focuses it, so the keys had
+   been reaching the shell. `App.moveSelection` now walks the folder cards and
+   the bundle grid as one sequence, and its listener is gated to
+   `mode === 'collection'` with no viewer open.
+8. **Rename commits on click-away**, in the File Inspector title and the inline
+   row editor, via `useCommitOnPointerDownOutside`. Blur alone missed the case
+   that matters: `useMarqueeSelect` calls `preventDefault` on a mousedown over a
+   draggable row, so focus never left the field.
+
+A ninth item came out of the owner's first test run. `just bundled` reached the
+ownership notice for a NAS-held library and **Connect to NAS-4800 did nothing**:
+`App` followed the redirect with a bare `void connectToServer(url)`, so the
+rejection was swallowed whole. The notice now reports the failure and the
+attempt in flight. The rejection itself was real and is inherent to a dev build
+— the shell loads its UI from Vite at `http://127.0.0.1:5173`, and the
+production NAS allows only the packaged desktop origins, so `verifyServer`'s
+health probe is refused by CORS and reads as an ordinary network failure.
+`unreachableServerMessage()` therefore appends that explanation in dev builds
+only. Testing a dev shell against a real deployment needs
+`CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173` on that server (what
+`just server-desktop` does locally), or a browser with
+`VITE_API_PROXY_TARGET` pointed at it, or a packaged build.
+
+Two more came from the owner's pass over the running app. The **grouping review
+dialog** was a flat `height: min(88vh, 900px)`, so a three-row plan sat in a
+full-height box; it now runs `min-height: min(260px, 88vh)` to that same cap,
+which keeps the reason the height was fixed in the first place (a long plan is
+pinned at the cap, its body scrolls, the footer never moves) while a short one
+is snug. And with the sidebar hidden in the shell, the centre column's first
+toolbar ran under the macOS traffic lights — under the very control that brings
+the sidebar back — so `.app--no-sidebar` now reserves that corner under
+`[data-titlebar='overlay']`, mirroring what `.sidebar__titlebar` does when the
+sidebar is shown. Both verified in the running app: the dialog measures 290px
+for a two-row plan and still caps at 792px with a scrolling body for a long one;
+the hidden-sidebar toolbar pads to 86px, clear of lights that end at ~78.
+
+A third pass answered three more. **Arrow keys are direction-aware**: a shared
+`app/spatialNav.ts` reads the rendered rects and answers "the row above/below",
+so Up/Down keep their column in a grid and cross between the folder cards and
+the bundle grid as one plane, while Left/Right keep the ordered step that wraps
+a row. It returns null when a rect is degenerate or the row is outside the
+virtualized window, and the caller falls back to the ordered step — which is
+also why it behaves unchanged in jsdom. **The sidebar toggle moved into the
+sidebar's own title strip** (the toolbar only carries it when there is no
+sidebar), that strip is now `--toolbar-h` tall so it lines up with the content
+toolbars, and `trafficLightPosition` centres the macOS window controls on the
+same line. Neither panel toggle highlights when pressed. The seeded synthetic
+library that was sitting untracked in the repo root is now under `var/media/`,
+which `.gitignore` already covers — no new rule.
+
+**Item 4, a wrong root cause (kept as the record of a dead end; the real cause
+is further down).** The owner pointed out that other apps do show ⌃⌘F, and the
+search landed on what looked like a muda bug: it builds the predefined Full
+Screen item with `Modifiers::META | Modifiers::CONTROL`
+(`items/predefined.rs`) while its macOS modifier mapping translates only
+`Modifiers::SUPER` into Command (`platform_impl/macos/accelerator.rs`) — read in
+isolation, the Command bit is dropped. **It is not**: both accelerator
+constructors fold `META` into `SUPER` first and the field is crate-private, so
+the unchecked branch is unreachable
+(`src/keymap.rs::cmd_and_cmdorctrl_mean_the_same_thing` pins this against the
+published crate). muda 0.19.3 is the newest release, so
+there is no version to move to. At the owner's direction muda 0.19.3 was
+vendored and patched, with tests proving the predefined accelerator then resolved
+to Command+Control+`f` — and the menu still read 🌐F on a confirmed rebuild, so
+the vendoring was **reverted** ([ADR-0027](adr/0027-vendored-muda-command-modifier.md),
+rejected).
+
+**Item 4 is now fixed, and the earlier diagnosis was wrong.** A Cocoa probe that
+dumps `NSApp.mainMenu` after launch (macOS 26.6) shows AppKit never touches the
+app's key equivalent: it *adds* its own Globe-F item and sets `hidden=1` on ours.
+
+```text
+[3] Enter Full Screen  action=toggleFullScreen:  keyEq='f'  mods=0x800000 FUNCTION(Globe)  hidden=0
+[4] Enter Full Screen  action=toggleFullScreen:  keyEq='f'  mods=0x140000 Control+Command   hidden=1
+```
+
+Registering `NSApplicationEnableGlobeShortcuts` as false *before* `NSApplication`
+exists stops the substitution, leaving one visible item at ⌃⌘F with the system
+action intact — verified at launch, after activation, after a menu update, and
+after forcing AppKit's own insertion call. The `Info.plist` route does nothing;
+the registration domain is what AppKit reads, and it writes no preference to
+disk. That is now `apps/desktop/src-tauri/src/globe_shortcuts.rs`, called from
+the first line of `main`, with `objc2`/`objc2-foundation` as macOS-only direct
+dependencies pinned to the versions tao/muda already pull (two lockfile edges,
+no new crates) — [ADR-0028](adr/0028-globe-shortcut-default-for-full-screen.md)
+carries the evidence, the undocumented-key risk and the removal condition.
+
+The probes that produced this ran real Cocoa apps, which repeatedly took window
+focus on the owner's machine; that was disruptive and the run was stopped part
+way. **Do not launch GUI probes without asking** — and note the finding here
+came from menu dumps already written to disk, not from the parts still running.
+
+A sixth pass added the **File Browser's per-folder sort** (`FilePrefs.sortScope`
++ `folderSorts`, keyed by the library-relative path), mirroring the Bundle
+Browser's per-collection scope; `SortPref` is now generic so the file sorts can
+use it, and `SortControl` takes the scope checkbox's wording. Writing its test
+surfaced a deliberate behaviour worth knowing: with a picker open, the first
+click outside only dismisses it (`usePopover` stops that click in the capture
+phase), so a test that opens the pane must close it before clicking anything
+else.
+
+A fifth pass: the **zoom slider moved** ahead of the right-hand buttons; the
+**sort pane narrowed** to 160px, sized to its options rather than to the scope
+checkbox's sentence (measured: at that width the label breaks two words a line
+and "Date Modified" still fits); and the **toolbar now degrades instead of
+overflowing**. `.center` is a container (`container-type: inline-size`, which
+also makes it a containing block for `position: fixed` — every menu, picker,
+dialog, toast and the viewer is portaled to the body or mounted at the app root,
+and must stay that way), and `@container` rules drop the item count, then the
+zoom, then the title and the File Browser's action. Measured at the app's
+minimum window with both panels open (420px column): both surfaces fit with no
+overflow, where before the row spilled 74px over the inspector and the zoom
+collapsed to zero width.
+
+One Playwright test, `overlay-scrollbar.spec.ts` "a panel that fits draws no
+thumb at all", was **flaky before this branch** — it asserted against the shared
+40-collection mock, which overflows even its 1400px window, so it passed only
+when the assertion beat the rows onto the screen (1 in 4 failed on a stashed
+tree). It now mocks a short list and waits for the rows, which is what it meant.
+
+A fourth pass fixed three more UI reports. The **focus ring** WebKit paints
+around `.file-browser__body` — a `tabindex=-1` scroll container, focused by a
+row click and made `:focus-visible` by the next key — is suppressed; the
+selected row is the indicator there. The **sidebar toggle is right-aligned** in
+the sidebar's strip, against the panel's inner edge. And the
+**`trafficLightPosition` y was wrong**: tao's `inset_traffic_lights` sets the
+title-bar container's height to `buttonHeight + y` and leaves each button's
+origin inside it, so the button's top lands at roughly `y - 8` — the 16 first
+set therefore reproduced the default and moved nothing. 24 puts a 12px button
+at y=16, centred on the 44px row. That value is derived, not observed: the
+window controls are native, and this session cannot see them. With the sidebar
+hidden the toolbar's own clearance went from 86px to 100px, so the first control
+is not seated against the window buttons.
+
+Tests run: frontend lint, format, types, **1140** unit tests, **147** Playwright
+flows, production build; desktop `cargo fmt --check`, `clippy -D warnings`, and
+120 Rust tests. No server code changed, so the backend gate was not run. The
+desktop shell was compiled and launched in dev mode to prove the new predefined
+menu item builds without panicking.
+
+**Item 4, a second wrong conclusion (superseded — see ADR-0028).** The owner's
+build shows a single *Enter Full Screen* displaying 🌐F, and this was read as
+AppKit normalizing the shortcut of whichever item carries `toggleFullScreen:`,
+making one-item-and-⌃⌘F impossible. AppKit does no such thing: it adds its own
+item and hides ours, and switching that substitution off gives both.
 
 ## Merged: moments, and the range loop they carry (2026-08-31, PR #14)
 

@@ -41,6 +41,8 @@ function ownership(overrides: Partial<LibraryOwnership> = {}): LibraryOwnership 
 interface NoticeOverrides {
   takeoverPending?: boolean
   takeoverError?: string | null
+  connectPending?: boolean
+  connectError?: string | null
 }
 
 function renderNotice(value: LibraryOwnership, overrides: NoticeOverrides = {}) {
@@ -53,6 +55,8 @@ function renderNotice(value: LibraryOwnership, overrides: NoticeOverrides = {}) 
     onConnectTo: vi.fn(),
     takeoverPending: overrides.takeoverPending ?? false,
     takeoverError: overrides.takeoverError ?? null,
+    connectPending: overrides.connectPending ?? false,
+    connectError: overrides.connectError ?? null,
   }
   render(<LibraryOwnershipNotice {...props} />)
   return props
@@ -74,6 +78,24 @@ describe('a live holder', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect to the-NAS/i }))
 
     expect(props.onConnectTo).toHaveBeenCalledWith('http://nas.local:8000')
+  })
+
+  it('reports a redirect that failed instead of doing nothing', () => {
+    // The failure used to be swallowed by a bare `void`, so pressing the button
+    // against a server that refuses this build's origin looked like a dead
+    // control (owner, 2026-09-01).
+    renderNotice(ownership({ redirect_url: 'http://nas.local:8000' }), {
+      connectError: 'Cairndex did not respond at this address.',
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('did not respond at this address')
+  })
+
+  it('shows the redirect in flight', () => {
+    renderNotice(ownership({ redirect_url: 'http://nas.local:8000' }), { connectPending: true })
+
+    const button = screen.getByRole('button', { name: /connecting/i })
+    expect(button).toBeDisabled()
   })
 
   it('tells the user what to do instead when there is no reachable address', () => {

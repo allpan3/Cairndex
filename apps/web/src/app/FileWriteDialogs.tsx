@@ -7,6 +7,7 @@ import {
   useTargetSuggestions,
 } from '../api/hooks'
 import { focusRenameInput } from './renameSelection'
+import { useCommitOnPointerDownOutside } from './useCommitOutside'
 
 /**
  * The collision prompt (ADR-0013 §3.3) — Finder's and Eagle's three answers.
@@ -560,8 +561,9 @@ export function NameEditor({
 }) {
   const [value, setValue] = useState(initial)
   // Guards the blur handler: committing on Enter also blurs, which would
-  // otherwise submit the same name twice.
-  const [settled, setSettled] = useState(false)
+  // otherwise submit the same name twice. A ref as well as state, because the
+  // outside-pointerdown path below can fire before the re-render.
+  const settled = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Focus and stem-selection together, so the extension stays unselected on
@@ -572,10 +574,14 @@ export function NameEditor({
   }, [])
 
   const commit = () => {
-    if (settled) return
-    setSettled(true)
+    if (settled.current) return
+    settled.current = true
     onSubmit(value)
   }
+  // Clicking anywhere else confirms the name. Blur alone does not cover it: a
+  // mousedown on a draggable row is `preventDefault`ed by the marquee handling,
+  // so focus never leaves the field (owner, 2026-09-01).
+  useCommitOnPointerDownOutside(true, inputRef, commit)
 
   return (
     <input
@@ -596,7 +602,7 @@ export function NameEditor({
           commit()
         } else if (event.key === 'Escape') {
           event.preventDefault()
-          setSettled(true)
+          settled.current = true
           onCancel()
         }
       }}

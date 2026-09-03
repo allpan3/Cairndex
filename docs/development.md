@@ -258,18 +258,39 @@ startup. The App menu's `hide` / `hide-others` / `show-all` trio is where macOS'
 ⌘H and ⌘⌥H come from — a fully custom menu bar that omits them leaves those
 combos dead, which is what the shell shipped with until 2026-08-23.
 
+Full Screen is `predefined` for a reason worth knowing before adding a custom
+one back: AppKit inserts its own *Enter Full Screen* into the View menu unless
+the app already owns an item bound to `toggleFullScreen:`. A custom item calling
+our own command does not count, so the menu carried two entries doing the same
+thing until 2026-09-01. Recognizing ours is not the end of it — AppKit then adds
+its Globe-F item anyway and *hides* ours, which is why the surviving entry showed
+🌐F until `globe_shortcuts` started registering
+`NSApplicationEnableGlobeShortcuts` as false before `NSApplication` exists
+(ADR-0028). If Full Screen ever reads 🌐F again, that registration is the first
+thing to check. A predefined entry may carry a `label` (its initial
+text — macOS still swaps Enter/Exit itself) and an `accelerator`, which is
+recorded for the shortcut reference and to reserve the combo; the OS, not this
+table, actually binds it.
+
 Table fields: `accelerator` is the OS-level binding (always modifier-based, so
 it can never swallow a keystroke meant for a text field — a test enforces this);
 `keys` lists the bare-key bindings the web app handles itself in the focused
 viewer; `requires` names the enablement group (`server`, `library`, `viewer`,
-`viewer-video`, `never`); `browserReserved` marks combos a browser intercepts
-before the page. `viewer` and `viewer-video` are separate because an image bundle
+`viewer-video`, `new-folder`, `never`); `browserReserved` marks combos a browser
+intercepts before the page. `viewer` and `viewer-video` are separate because an image bundle
 has no player: only Previous/Next File work there, so the player-only items stay
 disabled rather than live-but-dead.
 
+A group is only as good as the SPA's report of it. `new-folder` is the narrowest
+one: `FileList` owns it, because that component is where "a directory a folder
+can be created in" is actually known, and unmounting it (leaving the File
+Browser) greys the item out. The same component handles `zoom-in`/`zoom-out`
+while it is mounted — the File Browser keeps its own item-size preference and
+its own range, so the shell root deliberately ignores those two in file mode.
+
 Those reserved combos are the point of the D5 shortcut audit: ⌘1/⌘2 (tab
-switching), ⌘N (new window), ⌘[ / ⌘] (history), ⌘= / ⌘− (browser zoom), and ⌘⇧I
-(devtools) are unusable on the web and work only inside the shell. The web
+switching), ⌘N (new window), ⌘[ / ⌘] (history), ⌘= / ⌘− (browser zoom), and ⌘S
+(save page) are unusable on the web and work only inside the shell. The web
 build's bare-key viewer bindings are unchanged.
 
 **Give an item an accelerator only when no `keys` entry already covers it**

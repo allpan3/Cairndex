@@ -14,6 +14,7 @@ import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
 import type { FileFacts } from './fileFacts'
 import { focusRenameInput } from './renameSelection'
+import { useCommitOnPointerDownOutside } from './useCommitOutside'
 import { OverlayScrollbar } from './OverlayScrollbar'
 
 /**
@@ -52,6 +53,9 @@ export function FileInspector({
 }) {
   const [editing, setEditing] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
+  // Guards the commit paths against each other: an outside pointerdown and the
+  // blur it may or may not produce would otherwise rename twice.
+  const editingRef = useRef(false)
   const [draft, setDraft] = useState('')
   // Abandon any in-progress edit when the selection changes underneath it —
   // adjusted during render (React's pattern for resetting state on a prop
@@ -63,6 +67,12 @@ export function FileInspector({
     setEditing(false)
   }
 
+  // The guard the two commit paths share, kept in step with the state here
+  // rather than written during render.
+  useEffect(() => {
+    editingRef.current = editing
+  }, [editing])
+
   // Focus and stem-selection together, so the extension stays unselected on
   // every engine — see renameSelection. Above the early return below, since a
   // hook cannot sit behind one.
@@ -70,6 +80,26 @@ export function FileInspector({
     const input = titleRef.current
     return editing && input ? focusRenameInput(input) : undefined
   }, [editing])
+
+  const canRename = onRename !== undefined
+  const startEditing = () => {
+    if (!canRename || !entry) return
+    setDraft(entry.name)
+    setEditing(true)
+    editingRef.current = true
+  }
+  // Defined above the early return so the dismiss hook below can take it: a hook
+  // cannot sit behind a conditional return.
+  const commit = () => {
+    if (!editingRef.current || !entry) return
+    editingRef.current = false
+    setEditing(false)
+    const name = draft.trim()
+    if (name && name !== entry.name) onRename?.(entry.relativePath, name)
+  }
+  // Clicking away confirms the new name, wherever the click lands — see the hook
+  // for why blur alone misses the case that matters most (a row in the listing).
+  useCommitOnPointerDownOutside(editing, titleRef, commit)
 
   if (entry === null) {
     return (
@@ -127,18 +157,6 @@ export function FileInspector({
     entry.relativePath,
   ])
 
-  const canRename = onRename !== undefined
-  const startEditing = () => {
-    if (!canRename) return
-    setDraft(entry.name)
-    setEditing(true)
-  }
-  const commit = () => {
-    setEditing(false)
-    const name = draft.trim()
-    if (name && name !== entry.name) onRename?.(entry.relativePath, name)
-  }
-
   return (
     <aside className="inspector" data-tauri-drag-region>
       <OverlayScrollbar />
@@ -157,6 +175,7 @@ export function FileInspector({
               commit()
             } else if (event.key === 'Escape') {
               event.preventDefault()
+              editingRef.current = false
               setEditing(false)
             }
           }}

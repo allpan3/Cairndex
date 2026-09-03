@@ -74,3 +74,47 @@ test('leaves the FileInspector title inert without drag-out', () => {
 
   expect(container.querySelector('.inspector__title')).toHaveAttribute('draggable', 'false')
 })
+
+// --- renaming (owner, 2026-09-01) -------------------------------------------
+
+test('clicking away confirms a rename in progress', () => {
+  const onRename = vi.fn()
+  render(<FileInspector entry={factsFromEntry(entry)} hostLabels={labels} onRename={onRename} />)
+
+  fireEvent.doubleClick(screen.getByText('movie.mp4'))
+  fireEvent.change(screen.getByLabelText('Rename movie.mp4'), {
+    target: { value: 'feature.mp4' },
+  })
+  // A pointerdown outside, and *not* a blur: a mousedown on a draggable row in
+  // the listing is preventDefault-ed, so focus never leaves the field there.
+  fireEvent.pointerDown(document.body)
+
+  expect(onRename).toHaveBeenCalledWith('Movies/movie.mp4', 'feature.mp4')
+  expect(screen.queryByLabelText('Rename movie.mp4')).not.toBeInTheDocument()
+})
+
+test('renames once when the click away also blurs the field', () => {
+  const onRename = vi.fn()
+  render(<FileInspector entry={factsFromEntry(entry)} hostLabels={labels} onRename={onRename} />)
+
+  fireEvent.doubleClick(screen.getByText('movie.mp4'))
+  const field = screen.getByLabelText('Rename movie.mp4')
+  fireEvent.change(field, { target: { value: 'feature.mp4' } })
+  fireEvent.pointerDown(document.body)
+  fireEvent.blur(field)
+
+  expect(onRename).toHaveBeenCalledTimes(1)
+})
+
+test('Escape abandons the rename, and clicking away then changes nothing', () => {
+  const onRename = vi.fn()
+  render(<FileInspector entry={factsFromEntry(entry)} hostLabels={labels} onRename={onRename} />)
+
+  fireEvent.doubleClick(screen.getByText('movie.mp4'))
+  const field = screen.getByLabelText('Rename movie.mp4')
+  fireEvent.change(field, { target: { value: 'feature.mp4' } })
+  fireEvent.keyDown(field, { key: 'Escape' })
+  fireEvent.pointerDown(document.body)
+
+  expect(onRename).not.toHaveBeenCalled()
+})

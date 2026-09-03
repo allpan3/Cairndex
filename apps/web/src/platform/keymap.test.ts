@@ -15,6 +15,7 @@ const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'pair-device',
   'new-bundle',
   'new-collection',
+  'new-folder',
   'add-files',
   'show-bundles',
   'show-files',
@@ -63,11 +64,21 @@ describe('keymap table', () => {
   })
 
   it('excludes shell-owned and placeholder items from SPA dispatch', () => {
-    // `quit` and `fullscreen` are handled in Rust; the help entry is a disabled
-    // placeholder. None of them may reach the SPA as an action.
+    // `quit` is handled in Rust and the help entry is a disabled placeholder;
+    // neither may reach the SPA as an action.
     expect(dispatchableActionIds()).not.toContain('quit')
-    expect(dispatchableActionIds()).not.toContain('fullscreen')
     expect(dispatchableActionIds()).not.toContain('help-placeholder')
+  })
+
+  it('leaves Full Screen to the system item', () => {
+    // AppKit inserts its own Enter Full Screen into the View menu unless the app
+    // already owns one bound to toggleFullScreen:, so ours must be the predefined
+    // item — a custom one produced two entries doing the same thing.
+    const view = keymapMenus.find((menu) => menu.id === 'view-menu')
+    const fullscreen = view?.items.find((item) => item.predefined === 'fullscreen')
+    expect(fullscreen?.label).toBe('Enter Full Screen')
+    expect(fullscreen?.accelerator).toBe('Ctrl+Cmd+F')
+    expect(dispatchableActionIds()).not.toContain('fullscreen')
   })
 
   it('gives every non-separator item a label', () => {
@@ -114,7 +125,7 @@ describe('keymap table', () => {
         'CmdOrCtrl+Shift+N',
         'CmdOrCtrl+[',
         'CmdOrCtrl+]',
-        'CmdOrCtrl+Shift+I',
+        'CmdOrCtrl+S',
       ]),
     )
   })

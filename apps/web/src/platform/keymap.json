@@ -31,7 +31,9 @@
     "have no bare-key binding at all once a video loads (the arrows become seek).",
     "",
     "'requires' gates enablement: 'host-file' waits for a selection this Mac can hand",
-    "to the OS, 'server' items wait for desktop bootstrap to reach a",
+    "to the OS, 'new-folder' waits for a File Browser directory a folder can be",
+    "created in (write mode on, browse scope), 'server' items wait for desktop",
+    "bootstrap to reach a",
     "verified server, 'library' items for an unlocked mounted workspace, 'viewer' for",
     "an open media viewer, and 'viewer-video' for a viewer showing a video (an image",
     "bundle has no player, so those commands would be enabled but dead). null means",
@@ -45,7 +47,13 @@
     "runtime from those rather than read it from here.",
     "",
     "'predefined' selects a Tauri built-in menu item (OS-localized, native behavior);",
-    "such entries carry no id/accelerator of their own. The App menu's hide/hide-others/",
+    "such entries carry no id of their own, and their accelerator is the OS's — where",
+    "one is written here it is recorded for the in-app shortcut reference and to",
+    "reserve the combo, never registered by us. Full Screen is predefined for exactly",
+    "that reason: AppKit inserts its own Enter Full Screen item into the View menu",
+    "unless the app already has one bound to toggleFullScreen:, so a custom item of",
+    "ours produced two entries doing the same thing (owner, 2026-09-01). A 'label' on",
+    "a predefined entry sets its initial text; macOS still swaps Enter/Exit itself. The App menu's hide/hide-others/",
     "show-all trio is where macOS's Cmd-H and Cmd-Opt-H come from: a fully custom menu",
     "bar with no Hide item leaves those combos dead, which is what happened (owner,",
     "2026-08-23). Their accelerators are the OS's, not this table's, so the keymap test's",
@@ -122,6 +130,14 @@
           "accelerator": "CmdOrCtrl+Shift+N",
           "browserReserved": true,
           "requires": "library",
+          "keys": []
+        },
+        {
+          "id": "new-folder",
+          "label": "New Folder",
+          "accelerator": null,
+          "browserReserved": false,
+          "requires": "new-folder",
           "keys": []
         },
         {
@@ -228,7 +244,7 @@
         },
         {
           "id": "zoom-in",
-          "label": "Increase Card Size",
+          "label": "Increase Item Size",
           "accelerator": "CmdOrCtrl+=",
           "browserReserved": true,
           "requires": "library",
@@ -236,7 +252,7 @@
         },
         {
           "id": "zoom-out",
-          "label": "Decrease Card Size",
+          "label": "Decrease Item Size",
           "accelerator": "CmdOrCtrl+-",
           "browserReserved": true,
           "requires": "library",
@@ -248,7 +264,7 @@
         {
           "id": "toggle-sidebar",
           "label": "Toggle Sidebar",
-          "accelerator": "CmdOrCtrl+Shift+S",
+          "accelerator": "CmdOrCtrl+S",
           "browserReserved": true,
           "requires": "library",
           "keys": []
@@ -256,8 +272,8 @@
         {
           "id": "toggle-inspector",
           "label": "Toggle Inspector",
-          "accelerator": "CmdOrCtrl+Shift+I",
-          "browserReserved": true,
+          "accelerator": "CmdOrCtrl+I",
+          "browserReserved": false,
           "requires": "library",
           "keys": []
         },
@@ -265,13 +281,10 @@
           "separator": true
         },
         {
-          "id": "fullscreen",
-          "label": "Toggle Full Screen",
-          "accelerator": "CmdOrCtrl+Control+F",
-          "browserReserved": false,
-          "requires": null,
-          "keys": [],
-          "native": true
+          "predefined": "fullscreen",
+          "label": "Enter Full Screen",
+          "accelerator": "Ctrl+Cmd+F",
+          "browserReserved": false
         }
       ]
     },

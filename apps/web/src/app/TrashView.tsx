@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { useEmptyTrash, useRestoreFromTrash, useTrash } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
@@ -21,9 +21,15 @@ import { IconFolder, IconTrash } from './icons'
  * disabled — a control that disappears reads as a file that cannot come back.
  */
 export function TrashView({
+  leading,
+  trailing,
   writeMode,
   onFlash,
 }: {
+  /** The sidebar toggle and Back/Forward buttons every surface's toolbar leads with. */
+  leading?: ReactNode
+  /** The inspector toggle every surface's toolbar ends with. */
+  trailing?: ReactNode
   writeMode: boolean
   onFlash: (message: string) => void
 }) {
@@ -61,6 +67,7 @@ export function TrashView({
   return (
     <>
       <div className="toolbar" data-tauri-drag-region="deep">
+        {leading}
         <span className="toolbar__title">Trash</span>
         <span className="toolbar__count">
           {operations.length.toLocaleString()} {operations.length === 1 ? 'deletion' : 'deletions'}
@@ -102,6 +109,7 @@ export function TrashView({
             </button>
           </>
         )}
+        {trailing}
       </div>
 
       <div className="file-browser__body">

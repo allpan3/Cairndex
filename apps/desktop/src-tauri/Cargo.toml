@@ -46,3 +46,20 @@ tauri-plugin-store = "2"
 tauri-plugin-window-state = "2"
 tiny_http = "0.12"
 url = "2"
+
+# macOS only, and only for the two calls in `globe_shortcuts` (ADR-0028):
+# `NSUserDefaults.registerDefaults:` has no C entry point, so unlike
+# `modifiers`' single `extern "C"` declaration it cannot be reached without an
+# Objective-C bridge. Both crates are already compiled in this graph as
+# transitive dependencies of tao/muda at these versions, so the edge adds a
+# direct dependency, not a new build. Pinned to the graph's versions: a mismatch
+# would compile a *second* copy of the runtime into the shell.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = [
+  "std",
+  "NSDictionary",
+  "NSString",
+  "NSUserDefaults",
+  "NSValue",
+] }

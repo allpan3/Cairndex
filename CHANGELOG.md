@@ -8,6 +8,108 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Changed
+
+- **Both browsers' toolbars are one row of controls.** Every boxed control in a
+  toolbar — segmented groups, actions, the search field, the sort control — is
+  the same height, and every icon button draws its glyph at the same size. The
+  File Browser now uses the Bundle Browser's sort control instead of a bare
+  `<select>` and a separate direction arrow, and a tight window no longer wraps
+  a button's label onto a second line.
+- **Sidebar and inspector toggles in the toolbar.** Both panels were hideable
+  only from the View menu, which is invisible on the web. Each surface's toolbar
+  now leads with a sidebar toggle and ends with an inspector toggle, each showing
+  whether its panel is open. Their menu shortcuts are now <kbd>⌘S</kbd> and
+  <kbd>⌘I</kbd> (previously <kbd>⇧⌘S</kbd>/<kbd>⇧⌘I</kbd>).
+- **Item size, not card size.** The View menu's zoom items are *Increase Item
+  Size* / *Decrease Item Size*, because the zoom drives card width in the grid
+  layouts and row height in the list ones. They now also apply to the File
+  Browser, which keeps its own zoom and previously ignored them.
+- **New Folder moves to the menu bar.** It leaves the File Browser toolbar for
+  **File ▸ New Folder**, enabled only while a folder can actually be created in
+  the directory on screen. The listing's context menus keep the same item.
+- **One Full Screen item, showing <kbd>⌃⌘F</kbd>.** The View menu offered two
+  *Enter Full Screen* entries — ours and one AppKit adds itself, at
+  <kbd>🌐F</kbd>. Binding ours to the system action removed the duplicate but
+  left the system's shortcut on display, because AppKit substitutes its own item
+  and hides the app's. The shell now registers the AppKit default that stops
+  that substitution, so a single item shows the shortcut the keymap asks for and
+  still carries the system's full-screen action
+  ([ADR-0028](docs/adr/0028-globe-shortcut-default-for-full-screen.md)).
+
+### Added
+
+- **A per-folder sort in the File Browser.** Its sort pane now offers *Remember
+  sort per folder*, the counterpart to the Bundle Browser's per-collection
+  scope: each directory keeps its own field and direction, and a folder with
+  none yet inherits the global sort, so turning it on never changes what is
+  already on screen. The flat unbundled queue is not a folder, so it keeps the
+  global sort and is not offered the choice.
+- **Sortable list-view column headers.** In both browsers' list layouts,
+  clicking a column header sorts by it and clicking the active column reverses
+  the direction. The headers and the toolbar sort control are one preference.
+  Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
+
+### Fixed
+
+- **Arrow keys walk the File Browser.** They previously reached the shell rather
+  than the listing, which only drew a focus ring. In the Bundle Browser they now
+  walk the folder cards and the grid as one sequence instead of moving the
+  bundle selection while a collection was selected, and <kbd>Esc</kbd> clears
+  whichever selection is live. An open viewer and the File Browser each keep the
+  arrows for themselves.
+- **Arrow keys move in the direction they point.** Up and Down now step a row —
+  in a card or justified grid that is the tile above or below, keeping the
+  column, and across the folder cards and the grid beneath them as one plane.
+  Left and Right still step one place along, which is what wraps a row. They
+  previously all meant "previous/next item", so in a grid Down moved sideways.
+- **The toolbar gives way instead of overflowing.** Narrowing the window (or
+  widening a panel) used to collapse the zoom slider to nothing and draw the
+  right-hand controls over the inspector. Each surface's column is now a query
+  container, and its toolbar sheds what it cannot fit in a fixed order — item
+  count, then the zoom slider, then, at the narrowest, the surface title and the
+  File Browser's Add Files Here (still on the File menu and the sidebar's ⋯
+  menu). Every control with no other home stays on the row down to the smallest
+  window the app allows.
+- **The zoom slider sits ahead of the buttons** rather than between the layout
+  group and the inspector toggle, so the right-hand controls read as one run.
+- **A narrower sort menu.** It was sized for its checkbox's sentence rather than
+  its options, which left most of the pane empty.
+- **No focus ring around the file listing.** Clicking a row focuses the scroll
+  container — it has to, so <kbd>F2</kbd> and <kbd>Delete</kbd> reach it — and
+  the next key press made WebKit paint a ring around the whole listing, which
+  read as the window frame lighting up while arrowing through files. The
+  selected row is the focus indicator there.
+- **The sidebar toggle lives in the sidebar.** It sits in the sidebar's own top
+  strip while the sidebar is open — against the panel's inner edge, where a
+  panel's own collapse control belongs — and moves into the toolbar only when
+  there is no sidebar to put it in. That strip is now a full toolbar-height row, so the
+  toggle, the Back/Forward pair and the window's traffic lights all sit on one
+  line; the macOS window controls are positioned to match. Neither panel toggle
+  carries a pressed highlight any more — the panel beside it already answers
+  that question.
+- **The grouping dialog fits its plan.** It was a fixed 88vh box, so a
+  three-row suggestion sat in a full-height window with two thirds of it empty
+  below the buttons. It now sizes to its content between a floor and the same
+  cap; a plan long enough to reach the cap still scrolls its list under a
+  footer that does not move.
+- **The sidebar toggle clears the traffic lights.** With the sidebar hidden in
+  the desktop shell, the centre column starts at the window edge and its first
+  toolbar ran under the macOS window buttons — directly under the control that
+  brings the sidebar back. That corner is now reserved whenever the sidebar is
+  hidden, as the sidebar itself reserves it when shown.
+- **A failed "Connect to <holder>" says so.** Following a lease redirect from
+  the ownership notice swallowed every failure, so the button simply did
+  nothing when pressed. It now reports the reason and shows the attempt in
+  flight. In a development build the "did not respond" message also names the
+  likeliest cause: the shell is served from the Vite dev server, so a server
+  that does not allow that origin refuses the request exactly as if it were
+  down (`CAIRNDEX_CORS_EXTRA_ORIGINS`); a packaged build is unaffected.
+- **Renaming a file confirms when you click away.** From the inspector title and
+  from the inline row editor. A blur handler alone missed the case that matters:
+  a mousedown on a draggable row is `preventDefault`ed by the drag-select
+  handling, so focus never left the field and the new name was silently dropped.
+
 ### Security
 
 - **Dependabot privacy checks.** The publication gate recognizes Dependabot's
