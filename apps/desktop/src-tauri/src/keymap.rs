@@ -154,18 +154,32 @@ mod tests {
         let explicit: Accelerator = "Cmd+F".parse().expect("Cmd+F parses");
         let portable: Accelerator = "CmdOrCtrl+F".parse().expect("CmdOrCtrl+F parses");
 
-        // Both carry Command, which is what the macOS mask translates.
+        // True everywhere: "Cmd" parses to `META`, and the constructor folds it
+        // into `SUPER` — the bit the macOS mask actually translates to Command.
         assert!(explicit.matches(Modifiers::SUPER, Code::KeyF));
-        assert!(portable.matches(Modifiers::SUPER, Code::KeyF));
-        // Neither keeps META, and the ids match — the id hashes the normalized
-        // modifiers plus the key, so equality means one accelerator, not two.
         assert!(!explicit.matches(Modifiers::META, Code::KeyF));
-        assert_eq!(explicit.id(), portable.id());
 
-        // And the combination the View menu records for Full Screen resolves to
-        // Control+Command, not Control alone.
-        let full_screen: Accelerator = "Ctrl+Cmd+F".parse().expect("Ctrl+Cmd+F parses");
-        assert!(full_screen.matches(Modifiers::CONTROL | Modifiers::SUPER, Code::KeyF));
+        // "CmdOrCtrl" is the one that is genuinely platform-dependent: muda's
+        // `CMD_OR_CTRL` is `SUPER` on macOS and `CONTROL` elsewhere. Asserting
+        // the macOS reading unconditionally is what broke the Ubuntu Rust gate
+        // when this test was first written.
+        #[cfg(target_os = "macos")]
+        {
+            assert!(portable.matches(Modifiers::SUPER, Code::KeyF));
+            // The id hashes normalized modifiers plus key, so equal ids mean one
+            // accelerator rather than two that merely behave alike.
+            assert_eq!(explicit.id(), portable.id());
+
+            // And the combination the View menu records for Full Screen resolves
+            // to Control+Command, not Control alone.
+            let full_screen: Accelerator = "Ctrl+Cmd+F".parse().expect("Ctrl+Cmd+F parses");
+            assert!(full_screen.matches(Modifiers::CONTROL | Modifiers::SUPER, Code::KeyF));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(portable.matches(Modifiers::CONTROL, Code::KeyF));
+            assert_ne!(explicit.id(), portable.id());
+        }
     }
 
     // A menu item that neither dispatches, acts natively, nor is predefined would
