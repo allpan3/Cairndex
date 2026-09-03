@@ -29,39 +29,52 @@
   "binaries": [
     {
       "sha256": "77739a64024536b18b4e26178f9e2257e55687de72a670a429a2ff42d5a58019",
-      "paths": ["apps/desktop/src-tauri/icons/128x128.png"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/128x128.png"
+      ],
       "purpose": "Generated Cairndex application icon",
       "provenance": "Derived from the repository SVG logo"
     },
     {
       "sha256": "923104f15a1e7494a52256a05986baa14fbe560ae3b2e3ae29426107783d3089",
-      "paths": ["apps/desktop/src-tauri/icons/128x128@2x.png"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/128x128@2x.png"
+      ],
       "purpose": "Generated Cairndex high-density application icon",
       "provenance": "Derived from the repository SVG logo"
     },
     {
       "sha256": "e87a83038389fc9fd41af7575a1530c8a8ed0e45f8eba9b087cbbdfb9c236936",
-      "paths": ["apps/desktop/src-tauri/icons/32x32.png"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/32x32.png"
+      ],
       "purpose": "Generated Cairndex small application icon",
       "provenance": "Derived from the repository SVG logo"
     },
     {
       "sha256": "375ed6d1aa837bc1717fe15e53f8f4d28298f49592d92dcb38b20459813337fd",
-      "paths": ["apps/desktop/src-tauri/icons/drag-file.png"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/drag-file.png"
+      ],
       "purpose": "Generated native drag preview icon",
       "provenance": "Derived from the repository SVG logo"
     },
     {
       "sha256": "2780aa7c080b73969241cceb485719b8fd26335a0a989f332f8ce480c1ed67b3",
-      "paths": ["apps/desktop/src-tauri/icons/icon.icns"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/icon.icns"
+      ],
       "purpose": "Generated macOS Cairndex application icon set",
       "provenance": "Derived from the repository SVG logo"
     },
     {
       "sha256": "7c2ebfd510b502a417845f769f499a872d6aaf6042f28bcbae1215024e57590f",
-      "paths": ["apps/desktop/src-tauri/icons/icon.ico"],
+      "paths": [
+        "apps/desktop/src-tauri/icons/icon.ico"
+      ],
       "purpose": "Generated Windows Cairndex application icon set",
       "provenance": "Derived from the repository SVG logo"
     }
-  ]
+  ],
+  "vendored_trees": []
 }

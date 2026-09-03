@@ -167,11 +167,32 @@ Before **every push** and before creating or updating a pull request:
    and a synthetic provenance. Unexpected root files and unexplained large blobs fail
    the gate. App icons and other established assets are not a blanket allowlist for new
    binaries.
-4. Inspect Docker build contexts and the contents of publishable images for ignored
+4. **Nothing that a build produced may be committed, and nothing vendored may arrive
+   unannounced.** Build output, dependency trees and caches — `target/`,
+   `node_modules/`, `dist/`, `build/`, `.venv/`, `__pycache__/`, coverage and
+   framework caches, `.rlib`/`.o`/`.dylib`/`.whl`/`.dmg` and friends — are never
+   source, at any depth, whatever the ignore rules happen to cover. A copy of somebody
+   else's source tree (any path under a `vendor/`, `vendored/`, `third_party/`
+   component) is a decision with a maintenance cost and a licensing tail: declare it in
+   `.github/privacy-allowlist.json` under `vendored_trees`, with a purpose and a
+   provenance, or it fails the gate. Two volume tripwires back this up: more than 400
+   paths in one scan, or more than 8 MiB of new blobs, fails as a bulk add — stage what
+   you chose file by file rather than reaching for `git add -A`. Volume is judged on
+   what one change adds, so a whole-history audit is exempt from those two; the path
+   rules apply there as everywhere.
+
+   These four rules are **enforced**, not advisory: `infra/privacy_gate.py` checks them
+   on every staged commit, every push, and every pull request, and prints which rule
+   fired (a rule name and a count — never a path, which can itself be user data). This
+   exists because it kept happening: `git add -A` once staged 1,876 files of a Cargo
+   `target/` directory, and 438 KB of a patched dependency rode into a feature branch
+   and back out again. The first was caught only because that build output happened to
+   contain a private literal; the second was not caught at all.
+5. Inspect Docker build contexts and the contents of publishable images for ignored
    databases, `.env` files, virtual environments, caches, packaging output, local
    libraries, and sidecar build directories. Git ignore rules do not protect Docker
    contexts.
-5. State the privacy-gate result before pushing. If the complete reachable history and
+6. State the privacy-gate result before pushing. If the complete reachable history and
    publication metadata were not inspected, do not push and do not open the PR. Owner
    authorization to open a PR is not a waiver of this gate.
 
@@ -302,6 +323,23 @@ branch and prepare a PR-style summary without publishing the PR by default. Foll
 work for an open PR belongs on that PR's branch unless it is genuinely independent.
 
 Commit frequently at meaningful checkpoints. Commits should be small enough to review and should normally leave the branch buildable. Use descriptive conventional-style messages when practical. Do not create meaningless `update` or `changes` commits.
+
+**Tidy the branch before the first push — this is routine work, not something to be
+asked for.** Iterating in front of the owner produces fix-up commits, reversed
+experiments and half-steps; that history is worth keeping while the work is in flight
+and worth collapsing before anyone else reads it. Re-cut the branch into the commits
+the change actually consists of: squash fix-ups into what they fix, drop
+add-then-revert pairs entirely rather than leaving both halves in the history, keep
+every commit buildable, and separate an independent repair (a flaky test, an unrelated
+lockfile bump) into its own commit so a reviewer can see why it is there. Record the
+dead ends in an ADR or `docs/STATUS.md`, where the reasoning is useful, instead of in
+408 KB of churn.
+
+Do it *before* the first push, where it costs nothing: no remote refs exist yet, so
+there is no force-push, no rewritten published history, and none of the hazards that
+rule below is about. `git reset --soft main` and re-committing is usually enough;
+verify the result with `git rev-parse HEAD^{tree}` against the pre-re-cut tip, which
+must be identical, and re-run the privacy gate over the new range.
 
 Every PR should include problem and scope, design summary, synthetic-data screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, the publication privacy-gate result, and follow-up work explicitly out of scope.
 
