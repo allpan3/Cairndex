@@ -25,6 +25,10 @@ interface Props {
   onConnectTo: (serverUrl: string) => void
   takeoverPending: boolean
   takeoverError: string | null
+  /** True while the redirect below is being followed. */
+  connectPending?: boolean
+  /** Why the last redirect attempt failed, if it did. */
+  connectError?: string | null
 }
 
 /** "1 minute 20 seconds", "45 seconds" — no bare second counts past a minute. */
@@ -80,6 +84,8 @@ export function LibraryOwnershipNotice({
   onConnectTo,
   takeoverPending,
   takeoverError,
+  connectPending = false,
+  connectError = null,
 }: Props) {
   const running = ownership.takeover?.running === true || takeoverPending
   const who = holderName(ownership)
@@ -155,9 +161,22 @@ export function LibraryOwnershipNotice({
       }
     >
       {ownership.redirect_url && (
-        <button className="lockscreen__submit" onClick={() => onConnectTo(ownership.redirect_url!)}>
-          Connect to {who}
+        <button
+          className="lockscreen__submit"
+          onClick={() => onConnectTo(ownership.redirect_url!)}
+          disabled={connectPending}
+        >
+          {connectPending ? 'Connecting…' : `Connect to ${who}`}
         </button>
+      )}
+      {/* Following a redirect can fail — most often because the holder does not
+          answer this build's origin — and the failure used to be swallowed
+          whole, leaving a button that did nothing at all when pressed (owner,
+          2026-09-01). */}
+      {connectError && (
+        <p className="lockscreen__error" role="alert">
+          {connectError}
+        </p>
       )}
     </LibraryAccessNotice>
   )

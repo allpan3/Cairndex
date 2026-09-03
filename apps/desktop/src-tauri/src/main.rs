@@ -1,5 +1,7 @@
 // Owns the native application menu and semantic SPA event bridge
 mod app_menu;
+// Registers the AppKit default that keeps Full Screen's own ⌃⌘F on screen
+mod globe_shortcuts;
 // Parses cairndex:// deep links and routes them to the SPA
 mod deeplink;
 // Puts validated absolute paths on the OS pasteboard for drag-out to Finder
@@ -106,6 +108,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app_menu::renderer_ready,
             app_menu::set_library_menu_enabled,
             app_menu::set_host_file_menu_enabled,
+            app_menu::set_new_folder_menu_enabled,
             app_menu::set_server_menu_enabled,
             app_menu::set_viewer_menu_enabled,
             app_menu::toggle_window_fullscreen,
@@ -191,6 +194,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 // Reports startup failure without panicking inside the packaged application
 fn main() {
+    // Before anything can touch `NSApplication`: AppKit reads this default while
+    // it builds the menu bar, and reads it once (ADR-0028).
+    globe_shortcuts::prefer_control_command_full_screen();
     if let Err(error) = run() {
         eprintln!("Cairndex desktop could not start: {error}");
     }

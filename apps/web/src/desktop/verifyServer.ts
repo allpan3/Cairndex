@@ -4,6 +4,25 @@ export const INCOMPATIBLE_SERVER_ERROR = 'This address is not a compatible Cairn
 export const UNREACHABLE_SERVER_ERROR =
   'Cairndex did not respond at this address. Check that the server is running.'
 
+/**
+ * Why "unreachable" needs a second sentence in a development build.
+ *
+ * A dev shell loads its UI from the Vite dev server, so every request carries
+ * that origin and a server which does not allow it answers with no CORS header
+ * — which the webview reports as an ordinary network failure, identical to a
+ * server that is down. A production deployment allows the packaged desktop
+ * origins only, so `just desktop` against a real NAS looks exactly like a dead
+ * server while the packaged app reaches it fine (owner, 2026-09-01).
+ */
+const DEV_ORIGIN_HINT =
+  ' A development build is served from the Vite dev server, so the server must also' +
+  ' allow that origin (CAIRNDEX_CORS_EXTRA_ORIGINS); a packaged build does not need it.'
+
+/** The unreachable message, with the development-only origin hint. */
+export function unreachableServerMessage(): string {
+  return import.meta.env.DEV ? UNREACHABLE_SERVER_ERROR + DEV_ORIGIN_HINT : UNREACHABLE_SERVER_ERROR
+}
+
 const REQUIRED_API_FEATURES = ['pairing', 'progress']
 const HEALTH_TIMEOUT_MS = 5000
 
@@ -38,7 +57,7 @@ export async function verifyServer(serverUrl: string): Promise<void> {
     if (!compatible) throw new Error(INCOMPATIBLE_SERVER_ERROR)
   } catch (error) {
     if (error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR) throw error
-    throw new Error(UNREACHABLE_SERVER_ERROR, { cause: error })
+    throw new Error(unreachableServerMessage(), { cause: error })
   } finally {
     window.clearTimeout(timeout)
   }

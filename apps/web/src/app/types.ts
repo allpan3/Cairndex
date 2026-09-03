@@ -18,10 +18,34 @@ export interface FileLocation {
   path: string // '' = the storage root itself
 }
 
-export interface SortPref {
-  sort: BundleSort
+/** A sort and its direction. Defaults to the bundle sorts, since that is most
+ *  of its use; the File Browser parameterizes it with its own field set. */
+export interface SortPref<T extends string = BundleSort> {
+  sort: T
   order: SortOrder
 }
+
+/** One entry in a surface's sort menu (`SortControl`, and the list views'
+ *  clickable column headers). `directionless` marks a sort with no ascending/
+ *  descending reading — Manual, where the arrangement *is* the order. */
+export interface SortOption<T extends string> {
+  value: T
+  label: string
+  directionless?: boolean
+}
+
+/** The bundle browser's sorts, in menu order. Manual first: it is the default,
+ *  and it is the order new bundles arrive at the front of. */
+export const BUNDLE_SORTS: SortOption<BundleSort>[] = [
+  { value: 'manual', label: 'Manual', directionless: true },
+  { value: 'date_added', label: 'Date Added' },
+  { value: 'date_modified', label: 'Date Modified' },
+  { value: 'date_opened', label: 'Date Opened' },
+  { value: 'title', label: 'Title' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'size', label: 'Size' },
+  { value: 'file_count', label: 'File Count' },
+]
 
 /** The orders the Recent view offers. Recent is the All view ranked by a date;
  *  which date is the only choice it has to make, so these are the only sorts

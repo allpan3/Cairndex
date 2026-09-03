@@ -12,6 +12,7 @@ export type DesktopWorkspaceAction =
   | 'pair-device'
   | 'new-bundle'
   | 'new-collection'
+  | 'new-folder'
   | 'add-files'
   | 'show-bundles'
   | 'show-files'

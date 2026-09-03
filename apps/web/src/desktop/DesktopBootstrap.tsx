@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { QueryScope } from '../QueryScope'
 import { NewLibraryDialog } from '../app/LibraryManager'
-import { INCOMPATIBLE_SERVER_ERROR } from './verifyServer'
+import { INCOMPATIBLE_SERVER_ERROR, unreachableServerMessage } from './verifyServer'
 import { confirmPickedLibrary, openLibraryFolder } from './openLibraryFolder'
 import {
   activateConnection,
@@ -187,7 +187,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
                   ? hostOperationErrorMessage(error)
                   : error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
                     ? error.message
-                    : 'Cairndex did not respond at this address. Check that the server is running.',
+                    : unreachableServerMessage(),
             })
           }
         }

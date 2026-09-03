@@ -7,11 +7,14 @@ import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SortControl } from './SortControl'
 import { TagFilterControl } from './TagFilterControl'
-import type { BrowsePrefs, LayoutMode } from './types'
+import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
 
 interface ToolbarProps {
-  /** Leading controls before the title — the Back/Forward history buttons. */
+  /** Leading controls before the title — the sidebar toggle and the
+   *  Back/Forward history buttons. */
   leading?: ReactNode
+  /** Trailing controls at the row's right end — the inspector toggle. */
+  trailing?: ReactNode
   /**
    * Set in the Random view: adds a Reshuffle button and drops the sort control —
    * explicit sorting would just un-shuffle the one thing the view is for.
@@ -51,6 +54,7 @@ const LAYOUTS: { value: LayoutMode; icon: ReactNode; label: string }[] = [
 
 export function Toolbar({
   leading,
+  trailing,
   onReshuffle,
   title,
   total,
@@ -128,6 +132,23 @@ export function Toolbar({
           title="Search titles, filenames, tags, and collections across the whole library"
         />
 
+        {/* Ahead of the buttons rather than among them: a slider between two
+            groups of icon buttons broke the run of controls (owner,
+            2026-09-01). Always shown — even in list view, where it drives row
+            height — so the controls beside it don't shift when the layout
+            changes. */}
+        <div className="zoom">
+          <input
+            type="range"
+            min={ZOOM_MIN}
+            max={ZOOM_MAX}
+            step={10}
+            value={prefs.zoom}
+            onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
+            aria-label="Zoom"
+          />
+        </div>
+
         {/* No sort in Random: explicit sorting would un-shuffle the one thing
             the view is for. The Reshuffle button above stands in its place. */}
         {!onReshuffle && (
@@ -135,7 +156,11 @@ export function Toolbar({
             sort={sort}
             order={order}
             onChange={onSort}
-            allowed={allowedSorts}
+            options={
+              allowedSorts
+                ? BUNDLE_SORTS.filter((option) => allowedSorts.includes(option.value))
+                : BUNDLE_SORTS
+            }
             perCollection={perCollectionSort}
             onPerCollection={onPerCollectionSort}
           />
@@ -156,19 +181,7 @@ export function Toolbar({
           ))}
         </div>
 
-        {/* Always shown (even in list view, where it drives row height) so the
-            controls to its left don't shift when switching layouts. */}
-        <div className="zoom">
-          <input
-            type="range"
-            min={ZOOM_MIN}
-            max={ZOOM_MAX}
-            step={10}
-            value={prefs.zoom}
-            onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
-            aria-label="Zoom"
-          />
-        </div>
+        {trailing}
       </div>
 
       {filtersOpen && (

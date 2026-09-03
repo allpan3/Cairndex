@@ -36,6 +36,7 @@ import { PickGuides } from './PickGuides'
 import { gapBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { OverlayScrollbar } from './OverlayScrollbar'
+import { SidebarToggle } from './PanelToggles'
 import { usePersistentState } from '../state/usePersistentState'
 
 import type { SystemView } from '../api/client'
@@ -146,6 +147,9 @@ export interface SidebarProps {
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
   // Clicking the sidebar's blank space drops the current selection.
   onBackgroundClick?: () => void
+  /** Closes the sidebar from its own title strip. Omitted where there is no
+   *  such control to offer (the browser's tests, a future embedded use). */
+  onToggleSidebar?: () => void
   /**
    * A create-collection request raised outside the sidebar (the grid's empty-space
    * menu, the native File menu). `parentId` null means top level. The sidebar owns
@@ -267,6 +271,7 @@ export function Sidebar({
   onReparentCollections,
   onMoveBundlesInto,
   onBackgroundClick,
+  onToggleSidebar,
   newCollectionRequest = null,
   onNewCollectionHandled,
   renameCollectionRequest = null,
@@ -577,12 +582,18 @@ export function Sidebar({
       }}
     >
       <OverlayScrollbar />
-      {/* Clearance for the window's traffic lights, which float over this corner
-          in the desktop shell (see `markOverlayTitleBar`). Zero-height in a
-          browser. The drag regions move the window, the way the system title bar
-          they replace would; "deep" covers the labels inside them too, since
-          Tauri's bare attribute only matches a click on the element itself. */}
-      <div className="sidebar__titlebar" data-tauri-drag-region="deep" />
+      {/* The sidebar's own top row: clearance for the window's traffic lights,
+          which float over this corner in the desktop shell (see
+          `markOverlayTitleBar`), and the control that closes this panel — it
+          belongs beside the panel it governs rather than out in the content's
+          toolbar (owner, 2026-09-01), which is where it reappears once the
+          sidebar is gone. The drag regions move the window, the way the system
+          title bar they replace would; "deep" covers the labels inside them too,
+          since Tauri's bare attribute only matches a click on the element
+          itself. */}
+      <div className="sidebar__titlebar" data-tauri-drag-region="deep">
+        {onToggleSidebar && <SidebarToggle visible onToggle={onToggleSidebar} />}
+      </div>
       <div className="sidebar__brand" data-tauri-drag-region="deep">
         <span>🍃</span> Cairndex
       </div>

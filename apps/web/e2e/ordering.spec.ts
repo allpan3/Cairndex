@@ -118,6 +118,26 @@ test('sort control defaults to Manual and changes the sort', async ({ page }) =>
   await expect(sortBtn).toContainText('Title')
 })
 
+test('a list-view column header sorts by that column', async ({ page }) => {
+  const captured = await mockApi(page)
+  await page.goto('/')
+  await expect(page.locator('.toolbar__title')).toHaveText('All')
+
+  await page.getByRole('button', { name: 'List' }).click()
+  // Clicking a header is the file-manager gesture for "sort by this" (owner,
+  // 2026-09-01); it drives the same preference the toolbar control shows.
+  await page.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect.poll(() => captured.sorts.includes('title')).toBe(true)
+  // `exact`, because the column headers are named "Sort by …" too.
+  await expect(page.getByRole('button', { name: 'Sort', exact: true })).toContainText('Title')
+
+  // Clicking the same column again reverses it.
+  await page.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Sort by Name' }).locator('xpath=..'),
+  ).toHaveAttribute('aria-sort', 'descending')
+})
+
 test('sort pane offers a per-collection scope toggle', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

@@ -45,6 +45,13 @@ export const ZOOM_MAX = 640
  * below did not previously manage. */
 const JUSTIFIED_TARGET_FRACTION = 0.7
 
+/** The File Browser's own item-size range. Its cards carry a name and a couple
+ * of facts rather than a bundle's cover, so they neither need nor survive the
+ * bundle grid's upper reach; kept here beside `ZOOM_MIN`/`ZOOM_MAX` so the
+ * slider, the View menu and any future control read one pair of bounds. */
+export const FILE_ZOOM_MIN = 120
+export const FILE_ZOOM_MAX = 360
+
 /** Map the shared zoom (a grid card's target width) to a list row height, so the
  * one zoom slider drives both layouts. Default zoom 200 → 40px (the previous
  * fixed row height); clamped to a comfortable 34–72px range. */

@@ -7,6 +7,7 @@ import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate, formatDuration, formatFileType } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { displayName, useDisplayPrefs } from '../state/displayPrefs'
+import { useDesktopMenu, useDesktopNewFolderAvailability } from '../desktop/useDesktopMenu'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
@@ -29,12 +30,15 @@ import {
   IconLayoutList,
   IconMusic,
 } from './icons'
-import { listRowHeight } from './layout'
+import { FILE_ZOOM_MAX, FILE_ZOOM_MIN, listRowHeight } from './layout'
+import { SortControl } from './SortControl'
+import { SortHeaderCell } from './SortHeader'
 import { usePinyinSearch } from './pinyin'
 import { selectionTargets, suppressShiftSelection } from './selection'
+import { navTargetsFrom, rowStep } from './spatialNav'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
-import type { PlayerPrefs } from './types'
+import type { PlayerPrefs, SortOption, SortPref } from './types'
 
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
@@ -47,11 +51,23 @@ interface FilePrefs {
   zoom: number // target card width in px (grid only)
   sort: FileSort
   order: SortOrder
+  /** 'folder' keeps a sort per directory (in `folderSorts`, keyed by the
+   *  library-relative path, '' being the root); 'global' uses one sort
+   *  everywhere. Optional so prefs stored before this existed still read. */
+  sortScope?: 'global' | 'folder'
+  folderSorts?: Record<string, SortPref<FileSort>>
 }
 
-const DEFAULT_FILE_PREFS: FilePrefs = { layout: 'list', zoom: 200, sort: 'name', order: 'asc' }
+const DEFAULT_FILE_PREFS: FilePrefs = {
+  layout: 'list',
+  zoom: 200,
+  sort: 'name',
+  order: 'asc',
+  sortScope: 'global',
+  folderSorts: {},
+}
 
-const FILE_SORTS: { value: FileSort; label: string }[] = [
+const FILE_SORTS: SortOption<FileSort>[] = [
   { value: 'name', label: 'Name' },
   { value: 'type', label: 'Type' },
   { value: 'size', label: 'Size' },
@@ -60,8 +76,10 @@ const FILE_SORTS: { value: FileSort; label: string }[] = [
 ]
 
 interface FileBrowserProps {
-  /** Leading header controls — the Back/Forward history buttons. */
+  /** Leading header controls — the sidebar toggle and Back/Forward buttons. */
   headerLeading?: ReactNode
+  /** Trailing toolbar controls — the inspector toggle. */
+  headerTrailing?: ReactNode
   libraryName: string
   // 'browse' = the directory tree; 'unbundled' = the flat "to-bundle queue".
   scope: 'browse' | 'unbundled'
@@ -350,6 +368,7 @@ interface FileListProps extends FileBrowserProps {
  * participate in the bundling context menu and drag-select. */
 function FileList({
   header,
+  headerTrailing,
   entries,
   stale = false,
   isLoading,
@@ -394,6 +413,31 @@ function FileList({
   // Anchor for Shift-range selection (the last plainly-clicked file).
   const [anchor, setAnchor] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
+  /**
+   * The sort in force here, and how changing it is stored.
+   *
+   * With "Remember sort per folder" on, each directory keeps its own — the
+   * Bundle Browser's per-collection scope, for the surface where the scope is a
+   * folder (owner, 2026-09-01). A folder with none yet inherits the global sort,
+   * so turning the switch on never changes what is currently on screen. The flat
+   * unbundled queue is not a folder and has no scope to remember against, so it
+   * always uses the global sort and is not offered the choice.
+   */
+  const folderKey = scope === 'browse' ? currentPath : null
+  const folderScoped = prefs.sortScope === 'folder' && folderKey !== null
+  const activeSort: SortPref<FileSort> = folderScoped
+    ? (prefs.folderSorts?.[folderKey] ?? { sort: prefs.sort, order: prefs.order })
+    : { sort: prefs.sort, order: prefs.order }
+  const setActiveSort = (sort: FileSort, order: SortOrder) => {
+    if (folderScoped) {
+      setPrefs({
+        ...prefs,
+        folderSorts: { ...(prefs.folderSorts ?? {}), [folderKey]: { sort, order } },
+      })
+    } else {
+      setPrefs({ ...prefs, sort, order })
+    }
+  }
   const [displayPrefs] = useDisplayPrefs()
   // The *displayed* name only. Renaming, search and every operation keep using
   // `entry.name`, so hiding extensions can never change what an action does.
@@ -415,12 +459,13 @@ function FileList({
   const visible = useMemo(() => {
     const q = search.trim()
     const filtered = q ? entries.filter((e) => matchSearch(e.name)) : entries
-    const dir = prefs.order === 'asc' ? 1 : -1
-    const cmp = (a: FileBrowserEntry, b: FileBrowserEntry) => compareEntries(a, b, prefs.sort) * dir
+    const dir = activeSort.order === 'asc' ? 1 : -1
+    const cmp = (a: FileBrowserEntry, b: FileBrowserEntry) =>
+      compareEntries(a, b, activeSort.sort) * dir
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
-  }, [entries, search, prefs.sort, prefs.order, matchSearch])
+  }, [entries, search, activeSort.sort, activeSort.order, matchSearch])
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openIndex, setOpenIndex] = useState<number | null>(null)
@@ -656,6 +701,95 @@ function FileList({
   const linkedCount = (paths: string[]): number =>
     visible.filter((entry) => paths.includes(entry.relative_path) && entry.linked).length
 
+  /** Move the selection one step through the listing (arrow keys). */
+  const moveSelection = (direction: 'up' | 'down' | 'left' | 'right') => {
+    if (visible.length === 0) return
+    // The anchor is where the last deliberate click landed; `selectedPath` keeps
+    // a Locate-in-File-Browser arrival navigable without a click first.
+    const from = anchor ?? [...selected].at(-1) ?? selectedPath
+    const index = visible.findIndex((entry) => entry.relative_path === from)
+    // Up/Down move by row — in the card layout that is a row of cards, in the
+    // list layout the next row is the next entry anyway. Left/Right step one
+    // place along, which wraps a card row the way a file manager does.
+    let nextPath: string | null = null
+    if (direction === 'up' || direction === 'down') {
+      const targets = navTargetsFrom(
+        wrapperRef.current ?? document,
+        '[data-relpath]',
+        (el) => el.dataset.relpath,
+      )
+      nextPath = rowStep(targets, from ?? null, direction)
+    }
+    if (nextPath === null) {
+      const delta = direction === 'down' || direction === 'right' ? 1 : -1
+      nextPath =
+        visible[Math.max(0, Math.min(visible.length - 1, index < 0 ? 0 : index + delta))]
+          ?.relative_path ?? null
+    }
+    const target = visible.find((entry) => entry.relative_path === nextPath)
+    if (!target) return
+    setSelected(new Set([target.relative_path]))
+    setAnchor(target.relative_path)
+    onSelectEntry(target)
+    wrapperRef.current
+      ?.querySelector(`[data-relpath="${CSS.escape(target.relative_path)}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }
+
+  // Arrow keys walk the listing, the way they already walk cards in the Bundle
+  // Browser. Bound to `window` for the same reason that one is: the scroll
+  // container is focusable but nothing focuses it, so the keys reached the shell
+  // instead and only drew a focus ring (owner, 2026-09-01). Everything that
+  // takes the keyboard for itself — a rename field, an open viewer, a dialog, a
+  // context menu — is checked first.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const key = event.key
+      if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowLeft' && key !== 'ArrowRight')
+        return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      // `instanceof Element` rather than a cast: a key event can be dispatched at
+      // the window itself, which has no `closest`.
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return
+      if (stale || openIndex !== null || menu.state !== null) return
+      if (write.renamingPath || write.creatingFolder) return
+      if (write.conflict || write.pendingDelete || write.pendingMove || sheetTarget) return
+      event.preventDefault()
+      moveSelection(
+        key === 'ArrowDown'
+          ? 'down'
+          : key === 'ArrowUp'
+            ? 'up'
+            : key === 'ArrowRight'
+              ? 'right'
+              : 'left',
+      )
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  // Item size and New Folder come from the View and File menus in the desktop
+  // shell. Handled here rather than in the shell root because this listing owns
+  // both the zoom preference and the directory a folder would be created in.
+  useDesktopMenu((action) => {
+    if (action === 'zoom-in' || action === 'zoom-out') {
+      const step = action === 'zoom-in' ? 10 : -10
+      setPrefs((previous) => ({
+        ...previous,
+        zoom: Math.max(FILE_ZOOM_MIN, Math.min(FILE_ZOOM_MAX, previous.zoom + step)),
+      }))
+    } else if (action === 'new-folder' && canCreateFolder && !write.busy) {
+      write.startNewFolder()
+    }
+  })
+  useDesktopNewFolderAvailability(canCreateFolder && !stale)
+
   // F2 (and Enter, the macOS convention) renames the single selected entry;
   // Delete / ⌘⌫ moves the selection to the trash.
   const listKeyDown = (e: React.KeyboardEvent) => {
@@ -746,6 +880,10 @@ function FileList({
         <span className="toolbar__count">{visible.length.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
 
+        {/* New Folder used to sit here too. It is a once-in-a-while action that
+            permanently cost toolbar width, so it now lives in the File menu and
+            the listing's context menus, where the rest of the write actions
+            already are (owner, 2026-09-01). */}
         {canCreateFolder && (
           <>
             <button
@@ -768,14 +906,6 @@ function FileList({
                 event.target.value = ''
               }}
             />
-            <button
-              className="btn btn--sm"
-              onClick={write.startNewFolder}
-              disabled={write.busy}
-              title="Create a folder in this directory"
-            >
-              New Folder
-            </button>
           </>
         )}
 
@@ -788,26 +918,37 @@ function FileList({
           title="Filter files in this view by name"
         />
 
-        <select
-          value={prefs.sort}
-          onChange={(e) => setPrefs({ ...prefs, sort: e.target.value as FileSort })}
-          aria-label="Sort by"
-        >
-          {FILE_SORTS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <button
-          className="seg"
-          style={{ padding: '5px 8px', cursor: 'pointer' }}
-          onClick={() => setPrefs({ ...prefs, order: prefs.order === 'desc' ? 'asc' : 'desc' })}
-          aria-label="Toggle sort order"
-          title="Toggle sort order"
-        >
-          {prefs.order === 'desc' ? '↓' : '↑'}
-        </button>
+        {/* Ahead of the buttons rather than among them (owner, 2026-09-01).
+            Always shown — it drives card size in the grid and row height in the
+            list — so the controls beside it don't shift with the layout. */}
+        <div className="zoom">
+          <input
+            type="range"
+            min={FILE_ZOOM_MIN}
+            max={FILE_ZOOM_MAX}
+            step={10}
+            value={prefs.zoom}
+            onChange={(e) => setPrefs({ ...prefs, zoom: Number(e.target.value) })}
+            aria-label="Zoom"
+          />
+        </div>
+
+        {/* The same control the Bundle Browser uses, so the two toolbars are one
+            row of controls at one size — this was a bare select plus a separate
+            arrow button (owner, 2026-09-01). */}
+        <SortControl
+          sort={activeSort.sort}
+          order={activeSort.order}
+          options={FILE_SORTS}
+          onChange={setActiveSort}
+          perCollection={folderKey === null ? undefined : prefs.sortScope === 'folder'}
+          onPerCollection={
+            folderKey === null
+              ? undefined
+              : (value) => setPrefs({ ...prefs, sortScope: value ? 'folder' : 'global' })
+          }
+          scopeLabel="Remember sort per folder"
+        />
 
         <div className="seg" role="group" aria-label="Layout">
           <button
@@ -830,19 +971,7 @@ function FileList({
           </button>
         </div>
 
-        {/* Always shown — drives card size in grid, row height in list — so the
-            controls to its left don't shift when switching layouts. */}
-        <div className="zoom">
-          <input
-            type="range"
-            min={120}
-            max={360}
-            step={10}
-            value={prefs.zoom}
-            onChange={(e) => setPrefs({ ...prefs, zoom: Number(e.target.value) })}
-            aria-label="Zoom"
-          />
-        </div>
+        {headerTrailing}
       </div>
 
       <div
@@ -915,14 +1044,21 @@ function FileList({
                   role="table"
                   style={{ ['--file-row-h' as string]: `${listRowHeight(prefs.zoom)}px` }}
                 >
+                  {/* Clicking a header sorts by that column, the way every file
+                      manager's list view does (owner, 2026-09-01); the toolbar
+                      control and these are one preference. */}
                   <div className="file-table__head" role="row">
-                    <span role="columnheader">Name</span>
-                    <span role="columnheader">Type</span>
-                    <span className="file-table__num" role="columnheader">
-                      Size
-                    </span>
-                    <span role="columnheader">Date Added</span>
-                    <span role="columnheader">Date Modified</span>
+                    {FILE_SORTS.map((column) => (
+                      <SortHeaderCell
+                        key={column.value}
+                        label={column.label}
+                        value={column.value}
+                        sort={activeSort.sort}
+                        order={activeSort.order}
+                        onSort={setActiveSort}
+                        className={column.value === 'size' ? 'file-table__num' : undefined}
+                      />
+                    ))}
                   </div>
                   {visible.map((entry) => (
                     <FileRow

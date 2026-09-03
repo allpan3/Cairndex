@@ -183,6 +183,7 @@ interface PlatformRuntime {
   ): Promise<string | null>
   setLibraryAvailable(enabled: boolean): Promise<void>
   setHostFileActionsAvailable(enabled: boolean): Promise<void>
+  setNewFolderAvailable(enabled: boolean): Promise<void>
   setServerAvailable(enabled: boolean): Promise<void>
   setViewerMenuAvailable(viewer: boolean, video: boolean): Promise<void>
   toggleWindowFullscreen(): Promise<boolean>
@@ -293,6 +294,7 @@ const webRuntime: PlatformRuntime = {
   adoptLibraryMapping: async () => null,
   setLibraryAvailable: async () => undefined,
   setHostFileActionsAvailable: async () => undefined,
+  setNewFolderAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
   setViewerMenuAvailable: async () => undefined,
   // The browser has no native window fullscreen; the viewer keeps using the
@@ -476,6 +478,11 @@ export const setHostLibraryAvailable = (enabled: boolean): Promise<void> =>
 // (owner, 2026-08-23).
 export const setHostFileActionsAvailable = (enabled: boolean): Promise<void> =>
   runtime.setHostFileActionsAvailable(enabled)
+
+// Greys out File ▸ New Folder unless the File Browser is showing a directory a
+// folder can be created in — the item is otherwise live against nothing.
+export const setHostNewFolderAvailable = (enabled: boolean): Promise<void> =>
+  runtime.setNewFolderAvailable(enabled)
 export const setHostServerAvailable = (enabled: boolean): Promise<void> =>
   runtime.setServerAvailable(enabled)
 

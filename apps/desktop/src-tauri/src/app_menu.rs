@@ -69,6 +69,7 @@ const KNOWN_PREDEFINED: &[&str] = &[
     "close-window",
     "copy",
     "cut",
+    "fullscreen",
     "hide",
     "hide-others",
     "minimize",
@@ -94,6 +95,15 @@ fn apply_item<'a>(
             "close-window" => builder.close_window(),
             "copy" => builder.copy(),
             "cut" => builder.cut(),
+            // The system's own Full Screen item, not one of ours: AppKit inserts
+            // an Enter Full Screen item into the View menu unless the app already
+            // owns one bound to `toggleFullScreen:`, so a custom item produced two
+            // entries doing the same thing (owner, 2026-09-01). Predefined also
+            // means macOS keeps the Enter/Exit wording in step with the window.
+            "fullscreen" => match item.label.as_deref() {
+                Some(label) => builder.fullscreen_with_text(label),
+                None => builder.fullscreen(),
+            },
             // The macOS App-menu trio, and the only source of Cmd-H and
             // Cmd-Opt-H: a fully custom menu bar with no Hide item leaves those
             // combos dead, which is what the shell shipped with (owner,
@@ -135,9 +145,7 @@ fn apply_item<'a>(
 pub(crate) fn install_handler<R: Runtime>(app: &AppHandle<R>) {
     app.on_menu_event(|app, event| {
         let id = event.id().as_ref();
-        if id == "fullscreen" {
-            toggle_main_window_fullscreen(app);
-        } else if id == "quit" {
+        if id == "quit" {
             crate::lifecycle::begin_exit(app);
         } else if let Some(action) = action_for_id(id) {
             let _ = app.emit(MENU_EVENT, action);
@@ -165,16 +173,6 @@ pub(crate) fn broadcast_fullscreen<R: Runtime>(app: &AppHandle<R>) {
     let current = i8::from(fullscreen);
     if LAST_FULLSCREEN.swap(current, Ordering::Relaxed) != current {
         let _ = app.emit(FULLSCREEN_EVENT, fullscreen);
-    }
-}
-
-// Toggles native window fullscreen without depending on web user activation
-pub(crate) fn toggle_main_window_fullscreen<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
-        if let Ok(fullscreen) = window.is_fullscreen() {
-            let _ = window.set_fullscreen(!fullscreen);
-            broadcast_fullscreen(app);
-        }
     }
 }
 
@@ -229,6 +227,13 @@ pub(crate) fn set_server_menu_enabled(app: AppHandle, enabled: bool) -> Result<(
 #[tauri::command]
 pub(crate) fn set_host_file_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     set_group_enabled(&app, "host-file", enabled)
+}
+
+/// Enables File ▸ New Folder only where a folder can actually be created: the
+/// File Browser's browse scope, with write mode on.
+#[tauri::command]
+pub(crate) fn set_new_folder_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    set_group_enabled(&app, "new-folder", enabled)
 }
 
 // Enables Playback items while a viewer is open. `video` is separate because an

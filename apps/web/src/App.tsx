@@ -102,6 +102,8 @@ import { announceImport, type ImportOfferDeps } from './app/importBundleOffer'
 import type { DragItem } from './app/dnd'
 import { getActiveDrag, installDragCopyTracking, isCopyDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
+import { InspectorToggle, SidebarToggle } from './app/PanelToggles'
+import { navTargetsFrom, rowStep } from './app/spatialNav'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
@@ -250,6 +252,12 @@ export default function App() {
     null,
   )
   const [managing, setManaging] = useState(false)
+  // Following a lease redirect ("Connect to <holder>"): in flight, and why it
+  // failed. Both only matter on the ownership notice below.
+  const [connectRedirect, setConnectRedirect] = useState<{
+    pending: boolean
+    error: string | null
+  }>({ pending: false, error: null })
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
@@ -503,8 +511,20 @@ export default function App() {
           onChangeLibrary={changeLibrary}
           onTakeOver={() => takeover.mutate()}
           onConnectTo={(serverUrl) => {
+            setConnectRedirect({ pending: true, error: null })
             void connectToServer(serverUrl)
+              // On success the whole scope remounts, so there is nothing to
+              // clear here — only the failure has to land somewhere visible.
+              .catch((error: unknown) =>
+                setConnectRedirect({
+                  pending: false,
+                  error:
+                    error instanceof Error ? error.message : 'Could not connect to that server.',
+                }),
+              )
           }}
+          connectPending={connectRedirect.pending}
+          connectError={connectRedirect.error}
           takeoverPending={takeover.isPending}
           takeoverError={
             takeover.error instanceof Error
@@ -984,6 +1004,26 @@ function Workspace({
     applyNavDestination(destination)
     syncNavReach()
   }, [applyNavDestination, syncNavReach])
+  // Both panels are hideable from the View menu (⌘S / ⌘I) and from these two
+  // buttons, one at each end of every surface's toolbar — a hidden panel is
+  // otherwise invisible from inside the app (owner, 2026-09-01).
+  const toggleSidebar = useCallback(
+    () =>
+      setPrefs((previous) => ({
+        ...previous,
+        sidebarVisible: !(previous.sidebarVisible ?? DEFAULT_PREFS.sidebarVisible),
+      })),
+    [setPrefs],
+  )
+  const toggleInspector = useCallback(
+    () =>
+      setPrefs((previous) => ({
+        ...previous,
+        inspectorVisible: !(previous.inspectorVisible ?? DEFAULT_PREFS.inspectorVisible),
+      })),
+    [setPrefs],
+  )
+
   const navButtons = (
     <div className="seg nav-history" role="group" aria-label="Navigation history">
       <button onClick={navBack} disabled={!navReach.canBack} aria-label="Back" title="Back">
@@ -999,6 +1039,17 @@ function Workspace({
       </button>
     </div>
   )
+  // The sidebar's own strip carries its toggle while the sidebar is open; with
+  // the sidebar gone the toolbar picks it up, because it is the only surface
+  // left to offer it from. The inspector's toggle sits at the toolbar's far end
+  // either way — the inspector has no title strip of its own.
+  const leadingControls = (
+    <>
+      {!sidebarVisible && <SidebarToggle visible={false} onToggle={toggleSidebar} />}
+      {navButtons}
+    </>
+  )
+  const inspectorToggle = <InspectorToggle visible={inspectorVisible} onToggle={toggleInspector} />
 
   // Apply a cairndex:// target once this workspace is mounted for the right
   // library. App owns the library switch and this component is keyed on
@@ -1253,20 +1304,21 @@ function Workspace({
     else if (action === 'show-files') {
       setMode('file')
       setFileScope('browse')
-    } else if (action === 'zoom-in') {
-      setPrefs((previous) => ({ ...previous, zoom: Math.min(ZOOM_MAX, previous.zoom + 10) }))
-    } else if (action === 'zoom-out') {
-      setPrefs((previous) => ({ ...previous, zoom: Math.max(ZOOM_MIN, previous.zoom - 10) }))
+    } else if (action === 'zoom-in' || action === 'zoom-out') {
+      // Item size belongs to whichever surface is on screen: the File Browser
+      // keeps its own zoom (and its own range), and handles these itself while
+      // it is mounted. Stepping the bundle zoom from under it was why the menu
+      // items looked dead there (owner, 2026-09-01).
+      if (mode === 'file') return
+      const step = action === 'zoom-in' ? 10 : -10
+      setPrefs((previous) => ({
+        ...previous,
+        zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, previous.zoom + step)),
+      }))
     } else if (action === 'toggle-sidebar') {
-      setPrefs((previous) => ({
-        ...previous,
-        sidebarVisible: !(previous.sidebarVisible ?? DEFAULT_PREFS.sidebarVisible),
-      }))
+      toggleSidebar()
     } else if (action === 'toggle-inspector') {
-      setPrefs((previous) => ({
-        ...previous,
-        inspectorVisible: !(previous.inspectorVisible ?? DEFAULT_PREFS.inspectorVisible),
-      }))
+      toggleInspector()
     }
   })
 
@@ -2337,21 +2389,77 @@ function Workspace({
   // webview, so this silently did nothing there (owner, 2026-07-27).
   const removeSmartCollection = useCallback((sc: SmartCollectionRead) => setDeletingSmart(sc), [])
 
+  /**
+   * Walk the arrow keys through what is actually on screen: the folder cards
+   * above the grid and the bundles in it, as one sequence.
+   *
+   * They used to move the bundle selection alone, so selecting a collection and
+   * pressing an arrow jumped to a bundle somewhere else entirely (owner,
+   * 2026-09-01). Collections come first because that is where they are drawn.
+   */
   const moveSelection = useCallback(
-    (delta: number) => {
-      if (filtered.length === 0) return
-      const idx = filtered.findIndex((i) => i.id === activeId)
-      const next = Math.max(0, Math.min(filtered.length - 1, idx < 0 ? 0 : idx + delta))
-      const target = filtered[next]
-      if (target) {
+    (direction: 'up' | 'down' | 'left' | 'right') => {
+      const collectionIds = subcollapsed ? [] : headerCollections.map((c) => c.id)
+      const bundleIds =
+        contentsCollapsed && collectionIds.length > 0 ? [] : filtered.map((i) => i.id)
+      const walk = [
+        ...collectionIds.map((id) => ({ id, kind: 'collection' as const })),
+        ...bundleIds.map((id) => ({ id, kind: 'bundle' as const })),
+      ]
+      if (walk.length === 0) return
+      // Where the last deliberate selection landed, whichever kind it was.
+      const currentId =
+        collectionSelectionFrom === 'grid' && selectedCollectionIds.size > 0
+          ? ([...selectedCollectionIds].at(-1) ?? null)
+          : activeId
+      const index = walk.findIndex((entry) => entry.id === currentId)
+      // Up/Down ask the layout where the row above or below is; Left/Right step
+      // one place along, which is what wraps a grid row and is the only reading
+      // a list has. The ordered step is also the fallback when the row asked for
+      // is outside the virtualized window, so movement never stalls at its edge.
+      let nextId: string | null = null
+      if (direction === 'up' || direction === 'down') {
+        const ids = new Set(walk.map((entry) => entry.id))
+        const targets = navTargetsFrom(document, '[data-collection-id], [data-bundle-id]', (el) => {
+          const id = el.dataset.collectionId ?? el.dataset.bundleId
+          return id !== undefined && ids.has(id) ? id : undefined
+        })
+        nextId = rowStep(targets, currentId, direction)
+      }
+      if (nextId === null) {
+        const delta = direction === 'down' || direction === 'right' ? 1 : -1
+        nextId =
+          walk[Math.max(0, Math.min(walk.length - 1, index < 0 ? 0 : index + delta))]?.id ?? null
+      }
+      const target = walk.find((entry) => entry.id === nextId)
+      if (!target) return
+      if (target.kind === 'collection') {
+        setCollectionSelectionFrom('grid')
+        setSelectedCollectionIds(new Set([target.id]))
+        setCollectionAnchor(target.id)
+        setSelectedIds(new Set())
+        setActiveId(null)
+      } else {
         setSelectedIds(new Set([target.id]))
         setActiveId(target.id)
-        document
-          .querySelector(`[data-bundle-id="${target.id}"]`)
-          ?.scrollIntoView({ block: 'nearest' })
+        setBundleAnchor(target.id)
+        setSelectedCollectionIds(new Set())
       }
+      const selector =
+        target.kind === 'collection'
+          ? `[data-collection-id="${CSS.escape(target.id)}"]`
+          : `[data-bundle-id="${CSS.escape(target.id)}"]`
+      document.querySelector(selector)?.scrollIntoView({ block: 'nearest' })
     },
-    [filtered, activeId],
+    [
+      filtered,
+      activeId,
+      headerCollections,
+      subcollapsed,
+      contentsCollapsed,
+      collectionSelectionFrom,
+      selectedCollectionIds,
+    ],
   )
 
   // Shift-Cmd-C / Shift-Cmd-V on a bundle selection. Copy takes the tags of the
@@ -2442,23 +2550,37 @@ function Workspace({
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
       if (openBundleId !== null) return
+      // The File Browser walks its own listing, and an open viewer owns the
+      // arrows for seeking; moving the grid selection behind either would scroll
+      // a surface nobody is looking at.
+      if (mode !== 'collection' || viewerTarget !== null) return
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
-        moveSelection(1)
+        moveSelection(e.key === 'ArrowRight' ? 'right' : 'down')
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault()
-        moveSelection(-1)
+        moveSelection(e.key === 'ArrowLeft' ? 'left' : 'up')
       } else if (e.key === 'Escape') {
-        clearSelection()
+        clearAllSelection()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveSelection, clearSelection, openBundleId, copySelectedTags, pasteTagsOntoSelection])
+  }, [
+    moveSelection,
+    clearAllSelection,
+    openBundleId,
+    mode,
+    viewerTarget,
+    copySelectedTags,
+    pasteTagsOntoSelection,
+  ])
 
   const shell = (
     <div
-      className={`app${mode === 'tags' || !inspectorVisible ? ' app--no-inspector' : ''}`}
+      className={`app${mode === 'tags' || !inspectorVisible ? ' app--no-inspector' : ''}${
+        sidebarVisible ? '' : ' app--no-sidebar'
+      }`}
       style={
         {
           ['--sidebar-w']: sidebarVisible ? `${sidebarW}px` : '0px',
@@ -2578,6 +2700,7 @@ function Workspace({
           onReparentCollections={(ids, targetId) => moveCollectionsTo(ids, targetId, null)}
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
+          onToggleSidebar={toggleSidebar}
           newCollectionRequest={newCollectionRequest}
           renameCollectionRequest={renameCollectionRequest}
           onRenameCollectionHandled={() => setRenameCollectionRequest(null)}
@@ -2593,10 +2716,16 @@ function Workspace({
         {mode === 'tags' ? (
           <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
         ) : mode === 'file' && fileScope === 'trash' ? (
-          <TrashView writeMode={writeMode} onFlash={showFlash} />
+          <TrashView
+            leading={leadingControls}
+            trailing={inspectorToggle}
+            writeMode={writeMode}
+            onFlash={showFlash}
+          />
         ) : mode === 'file' ? (
           <FileBrowser
-            headerLeading={navButtons}
+            headerLeading={leadingControls}
+            headerTrailing={inspectorToggle}
             libraryName={libraryName}
             scope={fileScope === 'unbundled' ? 'unbundled' : 'browse'}
             path={filePath}
@@ -2628,7 +2757,8 @@ function Workspace({
         ) : (
           <>
             <Toolbar
-              leading={navButtons}
+              leading={leadingControls}
+              trailing={inspectorToggle}
               onReshuffle={
                 isRandomView ? () => setRandomSeed(Math.floor(Math.random() * 2 ** 31)) : undefined
               }
@@ -2735,6 +2865,9 @@ function Workspace({
                     }
                     layout={prefs.layout}
                     zoom={prefs.zoom}
+                    sort={effectiveSort.sort}
+                    order={effectiveSort.order}
+                    onSort={setEffectiveSort}
                     selectedIds={selectedIds}
                     onSelect={select}
                     onMarqueeSelect={selectMany}

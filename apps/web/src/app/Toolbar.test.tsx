@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { expect, test, vi } from 'vitest'
 
+import { InspectorToggle, SidebarToggle } from './PanelToggles'
 import { Toolbar } from './Toolbar'
 import type { AdHocFilters, FacetContext } from './adHocFilters'
 import { DEFAULT_PREFS } from './types'
@@ -18,7 +20,9 @@ const facetContext: FacetContext = {
   smartFilter: null,
 }
 
-function renderToolbar(overrides: { onReshuffle?: () => void } = {}) {
+function renderToolbar(
+  overrides: { onReshuffle?: () => void; leading?: ReactNode; trailing?: ReactNode } = {},
+) {
   render(
     <Toolbar
       title="All"
@@ -89,4 +93,33 @@ test('each layout offers a drawn icon rather than a box-drawing glyph', () => {
     expect(button.querySelector('svg'), name).not.toBeNull()
     expect(button.textContent, name).toBe('')
   }
+})
+
+test('the panel toggles bookend the row, beside the panels they govern', () => {
+  const onSidebar = vi.fn()
+  const onInspector = vi.fn()
+  renderToolbar({
+    leading: <SidebarToggle visible onToggle={onSidebar} />,
+    trailing: <InspectorToggle visible={false} onToggle={onInspector} />,
+  })
+  const order = toolbarOrder()
+
+  expect(order[0]).toBe('Toggle Sidebar')
+  expect(order.at(-1)).toBe('Toggle Inspector')
+
+  // Pressed state reports which panels are showing, so a hidden one is visible
+  // as hidden rather than simply absent.
+  expect(screen.getByRole('button', { name: 'Toggle Sidebar' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: 'Toggle Inspector' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle Sidebar' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle Inspector' }))
+  expect(onSidebar).toHaveBeenCalledTimes(1)
+  expect(onInspector).toHaveBeenCalledTimes(1)
 })
