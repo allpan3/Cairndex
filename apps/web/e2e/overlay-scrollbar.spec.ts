@@ -89,9 +89,32 @@ test('the thumb overlays the panel and follows the scroll', async ({ page }) => 
 
 test('a panel that fits draws no thumb at all', async ({ page }) => {
   await mockApi(page)
-  await page.setViewportSize({ width: 1000, height: 1400 })
+  // A *short* collection list, not merely a tall window: the shared mock returns
+  // forty, which overflows even 1400px, so this used to assert "no thumb" in the
+  // moment before those rows arrived and passed or failed on that race
+  // (flaky before this branch too; the taller title strip only shifted the odds).
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: Array.from({ length: 3 }, (_unused, index) => ({
+          id: `c${index}`,
+          name: `Collection ${index}`,
+          parent_id: null,
+          note: null,
+          cover_bundle_id: null,
+        })),
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.setViewportSize({ width: 1000, height: 1000 })
   await page.goto('/')
   await expect(page.locator('.sidebar')).toBeVisible()
+  // The rows are on screen, so the panel is at its full height when asked.
+  await expect(page.locator('.sidebar').getByText('Collection 2')).toBeVisible()
+  await expect
+    .poll(() => page.locator('.sidebar').evaluate((el) => el.scrollHeight <= el.clientHeight))
+    .toBe(true)
   await expect(page.locator('.sidebar .oscroll__thumb')).toHaveCount(0)
 })
 
