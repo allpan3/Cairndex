@@ -16,7 +16,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -25,6 +25,72 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST_PATH = REPO_ROOT / ".github" / "privacy-allowlist.json"
 MAX_UNREVIEWED_BLOB_BYTES = 1024 * 1024
 ZERO_OID = "0" * 40
+
+# Path components that are only ever build output, a dependency tree, or a cache.
+# Git ignore rules already cover the ones we know about, but they are not the
+# policy: a nested copy the rules do not reach (`apps/desktop/vendor/muda/target`
+# slipped through exactly that way), `git add -f`, or a new tool's output
+# directory all bypass them. This list is checked against the objects that would
+# actually be published, which nothing bypasses.
+ARTIFACT_PATH_COMPONENTS = frozenset(
+    {
+        ".gradle",
+        ".mypy_cache",
+        ".next",
+        ".parcel-cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".turbo",
+        ".venv",
+        "DerivedData",
+        "Pods",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "htmlcov",
+        "node_modules",
+        "target",
+        "venv",
+    }
+)
+
+# Compiled or packaged output, by extension. Filenames are not trusted for
+# *content* elsewhere in this gate, but a name ending in `.rlib` is never source
+# whatever the bytes say.
+ARTIFACT_PATH_SUFFIXES = (
+    ".a",
+    ".crate",
+    ".dSYM",
+    ".dmg",
+    ".dylib",
+    ".o",
+    ".pkg",
+    ".pyc",
+    ".pyo",
+    ".rlib",
+    ".rmeta",
+    ".so",
+    ".whl",
+)
+
+# A copy of somebody else's source tree. Not forbidden — declared, with a reason,
+# in the allowlist — because vendoring is a real decision with a maintenance cost
+# and a licensing tail, and it should never arrive unnoticed inside a commit that
+# claims to be about something else (2026-09-02: 438 KB of a patched dependency
+# rode into a UI branch and back out again, invisible to this gate).
+VENDORED_PATH_COMPONENTS = frozenset({"third-party", "third_party", "vendor", "vendored"})
+
+# Bulk-add tripwires. Not a judgement about what is in the files: a scan this
+# large means something was added that nobody chose file by file. `git add -A`
+# once staged 1,876 files of a Cargo target directory, and only a private-pattern
+# match inside that output stopped the commit — luck, not policy.
+MAX_SCANNED_PATHS = 400
+MAX_ADDED_BYTES = 8 * 1024 * 1024
+
+# Prefix marking a finding that is safe to print in full: a rule name and a
+# count, never a path or its contents.
+POLICY_PREFIX = "policy: "
 
 _PLACEHOLDER_USERS = {
     "app",
@@ -112,11 +178,20 @@ class BinaryAllowance:
     provenance: str
 
 
-# Hold the repository-root and binary publication policy
+# Describe one deliberately vendored third-party tree
+@dataclass(frozen=True)
+class VendoredTree:
+    prefix: str
+    purpose: str
+    provenance: str
+
+
+# Hold the repository-root, binary, and vendored-tree publication policy
 @dataclass(frozen=True)
 class PrivacyAllowlist:
     root_entries: frozenset[str]
     binaries: dict[str, BinaryAllowance]
+    vendored_trees: tuple[VendoredTree, ...] = ()
 
 
 # Run Git with byte-preserving output and a stable repository root
@@ -190,9 +265,21 @@ def load_allowlist(path: Path = ALLOWLIST_PATH) -> PrivacyAllowlist:
             raise SystemExit(f"{path}: duplicate binary SHA-256")
         binaries[digest] = allowance
 
+    vendored: list[VendoredTree] = []
+    for item in payload.get("vendored_trees", []):
+        tree = VendoredTree(
+            prefix=str(item["prefix"]).strip("/"),
+            purpose=str(item["purpose"]).strip(),
+            provenance=str(item["provenance"]).strip(),
+        )
+        if not tree.prefix or not tree.purpose or not tree.provenance:
+            raise SystemExit(f"{path}: every vendored tree needs prefix, purpose, and provenance")
+        vendored.append(tree)
+
     return PrivacyAllowlist(
         root_entries=frozenset(str(value) for value in payload["allowed_root_entries"]),
         binaries=binaries,
+        vendored_trees=tuple(vendored),
     )
 
 
@@ -344,6 +431,61 @@ def scan_path(
     return findings
 
 
+# Classify one published path against the artifact and vendoring policy
+def _policy_violation(path: str, allowlist: PrivacyAllowlist) -> str | None:
+    parts = PurePosixPath(path).parts
+    if any(part in ARTIFACT_PATH_COMPONENTS for part in parts):
+        return "build, dependency, or cache output"
+    if path.endswith(ARTIFACT_PATH_SUFFIXES) or any(
+        part.endswith((".app", ".dSYM")) for part in parts
+    ):
+        return "compiled or packaged output"
+    if any(part in VENDORED_PATH_COMPONENTS for part in parts) and not any(
+        path == tree.prefix or path.startswith(f"{tree.prefix}/")
+        for tree in allowlist.vendored_trees
+    ):
+        return "undeclared vendored third-party tree"
+    return None
+
+
+# Enforce what may be published at all, independently of what the bytes contain.
+#
+# Aggregated on purpose: every string this returns is a rule name and a count, so
+# `report` can print it in full. A path is itself potentially private (a filename
+# from the owner's library is user data), so no path ever appears here.
+def scan_publication_policy(
+    paths: Iterable[str],
+    added_bytes: int,
+    allowlist: PrivacyAllowlist,
+    enforce_volume: bool = True,
+) -> list[str]:
+    counts: dict[str, int] = {}
+    total = 0
+    for path in paths:
+        total += 1
+        reason = _policy_violation(path, allowlist)
+        if reason is not None:
+            counts[reason] = counts.get(reason, 0) + 1
+
+    findings = [
+        f"{POLICY_PREFIX}{reason} must never be committed ({count} path(s))"
+        for reason, count in sorted(counts.items())
+    ]
+    if not enforce_volume:
+        return findings
+    if total > MAX_SCANNED_PATHS:
+        findings.append(
+            f"{POLICY_PREFIX}{total} paths in one scan exceeds the {MAX_SCANNED_PATHS}-path "
+            "bulk-add tripwire; stage deliberately rather than with `git add -A`"
+        )
+    if added_bytes > MAX_ADDED_BYTES:
+        findings.append(
+            f"{POLICY_PREFIX}{added_bytes // 1024} KiB of new blobs exceeds the "
+            f"{MAX_ADDED_BYTES // 1024} KiB publication budget"
+        )
+    return findings
+
+
 # Scan one Git blob and enforce immutable binary provenance
 def scan_blob(
     data: bytes,
@@ -421,8 +563,11 @@ def scan_range(
     commits, objects = _range_objects(repo_root, head, base, all_history)
     findings: list[str] = []
     blob_count = 0
+    added_bytes = 0
+    published_paths: set[str] = set()
     for oid, object_type, data in _cat_objects(repo_root, list(objects)):
         paths = objects[oid]
+        published_paths.update(paths)
         for path in paths:
             findings.extend(
                 scan_path(path, f"path in object {oid[:12]}", allowlist, private_patterns)
@@ -431,7 +576,19 @@ def scan_range(
             findings.extend(scan_commit(data, oid, private_patterns))
         elif object_type == "blob":
             blob_count += 1
+            added_bytes += len(data)
             findings.extend(scan_blob(data, oid, paths, allowlist, private_patterns))
+    # The volume tripwires ask "did this change add more than anyone chose file by
+    # file?", which only means something for an incremental scan. A whole-history
+    # audit sees the entire repository — 818 paths and 300 MB of it today — so
+    # applying them there would fail every new branch's first push, which is
+    # precisely when the hook runs a history audit. The path rules still apply:
+    # build output and undeclared vendoring are wrong at any point in history.
+    findings.extend(
+        scan_publication_policy(
+            published_paths, added_bytes, allowlist, enforce_volume=not all_history
+        )
+    )
     return findings, len(commits), blob_count
 
 
@@ -445,6 +602,7 @@ def scan_staged(
         if value
     ]
     findings: list[str] = []
+    staged_bytes = 0
     for path in paths:
         findings.extend(scan_path(path, "staged path", allowlist, private_patterns))
         stage = _git(repo_root, "ls-files", "--stage", "--", path).decode().strip()
@@ -452,7 +610,9 @@ def scan_staged(
             continue
         oid = stage.split(maxsplit=2)[1]
         data = _git(repo_root, "cat-file", "blob", oid)
+        staged_bytes += len(data)
         findings.extend(scan_blob(data, oid, {path}, allowlist, private_patterns))
+    findings.extend(scan_publication_policy(paths, staged_bytes, allowlist))
     return findings, len(paths)
 
 
@@ -499,11 +659,20 @@ def scan_github_event(
 # Report only a count because every finding remains derived from sensitive input
 def report(findings: list[str], summary: str, private_pattern_count: int) -> int:
     if findings:
+        unique = set(findings)
+        # Policy findings carry a rule and a count, never a path or its bytes, so
+        # printing them is what makes the failure actionable. Everything else is
+        # withheld: a finding's detail is the private content itself.
+        policy = sorted(item for item in unique if item.startswith(POLICY_PREFIX))
+        private = unique - set(policy)
         print("PRIVACY GATE FAILED", file=sys.stderr)
-        print(
-            f"{len(set(findings))} private-content finding(s); details withheld",
-            file=sys.stderr,
-        )
+        for item in policy:
+            print(item, file=sys.stderr)
+        if private:
+            print(
+                f"{len(private)} private-content finding(s); details withheld",
+                file=sys.stderr,
+            )
         print("No push, pull request, tag, release, or image publication is safe.", file=sys.stderr)
         return 1
     print(f"privacy gate OK: {summary}; {private_pattern_count} private patterns")

@@ -128,6 +128,126 @@ def test_path_policy_catches_incident_shapes():
     assert "path: unreviewed repository-root entry" in root_findings
 
 
+# Reject the two shapes that reached a commit unnoticed on 2026-09-02
+def test_artifact_and_vendored_paths_are_rejected():
+    allowlist = privacy_gate.load_allowlist()
+    findings = privacy_gate.scan_publication_policy(
+        [
+            "apps/desktop/vendor/muda/src/lib.rs",
+            "apps/desktop/vendor/muda/target/debug/deps/muda.rmeta",
+            "apps/web/node_modules/left-pad/index.js",
+            # Outside an artifact directory, so this exercises the suffix rule
+            # alone — each path reports the first rule it breaks, not all of them.
+            "apps/desktop/prebuilt/libmuda.rlib",
+            "apps/server/src/cairndex/main.py",
+        ],
+        added_bytes=1024,
+        allowlist=allowlist,
+    )
+    reasons = "\n".join(findings)
+    assert "build, dependency, or cache output" in reasons
+    assert "undeclared vendored third-party tree" in reasons
+    assert "compiled or packaged output" in reasons
+    # Every message is a rule and a count. A path can itself be user data — a
+    # filename out of the owner's library — so none may appear here.
+    assert not any("muda" in item or "left-pad" in item for item in findings)
+    assert not any("prebuilt" in item for item in findings)
+    assert all(item.startswith(privacy_gate.POLICY_PREFIX) for item in findings)
+
+
+# A vendored tree is a decision, not a surprise: declared, it passes
+def test_declared_vendored_tree_is_allowed():
+    base = privacy_gate.load_allowlist()
+    declared = privacy_gate.PrivacyAllowlist(
+        root_entries=base.root_entries,
+        binaries=base.binaries,
+        vendored_trees=(
+            privacy_gate.VendoredTree(
+                prefix="apps/desktop/vendor/muda",
+                purpose="test fixture",
+                provenance="test fixture",
+            ),
+        ),
+    )
+    assert (
+        privacy_gate.scan_publication_policy(
+            ["apps/desktop/vendor/muda/src/lib.rs"], added_bytes=1, allowlist=declared
+        )
+        == []
+    )
+
+
+# Trip on volume alone, whatever the files contain: `git add -A` once staged
+# 1,876 files of build output, and only a private-pattern match stopped it
+def test_bulk_add_and_byte_budget_are_tripwires():
+    allowlist = privacy_gate.load_allowlist()
+    many = [
+        f"apps/web/src/generated/file{index}.ts"
+        for index in range(privacy_gate.MAX_SCANNED_PATHS + 1)
+    ]
+    bulk = privacy_gate.scan_publication_policy(many, added_bytes=0, allowlist=allowlist)
+    assert any("bulk-add tripwire" in item for item in bulk)
+
+    heavy = privacy_gate.scan_publication_policy(
+        ["apps/web/src/App.tsx"],
+        added_bytes=privacy_gate.MAX_ADDED_BYTES + 1,
+        allowlist=allowlist,
+    )
+    assert any("publication budget" in item for item in heavy)
+
+    assert (
+        privacy_gate.scan_publication_policy(
+            ["apps/web/src/App.tsx"], added_bytes=1024, allowlist=allowlist
+        )
+        == []
+    )
+
+
+# A whole-history audit is not a bulk add: it is the repository
+def test_volume_tripwires_do_not_apply_to_history_audits():
+    allowlist = privacy_gate.load_allowlist()
+    many = [f"apps/web/src/file{index}.ts" for index in range(privacy_gate.MAX_SCANNED_PATHS + 1)]
+    assert (
+        privacy_gate.scan_publication_policy(
+            many,
+            added_bytes=privacy_gate.MAX_ADDED_BYTES * 40,
+            allowlist=allowlist,
+            enforce_volume=False,
+        )
+        == []
+    )
+    # …but the path rules still hold there, since build output and undeclared
+    # vendoring are wrong at any point in history.
+    assert privacy_gate.scan_publication_policy(
+        ["apps/web/node_modules/left-pad/index.js"],
+        added_bytes=0,
+        allowlist=allowlist,
+        enforce_volume=False,
+    )
+
+
+# Name the rule that fired while still withholding private detail
+def test_policy_findings_are_printed_and_private_ones_are_not(capsys):
+    status = privacy_gate.report(
+        [
+            f"{privacy_gate.POLICY_PREFIX}build output must never be committed (2 path(s))",
+            "blob abc123: private literal in a filename",
+        ],
+        "2 staged paths",
+        2,
+    )
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "build output must never be committed" in captured.err
+    assert "1 private-content finding(s); details withheld" in captured.err
+    assert "private literal in a filename" not in captured.err
+
+
+# This repository vendors nothing today, and the gate should say so
+def test_repository_declares_no_vendored_trees():
+    assert privacy_gate.load_allowlist().vendored_trees == ()
+
+
 # Match each established binary to its exact reviewed bytes and path
 def test_real_binary_allowlist_matches_repository_assets():
     allowlist = privacy_gate.load_allowlist()
