@@ -144,15 +144,13 @@ def test_artifact_and_vendored_paths_are_rejected():
         added_bytes=1024,
         allowlist=allowlist,
     )
-    reasons = "\n".join(findings)
-    assert "build, dependency, or cache output" in reasons
-    assert "undeclared vendored third-party tree" in reasons
-    assert "compiled or packaged output" in reasons
-    # Every message is a rule and a count. A path can itself be user data — a
-    # filename out of the owner's library — so none may appear here.
-    assert not any("muda" in item or "left-pad" in item for item in findings)
-    assert not any("prebuilt" in item for item in findings)
-    assert all(item.startswith(privacy_gate.POLICY_PREFIX) for item in findings)
+    rules = {item.removeprefix(privacy_gate.POLICY_PREFIX).split(":")[0] for item in findings}
+    assert {"artifact-output", "undeclared-vendoring", "compiled-output"} <= rules
+    # A finding carries a rule id and a tally, nothing else. A path can itself be
+    # user data — a filename out of the owner's library — so none may appear, and
+    # every rule id must exist in the table the reporter prints from.
+    assert not any("muda" in item or "left-pad" in item or "prebuilt" in item for item in findings)
+    assert rules <= set(privacy_gate.POLICY_RULES)
 
 
 # A vendored tree is a decision, not a surprise: declared, it passes
@@ -186,14 +184,14 @@ def test_bulk_add_and_byte_budget_are_tripwires():
         for index in range(privacy_gate.MAX_SCANNED_PATHS + 1)
     ]
     bulk = privacy_gate.scan_publication_policy(many, added_bytes=0, allowlist=allowlist)
-    assert any("bulk-add tripwire" in item for item in bulk)
+    assert any(item.startswith(f"{privacy_gate.POLICY_PREFIX}bulk-add:") for item in bulk)
 
     heavy = privacy_gate.scan_publication_policy(
         ["apps/web/src/App.tsx"],
         added_bytes=privacy_gate.MAX_ADDED_BYTES + 1,
         allowlist=allowlist,
     )
-    assert any("publication budget" in item for item in heavy)
+    assert any(item.startswith(f"{privacy_gate.POLICY_PREFIX}byte-budget:") for item in heavy)
 
     assert (
         privacy_gate.scan_publication_policy(
@@ -230,7 +228,7 @@ def test_volume_tripwires_do_not_apply_to_history_audits():
 def test_policy_findings_are_printed_and_private_ones_are_not(capsys):
     status = privacy_gate.report(
         [
-            f"{privacy_gate.POLICY_PREFIX}build output must never be committed (2 path(s))",
+            f"{privacy_gate.POLICY_PREFIX}artifact-output:2",
             "blob abc123: private literal in a filename",
         ],
         "2 staged paths",
@@ -238,9 +236,26 @@ def test_policy_findings_are_printed_and_private_ones_are_not(capsys):
     )
     captured = capsys.readouterr()
     assert status == 1
-    assert "build output must never be committed" in captured.err
+    assert "build, dependency, or cache output must never be committed (2)" in captured.err
     assert "1 private-content finding(s); details withheld" in captured.err
     assert "private literal in a filename" not in captured.err
+
+
+# An id this file does not know is withheld, not printed: unknown means unsafe,
+# and a policy finding must never become a channel for scanned content
+def test_unknown_policy_ids_and_smuggled_text_are_withheld(capsys):
+    status = privacy_gate.report(
+        [
+            f"{privacy_gate.POLICY_PREFIX}not-a-rule:/Volumes/library/private.mkv",
+            f"{privacy_gate.POLICY_PREFIX}artifact-output:/Volumes/library/private.mkv",
+        ],
+        "2 staged paths",
+        2,
+    )
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "private.mkv" not in captured.err
+    assert "2 private-content finding(s); details withheld" in captured.err
 
 
 # This repository vendors nothing today, and the gate should say so
