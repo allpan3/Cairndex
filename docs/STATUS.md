@@ -344,12 +344,15 @@
 > [ADR-0025](adr/0025-moment-tag-propagation.md) and
 > [ADR-0026](adr/0026-armed-range-loop.md).
 >
-> **Eight owner UI reports are built on `feat/browser-ui-fixes`** (2026-09-01)
-> and awaiting the owner's pass — toolbar sizing, sortable list headers, panel
-> toggles, ⌘S/⌘I, the duplicated Full Screen item, item size in the File
-> Browser, New Folder in the menu bar, arrow-key navigation, and rename-on-
-> click-away. See the first section below; one item needs the owner's eyes on a
-> real menu bar.
+> **Merged (2026-09-04, PR #19):** eight owner UI reports in both browsers —
+> toolbar sizing, sortable list headers, panel toggles, ⌘S/⌘I, one Full Screen
+> item at ⌃⌘F, item size in the File Browser, New Folder in the menu bar,
+> direction-aware arrow keys, and rename-on-click-away. Confirmed in the running
+> app by the owner. See the section below.
+>
+> **Merged (2026-09-04, PR #20):** the publication privacy gate now refuses build
+> output, undeclared vendored trees and bulk adds, so the two things that rode
+> into that branch fail a hook rather than a reading. See the first section below.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -364,10 +367,58 @@
 > deferral expired with v0.1.0 and its design questions are settled. It is
 > designed and unbuilt — see the branch section below.
 
-## Open on branch: eight owner UI reports in both browsers (`feat/browser-ui-fixes`, 2026-09-01)
+## Merged: build output and undeclared vendoring fail the gate (2026-09-04, PR #20)
 
-Branch `feat/browser-ui-fixes`, latest commit `939f599f`. Eight items the owner
-reported in one pass, all UI:
+Two things rode into the branch below. `git add -A` once staged 1,876 files of a
+Cargo `target/` directory — caught only because that build output happened to
+contain a private literal — and 438 KB of a patched dependency arrived under
+`vendor/` and left again, with nobody's approval in between. Both were rules an
+agent was expected to remember. They are checks now.
+
+`infra/privacy_gate.py` gained a fourth family of rules, run by the same
+pre-commit, pre-push and pull-request paths as the rest:
+
+- **build output**, matched on path components (`target/`, `node_modules/`,
+  `dist/`, `build/`, `.venv/`, `__pycache__/`, coverage and framework caches) and
+  on suffixes (`.rlib`, `.o`, `.dylib`, `.whl`, `.dmg` and friends) at any depth,
+  whatever the ignore rules happen to cover;
+- **vendored trees** — anything under a `vendor/`, `vendored/` or `third_party/`
+  component must be declared in `.github/privacy-allowlist.json` with a purpose
+  and a provenance, or it fails;
+- **volume** — more than 400 paths, or more than 8 MiB of new blobs, in one scan
+  is a bulk add. Volume is judged on what one change adds, so a whole-history
+  audit is exempt from those two while the path rules still apply. Without that
+  scoping the pre-push hook rejects every branch's first push, which is how the
+  bug was found: it rejected this branch, at 818 paths and 314 MB of history.
+
+What the gate *prints* is a sentence from a closed table plus an integer, never a
+string built from a scanned object. The first version echoed the finding, and
+CodeQL flagged it (`py/clear-text-logging-sensitive-data`, high) before the
+branch was merged — a path can itself be user data, and the only thing keeping
+one out of stderr was the care taken in writing those messages.
+
+`AGENTS.md` carries the rules as step 4 of the publication gate, stated as
+enforced rather than advisory, and the **branch-tidying routine** the owner has
+asked for repeatedly now sits beside it under the Git workflow: re-cut a branch
+before its first push, where no remote ref exists and no force-push is involved;
+squash fix-ups into what they fix; drop add-then-revert pairs entirely instead of
+keeping both halves; keep every commit buildable; split an unrelated repair into
+its own commit; verify with `git rev-parse HEAD^{tree}` against the pre-re-cut
+tip; and record the dead ends in an ADR or here rather than in the churn. The UI
+branch below was re-cut that way, which is what dropped the reverted vendoring's
+blobs from the objects a reviewer would ever fetch.
+
+Tests: six cases in `apps/server/tests/test_privacy_gate.py` — both incident
+shapes, a declared tree passing, each volume tripwire, the history exemption, and
+printed-versus-withheld output. Backend gate green (1,277 tests). Follow-up out
+of scope: 400 paths and 8 MiB are a first guess, and should be raised if a
+legitimate change trips them.
+
+## Merged: eight owner UI reports in both browsers (2026-09-04, PR #19)
+
+Merged as `36a5d652`, with `65231250` and `39bb667e` beside it (a lockfile bump
+for a new advisory, and a platform-aware test). Eight items the owner reported in
+one pass, all UI:
 
 1. **Toolbar controls now share one height and one icon size.** Every boxed
    control inside a `.toolbar` — segmented groups, `.btn` actions, the search
