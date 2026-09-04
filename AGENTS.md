@@ -183,7 +183,9 @@ Before **every push** and before creating or updating a pull request:
 
    These four rules are **enforced**, not advisory: `infra/privacy_gate.py` checks them
    on every staged commit, every push, and every pull request, and prints which rule
-   fired (a rule name and a count — never a path, which can itself be user data). This
+   fired. What it prints is a sentence from a closed table in that file plus an integer
+   — never a path, which can itself be user data, and never a string built from a
+   scanned object. This
    exists because it kept happening: `git add -A` once staged 1,876 files of a Cargo
    `target/` directory, and 438 KB of a patched dependency rode into a feature branch
    and back out again. The first was caught only because that build output happened to

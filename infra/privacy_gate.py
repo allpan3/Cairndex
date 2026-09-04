@@ -88,9 +88,30 @@ VENDORED_PATH_COMPONENTS = frozenset({"third-party", "third_party", "vendor", "v
 MAX_SCANNED_PATHS = 400
 MAX_ADDED_BYTES = 8 * 1024 * 1024
 
-# Prefix marking a finding that is safe to print in full: a rule name and a
-# count, never a path or its contents.
-POLICY_PREFIX = "policy: "
+# Prefix marking a finding the reporter may print. Its payload is a rule id from
+# the closed table below plus an integer, and nothing else: what reaches the
+# terminal is therefore a literal owned by this file, never a value derived from
+# the objects being scanned. That is structural rather than a promise to write
+# careful messages — CodeQL flagged the earlier version, which printed the
+# finding string itself, and it was right to: one interpolated path in a policy
+# message would have leaked exactly what this gate exists to contain.
+POLICY_PREFIX = "policy:"
+
+# Every sentence the gate may print, by rule id. A finding naming an id that is
+# not here is treated as private and withheld — unknown means unsafe.
+POLICY_RULES = {
+    "artifact-output": "build, dependency, or cache output must never be committed",
+    "compiled-output": "compiled or packaged output must never be committed",
+    "undeclared-vendoring": (
+        "undeclared vendored third-party tree; declare it in "
+        ".github/privacy-allowlist.json under vendored_trees"
+    ),
+    "bulk-add": (
+        f"more than {MAX_SCANNED_PATHS} paths in one scan; stage what you chose "
+        "file by file rather than reaching for `git add -A`"
+    ),
+    "byte-budget": f"more than {MAX_ADDED_BYTES // 1024} KiB of new blobs in one scan",
+}
 
 _PLACEHOLDER_USERS = {
     "app",
@@ -435,16 +456,16 @@ def scan_path(
 def _policy_violation(path: str, allowlist: PrivacyAllowlist) -> str | None:
     parts = PurePosixPath(path).parts
     if any(part in ARTIFACT_PATH_COMPONENTS for part in parts):
-        return "build, dependency, or cache output"
+        return "artifact-output"
     if path.endswith(ARTIFACT_PATH_SUFFIXES) or any(
         part.endswith((".app", ".dSYM")) for part in parts
     ):
-        return "compiled or packaged output"
+        return "compiled-output"
     if any(part in VENDORED_PATH_COMPONENTS for part in parts) and not any(
         path == tree.prefix or path.startswith(f"{tree.prefix}/")
         for tree in allowlist.vendored_trees
     ):
-        return "undeclared vendored third-party tree"
+        return "undeclared-vendoring"
     return None
 
 
@@ -467,22 +488,13 @@ def scan_publication_policy(
         if reason is not None:
             counts[reason] = counts.get(reason, 0) + 1
 
-    findings = [
-        f"{POLICY_PREFIX}{reason} must never be committed ({count} path(s))"
-        for reason, count in sorted(counts.items())
-    ]
+    findings = [f"{POLICY_PREFIX}{rule}:{count}" for rule, count in sorted(counts.items())]
     if not enforce_volume:
         return findings
     if total > MAX_SCANNED_PATHS:
-        findings.append(
-            f"{POLICY_PREFIX}{total} paths in one scan exceeds the {MAX_SCANNED_PATHS}-path "
-            "bulk-add tripwire; stage deliberately rather than with `git add -A`"
-        )
+        findings.append(f"{POLICY_PREFIX}bulk-add:{total}")
     if added_bytes > MAX_ADDED_BYTES:
-        findings.append(
-            f"{POLICY_PREFIX}{added_bytes // 1024} KiB of new blobs exceeds the "
-            f"{MAX_ADDED_BYTES // 1024} KiB publication budget"
-        )
+        findings.append(f"{POLICY_PREFIX}byte-budget:{added_bytes // 1024}")
     return findings
 
 
@@ -663,11 +675,22 @@ def report(findings: list[str], summary: str, private_pattern_count: int) -> int
         # Policy findings carry a rule and a count, never a path or its bytes, so
         # printing them is what makes the failure actionable. Everything else is
         # withheld: a finding's detail is the private content itself.
-        policy = sorted(item for item in unique if item.startswith(POLICY_PREFIX))
-        private = unique - set(policy)
+        # Rebuild each printable line from the closed table rather than echoing
+        # the finding: the rule id selects a literal, the tally is coerced to an
+        # int, and an id this file does not know falls through to the withheld
+        # count. Nothing derived from a scanned object can reach stderr here.
+        printable: list[str] = []
+        private = set()
+        for item in unique:
+            rule, _, tally = item.removeprefix(POLICY_PREFIX).partition(":")
+            sentence = POLICY_RULES.get(rule) if item.startswith(POLICY_PREFIX) else None
+            if sentence is None or not tally.isdigit():
+                private.add(item)
+                continue
+            printable.append(f"policy: {sentence} ({int(tally)})")
         print("PRIVACY GATE FAILED", file=sys.stderr)
-        for item in policy:
-            print(item, file=sys.stderr)
+        for line in sorted(printable):
+            print(line, file=sys.stderr)
         if private:
             print(
                 f"{len(private)} private-content finding(s); details withheld",

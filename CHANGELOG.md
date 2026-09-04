@@ -119,9 +119,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   of ignore rules, and refuses a copy of a third-party source tree unless it is
   declared in `.github/privacy-allowlist.json` with a purpose and a provenance. Two
   volume tripwires catch bulk adds: more than 400 paths in one scan, or more than 8 MiB
-  of new blobs. Policy failures print the rule that fired and a count — never a path,
-  which can itself be user data — while private-content findings stay withheld as
-  before. Written after `git add -A` staged 1,876 files of a Cargo `target/` directory
+  of new blobs (incremental scans only — a whole-history audit is the repository, not a
+  bulk add). Policy failures print a sentence chosen from a closed table plus a count,
+  so the printed text is never built from a scanned object; private-content findings
+  stay withheld as before. Written after `git add -A` staged 1,876 files of a Cargo `target/` directory
   (caught only because that output happened to contain a private literal) and 438 KB of
   a patched dependency rode into a feature branch unnoticed.
 
