@@ -337,7 +337,7 @@ jobs:
       # because the release artifacts bundle a GPL ffmpeg and the written offer
       # has to travel with them (ADR-0019 §3).
       - name: Draft the release
-        uses: softprops/action-gh-release@fe965f7af51af5f2602596916f38a38df2e33de0 # v3.0.2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           draft: true
