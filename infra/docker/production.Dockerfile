@@ -20,7 +20,7 @@ COPY apps/web/ ./
 RUN npm run build
 
 # --- Stage 2: install the backend + its locked dependencies -------------------
-FROM python:3.12-slim AS server
+FROM python:3.14-slim AS server
 COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /bin/
 ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -34,7 +34,7 @@ COPY apps/server/ ./
 RUN uv sync --frozen --no-dev
 
 # --- Stage 3: minimal hardened runtime ----------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 ARG CAIRNDEX_BUILD_COMMIT=""
 
 # ffmpeg/ffprobe: media probing (Phase 2), thumbnails (Phase 2), and subtitle
