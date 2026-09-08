@@ -139,18 +139,15 @@ whether you ever run `:8000` for desktop work:
 - **"This Computer" — the bundled sidecar**, which the shell spawns itself. This
   is the self-contained server end users get, but it is a **PyInstaller build of
   `apps/server` frozen at build time**, staged from
-  `packaging/dist/cairndex-sidecar/`. After changing server code you must rebuild
-  it, or it silently serves stale code — a route added since the last build
-  `404`s in the desktop while the web app (on your live `:8000`) works:
+  `packaging/dist/development/cairndex-sidecar/` for development. Run
+  `just bundled` from the repository root: it rebuilds stale server code and
+  verifies that the linked FFmpeg/FFprobe still match the pinned cache.
 
-```bash
-cd apps/server && uv run python packaging/build_sidecar.py
-# Run the shell against the fresh binary, bypassing the stale copy Tauri staged
-# into target/ at its last cargo build:
-cd apps/desktop
-CAIRNDEX_SIDECAR_BIN="$(cd ../server && pwd)/packaging/dist/cairndex-sidecar/cairndex-sidecar" \
-  npm run tauri dev
-```
+`just bundled` uses only the host architecture (Apple Silicon on an ARM Mac).
+Its media tools are symlinks into `packaging/vendor/ffmpeg/<platform>/`, and its
+Tauri invocation disables bundle resources so Cargo does not copy release
+sidecars into `target/debug`. The development bundle is checkout-local;
+`just build-desktop` produces the self-contained release bundle separately.
 
 Reach for the sidecar only when you specifically want to exercise the
 self-contained bundling (or the packaged `.app`, see the README); use the
@@ -392,6 +389,13 @@ uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see belo
 uv run python packaging/build_sidecar.py      # -> packaging/dist/cairndex-sidecar/
 uv run python packaging/smoke_test.py         # runs the bundle and drives it over HTTP
 ```
+
+For a frozen development server, `build_sidecar.py --development` writes to
+`packaging/dist/development/cairndex-sidecar/` and links the verified media tools
+from the cache. The default build writes regular copies to
+`packaging/dist/cairndex-sidecar/` for distribution. Never distribute the
+checkout-local development directory. Old Cargo build output is regenerable;
+changing development mode does not automatically delete existing outputs.
 
 `packaging/ffmpeg-manifest.json` pins both macOS architectures (ADR-0019 §3).
 **On Linux, build with `--skip-ffmpeg`** — that platform is deliberately

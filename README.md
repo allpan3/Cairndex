@@ -185,9 +185,9 @@ that trips people up.** Three ways to run it, fastest to most production-like:
     origin allowed: `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173`, then
     connect the app to `http://127.0.0.1:8000`.
   - **"This Computer"** — the shell runs its own **bundled** server, which is what
-    ships to users but is a *frozen* build. Rebuild it after server changes
-    (`apps/server/packaging/build_sidecar.py`) or it serves stale code — the cause
-    of a route that `404`s in the desktop while the web app works.
+    ships to users but is a *frozen* build. Run `just bundled` to rebuild it when
+    stale and share the host architecture's cached FFmpeg/FFprobe without
+    copying them into Cargo's development output.
 - **Packaged app** (`tauri build`, below) — the real installable `.app`, needed
   for deep links, notifications, and genuine end-user testing.
 

@@ -1,11 +1,12 @@
 """Build the desktop sidecar bundle (ADR-0019 §2/§3).
 
 Produces ``packaging/dist/cairndex-sidecar/`` — a PyInstaller one-dir bundle the
-Tauri shell stages as a resource and spawns on demand.
+Tauri shell stages as a resource and spawns on demand. ``--development`` uses
+``packaging/dist/development/cairndex-sidecar/`` and cache links instead.
 
 ffmpeg is staged rather than fetched. Downloading during a build would put an
 unpinned network dependency in the middle of it and defeat CI caching, so
-acquisition is a separate step (``fetch_ffmpeg.py``) and this script only copies
+acquisition is a separate step (``fetch_ffmpeg.py``) and this script only stages
 what that produced, refusing anything whose checksum does not match the
 committed manifest.
 
@@ -37,7 +38,8 @@ BUILD = PACKAGING_DIR / "build"
 BUNDLE = DIST / "cairndex-sidecar"
 
 
-def run_pyinstaller() -> None:
+# Freeze Python into the selected development or distribution directory
+def run_pyinstaller(dist: Path = DIST) -> None:
     subprocess.run(
         [
             sys.executable,
@@ -46,9 +48,9 @@ def run_pyinstaller() -> None:
             "--clean",
             "--noconfirm",
             "--distpath",
-            str(DIST),
+            str(dist),
             "--workpath",
-            str(BUILD),
+            str(BUILD / "development" if dist != DIST else BUILD),
             str(SPEC),
         ],
         cwd=PACKAGING_DIR,
@@ -71,7 +73,8 @@ def macho_arch(binary: Path) -> str | None:
     return _CPU_TYPES.get(int.from_bytes(header[4:8], "little"))
 
 
-def check_bundle_arch(target_platform: str) -> None:
+# Reject an interpreter architecture that disagrees with the selected media pin
+def check_bundle_arch(target_platform: str, bundle: Path = BUNDLE) -> None:
     """Refuse a bundle whose architecture is not the one being built for.
 
     The checksum gate cannot see this. It verifies that the *ffmpeg* matches the
@@ -84,7 +87,7 @@ def check_bundle_arch(target_platform: str) -> None:
     """
     if not target_platform.startswith("macos-"):
         return
-    executable = BUNDLE / "cairndex-sidecar"
+    executable = bundle / "cairndex-sidecar"
     built = macho_arch(executable)
     expected = target_platform.removeprefix("macos-")
     if built is None:
@@ -112,7 +115,8 @@ FORBIDDEN_LIBRARIES = {
 }
 
 
-def check_no_forbidden_libraries() -> None:
+# Reject unwanted native libraries in either build mode
+def check_no_forbidden_libraries(bundle: Path | None = None) -> None:
     """Fail the build if a copyleft native library reached the bundle.
 
     The PyInstaller spec excludes ``pillow_heif``, but an exclude only covers the
@@ -120,18 +124,22 @@ def check_no_forbidden_libraries() -> None:
     different parent would sail past it, and the failure would surface as a
     licence problem in something already published rather than as a build error.
     """
-    for path in BUNDLE.rglob("*"):
+    bundle = bundle or BUNDLE
+    for path in bundle.rglob("*"):
         if not path.is_file():
             continue
         for stem, reason in FORBIDDEN_LIBRARIES.items():
             if path.name.startswith(stem):
                 raise SystemExit(
-                    f"{path.relative_to(BUNDLE)} must not ship: {reason}\n"
+                    f"{path.relative_to(bundle)} must not ship: {reason}\n"
                     "See THIRD-PARTY-NOTICES.md."
                 )
 
 
-def stage_media_tools(source: Path, target_platform: str) -> None:
+# Share verified tools in development; keep distribution bundles self-contained
+def stage_media_tools(
+    source: Path, target_platform: str, *, bundle: Path = BUNDLE, development: bool = False
+) -> None:
     """Copy the static ffmpeg/ffprobe into the bundle, checksum-verified.
 
     A package-manager ffmpeg will not work here: Homebrew's is a thin binary
@@ -161,12 +169,18 @@ def stage_media_tools(source: Path, target_platform: str) -> None:
                 f"  expected {pins[tool].sha256}\n  actual   {actual}\n"
                 f"Refusing to bundle a binary that is not the one pinned in {MANIFEST.name}."
             )
-        destination = BUNDLE / tool
-        shutil.copy2(binary, destination)
-        destination.chmod(0o755)
+        destination = bundle / tool
+        if destination.is_symlink() or destination.exists():
+            destination.unlink()  # Never copy through an old link into the cache
+        if development:
+            destination.symlink_to(binary.resolve())
+        else:
+            shutil.copy2(binary, destination)
+            destination.chmod(0o755)
         print(f"  staged {tool} ({destination.stat().st_size // 1024} KB)", flush=True)
 
 
+# Select isolated development staging or self-contained distribution output
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -185,6 +199,11 @@ def main() -> int:
         default=None,
         help="which pin to verify against; defaults to the current platform",
     )
+    parser.add_argument(
+        "--development",
+        action="store_true",
+        help="build under dist/development and link to the verified media-tool cache",
+    )
     args = parser.parse_args()
 
     # PyInstaller freezes the interpreter running it, so the bundle's
@@ -194,21 +213,30 @@ def main() -> int:
     target_platform = args.platform or current_platform()
 
     print(f"building sidecar bundle for {target_platform}...", flush=True)
-    run_pyinstaller()
-    check_bundle_arch(target_platform)
-    check_no_forbidden_libraries()
+    dist = DIST / "development" if args.development else DIST
+    bundle = dist / "cairndex-sidecar"
+    run_pyinstaller(dist)
+    check_bundle_arch(target_platform, bundle)
+    check_no_forbidden_libraries(bundle)
 
     if args.skip_ffmpeg:
         print("  skipping ffmpeg staging (--skip-ffmpeg)", flush=True)
     else:
         try:
-            stage_media_tools(args.ffmpeg_dir or vendor_dir(target_platform), target_platform)
+            stage_media_tools(
+                args.ffmpeg_dir or vendor_dir(target_platform),
+                target_platform,
+                bundle=bundle,
+                development=args.development,
+            )
         except ManifestError as exc:
             print(exc, file=sys.stderr)
             return 1
 
-    size_mb = sum(p.stat().st_size for p in BUNDLE.rglob("*") if p.is_file()) // (1024 * 1024)
-    print(f"built {BUNDLE.relative_to(SERVER_DIR)} ({size_mb} MB)", flush=True)
+    size_mb = sum(
+        p.stat().st_size for p in bundle.rglob("*") if p.is_file() and not p.is_symlink()
+    ) // (1024 * 1024)
+    print(f"built {bundle.relative_to(SERVER_DIR)} ({size_mb} MB)", flush=True)
     return 0
 
 

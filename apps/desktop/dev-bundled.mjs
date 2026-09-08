@@ -1,20 +1,16 @@
-// One command to run the desktop shell against the bundled "This Computer"
-// sidecar — the frozen PyInstaller build of apps/server that ships to users.
-//
-// The sidecar is a build artifact, not live source: change server code and the
-// running desktop keeps serving the old binary, so a route added since the last
-// build 404s in the desktop while the web app works. That trap is the whole
-// reason this exists. This script rebuilds the sidecar *only when apps/server
-// has changed since the last build*, then launches `tauri dev` pointed at the
-// fresh binary via CAIRNDEX_SIDECAR_BIN (which overrides the stale copy Tauri
-// staged into target/ at its last cargo build).
-//
-// For ordinary iteration prefer a source `:8000` server the desktop connects to
-// (see the README) — that is live code with no rebuild. Reach for this only to
-// exercise the self-contained bundle. Pass --force to rebuild unconditionally.
+// Runs the frozen development sidecar with media tools shared from the cache
+// Release resources are disabled for this invocation to avoid copies in target
+// Server or packaging changes rebuild the isolated development bundle
 
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,17 +20,22 @@ const binary = join(
   serverDir,
   "packaging",
   "dist",
+  "development",
   "cairndex-sidecar",
   "cairndex-sidecar",
 );
 
 // Newest mtime of the files a rebuild would fold in: the server source, the
-// packaging scripts/spec, and the dependency manifest. Skips caches and dotfiles.
+// packaging scripts/spec, and the dependency manifest; skips caches and dotfiles
 function newestMtime(dir, matches) {
   let newest = 0;
   if (!existsSync(dir)) return newest;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "__pycache__" || entry.name.startsWith(".")) continue;
+    if (
+      ["__pycache__", "build", "dist", "vendor"].includes(entry.name) ||
+      entry.name.startsWith(".")
+    )
+      continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory())
       newest = Math.max(newest, newestMtime(full, matches));
@@ -56,26 +57,58 @@ const sourceMtime = Math.max(
     : 0,
 );
 
+// A changed pin, missing cache, or stale link requires a fresh verified staging
+function mediaToolsReady() {
+  const platform = process.platform === "darwin" ? "macos" : process.platform;
+  const arch = process.arch === "x64" ? "x86_64" : process.arch;
+  const key = `${platform}-${arch}`;
+  const manifest = JSON.parse(
+    readFileSync(join(serverDir, "packaging", "ffmpeg-manifest.json")),
+  );
+  return ["ffmpeg", "ffprobe"].every((tool) => {
+    const cached = join(serverDir, "packaging", "vendor", "ffmpeg", key, tool);
+    const staged = join(dirname(binary), tool);
+    return (
+      existsSync(cached) &&
+      existsSync(staged) &&
+      realpathSync(staged) === realpathSync(cached) &&
+      createHash("sha256").update(readFileSync(cached)).digest("hex") ===
+        manifest.platforms[key]?.[tool]?.sha256
+    );
+  });
+}
+
 const force = process.argv.includes("--force");
-if (force || !existsSync(binary) || sourceMtime > binaryMtime) {
+const mediaStale = !mediaToolsReady();
+if (force || mediaStale || !existsSync(binary) || sourceMtime > binaryMtime) {
   const why = !existsSync(binary)
     ? "no build yet"
     : force
       ? "--force"
-      : "apps/server changed";
+      : mediaStale
+        ? "media cache changed"
+        : "apps/server changed";
   console.log(`• rebuilding the sidecar (${why})…`);
-  execFileSync("uv", ["run", "python", "packaging/build_sidecar.py"], {
-    cwd: serverDir,
-    stdio: "inherit",
-  });
+  execFileSync(
+    "uv",
+    ["run", "python", "packaging/build_sidecar.py", "--development"],
+    {
+      cwd: serverDir,
+      stdio: "inherit",
+    },
+  );
 } else {
   console.log("• sidecar is up to date — skipping the rebuild");
 }
 
 console.log("• launching `tauri dev` against the bundled sidecar");
-const result = spawnSync("npx", ["tauri", "dev"], {
-  cwd: here,
-  stdio: "inherit",
-  env: { ...process.env, CAIRNDEX_SIDECAR_BIN: binary },
-});
+const result = spawnSync(
+  "npx",
+  ["tauri", "dev", "--config", JSON.stringify({ bundle: { resources: null } })],
+  {
+    cwd: here,
+    stdio: "inherit",
+    env: { ...process.env, CAIRNDEX_SIDECAR_BIN: binary },
+  },
+);
 process.exit(result.status ?? 1);

@@ -157,6 +157,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm run test
+      - name: Desktop development launcher tests
+        run: npm --prefix ../desktop test
       - name: Build
         run: npm run build
       - name: Install Playwright browser

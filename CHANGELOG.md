@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Frozen desktop development shares checksum-verified FFmpeg/FFprobe from the
+  host architecture's cache and skips Tauri resource copies. Release bundles
+  remain self-contained.
+
 - **Both browsers' toolbars are one row of controls.** Every boxed control in a
   toolbar — segmented groups, actions, the search field, the sort control — is
   the same height, and every icon button draws its glyph at the same size. The

@@ -4,7 +4,8 @@
   "version": "0.2.1",
   "scripts": {
     "tauri": "tauri",
-    "dev:bundled": "node ./dev-bundled.mjs"
+    "dev:bundled": "node ./dev-bundled.mjs",
+    "test": "node --test ./*.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.5"

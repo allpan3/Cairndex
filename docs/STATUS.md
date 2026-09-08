@@ -1,5 +1,14 @@
 # Project status
 
+- Frozen desktop development uses a separate sidecar under `dist/development`,
+  links the host media-tool cache, and disables resource staging for `just bundled`.
+  Release sidecars retain regular FFmpeg/FFprobe copies. Validated on ARM with
+  development and release sidecar builds, synthetic-media smoke tests, launcher
+  tests, Ruff/mypy, and the backend suite (1,279 passed, one skipped).
+  Work is on `fix/shared-development-media-tools`; the native shell and full
+  `.app` were not rebuilt because the changes are confined to build scripts.
+  Existing build outputs in other checkouts remain untouched.
+
 > **Progressive-playback recovery hotfix validated (`0.2.1`, 2026-08-31).** A
 > production NAS deployment could open an ordinary direct-play video but either
 > advanced below real time after its first frames or froze immediately after a
