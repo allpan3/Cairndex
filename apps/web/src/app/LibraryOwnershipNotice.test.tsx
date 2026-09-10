@@ -52,6 +52,7 @@ function renderNotice(value: LibraryOwnership, overrides: NoticeOverrides = {}) 
     libraryId: 'lib-1',
     onChangeLibrary: vi.fn(),
     onTakeOver: vi.fn(),
+    onReopen: vi.fn(),
     onConnectTo: vi.fn(),
     takeoverPending: overrides.takeoverPending ?? false,
     takeoverError: overrides.takeoverError ?? null,
@@ -212,5 +213,26 @@ describe('escape hatches', () => {
     fireEvent.change(screen.getByLabelText('Library'), { target: { value: 'lib-2' } })
 
     expect(props.onChangeLibrary).toHaveBeenCalledWith('lib-2')
+  })
+})
+
+describe('explicit release and uncertain ownership', () => {
+  it('waits for deliberate reopen and offers the current holder', () => {
+    const props = renderNotice(
+      ownership({ state: 'locally_released', redirect_url: 'http://synthetic-server:8000' }),
+    )
+    expect(screen.getByText('Library released on this server')).toBeVisible()
+    expect(props.onReopen).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen' }))
+    expect(props.onReopen).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: /Connect to/ }))
+    expect(props.onConnectTo).toHaveBeenCalledWith('http://synthetic-server:8000')
+  })
+
+  it('explains uncertainty without offering acquisition', () => {
+    const props = renderNotice(ownership({ state: 'ownership_uncertain', can_take_over: false }))
+    expect(screen.getByText('Checking library connection')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Reopen' })).not.toBeInTheDocument()
+    expect(props.onTakeOver).not.toHaveBeenCalled()
   })
 })

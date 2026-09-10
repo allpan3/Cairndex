@@ -1,3 +1,4 @@
+import { changeLibraryServing } from './client'
 import { useCallback } from 'react'
 
 import {
@@ -686,7 +687,20 @@ export function useLibraryOwnership(libraryId: string | null) {
     queryKey: ['library-ownership', libraryId],
     queryFn: ({ signal }) => fetchLibraryOwnership(libraryId!, signal),
     enabled: libraryId !== null,
-    refetchInterval: (query) => (query.state.data?.takeover?.running ? 2000 : false),
+    refetchInterval: (query) => (query.state.data?.takeover?.running ? 2000 : 5000),
+  })
+}
+
+/** Refresh the mount gate after an explicit handoff or reopen */
+export function useLibraryServing(libraryId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (action: 'release' | 'reopen') => changeLibraryServing(libraryId!, action),
+    onSuccess: (ownership) => {
+      qc.setQueryData(['library-ownership', libraryId], ownership)
+      invalidateLibraryContent(qc)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['library-ownership', libraryId] }),
   })
 }
 

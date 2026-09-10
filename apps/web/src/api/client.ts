@@ -916,6 +916,10 @@ export const fetchLibraryOwnership = (libraryId: string, signal?: AbortSignal) =
 export const startLibraryTakeover = (libraryId: string) =>
   send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/takeover`, 'POST')
 
+/** Explicit server-level handoff; never called for a client disconnect */
+export const changeLibraryServing = (libraryId: string, action: 'release' | 'reopen') =>
+  send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/${action}`, 'POST')
+
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
 export const startDevicePairing = (deviceName: string) =>
   send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })

@@ -21,6 +21,10 @@ interface Props {
   libraries: LibraryRead[]
   libraryId: string
   onChangeLibrary: (id: string) => void
+  onRetryRelease?: () => void
+  onReopen?: () => void
+  reopenPending?: boolean
+  reopenError?: string | null
   onTakeOver: () => void
   onConnectTo: (serverUrl: string) => void
   takeoverPending: boolean
@@ -81,6 +85,10 @@ export function LibraryOwnershipNotice({
   libraryId,
   onChangeLibrary,
   onTakeOver,
+  onReopen,
+  onRetryRelease,
+  reopenPending = false,
+  reopenError = null,
   onConnectTo,
   takeoverPending,
   takeoverError,
@@ -94,6 +102,81 @@ export function LibraryOwnershipNotice({
     ownership.takeover?.started_at ?? null,
     ownership.takeover?.observation_seconds ?? null,
   )
+
+  if (ownership.state === 'release_pending') {
+    return (
+      <LibraryAccessNotice
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={onChangeLibrary}
+        title="Library release is not finished"
+        message="This server is refusing new work and still holds ownership. Active work or database closure has not finished. Retry Release to finish the handoff."
+      >
+        <button className="lockscreen__submit" onClick={onRetryRelease} disabled={reopenPending}>
+          {reopenPending ? 'Releasing…' : 'Retry Release'}
+        </button>
+        {reopenError && (
+          <p className="lockscreen__error" role="alert">
+            {reopenError}
+          </p>
+        )}
+      </LibraryAccessNotice>
+    )
+  }
+
+  if (
+    !running &&
+    (ownership.state === 'locally_released' || ownership.state === 'ownership_lost')
+  ) {
+    return (
+      <LibraryAccessNotice
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={onChangeLibrary}
+        title={
+          ownership.state === 'locally_released'
+            ? 'Library released on this server'
+            : 'Library ownership changed'
+        }
+        message="This server stopped serving the library. Your files, metadata and registration remain. Reopen deliberately when you want this server to serve it again; normal ownership checks still apply."
+      >
+        <button className="lockscreen__submit" onClick={onReopen} disabled={reopenPending}>
+          {reopenPending ? 'Reopening…' : 'Reopen'}
+        </button>
+        {ownership.redirect_url && (
+          <button
+            className="lockscreen__submit"
+            onClick={() => onConnectTo(ownership.redirect_url!)}
+            disabled={connectPending}
+          >
+            {connectPending ? 'Connecting…' : `Connect to ${who}`}
+          </button>
+        )}
+        {ownership.can_take_over && (
+          <button className="lockscreen__submit" onClick={onTakeOver}>
+            Confirm stale takeover
+          </button>
+        )}
+        {reopenError && (
+          <p className="lockscreen__error" role="alert">
+            {reopenError}
+          </p>
+        )}
+      </LibraryAccessNotice>
+    )
+  }
+
+  if (ownership.state === 'ownership_uncertain') {
+    return (
+      <LibraryAccessNotice
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={onChangeLibrary}
+        title="Checking library connection"
+        message="Ownership could not be verified. This server has paused library work and will check again when storage is reachable. It will not take ownership from another server."
+      />
+    )
+  }
 
   if (running) {
     const total = ownership.takeover?.observation_seconds ?? null

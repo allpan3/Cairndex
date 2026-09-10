@@ -10,6 +10,8 @@ import {
   useDeploymentWriteMode,
   useLibraries,
   useLibraryMutations,
+  useLibraryOwnership,
+  useLibraryServing,
   useWriteModeMutation,
 } from '../api/hooks'
 import { getActiveConnection } from '../desktop/connections'
@@ -531,6 +533,9 @@ function LibraryRow({
   // same row and both replace it.
   const [asking, setAsking] = useState<'remove' | 'write-mode' | null>(null)
   const available = library.status === 'available'
+  const ownership = useLibraryOwnership(library.id)
+  const serving = useLibraryServing(library.id)
+  const released = ownership.data?.state === 'locally_released'
 
   if (asking === 'remove') {
     return (
@@ -567,6 +572,16 @@ function LibraryRow({
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>
+      <button
+        className="btn btn--sm"
+        disabled={busy || serving.isPending}
+        title="Release stops this server from serving the library to all clients; registration and content remain"
+        onClick={() => serving.mutate(released ? 'reopen' : 'release')}
+      >
+        {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
+      </button>
+      {released && <span className="lib-row__note">Released on this server</span>}
+      {serving.error && <span role="alert">{serving.error.message}</span>}
       <WriteModeToggle
         library={library}
         busy={busy}

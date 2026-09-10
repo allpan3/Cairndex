@@ -41,6 +41,7 @@ import {
   useLibraryAuth,
   useTrash,
   useLibraryOwnership,
+  useLibraryServing,
   useStartTakeover,
   useLibraryLock,
   useIndexNewLibrary,
@@ -384,6 +385,7 @@ export default function App() {
   // scatter of identical errors instead of one explainable state (ADR-0018).
   const ownership = useLibraryOwnership(mountableLibraryId)
   const takeover = useStartTakeover(mountableLibraryId)
+  const serving = useLibraryServing(mountableLibraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
   const desktop = getHostPlatform().kind === 'desktop'
   const deviceHasAccess = mountableLibraryId ? hasHostDeviceAccess(mountableLibraryId) : false
@@ -510,6 +512,10 @@ export default function App() {
           libraryId={libraryId}
           onChangeLibrary={changeLibrary}
           onTakeOver={() => takeover.mutate()}
+          onReopen={() => serving.mutate('reopen')}
+          onRetryRelease={() => serving.mutate('release')}
+          reopenPending={serving.isPending}
+          reopenError={serving.error?.message ?? null}
           onConnectTo={(serverUrl) => {
             setConnectRedirect({ pending: true, error: null })
             void connectToServer(serverUrl)

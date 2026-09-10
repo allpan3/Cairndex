@@ -49,6 +49,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Libraries offers explicit Release and Reopen while the app stays open. Release
+  retains registration and blocks background reacquisition, with a retry state
+  when draining or database closure has not finished.
+
 - **A per-folder sort in the File Browser.** Its sort pane now offers *Remember
   sort per folder*, the counterpart to the Bundle Browser's per-collection
   scope: each directory keeps its own field and direction, and a folder with

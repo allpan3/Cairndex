@@ -128,6 +128,14 @@ obligations that Cairndex's own MIT license does not — see
 that notice, Cairndex's MIT license, and the full GPLv3/LGPLv3 texts under its
 `Contents/Resources/licenses/` directory.
 
+### Release a library without quitting
+
+Open **Libraries** and choose **Release** to stop this server serving a library
+while preserving its registration and content. **Reopen** deliberately checks
+ownership before serving it again. Idle time and remote client disconnects never
+release the server's ownership. Browsing needs writable `.cairndex` metadata,
+locks, progress and cache even when source media are protected.
+
 ## Repository layout
 
 ```text
