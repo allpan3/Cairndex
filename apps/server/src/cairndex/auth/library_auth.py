@@ -37,6 +37,7 @@ def _load_manifest_dict(root: Path) -> dict[str, Any]:
 
 
 def _write_manifest_dict(root: Path, data: dict[str, Any]) -> None:
+    pkg.require_legacy(root)
     pkg.manifest_path(root).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 

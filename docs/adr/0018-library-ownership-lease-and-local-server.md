@@ -1,5 +1,9 @@
 # ADR-0018: Library ownership lease and desktop local-server sidecar
 
+> Scope: legacy packages retain this decision. [ADR-0029](0029-cloud-metadata-replicas.md)
+> defines private storage/causal history for explicitly capable replica packages;
+> real-library conversion remains unavailable.
+
 - Status: accepted (owner-ratified 2026-07-19)
 - Date: 2026-07-19
 - Branch/PR: `docs/adr-library-ownership-lease`

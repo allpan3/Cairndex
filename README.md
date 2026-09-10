@@ -18,10 +18,14 @@ agents working in this repository.
 
 ## Status
 
-Concurrent offline cloud-folder editing is **not implemented**. The proposed
-[replica design](docs/adr/0029-cloud-metadata-replicas.md) and isolated executable
-prototype explore that requirement; current libraries retain their ownership
-rules. NAS is optional storage, not a required application mode.
+A bounded replica workflow supports concurrent offline title, ordered-note and
+rating edits in explicitly capable **synthetic** packages. It uses private SQLite,
+immutable metadata exchange, conflict review, retained history and private drafts.
+Real-library conversion and provider qualification remain unavailable; existing
+libraries retain their DB and ownership rules. See the accepted
+[replica architecture](docs/adr/0029-cloud-metadata-replicas.md) and
+[migration contract](docs/replica-migration.md). NAS and cloud folders are storage
+scenarios, not required application modes.
 
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,

@@ -9,9 +9,14 @@
 > (suggestion-based grouping). ADR-0004 (Eagle import) is superseded history; the
 > importer is removed.
 
-[ADR-0029](adr/0029-cloud-metadata-replicas.md) proposes a separate replica
-transport schema, authored/runtime classification and preserved-ID migration.
-No replica schema or migration is present in the production models below.
+The legacy SQLAlchemy schema below belongs to `cairndex.library`. The capable
+replica store uses private `events`, `revisions`, `bundles`, `inbox`, `sources`,
+`drafts`, `draft_receipts` and `config` tables. Immutable event bytes and indexed
+causal revisions are authoritative; `bundles` is a projection. Event rows also
+hold local publication/retry receipts. The [migration contract](replica-migration.md)
+and pinned code inventory cover every legacy table/column plus non-table artifacts.
+Only synthetic bundle title/ordered-notes/rating packages are supported; conversion
+of existing metadata families remains unavailable under [ADR-0029](adr/0029-cloud-metadata-replicas.md).
 
 ## Conventions
 

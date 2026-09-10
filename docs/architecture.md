@@ -11,13 +11,16 @@
 > roadmap, and `docs/STATUS.md` for current gaps, validation state, and
 > recommended next tasks.
 
-## Proposed replica architecture
+## Private metadata replicas
 
-[ADR-0029](adr/0029-cloud-metadata-replicas.md) proposes private working databases
-and immutable causal metadata transactions for concurrent offline replicas.
-The isolated prototype does not change current serving, ownership, package or
-API behavior described below. Provider qualification and production migration
-remain unimplemented.
+[ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases
+and immutable causal metadata transactions. The capable production workflow supports
+synthetic bundle titles, ordered notes and ratings with indexed field revisions,
+transactional outbox/import, paginated history and private drafts. The existing
+API and shared app serve both package generations. Replica packages never open
+legacy content/lease/source-write paths. The [migration contract](replica-migration.md)
+defines wire limits, complete schema inventory and unavailable conversion gates.
+The legacy serving architecture below continues to apply to `cairndex.library`.
 
 ## Library release and recovery
 

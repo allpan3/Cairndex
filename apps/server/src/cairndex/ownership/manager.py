@@ -27,6 +27,7 @@ from pathlib import Path
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import (
+    DomainError,
     LeaseTakeoverRequiredError,
     LibraryLeaseError,
     LibraryLeaseHeldError,
@@ -135,6 +136,7 @@ class LeaseManager:
         clock: Callable[[], datetime] = utcnow,
         sleep: Callable[[float], None] = time.sleep,
         on_ownership_lost: Callable[[str], None] | None = None,
+        package_check: Callable[[Path], object] = lambda root: None,
     ) -> None:
         self.server_uuid = server_uuid
         self.machine_name = machine_name
@@ -143,6 +145,7 @@ class LeaseManager:
         self._clock = clock
         self._sleep = sleep
         self._on_ownership_lost = on_ownership_lost
+        self._package_check = package_check
         self._held: dict[str, _Held] = {}
         self._lost: set[str] = set()
         self._takeovers: dict[str, TakeoverProgress] = {}
@@ -230,6 +233,7 @@ class LeaseManager:
             return self._acquire_locks.setdefault(library_id, threading.Lock())
 
     def _acquire_locked(self, *, library_id: str, root: Path, confirm: bool) -> None:
+        self._package_check(root)
         snapshot = read_lease(root)
         if snapshot.io_error:
             raise LibraryOwnershipUncertainError(
@@ -304,6 +308,7 @@ class LeaseManager:
         If someone else wrote in between, their record is what we read, and we
         back off rather than assume we won.
         """
+        self._package_check(root)  # The package may have changed during takeover observation
         now = self._clock()
         record = LeaseRecord(
             server_uuid=self.server_uuid,
@@ -477,9 +482,9 @@ class LeaseManager:
     def validate(self, library_id: str, *, force: bool = False) -> None:
         """Fence resumed work using elapsed and wall clocks before trusting memory
 
-        Monotonic clocks may exclude suspend on some platforms; wall time catches
-        that gap and backward adjustments force a check too. Ordinary statements
-        cost clock reads, not filesystem I/O. Uncertainty remains closed until a
+        Package capability is checked before trusting cached ownership. Wall time
+        catches suspend gaps and backward adjustments force a lease read too.
+        Uncertainty remains closed until a
         successful read proves the exact nonce, never by acquiring another lease
         """
         with self._acquire_lock_for(library_id):
@@ -487,6 +492,7 @@ class LeaseManager:
                 held = self._held.get(library_id)
             if held is None:
                 raise LibraryOwnershipLostError("This server no longer owns the library")
+            self._package_check(held.root)
             elapsed = time.monotonic() - held.checked_at
             wall = self._clock().timestamp() - held.checked_wall
             if (
@@ -513,6 +519,10 @@ class LeaseManager:
 
     def _heartbeat_library(self, library_id: str, held: _Held) -> bool:
         """Refresh one lease. ``False`` means ownership was lost."""
+        try:
+            self._package_check(held.root)
+        except LibraryLeaseError:
+            return False  # Never refresh a lease in an incompatible package
         snapshot = read_lease(held.root)
         record = snapshot.record
 
@@ -579,6 +589,10 @@ class LeaseManager:
                 held = self._held.pop(library_id, None)
             if held is None:
                 return
+            try:
+                self._package_check(held.root)
+            except LibraryLeaseError:
+                return  # Retain the on-disk evidence without a release rewrite
             snapshot = read_lease(held.root)
             # Never overwrite an unknown, missing or changed ownership record
             if snapshot.record != held.record:
@@ -677,6 +691,18 @@ def get_lease_manager() -> LeaseManager:
         return _manager
 
 
+# Background lease writes and resumed work must respect current package capabilities
+def _check_legacy_package(root: Path) -> None:
+    from cairndex.registry.library_package import require_legacy
+
+    try:
+        require_legacy(root)
+    except (DomainError, OSError) as error:
+        raise LibraryOwnershipUncertainError(
+            "Library package changed or is unavailable; metadata remains untouched"
+        ) from error
+
+
 def _build_manager() -> LeaseManager:
     from cairndex.registry.engine import registry_session_scope
     from cairndex.registry.server_identity import get_or_create_identity
@@ -692,6 +718,7 @@ def _build_manager() -> LeaseManager:
         advertised_url=get_settings().advertised_url,
         settings=LeaseSettings.from_settings(),
         on_ownership_lost=_default_ownership_lost,
+        package_check=_check_legacy_package,
     )
 
 

@@ -76,6 +76,7 @@ import { bundleHostPath, hostFileTargetFor } from './app/hostFileTarget'
 import { type ScanOutcome, scanCompleteMessage } from './app/scanSummary'
 import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
+import { ReplicaWorkspace } from './app/ReplicaWorkspace'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import {
@@ -637,6 +638,23 @@ export default function App() {
         />
         {settingsDialog}
         {libraryDialog}
+      </>
+    )
+  }
+
+  // Capable packages use their own bounded metadata workflow and never mount legacy queries
+  if (library?.package_format === 'cairndex.replica-library') {
+    return (
+      <>
+        <ReplicaWorkspace
+          key={libraryId}
+          libraryId={libraryId}
+          libraries={libraries}
+          onChangeLibrary={changeLibrary}
+          onManage={() => setManaging(true)}
+        />
+        {libraryDialog}
+        {settingsDialog}
       </>
     )
   }

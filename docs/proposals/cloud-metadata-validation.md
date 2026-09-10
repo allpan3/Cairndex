@@ -79,3 +79,11 @@ explicit upload authorization and two actual local replicas. Verify:
 
 Passing one provider does not qualify the others. Until these checks and the
 complete migration round trip exist, the proposal remains design evidence only.
+
+## Current production boundary
+
+The prototype parser fixture checks an incomplete descriptor against the current
+package gate. Complete capable-descriptor acceptance and cached SQL/lease fencing
+are exercised by `apps/server/tests/test_replicas.py`. The production wire, indexed
+store and bounded capability are specified in [the migration contract](../replica-migration.md);
+the prototype's whole-history evaluator remains isolated from the application.

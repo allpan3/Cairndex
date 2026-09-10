@@ -2554,6 +2554,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bundles */
+        get: operations["bundles_api_v1_libraries__library_id__replica_bundles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/bundles/{bundle_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Drafts */
+        get: operations["drafts_api_v1_libraries__library_id__replica_bundles__bundle_id__drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/bundles/{bundle_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Draft */
+        put: operations["draft_api_v1_libraries__library_id__replica_bundles__bundle_id__drafts__draft_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/bundles/{bundle_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save */
+        post: operations["save_api_v1_libraries__library_id__replica_bundles__bundle_id__edits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/bundles/{bundle_id}/history/{field}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_libraries__library_id__replica_bundles__bundle_id__history__field__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dismiss */
+        delete: operations["dismiss_api_v1_libraries__library_id__replica_drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange */
+        post: operations["exchange_api_v1_libraries__library_id__replica_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_libraries__library_id__replica_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/smart-collections": {
         parameters: {
             query?: never;
@@ -3003,6 +3139,12 @@ export interface components {
             /** Roles */
             roles: components["schemas"]["ProposedRoleRead"][];
         };
+        /** BundleFields */
+        BundleFields: {
+            notes: components["schemas"]["ReplicaField"];
+            rating: components["schemas"]["ReplicaField"];
+            title: components["schemas"]["ReplicaField"];
+        };
         /**
          * BundleOrder
          * @description The scope's resulting manual order, returned by a reorder so the client
@@ -3158,6 +3300,20 @@ export interface components {
             rating?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /** Candidate */
+        Candidate: {
+            /** Revisions */
+            revisions: string[];
+            /** Value */
+            value: string | number | string[] | null;
+        };
+        /** Change */
+        Change: {
+            /** Basis */
+            basis: string[];
+            /** Value */
+            value: string | number | string[] | null;
         };
         /** ClientCapabilities */
         ClientCapabilities: {
@@ -3550,6 +3706,33 @@ export interface components {
             name: string;
             /** Sequence */
             sequence: number;
+        };
+        /** DraftItem */
+        DraftItem: {
+            /** Changes */
+            changes: {
+                [key: string]: components["schemas"]["Change"];
+            };
+            /** Id */
+            id: string;
+            /** Revision */
+            revision: number;
+        };
+        /** DraftPage */
+        DraftPage: {
+            /** Items */
+            items: components["schemas"]["DraftItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** DraftRequest */
+        DraftRequest: {
+            /** Changes */
+            changes: {
+                [key: string]: components["schemas"]["Change"];
+            };
+            /** Revision */
+            revision: number;
         };
         /**
          * EmptyTrashRequest
@@ -4039,6 +4222,22 @@ export interface components {
             /** Write Mode */
             write_mode: string;
         };
+        /** HistoryItem */
+        HistoryItem: {
+            /** Active */
+            active: boolean;
+            /** Revision */
+            revision: string;
+            /** Value */
+            value: string | number | string[] | null;
+        };
+        /** HistoryPage */
+        HistoryPage: {
+            /** Items */
+            items: components["schemas"]["HistoryItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /**
          * ImportResultRead
          * @description An import, plus what actually arrived.
@@ -4178,6 +4377,11 @@ export interface components {
             library_uuid: string;
             /** Name */
             name: string;
+            /**
+             * Package Format
+             * @default cairndex.library
+             */
+            package_format: string;
             /** Root Path */
             root_path: string;
             /** Schema Version */
@@ -4829,6 +5033,67 @@ export interface components {
             on_conflict: components["schemas"]["ConflictPolicy"];
             /** Path */
             path: string;
+        };
+        /** ReplicaBundle */
+        ReplicaBundle: {
+            fields: components["schemas"]["BundleFields"];
+            /** Id */
+            id: string;
+        };
+        /** ReplicaBundlePage */
+        ReplicaBundlePage: {
+            /** Items */
+            items: components["schemas"]["ReplicaBundle"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ReplicaField */
+        ReplicaField: {
+            /** Basis */
+            basis: string[];
+            /** Candidates */
+            candidates: components["schemas"]["Candidate"][];
+            /** Value */
+            value: string | number | string[] | null;
+        };
+        /** ReplicaStatus */
+        ReplicaStatus: {
+            /** Blocked */
+            blocked: string | null;
+            /** Exchange Error */
+            exchange_error?: string | null;
+            /** Invalid */
+            invalid: number;
+            /** Outbox */
+            outbox: number;
+            /**
+             * Peer Delivery
+             * @constant
+             */
+            peer_delivery: "unknown";
+            /** Ready */
+            ready: boolean;
+            /** Waiting */
+            waiting: number;
+        };
+        /** SaveReceipt */
+        SaveReceipt: {
+            /** Event */
+            event: string;
+        };
+        /** SaveRequest */
+        SaveRequest: {
+            /** Changes */
+            changes: {
+                [key: string]: components["schemas"]["Change"];
+            };
+            /** Operation */
+            operation: string;
+            /**
+             * Resolve
+             * @default false
+             */
+            resolve: boolean;
         };
         /** SetIdsRequest */
         SetIdsRequest: {
@@ -10211,6 +10476,308 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryOwnershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bundles_api_v1_libraries__library_id__replica_bundles_get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaBundlePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drafts_api_v1_libraries__library_id__replica_bundles__bundle_id__drafts_get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_api_v1_libraries__library_id__replica_bundles__bundle_id__drafts__draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                draft_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_api_v1_libraries__library_id__replica_bundles__bundle_id__edits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_libraries__library_id__replica_bundles__bundle_id__history__field__get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                field: "title" | "notes" | "rating";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_api_v1_libraries__library_id__replica_drafts__draft_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exchange_api_v1_libraries__library_id__replica_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_v1_libraries__library_id__replica_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaStatus"];
                 };
             };
             /** @description Validation Error */

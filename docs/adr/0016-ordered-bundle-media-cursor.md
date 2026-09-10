@@ -1,5 +1,9 @@
 # ADR-0016: Ordered bundle media cursor
 
+> Scope: legacy packages retain this decision. [ADR-0029](0029-cloud-metadata-replicas.md)
+> defines private storage/causal history for explicitly capable replica packages;
+> real-library conversion remains unavailable.
+
 - Status: accepted
 - Date: 2026-07-14
 - Branch/PR: `main` (direct owner-requested change)

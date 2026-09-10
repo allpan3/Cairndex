@@ -1,13 +1,35 @@
 # Project status
 
-- Cloud replica architecture and the first bounded production group are accepted
-  in [ADR-0029](adr/0029-cloud-metadata-replicas.md). Implementation is on
-  `fix/library-ownership-lifecycle`; the restored isolated prototype passes 55
-  acceptance tests. Work covers format fencing, a complete migration contract,
-  private storage and a bundle metadata workflow with causal edits, bounded
-  transport and conflict/draft recovery. Real-library conversion, physical source
-  writes, provider qualification, resume transport and compaction remain unavailable.
-  Production validation is in progress.
+- The first bounded production replica group is implemented on
+  `fix/library-ownership-lifecycle` under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
+  Explicitly capable synthetic packages support bundle titles, ordered notes and
+  ratings through the shared app/API/sidecar. Private SQLite atomically stores causal
+  edits, projection and outbox; bounded immutable exchange merges independent fields
+  and preserves same-field candidates, private drafts and retained values. Review
+  requires the exact current field basis; retries keep operation identity. Duplicate
+  tabs, reloads and server restarts preserve recoverable drafts. Legacy entry points,
+  cached SQL, lease heartbeats/release and source-write gates fence incompatible
+  packages. The [migration contract](replica-migration.md) inventories every current
+  table/column and non-table recovery category; real conversion remains unavailable.
+  Validation: backend 1,339 passed/one skipped (host FFmpeg lacks zscale); isolated
+  prototype 55 passed; frontend 1,154 passed; full browser suite 149 passed.
+  Ruff/format/mypy, frontend lint/format/types/build and generated API checks pass.
+  ARM development sidecar build, packaged smoke and frozen replica
+  registration/import/save/exchange pass; Docker production smoke passes with
+  non-root/read-only-root serving, synthetic media and alternate UID checks.
+  The browser proof uses independent HTTP processes and controlled local artifact
+  delivery, including offline disjoint/conflicting edits, stale review, retained-value
+  recovery, duplicate tabs and a fresh browser recovering a draft after server restart.
+  A generated conflict screenshot was visually checked; no screenshots or build output
+  are committed. Crash tests terminate subprocesses at save/import/publication/
+  resolution boundaries; these are not power-loss or provider-qualification evidence.
+  Native Rust was unchanged; native UI/.app packaging, Ubuntu CI, Windows, real cloud
+  providers and representative NAS/large-library performance were not requalified.
+  Real-library conversion, other metadata families, source operations, resume transport,
+  compaction and private-store clone/restore tooling remain separately scoped. The next
+  grouped task is complete metadata-family round-trip and conflict/recovery support
+  before considering real conversion or provider qualification. No publication,
+  deployment, installed-app replacement or owner-library operation occurred.
 
 - Ownership lifecycle group is complete on `fix/library-ownership-lifecycle`:
   backend `1d78bae4`, shared UI `5fdaca85`, and the accompanying deployment

@@ -72,6 +72,7 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
 
     if library.serving_released:
         raise LibraryReleasedError("This library is released; choose Reopen to serve it here")
+    pkg.require_legacy(Path(library.root_path))
     manager = get_lease_manager()
     manager.ensure_owned(library_id=library.id, root=Path(library.root_path))
     db_path = _db_path_for(library)

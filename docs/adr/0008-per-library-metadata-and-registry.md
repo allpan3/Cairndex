@@ -1,5 +1,9 @@
 # ADR-0008: Per-library metadata and a server-side registry
 
+> Scope: legacy packages retain this decision. [ADR-0029](0029-cloud-metadata-replicas.md)
+> defines private storage/causal history for explicitly capable replica packages;
+> real-library conversion remains unavailable.
+
 - Status: accepted (incremental implementation)
 - Date: 2026-06-28
 - Branch/PR: `feat/per-library-metadata`

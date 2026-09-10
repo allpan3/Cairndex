@@ -19,6 +19,7 @@ from cairndex.ownership import get_lease_manager
 from cairndex.ownership.lease import LeaseRecord, LeaseState
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import services as registry_service
+from cairndex.registry.library_package import read_manifest, require_legacy
 
 router = APIRouter(prefix="/libraries/{library_id}/ownership", tags=["ownership"])
 
@@ -57,6 +58,16 @@ def _holder_read(record: LeaseRecord | None) -> LeaseHolderRead | None:
 
 
 def _describe(library_id: str, root: Path, *, released: bool = False) -> LibraryOwnershipRead:
+    if read_manifest(root).replica is not None:
+        return LibraryOwnershipRead(
+            library_id=library_id,
+            state="locally_released" if released else "own",
+            mountable=not released and not lifecycle.blocked(library_id),
+            can_take_over=False,
+            redirect_url=None,
+            holder=None,
+            takeover=None,
+        )
     manager = get_lease_manager()
     state, record = manager.describe(library_id=library_id, root=root)
     progress = manager.takeover_progress(library_id)
@@ -115,6 +126,7 @@ def take_over(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
     """
     library = registry_service.get_library(db, library_id)
     root = Path(library.root_path)
+    require_legacy(root)
 
     manager = get_lease_manager()
     state, record = manager.describe(library_id=library_id, root=root)
@@ -153,8 +165,9 @@ def reopen_library(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRe
         raise NotFoundError("Library storage is unavailable; restore its mount before reopening")
     # Finish a previous failed drain before admitting a new engine generation
     lifecycle.close(library_id)
-    manager = get_lease_manager()
-    manager.acquire(library_id=library_id, root=root)
+    if read_manifest(root).replica is None:
+        manager = get_lease_manager()
+        manager.acquire(library_id=library_id, root=root)
     lifecycle.reopen(library_id)
     library.serving_released = False
     db.commit()

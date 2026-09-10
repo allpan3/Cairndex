@@ -3,7 +3,7 @@
 - Status: **accepted — architecture and first bounded production group approved 2026-09-10**
 - Date: 2026-09-10
 - Branch: `fix/library-ownership-lifecycle`
-- Would amend: ADR-0008 storage authority, ADR-0018 cloud exclusivity/portability,
+- Amends for capable replica packages: ADR-0008 storage authority, ADR-0018 cloud exclusivity/portability,
   ADR-0016 progress portability, and ADR-0021 journal scope for converted libraries
 - Implementation status: see `docs/STATUS.md`; prototype evidence is not provider qualification
 
@@ -34,6 +34,18 @@ not whole-library snapshot selection, text merging or a general-purpose CRDT.
 | Private DB + complete immutable library snapshots | Good complete-generation boundary and recovery; divergent snapshots force a whole-library choice, including unrelated edits, unless a semantic merge layer is added; large transfers for small saves | Backup/migration tool, not normal reconciliation |
 | Mutable structured file per entity, optionally native/serverless | Smaller conflicts than a DB; partial files, multi-file relations, deletes, causality and conflict copies still require a protocol; replacing SQL/API adds migration and indexing work | No correctness simplification |
 | Private DB + immutable domain transactions | Per-field disjoint merge, explicit conflicts, transactional local saves; needs stable edit identity, ancestry, domain validation and retained history | Recommended minimum satisfying the requirement |
+
+## First production capability
+
+The [production contract](../replica-migration.md) specifies the bounded
+`bundle_metadata_v1` wire revision and exhaustive migration inventory. Existing
+synthetic bundle titles, ordered notes and ratings use one canonical envelope per
+transaction with per-field observed revision links. The complete envelope replaces
+the prototype's two-file manifest/payload publication; atomic no-replace link
+publication protects immutable names. Notes are one ordered-list conflict unit.
+The indexed private store does not reuse the prototype's whole-history evaluator.
+Other metadata families, real conversion and fresh-incarnation restore tooling
+remain unavailable. The broader architecture below specifies their target behavior.
 
 ## Identities, generations and local transactions
 
@@ -189,8 +201,8 @@ No automatic conversion is approved or implemented. Proposed rollout:
    leave the legacy package authoritative and untouched.
 4. Publish a new epoch and complete descriptor only after local seed validation;
    another device waits for every dependency. Use the **new format discriminator**,
-   not just a version increment: the current legacy parser reads `format_version`
-   without enforcing its supported value. A synthetic test confirms the distinct
+   not just a version increment: older legacy parsers read `format_version`
+   without enforcing its supported value; the current parser also fences unknown versions. A synthetic test confirms the distinct
    discriminator is rejected before the legacy DB is opened. Full mixed-version
    route/startup testing is still a production gate.
 5. Switch only by explicit owner action after a reviewed migration receipt.

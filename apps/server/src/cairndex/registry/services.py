@@ -15,11 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import LibraryStatus
 from cairndex.registry import library_package as pkg
 from cairndex.registry.models import RegisteredLibrary
+from cairndex.replicas.protocol import PackageFormatError
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,15 @@ def _normalize_root(raw: str) -> Path:
 
 
 def _probe_status(root: Path) -> LibraryStatus:
-    """A library is available when its root, marker DB, and manifest all exist."""
-    ok = root.is_dir() and pkg.db_path(root).is_file() and pkg.manifest_path(root).is_file()
+    """Probe the package generation while preserving legacy locked-manifest handling"""
+    try:
+        manifest = pkg.read_manifest(root)
+        ok = root.is_dir() and (manifest.replica is not None or pkg.db_path(root).is_file())
+    except ValidationError:
+        # Legacy auth treats unreadable metadata as locked before any content access
+        ok = root.is_dir() and pkg.manifest_path(root).is_file() and pkg.db_path(root).is_file()
+    except (DomainError, OSError, UnicodeError):
+        ok = False
     return LibraryStatus.AVAILABLE if ok else LibraryStatus.UNAVAILABLE
 
 
@@ -51,6 +59,7 @@ def _insert(session: Session, *, manifest: pkg.LibraryManifest, root: Path) -> R
         manifest_path=pkg.manifest_path(root).as_posix(),
         status=_probe_status(root),
         schema_version=manifest.format_version,
+        package_format=manifest.package_format,
     )
     session.add(library)
     try:
@@ -95,7 +104,7 @@ def register_existing_library(session: Session, *, root_path: str) -> Registered
     manifest = pkg.detect(root)  # raises ValidationError if the marker is broken
     if manifest is None:
         raise ValidationError(f"{root.as_posix()!r} is not a Cairndex library (no marker found)")
-    if not pkg.db_path(root).is_file():
+    if manifest.replica is None and not pkg.db_path(root).is_file():
         raise ValidationError(f"library at {root.as_posix()!r} is missing its {pkg.DB_NAME}")
 
     return _insert(session, manifest=manifest, root=root)
@@ -159,6 +168,16 @@ def get_library(session: Session, library_id: str) -> RegisteredLibrary:
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
+    if pkg.manifest_path(Path(library.root_path)).exists():
+        try:
+            manifest = pkg.read_manifest(Path(library.root_path))
+        except (ValidationError, OSError, UnicodeError):
+            pass  # Preserve existing locked/unavailable behavior for unreadable manifests
+        else:
+            if manifest.library_uuid != library.library_uuid:
+                raise ConflictError("Registered library identity changed")
+            if manifest.package_format != library.package_format:
+                raise PackageFormatError("Registered library format changed; recovery required")
     # Re-probe so a freshly fetched row reflects current mount availability.
     status = _probe_status(Path(library.root_path))
     if status != library.status:

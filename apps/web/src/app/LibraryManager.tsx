@@ -582,12 +582,14 @@ function LibraryRow({
       </button>
       {released && <span className="lib-row__note">Released on this server</span>}
       {serving.error && <span role="alert">{serving.error.message}</span>}
-      <WriteModeToggle
-        library={library}
-        busy={busy}
-        allowed={writeModeAllowed}
-        onEnable={() => setAsking('write-mode')}
-      />
+      {library.package_format !== 'cairndex.replica-library' && (
+        <WriteModeToggle
+          library={library}
+          busy={busy}
+          allowed={writeModeAllowed}
+          onEnable={() => setAsking('write-mode')}
+        />
+      )}
       <button
         className="btn btn--sm"
         onClick={() => setAsking('remove')}

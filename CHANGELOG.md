@@ -49,6 +49,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Bounded synthetic replica metadata workflow: private SQLite, immutable causal
+  edits for bundle title/ordered notes/rating, mandatory editor basis and retry
+  identity, bounded exchange, conflict review, retained values and private drafts.
+  Package capability fences preserve legacy storage and source-write boundaries;
+  a complete reversible migration contract keeps real conversion unavailable.
+
 - Libraries offers explicit Release and Reopen while the app stays open. Release
   retains registration and blocks background reacquisition, with a retry state
   when draining or database closure has not finished.
@@ -146,8 +152,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
-- Proposed cloud-replica design and disposable causal metadata prototype, with
-  deterministic two-replica delivery and crash tests. Production synchronization,
+- Accepted cloud-replica architecture and disposable causal metadata prototype, with
+  deterministic two-replica delivery and crash tests. Real-library conversion,
   migration and provider support remain unimplemented.
 
 - **Current CI and attestation actions.** GitHub-hosted workflows use the current

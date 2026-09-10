@@ -17,6 +17,7 @@ from cairndex.core.time import utcnow
 from cairndex.persistence import models  # noqa: F401  (populate content metadata)
 from cairndex.persistence.base import Base
 from cairndex.persistence.engine import library_engine_scope
+from cairndex.replicas.protocol import PACKAGE_FORMAT, Descriptor, PackageFormatError
 
 MARKER_DIR = ".cairndex"
 MANIFEST_NAME = "manifest.json"
@@ -56,6 +57,8 @@ class LibraryManifest:
     db: str
     content_root: str
     created_at: str
+    package_format: str = FORMAT
+    replica: Descriptor | None = None
 
 
 def marker_dir(root: Path) -> Path:
@@ -93,8 +96,35 @@ def _parse_manifest(raw: str) -> LibraryManifest:
         raise ValidationError(f"manifest is not valid JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValidationError("manifest must be a JSON object")
-    if data.get("format") != FORMAT:
-        raise ValidationError(f"manifest format must be {FORMAT!r}")
+    if data.get("format") == PACKAGE_FORMAT:
+        if type(data.get("format_version")) is not int:
+            raise PackageFormatError("Unsupported replica format version")
+        from pydantic import ValidationError as SchemaError
+
+        try:
+            descriptor = Descriptor.model_validate(data)
+        except SchemaError as exc:
+            raise PackageFormatError(
+                "Unsupported replica format or capabilities; upgrade required"
+            ) from exc
+        return LibraryManifest(
+            descriptor.library_uuid,
+            descriptor.display_name,
+            1,
+            "",
+            ".",
+            "",
+            package_format=PACKAGE_FORMAT,
+            replica=descriptor,
+        )
+    if (
+        data.get("format") != FORMAT
+        or type(data.get("format_version")) is not int
+        or data["format_version"] != FORMAT_VERSION
+    ):
+        raise PackageFormatError("Unsupported library format; upgrade required")
+    if data.get("db", DB_NAME) != DB_NAME or data.get("content_root", ".") != ".":
+        raise PackageFormatError("Unsupported library storage layout")
     try:
         return LibraryManifest(
             library_uuid=str(data["library_uuid"]),
@@ -111,9 +141,18 @@ def _parse_manifest(raw: str) -> LibraryManifest:
 def read_manifest(root: Path) -> LibraryManifest:
     """Read and validate the manifest at ``root``. Raises if absent/invalid."""
     path = manifest_path(root)
+    if path.is_symlink() or marker_dir(root).is_symlink():
+        raise PackageFormatError("Library metadata must remain inside its root")
     if not path.is_file():
         raise ValidationError(f"no {MARKER_DIR}/{MANIFEST_NAME} found at {root.as_posix()!r}")
-    return _parse_manifest(path.read_text(encoding="utf-8"))
+    with path.open("rb") as stream:
+        raw = stream.read(16_385)
+    if len(raw) > 16_384:
+        raise PackageFormatError("Library manifest exceeds the supported size")
+    try:
+        return _parse_manifest(raw.decode("utf-8"))
+    except UnicodeError as error:
+        raise ValidationError("manifest is not valid UTF-8") from error
 
 
 def detect(root: Path) -> LibraryManifest | None:
@@ -176,4 +215,12 @@ def create_package(root: Path, display_name: str) -> LibraryManifest:
         encoding="utf-8",
     )
     _init_library_db(db_path(root))
+    return manifest
+
+
+# Fence unsupported storage before leases, cached engines or source mutation
+def require_legacy(root: Path) -> LibraryManifest:
+    manifest = read_manifest(root)
+    if manifest.package_format != FORMAT:
+        raise PackageFormatError("This library supports only the replica bundle metadata workflow")
     return manifest

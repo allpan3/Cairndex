@@ -22,6 +22,7 @@ from cairndex.ownership.lifecycle import lifecycle
 from cairndex.persistence.engine import discard_all_plans
 from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
+from cairndex.replicas.service import ReplicaWorker
 from cairndex.version import APP_VERSION
 
 
@@ -41,6 +42,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Before anything can open a library: a grouping plan lasts as long as the server
     # that made it (ADR-0022), so whatever the previous run left goes now.
     discard_all_plans()
+    replicas = ReplicaWorker()
+    replicas.start()
     worker: Worker | None = None
     if settings.worker_enabled:
         worker = Worker(get_registry_sessionmaker(), build_registry())
@@ -65,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # then maintenance), fold each library's WAL back in and close it, and
         # only then release the leases — so every library is left as a single
         # consistent file *before* another machine is invited to pick it up.
+        replicas.stop()
         if worker is not None:
             worker.stop()
         if maintenance is not None:

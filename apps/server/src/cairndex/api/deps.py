@@ -73,9 +73,12 @@ def require_library_ownership(library_id: str, root: Path) -> None:
     machine is writing through a share or a sync engine is exactly what ADR-0008
     rejected. So there is no leaseless read-only mount: no lease, no mount.
 
-    Cheap by construction: a library we already hold costs one dictionary
-    lookup, so this adds no filesystem I/O to the request path.
+    Validate the package capability before trusting cached lease ownership;
+    unsupported replica or future packages never enter legacy storage.
     """
+    from cairndex.registry.library_package import require_legacy
+
+    require_legacy(root)
     get_lease_manager().ensure_owned(library_id=library_id, root=root)
 
 

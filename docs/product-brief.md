@@ -25,7 +25,7 @@ The first product target is the computer-side web application. Android TV suppor
 
 1. **Bundle Browser is bundle-first.** In Bundle Browser, the visible item is an Asset Bundle, not a file.
 2. **File Browser is filesystem-first.** In File Browser, the visible items are physical directories and files under the active library root. File Browser is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
-3. **Libraries are the storage scope.** A Cairndex library is a directory with `.cairndex/{manifest.json,library.db,cache/}`. The server-local registry tracks known libraries and jobs.
+3. **Libraries are the storage scope.** Legacy packages use `.cairndex/{manifest.json,library.db,cache/}`; capable replicas exchange immutable metadata and keep their working DB privately outside provider folders (ADR-0029). The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
 6. **Metadata-only and non-destructive first.** The current File Browser milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
@@ -33,7 +33,7 @@ The first product target is the computer-side web application. Android TV suppor
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
 9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN or private overlay network.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
-11. **One source of truth.** Each library's `library.db` is authoritative for app metadata. The registry DB is server-local runtime state for known libraries and jobs, not portable content metadata.
+11. **Explicit metadata authority.** Legacy libraries use their `library.db`; capable replicas use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
 12. **Progressive capability.** Direct playback comes first; remux/transcoding, File Browser write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
 
 ## Fixed product decisions

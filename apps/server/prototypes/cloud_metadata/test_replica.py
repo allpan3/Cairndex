@@ -564,12 +564,11 @@ def test_crash_during_resolution(pair: Pair, phase: str) -> None:
     assert pair.b.recover(rejected).values["entity/bundle/title"] == "Amber"
 
 
-# The proposed format discriminator fails closed in the current legacy manifest reader
-# Increasing only format_version would not provide that protection
-# This fixture exercises parsing only and does not migrate an actual package
-def test_legacy_manifest_reader_rejects_new_format(tmp_path: Path) -> None:
-    from cairndex.core.errors import ValidationError
+# An incomplete prototype descriptor remains fenced by the production package reader
+# Historical legacy-parser behavior is recorded separately in the prototype validation record
+def test_incomplete_descriptor_rejected(tmp_path: Path) -> None:
     from cairndex.registry.library_package import read_manifest
+    from cairndex.replicas.protocol import PackageFormatError
 
     marker = tmp_path / ".cairndex"
     marker.mkdir()
@@ -583,7 +582,7 @@ def test_legacy_manifest_reader_rejects_new_format(tmp_path: Path) -> None:
             }
         )
     )
-    with pytest.raises(ValidationError, match="format"):
+    with pytest.raises(PackageFormatError, match="format"):
         read_manifest(tmp_path)
     assert not (marker / "library.db").exists()
 

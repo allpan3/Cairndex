@@ -29,6 +29,7 @@ from cairndex.auth import is_protected
 from cairndex.core.config import get_settings
 from cairndex.core.errors import AuthRequiredError, WriteModeDisabledError
 from cairndex.registry import services as registry_service
+from cairndex.registry.library_package import require_legacy
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ def ensure_write_mode(registry: Session, library_id: str) -> None:
     gate said no, because the two have different fixes — one is a toggle the
     owner owns, the other is server configuration they may not control.
     """
+    require_legacy(Path(registry_service.get_library(registry, library_id).root_path))
     state = read_write_mode(registry, library_id)
     if not state.allowed_by_deployment:
         raise WriteModeDisabledError(
@@ -100,6 +102,7 @@ def set_write_mode(
     """
     library = registry_service.get_library(registry, library_id)
     root = Path(library.root_path)
+    require_legacy(root)
 
     if enabled:
         if not get_settings().deployment_allows_write_mode():

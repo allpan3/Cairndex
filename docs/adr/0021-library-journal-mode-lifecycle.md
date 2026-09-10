@@ -1,5 +1,9 @@
 # ADR-0021: Library journal-mode lifecycle — WAL while served, rollback at rest
 
+> Scope: legacy packages retain this decision. [ADR-0029](0029-cloud-metadata-replicas.md)
+> defines private storage/causal history for explicitly capable replica packages;
+> real-library conversion remains unavailable.
+
 - Status: accepted (owner-ratified 2026-07-30)
 - Date: 2026-07-30
 - Branch/PR: `fix/library-journal-mode-portability`

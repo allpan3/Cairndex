@@ -23,6 +23,7 @@ const MOVIES: LibraryRead = {
   root_path: '/srv/movies',
   status: 'available',
   schema_version: 1,
+  package_format: 'cairndex.library',
   write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',

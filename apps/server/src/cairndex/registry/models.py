@@ -37,6 +37,9 @@ class RegisteredLibrary(RegistryBase):
     )
     # The library DB's schema/format version, as recorded in the manifest.
     schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    package_format: Mapped[str] = mapped_column(
+        String(64), default="cairndex.library", server_default="cairndex.library"
+    )
     # Guarded file operations inside this library's root (ADR-0013), default off.
     # Deliberately registry state rather than manifest state: copying a library
     # to another server must never carry write permission with it. The

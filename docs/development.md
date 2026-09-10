@@ -43,6 +43,21 @@ uv run pytest                  # tests
 Auto-fix formatting/lint issues with `uv run ruff format .` and
 `uv run ruff check --fix .`.
 
+## Synthetic production replica workflow
+
+From `apps/server`, `uv run python -m cairndex.devtools.replica_fixture` creates a
+new temporary synthetic package and prints its location. Register it through the
+normal library picker/API with a private `CAIRNDEX_DATA_DIR` outside sync folders.
+Copy only that package to another location and serve it from another isolated
+server/data directory for concurrent editing. The existing app selects the capable
+metadata workspace. Never copy the private database to create another replica.
+
+Run `uv run pytest tests/test_replicas.py -q` for protocol/HTTP/crash acceptance;
+from `apps/web`, run `npx playwright test e2e/replicas.spec.ts` for two independent
+real HTTP processes, two browser contexts and controlled offline file delivery.
+The [migration contract](replica-migration.md) specifies wire/storage limits,
+recovery categories and the complete conversion gates. Real conversion is unavailable.
+
 ## Isolated cloud metadata prototype
 
 The disposable experiment under `apps/server/prototypes/cloud_metadata` is not

@@ -98,7 +98,9 @@ class LibraryLifecycle:
                         "Retry Release shortly"
                     )
             from cairndex.media.hls import close_library_sessions
+            from cairndex.replicas.service import close as close_replica
 
+            close_replica(library_id)
             close_library_sessions(library_id)
             manager = get_lease_manager()
             owned = manager.holds(library_id) and not lost

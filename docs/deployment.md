@@ -6,6 +6,17 @@
 > rationale and [ADR-0008](adr/0008-per-library-metadata-and-registry.md) for the
 > current metadata model.
 
+## Replica storage boundary
+
+The synthetic capable workflow keeps SQLite, WAL, drafts and unsent events under
+`CAIRNDEX_DATA_DIR/replicas`, outside provider folders. Back up this private state
+consistently in addition to immutable package artifacts; copying the package alone
+cannot recover unpublished edits or drafts. Do not clone private state into a
+second author. Exchange requires macOS/Linux POSIX directory descriptors and atomic
+hard-link publication; unsupported storage reports a retryable exchange failure.
+No provider or Windows qualification, real-library conversion, deployment or source
+write capability is implied. See the [contract](replica-migration.md).
+
 ## Local development stack
 
 `docker-compose.yml` (repo root) is the containerized *development* stack —
