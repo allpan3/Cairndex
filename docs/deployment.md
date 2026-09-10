@@ -182,8 +182,10 @@ deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 - **Startup preflight**: the entrypoint refuses to start if `CAIRNDEX_DATA_DIR`
   is not writable by uid 10001. It warns, without refusing, when nothing is
   mounted under `/libraries` at all, and for each mount that is not writable. A
-  read-only library mount is a legitimate browse-only deployment; an
-  unwritable `/data` is not, and without the check it surfaces much later as an
+  wholly read-only library mount is unsupported: browsing needs writable
+  metadata, locks, progress and cache under `.cairndex`. Protected source media
+  with a writable metadata package is supported. An unwritable `/data` is not,
+  and without the check it surfaces much later as an
   opaque SQLite "unable to open database file" from whichever request happened
   to touch the registry first. This is the most common NAS misconfiguration,
   because a bind-mounted host directory arrives with the host's ownership.
@@ -435,8 +437,29 @@ at a time and quit cleanly before opening it elsewhere. If both sides ever write
 while the sync is partitioned, the sync engine leaves a conflict copy next to the
 lease; the server logs that loudly and never resolves or deletes it, because that
 artifact is the only evidence the library may have diverged. No folder-based lease
-can prevent a partitioned dual write — what it guarantees is bounded detection and
-no silent data loss (ADR-0018 §7).
+can prevent a partitioned dual write — it provides cooperative detection, not
+distributed fencing or a guarantee of lossless recovery (ADR-0018 lifecycle amendment).
+
+### Explicit release, sleep and storage permissions
+
+**Libraries → Release** drains this server's work, closes SQLite under ownership,
+and then releases. Registration remains; **Reopen** is deliberate and checks
+ownership. Release intent survives restart. Timeout or checkpoint failure keeps
+admission closed and does not advertise a clean handoff; retry Release.
+
+Awake idle servers retain ownership. Closing or sleeping an individual client,
+blanking a display, or closing a lid while the server remains awake never releases
+it. After an actual suspension, long heartbeat gap or storage I/O failure, resumed
+work revalidates ownership before proceeding. Uncertainty pauses writes; a
+changed record stops work without reacquisition or journal rewriting.
+
+Keep `.cairndex` metadata, locks, progress and cache writable, together with
+server `/data` and `/tmp`. A read-only container root and protected source media
+are compatible with those writable mounts; a wholly read-only metadata package
+is not. Run `python3 infra/docker/ownership_smoke.py --image <local-image>` for
+isolated UID 10001 and read-only bind-mount checks. See
+[architecture](architecture.md#library-release-and-recovery) for the bounded
+clock checks and cooperative file-lease limits.
 
 ### Keeping a synced library's files consistent
 

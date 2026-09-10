@@ -24,9 +24,9 @@ if ! mkdir -p "$data_dir" 2>/dev/null || ! [ -w "$data_dir" ]; then
     exit 1
 fi
 
-# Warnings, not failures: a read-only library is a legitimate way to run
-# Cairndex for browsing alone, and an empty root is simply what a container
-# looks like before anyone has mounted a share into it.
+# Warn rather than refuse startup: source roots may be protected while the
+# metadata package has its own writable mount. An empty root is expected
+# before a library share is configured.
 #
 # Every mount is a *child* of the root — /libraries/main, /libraries/archive —
 # and never the root itself. Two reasons, one of which is this check:
@@ -48,8 +48,8 @@ else
     for mount in "${library_mounts[@]}"; do
         if ! [ -w "$mount" ]; then
             echo "WARNING: library mount '${mount%/}' is not writable by uid $(id -u)." >&2
-            echo "         Existing libraries can be browsed, but creating or" >&2
-            echo "         scanning one needs to write its .cairndex/ package." >&2
+            echo "         Browsing requires a writable .cairndex/ package for" >&2
+            echo "         metadata, locks, progress and cache; source media may stay protected." >&2
         fi
     done
 fi

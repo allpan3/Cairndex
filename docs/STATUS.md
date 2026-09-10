@@ -1,12 +1,23 @@
 # Project status
 
-- Ownership lifecycle implementation is on `fix/library-ownership-lifecycle`.
-  Handoff drains admitted work; release intent persists in the registry;
-  resumed writes and maintenance validate ownership. Synthetic lifecycle/API/job
-  and permission tests pass. All 148 browser tests and 1,154 frontend tests pass;
-  packaged native release/reopen and Docker permission controls were exercised.
-  Final package revalidation is in progress; no publication or deployment is
-  authorized for this task.
+- Ownership lifecycle group is complete on `fix/library-ownership-lifecycle`:
+  backend `1d78bae4`, shared UI `5fdaca85`, and the accompanying deployment
+  validation commit. Handoff drains admitted work; release intent persists;
+  resumed writes and maintenance validate ownership. Release/Reopen retain
+  registration and distinguish pending release, lost ownership and uncertainty.
+  Validation: backend 1,302 passed/one skipped; frontend 1,154 passed; browser
+  148 passed; Rust 122 passed. Backend/frontend static gates and builds, Rust
+  formatting/clippy, the ARM sidecar and isolated macOS `.app` build passed.
+  The final native build reopened a synthetic library after explicit release,
+  then quit with a released lease and clean SQLite header. Docker startup/media
+  smoke and UID 10001 read-only-root tests passed: protected sources work with
+  writable metadata; wholly read-only metadata refuses access without changes.
+  Documentation covers README, architecture, ADR-0018/0021, deployment and
+  changelog; API artifacts are regenerated. Suspend coverage uses controlled
+  clocks and a disposable SIGSTOP/SIGCONT process, not host sleep or lid changes.
+  Cooperative leases cannot fence partitioned cloud replicas or revoke OS work
+  already issued. Ubuntu CI, notarization and release packaging were not run.
+  No publication or deployment occurred. Further audit groups await owner scope.
 
 - Frozen desktop development uses a separate sidecar under `dist/development`,
   links the host media-tool cache, and disables resource staging for `just bundled`.
