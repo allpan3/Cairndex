@@ -18,6 +18,11 @@ agents working in this repository.
 
 ## Status
 
+Concurrent offline cloud-folder editing is **not implemented**. The proposed
+[replica design](docs/adr/0029-cloud-metadata-replicas.md) and isolated executable
+prototype explore that requirement; current libraries retain their ownership
+rules. NAS is optional storage, not a required application mode.
+
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
 hierarchical **Collections**, a read-only physical **File Browser**, hierarchical

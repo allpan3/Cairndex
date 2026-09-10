@@ -47,3 +47,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0026](0026-armed-range-loop.md) | An armed range loop confines ordinary playback | accepted |
 | [0027](0027-vendored-muda-command-modifier.md) | Do not vendor muda for the Full Screen shortcut | rejected; conclusion superseded by [0028](0028-globe-shortcut-default-for-full-screen.md) |
 | [0028](0028-globe-shortcut-default-for-full-screen.md) | Register the AppKit Globe-shortcut default so Full Screen shows ⌃⌘F | accepted |
+| [0029](0029-cloud-metadata-replicas.md) | Private replicas with immutable metadata changes | accepted; bounded production implementation |

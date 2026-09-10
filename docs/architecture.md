@@ -11,6 +11,14 @@
 > roadmap, and `docs/STATUS.md` for current gaps, validation state, and
 > recommended next tasks.
 
+## Proposed replica architecture
+
+[ADR-0029](adr/0029-cloud-metadata-replicas.md) proposes private working databases
+and immutable causal metadata transactions for concurrent offline replicas.
+The isolated prototype does not change current serving, ownership, package or
+API behavior described below. Provider qualification and production migration
+remain unimplemented.
+
 ## Library release and recovery
 
 A server retains library ownership while it is awake, including UI idle time,

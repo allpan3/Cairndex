@@ -9,6 +9,10 @@
 > (suggestion-based grouping). ADR-0004 (Eagle import) is superseded history; the
 > importer is removed.
 
+[ADR-0029](adr/0029-cloud-metadata-replicas.md) proposes a separate replica
+transport schema, authored/runtime classification and preserved-ID migration.
+No replica schema or migration is present in the production models below.
+
 ## Conventions
 
 - **Primary keys:** ULID stored as `CHAR(26)` (`UlidPk`), generated in the app

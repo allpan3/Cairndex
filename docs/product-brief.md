@@ -70,6 +70,17 @@ Unless the product owner explicitly changes them, treat these as settled:
 - The first user is a single owner. Avoid choices that make later multi-user support require a full rewrite.
 - Eagle import/synchronization is removed from the current product path. Eagle remains a UI and interaction reference only.
 
+## Concurrent local replicas: required outcome, proposed design
+
+Multiple devices must be able to keep local cloud-folder replicas open, edit
+while offline or before provider sync completes, and reconcile afterward.
+Understandable choices may resolve conflicts if complete versions are preserved
+and unrelated edits are not silently discarded. NAS hosting and local replicas
+are usage scenarios, not mandated operating modes; the sidecar and SQLite may
+remain. This outcome is not implemented by the current exclusive ownership
+contract. [ADR-0029](adr/0029-cloud-metadata-replicas.md) proposes a design and
+records prototype evidence; its architecture and migration await owner review.
+
 ## Canonical domain model
 
 Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until intentionally migrated or retained as historical table names.

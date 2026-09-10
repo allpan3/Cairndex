@@ -146,6 +146,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Proposed cloud-replica design and disposable causal metadata prototype, with
+  deterministic two-replica delivery and crash tests. Production synchronization,
+  migration and provider support remain unimplemented.
+
 - **Current CI and attestation actions.** GitHub-hosted workflows use the current
   setup, cache, dependency-review, Buildx, and SBOM actions. Release and image
   publication now use the unified `actions/attest` v4 interface for both SLSA

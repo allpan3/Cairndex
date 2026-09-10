@@ -43,6 +43,24 @@ uv run pytest                  # tests
 Auto-fix formatting/lint issues with `uv run ruff format .` and
 `uv run ruff check --fix .`.
 
+## Isolated cloud metadata prototype
+
+The disposable experiment under `apps/server/prototypes/cloud_metadata` is not
+part of the application package. From `apps/server`, run:
+
+```bash
+uv run python -m prototypes.cloud_metadata
+uv run pytest prototypes/cloud_metadata -q
+uv run ruff check prototypes/cloud_metadata
+uv run ruff format --check prototypes/cloud_metadata
+uv run mypy --strict prototypes/cloud_metadata
+```
+
+It generates synthetic temporary replicas and simulates file delivery locally;
+it accepts no library path and performs no cloud upload. See the
+[validation record](proposals/cloud-metadata-validation.md) for crash coverage
+and the boundary between protocol evidence and provider qualification.
+
 ## Frontend (`apps/web`)
 
 ```bash

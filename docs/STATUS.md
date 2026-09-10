@@ -1,5 +1,14 @@
 # Project status
 
+- Cloud replica architecture and the first bounded production group are accepted
+  in [ADR-0029](adr/0029-cloud-metadata-replicas.md). Implementation is on
+  `fix/library-ownership-lifecycle`; the restored isolated prototype passes 55
+  acceptance tests. Work covers format fencing, a complete migration contract,
+  private storage and a bundle metadata workflow with causal edits, bounded
+  transport and conflict/draft recovery. Real-library conversion, physical source
+  writes, provider qualification, resume transport and compaction remain unavailable.
+  Production validation is in progress.
+
 - Ownership lifecycle group is complete on `fix/library-ownership-lifecycle`:
   backend `1d78bae4`, shared UI `5fdaca85`, and the accompanying deployment
   validation commit. Handoff drains admitted work; release intent persists;
