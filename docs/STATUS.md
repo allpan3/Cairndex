@@ -1,7 +1,7 @@
 # Project status
 
 - The first bounded production replica group is implemented on
-  `fix/library-ownership-lifecycle` under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
+  `fix/library-ownership-lifecycle`, implementation checkpoint `55528dd5`, under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
   Explicitly capable synthetic packages support bundle titles, ordered notes and
   ratings through the shared app/API/sidecar. Private SQLite atomically stores causal
   edits, projection and outbox; bounded immutable exchange merges independent fields
@@ -30,6 +30,12 @@
   grouped task is complete metadata-family round-trip and conflict/recovery support
   before considering real conversion or provider qualification. No publication,
   deployment, installed-app replacement or owner-library operation occurred.
+  Privacy: the implementation commit and staged/message scans pass. The full
+  `origin/main..HEAD` gate is **blocked by the 8 MiB cumulative new-blob limit**,
+  dominated by repeated versions of existing status/changelog/API documents across
+  the branch. No generated binaries or dependency trees were staged. Publication
+  requires authorized history cleanup and a fresh complete gate; the current task
+  forbids rewriting history, so the branch is preserved without publication.
 
 - Ownership lifecycle group is complete on `fix/library-ownership-lifecycle`:
   backend `1d78bae4`, shared UI `5fdaca85`, and the accompanying deployment
