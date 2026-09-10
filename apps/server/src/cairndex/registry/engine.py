@@ -28,6 +28,7 @@ from cairndex.registry.base import RegistryBase
 # NOT NULL column needs a constant DEFAULT, which is what makes SQLite's
 # single-pass ADD COLUMN legal on a table that already has rows.
 _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("registered_libraries", "serving_released", "BOOLEAN NOT NULL DEFAULT 0"),
     ("job_queue", "phase", "VARCHAR(32)"),
     ("job_queue", "message", "TEXT"),
     # ADR-0013: an existing registry row predates write mode and must come back

@@ -204,3 +204,18 @@ Harder / follow-up:
   recovery command.
 - Owner-reported incident and design discussion, 2026-07-30 (WAL-while-serving
   ratified, with the unclean-shutdown risk accepted explicitly).
+
+## Handoff amendment (owner-approved 2026-09-10)
+
+Journal conversion requires verified ownership and a completed drain of admitted
+work. Conversion failure retains ownership and reports incomplete release. Lost
+or unverifiable ownership disposes without an explicit checkpoint/journal rewrite.
+CLI benchmarks and reindexing acquire a separate maintenance lease before SQLite
+or local-plan initialization, renew it while working, and close before release.
+They refuse live foreign leases and never perform an automatic stale takeover.
+
+Managed library connections disable SQLite's implicit checkpoint on last close.
+Lost-owner disposal therefore retains the database and WAL recovery bytes without
+folding them into the main file. Clean handoff explicitly checkpoints through a
+fresh connection after draining; an old session factory cannot revive a retired
+engine after reopening.

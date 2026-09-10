@@ -879,3 +879,17 @@ Every third-party workflow action outside GitHub's own `actions/*` and
 `github/*` namespaces is pinned to an immutable commit SHA. Keep the human
 version comment beside each pin, and let Dependabot propose reviewed updates;
 do not replace a pin with a moving major, tag, or branch.
+
+## Ownership lifecycle validation
+
+Use disposable libraries and distinct lease identities. `/ownership/release`
+drains the serving library without removing registration; `/ownership/reopen`
+is the explicit acquisition path. Client disconnects never invoke release.
+The lifecycle tests cover checked-out sessions, requests, jobs, maintenance,
+clock gaps, lost owners, storage uncertainty and exact benchmark refusal effects.
+
+Query benchmarks and search reindexing are ownership-checked maintenance, not
+mutation-free inspection. Release the serving library first. SQLite journal
+mode, schema/index initialization and server-local plan files can change; source
+media are not modified. Maintenance uses an independent ephemeral identity so
+sharing a data directory cannot impersonate a running server.

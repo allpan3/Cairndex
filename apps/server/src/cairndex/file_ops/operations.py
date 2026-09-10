@@ -29,6 +29,7 @@ from cairndex.domain.file_names import display_title_after_move
 from cairndex.file_ops import fsmove, journal, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
+from cairndex.ownership.lifecycle import check_work_ownership
 from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
 
 
@@ -408,6 +409,7 @@ def make_directory(session: Session, root: Path, *, path: str) -> OperationResul
 
     operation = journal.begin(session, op=FileOpType.MKDIR, payload={"destination": relative})
     try:
+        check_work_ownership()
         destination.mkdir()
     except OSError as error:
         journal.fail(session, operation, _os_error_message(error))
@@ -592,6 +594,7 @@ def empty_trash(session: Session, root: Path, *, older_than_days: int | None = N
             continue
         entries = [trash.entry_from_payload(item) for item in operation.payload.get("entries", [])]
         for entry in entries:
+            check_work_ownership()
             trash.delete_permanently(root, entry)
             if entry.file_id is None:
                 continue

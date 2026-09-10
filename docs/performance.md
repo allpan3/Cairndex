@@ -25,7 +25,7 @@ a third, for storyboard generation, is described in its own section below:
       --collections 1000 --tags 2000 --seed 1234
   ```
 
-- **`benchmark_queries`** — opens a library read-only and times the hot paths
+- **`benchmark_queries`** — opens a library ownership-checked maintenance and times the hot paths
   (browse first page / deep pagination, collection & tag filters incl.
   descendants, Smart-Collection preview, the sidebar counts, per-bundle reads,
   thumbnail lookup) over `--iterations` runs. `--explain` also dumps SQLite
@@ -206,3 +206,13 @@ which is also the friendlier pattern for a network mount.
   per-bundle EXISTS, or revisiting a closure table through a new ADR if recursive
   collection rollup itself becomes too slow.
 - No external infrastructure was introduced; SQLite remains the store.
+
+### Maintenance ownership
+
+The query benchmark acquires an independent lease before opening SQLite and
+refuses a live holder without changing database, journal, sidecar, lease or local
+plan files. It never confirms stale takeover. Release the library on its server
+before benchmarking. Successful runs can change journal and local-plan state;
+this is maintenance, not mutation-free inspection. Cleanup closes SQLite while
+still owning the library, then releases. Failed cleanup leaves recovery state
+and does not advertise a clean handoff.

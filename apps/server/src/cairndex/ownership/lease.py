@@ -121,10 +121,9 @@ class LeaseSnapshot:
     lease — someone or something wrote them. An I/O error means the read itself
     failed (an offline mount, a permissions blip, ``ESTALE``), which says
     nothing about who holds the lease. Acquisition treats both as UNREADABLE —
-    "we could not find out" must never become "nobody holds it" — but the
-    heartbeat must not surrender over an I/O error the way it does over a
-    foreign write, for the same reason it already tolerates a failed *write*:
-    an unreachable mount is unreachable for everyone else too.
+    "we could not find out" must never become "nobody holds it" — and an I/O failure pauses
+    writes until the exact nonce can be verified.
+    It is neither proof of continued ownership nor proof of a foreign holder.
     """
 
     record: LeaseRecord | None = None

@@ -273,8 +273,9 @@ def test_losing_the_lease_unmounts_the_library_and_redirects(
 
     resp = client.get(content_url(library_id))
     assert resp.status_code == 409
-    assert resp.json()["code"] == "library_lease_held"
-    assert resp.json()["details"]["machine_name"] == "NAS"
+    assert resp.json()["code"] == "library_ownership_lost"
+    status = client.get(f"/api/v1/libraries/{library_id}/ownership").json()
+    assert status["holder"]["machine_name"] == "NAS"
 
 
 def test_a_released_lease_is_picked_up_without_a_prompt(client: TestClient, tmp_path: Path) -> None:

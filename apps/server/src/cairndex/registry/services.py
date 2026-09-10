@@ -185,54 +185,19 @@ def list_libraries(session: Session) -> list[RegisteredLibrary]:
 
 
 def deregister_library(session: Session, library_id: str) -> None:
-    """Remove a library from this server's registry. **Metadata-only.**
+    """Drain and close under ownership, then remove only the registration
 
-    Deletes the registry row and nothing else: the library folder, its
-    ``.cairndex/`` package, its ``library.db``, and every media file are left
-    exactly as they are (AGENTS.md file-safety rules). Re-adding the same folder
-    later restores everything the user cares about, because none of it lives in
-    the registry (ADR-0018 §1).
-
-    Two things are cleaned up on the way out, both server-runtime state:
-
-    - the ownership lease is released, which ADR-0018 §3 lists alongside clean
-      shutdown as a release trigger — a server that no longer serves a library
-      must not keep holding it, or the next machine to open the folder meets a
-      takeover prompt for a library nobody is serving;
-    - the cached content engine is disposed, which closes the last connection so
-      SQLite folds the WAL back into a single consistent file (ADR-0018 §6).
-
-    The library's grouping plans are deliberately **not** deleted, though ADR-0022
-    put them in this server's own data directory. Removing a library and adding it
-    back is a documented, reversible gesture — there is a test of exactly that — and
-    a plan holds decisions only the owner could make: renames, destinations, files
-    dragged between suggestions, bundle/collection conversions. They are collected
-    later by ``sweep_orphaned_plans``, once nothing has claimed the file for a
-    fortnight, which also catches the orphans deleting here never could: a library
-    that was *moved*, or one reached through a symlinked mount that was offline.
-
-    Queued jobs for the library go with the row through the ``ON DELETE
-    CASCADE`` on ``job_queue``. A job already *running* stops at its next
-    checkpoint, because the released lease makes its ownership check fail.
+    Source media and content metadata remain intact. Same-run grouping plans
+    remain in the server-local store; ADR-0022 discards them at server startup.
+    Running jobs stop at a cooperative boundary before the row is deleted;
+    queued jobs cascade with the registration. Incomplete draining is retryable
     """
-    # Imported here rather than at module scope: the registry is the lower layer
-    # (ownership's manager reads the server identity *from* it at build time),
-    # so a top-level import would be a cycle waiting to happen.
-    from cairndex.ownership import get_lease_manager
-    from cairndex.registry.library_engine import dispose_library_engine
+    from cairndex.ownership.lifecycle import lifecycle
 
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
-
-    try:
-        get_lease_manager().release(library_id)
-    except Exception:  # noqa: BLE001 — an unreachable mount must not block removal
-        # The lease then ages out to stale, which is recoverable with a
-        # confirmation; refusing to deregister a library on an offline NAS would
-        # leave the user no way to clean up their own list.
-        logger.warning("could not release the lease for library %s", library_id, exc_info=True)
-    dispose_library_engine(library_id)
+    lifecycle.close(library_id)
 
     session.delete(library)
     session.flush()

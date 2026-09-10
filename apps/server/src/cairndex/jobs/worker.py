@@ -277,7 +277,38 @@ Handler = Callable[[JobContext], dict[str, Any] | None]
 HandlerRegistry = dict[JobType, Handler]
 
 
+def _owns_for_work(library_id: str) -> bool:
+    """Long external steps observe uncertainty and deliberate drain requests"""
+    from cairndex.ownership.lifecycle import lifecycle
+
+    if lifecycle.blocked(library_id):
+        return False
+    try:
+        get_lease_manager().validate(library_id)
+        return True
+    except LibraryLeaseError:
+        return False
+
+
 def execute_job(
+    registry_factory: sessionmaker[Session], job_id: str, registry: HandlerRegistry
+) -> JobStatus:
+    """Pin the full job, including subprocess work, before admitting content"""
+    from cairndex.ownership.lifecycle import lifecycle
+
+    with registry_factory() as reg:
+        library_id = job_service.get_job(reg, job_id).library_id
+    try:
+        with lifecycle.work(library_id):
+            return _execute_job(registry_factory, job_id, registry)
+    except LibraryLeaseError as exc:
+        with registry_factory() as reg:
+            job_service.mark_finished(reg, job_id, status=JobStatus.CANCELLED, error=exc.message)
+            reg.commit()
+        return JobStatus.CANCELLED
+
+
+def _execute_job(
     registry_factory: sessionmaker[Session], job_id: str, registry: HandlerRegistry
 ) -> JobStatus:
     """Run one job and return where it ended up.
@@ -321,6 +352,8 @@ def execute_job(
         # behalf.
         lease_manager = get_lease_manager()
         try:
+            if library.serving_released:
+                raise LibraryLeaseError("Library was explicitly released")
             lease_manager.ensure_owned(library_id=library.id, root=library_root)
         except LibraryLeaseError as exc:
             job_service.mark_finished(reg, job_id, status=JobStatus.FAILED, error=exc.message)
@@ -341,7 +374,7 @@ def execute_job(
                 library_root=library_root,
                 library_id=library.id,
                 job_type=job.job_type,
-                owns_library=lambda: lease_manager.holds(library.id, library_root),
+                owns_library=lambda: _owns_for_work(library.id),
             )
             try:
                 # Long external steps (an ffmpeg pass over a network-mounted

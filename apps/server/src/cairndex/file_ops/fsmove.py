@@ -36,6 +36,8 @@ import shutil
 import uuid
 from pathlib import Path
 
+from cairndex.ownership.lifecycle import check_work_ownership
+
 # Hidden, and named after what it is, so a leftover from an interrupted
 # cross-device move is recognizable rather than mysterious. The random suffix
 # keeps two concurrent moves of the same name from colliding.
@@ -102,6 +104,7 @@ def move_path(source: Path, destination: Path) -> None:
         _case_only_rename(source, destination)
         return
     try:
+        check_work_ownership()
         os.rename(source, destination)
     except OSError as error:
         if error.errno != errno.EXDEV:
@@ -112,8 +115,10 @@ def move_path(source: Path, destination: Path) -> None:
 def _case_only_rename(source: Path, destination: Path) -> None:
     """Force a case-only rename through a temporary name."""
     staging = destination.with_name(f".cairndex-rename-{os.getpid()}-{destination.name}")
+    check_work_ownership()
     os.rename(source, staging)
     try:
+        check_work_ownership()
         os.rename(staging, destination)
     except OSError:
         os.rename(staging, source)  # put it back rather than leave a dotfile
@@ -145,12 +150,15 @@ def _copy_then_delete(source: Path, destination: Path) -> None:
             )
         # Written before the commit, so it is already there if the process dies
         # in the window where both copies exist (see `pending_marker`).
+        check_work_ownership()
         marker.write_text(str(source), encoding="utf-8")
+        check_work_ownership()
         os.rename(staging, destination)
     except BaseException:
         _discard(staging)
         _discard(marker)
         raise
+    check_work_ownership()
     _remove(source, is_directory=is_directory)
     _discard(marker)
 

@@ -390,7 +390,14 @@ class ExportManager:
         )
         with self._lock:
             self._threads.add(thread)
-        thread.start()
+        from cairndex.ownership.lifecycle import lifecycle
+
+        lifecycle.retain(library_id)
+        try:
+            thread.start()
+        except BaseException:
+            lifecycle.leave(library_id)
+            raise
         return export
 
     def _encode(self, export: ClipExport, source_path: Path) -> None:
@@ -418,6 +425,9 @@ class ExportManager:
                 export.status = "done"
                 export.finished_at = self._clock()
         finally:
+            from cairndex.ownership.lifecycle import lifecycle
+
+            lifecycle.leave(export.library_id)
             with self._lock:
                 self._threads.discard(threading.current_thread())
 

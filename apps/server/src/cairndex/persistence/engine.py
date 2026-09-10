@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
@@ -181,7 +182,15 @@ def _sqlite_file_path(url: str) -> Path | None:
     return Path(url[len("sqlite:///") :])
 
 
-def create_app_engine(database_url: str | None = None) -> Engine:
+def _disable_close_checkpoint(connection: object, _record: object) -> None:
+    """Leave WAL recovery bytes intact when an unowned connection is disposed"""
+    if isinstance(connection, sqlite3.Connection):
+        connection.setconfig(sqlite3.SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, True)
+
+
+def create_app_engine(
+    database_url: str | None = None, *, no_checkpoint_on_close: bool = False
+) -> Engine:
     """Create an Engine for a **library** database, with Cairndex's SQLite setup.
 
     The data directory is created if needed so a fresh checkout/deploy can
@@ -209,6 +218,8 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     # Pragmas apply to file and in-memory SQLite alike (FK enforcement matters
     # for the in-memory test database too).
     if engine.dialect.name == "sqlite":
+        if no_checkpoint_on_close:
+            event.listen(engine, "connect", _disable_close_checkpoint)
         event.listen(engine, "connect", _apply_connection_pragmas)
         if db_path is None:
             # An in-memory library gets an in-memory place to keep plans, so the
@@ -225,6 +236,13 @@ def create_app_engine(database_url: str | None = None) -> Engine:
             journal.apply_library_journal_mode(engine, db_path)
         except Exception as error:
             engine.dispose()
+            if "readonly" in str(error).lower() or "read-only" in str(error).lower():
+                from cairndex.core.errors import LibraryMetadataUnwritableError
+
+                raise LibraryMetadataUnwritableError(
+                    "The .cairndex database and metadata directory must be writable; "
+                    "source media may remain protected"
+                ) from error
             if journal.is_unable_to_open(error):
                 failure = journal.diagnose_open_failure(db_path)
                 logger.warning("library database at %s will not open (%s)", db_path, failure.reason)

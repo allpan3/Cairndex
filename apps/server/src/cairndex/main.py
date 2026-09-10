@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -5,20 +6,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from cairndex.api.errors import register_exception_handlers
+from cairndex.api.library_lifecycle import LibraryLifecycleMiddleware
 from cairndex.api.local_token_middleware import register_local_token_gate
 from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
 from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
+from cairndex.core.errors import LibraryLeaseError
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.exports import shutdown_export_manager
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.ownership import get_lease_manager
+from cairndex.ownership.lifecycle import lifecycle
 from cairndex.persistence.engine import discard_all_plans
 from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
-from cairndex.registry.library_engine import close_library_engines
 from cairndex.version import APP_VERSION
 
 
@@ -70,11 +73,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Export artifacts are throwaway state under the data dir, so they go
         # with the process that made them rather than outliving it as orphans.
         shutdown_export_manager()
-        close_library_engines()
-        if settings.lease_heartbeat_enabled:
-            manager = get_lease_manager()
-            manager.stop()
-            manager.release_all()
+        manager = get_lease_manager()
+        for library_id in manager.held_library_ids():
+            try:
+                lifecycle.close(library_id)
+            except LibraryLeaseError:
+                logging.getLogger(__name__).warning(
+                    "Library did not close cleanly; lease retained for recovery"
+                )
+        manager.stop()
 
 
 def create_app() -> FastAPI:
@@ -91,6 +98,7 @@ def create_app() -> FastAPI:
     # container deployment never registers it and is unaffected.
     if sidecar_mode():
         register_local_token_gate(app)
+    app.add_middleware(LibraryLifecycleMiddleware)
     register_exception_handlers(app)
     app.include_router(api_v1_router)
     # Mounted last so the explicit /api/v1 routes always win; only present in

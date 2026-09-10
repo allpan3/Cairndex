@@ -7,7 +7,8 @@ min/median/mean/max milliseconds over ``--iterations`` runs. With ``--explain``
 it captures the actual SQL each path emits and prints SQLite ``EXPLAIN QUERY
 PLAN`` output, so slow paths can be diagnosed before adding any index.
 
-Read-only: it never writes to the library. Pair it with
+Ownership-checked maintenance: opening SQLite updates journal and local plan state.
+Stop serving or explicitly release the library first. Pair it with
 ``synthetic_library`` to measure at scale:
 
     uv run python -m cairndex.devtools.benchmark_queries \\
@@ -29,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.filters.ast import FilterExpression, PredicateNode
 from cairndex.media.thumbnails import effective_cover_file
-from cairndex.persistence.engine import library_engine_scope
+from cairndex.ownership.maintenance import maintenance_engine
 from cairndex.persistence.models import AssetBundle, Collection, Tag
 from cairndex.registry import library_package as pkg
 from cairndex.services import browse as browse_service
@@ -209,7 +210,7 @@ def run(library_root: Path, *, iterations: int, explain: bool) -> dict[str, Any]
     if pkg.detect(library_root) is None:
         raise SystemExit(f"no Cairndex library at {library_root}")
     with (
-        library_engine_scope(f"sqlite:///{pkg.db_path(library_root).as_posix()}") as engine,
+        maintenance_engine(library_root) as engine,
         Session(engine) as session,
     ):
         total = session.scalar(select(func.count()).select_from(AssetBundle)) or 0

@@ -1,5 +1,13 @@
 # Project status
 
+- Ownership lifecycle implementation is on `fix/library-ownership-lifecycle`.
+  Handoff drains admitted work; release intent persists in the registry;
+  resumed writes and maintenance validate ownership. Synthetic lifecycle/API/job
+  and permission tests pass. All 148 browser tests and 1,154 frontend tests pass;
+  packaged native release/reopen and Docker permission controls were exercised.
+  Final package revalidation is in progress; no publication or deployment is
+  authorized for this task.
+
 - Frozen desktop development uses a separate sidecar under `dist/development`,
   links the host media-tool cache, and disables resource staging for `just bundled`.
   Release sidecars retain regular FFmpeg/FFprobe copies. Validated on ARM with

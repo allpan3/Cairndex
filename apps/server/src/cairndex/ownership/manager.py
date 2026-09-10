@@ -16,6 +16,7 @@ Design notes worth keeping in view:
   establishes that no one is writing, by watching the file change or not.
 """
 
+import errno
 import logging
 import threading
 import time
@@ -29,6 +30,9 @@ from cairndex.core.errors import (
     LeaseTakeoverRequiredError,
     LibraryLeaseError,
     LibraryLeaseHeldError,
+    LibraryMetadataUnwritableError,
+    LibraryOwnershipLostError,
+    LibraryOwnershipUncertainError,
 )
 from cairndex.core.time import utcnow
 from cairndex.ownership.lease import (
@@ -91,6 +95,9 @@ class _Held:
 
     root: Path
     record: LeaseRecord
+    checked_at: float = 0.0
+    checked_wall: float = 0.0
+    uncertain: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,6 +144,7 @@ class LeaseManager:
         self._sleep = sleep
         self._on_ownership_lost = on_ownership_lost
         self._held: dict[str, _Held] = {}
+        self._lost: set[str] = set()
         self._takeovers: dict[str, TakeoverProgress] = {}
         self._acquire_locks: dict[str, threading.Lock] = {}
         self._lock = threading.RLock()
@@ -172,12 +180,16 @@ class LeaseManager:
     def ensure_owned(self, *, library_id: str, root: Path) -> None:
         """The mount gate. Returns quietly if we may serve; raises otherwise.
 
-        The common case — a library we already hold — costs one dict lookup and
-        touches no filesystem, which is what keeps this usable on the request
-        path for a NAS-mounted library (AGENTS.md: no hot-path I/O).
+        The common case uses cached ownership and clock reads without filesystem
+        access. A heartbeat gap or I/O uncertainty requires nonce validation.
         """
         if self.holds(library_id, root):
+            self.validate(library_id)
             return
+        if library_id in self._lost:
+            raise LibraryOwnershipLostError(
+                "Ownership moved; deliberately reopen after checking the holder"
+            )
         self.acquire(library_id=library_id, root=root)
 
     def acquire(self, *, library_id: str, root: Path, confirm_takeover: bool = False) -> None:
@@ -199,7 +211,19 @@ class LeaseManager:
             # Another thread may have acquired it while we waited our turn.
             if self.holds(library_id, root):
                 return
-            self._acquire_locked(library_id=library_id, root=root, confirm=confirm_takeover)
+            try:
+                self._acquire_locked(library_id=library_id, root=root, confirm=confirm_takeover)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
+                    raise LibraryOwnershipUncertainError(
+                        "Library storage is unavailable; check the mount and retry"
+                    ) from exc
+                raise LibraryMetadataUnwritableError(
+                    "Cairndex needs a writable .cairndex package "
+                    "for metadata, locks, progress and cache. "
+                    "Source media may remain protected; "
+                    "check the library mount and server permissions"
+                ) from exc
 
     def _acquire_lock_for(self, library_id: str) -> threading.Lock:
         with self._lock:
@@ -207,6 +231,10 @@ class LeaseManager:
 
     def _acquire_locked(self, *, library_id: str, root: Path, confirm: bool) -> None:
         snapshot = read_lease(root)
+        if snapshot.io_error:
+            raise LibraryOwnershipUncertainError(
+                "Cannot read library ownership; restore the storage connection before opening"
+            )
         state = classify(
             snapshot,
             our_uuid=self.server_uuid,
@@ -292,6 +320,10 @@ class LeaseManager:
             self._remember(library_id, root, record)
             return
 
+        if not existing:
+            # An exclusive-create loser must classify the winner before writing
+            self._acquire_locked(library_id=library_id, root=root, confirm=False)
+            return
         write_lease(root, record)
         self._sleep(self.settings.verify_delay)
         verify = read_lease(root)
@@ -310,7 +342,10 @@ class LeaseManager:
 
     def _remember(self, library_id: str, root: Path, record: LeaseRecord) -> None:
         with self._lock:
-            self._held[library_id] = _Held(root=root, record=record)
+            self._lost.discard(library_id)
+            self._held[library_id] = _Held(
+                root, record, time.monotonic(), self._clock().timestamp()
+            )
 
     # --- confirmed takeover (asynchronous) --------------------------------
 
@@ -341,7 +376,10 @@ class LeaseManager:
 
     def _run_takeover(self, library_id: str, root: Path) -> None:
         try:
-            self.acquire(library_id=library_id, root=root, confirm_takeover=True)
+            from cairndex.ownership.lifecycle import lifecycle
+
+            with lifecycle.work(library_id):
+                self.acquire(library_id=library_id, root=root, confirm_takeover=True)
         except LibraryLeaseError as exc:
             self._finish_takeover(
                 library_id,
@@ -383,7 +421,13 @@ class LeaseManager:
         when the mount gate is refusing — so it never takes, writes, or waits.
         """
         if self.holds(library_id, root):
-            return LeaseState.OWN, None
+            try:
+                self.validate(library_id)
+                return LeaseState.OWN, None
+            except LibraryOwnershipUncertainError:
+                return LeaseState.UNREADABLE, None
+            except LibraryOwnershipLostError:
+                pass
         snapshot = read_lease(root)
         state = classify(
             snapshot,
@@ -407,23 +451,65 @@ class LeaseManager:
         is nothing, and going quiet would make a healthy NAS server's libraries
         look abandoned — and therefore stealable — from every other machine.
         """
-        with self._lock:
-            current = list(self._held.items())
-
         lost: list[str] = []
-        for library_id, held in current:
-            try:
-                if not self._heartbeat_library(library_id, held):
-                    lost.append(library_id)
-            except OSError:
-                # An offline mount is not a lost lease — we simply could not
-                # write. Staying held is right: nobody else can reach it either,
-                # and dropping the library on a transient NFS blip would be far
-                # more disruptive than a late heartbeat.
-                logger.warning("lease heartbeat could not write for library %s", library_id)
-        for library_id in lost:
-            self._surrender(library_id)
+        for library_id in self.held_library_ids():
+            with self._acquire_lock_for(library_id):
+                with self._lock:
+                    held = self._held.get(library_id)
+                if held is None:
+                    continue
+                try:
+                    if not self._heartbeat_library(library_id, held):
+                        lost.append(library_id)
+                        self._surrender(library_id)
+                except OSError:
+                    held.uncertain = True
+                    logger.warning("lease heartbeat unavailable for library %s", library_id)
         return lost
+
+    def mark_uncertain(self, library_id: str) -> None:
+        """Require a fresh lease read after a database connection or I/O failure"""
+        with self._lock:
+            held = self._held.get(library_id)
+            if held is not None:
+                held.uncertain = True
+
+    def validate(self, library_id: str, *, force: bool = False) -> None:
+        """Fence resumed work using elapsed and wall clocks before trusting memory
+
+        Monotonic clocks may exclude suspend on some platforms; wall time catches
+        that gap and backward adjustments force a check too. Ordinary statements
+        cost clock reads, not filesystem I/O. Uncertainty remains closed until a
+        successful read proves the exact nonce, never by acquiring another lease
+        """
+        with self._acquire_lock_for(library_id):
+            with self._lock:
+                held = self._held.get(library_id)
+            if held is None:
+                raise LibraryOwnershipLostError("This server no longer owns the library")
+            elapsed = time.monotonic() - held.checked_at
+            wall = self._clock().timestamp() - held.checked_wall
+            if (
+                not force
+                and not held.uncertain
+                and 0 <= wall < self.settings.heartbeat_interval
+                and elapsed < self.settings.heartbeat_interval
+            ):
+                return
+            snapshot = read_lease(held.root)
+            if snapshot.io_error:
+                held.uncertain = True
+                raise LibraryOwnershipUncertainError(
+                    "Cannot verify library ownership; check the storage connection and retry"
+                )
+            if snapshot.record != held.record or snapshot.corrupt or snapshot.record is None:
+                self._surrender(library_id)
+                raise LibraryOwnershipLostError(
+                    "Library ownership changed; this server stopped writing"
+                )
+            held.checked_at = time.monotonic()
+            held.checked_wall = self._clock().timestamp()
+            held.uncertain = False
 
     def _heartbeat_library(self, library_id: str, held: _Held) -> bool:
         """Refresh one lease. ``False`` means ownership was lost."""
@@ -431,25 +517,10 @@ class LeaseManager:
         record = snapshot.record
 
         if snapshot.io_error:
-            # The read itself failed — an offline mount, not a takeover. Same
-            # policy as the failed *write* below: stay held and skip this beat,
-            # because nobody else can reach the library either, and a transient
-            # NFS blip must not cancel a 40-minute scan or show the user a
-            # takeover prompt for their own healthy library. Deliberately no
-            # rewrite: blind-writing over content we could not read could
-            # clobber a lease that did move on.
-            logger.warning("lease heartbeat could not read for library %s", library_id)
+            held.uncertain = True
             return True
-        if snapshot.corrupt:
-            # We read the file and it was not a lease. Someone is writing this
-            # file, and it is not us; treat it the same as a foreign nonce.
-            logger.warning("lease for library %s is unreadable; surrendering", library_id)
+        if snapshot.corrupt or record is None or record.released_at is not None:
             return False
-        if record is None:
-            # The lease vanished (deleted, or a sync engine removed it). Rewrite
-            # ours: we are the incumbent and no other server has claimed it.
-            self._rewrite(library_id, held)
-            return True
         if record.server_uuid != self.server_uuid or record.nonce != held.record.nonce:
             logger.warning(
                 "lease for library %s now held by %s; surrendering",
@@ -474,7 +545,9 @@ class LeaseManager:
         write_lease(held.root, refreshed)
         with self._lock:
             if library_id in self._held:
-                self._held[library_id] = _Held(root=held.root, record=refreshed)
+                self._held[library_id] = _Held(
+                    held.root, refreshed, time.monotonic(), self._clock().timestamp()
+                )
 
     def _surrender(self, library_id: str) -> None:
         """Drop a lost lease and let the app unmount the library.
@@ -484,6 +557,7 @@ class LeaseManager:
         """
         with self._lock:
             self._held.pop(library_id, None)
+            self._lost.add(library_id)
         if self._on_ownership_lost is not None:
             try:
                 self._on_ownership_lost(library_id)
@@ -500,31 +574,21 @@ class LeaseManager:
         moved on while we were shutting down, we leave the new holder's record
         alone.
         """
-        with self._lock:
-            held = self._held.pop(library_id, None)
-        if held is None:
-            return
-        snapshot = read_lease(held.root)
-        if snapshot.record is not None and snapshot.record.server_uuid != self.server_uuid:
-            return
-        try:
-            write_lease(
-                held.root,
-                LeaseRecord(
-                    server_uuid=self.server_uuid,
-                    machine_name=self.machine_name,
-                    advertised_url=self.advertised_url,
-                    acquired_at=held.record.acquired_at,
-                    heartbeat_at=self._clock(),
-                    nonce=new_nonce(),
-                    released_at=self._clock(),
-                ),
-            )
-        except OSError:
-            # An unreachable mount at shutdown just means the lease ages out to
-            # stale, which is recoverable with a confirmation. Not worth failing
-            # a shutdown over.
-            logger.warning("could not release lease for library %s", library_id)
+        with self._acquire_lock_for(library_id):
+            with self._lock:
+                held = self._held.pop(library_id, None)
+            if held is None:
+                return
+            snapshot = read_lease(held.root)
+            # Never overwrite an unknown, missing or changed ownership record
+            if snapshot.record != held.record:
+                return
+            try:
+                write_lease(
+                    held.root, replace(held.record, nonce=new_nonce(), released_at=self._clock())
+                )
+            except OSError:
+                logger.warning("could not release lease for library %s", library_id)
 
     def release_all(self) -> None:
         for library_id in self.held_library_ids():
@@ -632,27 +696,10 @@ def _build_manager() -> LeaseManager:
 
 
 def _default_ownership_lost(library_id: str) -> None:
-    """Unmount a library whose lease we lost (ADR-0018 §4).
+    """Fence new and checked-out work; drain before non-rewriting disposal"""
+    from cairndex.ownership.lifecycle import lifecycle
 
-    Stop writing immediately: close the content engine so no in-flight session
-    can commit, and cancel the library's queued and running jobs so a scan
-    cannot keep going long after another machine took over. Requests that
-    arrive afterwards re-enter the mount gate, read the new holder's lease, and
-    are refused with a redirect — no separate "we lost it" state to maintain.
-    """
-    from cairndex.registry import jobs as job_service
-    from cairndex.registry.engine import registry_session_scope
-    from cairndex.registry.library_engine import dispose_library_engine
-
-    # No journal-mode revert (ADR-0021): that is a write, and §4 is categorical
-    # that a library we no longer own gets no more writes from us. Whoever took
-    # the lease sets the mode it wants when it opens.
-    dispose_library_engine(library_id, revert_journal_mode=False)
-    try:
-        with registry_session_scope() as session:
-            job_service.request_cancel_for_library(session, library_id)
-    except Exception:  # noqa: BLE001 — unmounting must succeed even if the queue is unreachable
-        logger.exception("could not cancel jobs for unmounted library %s", library_id)
+    lifecycle.lost(library_id)
 
 
 def set_lease_manager(manager: LeaseManager | None) -> None:
@@ -669,3 +716,6 @@ def reset_lease_manager() -> None:
         existing, _manager = _manager, None
     if existing is not None:
         existing.stop()
+    from cairndex.ownership.lifecycle import lifecycle
+
+    lifecycle.reset()

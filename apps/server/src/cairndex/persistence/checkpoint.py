@@ -81,6 +81,9 @@ def snapshot_database(source: Path, destination: Path) -> bool:
             contextlib.closing(sqlite3.connect(tmp)) as dst,
         ):
             src.backup(dst)
+        from cairndex.ownership.lifecycle import check_work_ownership
+
+        check_work_ownership()
         os.replace(tmp, destination)
     except Exception:  # noqa: BLE001 — a snapshot is best-effort maintenance
         logger.warning("could not snapshot a library database", exc_info=True)

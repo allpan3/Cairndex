@@ -733,3 +733,10 @@ manual cover choice is never overwritten. These values are portable metadata in
   queries, and larger-library benchmarks.
 - Collection delete service semantics beyond current FK defaults (tag delete now
   has explicit safe-delete semantics — see `tags` above).
+
+### Explicit serving release
+
+`registered_libraries.serving_released` is a server-local boolean, default false.
+An additive registry bootstrap adds it to existing installations. It records the
+owner's explicit release intent across restart; it does not travel with library
+metadata and does not change source-file permissions or write-mode opt-in.

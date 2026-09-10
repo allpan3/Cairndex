@@ -11,12 +11,15 @@ only opens connections — it never creates content tables.
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.core.errors import LibraryDrainError
+from cairndex.ownership.lifecycle import lifecycle
+from cairndex.ownership.sql_guard import guard_engine
 from cairndex.persistence.checkpoint import checkpoint_wal, snapshot_database, snapshot_path_for
 from cairndex.persistence.engine import create_app_engine, ensure_content_indexes
 from cairndex.persistence.journal import checkpoint_and_revert
@@ -41,6 +44,7 @@ class _Cached:
     checkpointed_since_use: bool = False
     # Monotonic timestamp of the last consistent snapshot, or 0.0 for never.
     last_snapshot: float = 0.0
+    retired: threading.Event = field(default_factory=threading.Event)
 
 
 _cache: dict[str, _Cached] = {}
@@ -52,11 +56,24 @@ def _db_path_for(library: RegisteredLibrary) -> str:
 
 
 def get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session]:
+    """Admit engine initialization before it can write indexes or recovery state"""
+    with lifecycle.work(library.id):
+        return _get_library_sessionmaker(library)
+
+
+def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session]:
     """Return a cached sessionmaker bound to ``library``'s ``library.db``.
 
     Thread-safe. If the cached entry points at a stale DB path (the library was
     moved/re-registered), the old engine is disposed and a fresh one opened.
     """
+    from cairndex.core.errors import LibraryReleasedError
+    from cairndex.ownership import get_lease_manager
+
+    if library.serving_released:
+        raise LibraryReleasedError("This library is released; choose Reopen to serve it here")
+    manager = get_lease_manager()
+    manager.ensure_owned(library_id=library.id, root=Path(library.root_path))
     db_path = _db_path_for(library)
     with _lock:
         cached = _cache.get(library.id)
@@ -66,18 +83,51 @@ def get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session
             return cached.sessionmaker
         if cached is not None:
             cached.engine.dispose()
-        engine = create_app_engine(database_url=f"sqlite:///{db_path}")
+        engine = create_app_engine(database_url=f"sqlite:///{db_path}", no_checkpoint_on_close=True)
+
+        retired = threading.Event()
+        guard_engine(engine, manager, library.id, retired.is_set)
         # Backfill any content indexes added after this library DB was created
         # (create_all won't add them to an existing table). Once per open.
         ensure_content_indexes(engine)
         # Create/populate the FTS5 search index + maintenance triggers if missing.
         ensure_search_schema(engine)
-        maker = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+        # Sessions pin the engine even outside HTTP or a job context
+        class OwnedSession(Session):
+            """Retain admission until the checked-out connection is closed"""
+
+            def __init__(self, **kwargs: object) -> None:
+                if retired.is_set():
+                    raise LibraryReleasedError(
+                        "This library session was closed; reopen a fresh session"
+                    )
+                lifecycle.retain(library.id)
+                self._admitted = True
+                try:
+                    super().__init__(**kwargs)  # type: ignore[arg-type]
+                except BaseException:
+                    self._admitted = False
+                    lifecycle.leave(library.id)
+                    raise
+
+            def close(self) -> None:
+                try:
+                    super().close()
+                finally:
+                    if self._admitted:
+                        self._admitted = False
+                        lifecycle.leave(library.id)
+
+        maker: sessionmaker[Session] = sessionmaker(
+            bind=engine, class_=OwnedSession, expire_on_commit=False, future=True
+        )
         _reconcile_file_operations(maker, Path(library.root_path))
         _cache[library.id] = _Cached(
             db_path=db_path,
             engine=engine,
             sessionmaker=maker,
+            retired=retired,
             last_used=time.monotonic(),
         )
         return maker
@@ -145,27 +195,30 @@ def _sweep_expired_trash(maker: sessionmaker[Session], root: Path, retention_day
 
 
 def dispose_library_engine(library_id: str, *, revert_journal_mode: bool = True) -> None:
-    """Drop and dispose the cached engine for a library, if any.
+    """Close a drained engine, explicitly checkpointing only under ownership
 
-    Disposing closes the last connection, which is what lets SQLite fold the WAL
-    back in and delete the ``-wal``/``-shm`` pair — so a cleanly closed library
-    is a single consistent file for a sync engine to pick up (ADR-0018 §6).
-    That leaves the *file* in WAL mode though, and a WAL file cannot be opened
-    over SMB or NFS at all, so a clean close also converts it back to a rollback
-    journal (ADR-0021) and the library at rest is portable again.
-
-    ``revert_journal_mode=False`` is for the one close that is not clean:
-    unmounting after another server took the lease. Converting the journal mode
-    is a write, and ADR-0018 §4 is categorical that we stop writing to a library
-    we no longer own — the new holder will set the mode it wants anyway.
+    Managed connections disable SQLite's implicit last-close checkpoint. Clean
+    closure explicitly folds WAL and converts to rollback before disposal;
+    lost-owner disposal preserves WAL bytes without rewriting journal state.
+    Failed conversion retains the cached generation for a deliberate retry
     """
     with _lock:
         cached = _cache.pop(library_id, None)
     if cached is None:
         return
-    if revert_journal_mode:
-        checkpoint_and_revert(cached.engine)
-    cached.engine.dispose()
+    clean = False
+    try:
+        if revert_journal_mode and not checkpoint_and_revert(cached.engine):
+            with _lock:
+                _cache[library_id] = cached
+            raise LibraryDrainError(
+                "Database closure could not finish; ownership is retained. Retry Release"
+            )
+        clean = True
+    finally:
+        if clean:
+            cached.retired.set()
+        cached.engine.dispose()
 
 
 def maintain_library_engines(
@@ -192,29 +245,35 @@ def maintain_library_engines(
     checkpointed = 0
     snapshotted = 0
     for library_id, cached in candidates:
-        idle_for = now - cached.last_used
-        if idle_for < idle_after:
+        if lifecycle.blocked(library_id):
             continue
+        with lifecycle.work(library_id):
+            from cairndex.ownership import get_lease_manager
 
-        if not cached.checkpointed_since_use and checkpoint_wal(cached.engine):
-            cached.checkpointed_since_use = True
-            checkpointed += 1
+            get_lease_manager().validate(library_id)
+            idle_for = now - cached.last_used
+            if idle_for < idle_after:
+                continue
 
-        snapshot_due = snapshot_interval > 0 and (
-            cached.last_snapshot == 0.0 or (now - cached.last_snapshot) >= snapshot_interval
-        )
-        if snapshot_due:
-            source = Path(cached.db_path)
-            # Snapshot after the checkpoint so the copy reflects the folded-in
-            # WAL rather than trailing it.
-            if snapshot_database(source, snapshot_path_for(source)):
-                cached.last_snapshot = now
-                snapshotted += 1
-            else:
-                # Do not retry every pass on a persistently failing library
-                # (read-only volume, no space); wait out the normal interval.
-                cached.last_snapshot = now
-        logger.debug("maintenance pass for library %s (idle %.0fs)", library_id, idle_for)
+            if not cached.checkpointed_since_use and checkpoint_wal(cached.engine):
+                cached.checkpointed_since_use = True
+                checkpointed += 1
+
+            snapshot_due = snapshot_interval > 0 and (
+                cached.last_snapshot == 0.0 or (now - cached.last_snapshot) >= snapshot_interval
+            )
+            if snapshot_due:
+                source = Path(cached.db_path)
+                # Snapshot after the checkpoint so the copy reflects the folded-in
+                # WAL rather than trailing it.
+                if snapshot_database(source, snapshot_path_for(source)):
+                    cached.last_snapshot = now
+                    snapshotted += 1
+                else:
+                    # Do not retry every pass on a persistently failing library
+                    # (read-only volume, no space); wait out the normal interval.
+                    cached.last_snapshot = now
+            logger.debug("maintenance pass for library %s (idle %.0fs)", library_id, idle_for)
 
     return checkpointed, snapshotted
 

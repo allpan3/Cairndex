@@ -74,6 +74,12 @@ Unless the product owner explicitly changes them, treat these as settled:
 
 Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until intentionally migrated or retained as historical table names.
 
+Ownership is server-level: an awake server keeps serving while clients idle or
+disconnect. Explicit release drains work and preserves registration; deliberate
+reopening checks ownership. Metadata-only browsing still requires writable library
+metadata, locks, progress and cache. Protected source media are compatible with
+that requirement; an entirely read-only library package is not.
+
 ### Library
 
 A `Library` is the content and storage boundary. It is a server-visible root directory that carries its own Cairndex package:

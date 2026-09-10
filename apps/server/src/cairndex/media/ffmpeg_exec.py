@@ -35,6 +35,9 @@ def run_ffmpeg(args: list[str], *, timeout: float = 60.0, stderr_limit: int = 30
     exactly as the single blocking wait it replaced: same deadline, same stderr,
     same errors.
     """
+    from cairndex.ownership.lifecycle import check_work_ownership
+
+    check_work_ownership()
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as exc:

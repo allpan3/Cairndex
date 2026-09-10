@@ -170,3 +170,27 @@ class LibraryOwnershipLostError(LibraryLeaseError):
     """
 
     code = "library_ownership_lost"
+
+
+class LibraryReleasedError(LibraryLeaseError):
+    """This server deliberately stopped serving the registered library"""
+
+    code = "library_released"
+
+
+class LibraryOwnershipUncertainError(LibraryLeaseError):
+    """Ownership cannot currently be verified; writes must wait"""
+
+    code = "library_ownership_uncertain"
+
+
+class LibraryDrainError(LibraryLeaseError):
+    """Active work or failed closure prevented a clean handoff"""
+
+    code = "library_drain_incomplete"
+
+
+class LibraryMetadataUnwritableError(LibraryLeaseError):
+    """The metadata package requires write access even for browsing"""
+
+    code = "library_metadata_unwritable"

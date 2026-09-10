@@ -20,6 +20,7 @@ from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media import image_support, previews
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
+from cairndex.ownership.lifecycle import check_work_ownership
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
@@ -59,6 +60,7 @@ def thumbnail_media_type(path: Path) -> str:
 
 
 def _generate(source: Path, dest: Path, kind: MediaKind, cover_time: float | None = None) -> None:
+    check_work_ownership()
     dest.parent.mkdir(parents=True, exist_ok=True)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
     # The "thumbnail" filter picks a representative video frame without needing

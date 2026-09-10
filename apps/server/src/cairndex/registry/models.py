@@ -42,6 +42,8 @@ class RegisteredLibrary(RegistryBase):
     # to another server must never carry write permission with it. The
     # deployment switch ``CAIRNDEX_WRITE_MODE`` can override this to read-only.
     write_mode_enabled: Mapped[bool] = mapped_column(default=False)
+    # Explicit release survives server restart and persisted client selection
+    serving_released: Mapped[bool] = mapped_column(default=False, server_default="0")
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]

@@ -17993,6 +17993,92 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/ownership/release": {
+      "post": {
+        "description": "Release this server's library, retaining registration and all content",
+        "operationId": "release_library_api_v1_libraries__library_id__ownership_release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOwnershipRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Library",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/ownership/reopen": {
+      "post": {
+        "description": "Deliberately reopen under normal ownership checks, never forced takeover",
+        "operationId": "reopen_library_api_v1_libraries__library_id__ownership_reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOwnershipRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reopen Library",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/ownership/takeover": {
       "post": {
         "description": "Confirm that the recorded holder is gone and serve this library here.\n\nAccepted, not completed: before taking a lease this server watches it for\nlonger than a heartbeat period, so a holder that is actually alive gets the\nchance to prove it. Poll ``GET \u2026/ownership`` until ``takeover.running`` is\nfalse.\n\nRefuses outright while a *live* lease is in place. The confirmation means \"I\nknow that machine is gone\", which is not a claim anyone can truthfully make\nabout a server that heartbeat seconds ago \u2014 so this is a 422 rather than a\nforced takeover.",

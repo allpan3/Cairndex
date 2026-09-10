@@ -325,8 +325,13 @@ def checkpoint_and_revert(engine: Engine) -> bool:
     if engine.dialect.name != "sqlite":
         return False
     try:
+        # Drained callers may leave pooled cursors from schema inspection; use a
+        # fresh connection so they cannot lock this connection's checkpoint
+        engine.dispose()
         with engine.connect() as conn:
-            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+            rows = conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)").all()
+            if any(row[0] != 0 for row in rows):
+                return False
         engine.dispose()
         with engine.connect() as conn:
             row = conn.exec_driver_sql("PRAGMA journal_mode=DELETE").fetchone()

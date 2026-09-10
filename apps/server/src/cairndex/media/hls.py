@@ -568,6 +568,13 @@ class SessionManager:
         session = self.get(library_id, session_id)
         self._teardown(session)
 
+    def close_library(self, library_id: str) -> None:
+        """Stop this library's local encoders after its requests drain"""
+        with self._lock:
+            sessions = [s for s in self._sessions.values() if s.library_id == library_id]
+        for session in sessions:
+            self._teardown(session)
+
     def shutdown(self) -> None:
         """Stop the reaper and tear down every session (server shutdown)."""
         self._stop.set()
@@ -850,3 +857,9 @@ def shutdown_session_manager() -> None:
         _default_manager = None
     if manager is not None:
         manager.shutdown()
+
+
+def close_library_sessions(library_id: str) -> None:
+    """Stop existing library encoders without initializing a new manager"""
+    if _default_manager is not None:
+        _default_manager.close_library(library_id)

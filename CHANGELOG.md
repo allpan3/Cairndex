@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Library handoff drains requests, jobs, media work and maintenance before closing
+  SQLite and releasing ownership. Resumed writes revalidate after heartbeat gaps
+  or storage uncertainty; lost ownership never reacquires automatically.
+- Query benchmarks and reindexing require maintenance ownership before opening
+  SQLite. Unwritable metadata packages return an actionable structured error.
+
 - Frozen desktop development shares checksum-verified FFmpeg/FFprobe from the
   host architecture's cache and skips Tauri resource copies. Release bundles
   remain self-contained.

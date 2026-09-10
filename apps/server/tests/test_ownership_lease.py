@@ -547,17 +547,15 @@ def test_a_heartbeat_read_blip_keeps_the_lease(tmp_path: Path) -> None:
     assert read_lease(tmp_path).record.nonce != nonce_before  # type: ignore[union-attr]
 
 
-def test_a_vanished_lease_is_rewritten_rather_than_surrendered(tmp_path: Path) -> None:
-    """Nobody claimed it — we are still the incumbent, so we restate it."""
+def test_a_vanished_lease_is_not_recreated(tmp_path: Path) -> None:
+    """A missing record is not evidence that it is safe to keep writing"""
     manager, _ = build_manager()
     manager.ensure_owned(library_id="lib1", root=tmp_path)
     pkg.lease_path(tmp_path).unlink()
 
-    assert manager.heartbeat_once() == []
-    assert manager.holds("lib1")
-    snapshot = read_lease(tmp_path)
-    assert snapshot.record is not None
-    assert snapshot.record.server_uuid == OUR_UUID
+    assert manager.heartbeat_once() == ["lib1"]
+    assert not manager.holds("lib1")
+    assert read_lease(tmp_path).absent
 
 
 # --- release --------------------------------------------------------------

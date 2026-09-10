@@ -182,6 +182,32 @@ holder unmounts within one heartbeat of the foreign lease syncing in) and
 as a conflict pair; the user picks, and the loser remains on disk). A
 merge/export tool for diverged libraries is explicitly out of scope.
 
+## Lifecycle amendment (owner-approved 2026-09-10)
+
+Explicit server-level release preserves registration and blocks automatic
+reacquisition, including after restart. Handoff drains all admitted writing work,
+closes/checkpoints under verified ownership, and only then releases. Timeout and
+closure failure are not clean handoffs. Lost or uncertain ownership prohibits
+journal rewriting. Checked-out sessions are fenced as well as new requests.
+
+Awake idle servers continue heartbeats. Client disconnect, lid closure and display
+blanking are not server-release signals. At one heartbeat interval of elapsed or
+wall time, a backward wall-clock change, or a heartbeat I/O failure, resumed work
+revalidates the exact nonce before proceeding. This amends the previous purely
+in-memory request policy without adding per-statement filesystem access in the
+ordinary case. A vanished record is fenced rather than recreated. Stale takeover
+continues to require explicit confirmation and observation.
+
+The earlier assertion that a sync engine guarantees no silent data loss is not
+a supported guarantee: conflict copies may not form a complete SQLite generation.
+A folder lease cannot fence partitioned replicas or revoke an issued OS write.
+Recovery artifacts are preserved, but reconciliation is a separate design.
+
+The API exposes `POST /libraries/{id}/ownership/release` and `/reopen` under
+`/api/v1`; ownership status distinguishes deliberate local release, ownership
+loss and uncertainty. Release affects this server's clients collectively, never
+automatically follows the lifecycle of an individual client.
+
 ## Alternatives considered
 
 - **Server-side enforcement (registry flag / port probing / mDNS discovery)**

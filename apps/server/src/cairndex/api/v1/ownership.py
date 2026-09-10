@@ -13,9 +13,11 @@ from fastapi import APIRouter, status
 
 from cairndex.api.deps import RegistryDbSession
 from cairndex.api.schemas.ownership import LeaseHolderRead, LibraryOwnershipRead, TakeoverRead
-from cairndex.core.errors import ValidationError
+from cairndex.core.errors import NotFoundError, ValidationError
+from cairndex.domain.enums import LibraryStatus
 from cairndex.ownership import get_lease_manager
 from cairndex.ownership.lease import LeaseRecord, LeaseState
+from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import services as registry_service
 
 router = APIRouter(prefix="/libraries/{library_id}/ownership", tags=["ownership"])
@@ -54,15 +56,26 @@ def _holder_read(record: LeaseRecord | None) -> LeaseHolderRead | None:
     )
 
 
-def _describe(library_id: str, root: Path) -> LibraryOwnershipRead:
+def _describe(library_id: str, root: Path, *, released: bool = False) -> LibraryOwnershipRead:
     manager = get_lease_manager()
     state, record = manager.describe(library_id=library_id, root=root)
     progress = manager.takeover_progress(library_id)
+    uncertain = manager.holds(library_id) and state is LeaseState.UNREADABLE
+    if released:
+        local_state = "release_pending" if manager.holds(library_id) else "locally_released"
+    elif uncertain:
+        local_state = "ownership_uncertain"
+    elif lifecycle.blocked(library_id):
+        local_state = "ownership_lost"
+    else:
+        local_state = state.value
     return LibraryOwnershipRead(
         library_id=library_id,
-        state=state.value,
-        mountable=state in (LeaseState.OWN, LeaseState.RELEASED),
-        can_take_over=state in _TAKEOVER_STATES,
+        state=local_state,
+        mountable=not released
+        and not lifecycle.blocked(library_id)
+        and state in (LeaseState.OWN, LeaseState.RELEASED),
+        can_take_over=not uncertain and state in _TAKEOVER_STATES,
         redirect_url=_redirect_url(record),
         holder=_holder_read(record),
         takeover=(
@@ -83,7 +96,7 @@ def _describe(library_id: str, root: Path) -> LibraryOwnershipRead:
 def get_ownership(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
     """Who owns this library, and can this server serve it?"""
     library = registry_service.get_library(db, library_id)
-    return _describe(library_id, Path(library.root_path))
+    return _describe(library_id, Path(library.root_path), released=library.serving_released)
 
 
 @router.post("/takeover", response_model=LibraryOwnershipRead, status_code=status.HTTP_202_ACCEPTED)
@@ -112,5 +125,37 @@ def take_over(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
             else "this library is actively served by another server"
         )
     if state in _TAKEOVER_STATES:
+        lifecycle.close(library_id)
+        lifecycle.reopen(library_id)
+        library.serving_released = False
+        db.commit()
         manager.start_takeover(library_id=library_id, root=root)
+    return _describe(library_id, root)
+
+
+@router.post("/release", response_model=LibraryOwnershipRead)
+def release_library(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
+    """Release this server's library, retaining registration and all content"""
+    library = registry_service.get_library(db, library_id)
+    # Persist intent before draining so restart or polling cannot reacquire
+    library.serving_released = True
+    db.commit()
+    lifecycle.close(library_id)
+    return _describe(library_id, Path(library.root_path), released=True)
+
+
+@router.post("/reopen", response_model=LibraryOwnershipRead)
+def reopen_library(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
+    """Deliberately reopen under normal ownership checks, never forced takeover"""
+    library = registry_service.get_library(db, library_id)
+    root = Path(library.root_path)
+    if library.status != LibraryStatus.AVAILABLE:
+        raise NotFoundError("Library storage is unavailable; restore its mount before reopening")
+    # Finish a previous failed drain before admitting a new engine generation
+    lifecycle.close(library_id)
+    manager = get_lease_manager()
+    manager.acquire(library_id=library_id, root=root)
+    lifecycle.reopen(library_id)
+    library.serving_released = False
+    db.commit()
     return _describe(library_id, root)

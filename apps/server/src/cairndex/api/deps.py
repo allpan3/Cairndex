@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from cairndex.auth import SESSION_COOKIE, requires_unlock
 from cairndex.auth.local_token import is_local_owner_token
-from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
+from cairndex.core.errors import (
+    AuthRequiredError,
+    InvalidDeviceTokenError,
+    LibraryReleasedError,
+    NotFoundError,
+)
 from cairndex.domain.enums import LibraryStatus
 from cairndex.file_ops import gate as write_mode_gate
 from cairndex.ownership import get_lease_manager
@@ -136,6 +141,8 @@ def get_library_session(
         session_cookie=session_cookie,
         authorization=authorization,
     )
+    if library.serving_released:
+        raise LibraryReleasedError("This library is released; choose Reopen to serve it here")
     require_library_ownership(library_id, root)
 
     session = get_library_sessionmaker(library)()
@@ -238,6 +245,8 @@ def get_library_access(
             session_cookie=session_cookie,
             authorization=authorization,
         )
+    if library.serving_released:
+        raise LibraryReleasedError("This library is released; choose Reopen to serve it here")
     require_library_ownership(library_id, Path(library.root_path))
     maker = get_library_sessionmaker(library)
 

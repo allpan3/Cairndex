@@ -36,6 +36,7 @@ from cairndex.domain.enums import FileOpType
 from cairndex.file_ops import journal, operations
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, resolve_writable, validate_name
+from cairndex.ownership.lifecycle import check_work_ownership
 from cairndex.registry import library_package as pkg
 
 # Chunk size for streaming a body to disk. Large enough that a big import is not
@@ -146,6 +147,7 @@ async def import_stream(
         payload={"destination": target_relative, "filename": filename},
     )
     staging = staging_dir(root) / f"{operation.id}.part"
+    check_work_ownership()
     staging.parent.mkdir(parents=True, exist_ok=True)
 
     limit = get_settings().import_max_bytes
@@ -159,6 +161,7 @@ async def import_stream(
                         f"This file is larger than the {limit}-byte import limit "
                         "(CAIRNDEX_IMPORT_MAX_BYTES)."
                     )
+                check_work_ownership()
                 handle.write(chunk)
         if written == 0:
             raise ValidationError("The uploaded file was empty.")
@@ -236,6 +239,7 @@ def _link_if_asked(session: Session, relative_path: str) -> int:
 def _discard(staging: Path) -> None:
     """Remove a partial upload. A failure here must not mask the real error."""
     with contextlib.suppress(OSError):
+        check_work_ownership()
         staging.unlink()
 
 

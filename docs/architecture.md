@@ -11,6 +11,50 @@
 > roadmap, and `docs/STATUS.md` for current gaps, validation state, and
 > recommended next tasks.
 
+## Library release and recovery
+
+A server retains library ownership while it is awake, including UI idle time,
+blank displays and lid closure that does not suspend the server. Closing or
+sleeping a remote client does not release the server's library. There is no idle
+release and no automatic stale takeover.
+
+**Libraries → Release** stops this server serving that library to every client,
+while retaining its registration, content and metadata. The server refuses new
+work, drains admitted requests, sessions, jobs and maintenance, stops local HLS
+encoders, then checkpoints and closes SQLite before releasing its lease.
+**Reopen** is deliberate and uses normal ownership checks. Release intent is
+server-local registry state and survives restart; polling, jobs and a remembered
+selection cannot reopen it. Removing registration is a separate action.
+
+A drain timeout or failed checkpoint keeps admission closed and ownership
+retained; retry Release to finish. An unavailable or changed ownership record
+never permits a journal-mode rewrite or a release-record overwrite. A failed
+close may leave WAL recovery files and a stale lease, requiring explicit
+recovery rather than a clean-handoff claim.
+
+SQL statements/commits and filesystem publication boundaries check the cached
+ownership validation time. At a gap of one heartbeat interval, on a backward
+wall-clock adjustment, or after an I/O failure, they verify the exact lease
+nonce before proceeding. Both monotonic and wall clocks are checked because
+monotonic time may exclude suspension. This also covers work that resumes
+before the heartbeat thread. Unknown ownership pauses work; a changed/missing
+record fences it and never triggers reacquisition. The ordinary path performs
+clock reads rather than a filesystem read per statement.
+
+A file lease is cooperative, not a distributed fencing token. An already-issued
+OS operation cannot be revoked, and disconnected cloud replicas cannot observe
+one another. Expiration is evidence of staleness, not evidence of a closed DB.
+Conflict copies and available recovery files are retained; file sync alone does
+not guarantee a complete recoverable SQLite generation or lossless resolution.
+Cloud reconciliation remains outside this lifecycle contract.
+
+Metadata-only operation protects source media. Browsing still requires writable
+`.cairndex` metadata, locks, progress and cache, plus writable server data and
+local plans. A wholly read-only library mount is unsupported and returns a
+structured permissions error. A read-only container root is compatible with
+separate writable data/metadata mounts. Existing source media may remain
+read-only when the metadata package is writable.
+
 ## 1. System overview
 
 Cairndex is a single-owner, self-hosted application. A FastAPI backend runs
@@ -1008,3 +1052,9 @@ authenticating reverse proxy, not the public internet.
   landed in M7;
 - transcode-cache location is settled (ADR-0014: server-local ephemeral under
   `{CAIRNDEX_DATA_DIR}/transcode/`, never inside a library package).
+
+Managed library connections disable SQLite's implicit checkpoint on last close.
+Lost-owner disposal therefore retains the database and WAL recovery bytes without
+folding them into the main file. Clean handoff explicitly checkpoints through a
+fresh connection after draining; an old session factory cannot revive a retired
+engine after reopening.
