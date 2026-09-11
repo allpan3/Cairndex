@@ -1,7 +1,7 @@
 # Project status
 
 - Complete synthetic replica catalogs are implemented on
-  `fix/library-ownership-lifecycle` under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
+  `fix/library-ownership-lifecycle`, implementation checkpoint `43b2690e`, under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
   Package/protocol version 2 covers every authored family through linked payloads,
   exact SQLite-cell values, indexed causal projection, atomic structural choices,
   creation/deletion and same-ID branch recovery. Transfers, collection covers and
@@ -14,11 +14,14 @@
   legacy round trips. Rollback exports retain all events/conflicts/drafts/jobs in a
   separate recovery DB. `CONVERSION_AVAILABLE` remains false; no owner-library
   conversion endpoint or ordinary conversion command exists.
-  Validation checkpoint: full backend 1,432 passed/one skipped, frontend 1,154 passed,
-  prototype 55 passed and full browser 150 passed. Two additional recovery regressions
-  pass in the focused catalog suite; final backend and frozen rebuild checks follow
-  this implementation checkpoint. Static gates and generated API artifacts pass.
-  ARM development sidecar build and packaged smoke pass. Docker smoke was attempted
+  Validation: full backend 1,434 passed/one skipped (host FFmpeg lacks zscale),
+  frontend 1,154 passed, prototype 55 passed and full browser 150 passed.
+  Ruff/format/mypy, frontend lint/format/types/build and OpenAPI reproducibility pass.
+  The final ARM development sidecar build, packaged smoke and two independent frozen
+  sidecars pass registration, complete linked import, disjoint edits/exchange and
+  reviewed branch recovery. The browser test covers creation/review draft persistence,
+  recovered job review, exact filters, transfers, forests and numeric precision.
+  The [review summary](proposals/complete-replica-catalog-review.md) records scope and limits. Docker smoke was attempted
   but neither configured local daemon socket is available; no container proof is
   claimed for this group. Native UI/.app packaging, Windows, real providers, power loss
   and representative NAS/large-library performance remain unqualified. No publication,
@@ -50,10 +53,9 @@
   resolution boundaries; these are not power-loss or provider-qualification evidence.
   Native Rust was unchanged; native UI/.app packaging, Ubuntu CI, Windows, real cloud
   providers and representative NAS/large-library performance were not requalified.
-  Real-library conversion, other metadata families, source operations, resume transport,
-  compaction and private-store clone/restore tooling remain separately scoped. The next
-  grouped task is complete metadata-family round-trip and conflict/recovery support
-  before considering real conversion or provider qualification. No publication,
+  Real-library conversion, source operations, resume transport, compaction and
+  private-store clone/restore tooling remain separately scoped. Complete catalog
+  implementation and its qualification boundaries are recorded above. No publication,
   deployment, installed-app replacement or owner-library operation occurred.
   Privacy: the implementation commit and staged/message scans pass. The full
   `origin/main..HEAD` gate is **blocked by the 8 MiB cumulative new-blob limit**,
