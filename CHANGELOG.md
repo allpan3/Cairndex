@@ -49,6 +49,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Complete synthetic replica catalogs cover all authored metadata families, stable
+  edges, membership transfers, hierarchy/order, explicit conflict choices and same-ID
+  branch recovery. Linked payloads activate complete seeds atomically; durable jobs
+  and private editor/review drafts survive reloads and restarts.
+- Disposable conversion and rollback preserve every legacy table, private auth,
+  resume records and grouping plans, verify exact round trips, and retain new events,
+  conflicts and drafts in a separate recovery archive. Real conversion stays disabled.
+
 - Bounded synthetic replica metadata workflow: private SQLite, immutable causal
   edits for bundle title/ordered notes/rating, mandatory editor basis and retry
   identity, bounded exchange, conflict review, retained values and private drafts.

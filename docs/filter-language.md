@@ -7,6 +7,17 @@
 > round-trips this exact shape. The allowlist below is the long-term target;
 > the currently implemented subset is listed under "Implemented fields".
 
+## Replica saved filters
+
+Complete synthetic catalogs store each saved filter as one indivisible version
+plus its exact AST JSON text. Conversion and edits validate the allowlisted AST;
+unknown versions/operators stop acceptance. Arbitrary supported nesting, whitespace
+and precise JSON literals survive unrelated edits unchanged. A structured replacement
+builder composes an explicit all/any group; it never simplifies an existing AST
+merely by opening it. Tag/collection IDs inside predicates retain query-literal
+semantics rather than foreign-key lifetime guards: deleting a target does not
+rewrite the filter, and an absent target matches no direct membership.
+
 ## Goals
 
 - One canonical, versioned, JSON-serializable filter AST used by **both**

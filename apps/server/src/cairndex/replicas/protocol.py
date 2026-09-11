@@ -33,14 +33,18 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-# Capabilities identify this bounded workflow, not a promise of full migration support
-class Descriptor(StrictModel):
+# Shared identity binds private storage to one explicitly versioned package history
+class PackageIdentity(StrictModel):
     format: Literal["cairndex.replica-library"]
-    format_version: Literal[1]
     library_uuid: Token
     display_name: str = Field(min_length=1, max_length=255)
     epoch: Token
     genesis: Digest
+
+
+# Capabilities identify this bounded workflow, not a promise of full migration support
+class Descriptor(PackageIdentity):
+    format_version: Literal[1]
     capabilities: list[Literal["bundle_metadata_v1"]] = Field(min_length=1, max_length=1)
 
 

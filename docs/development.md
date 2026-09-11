@@ -43,20 +43,28 @@ uv run pytest                  # tests
 Auto-fix formatting/lint issues with `uv run ruff format .` and
 `uv run ruff check --fix .`.
 
-## Synthetic production replica workflow
+## Synthetic production replica workflows
 
 From `apps/server`, `uv run python -m cairndex.devtools.replica_fixture` creates a
-new temporary synthetic package and prints its location. Register it through the
-normal library picker/API with a private `CAIRNDEX_DATA_DIR` outside sync folders.
-Copy only that package to another location and serve it from another isolated
-server/data directory for concurrent editing. The existing app selects the capable
-metadata workspace. Never copy the private database to create another replica.
+bounded protocol-one package. For a complete protocol-two catalog, use:
 
-Run `uv run pytest tests/test_replicas.py -q` for protocol/HTTP/crash acceptance;
-from `apps/web`, run `npx playwright test e2e/replicas.spec.ts` for two independent
-real HTTP processes, two browser contexts and controlled offline file delivery.
-The [migration contract](replica-migration.md) specifies wire/storage limits,
-recovery categories and the complete conversion gates. Real conversion is unavailable.
+```bash
+uv run python -c 'from cairndex.devtools.catalog_fixture import create_disposable; from cairndex.replicas.catalog.conversion import prepare_disposable; print(prepare_disposable(create_disposable()).package)'
+```
+
+Both create new temporary synthetic data. Register the printed package through the
+ordinary picker/API with a private `CAIRNDEX_DATA_DIR` outside sync folders. Copy
+only that package to another location and serve it from another isolated server/data
+directory for concurrent editing. Never copy a private DB to create another author.
+The complete fixture's source byte specimens are metadata tests, not playable media.
+
+Run `uv run pytest tests/test_replicas.py tests/test_replica_catalog.py
+tests/test_replica_catalog_api.py -q` for conversion, protocol, HTTP and process-crash
+acceptance. From `apps/web`, run `npx playwright test e2e/replicas.spec.ts
+e2e/catalog-replicas.spec.ts` for independent real servers and controlled offline
+artifact delivery. The [catalog workflow](replica-catalog.md) documents creation,
+review, private drafts and saved-operation recovery. The [migration contract](replica-migration.md)
+keeps real-library conversion unavailable.
 
 ## Isolated cloud metadata prototype
 

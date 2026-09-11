@@ -17,6 +17,7 @@ from cairndex.core.time import utcnow
 from cairndex.persistence import models  # noqa: F401  (populate content metadata)
 from cairndex.persistence.base import Base
 from cairndex.persistence.engine import library_engine_scope
+from cairndex.replicas.catalog.protocol import CatalogDescriptor
 from cairndex.replicas.protocol import PACKAGE_FORMAT, Descriptor, PackageFormatError
 
 MARKER_DIR = ".cairndex"
@@ -58,7 +59,7 @@ class LibraryManifest:
     content_root: str
     created_at: str
     package_format: str = FORMAT
-    replica: Descriptor | None = None
+    replica: Descriptor | CatalogDescriptor | None = None
 
 
 def marker_dir(root: Path) -> Path:
@@ -102,7 +103,11 @@ def _parse_manifest(raw: str) -> LibraryManifest:
         from pydantic import ValidationError as SchemaError
 
         try:
-            descriptor = Descriptor.model_validate(data)
+            descriptor = (
+                CatalogDescriptor.model_validate(data)
+                if data["format_version"] == 2
+                else Descriptor.model_validate(data)
+            )
         except SchemaError as exc:
             raise PackageFormatError(
                 "Unsupported replica format or capabilities; upgrade required"
@@ -110,7 +115,7 @@ def _parse_manifest(raw: str) -> LibraryManifest:
         return LibraryManifest(
             descriptor.library_uuid,
             descriptor.display_name,
-            1,
+            descriptor.format_version,
             "",
             ".",
             "",

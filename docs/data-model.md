@@ -9,14 +9,21 @@
 > (suggestion-based grouping). ADR-0004 (Eagle import) is superseded history; the
 > importer is removed.
 
-The legacy SQLAlchemy schema below belongs to `cairndex.library`. The capable
-replica store uses private `events`, `revisions`, `bundles`, `inbox`, `sources`,
-`drafts`, `draft_receipts` and `config` tables. Immutable event bytes and indexed
-causal revisions are authoritative; `bundles` is a projection. Event rows also
-hold local publication/retry receipts. The [migration contract](replica-migration.md)
-and pinned code inventory cover every legacy table/column plus non-table artifacts.
-Only synthetic bundle title/ordered-notes/rating packages are supported; conversion
-of existing metadata families remains unavailable under [ADR-0029](adr/0029-cloud-metadata-replicas.md).
+The legacy SQLAlchemy schema below belongs to `cairndex.library`. Replica package
+version 1 uses private `events`, `revisions`, `bundles`, inbox/outbox receipts and
+drafts. Version 2 adds `catalog_units`, indexed active revisions, authored rows,
+placements, reverse references, unique keys, candidate/projected ownership claims,
+causal parent/frontier indexes, linked parts, conflict holds and durable jobs.
+The complete seed plus immutable edits reconstruct authored metadata. Private
+materialization is transactional and readers retain the last committed valid view.
+
+The [catalog mapping](replica-catalog.md) covers every authored field and edge.
+Notes and opaque JSON columns retain exact SQLite text, including NULL versus
+JSON null, order, duplicates, whitespace and large numeric literals. Progress,
+cursors, observation columns, operation journals, grouping plans and private auth
+belong in the synthetic legacy recovery archive rather than authored transport.
+Real-library conversion remains unavailable under
+[ADR-0029](adr/0029-cloud-metadata-replicas.md).
 
 ## Conventions
 

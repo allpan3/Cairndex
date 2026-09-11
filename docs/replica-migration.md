@@ -1,19 +1,23 @@
 # Replica capability and reversible migration contract
 
 The accepted architecture is [ADR-0029](adr/0029-cloud-metadata-replicas.md).
-The production package `cairndex.replica-library`, version 1, advertises exactly
-`bundle_metadata_v1`: existing synthetic bundle titles, ordered notes and ratings.
-There is **no conversion endpoint or owner-library conversion command**.
-`replicas/inventory.py` sets `CONVERSION_AVAILABLE = False`. The development
-fixture creates an empty temporary library with invented metadata; it never reads
-an existing catalog. A hand-written descriptor is not a conversion receipt.
+The package `cairndex.replica-library` supports version 1 with exactly
+`bundle_metadata_v1` and version 2 with the complete
+[authored catalog capability](replica-catalog.md). There is **no conversion endpoint
+or owner-library conversion command**. `replicas/inventory.py` sets
+`CONVERSION_AVAILABLE = False`. Developer functions create a new disposable legacy
+catalog, validate a private conversion checkpoint and export separate rollback
+copies. They accept no existing-library path through an application API or CLI.
+Their Python fixture dataclass is a developer test boundary, not authentication
+or permission to convert an arbitrary library. A handwritten descriptor is not a
+conversion receipt.
 
 ## Storage and wire contract
 
 The package contains `.cairndex/manifest.json` and immutable objects under
 `.cairndex/replica/objects/<two hex digits>/<event hash>.json`. The descriptor pins
 library ID, epoch, genesis hash, format and capabilities. It contains no DB path.
-Each transaction is one bounded canonical JSON envelope `{sha256, body}`. The hash
+In protocol one, each transaction is one bounded canonical JSON envelope `{sha256, body}`. The hash
 covers its body, which includes protocol, kind, library, epoch and, for edits,
 replica, operation, bundle and field changes. Each field change carries its full
 value and a required nonempty `basis` list of observed revision hashes. Neither
@@ -25,7 +29,9 @@ payload into one envelope. Maximum envelope size is 256 KiB; the complete seed h
 at most 100 bundles; each field has at most 128 active revisions. Notes are one
 **whole ordered-list conflict unit**, preserving duplicates, whitespace and order.
 A notes choice replaces that list and never claims to merge individual notes.
-Later structural families need separate capabilities and complete conflict units.
+Protocol two uses separate capabilities and the complete conflict units described
+in [the catalog mapping](replica-catalog.md). Its roots validate linked payloads
+before activation; the protocol-one 100-bundle limit does not apply.
 
 `CAIRNDEX_DATA_DIR/replicas/<library UUID>/replica.db` holds private SQLite/WAL,
 immutable event bytes, field revisions/projection, inbox/outbox receipts and drafts.
@@ -76,10 +82,10 @@ unverified delivery and upgrade/recovery failure. Peer delivery remains unknown.
 exact table and column set, including the attached grouping-plan schema. A test
 compares it to every SQLAlchemy content table and fails on new, missing or duplicate
 columns. All raw rows, including observation/recovery categories, belong in the
-private legacy archive. Classification specifies future active representation,
+private legacy archive. Classification specifies active authored representation,
 never permission to drop archived data.
 
-| Family | Preserved data and future representation | Conflict/validation requirement |
+| Family | Preserved data and representation | Conflict/validation requirement |
 | --- | --- | --- |
 | `asset_bundles` | IDs, title, ordered notes, rating, covers/primary file, opaque extra metadata, manual order, confirmed grouping provenance, timestamps and version; last-opened is an observation | Scalars independent; notes whole-list; cover/file and grouping references valid against lifetime |
 | `asset_files` | Stable IDs, bundle membership, relative paths, original/display names, note/source, role/sequence, cover time, timestamps/version; technical/availability/fingerprint/inode fields archived as observations | Per-file scalar units; path/identity collisions explicit; membership and order atomic; no source-media writes |
@@ -154,3 +160,18 @@ families pass round-trip and conflict recovery tests. Provider qualification,
 source-write semantics, resume-hint transport, history compaction and server-choice
 UX remain separate work. Synthetic local delivery and abrupt process exits prove
 only the tested protocol/application boundaries, not provider or power-loss safety.
+
+## Executable disposable checkpoint
+
+`create_disposable()` populates every modeled table, including attached grouping
+plans, progress/cursors, completed journal records and synthetic private auth.
+`prepare_disposable()` backs up both databases, preserves manifest/auth bytes with
+checksums, builds linked artifacts and imports them independently. It exports the
+validated projection and compares every original main-table row/cell before writing
+the candidate descriptor. The archive and source remain separate and unchanged.
+
+`export_legacy()` creates a separate legacy copy and `replica-recovery.db` containing
+all events, rejected branches, drafts, jobs and receipts. After edits, the legacy
+view uses the last valid local arrangement and preserves observations for surviving
+IDs. Resume rows for removed files remain in the original archive and are omitted
+from the reconciled view. This is an export, not in-place rollback or owner activation.

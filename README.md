@@ -18,12 +18,13 @@ agents working in this repository.
 
 ## Status
 
-A bounded replica workflow supports concurrent offline title, ordered-note and
-rating edits in explicitly capable **synthetic** packages. It uses private SQLite,
-immutable metadata exchange, conflict review, retained history and private drafts.
-Real-library conversion and provider qualification remain unavailable; existing
-libraries retain their DB and ownership rules. See the accepted
-[replica architecture](docs/adr/0029-cloud-metadata-replicas.md) and
+Capable **synthetic** replica packages support library-wide authored metadata,
+concurrent offline edits, complete structural choices, retained history and private
+drafts. Reversible conversion tests create disposable legacy catalogs, preserve
+private recovery state and verify exact round trips. Real-library conversion and
+provider qualification remain unavailable; existing libraries retain their DB and
+ownership rules. See the [catalog workflow](docs/replica-catalog.md), accepted
+[architecture](docs/adr/0029-cloud-metadata-replicas.md) and
 [migration contract](docs/replica-migration.md). NAS and cloud folders are storage
 scenarios, not required application modes.
 

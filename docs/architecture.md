@@ -14,13 +14,19 @@
 ## Private metadata replicas
 
 [ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases
-and immutable causal metadata transactions. The capable production workflow supports
-synthetic bundle titles, ordered notes and ratings with indexed field revisions,
-transactional outbox/import, paginated history and private drafts. The existing
-API and shared app serve both package generations. Replica packages never open
-legacy content/lease/source-write paths. The [migration contract](replica-migration.md)
-defines wire limits, complete schema inventory and unavailable conversion gates.
-The legacy serving architecture below continues to apply to `cairndex.library`.
+and immutable causal metadata transactions. Package version 1 supports bounded
+bundle metadata; version 2 supports the complete authored catalog through linked
+payloads, indexed revisions/projection, durable asynchronous jobs, retained branches
+and private drafts. Scalars merge independently; membership, hierarchies, lifetime
+and their validated dependencies use complete reviewed arrangements. Normal saves
+and imports update indexed affected rows. Explicit branch recovery reconstructs
+history in a separate private store in a background job.
+
+The API and shared app select the advertised capability. Replica packages never
+open legacy content/lease/source-write paths. The [catalog workflow](replica-catalog.md)
+and [migration contract](replica-migration.md) define wire limits, schema inventory,
+synthetic conversion/rollback and unavailable real conversion. The legacy serving
+architecture below applies to `cairndex.library`.
 
 ## Library release and recovery
 

@@ -11,7 +11,8 @@ from cairndex.auth import SESSION_COOKIE
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import services as registry_service
 from cairndex.replicas import service
-from cairndex.replicas.protocol import FieldName, Token
+from cairndex.replicas.catalog.store import CatalogStore
+from cairndex.replicas.protocol import FieldName, ReplicaError, Token
 from cairndex.replicas.schemas import (
     DraftPage,
     DraftRequest,
@@ -32,7 +33,7 @@ def replica_store(
     registry: RegistryDbSession,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     authorization: Annotated[str | None, Header()] = None,
-) -> Iterator[Store]:
+) -> Iterator[Store | CatalogStore]:
     library = registry_service.get_library(registry, library_id)
     authorize_library(
         registry,
@@ -50,21 +51,30 @@ def replica_store(
         lifecycle.leave(library_id)
 
 
-ReplicaStore = Annotated[Store, Depends(replica_store)]
+# Legacy metadata endpoints never run against a catalog-capable store
+def bundle_store(store: Annotated[Store | CatalogStore, Depends(replica_store)]) -> Store:
+    if not isinstance(store, Store):
+        raise ReplicaError("This API requires bundle_metadata_v1")
+    return store
+
+
+CommonReplicaStore = Annotated[Store | CatalogStore, Depends(replica_store)]
+ReplicaStore = Annotated[Store, Depends(bundle_store)]
 Cursor = Annotated[str, Query(max_length=64)]
 Limit = Annotated[int, Query(ge=1, le=50)]
 
 
 # Honest local durability and transport status without a global synced claim
 @router.get("/status", response_model=ReplicaStatus)
-def status(store: ReplicaStore) -> ReplicaStatus:
+def status(store: CommonReplicaStore) -> ReplicaStatus:
     return ReplicaStatus.model_validate(store.status())
 
 
 # Each explicit retry performs one bounded exchange slice
 @router.post("/exchange", response_model=ReplicaStatus)
-def exchange(library_id: str, store: ReplicaStore) -> ReplicaStatus:
-    service.exchange(library_id)
+def exchange(library_id: str, store: CommonReplicaStore) -> ReplicaStatus:
+    if isinstance(store, Store):
+        service.exchange(library_id)
     return ReplicaStatus.model_validate(store.status())
 
 

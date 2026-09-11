@@ -2639,6 +2639,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Controls */
+        get: operations["controls_api_v1_libraries__library_id__replica_catalog_controls__family__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/creation/{family}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Creation */
+        get: operations["creation_api_v1_libraries__library_id__replica_catalog_creation__family__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Drafts */
+        get: operations["drafts_api_v1_libraries__library_id__replica_catalog_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dismiss */
+        delete: operations["dismiss_api_v1_libraries__library_id__replica_catalog_drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/drafts/{owner}/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Draft */
+        put: operations["draft_api_v1_libraries__library_id__replica_catalog_drafts__owner___draft_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/entities/{family}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entities */
+        get: operations["entities_api_v1_libraries__library_id__replica_catalog_entities__family__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/entities/{family}/{identity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity */
+        get: operations["entity_api_v1_libraries__library_id__replica_catalog_entities__family___identity__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files */
+        get: operations["files_api_v1_libraries__library_id__replica_catalog_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_libraries__library_id__replica_catalog_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job List */
+        get: operations["job_list_api_v1_libraries__library_id__replica_catalog_jobs_get"];
+        put?: never;
+        /** Enqueue */
+        post: operations["enqueue_api_v1_libraries__library_id__replica_catalog_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/jobs/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job */
+        get: operations["job_api_v1_libraries__library_id__replica_catalog_jobs__operation__get"];
+        put?: never;
+        post?: never;
+        /** Cancel */
+        delete: operations["cancel_api_v1_libraries__library_id__replica_catalog_jobs__operation__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/drafts/{draft_id}": {
         parameters: {
             query?: never;
@@ -3307,6 +3496,109 @@ export interface components {
             revisions: string[];
             /** Value */
             value: string | number | string[] | null;
+        };
+        /** CatalogCandidate */
+        CatalogCandidate: {
+            /** Revisions */
+            revisions: string[];
+            /** Value */
+            value: string;
+        };
+        /** CatalogDraftRequest */
+        CatalogDraftRequest: {
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
+        };
+        /** CatalogEntity */
+        CatalogEntity: {
+            /** Family */
+            family: string;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["CatalogField"];
+            };
+            /** Has Conflicts */
+            has_conflicts: boolean;
+            /** Id */
+            id: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+            /** Parents */
+            parents: string[];
+        };
+        /** CatalogField */
+        CatalogField: {
+            /** Basis */
+            basis: string[];
+            /** Candidates */
+            candidates: components["schemas"]["CatalogCandidate"][];
+            /** Components */
+            components: {
+                [key: string]: string;
+            };
+            /** Held */
+            held: string | null;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: string | null;
+        };
+        /** CatalogJob */
+        CatalogJob: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "save" | "preview" | "commit_preview" | "recover";
+            /** Error */
+            error: string | null;
+            /** Id */
+            id: string;
+            /** Receipt */
+            receipt: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /** CatalogJobPage */
+        CatalogJobPage: {
+            /** Items */
+            items: components["schemas"]["CatalogJob"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
+        /** CatalogJobRequest */
+        CatalogJobRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "save" | "preview" | "commit_preview" | "recover";
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Operation */
+            operation: string;
+        };
+        /** CatalogPage */
+        CatalogPage: {
+            /** Items */
+            items: components["schemas"]["CatalogEntity"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** Change */
         Change: {
@@ -5060,6 +5352,8 @@ export interface components {
         ReplicaStatus: {
             /** Blocked */
             blocked: string | null;
+            /** Catalog Version */
+            catalog_version?: number | null;
             /** Exchange Error */
             exchange_error?: string | null;
             /** Invalid */
@@ -10673,6 +10967,504 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HistoryPage"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    controls_api_v1_libraries__library_id__replica_catalog_controls__family__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    creation_api_v1_libraries__library_id__replica_catalog_creation__family__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drafts_api_v1_libraries__library_id__replica_catalog_drafts_get: {
+        parameters: {
+            query: {
+                owner: string;
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_api_v1_libraries__library_id__replica_catalog_drafts__draft_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_api_v1_libraries__library_id__replica_catalog_drafts__owner___draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                owner: string;
+                draft_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entities_api_v1_libraries__library_id__replica_catalog_entities__family__get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+                deleted?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entity_api_v1_libraries__library_id__replica_catalog_entities__family___identity__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                identity: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    files_api_v1_libraries__library_id__replica_catalog_files_get: {
+        parameters: {
+            query?: {
+                directory?: string;
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_libraries__library_id__replica_catalog_history_get: {
+        parameters: {
+            query: {
+                unit: string;
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_list_api_v1_libraries__library_id__replica_catalog_jobs_get: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogJobPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_api_v1_libraries__library_id__replica_catalog_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_api_v1_libraries__library_id__replica_catalog_jobs__operation__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_v1_libraries__library_id__replica_catalog_jobs__operation__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -5,9 +5,10 @@ import type { LibraryRead } from '../api/client'
 import type { components } from '../api/schema'
 import { holdEditor, replicaRequest, type ReplicaStatus } from '../api/replicas'
 import { ReplicaEditor } from './ReplicaEditor'
+import { CatalogWorkspace } from './CatalogWorkspace'
 
 // Keep library navigation available during incomplete delivery or recoverable storage errors
-export function ReplicaWorkspace({
+function BoundedReplicaWorkspace({
   libraryId,
   libraries,
   onChangeLibrary,
@@ -164,5 +165,40 @@ export function ReplicaWorkspace({
         )}
       </div>
     </main>
+  )
+}
+
+// Select the versioned shared workflow only after the server confirms its capability
+export function ReplicaWorkspace(props: {
+  libraryId: string
+  libraries: LibraryRead[]
+  onChangeLibrary: (id: string) => void
+  onManage: () => void
+}) {
+  const status = useQuery({
+    queryKey: ['replica-capability', props.libraryId],
+    queryFn: () =>
+      replicaRequest<ReplicaStatus & { catalog_version?: number | null }>(
+        props.libraryId,
+        '/status',
+      ),
+  })
+  if (status.isPending)
+    return (
+      <main className="replica-workspace">
+        <p>Opening library metadata…</p>
+      </main>
+    )
+  if (status.error)
+    return (
+      <main className="replica-workspace">
+        <p role="alert">{status.error.message}</p>
+        <button onClick={props.onManage}>Manage libraries</button>
+      </main>
+    )
+  return status.data.catalog_version ? (
+    <CatalogWorkspace key={props.libraryId} {...props} />
+  ) : (
+    <BoundedReplicaWorkspace {...props} />
   )
 }

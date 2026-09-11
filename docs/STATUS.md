@@ -1,5 +1,30 @@
 # Project status
 
+- Complete synthetic replica catalogs are implemented on
+  `fix/library-ownership-lifecycle` under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
+  Package/protocol version 2 covers every authored family through linked payloads,
+  exact SQLite-cell values, indexed causal projection, atomic structural choices,
+  creation/deletion and same-ID branch recovery. Transfers, collection covers and
+  lifetime/reference conflicts preserve valid local arrangements and unrelated scalar
+  work. Private asynchronous jobs and creation/editor/review drafts are recoverable
+  through the shared UI. The [catalog workflow](replica-catalog.md) describes the API,
+  conflict units and user controls. Protocol-one packages retain their bounded behavior.
+  Disposable conversion verifies the complete legacy/plans inventory, preserves
+  manifest/auth and source bytes, imports the seed independently and checks exact
+  legacy round trips. Rollback exports retain all events/conflicts/drafts/jobs in a
+  separate recovery DB. `CONVERSION_AVAILABLE` remains false; no owner-library
+  conversion endpoint or ordinary conversion command exists.
+  Validation checkpoint: full backend 1,432 passed/one skipped, frontend 1,154 passed,
+  prototype 55 passed and full browser 150 passed. Two additional recovery regressions
+  pass in the focused catalog suite; final backend and frozen rebuild checks follow
+  this implementation checkpoint. Static gates and generated API artifacts pass.
+  ARM development sidecar build and packaged smoke pass. Docker smoke was attempted
+  but neither configured local daemon socket is available; no container proof is
+  claimed for this group. Native UI/.app packaging, Windows, real providers, power loss
+  and representative NAS/large-library performance remain unqualified. No publication,
+  deployment, installed-app replacement or owner-library operation occurred.
+  The existing cumulative publication-volume block remains in force; history is preserved.
+
 - The first bounded production replica group is implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `55528dd5`, under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
   Explicitly capable synthetic packages support bundle titles, ordered notes and

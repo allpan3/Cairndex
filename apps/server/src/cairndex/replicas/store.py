@@ -17,6 +17,7 @@ from cairndex.replicas.protocol import (
     Descriptor,
     Edit,
     FieldName,
+    PackageIdentity,
     ReplicaError,
     Seed,
     canonical,
@@ -58,12 +59,12 @@ def no_fault(point: str) -> None:
 
 
 # Each transaction opens its own connection; SQLite serializes clients and importer together
-class Store:
+class PrivateStore:
     # Bind a private store to one logical history without copying media or a legacy DB
     def __init__(
         self,
         directory: Path,
-        descriptor: Descriptor,
+        descriptor: PackageIdentity,
         *,
         fault: Callable[[str], None] = no_fault,
     ) -> None:
@@ -91,7 +92,7 @@ class Store:
 
     # FULL durability keeps save/outbox/projection in one local crash boundary
     @contextmanager
-    def connection(self) -> Iterator[sqlite3.Connection]:
+    def connection(self, *, readonly: bool = False) -> Iterator[sqlite3.Connection]:
         try:
             info = self.path.parent.stat(follow_symlinks=False)
         except OSError as error:
@@ -118,7 +119,7 @@ class Store:
             db.execute("PRAGMA foreign_keys=ON")
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA synchronous=FULL")
-            db.execute("BEGIN IMMEDIATE")
+            db.execute("BEGIN" if readonly else "BEGIN IMMEDIATE")
             yield db
             db.commit()
         except sqlite3.Error as error:
@@ -132,6 +133,23 @@ class Store:
             raise
         finally:
             db.close()
+
+
+# The protocol-one store cannot be used for a richer catalog package
+class Store(PrivateStore):
+    descriptor: Descriptor
+
+    # Keep the bounded API and decoder bound to their original capability
+    def __init__(
+        self,
+        directory: Path,
+        descriptor: Descriptor,
+        *,
+        fault: Callable[[str], None] = no_fault,
+    ) -> None:
+        if not isinstance(descriptor, Descriptor):
+            raise ReplicaError("This metadata API requires bundle_metadata_v1")
+        super().__init__(directory, descriptor, fault=fault)
 
     # Active revision IDs are the bounded editor precondition for one field
     def _tips(self, db: sqlite3.Connection, bundle: str, field: str) -> list[sqlite3.Row]:

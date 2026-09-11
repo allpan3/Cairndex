@@ -1,6 +1,6 @@
 # ADR-0029: Private replicas with immutable metadata changes
 
-- Status: **accepted — architecture and first bounded production group approved 2026-09-10**
+- Status: **accepted — architecture and bounded/complete synthetic catalog groups approved**
 - Date: 2026-09-10
 - Branch: `fix/library-ownership-lifecycle`
 - Amends for capable replica packages: ADR-0008 storage authority, ADR-0018 cloud exclusivity/portability,
@@ -35,17 +35,26 @@ not whole-library snapshot selection, text merging or a general-purpose CRDT.
 | Mutable structured file per entity, optionally native/serverless | Smaller conflicts than a DB; partial files, multi-file relations, deletes, causality and conflict copies still require a protocol; replacing SQL/API adds migration and indexing work | No correctness simplification |
 | Private DB + immutable domain transactions | Per-field disjoint merge, explicit conflicts, transactional local saves; needs stable edit identity, ancestry, domain validation and retained history | Recommended minimum satisfying the requirement |
 
-## First production capability
+## Implemented synthetic capabilities
 
-The [production contract](../replica-migration.md) specifies the bounded
-`bundle_metadata_v1` wire revision and exhaustive migration inventory. Existing
-synthetic bundle titles, ordered notes and ratings use one canonical envelope per
-transaction with per-field observed revision links. The complete envelope replaces
-the prototype's two-file manifest/payload publication; atomic no-replace link
-publication protects immutable names. Notes are one ordered-list conflict unit.
-The indexed private store does not reuse the prototype's whole-history evaluator.
-Other metadata families, real conversion and fresh-incarnation restore tooling
-remain unavailable. The broader architecture below specifies their target behavior.
+The [production contract](../replica-migration.md) defines two explicit wire
+capabilities. Package/protocol version 1 retains `bundle_metadata_v1`. Version 2
+requires `authored_catalog_v1`, `linked_payload_v1` and `structural_choices_v1`,
+with catalog version 1 and minimum reader 2. The [catalog mapping](../replica-catalog.md)
+covers every authored column, stable edge and complete structural unit.
+
+Both use private indexed SQLite, immutable checksum envelopes and no-replace
+publication. Protocol-two roots name complete linked payloads, allowing seeds and
+individual units larger than one envelope. Atomic cohorts and indexed candidate/
+projected ownership dependencies retain valid local views during transfers and
+cascades; superseded structural anchors release historical coupling. Explicit
+same-ID recovery reconstructs a selected causal branch privately and prepares its
+necessary relationships without discarding unrelated current work.
+
+Executable conversion accepts only disposable synthetic fixtures through developer
+functions. It archives complete legacy/private state, independently imports a seed
+and verifies exact rollback equality before writing a candidate descriptor. No
+real-library conversion endpoint or ordinary conversion command is available.
 
 ## Identities, generations and local transactions
 
@@ -64,8 +73,8 @@ complete values of its changed conflict units. The manifest names library/epoch,
 replica/operation identity, schema, parent event IDs, payload hash and length.
 Its identity hashes the canonical manifest. Complete generation means **all its
 bytes and the entire necessary ancestor closure have been validated**. A seed is
-a complete authored catalog; production seeds may need bounded chunks whose
-complete manifest is validated before activation. That chunking is not prototyped.
+a complete authored catalog; production seeds use bounded linked chunks whose
+complete payload is validated before activation.
 An event's complete causal version can be reconstructed from the retained seed
 and ancestry, including any unresolved alternatives that version observed.
 
@@ -99,7 +108,7 @@ cannot be an authority or suppress other branches.
 | Data | Proposed reconciliation |
 | --- | --- |
 | Entity title, rating, source URL, note record text | Independent registers; different fields combine; concurrent different values of one field require a choice; equal values combine while retaining both writers |
-| Notes and moments | Stable IDs; one note text or moment definition is indivisible initially; no text diff merge; ordered note IDs form one order unit |
+| Notes and moments | Existing notes columns remain complete ordered-string lists, preserving SQL NULL, JSON null and exact text; one moment span is indivisible; no text diff merge or invented note IDs |
 | Smart Collection | Name independent from the complete versioned filter AST; never simplify an unsupported AST |
 | Bundle/tag/collection membership | One Boolean edge per stable pair; independent edges combine; opposite concurrent changes on one edge conflict |
 | Bundle membership and file/directory sequence | One complete ordered membership unit per bundle; cover/cursor references must validate against it; transfers between bundles require one atomic domain operation and cross-unit validation |
@@ -121,8 +130,8 @@ selected live version and necessary relationships. Choosing a title cannot
 implicitly resolve a lifetime conflict. An already-observed tombstone cannot be
 undone by an ordinary stale save. A later **explicit recovery** can restore the
 same stable ID with a new causal event and validated relationships, or export a
-separate copy. Same-ID post-deletion recovery needs production implementation;
-the prototype only exposes retained branches and prevents implicit resurrection.
+separate copy. The complete catalog implements same-ID post-deletion recovery as a background
+preview with an explicit reviewed commit; unresolved selected branches are refused.
 
 A whole-library winner is reserved for explicit disaster recovery. It must list
 all rejected changes and save a separate recovery archive. Retaining that archive
@@ -183,7 +192,9 @@ vary during migration without introducing a “NAS mode” or a second applicati
 
 ## Migration, compatibility and recovery
 
-No automatic conversion is approved or implemented. Proposed rollout:
+Automatic and real-library conversion remain unavailable. Disposable developer
+fixtures execute seed reconstruction and legacy round trips. Real activation still
+requires the following checkpoint and recovery contract:
 
 1. Inventory every durable field and relation, including custom/unknown data,
    notes/order, progress, directory members, filters, passphrase configuration and
@@ -244,7 +255,7 @@ The simulator proves only behavior under the modeled deliveries and crash points
 It does not qualify iCloud Drive, OneDrive, Google Drive or another provider, power
 loss, provider placeholders or the application UI.
 
-**Approved first production group:** format/capability gate and
+**Approved bounded production group:** format/capability gate and
 complete reversible migration contract; private projection plus transactional
 outbox and mandatory edit basis for one vertical authored-metadata slice; bounded
 verified import plus conflict/recovery UI and synthetic end-to-end tests. Keep
@@ -253,3 +264,7 @@ and preserve conflicts. Then qualify each provider on disposable libraries throu
 its real offline/placeholder/restart behavior. Source-file writes, resume hint
 transport, compaction, general server chooser and unrelated audit fixes remain
 separately scoped. The first group is authorized; real-library conversion and the separately scoped work remain unavailable.
+
+The complete synthetic catalog group includes all-family editing, structural
+conflict/recovery, shared UI controls and reversible disposable conversion tests.
+This authorization does not enable owner-library conversion or qualify a provider.

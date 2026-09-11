@@ -7,6 +7,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from uuid import uuid4
 
+from cairndex.replicas.catalog.storage import CatalogStorage
 from cairndex.replicas.protocol import MAX_BYTES, ReplicaError
 from cairndex.replicas.store import Store
 
@@ -51,7 +52,7 @@ def read_file(fd: int, name: str) -> bytes:
 # Use bounded pending rows and resumable directory iterators, never a history rebuild
 class Transport:
     # A descriptor pins all paths and identities before discovery begins
-    def __init__(self, root: Path, store: Store) -> None:
+    def __init__(self, root: Path, store: Store | CatalogStorage) -> None:
         self.root, self.store = root, store
         info = root.stat(follow_symlinks=False)
         self._root_identity = (info.st_dev, info.st_ino)

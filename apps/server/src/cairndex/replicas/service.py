@@ -8,18 +8,21 @@ from cairndex.core.errors import DomainError, LibraryReleasedError
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.library_package import read_manifest
 from cairndex.registry.models import RegisteredLibrary
+from cairndex.replicas.catalog.jobs import run_one
+from cairndex.replicas.catalog.protocol import CatalogDescriptor
+from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import PackageFormatError, ReplicaError
 from cairndex.replicas.store import Store
 from cairndex.replicas.transport import Transport
 
-_handles: dict[str, tuple[Store, Transport, threading.Lock, str]] = {}
+_handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str]] = {}
 _lock = threading.RLock()
 
 
 # Cache only handles, never authoritative metadata or an in-memory causal history
 # Private storage must remain outside the library and its provider transport
 # A changed descriptor cannot silently rebind an existing private store
-def get_store(library: RegisteredLibrary) -> Store:
+def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
     if library.serving_released or lifecycle.blocked(library.id):
         raise LibraryReleasedError("Library released; choose Reopen")
     root = Path(library.root_path)
@@ -41,7 +44,11 @@ def get_store(library: RegisteredLibrary) -> Store:
         target = base / "replicas" / manifest.library_uuid
         if target.is_symlink() or target.parent.is_symlink():
             raise ReplicaError("Private replica storage must not be symlinked")
-        store = Store(target, manifest.replica)
+        store: Store | CatalogStore = (
+            CatalogStore(target, manifest.replica)
+            if isinstance(manifest.replica, CatalogDescriptor)
+            else Store(target, manifest.replica)
+        )
         _handles[library.id] = store, Transport(root, store), threading.Lock(), identity
         return store
 
@@ -57,6 +64,8 @@ def exchange(library_id: str) -> None:
             manifest = read_manifest(handle[1].root)
             if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
                 raise ReplicaError("Library descriptor changed; recovery review required")
+            if isinstance(handle[0], CatalogStore):
+                run_one(handle[0])
             handle[1].tick()
             with handle[0].connection() as db:
                 db.execute("DELETE FROM config WHERE key='exchange_error'")

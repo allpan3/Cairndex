@@ -11,7 +11,11 @@
 The synthetic capable workflow keeps SQLite, WAL, drafts and unsent events under
 `CAIRNDEX_DATA_DIR/replicas`, outside provider folders. Back up this private state
 consistently in addition to immutable package artifacts; copying the package alone
-cannot recover unpublished edits or drafts. Do not clone private state into a
+cannot recover unpublished edits or drafts. Protocol-two preview/save/recovery jobs
+also live privately; queued jobs resume after restart, and interrupted saves retry
+with the same operation identity. The shared app lists retained jobs for recovery.
+Disposable rollback exports retain a separate `replica-recovery.db` alongside the
+legacy recovery copy; these exports never activate a real library. Do not clone private state into a
 second author. Exchange requires macOS/Linux POSIX directory descriptors and atomic
 hard-link publication; unsupported storage reports a retryable exchange failure.
 No provider or Windows qualification, real-library conversion, deployment or source
