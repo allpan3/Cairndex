@@ -1,7 +1,8 @@
 # Project status
 
 - Search/filter correctness (S04/S06/S07, I06–I10) is implemented on
-  `fix/library-ownership-lifecycle`. Renames omit saved filters, advanced conditions
+  `fix/library-ownership-lifecycle`, implementation checkpoint `c177565d`.
+  Renames omit saved filters, advanced conditions
   are protected, and stale saves retain the opening version. Preview and browse
   share the visible population. Bundle free text covers names, ordered bundle
   notes, member-file notes and moment comments; filenames/paths and tag/collection
@@ -26,8 +27,10 @@
   Unbundled uses literal SQLite filename matching; pinyin remains in local
   directory/picker search. Offset paging is deterministic for an unchanged catalog;
   concurrent edits can shift boundaries. No owner data/source operations or
-  publication occurred. Publication cleanup remains outside this group; the
-  cumulative branch retains its known new-blob volume block.
+  publication occurred. The implementation's committed-range privacy gate passes:
+  31 newly reachable text blobs, with no media or build output. Publication cleanup
+  remains outside this group; the cumulative branch retains its 8 MiB new-blob
+  volume block.
 
 - Everyday interaction work (S10/I17–I19 and I22) is implemented on
   `fix/library-ownership-lifecycle`. Keyboard selection retains its anchor,
