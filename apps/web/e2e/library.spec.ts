@@ -1379,6 +1379,122 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await expect(targetList).toBeVisible()
 })
 
+// A delayed response must never turn unknown file counts into zero
+test('inspector distinguishes pending files, folder membership and a large settled bundle', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let releaseFiles!: () => void
+  let releaseFolders!: () => void
+  const filesReady = new Promise<void>((resolve) => {
+    releaseFiles = resolve
+  })
+  const foldersReady = new Promise<void>((resolve) => {
+    releaseFolders = resolve
+  })
+  await page.route('**/bundles/b0/files', async (route) => {
+    await filesReady
+    await route.fulfill({
+      json: Array.from({ length: 74 }, (_, i) => ({
+        id: `synthetic-${i}`,
+        bundle_id: 'b0',
+        relative_path: i ? `Album/frame-${i}.jpg` : 'cover.jpg',
+        original_filename: `frame-${i}.jpg`,
+        display_title: `Frame ${i}`,
+        role: 'image',
+        media_kind: 'image',
+        sequence: i,
+        size_bytes: 1000,
+        availability: 'available',
+        supported: true,
+        tech_metadata: {},
+      })),
+    })
+  })
+  await page.route('**/bundles/b0/directory-members', async (route) => {
+    await foldersReady
+    await route.fulfill({
+      json: [
+        {
+          id: 'synthetic-album',
+          bundle_id: 'b0',
+          directory_path: 'Album',
+          name: 'Album',
+          sequence: 1,
+          file_count: 73,
+        },
+      ],
+    })
+  })
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(
+    page.locator('.prop').filter({ has: page.locator('.prop__k', { hasText: /^Files$/ }) }),
+  ).toContainText('Loading…')
+  await expect(page.getByText('Loading bundle files…', { exact: true })).toBeVisible()
+  releaseFiles()
+  await expect(page.getByText('Loading bundle files…', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Loading bundle folders…', { exact: true })).toBeVisible()
+  await expect(page.locator('.files .file-row')).toHaveCount(0)
+  releaseFolders()
+  await expect(page.locator('.files .file-row')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Show what is in Album' }).click()
+  await expect(page.locator('.files .file-row')).toHaveCount(75)
+  await page.getByTitle('Frame 73', { exact: true }).scrollIntoViewIfNeeded()
+  await expect(page.getByTitle('Frame 73', { exact: true })).toBeVisible()
+})
+
+test('inspector retries failed files without claiming an empty bundle', async ({ page }) => {
+  await mockApi(page)
+  let failing = true
+  await page.route('**/bundles/b0/files', (route) =>
+    route.fulfill(
+      failing ? { status: 503, json: { detail: 'Synthetic unavailable request' } } : { json: [] },
+    ),
+  )
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click()
+  const retry = page.getByRole('button', { name: 'Retry files', exact: true })
+  await expect(retry).toBeVisible({ timeout: 20000 })
+  await expect(page.getByText('No files in this bundle.')).toHaveCount(0)
+  failing = false
+  await retry.click()
+  await expect(page.getByText('No files in this bundle.')).toBeVisible()
+})
+
+test('a late inspector response cannot replace a newer selection and cached reselect remains readable', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/bundles/b0/files', async (route) => {
+    await pending
+    await route.fulfill({ json: [] })
+  })
+  await page.route('**/bundles/b1**', (route) =>
+    route.fulfill({
+      json: /\/(files|directory-members|moments)$/.test(route.request().url())
+        ? []
+        : { ...bundleDetail(null), id: 'b1', title: 'Movie 1' },
+    }),
+  )
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(page.getByText('Loading bundle files…', { exact: true })).toBeVisible()
+  await page.locator('[data-bundle-id="b1"]').click()
+  await expect(page.locator('.inspector textarea[aria-label="Title"]')).toHaveValue('Movie 1')
+  await expect(page.getByText('No files in this bundle.')).toBeVisible()
+  release()
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(page.getByText('No files in this bundle.')).toBeVisible()
+  await page.locator('[data-bundle-id="b1"]').click()
+  await expect(page.locator('.inspector textarea[aria-label="Title"]')).toHaveValue('Movie 1')
+  await expect(page.getByText('Loading bundle files…', { exact: true })).toHaveCount(0)
+})
+
 test('selecting a bundle opens the inspector', async ({ page }) => {
   page.on('console', (m) => m.type() === 'error' && console.log('CONSOLE', m.text().slice(0, 400)))
   page.on('pageerror', (e) => console.log('PAGEERROR', String(e).slice(0, 600)))

@@ -39,8 +39,15 @@ export function CatalogFileBrowser({
           Parent directory
         </button>
       )}
-      {page.isPending && <p>Loading catalog paths…</p>}
-      {page.error && <p role="alert">{page.error.message}</p>}
+      {page.isPending && <p role="status">Loading catalog paths…</p>}
+      {page.error && (
+        <p role="alert">
+          {page.error.message} {page.data ? 'Showing cached paths. ' : ''}
+          <button disabled={page.isFetching} onClick={() => void page.refetch()}>
+            Retry paths
+          </button>
+        </p>
+      )}
       <ul>
         {page.data?.items.map((item) => (
           <li key={item.cursor}>
@@ -53,7 +60,7 @@ export function CatalogFileBrowser({
           </li>
         ))}
       </ul>
-      {page.data?.items.length === 0 && <p>No cataloged files in this directory.</p>}
+      {!page.error && page.data?.items.length === 0 && <p>No cataloged files in this directory.</p>}
       {page.data?.next_cursor && (
         <button onClick={() => setAfter(page.data!.next_cursor!)}>More paths</button>
       )}

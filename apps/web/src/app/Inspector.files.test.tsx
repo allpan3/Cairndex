@@ -5,7 +5,13 @@ import type { FileRead } from '../api/client'
 import { FileList } from './Inspector'
 
 const hooks = vi.hoisted(() => ({
-  files: [] as unknown[],
+  files: [] as unknown[] | undefined,
+  members: [] as unknown[] | undefined,
+  error: null as Error | null,
+  memberError: null as Error | null,
+  fetching: false,
+  refetch: vi.fn(),
+  refetchMembers: vi.fn(),
   reorder: { mutate: vi.fn() },
   remove: { mutate: vi.fn() },
   update: { mutate: vi.fn(), error: null },
@@ -13,10 +19,19 @@ const hooks = vi.hoisted(() => ({
 
 vi.mock('../api/hooks', () => ({
   useBundle: vi.fn(),
-  useBundleFiles: () => ({ data: hooks.files }),
+  useBundleFiles: () => ({
+    data: hooks.files,
+    error: hooks.error,
+    isFetching: hooks.fetching,
+    refetch: hooks.refetch,
+  }),
   // Plan 6 folder rows: absent in these fixtures, so the rail draws every file
   // exactly as it did before folder members existed.
-  useBundleDirectoryMembers: () => ({ data: [] }),
+  useBundleDirectoryMembers: () => ({
+    data: hooks.members,
+    error: hooks.memberError,
+    refetch: hooks.refetchMembers,
+  }),
   useDirectoryMemberMutations: () => ({
     collapse: { mutate: vi.fn() },
     expand: { mutate: vi.fn() },
@@ -50,6 +65,12 @@ function file(id: string, displayTitle: string, sequence: number): FileRead {
 }
 
 beforeEach(() => {
+  hooks.members = []
+  hooks.error = null
+  hooks.memberError = null
+  hooks.fetching = false
+  hooks.refetch.mockReset()
+  hooks.refetchMembers.mockReset()
   hooks.files = [file('first', 'first.mp4', 0), file('second', 'second.mp4', 1)]
   hooks.reorder.mutate.mockReset()
   hooks.remove.mutate.mockReset()
@@ -58,6 +79,53 @@ beforeEach(() => {
     configurable: true,
     value: vi.fn(),
   })
+})
+
+test('pending files never claim an empty bundle and pending folders do not expose loose files', () => {
+  hooks.files = undefined
+  const view = render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('status')).toHaveTextContent('Loading bundle files…')
+  expect(screen.queryByText(/Files in bundle \(0\)/)).not.toBeInTheDocument()
+  hooks.files = [file('first', 'first.mp4', 0)]
+  hooks.members = undefined
+  view.rerender(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Loading bundle folders…')
+})
+
+test('initial failures offer retry without empty claims and cached errors keep content', () => {
+  hooks.files = undefined
+  hooks.error = new Error('Synthetic request failure')
+  const view = render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('alert')).toHaveTextContent('Could not load bundle files')
+  fireEvent.click(screen.getByRole('button', { name: 'Retry files' }))
+  expect(hooks.refetch).toHaveBeenCalledOnce()
+  expect(screen.queryByText('No files in this bundle.')).not.toBeInTheDocument()
+  hooks.files = [file('first', 'first.mp4', 0)]
+  view.rerender(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('listitem')).toHaveTextContent('first.mp4')
+  expect(screen.getByRole('alert')).toHaveTextContent('Showing cached files')
+})
+
+test('folder failures do not flatten membership and successful empty results are explicit', () => {
+  hooks.members = undefined
+  hooks.memberError = new Error('Synthetic folder failure')
+  const view = render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Retry folders' }))
+  expect(hooks.refetchMembers).toHaveBeenCalledOnce()
+  hooks.members = []
+  hooks.files = []
+  hooks.memberError = null
+  view.rerender(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByText('No files in this bundle.')).toBeInTheDocument()
+})
+
+test('background refresh keeps the existing file list visible', () => {
+  hooks.fetching = true
+  render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  expect(screen.getByRole('status')).toHaveTextContent('Refreshing bundle files…')
 })
 
 test('pointer-drags a file card into a new bundle playback position without arrow buttons', () => {

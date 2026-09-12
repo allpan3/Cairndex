@@ -3175,9 +3175,8 @@ test('dismissing the viewer context menu does not also toggle playback', async (
   await video.click({ button: 'right' })
   await expect(page.locator('.context-menu')).toBeVisible()
 
-  // Away from the menu, which opens at the cursor and would otherwise take the
-  // click itself. `force` because the menu overlaps the video's centre.
-  await page.locator('.mv-stage').click({ position: { x: 8, y: 8 } })
+  // Dismiss on the stage below the overlay topbar and away from the centered menu
+  await page.locator('.mv-stage').click({ position: { x: 8, y: 120 } })
 
   await expect(page.locator('.context-menu')).toHaveCount(0)
   expect(await paused()).toBe(true)

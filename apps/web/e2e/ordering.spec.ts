@@ -159,6 +159,36 @@ test('Shift-click selects a range of bundles', async ({ page }) => {
   await expect(page.locator('.card--selected')).toHaveCount(3)
 })
 
+test('bundle selection survives sorting, prunes proven removal, and clears when filters change', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let ids = ['b0', 'b1', 'b2']
+  await page.route('**/bundles/browse**', (route) =>
+    route.fulfill({
+      json: {
+        items: ids.map((id) => summary(id, `Bundle ${id}`)),
+        total: ids.length,
+        offset: 0,
+        limit: 100,
+      },
+    }),
+  )
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b1"]').click()
+  ids = ['b2', 'b1', 'b0']
+  await page.getByRole('button', { name: 'List', exact: true }).click()
+  await page.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect(page.locator('[data-bundle-id="b1"]')).toHaveAttribute('aria-selected', 'true')
+  ids = ['b2', 'b0']
+  await page.getByRole('button', { name: 'Sort by Name' }).click()
+  await expect(page.locator('[data-bundle-id="b1"]')).toHaveCount(0)
+  await expect(page.locator('[data-bundle-id][aria-selected="true"]')).toHaveCount(0)
+  await page.locator('[data-bundle-id="b0"]').click()
+  await page.getByLabel('Search', { exact: true }).fill('Bundle')
+  await expect(page.locator('[data-bundle-id][aria-selected="true"]')).toHaveCount(0)
+})
+
 test('folder card has a Delete Collection context menu', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

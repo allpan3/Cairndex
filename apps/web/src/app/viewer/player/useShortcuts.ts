@@ -207,6 +207,9 @@ export function useShortcuts(
     const root = rootRef.current
     if (!root) return
     const onKeyDown = (event: KeyboardEvent) => {
+      // A nested export or inspector dialog owns its keys before the enclosing viewer
+      const owner = (event.target as Element | null)?.closest?.('[aria-modal="true"], dialog[open]')
+      if (event.defaultPrevented || (owner && owner !== root)) return
       if (!handleViewerShortcut(event, playerRef.current, actionsRef.current)) return
       event.preventDefault()
       event.stopPropagation()

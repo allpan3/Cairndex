@@ -97,6 +97,17 @@ export function BundleAlbum({
   useEffect(() => {
     if (viewing !== null) return
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        document.querySelector('[aria-modal="true"], [role="menu"], dialog[open]')
+      )
+        return
+      if (
+        (e.target as HTMLElement | null)?.closest?.(
+          'input, textarea, select, [contenteditable="true"]',
+        )
+      )
+        return
       if (e.key === 'Escape') onBack()
     }
     window.addEventListener('keydown', onKey)

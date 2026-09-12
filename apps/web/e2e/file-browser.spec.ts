@@ -176,6 +176,43 @@ async function mockApi(page: Page) {
 // it first; the default viewport never did.
 test.use({ viewport: { width: 1180, height: 800 } })
 
+test('delayed thumbnails fill and failed thumbnails retain a usable file row', async ({ page }) => {
+  await mockApi(page)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/file/preview?*', async (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path')
+    if (path === 'scan.tiff')
+      return route.fulfill({ status: 503, body: 'Synthetic thumbnail failure' })
+    await pending
+    await route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+  })
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Files' }).click()
+  const failed = page.locator('[data-relpath="scan.tiff"]')
+  await expect(failed).toBeVisible()
+  await expect(failed.locator('img')).toHaveCount(0)
+  await failed.click()
+  await expect(failed).toHaveAttribute('aria-selected', 'true')
+  const poster = page.locator('[data-relpath="poster.jpg"] img')
+  await expect(poster).toHaveCount(1)
+  expect(await poster.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(0)
+  const started = Date.now()
+  release()
+  await expect
+    .poll(() => poster.evaluate((element: HTMLImageElement) => element.naturalWidth))
+    .toBeGreaterThan(0)
+  console.log(`Synthetic thumbnail decoded ${Date.now() - started} ms after releasing its response`)
+})
+
 test('browses a library read-only with badges and breadcrumbs', async ({ page }) => {
   const previewRequests = await mockApi(page)
   await page.goto('/')

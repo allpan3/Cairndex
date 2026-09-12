@@ -10,6 +10,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { DirectoryMember, FileRead } from '../api/client'
+import { setActiveLibraryId } from '../api/client'
 import { FileList } from './Inspector'
 
 const hooks = vi.hoisted(() => ({
@@ -66,7 +67,9 @@ function member(directory: string, sequence: number, fileCount: number): Directo
   } as DirectoryMember
 }
 
+let libraryIndex = 0
 beforeEach(() => {
+  setActiveLibraryId(`folders-${++libraryIndex}`)
   hooks.files = [
     file('poster', 'poster.jpg', 0),
     file('a', 'album/a.jpg', 1),
@@ -192,4 +195,19 @@ test('a nested file is not a reorder target', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Show what is in album' }))
   const nested = screen.getAllByRole('listitem')[2] as HTMLElement
   expect(nested.dataset.reorderFileId).toBeUndefined()
+})
+
+test('folder disclosure survives an inspector round-trip and remains isolated by bundle and library', () => {
+  const view = render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Show what is in album' }))
+  view.unmount()
+  const next = render(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('button', { name: 'Hide what is in album' })).toBeInTheDocument()
+  next.rerender(<FileList bundleId="other" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('button', { name: 'Show what is in album' })).toBeInTheDocument()
+  next.rerender(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('button', { name: 'Hide what is in album' })).toBeInTheDocument()
+  setActiveLibraryId('another-library')
+  next.rerender(<FileList bundleId="bundle" bundleVersion={1} coverId={null} />)
+  expect(screen.getByRole('button', { name: 'Show what is in album' })).toBeInTheDocument()
 })

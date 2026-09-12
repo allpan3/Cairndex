@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
-import { PathConflictError, type FileBrowserEntry } from '../api/client'
+import { PathConflictError, setActiveLibraryId, type FileBrowserEntry } from '../api/client'
 import { hostLabelsFor } from '../platform'
 import { FileBrowser } from './FileBrowser'
 import { DEFAULT_PLAYER_PREFS } from './types'
@@ -120,7 +120,9 @@ function renderBrowser(
 
 const row = (name: string) => screen.getByText(name).closest('[data-relpath]') as HTMLElement
 
+let libraryIndex = 0
 beforeEach(() => {
+  setActiveLibraryId(`file-write-${++libraryIndex}`)
   vi.clearAllMocks()
   listingIsStale = false
 })

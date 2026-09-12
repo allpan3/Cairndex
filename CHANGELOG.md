@@ -90,6 +90,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Inspector file counts and sizes distinguish loading from zero, with retryable
+  failures and readable cached content. Folder rows wait for membership data.
+- Folder disclosures survive File Browser and viewer round-trips. Indexed file
+  selection and open viewers follow file IDs through rename and reordering;
+  complete successful listings prune removed selections without guessing from
+  partial pages or failed refreshes.
+
 - New collections remain drafts until Create; cancellation leaves no placeholder.
   Dialog Escape, Tab containment and focus return respect nested overlays, and
   failed collection creation retains the entered name for correction.

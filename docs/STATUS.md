@@ -1,14 +1,22 @@
 # Project status
 
-- Everyday interaction work (S10/I17–I19 and I22) is in progress on
+- Everyday interaction work (S10/I17–I19 and I22) is implemented on
   `fix/library-ownership-lifecycle`. Keyboard selection retains its anchor,
   distinguishes focus from selection, traverses virtualized rows and scopes
   Select All to loaded listing items. Focused selection tests and browser
   ordering/File Browser checks pass. Collection creation remains a local draft
   until confirmation; dialog Escape and focus respect nested overlays. Focused
-  dialog tests and browser cancellation/creation checks pass. Loading, navigation
-  continuity and production desktop qualification remain in this group.
-  See [everyday interactions](interactions.md).
+  dialog tests and browser cancellation/creation checks pass. Inspector counts
+  distinguish pending from zero, failed reads offer retry and retain cached
+  files, and folder membership loads before rows are arranged. Folder disclosures
+  survive navigation; indexed file selection and viewers follow file IDs through
+  rename and reordering. Complete successful listings prune removed selections.
+  Frontend lint/format/types/build and 1,192 tests pass. Production desktop checks
+  cover collection drafts, nested Escape, focus return, loaded Select All,
+  Shift ranges, retry, folder round-trips and parent/child playlist boundaries.
+  Final rebuild verification, range privacy gates and cleanup remain in this group.
+  See [everyday interactions](interactions.md) and the
+  [interaction review](proposals/interaction-continuity-review.md).
 
 - Playback reliability (S09/I14–I16) is implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `65274532`.

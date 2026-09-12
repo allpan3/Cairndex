@@ -1,5 +1,5 @@
 import { libraryStateKey } from '../state/useBundleDraft'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import type { FileBrowserEntry, SortOrder } from '../api/client'
@@ -14,6 +14,7 @@ import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { markHtmlFileDropHandled } from './htmlFileDrop'
 import { FileEntryViewer } from './FileEntryViewer'
+import { fileEntryKey, useFileSelection } from './useFileSelection'
 import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
@@ -306,11 +307,13 @@ function BrowseScope(props: FileBrowserProps) {
   return (
     <div className="file-browser">
       <FileList
-        key={`browse:${path}`}
+        key={libraryStateKey(`browse:${path}`)}
         header={header}
         entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError && !stale}
+        onRetry={() => void query.refetch()}
         errorText={query.error instanceof Error ? query.error.message : undefined}
         emptyText="This folder is empty."
         stale={stale}
@@ -327,7 +330,7 @@ function UnbundledScope(props: FileBrowserProps) {
   return (
     <div className="file-browser">
       <FileList
-        key="unbundled"
+        key={libraryStateKey('unbundled')}
         header={
           <>
             {props.headerLeading}
@@ -337,6 +340,8 @@ function UnbundledScope(props: FileBrowserProps) {
         entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError && !query.hasNextPage}
+        onRetry={() => void query.refetch()}
         errorText={query.error instanceof Error ? query.error.message : undefined}
         emptyText="Nothing to bundle — every file is already in a bundle."
         hasMore={query.hasNextPage}
@@ -353,6 +358,8 @@ interface FileListProps extends FileBrowserProps {
   entries: FileBrowserEntry[]
   isLoading: boolean
   isError: boolean
+  complete: boolean
+  onRetry: () => void
   errorText?: string
   emptyText: string
   /**
@@ -380,6 +387,8 @@ function FileList({
   stale = false,
   isLoading,
   isError,
+  complete,
+  onRetry,
   errorText,
   emptyText,
   hasMore,
@@ -416,10 +425,6 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = writeMode && scope === 'browse'
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Anchor for Shift-range selection (the last plainly-clicked file).
-  const [anchor, setAnchor] = useState<string | null>(null)
-  const [focusedPath, setFocusedPath] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>(
     libraryStateKey('cairndex.filePrefs'),
     DEFAULT_FILE_PREFS,
@@ -455,6 +460,20 @@ function FileList({
   const labelFor = (entry: FileBrowserEntry) =>
     displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
   const [search, setSearch] = useState('')
+  const { selected, setSelected, anchor, setAnchor, focusedPath, setFocusedPath, selectedEntry } =
+    useFileSelection(
+      libraryStateKey(`cairndex.fileSelection:${JSON.stringify([scope, currentPath, search])}`),
+      entries,
+      complete,
+      selectedPath,
+    )
+  // Keep the inspector and host actions on the refreshed path of the selected indexed file
+  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry) => {
+    if (selectedPath !== entry.relative_path) onSelectEntry(entry)
+  })
+  useEffect(() => {
+    if (selectedEntry && !stale) refreshSelectedEntry(selectedEntry)
+  }, [selectedEntry, stale])
   const matchSearch = usePinyinSearch(search)
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -479,7 +498,11 @@ function FileList({
   }, [entries, search, activeSort.sort, activeSort.order, matchSearch])
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
-  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const openIndex =
+    openKey === null ? -1 : openable.findIndex((entry) => fileEntryKey(entry) === openKey)
+  if (complete && openKey !== null && !entries.some((entry) => fileEntryKey(entry) === openKey))
+    setOpenKey(null)
   // The viewer's heading names where the playlist came from: the folder being
   // browsed (the library root has no path segment), or the flat queue.
   const viewerTitle =
@@ -536,8 +559,7 @@ function FileList({
       return
     }
     if (entry.supported) {
-      const idx = openable.findIndex((e) => e.relative_path === entry.relative_path)
-      if (idx >= 0) setOpenIndex(idx)
+      setOpenKey(fileEntryKey(entry))
     }
   }
 
@@ -761,7 +783,7 @@ function FileList({
   // The focused listing owns selection keys while editors and overlays keep their commands
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!listingOwnsKey(event, scrollEl) || stale || openIndex !== null || menu.state) return
+      if (!listingOwnsKey(event, scrollEl) || stale || openKey !== null || menu.state) return
       if (
         write.renamingPath ||
         write.creatingFolder ||
@@ -1068,11 +1090,18 @@ function FileList({
             />
           </div>
         )}
+        {isError && (
+          <div className="empty empty--error" role="alert">
+            {errorText ?? 'Could not load files.'}{' '}
+            {entries.length > 0 ? 'Showing cached files. ' : ''}
+            <button className="btn" onClick={onRetry}>
+              Retry files
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="empty">Loading…</div>
-        ) : isError ? (
-          <div className="empty empty--error">{errorText ?? 'Could not load files.'}</div>
-        ) : entries.length === 0 ? (
+        ) : isError && entries.length === 0 ? null : entries.length === 0 ? (
           <div className="empty">{emptyText}</div>
         ) : visible.length === 0 ? (
           <div className="empty">No files match “{search}”.</div>
@@ -1122,12 +1151,7 @@ function FileList({
                       key={entry.relative_path}
                       entry={entry}
                       label={labelFor(entry)}
-                      selected={
-                        selected.has(entry.relative_path) ||
-                        (anchor === null &&
-                          selected.size === 0 &&
-                          entry.relative_path === selectedPath)
-                      }
+                      selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
@@ -1145,12 +1169,7 @@ function FileList({
                       key={entry.relative_path}
                       entry={entry}
                       label={labelFor(entry)}
-                      selected={
-                        selected.has(entry.relative_path) ||
-                        (anchor === null &&
-                          selected.size === 0 &&
-                          entry.relative_path === selectedPath)
-                      }
+                      selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
@@ -1214,12 +1233,15 @@ function FileList({
           />
         )}
 
-        {openIndex !== null && (
+        {openIndex >= 0 && (
           <FileEntryViewer
             files={openable}
             index={openIndex}
-            onIndex={setOpenIndex}
-            onClose={() => setOpenIndex(null)}
+            onIndex={(index) => {
+              const entry = openable[index]
+              if (entry) setOpenKey(fileEntryKey(entry))
+            }}
+            onClose={() => setOpenKey(null)}
             title={viewerTitle}
             playerPrefs={playerPrefs}
             onPlayerPrefs={onPlayerPrefs}

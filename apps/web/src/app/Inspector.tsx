@@ -47,6 +47,7 @@ import {
 import type { HostLabels } from '../platform'
 import { libraryStateKey, useBundleDraft } from '../state/useBundleDraft'
 import { usePersistentState } from '../state/usePersistentState'
+import { useSessionState } from '../state/useSessionState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
@@ -56,6 +57,9 @@ import { OverlayScrollbar } from './OverlayScrollbar'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
+
+const EMPTY_FILES: FileRead[] = []
+const EMPTY_MEMBERS: DirectoryMember[] = []
 
 /** Where a dragged note would land: the gap before or after the note at
  * `index`. Notes have no ids, so a position is all there is to name. */
@@ -159,7 +163,8 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
     onFlash,
     onFilterByTags,
   } = useBundleInspectorActions()
-  const { data: bundle } = useBundle(bundleId)
+  const bundleQuery = useBundle(bundleId)
+  const bundle = bundleQuery.data
 
   if (bundleId === null) {
     return (
@@ -182,7 +187,22 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   if (!bundle) {
     return (
       <aside className="inspector" data-tauri-drag-region>
-        <div className="state">Loading…</div>
+        {bundleQuery.error ? (
+          <div className="state" role="alert">
+            Could not load bundle details.{' '}
+            <button
+              className="btn"
+              disabled={bundleQuery.isFetching}
+              onClick={() => void bundleQuery.refetch()}
+            >
+              Retry details
+            </button>
+          </div>
+        ) : (
+          <div className="state" role="status">
+            Loading bundle details…
+          </div>
+        )}
       </aside>
     )
   }
@@ -257,7 +277,8 @@ function BundleEditor({
   onFilterByTags?: (tagIds: string[]) => void
 }) {
   const bundleId = bundle.id
-  const { data: files = [] } = useBundleFiles(bundleId)
+  const filesQuery = useBundleFiles(bundleId)
+  const files = filesQuery.data ?? EMPTY_FILES
   const draft = useBundleDraft(bundle)
   const update = useUpdateBundle(bundleId, draft.version)
   const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
@@ -473,12 +494,18 @@ function BundleEditor({
       </div>
       <div className="prop">
         <span className="prop__k">Files</span>
-        <span className="prop__v">{files.length}</span>
+        <span className="prop__v">
+          {filesQuery.data?.length ?? (filesQuery.error ? 'Unavailable' : 'Loading…')}
+        </span>
       </div>
       <div className="prop">
         <span className="prop__k">Size</span>
         <span className="prop__v">
-          {formatBytes(files.reduce((s, f) => s + (f.size_bytes ?? 0), 0))}
+          {filesQuery.data
+            ? formatBytes(files.reduce((s, f) => s + (f.size_bytes ?? 0), 0))
+            : filesQuery.error
+              ? 'Unavailable'
+              : 'Loading…'}
         </span>
       </div>
       <div className="prop">
@@ -812,10 +839,13 @@ export function FileList({
 }) {
   const menu = useContextMenu()
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
-  const { data: files = [] } = useBundleFiles(bundleId)
+  const filesQuery = useBundleFiles(bundleId)
+  const files = filesQuery.data ?? EMPTY_FILES
   // Folder members (plan 6): a directory that stands in for its files as one
   // row, so an album of a thousand photos does not fill the rail.
-  const { data: members = [] } = useBundleDirectoryMembers(bundleId)
+  const membersQuery = useBundleDirectoryMembers(bundleId)
+  const members = membersQuery.data ?? EMPTY_MEMBERS
+  const ready = filesQuery.data !== undefined && membersQuery.data !== undefined
   const { collapse, expand } = useDirectoryMemberMutations(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
@@ -825,7 +855,7 @@ export function FileList({
   // What the rail draws: loose files and folder rows in one order. The covered
   // files are still the bundle's files — `files` stays the whole list, because
   // reordering and the counts below are about membership, not about drawing.
-  const rows = useMemo(() => bundleRows(files, members), [files, members])
+  const rows = useMemo(() => (ready ? bundleRows(files, members) : []), [files, members, ready])
   const visibleFiles = useMemo(
     () => rows.flatMap((row) => (row.kind === 'file' ? [row.file] : [])),
     [rows],
@@ -844,9 +874,19 @@ export function FileList({
     () => new Map(visibleFiles.map((file, index) => [file.id, index])),
     [visibleFiles],
   )
-  // Which folder rows are showing their contents. Purely a way of looking:
-  // opening one changes nothing about the bundle, so it is not persisted.
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  // Disclosure is window-local navigation state, scoped independently from bundle membership
+  const [openFolders, setOpenFolders] = useSessionState<Set<string>>(
+    libraryStateKey(`cairndex.inspectorFolders:${bundleId}`),
+    new Set(),
+  )
+  useEffect(() => {
+    if (!membersQuery.data || membersQuery.error || membersQuery.isFetching) return
+    const ids = new Set(membersQuery.data.map((member) => member.id))
+    setOpenFolders((previous) => {
+      const next = new Set([...previous].filter((id) => ids.has(id)))
+      return next.size === previous.size ? previous : next
+    })
+  }, [membersQuery.data, membersQuery.error, membersQuery.isFetching, setOpenFolders])
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
@@ -1089,9 +1129,10 @@ export function FileList({
       className="files"
       title={
         <>
-          Files in bundle ({files.length}
+          Files in bundle{filesQuery.data !== undefined ? ` (${files.length}` : ''}
           {members.length > 0 ? ` · ${members.length} folder${members.length > 1 ? 's' : ''}` : ''}
-          {missingCount > 0 ? ` · ${missingCount} missing` : ''})
+          {missingCount > 0 ? ` · ${missingCount} missing` : ''}
+          {filesQuery.data !== undefined ? ')' : ''}
         </>
       }
       actions={
@@ -1108,6 +1149,13 @@ export function FileList({
       }
     >
       <ConflictNotice error={update.error} />
+      <BundleFilesStatus query={filesQuery} kind="files" />
+      <BundleFilesStatus query={membersQuery} kind="folders" />
+      {ready &&
+        !filesQuery.error &&
+        !membersQuery.error &&
+        files.length === 0 &&
+        members.length === 0 && <p>No files in this bundle.</p>}
       <div className="files__list" role="list" aria-label="Files in bundle">
         {rows.map((row) => {
           if (row.kind === 'folder') {
@@ -1149,6 +1197,32 @@ export function FileList({
       )}
     </InspectorSection>
   )
+}
+
+// Missing query data is unknown; cached data remains readable during refresh and failure
+function BundleFilesStatus({
+  query,
+  kind,
+}: {
+  query: { data?: unknown; error: unknown; isFetching: boolean; refetch: () => unknown }
+  kind: 'files' | 'folders'
+}) {
+  if (query.error)
+    return (
+      <p role="alert">
+        Could not load bundle {kind}. {query.data !== undefined ? `Showing cached ${kind}. ` : ''}
+        <button
+          className="btn btn--sm"
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          Retry {kind}
+        </button>
+      </p>
+    )
+  if (query.data === undefined) return <p role="status">Loading bundle {kind}…</p>
+  if (query.isFetching) return <p role="status">Refreshing bundle {kind}…</p>
+  return null
 }
 
 /**

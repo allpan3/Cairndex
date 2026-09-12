@@ -1695,6 +1695,42 @@ function Workspace({
   const total = browse.data?.pages[0]?.total ?? 0
   const filtered = items
 
+  // Filters define selection scope; refresh and sorting preserve the same stable bundle IDs
+  const selectionKey = libraryStateKey(
+    JSON.stringify([selection, combinedFilter, debouncedSearch.trim()]),
+  )
+  const [selectionKeySeen, setSelectionKeySeen] = useState(selectionKey)
+  if (selectionKeySeen !== selectionKey) {
+    setSelectionKeySeen(selectionKey)
+    setSelectedIds(new Set())
+    setActiveId(null)
+    setBundleAnchor(null)
+    setSelectedCollectionIds(new Set())
+    setCollectionAnchor(null)
+    setCollectionFocus(null)
+  }
+  // A partial page or failed refresh cannot prove that an absent bundle was removed
+  if (
+    browse.data &&
+    !browse.isFetching &&
+    !browse.isError &&
+    !browse.hasNextPage &&
+    items.length >= total
+  ) {
+    const present = new Set(items.map((item) => item.id))
+    if ([...selectedIds].some((id) => !present.has(id)))
+      setSelectedIds(new Set([...selectedIds].filter((id) => present.has(id))))
+    if (activeId && !present.has(activeId)) setActiveId(null)
+    if (bundleAnchor && !present.has(bundleAnchor)) setBundleAnchor(null)
+  }
+  if (collections.data && !collections.isFetching && !collections.isError) {
+    const present = new Set(collections.data.map((collection) => collection.id))
+    if ([...selectedCollectionIds].some((id) => !present.has(id)))
+      setSelectedCollectionIds(new Set([...selectedCollectionIds].filter((id) => present.has(id))))
+    if (collectionFocus && !present.has(collectionFocus)) setCollectionFocus(null)
+    if (collectionAnchor && !present.has(collectionAnchor)) setCollectionAnchor(null)
+  }
+
   // What ⌘↩ would reveal right now, recomputed as the selection moves. Also what
   // greys both menu items out: the menu bar should answer "is there anything to
   // act on" before it is pressed, not after (owner, 2026-08-23).

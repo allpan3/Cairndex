@@ -35,3 +35,28 @@ collections are unaffected by cancelling a new draft.
 Smart Collection changes are submitted by Create or Save. Cancel, Close and
 Escape discard that dialog's unsaved edits. Replica conflict review retains its
 existing private-draft behavior.
+
+## Inspector loading
+
+Unknown file counts and sizes show Loading. Failed requests offer Retry;
+successful empty lists explicitly report no files. Cached files remain visible
+during refresh or a failed refresh, with a status identifying that state.
+Folder membership must load before files are arranged into loose and folder
+rows. Changing the selected bundle fences late responses to the previous bundle.
+
+## Navigation continuity
+
+Inspector folder disclosures survive File Browser and viewer round-trips in the
+current window. The retained state uses server, library, bundle and surface
+identity; it does not change folder membership. The window retains at most 128
+inactive navigation scopes.
+
+Indexed File Browser selections and the open viewer follow file IDs across
+rename and reordering. Directories and unindexed files use paths. Each folder,
+view and search has its own selection scope. Bundle selections survive sorting
+and refresh, and clear when the view, collection, search or filter scope changes.
+Missing selections are pruned only after a complete successful listing; partial
+pages and failed refreshes cannot establish that an item is gone.
+
+Folder playback includes that folder's files. A parent's playlist retains its
+loose-file boundary; expanding a disclosure does not add child files to it.

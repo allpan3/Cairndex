@@ -299,5 +299,5 @@ test('a bundle that has not loaded yet still says so', () => {
     </BundleInspectorActionsContext>,
   )
 
-  expect(screen.getByText('Loading…')).toBeTruthy()
+  expect(screen.getByRole('status')).toHaveTextContent('Loading bundle details…')
 })
