@@ -140,6 +140,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Desktop pairing grants are retained per server. Transport configuration commits
+  the target URL and matching credentials together after relay setup succeeds.
+
 - **The publication gate rejects build output and undeclared vendored trees.** It
   already pinned every binary by hash; it now also refuses any path under a build,
   dependency or cache directory (`target/`, `node_modules/`, `dist/`, `.venv/`,

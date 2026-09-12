@@ -247,8 +247,8 @@ transport adds `Authorization: Bearer` only to approved library-scoped URLs.
 Unscoped unprotected libraries remain anonymous; unscoped protected libraries
 show the pairing path because the browser passphrase cookie cannot unlock a
 cross-origin shell. Settings can forget the local token, while server revocation
-remains in the owner web Devices page. Changing the configured server drops an
-unrelated retained token.
+remains in the owner web Devices page. Each server retains its own grant across switches and restarts. Forgetting a token
+affects only the selected server; a switch commits its URL, grant and relay together.
 
 ADR-0017 defines the separate loopback media transport. It accepts only scoped
 read-only stream/HLS/thumbnail/preview/storyboard/subtitle/File Browser routes,
