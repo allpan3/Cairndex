@@ -1,7 +1,8 @@
 # Project status
 
 - Shared-server metadata protection (S05/I04) is implemented and locally verified on
-  `fix/library-ownership-lifecycle`, under [ADR-0030](adr/0030-shared-server-edit-bases.md).
+  `fix/library-ownership-lifecycle`, implementation checkpoint `5ed13e2a`, under
+  [ADR-0030](adr/0030-shared-server-edit-bases.md).
   Mandatory read bases, transactional clocks/receipts, independent membership
   deltas, atomic bulk operations, retained conflict drafts and connected refresh
   are implemented. The [mutation inventory](shared-server-edits.md) records all
@@ -14,6 +15,9 @@
   was visually checked with synthetic data. No Rust/native source changed, so no
   native build was run. Validation uses disposable libraries only; Docker/NAS,
   owner libraries, provider work, deployment and publication are outside this group.
+  This group's committed-range privacy gate passes from `bff3725b`; the cumulative
+  branch gate remains blocked by the 8 MiB new-blob limit. History is preserved and
+  nothing is published.
   The next audit group awaits owner instruction.
 
 - Search/filter correctness (S04/S06/S07, I06–I10) is implemented on
