@@ -10,6 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Bundle free text searches bundle names, all bundle/file notes and moment comments.
+  File/path/tag/collection names stay outside free text. Search cache version two
+  rebuilds atomically in bounded batches and follows note and membership edits.
+- Unbundled filename search and all five sort fields apply to the complete eligible
+  library set before pagination. Search/library changes discard prior pages;
+  empty and failed results have distinct messages and retry controls.
+
 - Library handoff drains requests, jobs, media work and maintenance before closing
   SQLite and releasing ownership. Resumed writes revalidate after heartbeat gaps
   or storage uncertainty; lost ownership never reacquires automatically.
@@ -89,6 +96,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Smart Collection renames preserve accepted nested rules. Unsupported conditions
+  are protected, stale saves retain the opening version, and previews count the
+  same visible bundle population as browsing with retry on failure. Filter API
+  value validation rejects malformed numbers, extension values and membership IDs.
 
 - File Browser keyboard scrolling keeps target rows clear of the sticky column
   header, including Home and upward navigation at different item sizes.

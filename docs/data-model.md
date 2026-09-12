@@ -71,9 +71,9 @@ ignored). Blank/whitespace-only blocks are dropped on write, and a row whose
 `q` full-text search both index the notes: the filter
 (`docs/filter-language.md`) compiles to a per-note `EXISTS` over
 `json_each(notes)`, and the `bundle_search` FTS view concatenates
-`json_each(notes)` into its `notes` column. (`ensure_search_schema` rebuilds the
-FTS table + triggers when their column set no longer matches, so an existing
-library migrates on open.)
+`json_each(notes)` into its `notes` column. The FTS cache also indexes member-file
+notes and moment comments. Its versioned atomic upgrade runs on library open; see
+[search architecture](architecture.md#9-filtering-and-smart-collections).
 
 `manual_order` is the global owner-defined ("custom") order used when browsing
 All/system views with the **Manual** sort (drag-reorder / "Clean up by…"). The
@@ -180,8 +180,8 @@ one.
 
 The column remains, and all three paths keep it in step through one rule
 (`domain.file_names.display_title_after_move` — it follows the file only while it
-still equals the old basename), because the FTS index reads it and a stale copy
-there is harmless. Nothing renders it. A future "call this file something else"
+still equals the old basename), so stored filename metadata stays consistent.
+Nothing renders it. A future "call this file something else"
 feature should add its own nullable override and prefer it in that same
 validator.
 
@@ -406,7 +406,9 @@ Saved **Smart Collections**. The ORM model is `SmartCollection` and the API is
 name `smart_folders` to avoid a second data migration. Columns: `id`, `name`,
 `filter_version`, `filter_json` (versioned JSON AST; see
 `docs/filter-language.md`), `default_sort`, `default_layout`, `sort_order`,
-`version`, timestamps.
+`version`, timestamps. Name, view-default and order updates omit the expression;
+only explicit condition edits replace it. The editor protects accepted expressions
+that its simple condition controls cannot represent.
 
 ### `subtitle_tracks`
 

@@ -1,8 +1,17 @@
 import { libraryStateKey } from '../state/useBundleDraft'
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  type ReactNode,
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import type { FileBrowserEntry, SortOrder } from '../api/client'
+import type { FileBrowserEntry, SortOrder, UnbundledFilesParams } from '../api/client'
 import { fileBrowserPreviewUrl, fileThumbnailUrl } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate, formatDuration, formatFileType } from '../lib/format'
@@ -51,7 +60,7 @@ import type { PlayerPrefs, SortOption, SortPref } from './types'
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
 // grid/list layouts (justified needs image aspect ratios files don't carry).
-type FileSort = 'name' | 'type' | 'size' | 'added' | 'modified'
+type FileSort = NonNullable<UnbundledFilesParams['sort']>
 type FileLayout = 'list' | 'grid'
 
 interface FilePrefs {
@@ -258,14 +267,43 @@ function compareEntries(a: FileBrowserEntry, b: FileBrowserEntry, sort: FileSort
  * The physical, library-scoped file browser (ADR-0008). The visible items are
  * real directories and files under the active library's root — not bundle cards.
  * Two scopes: `browse` navigates the directory tree; `unbundled` shows a flat,
- * cross-library list of files awaiting bundling. Files can be right-clicked to
+ * library-wide list of files awaiting bundling. Files can be right-clicked to
  * add them to / create a bundle (metadata-only; no move/rename/delete on disk).
  */
 export function FileBrowser(props: FileBrowserProps) {
-  return props.scope === 'unbundled' ? <UnbundledScope {...props} /> : <BrowseScope {...props} />
+  return <FileBrowserControls key={libraryStateKey(props.scope)} {...props} />
 }
 
-function BrowseScope(props: FileBrowserProps) {
+interface FileControls {
+  prefs: FilePrefs
+  setPrefs: Dispatch<SetStateAction<FilePrefs>>
+  search: string
+  setSearch: (value: string) => void
+}
+type FileScopeProps = FileBrowserProps & FileControls
+
+/** Keep query criteria above the request so each server page has the intended order */
+function FileBrowserControls(props: FileBrowserProps) {
+  const [prefs, setPrefs] = usePersistentState<FilePrefs>(
+    libraryStateKey('cairndex.filePrefs'),
+    DEFAULT_FILE_PREFS,
+  )
+  const [criteria, setCriteria] = useState({ path: props.path, search: '' })
+  if (criteria.path !== props.path) setCriteria({ path: props.path, search: '' })
+  const controls = {
+    prefs,
+    setPrefs,
+    search: criteria.search,
+    setSearch: (search: string) => setCriteria({ path: props.path, search }),
+  }
+  return props.scope === 'unbundled' ? (
+    <UnbundledScope {...props} {...controls} />
+  ) : (
+    <BrowseScope {...props} {...controls} />
+  )
+}
+
+function BrowseScope(props: FileScopeProps) {
   const { headerLeading, libraryName, path, onNavigate } = props
   const qc = useQueryClient()
   // `keepPrevious`: hold the current folder's rows while the next one loads,
@@ -323,8 +361,9 @@ function BrowseScope(props: FileBrowserProps) {
   )
 }
 
-function UnbundledScope(props: FileBrowserProps) {
-  const query = useUnbundledFiles()
+function UnbundledScope(props: FileScopeProps) {
+  const params = { q: props.search.trim(), sort: props.prefs.sort, order: props.prefs.order }
+  const query = useUnbundledFiles(params)
   const entries = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
 
   return (
@@ -343,7 +382,11 @@ function UnbundledScope(props: FileBrowserProps) {
         complete={!!query.data && !query.isFetching && !query.isError && !query.hasNextPage}
         onRetry={() => void query.refetch()}
         errorText={query.error instanceof Error ? query.error.message : undefined}
-        emptyText="Nothing to bundle — every file is already in a bundle."
+        emptyText={
+          props.search.trim()
+            ? `No files match “${props.search}”.`
+            : 'No indexed files awaiting bundling.'
+        }
         hasMore={query.hasNextPage}
         isFetchingMore={query.isFetchingNextPage}
         onLoadMore={() => query.fetchNextPage()}
@@ -353,7 +396,7 @@ function UnbundledScope(props: FileBrowserProps) {
   )
 }
 
-interface FileListProps extends FileBrowserProps {
+interface FileListProps extends FileScopeProps {
   header: ReactNode
   entries: FileBrowserEntry[]
   isLoading: boolean
@@ -381,6 +424,10 @@ interface FileListProps extends FileBrowserProps {
  * inspector); double click navigates into a folder or opens a file. Only files
  * participate in the bundling context menu and drag-select. */
 function FileList({
+  prefs,
+  setPrefs,
+  search,
+  setSearch,
   header,
   headerTrailing,
   entries,
@@ -425,10 +472,6 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = writeMode && scope === 'browse'
-  const [prefs, setPrefs] = usePersistentState<FilePrefs>(
-    libraryStateKey('cairndex.filePrefs'),
-    DEFAULT_FILE_PREFS,
-  )
   /**
    * The sort in force here, and how changing it is stored.
    *
@@ -459,7 +502,6 @@ function FileList({
   // `entry.name`, so hiding extensions can never change what an action does.
   const labelFor = (entry: FileBrowserEntry) =>
     displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
-  const [search, setSearch] = useState('')
   const { selected, setSelected, anchor, setAnchor, focusedPath, setFocusedPath, selectedEntry } =
     useFileSelection(
       libraryStateKey(`cairndex.fileSelection:${JSON.stringify([scope, currentPath, search])}`),
@@ -487,6 +529,7 @@ function FileList({
   // analogous to collections). Whole-library / recursive file search is a
   // future backend enhancement — see docs/STATUS.md.
   const visible = useMemo(() => {
+    if (scope === 'unbundled') return entries
     const q = search.trim()
     const filtered = q ? entries.filter((e) => matchSearch(e.name)) : entries
     const dir = activeSort.order === 'asc' ? 1 : -1
@@ -495,7 +538,7 @@ function FileList({
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
-  }, [entries, search, activeSort.sort, activeSort.order, matchSearch])
+  }, [entries, scope, search, activeSort.sort, activeSort.order, matchSearch])
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openKey, setOpenKey] = useState<string | null>(null)

@@ -3,7 +3,7 @@ import {
   useScopedQueryClient as useQueryClient,
 } from './useScopedMutation'
 import { captureRequestScope } from './requestScope'
-import { changeLibraryServing } from './client'
+import { changeLibraryServing, getActiveLibraryId, type UnbundledFilesParams } from './client'
 import { useCallback } from 'react'
 
 import {
@@ -1201,11 +1201,11 @@ export function useApplyGroupingPlan() {
 const hasSelection = (sel: FileSelection) =>
   (sel.fileIds?.length ?? 0) > 0 || (sel.relativePaths?.length ?? 0) > 0
 
-/** The flat "to-bundle queue": all not-yet-bundled files, cross-library. */
-export function useUnbundledFiles(enabled = true) {
+/** The flat "to-bundle queue": matching not-yet-bundled files within the active library. */
+export function useUnbundledFiles(params: UnbundledFilesParams = {}, enabled = true) {
   return useInfiniteQuery({
-    queryKey: ['unbundled-files'],
-    queryFn: ({ pageParam, signal }) => fetchUnbundledFiles(pageParam, 200, signal),
+    queryKey: ['unbundled-files', getActiveLibraryId(), params],
+    queryFn: ({ pageParam, signal }) => fetchUnbundledFiles(pageParam, 200, signal, params),
     initialPageParam: 0,
     getNextPageParam: (last) =>
       last.offset + last.limit < last.total ? last.offset + last.limit : undefined,

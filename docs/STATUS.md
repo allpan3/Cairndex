@@ -1,5 +1,34 @@
 # Project status
 
+- Search/filter correctness (S04/S06/S07, I06–I10) is implemented on
+  `fix/library-ownership-lifecycle`. Renames omit saved filters, advanced conditions
+  are protected, and stale saves retain the opening version. Preview and browse
+  share the visible population. Bundle free text covers names, ordered bundle
+  notes, member-file notes and moment comments; filenames/paths and tag/collection
+  names are excluded while explicit filters remain available. The retired scalar
+  bundle note remains outside the accepted current notes contract. Search cache
+  version two upgrades atomically in batches of at most 256 rowids, preserves
+  rowid identity and follows comment/membership updates. Unbundled searches current
+  filenames and globally sorts the eligible active-library set before SQL paging;
+  criteria/library changes reset pages and fence stale responses.
+  Documentation and generated OpenAPI/frontend types describe the scoped APIs,
+  supported language and simple-editor subset. Backend Ruff/format/mypy and the
+  full 1,469-test suite pass with the existing zscale skip; frontend
+  lint/format/types/build and 1,202 tests pass. The final browse-scope cleanup
+  passes 102 focused backend checks; all 17 search regressions pass, including
+  version-only upgrade and retired-note boundaries. All 91 relevant browser checks pass,
+  including disposable real-backend nested rename/cancel/stale-save and Unbundled
+  page-two search, largest-first order, slow-query cancellation, library switching,
+  empty/error/retry checks. Desktop launcher tests pass. Native host code and
+  playback pipelines are unchanged; Rust/native UI and frozen-sidecar packaging
+  were not requalified. Docker/NAS, real libraries, provider experiments and
+  representative large-library performance remain outside this group.
+  Unbundled uses literal SQLite filename matching; pinyin remains in local
+  directory/picker search. Offset paging is deterministic for an unchanged catalog;
+  concurrent edits can shift boundaries. No owner data/source operations or
+  publication occurred. Publication cleanup remains outside this group; the
+  cumulative branch retains its known new-blob volume block.
+
 - Everyday interaction work (S10/I17–I19 and I22) is implemented on
   `fix/library-ownership-lifecycle`. Keyboard selection retains its anchor,
   distinguishes focus from selection, traverses virtualized rows and scopes

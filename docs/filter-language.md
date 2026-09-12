@@ -1,11 +1,18 @@
 # Filter language
 
-> Status: **implemented (Phase 5)**. The AST, validator, and SQL compiler live
-> in `apps/server/src/cairndex/filters/` with tests in `tests/test_filters.py`
-> and `tests/test_smart_collections.py`. The desktop FilterBuilder
-> (`apps/web/src/app/filterModel.ts` + `FilterBuilder.tsx`) produces and
-> round-trips this exact shape. The allowlist below is the long-term target;
-> the currently implemented subset is listed under "Implemented fields".
+The version-one AST, validator and SQL compiler live in
+`apps/server/src/cairndex/filters/`. The API supports nested boolean expressions;
+the simple editor supports a subset of predicates in one all/any group.
+
+## Saved-rule editing
+
+Opening or renaming a Smart Collection preserves its accepted expression. Name-only
+PATCH requests omit `filter`; view defaults and ordering also leave it intact.
+The editor retains its opening `version` for `If-Match`, so a concurrent change
+returns 409 and requires closing/reopening before saving against the new state.
+Nested expressions, root NOT and predicates the simple controls cannot faithfully
+represent have protected conditions: only the name can be edited there. Cancel
+and Escape discard the local draft. A richer nested editor is deferred.
 
 ## Replica saved filters
 
@@ -35,28 +42,14 @@ rewrite the filter, and an absent target matches no direct membership.
 ```json
 {
   "version": 1,
-  "op": "and",
-  "children": [
-    {
-      "field": "tags",
-      "operator": "contains_all",
-      "value": ["tag-id-1", "tag-id-2"],
-      "include_descendants": true
-    },
-    {
-      "op": "not",
-      "child": {
-        "field": "tags",
-        "operator": "contains_any",
-        "value": ["tag-id-watched"]
-      }
-    },
-    {
-      "field": "rating",
-      "operator": "gte",
-      "value": 4
-    }
-  ]
+  "root": {
+    "op": "and",
+    "children": [
+      {"field": "tags", "operator": "contains_all", "value": ["tag-one", "tag-two"], "include_descendants": true},
+      {"op": "not", "child": {"field": "tags", "operator": "contains_any", "value": ["tag-watched"]}},
+      {"field": "rating", "operator": "gte", "value": 4}
+    ]
+  }
 }
 ```
 
@@ -64,42 +57,48 @@ Logical nodes: `and` / `or` (take `children: Node[]`), `not` (takes a single
 `child: Node`). Leaf nodes are `{field, operator, value, ...field-specific
 options}`.
 
-## Field/operator allowlist (minimum set, per `AGENTS.md` §8.7 and the
-product brief's "Filter expression contract")
-
-| Field | Operators |
-| --- | --- |
-| `title` / `name` | `contains`, `not_contains`, `equals`, `starts_with` |
-| `notes`, `source` (file origin), `filename` | `contains`, `not_contains` |
-| `tags` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
-| `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
-| `rating` (0–5 stars, 0.5 steps) | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
-| `extension` / `container` / `codec` | `equals`, `in`, `not_in` |
-| `duration`, `size_bytes`, `file_count` | `eq`, `gt`, `gte`, `lt`, `lte`, `between` |
-| `date_added`, `date_modified`, `date_imported` | `gt`, `gte`, `lt`, `lte`, `between` |
-| `availability` (missing/offline) | `equals` |
-| `has_cover`, `has_subtitles` | `equals` (boolean) |
-| `file_role` | `contains_any` |
-
-This table will move into generated/tested documentation (e.g. derived from
-the Pydantic field/operator registry) once Phase 5 implements the compiler,
-so the two cannot drift.
-
-## Implemented fields (Phase 5)
-
-The compiler (`filters/compiler.py`) currently supports the following. Each
-is exercised by `tests/test_filters.py`; the desktop FilterBuilder exposes
-exactly this set.
+## Supported API predicates
 
 | Field | Operators | Value |
 | --- | --- | --- |
-| `title` / `name`, `notes`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `notes`/`source`/`filename` use contains/not_contains in the UI) | string |
-| `extension` | `equals`, `in`, `not_in` | string / list |
-| `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` (`rating`: 0–5 in 0.5 steps) |
-| `rating` (also) | `is_null` | boolean (`true` = unrated, `rating IS NULL`) |
-| `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
-| `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
+| `title`, `name`, `notes`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` | string |
+| `extension` | `equals`, `in`, `not_in` | string / list of extensions |
+| `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
+| `rating` | `is_null` | boolean; true = unrated, false = rated |
+| `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string / two strings |
+| `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` | list of IDs; optional `include_descendants` |
 | `has_cover`, `has_missing` | `equals` | boolean |
+
+Text contains/prefix comparisons are case-insensitive with literal wildcard
+characters; equality is exact. `notes` tests each bundle note independently.
+`filename` explicitly tests member files' library-relative paths; `source` tests
+member file origins. These structured predicates remain independent of free-text
+search. File predicates are existential: `filename not_contains` matches when at
+least one member path does not contain the text. `file_count` and `size_bytes`
+include stored member rows. `has_cover` accepts an explicit cover or an image
+member; `has_missing` tests missing member rows.
+
+The API supports empty AND/OR groups as match-all. Empty membership lists mean
+match-none for `contains_any`, match-all for `contains_all`/`contains_none`.
+`container`, `codec`, `duration`, `date_modified`, `date_imported`, `availability`,
+`has_subtitles` and `file_role` are deferred, not accepted API fields.
+
+## Simple editor subset
+
+| Field | Editable operators |
+| --- | --- |
+| `title` | `contains`, `not_contains`, `equals`, `starts_with` |
+| `notes`, `source`, `filename` | `contains`, `not_contains` |
+| `extension` | `equals` |
+| `rating` | `eq`, `gte`, `lte`, `is_null` (true only) |
+| `file_count` | `eq`, `gte`, `lte`, `gt`, `lt` |
+| `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` |
+| `date_added` | `gte`, `lte`, `gt`, `lt` (date-only values) |
+| `has_cover`, `has_missing` | `equals` |
+
+Empty text/membership conditions, time-bearing dates, off-grid rating values and
+other API-only shapes are protected on reopen. They are never silently converted
+into an empty filter or a smaller group.
 
 ### Rating values are stars, in half-star steps
 
@@ -150,8 +149,8 @@ matches everything.
 
 ## Endpoints
 
-- `POST /api/v1/filters/preview` — `{ "filter": <expr> }` → `{ "count": n }`.
-- `POST /api/v1/bundles/browse` — same params as `GET /browse` plus an
+- `POST /api/v1/libraries/{library_id}/filters/preview` — `{ "filter": <expr> }` → `{ "count": n }`.
+- `POST /api/v1/libraries/{library_id}/bundles/browse` — same params as `GET /browse` plus an
   optional `filter`; this is the shared path for ad-hoc filters and Smart
   Collections, so equivalent expressions return identical results.
 - `POST /api/v1/libraries/{library_id}/filters/facets` — faceted counts for the
@@ -165,9 +164,16 @@ matches everything.
   don't shrink its own counts. Tag counts follow the active rule:
   `tag_include_descendants` rolls a parent up over its subtree as a *distinct*
   bundle count (Any/All), otherwise direct membership only (Equal/direct).
-- `GET|POST|PATCH|DELETE /api/v1/smart-collections` — persisted named filters.
+- `GET|POST /api/v1/libraries/{library_id}/smart-collections` and
+  `GET|PATCH|DELETE /api/v1/libraries/{library_id}/smart-collections/{id}` — persisted named filters.
   The stored AST is validated and compiled on write, so an unsupported filter
   is rejected at save time, never at browse.
+
+Preview uses the normal All/Smart Collection population: unconfirmed scan-staged
+bundles and hidden-only bundles are excluded. Empty bundles, confirmed missing
+bundles and bundles with both hidden and visible members are eligible. Counts
+apply the expression before pagination. Preview has no view/search override;
+facets accept that additional context. A failed UI preview offers retry.
 
 ## Compilation contract
 
@@ -182,12 +188,8 @@ matches everything.
   (recursive CTE or closure table — see `docs/data-model.md`) before the
   containment check runs.
 
-## Open questions for Phase 5
-
-- Exact typed-value/autocomplete contract per field (tag/collection ID
-  resolution vs. display-name resolution in the API payload).
-- Whether `version` bumps require a migration of stored `smart_folders.
-  filter_json`, or whether old versions are interpreted forever
-  (leaning: support old versions read-only, write only the latest).
-- Tie-breaker columns for deterministic pagination under arbitrary filters
-  (`AGENTS.md` §10).
+OpenAPI describes the recursive envelope and node shapes. Predicate `field` and
+`operator` remain strings and `value` is untyped there; the compiler enforces the
+field-dependent contract above. Unknown fields/operators and invalid values return
+422. Unsupported AST versions are rejected; no version-two language is defined.
+Bundle pagination uses the active sort plus stable bundle ID ties.

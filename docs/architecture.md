@@ -316,7 +316,7 @@ Local list/picker search uses the shared `app/pinyin.ts` matcher. It preserves
 case-insensitive literal substring matching and adds contiguous full-pinyin,
 initial-letter, partial, mixed, and polyphonic matching for Chinese names. This
 covers tag/collection pickers (single- and multi-bundle), tag filters, All Tags,
-File Browser names, and local file-selection filters. Exact-name checks for
+directory File Browser names, and local file-selection filters. Exact-name checks for
 inline **Create** actions remain literal, so a pinyin alias never suppresses
 creating a distinct Latin name. `pinyin-pro` is lockfile-pinned and runs fully
 offline; its dictionary is a separate ~142 kB gzip lazy chunk loaded when a
@@ -324,10 +324,9 @@ search-bearing surface mounts, keeping it out of the initial app bundle. The
 maintenance cost is one frontend-only dependency and its lockfile update; there
 is no schema, API, server runtime, or external-service dependency.
 
-Server-backed whole-library Bundle Browser search remains the SQLite FTS path
-described in §9 and does not yet index pinyin aliases. Extending pinyin there
-would require persisted aliases plus an FTS rebuild, so it is intentionally
-outside this low-cost picker enhancement.
+Bundle Browser uses the SQLite FTS path described in §9. Unbundled uses literal
+server-side filename matching. Neither indexes pinyin aliases; server-side pinyin
+matching remains outside the local picker enhancement.
 
 The current sidebar maintenance flow exposes one primary **Update** button plus a
 small overflow menu for **Scan new files**, **Collect metadata**, **Suggest
@@ -927,30 +926,36 @@ raw SQL. Pydantic validates incoming expressions and an allowlisted SQLAlchemy
 compiler produces bound-parameter queries. The same compiler powers live filter
 preview, filtered browse, and Smart Collection CRUD/browse.
 
-The current Smart Collection editor supports one Eagle-style all/any condition
-group. The AST supports nested boolean groups for a later richer editor.
+The Smart Collection editor supports one all/any condition group. Saved expressions
+outside its faithful subset have protected conditions while renaming remains
+available. Unrelated saves omit the filter and retain the opening concurrency
+version. Preview, browse and facets share the visible-bundle scope; empty and
+confirmed missing bundles remain eligible, while scan-staged and hidden-only
+bundles are excluded. See [filter contracts](filter-language.md).
 
-Text search is whole-library and indexed (`cairndex.search`). Each library DB
-carries a `bundle_search` FTS5 table that indexes, per bundle, its title/note,
-its files' display titles/filenames/paths/sources/media kind, and its tag and
-collection names — assembled by a `bundle_search_source` view. SQLite triggers
-over the underlying tables keep it fresh on every write path (edits, scan,
-repair, grouping apply, deletion, tag/collection rename), so no application
-plumbing maintains it; `ensure_search_schema` creates and first-populates it on
-library open, and `devtools.reindex_search` rebuilds it.
+Text search covers the whole active library through `cairndex.search`. The
+`bundle_search` FTS5 table indexes bundle titles, every ordered bundle note,
+member-file notes and moment comments. File names, paths, origins, media kinds,
+tag names and collection names are excluded; explicit tag/collection and file
+predicates remain available. Collection-name exclusion is the current working
+assumption. Unbundled files remain outside ordinary Bundle Browser search.
 
-**An FTS row's `rowid` is its bundle's own `rowid`, and every trigger keys on
-that.** This is load-bearing rather than incidental: `bundle_id` is `UNINDEXED`
-and FTS5 supports no secondary indexes, so `WHERE bundle_id = ?` scans the entire
-index. Keyed that way, each maintenance trigger cost 8.5 ms on a 60k-bundle
-library against 0.0 ms by rowid — and since a write fires roughly ten of them,
-creating one bundle cost 94 ms where the same work without triggers cost 6 ms
-(owner report, 2026-08-26). The cost was linear in library size; it is now flat.
-Two consequences to preserve: the `AFTER DELETE ON asset_bundles` trigger must
-read `OLD.rowid` (the bundle row is already gone, so resolving its rowid by id
-would orphan the FTS row), and any rebuild must reassign the same rowids.
-`ensure_search_schema` detects an index built before this scheme — its trigger
-body does not mention `rowid` — and rebuilds once on open. Browse's `q` parameter
+SQLite triggers maintain the affected bundle rows on note/title edits, file
+membership changes and moment insertion/edit/deletion. Moment ownership resolves
+through its file; grouping transfers move its searchable comments too. Unrelated
+technical metadata and tag/collection changes do not rewrite FTS rows.
+
+Each FTS `rowid` equals its bundle's SQLite `rowid`; trigger maintenance uses that
+key, avoiding scans of the unindexed `bundle_id` column. The version-two source
+view carries an explicit schema marker. On ownership-approved library open,
+`ensure_search_schema` checks columns, version and trigger definitions. A stale
+cache is replaced and filled in batches of at most 256 bundle rowids inside one
+explicit SQLite transaction. Failure rolls back the old cache and schema together;
+a successful reopen does no rebuild. Migration total work scales with library
+size and holds a write transaction; Python holds only one batch. Sources and
+saved metadata are unchanged. Manual maintenance rebuilds use the same batches.
+
+Browse's `q` parameter
 tokenizes user input into safe quoted prefix terms and composes as a
 non-correlated FTS semijoin (`AssetBundle.id IN (SELECT bundle_id FROM
 bundle_search WHERE bundle_search MATCH ?)`), so it stacks with views,
@@ -958,6 +963,21 @@ collections, filters, sort, and pagination. Results keep the active sort;
 relevance ranking is future work.
 
 ## 10. File Browser
+
+The Unbundled queue uses
+`GET /api/v1/libraries/{library_id}/manual-bundling/unbundled-files` with `q`,
+`sort=name|type|size|added|modified`, `order=asc|desc`, `offset` and `limit` (1–200).
+It queries indexed scan-staged files within that library without filesystem I/O.
+Hidden path segments follow the scanner's shared visibility rules. Literal
+case-insensitive filename substring matching, global ordering and stable
+name/path/ID ties precede pagination. Date Added is the DB indexing time; Date
+Modified is stored mtime. SQL counts the eligible set and returns only one page;
+substring matching and global sorting still examine the eligible rows.
+Query keys include library and criteria, criteria changes start at offset zero,
+and cancelled/old-scope requests cannot populate the current view. Empty results
+and failed reads have distinct messages with retry. Pagination is deterministic
+for an unchanged catalog; concurrent catalog edits can change offset boundaries.
+General recursive filesystem search and directory pagination are separate work.
 
 File Browser is a read-only, filesystem-first browser over the active library root:
 `GET /api/v1/libraries/{library_id}/file-browser/entries?path=...`.

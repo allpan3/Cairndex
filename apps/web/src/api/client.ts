@@ -1166,11 +1166,25 @@ export const createBundleFromUnbundled = (sel: FileSelection, title?: string | n
 export const createEmptyBundle = (title?: string | null) =>
   send<ManualBundleResult>(`${mb()}/create-empty-bundle`, 'POST', { title: title ?? null })
 
-// The flat "to-bundle queue": a cross-library page of not-yet-bundled files,
-// shaped like File Browser entries so one file row renders both surfaces.
+// Filename search and global ordering apply within the active library before pagination
 export type UnbundledFilesPage = components['schemas']['UnbundledFilesPage']
-export const fetchUnbundledFiles = (offset = 0, limit = 200, signal?: AbortSignal) =>
-  getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?offset=${offset}&limit=${limit}`, signal)
+export interface UnbundledFilesParams {
+  q?: string
+  sort?: 'name' | 'type' | 'size' | 'added' | 'modified'
+  order?: SortOrder
+}
+export const fetchUnbundledFiles = (
+  offset = 0,
+  limit = 200,
+  signal?: AbortSignal,
+  params: UnbundledFilesParams = {},
+) => {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+  if (params.q) query.set('q', params.q)
+  if (params.sort) query.set('sort', params.sort)
+  if (params.order) query.set('order', params.order)
+  return getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?${query}`, signal)
+}
 
 // --- File Browser (read-only filesystem browsing) -------------------------------
 export function fetchFileBrowserEntries(

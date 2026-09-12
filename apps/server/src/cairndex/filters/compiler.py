@@ -10,6 +10,7 @@ interpolated text (AGENTS.md §10).
 import operator as op
 from collections.abc import Callable
 from datetime import datetime
+from math import isfinite
 from typing import Any
 
 from sqlalchemy import and_, exists, func, not_, or_, select, true
@@ -109,15 +110,20 @@ def _notes_text(operator: str, value: Any) -> Bool:
 
 def _numeric(column: Any, operator: str, value: Any) -> Bool:
     if operator == "between":
-        if not (isinstance(value, list) and len(value) == 2):
+        if not (isinstance(value, list) and len(value) == 2 and all(_is_number(v) for v in value)):
             raise ValidationError("'between' needs a [low, high] value")
         return column.between(value[0], value[1])
     fn = _NUM_OPS.get(operator)
     if fn is None:
         raise ValidationError(f"operator {operator!r} is not valid for numeric fields")
-    if not isinstance(value, (int, float)):
+    if not _is_number(value):
         raise ValidationError("numeric filter value must be a number")
     return fn(column, value)
+
+
+# JSON booleans and non-finite floats are not numeric comparison values
+def _is_number(value: Any) -> bool:
+    return type(value) in (int, float) and (not isinstance(value, float) or isfinite(value))
 
 
 def _parse_dt(value: Any) -> datetime:
@@ -159,7 +165,7 @@ def _membership(
     model: type[Tag] | type[Collection],
     node: PredicateNode,
 ) -> Bool:
-    if not isinstance(node.value, list):
+    if not isinstance(node.value, list) or not all(isinstance(v, str) for v in node.value):
         raise ValidationError(f"{node.field} filter value must be a list of ids")
     ids: list[str] = node.value
 
@@ -282,13 +288,15 @@ def _file_exists_text(operator: str, value: Any) -> Bool:
 
 def _extension(operator: str, value: Any) -> Bool:
     if operator == "equals":
+        if not isinstance(value, str):
+            raise ValidationError("extension must be a string")
         exts = [value]
     elif operator in ("in", "not_in"):
-        if not isinstance(value, list):
-            raise ValidationError("'in'/'not_in' need a list value")
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise ValidationError("'in'/'not_in' need a list of strings")
         exts = value
     else:
         raise ValidationError(f"operator {operator!r} is not valid for extension")
-    patterns = [func.lower(AssetFile.relative_path).like(f"%.{str(e).lower()}") for e in exts]
+    patterns = [AssetFile.relative_path.iendswith(f".{e}", autoescape=True) for e in exts]
     sub = _file_exists(or_(*patterns)) if patterns else true()
     return not_(sub) if operator == "not_in" else sub

@@ -23,21 +23,35 @@ export function SmartCollectionEditor({
   onSaved: (sc: SmartCollectionRead) => void
 }) {
   const { create, update, remove } = useSmartCollectionMutations()
+  // Keep the accepted expression and concurrency basis from when this editor opened
+  const [original] = useState(existing)
   const [name, setName] = useState(existing?.name ?? '')
-  const [draft, setDraft] = useState<FilterDraft>(
+  const [draft, setDraft] = useState<FilterDraft | null>(
     () => initialDraft ?? (existing ? expressionToDraft(existing.filter) : emptyDraft()),
   )
+  const [conditionsEdited, setConditionsEdited] = useState(false)
 
-  const expr = useMemo(() => draftToExpression(draft), [draft])
+  const expr = useMemo(
+    () =>
+      original && !conditionsEdited ? original.filter : draftToExpression(draft ?? emptyDraft()),
+    [original, conditionsEdited, draft],
+  )
   const preview = useFilterPreview(expr)
 
   const save = () => {
-    const payload = { name: name.trim(), filter: expr }
+    const payload = { name: name.trim() }
     if (!payload.name) return
-    if (existing) {
-      update.mutate({ id: existing.id, payload, version: existing.version }, { onSuccess: onSaved })
+    if (original) {
+      update.mutate(
+        {
+          id: original.id,
+          payload: conditionsEdited ? { ...payload, filter: expr } : payload,
+          version: original.version,
+        },
+        { onSuccess: onSaved },
+      )
     } else {
-      create.mutate(payload, { onSuccess: onSaved })
+      create.mutate({ ...payload, filter: expr }, { onSuccess: onSaved })
     }
   }
 
@@ -77,12 +91,34 @@ export function SmartCollectionEditor({
           autoFocus
         />
 
-        <FilterBuilder draft={draft} onChange={setDraft} />
+        {draft ? (
+          <FilterBuilder
+            draft={draft}
+            onChange={(next) => {
+              setDraft(next)
+              setConditionsEdited(true)
+            }}
+          />
+        ) : (
+          <p role="note">
+            These saved conditions use advanced rules. They are preserved; only the name can be
+            edited here.
+          </p>
+        )}
 
         <div className="modal__preview">
-          {preview.isLoading
-            ? 'Counting…'
-            : `${(preview.data ?? 0).toLocaleString()} matching bundle${preview.data === 1 ? '' : 's'}`}
+          {preview.isError ? (
+            <span role="alert">
+              Could not count matches.{' '}
+              <button className="btn" onClick={() => void preview.refetch()}>
+                Retry preview
+              </button>
+            </span>
+          ) : preview.isLoading ? (
+            'Counting…'
+          ) : (
+            `${(preview.data ?? 0).toLocaleString()} matching bundle${preview.data === 1 ? '' : 's'}`
+          )}
         </div>
 
         {error && (

@@ -2027,7 +2027,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Preview */
+        /**
+         * Preview
+         * @description Count the same visible population as browsing the saved collection
+         */
         post: operations["preview_api_v1_libraries__library_id__filters_preview_post"];
         delete?: never;
         options?: never;
@@ -2452,8 +2455,7 @@ export interface paths {
         };
         /**
          * List Unbundled Files
-         * @description A flat, cross-library page of files awaiting bundling (provisional scan
-         *     rows), shaped like File Browser entries so the Files surface renders them.
+         * @description Search filenames and globally sort visible scan-staged files in this library
          */
         get: operations["list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get"];
         put?: never;
@@ -5683,7 +5685,7 @@ export interface components {
         };
         /**
          * UnbundledFilesPage
-         * @description A flat, cross-library page of not-yet-bundled files (the provisional
+         * @description A flat, library-scoped page of not-yet-bundled files (the provisional
          *     scan rows), shaped like File Browser entries so one file row renders both.
          */
         UnbundledFilesPage: {
@@ -10626,6 +10628,9 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
+                q?: string | null;
+                sort?: "name" | "type" | "size" | "added" | "modified";
+                order?: "asc" | "desc";
             };
             header?: {
                 authorization?: string | null;

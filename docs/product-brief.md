@@ -215,6 +215,15 @@ Required behavior:
 
 The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle, to ordinary filesystem directories in File Browser, or to legacy table names being intentionally retained.
 
+### Bundle search
+
+Free text searches bundle names, all bundle/member-file notes and moment comments.
+File names/paths and tag names are excluded; filename search belongs in Files.
+Tag and collection filters remain independent. Collection names are excluded from
+free text under the current working assumption. Unbundled files are intentionally
+absent from Bundle Browser; their filename query covers the complete active-library
+queue and sorts globally before pagination.
+
 ### Smart Collections
 
 A Smart Collection is a named, saved filter expression plus optional view preferences. It replaces the old Smart Folder terminology.
@@ -377,7 +386,7 @@ suggestions never masquerade as real bundles. Collections still contain confirme
 bundles only, never loose files.
 
 Unbundled files are surfaced in the **Files** browsing surface, not as bundle
-cards: the sidebar's **Unbundled** view opens a flat, cross-library list of the
+cards: the sidebar's **Unbundled** view opens a flat, library-wide list of the
 not-yet-bundled files with the file inspector, and the Files directory tree badges
 each file `unlinked` / `unbundled` / (openable). The two primary browsing surfaces
 are **Bundles** (bundle-first: system views, Smart Collections, the collection

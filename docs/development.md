@@ -701,9 +701,11 @@ uv run python -m cairndex.devtools.benchmark_queries \
 ## Search index
 
 Whole-library text search uses a per-library SQLite FTS5 index (`bundle_search`)
-kept fresh by triggers. It is created and first-populated automatically when a
-library DB is opened. To rebuild it for one library (after a bulk external change
-or to recover from drift):
+over bundle names, bundle/file notes and moment comments, kept fresh by triggers.
+The versioned cache upgrades atomically during ownership-approved library open,
+using batches of at most 256 bundle rowids. File/path/tag/collection names are
+not free-text fields. Current indexes do not rebuild on every open. To rebuild
+one library after a bulk external change or to recover from drift:
 
 ```bash
 uv run python -m cairndex.devtools.reindex_search --library-root /path/to/library
@@ -965,3 +967,12 @@ tests probe successive windows with the first init and assert source timestamps.
 Record sound, picture quality, counters and progress as separate observations.
 Stop disposable clients/servers, remove their connection state, and verify source
 hashes after testing. Docker/NAS qualification is a separate deployment check.
+
+
+## Search and saved-filter regression checks
+
+From `apps/server`, `uv run pytest tests/test_search.py tests/test_filters_api.py tests/test_unbundled_queries.py` covers cache upgrades/rollback, all note families,
+filter contracts, visibility and complete ordered filename queries. From `apps/web`,
+`npx playwright test e2e/search-correctness.spec.ts` uses disposable real backends
+for nested-rule rename/cancel/conflicts and Unbundled paging/search/switch/retry.
+No test requires an owner library or source-media operation.

@@ -23,8 +23,18 @@ router = APIRouter(prefix="/libraries/{library_id}/filters", tags=["filters"])
 
 @router.post("/preview", response_model=FilterPreviewResponse)
 def preview(payload: FilterPreviewRequest, db: LibrarySession) -> FilterPreviewResponse:
+    """Count the same visible population as browsing the saved collection"""
     predicate = compile_expression(db, payload.filter)
-    count = db.scalar(select(func.count()).select_from(AssetBundle).where(predicate)) or 0
+    scoped = browse_service.apply_scope(
+        select(func.count()).select_from(AssetBundle),
+        db,
+        view=browse_service.SystemView.ALL,
+        collection_id=None,
+        include_descendants=False,
+        predicate=predicate,
+        search_pred=None,
+    )
+    count = db.scalar(scoped) or 0
     return FilterPreviewResponse(count=count)
 
 

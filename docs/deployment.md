@@ -396,7 +396,8 @@ no migration chain in use. The registry DB is bootstrapped by `create_all` on
 first open, and each library's schema is created with its `.cairndex` package and
 patched additively on every open (`persistence.engine.ensure_content_indexes`
 adds missing columns, tables, and indexes; `ensure_search_schema` rebuilds the
-FTS index when its column set changes). Nothing needs to be run before or after
+derived FTS cache atomically when its version, columns or triggers change,
+using bounded rowid batches). Nothing needs to be run before or after
 an upgrade — starting the new image is the whole procedure. The entrypoint used
 to call `alembic upgrade head`, which had quietly become a no-op that still
 printed a line claiming migrations were applied.

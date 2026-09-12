@@ -73,7 +73,7 @@ unmapped-library behavior remain unchanged.
 Important follow-ups include cross-filesystem repair candidates and token
 rotation/expiry policy. Bundle/container reclassification and File Browser
 write-mode drag-in copy are implemented. Job progress bars, large-library browse
-indexing, whole-library indexed text search (SQLite FTS5), media
+indexing, whole-library indexed bundle-name/note/moment search (SQLite FTS5), media
 fallback/transcoding, and pinyin matching in local tag/collection and file
 pickers are implemented.
 See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and

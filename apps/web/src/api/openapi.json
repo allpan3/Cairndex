@@ -7545,7 +7545,7 @@
         "type": "object"
       },
       "UnbundledFilesPage": {
-        "description": "A flat, cross-library page of not-yet-bundled files (the provisional\nscan rows), shaped like File Browser entries so one file row renders both.",
+        "description": "A flat, library-scoped page of not-yet-bundled files (the provisional\nscan rows), shaped like File Browser entries so one file row renders both.",
         "properties": {
           "items": {
             "items": {
@@ -16805,6 +16805,7 @@
     },
     "/api/v1/libraries/{library_id}/filters/preview": {
       "post": {
+        "description": "Count the same visible population as browsing the saved collection",
         "operationId": "preview_api_v1_libraries__library_id__filters_preview_post",
         "parameters": [
           {
@@ -18672,7 +18673,7 @@
     },
     "/api/v1/libraries/{library_id}/manual-bundling/unbundled-files": {
       "get": {
-        "description": "A flat, cross-library page of files awaiting bundling (provisional scan\nrows), shaped like File Browser entries so the Files surface renders them.",
+        "description": "Search filenames and globally sort visible scan-staged files in this library",
         "operationId": "list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get",
         "parameters": [
           {
@@ -18705,6 +18706,54 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1024,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "type",
+                "size",
+                "added",
+                "modified"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
             }
           },
           {

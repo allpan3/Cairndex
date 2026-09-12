@@ -5,7 +5,7 @@ and create endpoints are the explicit, metadata-only mutations that turn
 unbundled (scan-staged provisional) files into confirmed bundles.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, status
 
@@ -39,10 +39,19 @@ def list_unbundled_files(
     db: LibrarySession,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
+    q: Annotated[str | None, Query(max_length=1024)] = None,
+    sort: file_browser_service.UnbundledSort = "name",
+    order: Literal["asc", "desc"] = "asc",
 ) -> UnbundledFilesPage:
-    """A flat, cross-library page of files awaiting bundling (provisional scan
-    rows), shaped like File Browser entries so the Files surface renders them."""
-    page = file_browser_service.list_unbundled_files(db, offset=offset, limit=limit)
+    """Search filenames and globally sort visible scan-staged files in this library"""
+    page = file_browser_service.list_unbundled_files(
+        db,
+        offset=offset,
+        limit=limit,
+        search=q,
+        sort=sort,
+        descending=order == "desc",
+    )
     return UnbundledFilesPage(
         items=[FileBrowserEntryRead(**vars(e)) for e in page.items],
         total=page.total,
