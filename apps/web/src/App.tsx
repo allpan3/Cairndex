@@ -63,7 +63,7 @@ import {
 import { AllTagsPage } from './app/AllTagsPage'
 import { ContextMenu } from './app/ContextMenu'
 import { type MenuEntry, useContextMenu } from './app/useContextMenu'
-import { Browser } from './app/Browser'
+import { Browser, type BrowserNavigation } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
@@ -76,7 +76,13 @@ import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
 import { hostFileMenuEntries } from './app/hostActions'
 import { bundleHostPath, hostFileTargetFor } from './app/hostFileTarget'
 import { type ScanOutcome, scanCompleteMessage } from './app/scanSummary'
-import { isMultiSelection, selectionTargets } from './app/selection'
+import {
+  isMultiSelection,
+  listingOwnsKey,
+  selectionRange,
+  selectionTargets,
+  type SelectionModifiers,
+} from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { ReplicaWorkspace } from './app/ReplicaWorkspace'
 import { LockScreen } from './app/LockScreen'
@@ -903,6 +909,8 @@ function Workspace({
   // Anchors for Shift-range selection: the last plainly-clicked bundle / folder
   // card. Shift+click selects the inclusive range from the anchor to the click.
   const [bundleAnchor, setBundleAnchor] = useState<string | null>(null)
+  const browserNavigation = useRef<BrowserNavigation>(null)
+  const [collectionFocus, setCollectionFocus] = useState<string | null>(null)
   const [collectionAnchor, setCollectionAnchor] = useState<string | null>(null)
   // What's currently being dragged (bundles or a collection), so folder cards and
   // sidebar rows can accept cross-surface drops (reparent / move into collection).
@@ -1765,7 +1773,8 @@ function Workspace({
     collectionSelectionFrom === 'grid' ? selectedCollectionIds : EMPTY_SELECTION
 
   const select = useCallback(
-    (id: string, e: React.MouseEvent) => {
+    (id: string, e: SelectionModifiers) => {
+      setCollectionFocus(null)
       // Shift+click: select the inclusive range from the anchor to this card,
       // over the current render order.
       if (e.shiftKey && bundleAnchor) {
@@ -1773,8 +1782,9 @@ function Workspace({
         const a = ids.indexOf(bundleAnchor)
         const b = ids.indexOf(id)
         if (a !== -1 && b !== -1) {
-          const [lo, hi] = a < b ? [a, b] : [b, a]
-          setSelectedIds(new Set(ids.slice(lo, hi + 1)))
+          setSelectedIds((previous) =>
+            selectionRange(ids, bundleAnchor, id, e.metaKey || e.ctrlKey ? previous : undefined),
+          )
           setActiveId(id)
           setSelectedCollectionIds(new Set())
           return
@@ -1803,6 +1813,8 @@ function Workspace({
   // Always clears the subcollection selection (an empty result is an
   // empty-space click that deselects everything).
   const selectMany = useCallback((ids: string[]) => {
+    setBundleAnchor(ids.at(-1) ?? null)
+    setCollectionFocus(null)
     setSelectedIds(new Set(ids))
     setActiveId(ids.length ? (ids[ids.length - 1] ?? null) : null)
     setSelectedCollectionIds(new Set())
@@ -1822,24 +1834,30 @@ function Workspace({
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
   // the bundle selection to keep the two mutually exclusive.
   const selectCollection = useCallback(
-    (id: string, e: React.MouseEvent) => {
+    (id: string, e: SelectionModifiers) => {
+      setCollectionFocus(id)
       setCollectionSelectionFrom('grid')
       if (e.shiftKey && collectionAnchor) {
         const ids = headerCollections.map((c) => c.id)
         const a = ids.indexOf(collectionAnchor)
         const b = ids.indexOf(id)
         if (a !== -1 && b !== -1) {
-          const [lo, hi] = a < b ? [a, b] : [b, a]
-          setSelectedCollectionIds(new Set(ids.slice(lo, hi + 1)))
+          setSelectedCollectionIds((previous) =>
+            selectionRange(
+              ids,
+              collectionAnchor,
+              id,
+              e.metaKey || e.ctrlKey ? previous : undefined,
+            ),
+          )
           setSelectedIds(new Set())
           setActiveId(null)
           return
         }
       }
       setSelectedCollectionIds((prev) => {
-        // Cmd toggles. Deliberately not Ctrl: on macOS Ctrl-click is the
-        // context-menu chord, so treating it as a toggle fought the menu.
-        if (e.metaKey && collectionSelectionFrom === 'grid') {
+        // A command modifier toggles within this listing's selection
+        if ((e.metaKey || e.ctrlKey) && collectionSelectionFrom === 'grid') {
           const next = new Set(prev)
           if (next.has(id)) next.delete(id)
           else next.add(id)
@@ -1877,6 +1895,8 @@ function Workspace({
   // Marquee result over the subcollection cards — replaces the subcollection
   // selection wholesale and clears the bundle selection.
   const selectCollectionsMany = useCallback((ids: string[]) => {
+    setCollectionAnchor(ids.at(-1) ?? null)
+    setCollectionFocus(ids.at(-1) ?? null)
     setCollectionSelectionFrom('grid')
     setSelectedCollectionIds(new Set(ids))
     setSelectedIds(new Set())
@@ -1893,6 +1913,9 @@ function Workspace({
   }, [])
 
   const clearSelection = useCallback(() => {
+    setBundleAnchor(null)
+    setCollectionAnchor(null)
+    setCollectionFocus(null)
     setSelectedIds(new Set())
     setActiveId(null)
   }, [])
@@ -1901,6 +1924,9 @@ function Workspace({
   // was last clicked, and blank space belongs to neither, so a single handler
   // clears the lot rather than leaving the other kind of selection stranded.
   const clearAllSelection = useCallback(() => {
+    setBundleAnchor(null)
+    setCollectionAnchor(null)
+    setCollectionFocus(null)
     setSelectedIds(new Set())
     setActiveId(null)
     setSelectedCollectionIds(new Set())
@@ -2500,16 +2526,9 @@ function Workspace({
   // webview, so this silently did nothing there (owner, 2026-07-27).
   const removeSmartCollection = useCallback((sc: SmartCollectionRead) => setDeletingSmart(sc), [])
 
-  /**
-   * Walk the arrow keys through what is actually on screen: the folder cards
-   * above the grid and the bundles in it, as one sequence.
-   *
-   * They used to move the bundle selection alone, so selecting a collection and
-   * pressing an arrow jumped to a bundle somewhere else entirely (owner,
-   * 2026-09-01). Collections come first because that is where they are drawn.
-   */
+  // Move focus in displayed order; Shift keeps its anchor and command arrows move only focus
   const moveSelection = useCallback(
-    (direction: 'up' | 'down' | 'left' | 'right') => {
+    (direction: 'up' | 'down' | 'left' | 'right' | 'home' | 'end', event: SelectionModifiers) => {
       const collectionIds = subcollapsed ? [] : headerCollections.map((c) => c.id)
       const bundleIds =
         contentsCollapsed && collectionIds.length > 0 ? [] : filtered.map((i) => i.id)
@@ -2518,24 +2537,36 @@ function Workspace({
         ...bundleIds.map((id) => ({ id, kind: 'bundle' as const })),
       ]
       if (walk.length === 0) return
-      // Where the last deliberate selection landed, whichever kind it was.
       const currentId =
-        collectionSelectionFrom === 'grid' && selectedCollectionIds.size > 0
-          ? ([...selectedCollectionIds].at(-1) ?? null)
-          : activeId
+        collectionSelectionFrom === 'grid' ? (collectionFocus ?? activeId) : activeId
       const index = walk.findIndex((entry) => entry.id === currentId)
-      // Up/Down ask the layout where the row above or below is; Left/Right step
-      // one place along, which is what wraps a grid row and is the only reading
-      // a list has. The ordered step is also the fallback when the row asked for
-      // is outside the virtualized window, so movement never stalls at its edge.
       let nextId: string | null = null
-      if (direction === 'up' || direction === 'down') {
-        const ids = new Set(walk.map((entry) => entry.id))
-        const targets = navTargetsFrom(document, '[data-collection-id], [data-bundle-id]', (el) => {
-          const id = el.dataset.collectionId ?? el.dataset.bundleId
-          return id !== undefined && ids.has(id) ? id : undefined
-        })
-        nextId = rowStep(targets, currentId, direction)
+      if (direction === 'home' || direction === 'end') {
+        const ids = collectionFocus ? collectionIds : bundleIds
+        nextId = (direction === 'home' ? ids[0] : ids.at(-1)) ?? null
+      } else if (direction === 'up' || direction === 'down') {
+        if (bundleIds.includes(currentId ?? ''))
+          nextId = browserNavigation.current?.step(currentId, direction) ?? null
+        if (!nextId) {
+          const ids = new Set(walk.map((entry) => entry.id))
+          nextId = rowStep(
+            navTargetsFrom(
+              document,
+              '.collhead [data-collection-id], .browser [data-bundle-id]',
+              (el) => {
+                const id = el.dataset.collectionId ?? el.dataset.bundleId
+                return id && ids.has(id) ? id : undefined
+              },
+            ),
+            currentId,
+            direction,
+          )
+        }
+      }
+      if (index < 0 && direction !== 'home' && direction !== 'end') {
+        nextId = document.activeElement?.closest('.browser')
+          ? (bundleIds[0] ?? null)
+          : (walk[0]?.id ?? null)
       }
       if (nextId === null) {
         const delta = direction === 'down' || direction === 'right' ? 1 : -1
@@ -2544,23 +2575,20 @@ function Workspace({
       }
       const target = walk.find((entry) => entry.id === nextId)
       if (!target) return
+      const focusOnly = (event.metaKey || event.ctrlKey) && !event.shiftKey
       if (target.kind === 'collection') {
         setCollectionSelectionFrom('grid')
-        setSelectedCollectionIds(new Set([target.id]))
-        setCollectionAnchor(target.id)
-        setSelectedIds(new Set())
-        setActiveId(null)
+        setCollectionFocus(target.id)
+        if (!focusOnly) selectCollection(target.id, event)
+        document
+          .querySelector<HTMLElement>(`.collhead [data-collection-id="${CSS.escape(target.id)}"]`)
+          ?.focus()
       } else {
-        setSelectedIds(new Set([target.id]))
+        setCollectionFocus(null)
         setActiveId(target.id)
-        setBundleAnchor(target.id)
-        setSelectedCollectionIds(new Set())
+        if (!focusOnly) select(target.id, event)
+        browserNavigation.current?.focus(target.id)
       }
-      const selector =
-        target.kind === 'collection'
-          ? `[data-collection-id="${CSS.escape(target.id)}"]`
-          : `[data-bundle-id="${CSS.escape(target.id)}"]`
-      document.querySelector(selector)?.scrollIntoView({ block: 'nearest' })
     },
     [
       filtered,
@@ -2569,7 +2597,9 @@ function Workspace({
       subcollapsed,
       contentsCollapsed,
       collectionSelectionFrom,
-      selectedCollectionIds,
+      collectionFocus,
+      select,
+      selectCollection,
     ],
   )
 
@@ -2640,39 +2670,73 @@ function Workspace({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Command chords first, and *before* the typing guard: Shift-Cmd-C is not
-      // something anyone types into a field, and clicking a card can leave focus
-      // on one — which silently swallowed the shortcut (2026-07-27).
-      //
-      // Desktop shell only: in a browser tab Shift-Cmd-C is Chrome's Inspect
-      // Element, so the pair would work unevenly there — the owner would rather
-      // have neither than one (2026-07-27).
-      const chord = (e.metaKey || e.ctrlKey) && isDesktopHost()
-      if (chord && e.shiftKey && e.key.toLowerCase() === 'c') {
+      const target = e.target instanceof Element ? e.target : document.activeElement
+      const listing = target?.closest<HTMLElement>('.browser, .collhead') ?? null
+      if (
+        !listingOwnsKey(e, listing) ||
+        menu.state ||
+        openBundleId ||
+        mode !== 'collection' ||
+        viewerTarget
+      )
+        return
+      const command = e.metaKey || e.ctrlKey
+      if (command && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        if (listing?.classList.contains('collhead')) {
+          const ids = subcollapsed ? [] : headerCollections.map((c) => c.id)
+          setSelectedCollectionIds(new Set(ids))
+          setCollectionSelectionFrom('grid')
+          setCollectionFocus(ids[0] ?? null)
+          setCollectionAnchor(ids[0] ?? null)
+          setSelectedIds(new Set())
+          setActiveId(null)
+        } else {
+          setSelectedIds(new Set(filtered.map((item) => item.id)))
+          setActiveId(activeId ?? filtered[0]?.id ?? null)
+          setBundleAnchor(activeId ?? filtered[0]?.id ?? null)
+          setSelectedCollectionIds(new Set())
+          setCollectionFocus(null)
+        }
+        return
+      }
+      if (command && isDesktopHost() && e.shiftKey && e.key.toLowerCase() === 'c') {
         e.preventDefault()
         copySelectedTags()
         return
       }
-      if (chord && e.shiftKey && e.key.toLowerCase() === 'v') {
+      if (command && isDesktopHost() && e.shiftKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         pasteTagsOntoSelection()
         return
       }
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
-      if (openBundleId !== null) return
-      // The File Browser walks its own listing, and an open viewer owns the
-      // arrows for seeking; moving the grid selection behind either would scroll
-      // a surface nobody is looking at.
-      if (mode !== 'collection' || viewerTarget !== null) return
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      if (e.altKey) return
+      const directions = {
+        ArrowRight: 'right',
+        ArrowDown: 'down',
+        ArrowLeft: 'left',
+        ArrowUp: 'up',
+        Home: 'home',
+        End: 'end',
+      } as const
+      const direction = directions[e.key as keyof typeof directions]
+      if (direction) {
         e.preventDefault()
-        moveSelection(e.key === 'ArrowRight' ? 'right' : 'down')
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault()
-        moveSelection(e.key === 'ArrowLeft' ? 'left' : 'up')
+        moveSelection(direction, e)
       } else if (e.key === 'Escape') {
+        e.preventDefault()
         clearAllSelection()
+      } else if (e.key === ' ' && command) {
+        e.preventDefault()
+        if (collectionFocus)
+          selectCollection(collectionFocus, {
+            ...e,
+            metaKey: true,
+            ctrlKey: false,
+            shiftKey: false,
+          })
+        else if (activeId)
+          select(activeId, { ...e, metaKey: true, ctrlKey: false, shiftKey: false })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -2685,6 +2749,14 @@ function Workspace({
     viewerTarget,
     copySelectedTags,
     pasteTagsOntoSelection,
+    filtered,
+    activeId,
+    headerCollections,
+    subcollapsed,
+    menu.state,
+    collectionFocus,
+    select,
+    selectCollection,
   ])
 
   const shell = (
@@ -2980,6 +3052,8 @@ function Workspace({
                     order={effectiveSort.order}
                     onSort={setEffectiveSort}
                     selectedIds={selectedIds}
+                    activeId={activeId}
+                    navigationRef={browserNavigation}
                     onSelect={select}
                     onMarqueeSelect={selectMany}
                     onOpen={open}

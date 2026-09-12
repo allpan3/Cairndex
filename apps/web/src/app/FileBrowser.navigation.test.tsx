@@ -85,8 +85,9 @@ beforeEach(() => {
   setActiveLibraryId('lib-1')
 })
 
-test('arrow keys walk the listing without anything having been clicked first', () => {
+test('arrow keys walk the focused listing without selecting an item first', () => {
   renderBrowser()
+  screen.getByRole('grid', { name: 'Files' }).focus()
 
   fireEvent.keyDown(window, { key: 'ArrowDown' })
   expect(selectedNames()).toEqual(['Movies/a.mp4'])
@@ -173,4 +174,39 @@ test('without the scope, sorting stays global', () => {
   const stored = JSON.parse(localStorage.getItem(libraryStateKey('cairndex.filePrefs')) ?? '{}')
   expect(stored.sort).toBe('size')
   expect(stored.folderSorts ?? {}).toEqual({})
+})
+
+// Focus and range anchor differ so reversing Shift direction shrinks the same selection
+test('Shift arrows extend and shrink while command arrows only move focus', () => {
+  renderBrowser()
+  const list = screen.getByRole('grid', { name: 'Files' })
+  list.focus()
+  fireEvent.keyDown(list, { key: 'ArrowDown' })
+  fireEvent.keyDown(list, { key: 'ArrowDown', shiftKey: true })
+  expect(selectedNames()).toEqual(['Movies/a.mp4', 'Movies/b.mp4'])
+  fireEvent.keyDown(list, { key: 'ArrowDown', shiftKey: true })
+  expect(selectedNames()).toHaveLength(3)
+  fireEvent.keyDown(list, { key: 'ArrowUp', shiftKey: true })
+  expect(selectedNames()).toEqual(['Movies/a.mp4', 'Movies/b.mp4'])
+  fireEvent.keyDown(list, { key: 'ArrowDown', metaKey: true })
+  expect(selectedNames()).toEqual(['Movies/a.mp4', 'Movies/b.mp4'])
+  fireEvent.keyDown(list, { key: 'a', metaKey: true })
+  expect(selectedNames()).toHaveLength(3)
+  fireEvent.keyDown(list, { key: 'Escape' })
+  expect(selectedNames()).toEqual([])
+})
+
+// Page-level and editable content must never select a background file listing
+test('unfocused lists and contenteditable retain keyboard ownership', () => {
+  renderBrowser()
+  fireEvent.keyDown(window, { key: 'a', metaKey: true })
+  fireEvent.keyDown(window, { key: 'ArrowDown' })
+  expect(selectedNames()).toEqual([])
+  const editor = document.createElement('div')
+  editor.contentEditable = 'true'
+  editor.setAttribute('contenteditable', 'true')
+  screen.getByRole('grid', { name: 'Files' }).append(editor)
+  fireEvent.keyDown(editor, { key: 'a', metaKey: true })
+  expect(selectedNames()).toEqual([])
+  editor.remove()
 })

@@ -45,7 +45,7 @@ interface Captured {
   sorts: string[]
 }
 
-async function mockApi(page: Page): Promise<Captured> {
+async function mockApi(page: Page, count = 3): Promise<Captured> {
   const captured: Captured = { bundleCleanup: [], sorts: [] }
 
   // Two roots; the first has two subcollections, the deeper one has a grandchild
@@ -90,8 +90,8 @@ async function mockApi(page: Page): Promise<Captured> {
     if (sort) captured.sorts.push(sort)
     r.fulfill({
       json: {
-        items: [summary('b0', 'Bundle 0'), summary('b1', 'Bundle 1'), summary('b2', 'Bundle 2')],
-        total: 3,
+        items: Array.from({ length: count }, (_, i) => summary(`b${i}`, `Bundle ${i}`)),
+        total: count,
         offset: 0,
         limit: 100,
       },
@@ -226,4 +226,40 @@ test('"Show subcollection contents" flattens descendant collections', async ({ p
   await page.getByText('Show subcollection contents').click()
   await expect(page.locator('.collsec__title').first()).toContainText('Subcollections (3)')
   await expect(page.locator('.collcard__name', { hasText: 'Sub A1 Child' })).toBeVisible()
+})
+
+// Range selection grows and shrinks from the same anchor without entering text controls
+test('listing keyboard range and select-all stay inside the focused listing', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  const listing = page.getByRole('listbox', { name: 'Bundles', exact: true })
+  await page.locator('[data-bundle-id="b0"]').click()
+  await page.keyboard.press('Shift+ArrowRight')
+  await expect(listing.locator('[aria-selected="true"]')).toHaveCount(2)
+  await page.keyboard.press('Shift+ArrowRight')
+  await expect(listing.locator('[aria-selected="true"]')).toHaveCount(3)
+  await page.keyboard.press('Shift+ArrowLeft')
+  await expect(listing.locator('[aria-selected="true"]')).toHaveCount(2)
+  await page.keyboard.press('Meta+a')
+  await expect(listing.locator('[aria-selected="true"]')).toHaveCount(3)
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe('')
+  const search = page.getByRole('searchbox').first()
+  await search.fill('Bundle')
+  await search.press('Meta+a')
+  expect(
+    await search.evaluate((el: HTMLInputElement) => el.selectionEnd! - el.selectionStart!),
+  ).toBe(6)
+})
+
+// A virtualized result must scroll to the actual target, including Home and End
+test('keyboard movement reaches offscreen bundle rows', async ({ page }) => {
+  await mockApi(page, 600)
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click()
+  await page.keyboard.press('End')
+  await expect(page.locator('[data-bundle-id="b599"]')).toBeVisible()
+  await expect(page.locator('[data-bundle-id="b599"]')).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Home')
+  await expect(page.locator('[data-bundle-id="b0"]')).toBeVisible()
+  await expect(page.locator('[data-bundle-id="b0"]')).toHaveAttribute('aria-selected', 'true')
 })

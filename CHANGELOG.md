@@ -90,6 +90,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Listing keyboard selection keeps a range anchor, follows virtualized rows,
+  and limits Select All to the focused listing's loaded items. Editing fields
+  and overlays retain their keyboard commands.
+
 - Play/Pause follows playback intent through buffering and source replacement.
   Paused seeks remain paused; loading-time video commands retain the selection,
   stale play/seek continuations are fenced, and delayed quality decisions honor

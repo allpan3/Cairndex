@@ -1,5 +1,13 @@
 # Project status
 
+- Everyday interaction work (S10/I17–I19 and I22) is in progress on
+  `fix/library-ownership-lifecycle`. Keyboard selection retains its anchor,
+  distinguishes focus from selection, traverses virtualized rows and scopes
+  Select All to loaded listing items. Focused selection tests and browser
+  ordering/File Browser checks pass. Dialog, loading, navigation continuity
+  and production desktop qualification are the remaining parts of this group.
+  See [everyday interactions](interactions.md).
+
 - Playback reliability (S09/I14–I16) is implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `65274532`.
   Playback intent survives buffering, seeks
