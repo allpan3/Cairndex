@@ -48,6 +48,9 @@ generated images and invented metadata. Checks establish:
 - A collection picker closes before its Smart Collection draft.
 - Shift ranges grow from two to three items and shrink to two. Select All
   reports 100 loaded bundles out of a 132-bundle fixture.
+- Native arrows traverse offscreen items beyond the first loaded page and return
+  to the first bundle. File Browser ranges grow/shrink and Select All selects all
+  73 folder files; Escape clears that selection in the final production build.
 - Unknown file counts and sizes remain Loading during a delayed response.
 - A forced read failure exposes Retry and cached content; retry recovers after
   an injected four-second delay.
@@ -61,10 +64,19 @@ unqualified. No system shortcut configuration is changed.
 
 ## Validation status
 
-Frontend lint, formatting, types and build pass, with 1,192 unit tests. The final
-full browser rerun and final desktop rebuild verification are in progress.
+Frontend lint, formatting, types and build pass, with 1,192 unit tests and 164
+browser tests. The final committed implementation passes its desktop rebuild
+and native loading, draft-cancellation, disclosure and file-selection checks.
 Desktop package tests pass; Rust formatting and Clippy pass with 124 Rust tests.
-The production application builds and signs with its isolated identity.
+The production application builds and passes strict signature verification with
+its isolated identity.
+
+All 76 generated source images retain their baseline hashes. Test clients and
+backend are stopped; the synthetic library, registry, runtime identity data and
+Launch Services registration are removed. The ignored app build output remains
+available. The S10 committed-range privacy gate passes. The cumulative branch
+gate exceeds its 8 MiB new-blob limit, so publication remains blocked and history
+is preserved. No installed application or owner library is changed.
 
 Backend source and contracts are unchanged; the production backend participates
 in browser and native integration checks. This group does not repeat the S09

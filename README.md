@@ -295,6 +295,7 @@ Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
 - [docs/deployment.md](docs/deployment.md)
 - [docs/data-model.md](docs/data-model.md)
 - [docs/filter-language.md](docs/filter-language.md)
+- [docs/interactions.md](docs/interactions.md) — selection, dialog drafts, loading states and navigation continuity
 - [docs/performance.md](docs/performance.md) — large-library benchmark tooling and baselines
 - [docs/adr/](docs/adr/) — Architecture Decision Records
 - [docs/STATUS.md](docs/STATUS.md) — current milestone and known issues

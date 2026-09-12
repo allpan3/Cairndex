@@ -11,10 +11,20 @@
   files, and folder membership loads before rows are arranged. Folder disclosures
   survive navigation; indexed file selection and viewers follow file IDs through
   rename and reordering. Complete successful listings prune removed selections.
-  Frontend lint/format/types/build and 1,192 tests pass. Production desktop checks
+  Frontend lint/format/types/build, 1,192 unit tests and 164 browser tests pass.
+  Desktop package tests, Rust formatting/Clippy and 124 Rust tests pass.
+  The final production `.app` builds and passes signature verification.
+  Production desktop checks
   cover collection drafts, nested Escape, focus return, loaded Select All,
   Shift ranges, retry, folder round-trips and parent/child playlist boundaries.
-  Final rebuild verification, range privacy gates and cleanup remain in this group.
+  Final-build checks also verify delayed counts and selection/clear of all 73
+  folder files. Native arrows traverse virtualized items beyond the first page;
+  native Home/End delivery remains unqualified after system input routing
+  diverted those keys. Browser Home/End checks pass. All 76 synthetic source
+  hashes remain unchanged; test clients, backend, fixtures, registration and
+  runtime identity data are cleaned up. Private evidence remains outside the repo.
+  This group's privacy gate passes; the cumulative branch gate remains blocked
+  by the 8 MiB new-blob limit. History is preserved and nothing is published.
   See [everyday interactions](interactions.md) and the
   [interaction review](proposals/interaction-continuity-review.md).
 
