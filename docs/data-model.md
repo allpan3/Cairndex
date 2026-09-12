@@ -38,10 +38,11 @@ Real-library conversion remains unavailable under
   descendants where needed (tags and collections).
 - **FK enforcement:** `PRAGMA foreign_keys=ON` per SQLite connection; WAL mode is
   enabled for content/library DBs.
-- **Optimistic concurrency:** frequently edited content entities carry a
-  `version` integer. Single-entity `PATCH` routes accept optional
-  `If-Match: <version>` and return 409 (`version_conflict`) on stale edits;
-  without it, edits remain last-write-wins.
+- **Authored edit protection:** database read bases and stable request identities
+  are mandatory. Indexed unit clocks and exact response receipts commit with content;
+  triggers include internal writers. `version` and optional `If-Match` remain
+  compatibility counters. See [shared-server edits](shared-server-edits.md) for the
+  field/edge/structure inventory, storage schema and recovery behavior.
 
 ## Per-library content database
 

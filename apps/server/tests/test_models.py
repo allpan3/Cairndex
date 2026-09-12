@@ -292,6 +292,16 @@ def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> N
     # dropping them, then prove the additive bootstrap patches them back in
     # (create_all never alters an existing table — see engine._ADDITIVE_CONTENT_COLUMNS).
     with engine.begin() as conn:
+        for name in (
+            conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'metadata_%'"
+            )
+            .scalars()
+            .all()
+        ):
+            conn.exec_driver_sql(
+                f"DROP TRIGGER {name}"
+            )  # Model the older schema before edit clocks existed
         conn.execute(text("ALTER TABLE asset_bundles DROP COLUMN manual_order"))
         conn.execute(text("ALTER TABLE asset_bundle_collections DROP COLUMN sort_order"))
 
@@ -310,6 +320,14 @@ def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> N
 
 def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine) -> None:
     with engine.begin() as conn:
+        for name in (
+            conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'metadata_%'"
+            )
+            .scalars()
+            .all()
+        ):
+            conn.exec_driver_sql(f"DROP TRIGGER {name}")
         conn.execute(text("ALTER TABLE asset_files DROP COLUMN cover_time"))
 
     ensure_content_indexes(engine)
@@ -417,6 +435,16 @@ def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:
 # reads back as never-opened — which is the truth: opens were not recorded then.
 def test_ensure_content_indexes_adds_last_opened_at(engine: Engine) -> None:
     with engine.begin() as conn:
+        for name in (
+            conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'metadata_%'"
+            )
+            .scalars()
+            .all()
+        ):
+            conn.exec_driver_sql(
+                f"DROP TRIGGER {name}"
+            )  # Model the older schema before edit clocks existed
         conn.execute(text("ALTER TABLE asset_bundles DROP COLUMN last_opened_at"))
     assert "last_opened_at" not in {c["name"] for c in inspect(engine).get_columns("asset_bundles")}
 

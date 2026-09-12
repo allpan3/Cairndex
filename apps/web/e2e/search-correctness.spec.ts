@@ -67,7 +67,7 @@ engine.dispose()
   }
 }
 
-test('nested rules retain membership through rename, cancel and stale save @fullstack', async ({
+test('nested rules survive rename, cancel and disjoint concurrent edits @fullstack', async ({
   page,
 }) => {
   const f = await fixture()
@@ -109,24 +109,28 @@ test('nested rules retain membership through rename, cancel and stale save @full
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(patches).toEqual([{ name: 'Renamed rules' }])
-    const renamed = await (await fetch(`${f.base}/smart-collections/${saved.id}`)).json()
+    const renamedRead = await fetch(`${f.base}/smart-collections/${saved.id}`)
+    const renamed = await renamedRead.json()
     expect(renamed.filter).toEqual(saved.filter)
     await expect(page.locator('.toolbar__count')).toContainText('1 items')
     await page.getByRole('button', { name: 'Edit Renamed rules', exact: true }).click()
     const newer = await fetch(`${f.base}/smart-collections/${saved.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'If-Match': String(renamed.version) },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Cairndex-Basis': renamedRead.headers.get('X-Cairndex-Basis')!,
+        'X-Cairndex-Operation': crypto.randomUUID(),
+      },
       body: JSON.stringify({ filter: { version: 1, root: null } }),
     })
     expect(newer.ok).toBe(true)
     await page.getByLabel('Smart collection name').fill('Stale rename')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(
       (await (await fetch(`${f.base}/smart-collections/${saved.id}`)).json()).filter.root,
     ).toBeNull()
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await page.getByRole('button', { name: 'Edit Renamed rules', exact: true }).click()
+    await page.getByRole('button', { name: 'Edit Stale rename', exact: true }).click()
     await expect(page.getByLabel('Field')).toBeVisible()
     await expect(page.locator('.modal__preview')).toHaveText('2 matching bundles')
   } finally {

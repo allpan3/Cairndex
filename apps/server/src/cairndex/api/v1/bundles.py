@@ -13,8 +13,10 @@ from cairndex.api.deps import (
     Pagination,
     WriteModeRequired,
 )
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
+    BatchBundleEdit,
     BatchResult,
     BatchUpdate,
     BundleCleanupOrder,
@@ -25,6 +27,7 @@ from cairndex.api.schemas.bundles import (
     BundleOrder,
     BundleRead,
     BundleReorder,
+    BundleSelection,
     BundleTags,
     BundleUpdate,
     DirectoryMemberCreate,
@@ -37,6 +40,7 @@ from cairndex.api.schemas.bundles import (
     FileUpdate,
     ForgetMissingRequest,
     ForgetMissingResult,
+    MembershipDelta,
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
@@ -57,7 +61,9 @@ from cairndex.services import playback_progress as progress_service
 from cairndex.services.browse import BundleSort, SystemView
 from cairndex.services.pagination import MAX_LIMIT
 
-router = APIRouter(prefix="/libraries/{library_id}/bundles", tags=["bundles"])
+router = APIRouter(
+    route_class=MetadataRoute, prefix="/libraries/{library_id}/bundles", tags=["bundles"]
+)
 
 
 def _thumbnail_response(path: object) -> FileResponse:
@@ -213,6 +219,23 @@ def create_bundle(payload: BundleCreate, db: LibrarySession) -> BundleRead:
         rating=payload.rating,
     )
     return _bundle_read(db, bundle)
+
+
+# Apply all selected overwrites in one conditional transaction
+@router.post("/batch-edit", response_model=list[BundleRead])
+def batch_edit_bundles(payload: BatchBundleEdit, db: LibrarySession) -> list[BundleRead]:
+    changes = payload.patch.model_dump(exclude_unset=True)
+    return [
+        _bundle_read(db, service.update_bundle(db, identity, changes))
+        for identity in dict.fromkeys(payload.bundle_ids)
+    ]
+
+
+# A concurrent edit cancels the whole metadata deletion selection
+@router.post("/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+def batch_delete_bundles(payload: BundleSelection, db: LibrarySession) -> None:
+    for identity in dict.fromkeys(payload.bundle_ids):
+        service.delete_bundle(db, identity)
 
 
 @router.get("", response_model=Page[BundleRead])
@@ -482,6 +505,15 @@ def set_tags(bundle_id: str, payload: SetIdsRequest, db: LibrarySession) -> Bund
     return BundleTags(bundle_id=bundle.id, tag_ids=[t.id for t in bundle.tags])
 
 
+# Checkbox and paste gestures express edge intent rather than a whole-set replacement
+@router.post("/{bundle_id}/tags", response_model=BundleTags)
+def change_tags(bundle_id: str, payload: MembershipDelta, db: LibrarySession) -> BundleTags:
+    service.batch_update_bundles(
+        db, bundle_ids=[bundle_id], add_tag_ids=payload.add_ids, remove_tag_ids=payload.remove_ids
+    )
+    return get_tags(bundle_id, db)
+
+
 @router.get("/{bundle_id}/collections", response_model=BundleCollections)
 def get_collections(bundle_id: str, db: LibrarySession) -> BundleCollections:
     bundle = service.get_bundle(db, bundle_id)
@@ -494,6 +526,20 @@ def set_collections(
 ) -> BundleCollections:
     bundle = service.set_bundle_collections(db, bundle_id, payload.ids)
     return BundleCollections(bundle_id=bundle.id, collection_ids=[c.id for c in bundle.collections])
+
+
+# Adding or removing selected collection edges preserves disjoint assignments
+@router.post("/{bundle_id}/collections", response_model=BundleCollections)
+def change_collections(
+    bundle_id: str, payload: MembershipDelta, db: LibrarySession
+) -> BundleCollections:
+    service.batch_update_bundles(
+        db,
+        bundle_ids=[bundle_id],
+        add_collection_ids=payload.add_ids,
+        remove_collection_ids=payload.remove_ids,
+    )
+    return get_collections(bundle_id, db)
 
 
 # --- Thumbnails (generated lazily and cached) --------------------------------

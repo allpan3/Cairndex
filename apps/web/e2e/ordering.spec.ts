@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mocks for the collection/bundle ordering features: the sort-control
@@ -60,35 +61,46 @@ async function mockApi(page: Page, count = 3): Promise<Captured> {
 
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0, unbundled: 0 },
     }),
   )
   await page.route('**/collections?*', (r) =>
-    r.fulfill({ json: { items: collections, next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: collections, next_cursor: null } }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/collections/cleanup-order', (r) => r.fulfill({ status: 204, body: '' }))
-  await page.route('**/collections/reorder', (r) => r.fulfill({ json: [] }))
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/collections/cleanup-order', (r) =>
+    r.fulfill({ ...METADATA_REPLY, status: 204, body: '' }),
+  )
+  await page.route('**/collections/reorder', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
 
   await page.route('**/bundles/cleanup-order', async (r) => {
     captured.bundleCleanup.push(r.request().postDataJSON() as Record<string, unknown>)
-    await r.fulfill({ status: 204, body: '' })
+    await r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
   })
 
   await page.route('**/bundles/browse**', (r) => {
     const sort = new URL(r.request().url()).searchParams.get('sort')
     if (sort) captured.sorts.push(sort)
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: Array.from({ length: count }, (_, i) => summary(`b${i}`, `Bundle ${i}`)),
         total: count,
@@ -97,7 +109,7 @@ async function mockApi(page: Page, count = 3): Promise<Captured> {
       },
     })
   })
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
 
   return captured
 }
@@ -166,6 +178,7 @@ test('bundle selection survives sorting, prunes proven removal, and clears when 
   let ids = ['b0', 'b1', 'b2']
   await page.route('**/bundles/browse**', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: ids.map((id) => summary(id, `Bundle ${id}`)),
         total: ids.length,
@@ -323,6 +336,7 @@ test('collection creation persists only after confirmation', async ({ page }) =>
     const payload = route.request().postDataJSON()
     writes.push(payload)
     await route.fulfill({
+      ...METADATA_REPLY,
       status: 201,
       json: { ...coll('created', payload.name, payload.parent_id, 0) },
     })

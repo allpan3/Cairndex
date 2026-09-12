@@ -2,8 +2,9 @@
 
 Frequently edited entities carry a ``version`` counter. Edits may send the
 version they last read via the ``If-Match`` header; a stale value is rejected
-with 409 (``version_conflict``) and nothing is mutated. Without ``If-Match``
-edits are last-write-wins so existing clients keep working.
+with 409 (``version_conflict``) and nothing is mutated. Mandatory edit bases protect
+every authored write independently of this
+optional compatibility counter. Sequential fixtures explicitly read before saving.
 """
 
 from fastapi.testclient import TestClient
@@ -57,12 +58,12 @@ def test_if_match_stale_version_conflicts_without_mutating(
     assert current["version"] == 2
 
 
-def test_no_if_match_is_last_write_wins(client: TestClient, library_id: str) -> None:
+def test_fresh_basis_without_if_match_succeeds(client: TestClient, library_id: str) -> None:
     base = _base(library_id)
     bundle = client.post(f"{base}/bundles", json={"title": "a"}).json()
     client.patch(f"{base}/bundles/{bundle['id']}", json={"title": "b"})
 
-    # No precondition header -> the edit applies regardless of version drift.
+    # The fixture supplies a fresh mandatory basis, without the optional entity counter.
     resp = client.patch(f"{base}/bundles/{bundle['id']}", json={"title": "c"})
     assert resp.status_code == 200
     assert resp.json()["title"] == "c"

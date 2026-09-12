@@ -9,6 +9,7 @@ suggested collections, and links subtitles, conflict-aware and idempotent.
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import LibrarySession
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.grouping import (
     ApplyConflictRead,
     ApplyPlanRequest,
@@ -30,7 +31,9 @@ from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
 from cairndex.persistence.models import GroupingPlan
 
-router = APIRouter(prefix="/libraries/{library_id}/grouping", tags=["grouping"])
+router = APIRouter(
+    route_class=MetadataRoute, prefix="/libraries/{library_id}/grouping", tags=["grouping"]
+)
 
 
 def _plan_read(plan: GroupingPlan) -> PlanRead:
@@ -174,7 +177,7 @@ def reparent_proposal(
     )
     # Selecting persisted state can create structural context ids returned to
     # the client, so make them durable before an immediate apply can use them
-    db.commit()
+    db.flush()
     db.expire_all()
     plan = plan_store.get_plan(db, plan_id)
     return _plan_read(plan)
@@ -205,7 +208,7 @@ def convert_proposal_kind(
     # The response names newly created proposal ids, so it is a durability
     # boundary: a client may apply them before this request's dependency teardown
     # runs, especially when the library DB is on a slow share.
-    db.commit()
+    db.flush()
     db.expire_all()
     plan = plan_store.get_plan(db, plan_id)
     return _plan_read(plan)
@@ -222,7 +225,7 @@ def apply_plan(
     result = apply_service.apply_plan(db, plan, proposal_ids=proposal_ids)
     # The client refreshes browse and collection queries as soon as this response
     # arrives; make those reads observe the grouping it says was accepted.
-    db.commit()
+    db.flush()
     return ApplyResultRead(
         bundles_confirmed=result.bundles_confirmed,
         bundles_removed=result.bundles_removed,

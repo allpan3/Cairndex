@@ -1,9 +1,13 @@
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,6 +20,7 @@ from cairndex.api.deps import (
     get_registry_access,
     get_registry_db,
 )
+from cairndex.api.metadata import begin_metadata_request
 from cairndex.core.config import get_settings
 from cairndex.main import create_app
 from cairndex.persistence import models  # noqa: F401  (register metadata)
@@ -24,6 +29,26 @@ from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
 from cairndex.registry.engine import create_registry_engine
 from cairndex.registry.library_engine import dispose_all_library_engines
+
+
+# Sequential domain tests explicitly model a fresh synthetic read before each authored request
+# Concurrency and upgrade tests use raw_client or supply their retained headers explicitly
+class ObservedTestClient(TestClient):
+    def request(self, method: str, url: Any, **kwargs: Any) -> Any:
+        headers = dict(kwargs.get("headers") or {})
+        match = re.match(r"(/api/v1/libraries/[^/]+)/", str(url))
+        if (
+            match
+            and method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+            and not any(name.lower().startswith("x-cairndex-") for name in headers)
+        ):
+            read = self.get(f"{match[1]}/metadata")
+            if read.is_success:
+                headers.update(
+                    {"X-Cairndex-Basis": read.json()["basis"], "X-Cairndex-Operation": uuid4().hex}
+                )
+                kwargs["headers"] = headers
+        return super().request(method, url, **kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -160,8 +185,11 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
             registry_session.rollback()
             raise
 
-    def _override_get_library_session() -> Iterator[Session]:
+    def _override_get_library_session(request: Request) -> Iterator[Session]:
         try:
+            session.commit()  # Commit synthetic setup before reserving the request writer
+            session.expire_all()
+            begin_metadata_request(request, session)
             yield session
             session.commit()
         except Exception:
@@ -186,7 +214,7 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
     app.dependency_overrides[get_library_session] = _override_get_library_session
     app.dependency_overrides[get_library_access] = _override_get_library_access
-    with TestClient(app) as test_client:
+    with ObservedTestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
@@ -208,7 +236,17 @@ def _registry_access_override(registry_session: Session) -> RegistryAccess:
 
 
 @pytest.fixture
+def raw_client(registry_session: Session) -> Iterator[TestClient]:
+    yield from _isolated_client(registry_session, TestClient)
+
+
+@pytest.fixture
 def isolated_client(registry_session: Session) -> Iterator[TestClient]:
+    yield from _isolated_client(registry_session, ObservedTestClient)
+
+
+# Preserve actual library resolution while selecting explicit or sequential read behavior
+def _isolated_client(registry_session: Session, kind: type[TestClient]) -> Iterator[TestClient]:
     """A TestClient with only the registry overridden, so library-scoped routes
     perform real per-library resolution and open each library's own DB. Used to
     prove cross-library isolation."""
@@ -226,6 +264,6 @@ def isolated_client(registry_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_registry_access] = lambda: _registry_access_override(
         registry_session
     )
-    with TestClient(app) as test_client:
+    with kind(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

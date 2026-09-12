@@ -5,7 +5,7 @@ tag may belong to several groups, and group membership never changes
 parent/descendant semantics.
 """
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -100,3 +100,37 @@ def list_group_tag_ids(session: Session, group_id: str) -> list[str]:
         .order_by(tag_group_memberships.c.sort_order, tag_group_memberships.c.tag_id)
     ).all()
     return [row[0] for row in rows]
+
+
+# Delta membership appends new tags without rewriting the existing order
+def change_group_tags(
+    session: Session, group_id: str, add_ids: list[str], remove_ids: list[str]
+) -> list[str]:
+    group = get_tag_group(session, group_id)
+    current = list_group_tag_ids(session, group_id)
+    if remove_ids:
+        session.execute(
+            delete(tag_group_memberships).where(
+                tag_group_memberships.c.group_id == group_id,
+                tag_group_memberships.c.tag_id.in_(remove_ids),
+            )
+        )
+    order = session.scalar(
+        select(func.max(tag_group_memberships.c.sort_order)).where(
+            tag_group_memberships.c.group_id == group_id
+        )
+    )
+    position = (order or 0) + 1
+    for tag_id in dict.fromkeys(add_ids):
+        if session.get(Tag, tag_id) is None:
+            raise ValidationError("An assigned tag no longer exists")
+        if tag_id not in current or tag_id in remove_ids:
+            session.execute(
+                insert(tag_group_memberships).values(
+                    group_id=group_id, tag_id=tag_id, sort_order=position
+                )
+            )
+            position += 1
+    group.updated_at = utcnow()
+    session.flush()
+    return list_group_tag_ids(session, group_id)

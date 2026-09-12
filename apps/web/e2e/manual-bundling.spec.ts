@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic e2e for the file-first manual bundling flow. The API is mocked so the
@@ -25,23 +26,31 @@ function fileEntry(over: Record<string, unknown>) {
 async function mockApi(page: Page) {
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0, unbundled: 2 },
     }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
 }
 
@@ -49,6 +58,7 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
   await mockApi(page)
   await page.route('**/manual-bundling/unbundled-files**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           fileEntry({ name: 'feature.mp4', relative_path: 'movie/feature.mp4' }),
@@ -73,6 +83,7 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
     // A media seed previews with a role per bundleable file (empty roles now means
     // "nothing to bundle", which disables Create — so the fixture must be realistic).
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         proposed_title: 'feature',
         roles: [
@@ -86,6 +97,7 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
   await page.route('**/manual-bundling/create-bundle', (r) => {
     createBody = r.request().postDataJSON()
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         bundle_id: 'new',
         files_added: 1,
@@ -135,6 +147,7 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
   await mockApi(page)
   await page.route('**/file-browser/entries**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: '',
         entries: [
@@ -151,6 +164,7 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
   )
   await page.route('**/manual-bundling/suggest-targets', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         suggestions: [
           { bundle_id: 'target', title: 'Existing Movie', confidence: 0.9, reason: 'same folder' },
@@ -162,6 +176,7 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
   await page.route('**/manual-bundling/add-files', (r) => {
     addBody = r.request().postDataJSON()
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         bundle_id: 'target',
         files_added: 1,
@@ -200,6 +215,7 @@ test('File view grid layout supports drag-to-select', async ({ page }) => {
   await mockApi(page)
   await page.route('**/file-browser/entries**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: '',
         entries: [

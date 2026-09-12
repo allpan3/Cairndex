@@ -1,4 +1,12 @@
 import {
+  changeBundleTags,
+  changeBundleCollections,
+  changeMomentTags,
+  changeTagGroupTags,
+  type MembershipEdit,
+} from './client'
+import { bindEdit, basisOf, rememberBasis, minimumBasis, type EditVersion } from './editBasis'
+import {
   useScopedMutation as useMutation,
   useScopedQueryClient as useQueryClient,
 } from './useScopedMutation'
@@ -51,6 +59,8 @@ import {
   type ViewCounts,
   addUnbundledFilesToBundle,
   batchUpdate,
+  batchEditBundles,
+  batchDeleteBundles,
   browseBundles,
   createBundleFromUnbundled,
   createCollection,
@@ -63,11 +73,9 @@ import {
   deleteTag,
   deleteTagGroup,
   renameTagGroup,
-  setTagGroupTags,
   updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
-  deleteBundle,
   deleteBundleWithFiles,
   forgetMissingFiles,
   deleteCollection,
@@ -412,7 +420,7 @@ export function useSmartCollectionMutations() {
       }: {
         id: string
         payload: SmartCollectionUpdate
-        version?: number
+        version?: EditVersion
       }) => updateSmartCollection(id, payload, version),
       // Refetch on conflict too, so the editor shows the latest server state.
       onSettled: invalidate,
@@ -447,37 +455,49 @@ export function useLibraries({
 }
 
 export function useLibraryMutations() {
-  const qc = useQueryClient()
+  const qc = useQueryClient(false)
   const invalidate = () => qc.invalidateQueries({ queryKey: ['libraries'] })
   return {
-    create: useMutation({
-      mutationFn: (payload: LibraryCreate) => createLibrary(payload),
-      onSuccess: invalidate,
-    }),
-    register: useMutation({
-      mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
-      onSuccess: invalidate,
-    }),
+    create: useMutation(
+      {
+        mutationFn: (payload: LibraryCreate) => createLibrary(payload),
+        onSuccess: invalidate,
+      },
+      false,
+    ),
+    register: useMutation(
+      {
+        mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
+        onSuccess: invalidate,
+      },
+      false,
+    ),
     // Classifies a typed path so the add flow can confirm one action instead of
     // making the owner choose between "create" and "register" up front. A
     // mutation rather than a query because it runs on submit, not on keystrokes.
-    probe: useMutation({
-      mutationFn: (path: string) => probeLibraryPath(path),
-    }),
-    // Metadata-only: deregisters the library and touches nothing on disk.
-    remove: useMutation({
-      mutationFn: (libraryId: string) => deleteLibrary(libraryId),
-      onSuccess: (_result, libraryId) => {
-        // Drop the row before refetching. The list is what resolves the active
-        // library, so leaving the removed one in the cache for a round trip
-        // would keep it active — and content queries, just cleared, would
-        // immediately reload against a library this server no longer has.
-        qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
-          current?.filter((library) => library.id !== libraryId),
-        )
-        return invalidate()
+    probe: useMutation(
+      {
+        mutationFn: (path: string) => probeLibraryPath(path),
       },
-    }),
+      false,
+    ),
+    // Metadata-only: deregisters the library and touches nothing on disk.
+    remove: useMutation(
+      {
+        mutationFn: (libraryId: string) => deleteLibrary(libraryId),
+        onSuccess: (_result, libraryId) => {
+          // Drop the row before refetching. The list is what resolves the active
+          // library, so leaving the removed one in the cache for a round trip
+          // would keep it active — and content queries, just cleared, would
+          // immediately reload against a library this server no longer has.
+          qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+            current?.filter((library) => library.id !== libraryId),
+          )
+          return invalidate()
+        },
+      },
+      false,
+    ),
   }
 }
 
@@ -1348,6 +1368,7 @@ export function useCreateTagPath() {
       /** Create beneath this tag instead of at the top level. */
       parentId?: string | null
     }): Promise<TagRead> => {
+      const submit = bindEdit(createTag)
       const segments = path
         .split('/')
         .map((part) => part.trim())
@@ -1364,7 +1385,7 @@ export function useCreateTagPath() {
         if (found) {
           leaf = found
         } else {
-          leaf = await createTag({ name, parent_id: parentId })
+          leaf = await submit({ name, parent_id: parentId })
           known.push(leaf)
         }
         parentId = leaf.id
@@ -1393,7 +1414,7 @@ export function useTagMutations() {
   }
   return {
     rename: useMutation({
-      mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+      mutationFn: ({ id, name, version }: { id: string; name: string; version?: EditVersion }) =>
         updateTag(id, { name }, version),
       // onSettled so a 409 conflict also refetches the latest tag state.
       onSettled: invalidate,
@@ -1414,7 +1435,7 @@ export function useTagMutations() {
       }: {
         id: string
         parentId: string | null
-        version?: number
+        version?: EditVersion
       }) => updateTag(id, { parent_id: parentId }, version),
       onMutate: async ({ id, parentId }) => {
         await qc.cancelQueries({ queryKey: ['tags'] })
@@ -1443,14 +1464,7 @@ export function useTagCounts() {
   })
 }
 
-/** Create/rename/delete tag groups, and move a tag in or out of one.
- *
- * The server replaces a group's membership wholesale (there is no add/remove
- * verb), so `addTag`/`removeTag` read the group's current members from the
- * `tag-group-memberships` cache the page already renders from and send the
- * amended list. A group whose membership has not been fetched yet is read from
- * the network first rather than assumed empty — sending a short list would
- * silently drop every other tag in the group. */
+// Group checkbox changes name independent edges and never replace unseen memberships
 export function useTagGroupMutations() {
   const qc = useQueryClient()
   // Group membership changes what the All Tags panels and the picker's group
@@ -1458,13 +1472,6 @@ export function useTagGroupMutations() {
   const invalidate = () => {
     for (const key of ['tag-groups', 'tag-group-memberships'])
       qc.invalidateQueries({ queryKey: [key] })
-  }
-  const membersOf = async (groupId: string): Promise<string[]> => {
-    const cached = qc
-      .getQueriesData<Record<string, string[]>>({ queryKey: ['tag-group-memberships'] })
-      .map(([, data]) => data?.[groupId])
-      .find((ids) => ids !== undefined)
-    return cached ?? (await fetchTagGroupTags(groupId))
   }
   return {
     create: useMutation({
@@ -1480,22 +1487,13 @@ export function useTagGroupMutations() {
       onSuccess: invalidate,
     }),
     addTag: useMutation({
-      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
-        const current = await membersOf(groupId)
-        if (current.includes(tagId)) return
-        await setTagGroupTags(groupId, [...current, tagId])
-      },
+      mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
+        changeTagGroupTags(groupId, [tagId], []),
       onSuccess: invalidate,
     }),
     removeTag: useMutation({
-      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
-        const current = await membersOf(groupId)
-        if (!current.includes(tagId)) return
-        await setTagGroupTags(
-          groupId,
-          current.filter((id) => id !== tagId),
-        )
-      },
+      mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
+        changeTagGroupTags(groupId, [], [tagId]),
       onSuccess: invalidate,
     }),
   }
@@ -1512,7 +1510,10 @@ export function useTagGroupMemberships() {
       const entries = await Promise.all(
         (groups.data ?? []).map(async (g) => [g.id, await fetchTagGroupTags(g.id)] as const),
       )
-      return Object.fromEntries(entries) as Record<string, string[]>
+      return rememberBasis(
+        Object.fromEntries(entries) as Record<string, string[]>,
+        minimumBasis(entries.map(([, members]) => basisOf(members))),
+      )
     },
   })
 }
@@ -1690,13 +1691,23 @@ export function useMomentMutations(bundleId: string | null) {
       }: {
         momentId: string
         patch: MomentPatch
-        version?: number
+        version?: EditVersion
       }) => updateMoment(requireBundle(), momentId, patch, version),
       onSettled: invalidate,
     }),
     setTags: useMutation({
-      mutationFn: ({ momentId, ids }: { momentId: string; ids: string[] }) =>
-        setMomentTags(requireBundle(), momentId, ids),
+      mutationFn: ({
+        momentId,
+        ids,
+        before,
+      }: {
+        momentId: string
+        ids: string[]
+        before?: string[]
+      }) =>
+        before
+          ? changeMomentTags(requireBundle(), momentId, { before, ids })
+          : setMomentTags(requireBundle(), momentId, ids),
       // Optimistic, for the reason the bundle's own tag write is: the pill has to
       // appear on the click, not a round trip and three refetches later. Tagging
       // a moment was visibly slower than tagging its bundle, which is the same
@@ -2190,7 +2201,7 @@ function applyBundlePatch(previous: BundleRead, patch: BundlePatch): BundleRead 
   }
 }
 
-export function useUpdateBundle(id: string, version?: number) {
+export function useUpdateBundle(id: string, version?: EditVersion) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (patch: BundlePatch) => updateBundle(id, patch, version),
@@ -2238,12 +2249,14 @@ export function useBundleCursor(id: string) {
 export function useSetBundleTags(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleTags(id, ids),
+    mutationFn: (edit: string[] | MembershipEdit) =>
+      Array.isArray(edit) ? setBundleTags(id, edit) : changeBundleTags(id, edit),
     // Optimistic: the chip appears on click rather than after a round trip plus
     // a refetch. Tagging felt like it took a second (owner, 2026-07-27) because
     // the picker only redrew once `bundle-tags` came back, behind a full
     // `browse` refetch competing for the same connections.
-    onMutate: async (ids: string[]) => {
+    onMutate: async (edit: string[] | MembershipEdit) => {
+      const ids = Array.isArray(edit) ? edit : edit.ids
       const key = ['bundle-tags', id]
       await Promise.all([
         qc.cancelQueries({ queryKey: key }),
@@ -2284,9 +2297,11 @@ export function useSetBundleTags(id: string) {
 export function useSetBundleCollections(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleCollections(id, ids),
+    mutationFn: (edit: string[] | MembershipEdit) =>
+      Array.isArray(edit) ? setBundleCollections(id, edit) : changeBundleCollections(id, edit),
     // Optimistic for the same reason as tags — see useSetBundleTags.
-    onMutate: async (ids: string[]) => {
+    onMutate: async (edit: string[] | MembershipEdit) => {
+      const ids = Array.isArray(edit) ? edit : edit.ids
       const key = ['bundle-collections', id]
       await Promise.all([
         qc.cancelQueries({ queryKey: key }),
@@ -2353,7 +2368,7 @@ export function useFileMutations(bundleId: string) {
       }: {
         fileId: string
         patch: FilePatch
-        version?: number
+        version?: EditVersion
       }) => updateFile(bundleId, fileId, patch, version),
       onSettled: () => invalidate(),
     }),
@@ -2444,7 +2459,9 @@ export function useDeleteBundles() {
     // write-gated route — so it is undoable and they stay listed in the Trash
     // rather than simply vanishing.
     mutationFn: ({ ids, deleteFiles = false }: { ids: string[]; deleteFiles?: boolean }) =>
-      Promise.all(ids.map((id) => (deleteFiles ? deleteBundleWithFiles(id) : deleteBundle(id)))),
+      deleteFiles
+        ? Promise.all(ids.map((id) => deleteBundleWithFiles(id))).then(() => undefined)
+        : batchDeleteBundles(ids),
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
       // Unbundled list + File Browser badges must refresh too.
@@ -2563,7 +2580,7 @@ export function useCreateCollectionFromDirectory() {
 export function useRenameCollection() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+    mutationFn: ({ id, name, version }: { id: string; name: string; version?: EditVersion }) =>
       renameCollection(id, name, version),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
@@ -2594,7 +2611,7 @@ export function useUpdateCollection() {
         cover_bundle_id?: string | null
         parent_id?: string | null
       }
-      version?: number
+      version?: EditVersion
     }) => updateCollection(id, patch, version),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
@@ -2968,14 +2985,12 @@ export function useCommonBundleCollections(ids: string[]) {
 }
 
 /** Overwrite title and/or rating across every bundle in a multi-selection.
- * Fires one PATCH per bundle in parallel (there's no bulk endpoint for scalar
- * fields, only membership) with no If-Match — a bulk overwrite is an explicit,
- * one-shot action, and per-row versions aren't loaded in the browse grid. */
+ * The selection's displayed read basis guards one atomic server transaction. */
 export function useBulkUpdateBundles() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ ids, patch }: { ids: string[]; patch: BundlePatch }) =>
-      Promise.all(ids.map((id) => updateBundle(id, patch))),
+      batchEditBundles(ids, patch),
     onSuccess: (_data, { ids }) => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       for (const id of ids) qc.invalidateQueries({ queryKey: ['bundle', id] })

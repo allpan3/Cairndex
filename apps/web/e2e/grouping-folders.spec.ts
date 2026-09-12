@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 /**
@@ -109,32 +110,40 @@ async function mockApi(page: Page) {
   }
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0, unbundled: 13 },
     }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
-  await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
   )
-  await page.route('**/grouping/plans', (r) => r.fulfill({ json: [plan] }))
-  await page.route('**/grouping/plans/plan1', (r) => r.fulfill({ json: plan }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
+  await page.route('**/bundles/browse**', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], total: 0, offset: 0, limit: 100 } }),
+  )
+  await page.route('**/grouping/plans', (r) => r.fulfill({ ...METADATA_REPLY, json: [plan] }))
+  await page.route('**/grouping/plans/plan1', (r) => r.fulfill({ ...METADATA_REPLY, json: plan }))
   // The one mutation these tests drive: declining a folder, and taking it back.
   await page.route('**/proposals/*/directories/*', (r) => {
     const expanded = (r.request().postDataJSON() as { expanded: boolean }).expanded
     const target = plan.proposals.find((p) => p.id === 'p-work')!
     target.directories = target.directories.map((d) => ({ ...d, expanded }))
-    r.fulfill({ json: target })
+    r.fulfill({ ...METADATA_REPLY, json: target })
   })
 }
 

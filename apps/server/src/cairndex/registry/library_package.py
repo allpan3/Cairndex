@@ -177,6 +177,9 @@ def _init_library_db(target: Path) -> None:
 
     with library_engine_scope(f"sqlite:///{target.as_posix()}") as engine:
         Base.metadata.create_all(engine)
+        from cairndex.metadata.schema import ensure_metadata_schema
+
+        ensure_metadata_schema(engine)
         ensure_search_schema(engine)
 
 

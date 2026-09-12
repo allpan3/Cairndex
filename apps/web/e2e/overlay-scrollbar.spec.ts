@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 /**
@@ -11,22 +12,29 @@ import { expect, test, type Page } from '@playwright/test'
 async function mockApi(page: Page) {
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0, unbundled: 0 },
     }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
   // Enough collections to push the sidebar past a short window.
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: Array.from({ length: 40 }, (_unused, index) => ({
           id: `c${index}`,
@@ -39,9 +47,9 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
 }
 
@@ -95,6 +103,7 @@ test('a panel that fits draws no thumb at all', async ({ page }) => {
   // (flaky before this branch too; the taller title strip only shifted the odds).
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: Array.from({ length: 3 }, (_unused, index) => ({
           id: `c${index}`,
@@ -127,6 +136,7 @@ test('the bundle inspector gets one too', async ({ page }) => {
   await mockApi(page)
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           {
@@ -152,6 +162,7 @@ test('the bundle inspector gets one too', async ({ page }) => {
   // catch-all must not shadow the two specific routes below it.
   await page.route('**/bundles/b0**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'b0',
         title: 'A bundle',
@@ -168,12 +179,15 @@ test('the bundle inspector gets one too', async ({ page }) => {
       },
     }),
   )
-  await page.route('**/bundles/b0/directory-members', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b0/directory-members', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: [] }),
+  )
   // Nothing marked in this fixture; the bundle catch-all above would otherwise
   // answer this list request with the bundle detail object (plan 7).
-  await page.route('**/bundles/b0/moments', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b0/moments', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/b0/files', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: Array.from({ length: 30 }, (_unused, index) => ({
         id: `f${index}`,
         bundle_id: 'b0',

@@ -1,3 +1,5 @@
+import { basisOf, rememberBasis } from '../api/editBasis'
+import { MetadataEditError } from '../api/metadataEdits'
 import {
   useEffect,
   Fragment,
@@ -74,8 +76,8 @@ function ConflictNotice({ error }: { error: unknown }) {
   if (!(error instanceof ConflictError)) return null
   return (
     <div className="conflict-notice" role="alert">
-      This item was changed elsewhere, so your edit wasn’t applied. The latest values are shown
-      below — save again to apply your change over them.
+      This item changed elsewhere. Your draft is retained; review the current and proposed values
+      before saving.
     </div>
   )
 }
@@ -85,10 +87,12 @@ function BundleTitleEditor({
   value,
   onChange,
   onCommit,
+  onBegin,
 }: {
   value: string
   onChange: (value: string) => void
   onCommit: () => void
+  onBegin?: () => void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -126,6 +130,7 @@ function BundleTitleEditor({
       rows={1}
       value={value}
       placeholder="Untitled"
+      onFocus={onBegin}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
       onKeyDown={(event) => {
@@ -280,7 +285,7 @@ function BundleEditor({
   const filesQuery = useBundleFiles(bundleId)
   const files = filesQuery.data ?? EMPTY_FILES
   const draft = useBundleDraft(bundle)
-  const update = useUpdateBundle(bundleId, draft.version)
+  const update = useUpdateBundle(bundleId)
   const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
 
   const title = draft.patch.title !== undefined ? (draft.patch.title ?? '') : (bundle.title ?? '')
@@ -332,9 +337,18 @@ function BundleEditor({
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
   const commitTitle = (value: string) => {
-    if (value === (bundle.title ?? '')) return
+    if (value === (bundle.title ?? '')) {
+      draft.saved({ title: value }, bundle.version)
+      return
+    }
     const patch = { title: value === '' ? null : value }
-    update.mutate(patch, { onSuccess: (saved) => draft.saved({ title: value }, saved.version) })
+    update.mutate(draft.bind(patch, 'title'), {
+      onSuccess: (saved) => draft.saved({ title: value }, saved.version),
+      onError: (error) => {
+        if (error instanceof MetadataEditError && error.discarded)
+          draft.saved({ title: value }, bundle.version)
+      },
+    })
   }
 
   // Notes edit as a whole-list replace. Blank/whitespace-only blocks (an
@@ -345,10 +359,13 @@ function BundleEditor({
     const prev = (bundle.notes ?? []).filter((n) => n.trim() !== '')
     if (cleaned.length === prev.length && cleaned.every((n, i) => n === prev[i])) return
     const original = notesRef.current
-    update.mutate(
-      { notes: cleaned },
-      { onSuccess: (saved) => draft.saved({ notes: original }, saved.version) },
-    )
+    update.mutate(draft.bind({ notes: cleaned }, 'notes'), {
+      onSuccess: (saved) => draft.saved({ notes: original }, saved.version),
+      onError: (error) => {
+        if (error instanceof MetadataEditError && error.discarded)
+          draft.saved({ notes: original }, bundle.version)
+      },
+    })
   }
   const changeNote = (i: number, value: string) =>
     applyNotes(notesRef.current.map((n, j) => (j === i ? value : n)))
@@ -483,13 +500,22 @@ function BundleEditor({
         </div>
       )}
 
-      <BundleTitleEditor value={title} onChange={setTitle} onCommit={() => commitTitle(title)} />
+      <BundleTitleEditor
+        value={title}
+        onBegin={() => {
+          if (draft.patch.title === undefined) setTitle(title)
+        }}
+        onChange={setTitle}
+        onCommit={() => commitTitle(title)}
+      />
 
       <div className="prop">
         <span className="prop__k">Rating</span>
         <StarRating
           value={bundle.rating ?? 0}
-          onChange={(v) => update.mutate({ rating: v === 0 ? null : v })}
+          onChange={(v) =>
+            update.mutate(rememberBasis({ rating: v === 0 ? null : v }, basisOf(bundle)))
+          }
         />
       </div>
       <div className="prop">
@@ -529,7 +555,12 @@ function BundleEditor({
       >
         {/* A wrapper, so a note row can be found under the pointer during a drag
             without also matching a row in some other inspector pane. */}
-        <div className="notes-list">
+        <div
+          className="notes-list"
+          onFocus={() => {
+            if (!draft.patch.notes) setNotes(notes)
+          }}
+        >
           {notes.map((n, i) => (
             <NoteBox
               key={i}
@@ -545,7 +576,10 @@ function BundleEditor({
               drop={
                 noteDropSlot?.index === i ? (noteDropSlot.before ? 'before' : 'after') : undefined
               }
-              onDragStart={() => setDraggingNote(i)}
+              onDragStart={() => {
+                if (!draft.patch.notes) setNotes(notes)
+                setDraggingNote(i)
+              }}
               onDragMove={(x, y) => hoverNoteDrop(i, x, y)}
               onDragEnd={() => {
                 const slot = noteDropRef.current
@@ -891,6 +925,8 @@ export function FileList({
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
   const pointerDragRef = useRef<{
+    basis: string | undefined
+    orderedIds: string[]
     fileId: string
     pointerId: number
     startX: number
@@ -1028,6 +1064,8 @@ export function FileList({
           event.currentTarget.focus({ preventScroll: true })
           event.currentTarget.setPointerCapture(event.pointerId)
           pointerDragRef.current = {
+            basis: basisOf(files),
+            orderedIds: files.map((file) => file.id),
             fileId: f.id,
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -1059,13 +1097,8 @@ export function FileList({
           if (!pointer || pointer.pointerId !== event.pointerId) return
           const slot = dropSlotRef.current
           if (pointer.active && pointer.mode === 'reorder' && slot) {
-            const orderedIds = moveTo(
-              files.map((file) => file.id),
-              pointer.fileId,
-              slot.id,
-              slot.before,
-            )
-            reorder.mutate(orderedIds)
+            const orderedIds = moveTo(pointer.orderedIds, pointer.fileId, slot.id, slot.before)
+            reorder.mutate(rememberBasis(orderedIds, pointer.basis))
           }
           clearDrag()
         }}

@@ -8,8 +8,9 @@ the simple editor supports a subset of predicates in one all/any group.
 
 Opening or renaming a Smart Collection preserves its accepted expression. Name-only
 PATCH requests omit `filter`; view defaults and ordering also leave it intact.
-The editor retains its opening `version` for `If-Match`, so a concurrent change
-returns 409 and requires closing/reopening before saving against the new state.
+The editor retains its opening read basis. Independent name/expression changes
+can coexist; a conflicting field returns 409 with a retained proposed value for
+exact-version review. The expression version and AST form one indivisible unit.
 Nested expressions, root NOT and predicates the simple controls cannot faithfully
 represent have protected conditions: only the name can be edited there. Cancel
 and Escape discard the local draft. A richer nested editor is deferred.

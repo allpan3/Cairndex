@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { currentDisplayedBasis, holdEditBasis } from '../api/editBasis'
 
 // Exclude hidden controls without relying on layout measurements unavailable to DOM tests
 function visible(element: HTMLElement): boolean {
@@ -27,6 +28,10 @@ function topDialog(): HTMLElement | undefined {
 // Keep Tab and Escape in the top dialog and restore the opener without discarding other work
 export function useModalDialog(onClose: () => void, pending = false) {
   const ref = useRef<HTMLDivElement>(null)
+  const [editBasis] = useState(currentDisplayedBasis)
+  useLayoutEffect(() => {
+    if (ref.current) return holdEditBasis(editBasis)
+  }, [editBasis])
   const [previous] = useState(() => document.activeElement as HTMLElement | null)
   const close = useCallback(() => {
     if (!pending) onClose()

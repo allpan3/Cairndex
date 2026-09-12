@@ -287,6 +287,22 @@ class SetIdsRequest(BaseModel):
     ids: list[str]
 
 
+# Delta assignments touch only named edges and preserve every unrelated membership
+class MembershipDelta(BaseModel):
+    add_ids: list[str] = Field(default_factory=list, max_length=200)
+    remove_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+# Bound one atomic bulk overwrite or metadata deletion to an explicit selection
+class BundleSelection(BaseModel):
+    bundle_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+# One shared patch is conditional on the selection's opening basis
+class BatchBundleEdit(BundleSelection):
+    patch: BundleUpdate
+
+
 class BundleTags(BaseModel):
     bundle_id: str
     tag_ids: list[str]

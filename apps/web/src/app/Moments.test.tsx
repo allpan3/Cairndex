@@ -240,11 +240,13 @@ test('a comment is shown, and clicking it opens an editor that commits on blur',
   fireEvent.change(box, { target: { value: 'the wide shot, before the cut' } })
   fireEvent.blur(box)
 
-  expect(hooks.update.mutate).toHaveBeenCalledWith({
-    momentId: 'moment-1',
-    patch: { comment: 'the wide shot, before the cut' },
-    version: 1,
-  })
+  expect(hooks.update.mutate).toHaveBeenCalledWith(
+    {
+      momentId: 'moment-1',
+      patch: { comment: 'the wide shot, before the cut' },
+    },
+    { onSuccess: expect.any(Function) },
+  )
 })
 
 test('Escape abandons a comment edit without saving it', () => {

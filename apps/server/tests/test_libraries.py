@@ -270,6 +270,8 @@ def _write_marker_plan(plans_file: Path) -> str:
 
     plan_id = "01K00000000000000000MARKER"
     with sqlite3.connect(plans_file) as conn:
+        conn.create_function("metadata_guard", 4, lambda *_: 1)
+        conn.create_function("metadata_record", 2, lambda *_: 1)
         conn.execute(
             "INSERT INTO grouping_plans (id, status, rule_version, stem_modes, generated_at,"
             " created_at, updated_at, version) VALUES (?, 'OPEN', 1, '{}', datetime('now'),"

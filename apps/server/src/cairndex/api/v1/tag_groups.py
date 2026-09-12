@@ -1,6 +1,8 @@
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import LibrarySession, Pagination
+from cairndex.api.metadata import MetadataRoute
+from cairndex.api.schemas.bundles import MembershipDelta
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
     SetTagsRequest,
@@ -11,7 +13,9 @@ from cairndex.api.schemas.taxonomy import (
 )
 from cairndex.services import tag_groups as service
 
-router = APIRouter(prefix="/libraries/{library_id}/tag-groups", tags=["tag-groups"])
+router = APIRouter(
+    route_class=MetadataRoute, prefix="/libraries/{library_id}/tag-groups", tags=["tag-groups"]
+)
 
 
 @router.post("", response_model=TagGroupRead, status_code=status.HTTP_201_CREATED)
@@ -50,3 +54,10 @@ def set_group_tags(group_id: str, payload: SetTagsRequest, db: LibrarySession) -
 def get_group_tags(group_id: str, db: LibrarySession) -> TagGroupTags:
     # Ordered by membership sort_order (the group's display order).
     return TagGroupTags(group_id=group_id, tag_ids=service.list_group_tag_ids(db, group_id))
+
+
+# Independent checkbox gestures modify only their named membership edges
+@router.post("/{group_id}/tags", response_model=TagGroupTags)
+def change_group_tags(group_id: str, payload: MembershipDelta, db: LibrarySession) -> TagGroupTags:
+    ids = service.change_group_tags(db, group_id, payload.add_ids, payload.remove_ids)
+    return TagGroupTags(group_id=group_id, tag_ids=ids)

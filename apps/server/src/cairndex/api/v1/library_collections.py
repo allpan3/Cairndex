@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import CollectionCountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
@@ -29,7 +30,11 @@ from cairndex.services import browse as browse_service
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as service
 
-router = APIRouter(prefix="/libraries/{library_id}/collections", tags=["library-collections"])
+router = APIRouter(
+    route_class=MetadataRoute,
+    prefix="/libraries/{library_id}/collections",
+    tags=["library-collections"],
+)
 
 
 @router.get("/counts", response_model=CollectionCountsResponse)
@@ -86,7 +91,7 @@ def create_collection_from_directory(
         if bundle_ids
         else 0
     )
-    db.commit()
+    db.flush()
     return CollectionFromDirectoryResult(
         collection=CollectionRead.model_validate(collection), bundles_added=added
     )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom'
 
 import type { MenuState } from './useContextMenu'
+import { holdEditBasis } from '../api/editBasis'
 
 /**
  * A cursor-anchored popup menu rendered into a portal so it escapes any
@@ -10,6 +11,7 @@ import type { MenuState } from './useContextMenu'
  */
 export function ContextMenu({ state, onClose }: { state: MenuState | null; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => (state ? holdEditBasis(state.editBasis) : undefined), [state])
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
 
   // Place at the cursor, then nudge back inside the viewport once measured.

@@ -312,6 +312,28 @@
         "title": "AuthStatus",
         "type": "object"
       },
+      "BatchBundleEdit": {
+        "properties": {
+          "bundle_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Bundle Ids",
+            "type": "array"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/BundleUpdate"
+          }
+        },
+        "required": [
+          "bundle_ids",
+          "patch"
+        ],
+        "title": "BatchBundleEdit",
+        "type": "object"
+      },
       "BatchResult": {
         "properties": {
           "updated": {
@@ -823,6 +845,24 @@
           "moved_ids"
         ],
         "title": "BundleReorder",
+        "type": "object"
+      },
+      "BundleSelection": {
+        "properties": {
+          "bundle_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Bundle Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bundle_ids"
+        ],
+        "title": "BundleSelection",
         "type": "object"
       },
       "BundleSort": {
@@ -4773,6 +4813,41 @@
         ],
         "title": "MediaKind",
         "type": "string"
+      },
+      "MembershipDelta": {
+        "properties": {
+          "add_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Add Ids",
+            "type": "array"
+          },
+          "remove_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Remove Ids",
+            "type": "array"
+          }
+        },
+        "title": "MembershipDelta",
+        "type": "object"
+      },
+      "MetadataRevision": {
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "basis"
+        ],
+        "title": "MetadataRevision",
+        "type": "object"
       },
       "MomentCreate": {
         "description": "Mark a moment on one of the bundle's files.\n\n``end_s`` omitted (or null) marks a frame. The service proves ``file_id`` is\na member of the bundle in the URL; a client cannot file a moment under a\nbundle that does not hold the video.",
@@ -8813,6 +8888,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -8836,6 +8938,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8845,6 +8950,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Bundle",
@@ -8897,6 +9005,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -8920,6 +9055,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8929,9 +9067,243 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Batch Update",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/batch-delete": {
+      "post": {
+        "operationId": "batch_delete_bundles_api_v1_libraries__library_id__bundles_batch_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Batch Delete Bundles",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/batch-edit": {
+      "post": {
+        "operationId": "batch_edit_bundles_api_v1_libraries__library_id__bundles_batch_edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchBundleEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BundleRead"
+                  },
+                  "title": "Response Batch Edit Bundles Api V1 Libraries  Library Id  Bundles Batch Edit Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Batch Edit Bundles",
         "tags": [
           "bundles"
         ]
@@ -9250,6 +9622,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -9266,6 +9665,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9275,6 +9677,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Cleanup Bundle Order",
@@ -9402,6 +9807,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -9425,6 +9857,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9434,6 +9869,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Reorder Bundles",
@@ -9495,11 +9933,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -9510,6 +9978,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Bundle",
@@ -9668,6 +10139,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -9691,6 +10189,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9700,6 +10201,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Bundle",
@@ -9790,6 +10294,130 @@
           "bundles"
         ]
       },
+      "post": {
+        "operationId": "change_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipDelta"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleCollections"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Change Collections",
+        "tags": [
+          "bundles"
+        ]
+      },
       "put": {
         "operationId": "set_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_put",
         "parameters": [
@@ -9842,6 +10470,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -9865,6 +10520,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9874,6 +10532,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Collections",
@@ -10205,6 +10866,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10228,6 +10916,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10237,6 +10928,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Collapse Directory",
@@ -10307,11 +11001,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -10322,6 +11046,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Expand Directory",
@@ -10468,6 +11195,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10491,6 +11245,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10500,6 +11257,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Add File",
@@ -10562,6 +11322,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10585,6 +11372,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10594,6 +11384,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Forget Missing Files",
@@ -10655,6 +11448,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10682,6 +11502,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10691,6 +11514,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Reorder Files",
@@ -10761,11 +11587,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -10776,6 +11632,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Remove File",
@@ -10862,6 +11721,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10885,6 +11771,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10894,6 +11783,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update File",
@@ -10964,6 +11856,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10987,6 +11906,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10996,6 +11918,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Repair File",
@@ -11334,6 +12259,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -11357,6 +12309,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -11366,6 +12321,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Moment",
@@ -11437,11 +12395,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -11452,6 +12440,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Moment",
@@ -11538,6 +12529,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -11561,6 +12579,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -11570,6 +12591,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Moment",
@@ -11761,6 +12785,139 @@
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments/{moment_id}/tags": {
+      "post": {
+        "operationId": "change_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "moment_id",
+            "required": true,
+            "schema": {
+              "title": "Moment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipDelta"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MomentTags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Change Moment Tags",
+        "tags": [
+          "moments"
+        ]
+      },
       "put": {
         "description": "Replace this moment's tags; the new ones join the bundle's as well.\n\nTakes the same ``{\"ids\": [...]}`` envelope as ``PUT /bundles/{id}/tags``, so\na client setting tags on either owner sends the same body shape.",
         "operationId": "set_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_put",
@@ -11823,6 +12980,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -11846,6 +13030,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -11855,6 +13042,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Moment Tags",
@@ -12105,6 +13295,130 @@
           "bundles"
         ]
       },
+      "post": {
+        "operationId": "change_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipDelta"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleTags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Change Tags",
+        "tags": [
+          "bundles"
+        ]
+      },
       "put": {
         "operationId": "set_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_put",
         "parameters": [
@@ -12157,6 +13471,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -12180,6 +13521,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12189,6 +13533,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Tags",
@@ -12423,6 +13770,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -12446,6 +13820,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12455,6 +13832,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Collection",
@@ -12508,6 +13888,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -12524,6 +13931,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12533,6 +13943,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Cleanup Collection Order",
@@ -12746,6 +14159,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -12769,6 +14209,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12778,6 +14221,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Collection From Directory",
@@ -12831,6 +14277,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -12858,6 +14331,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12867,6 +14343,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Reorder Collections",
@@ -12939,11 +14418,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -12954,6 +14463,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Collection",
@@ -13112,6 +14624,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -13135,6 +14674,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -13144,6 +14686,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Collection",
@@ -13459,6 +15004,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -13482,6 +15054,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -13491,6 +15066,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Fast Add Files",
@@ -15238,6 +16816,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -15251,6 +16856,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -15260,6 +16868,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Clear Cover Frame",
@@ -15320,6 +16931,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -15343,6 +16981,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -15352,6 +16993,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Cover Frame",
@@ -17010,6 +18654,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17040,6 +18711,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17049,6 +18723,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Generate Plan",
@@ -17193,6 +18870,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17223,6 +18927,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17232,6 +18939,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Apply Plan",
@@ -17303,6 +19013,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17326,6 +19063,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17335,6 +19075,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Proposal",
@@ -17406,6 +19149,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17429,6 +19199,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17438,6 +19211,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Proposal Destination",
@@ -17517,6 +19293,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17540,6 +19343,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17549,6 +19355,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Proposal Directory Expanded",
@@ -17629,6 +19438,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17656,6 +19492,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17665,6 +19504,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Move Proposal File",
@@ -17736,6 +19578,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17759,6 +19628,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17768,6 +19640,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Convert Proposal Kind",
@@ -17839,6 +19714,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17862,6 +19764,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17871,6 +19776,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Reparent Proposal",
@@ -17933,6 +19841,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17956,6 +19891,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -17965,6 +19903,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Stem Level",
@@ -18197,6 +20138,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -18220,6 +20188,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -18229,6 +20200,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Add Files To Bundle",
@@ -18376,6 +20350,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -18399,6 +20400,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -18408,6 +20412,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Bundle From Files",
@@ -18461,6 +20468,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -18484,6 +20518,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -18493,6 +20530,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Empty Bundle",
@@ -18814,6 +20854,80 @@
         "summary": "List Unbundled Files",
         "tags": [
           "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/metadata": {
+      "get": {
+        "operationId": "get_metadata_revision_api_v1_libraries__library_id__metadata_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Metadata Revision",
+        "tags": [
+          "metadata"
         ]
       }
     },
@@ -21148,6 +23262,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -21171,6 +23312,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -21180,6 +23324,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Smart Collection",
@@ -21241,11 +23388,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -21256,6 +23433,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Smart Collection",
@@ -21414,6 +23594,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -21437,6 +23644,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -21446,6 +23656,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Smart Collection",
@@ -21680,6 +23893,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -21703,6 +23943,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -21712,6 +23955,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Tag Group",
@@ -21773,11 +24019,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -21788,6 +24064,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Tag Group",
@@ -21928,6 +24207,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -21951,6 +24257,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -21960,6 +24269,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Tag Group",
@@ -22050,6 +24362,130 @@
           "tag-groups"
         ]
       },
+      "post": {
+        "operationId": "change_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipDelta"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagGroupTags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
+          }
+        },
+        "summary": "Change Group Tags",
+        "tags": [
+          "tag-groups"
+        ]
+      },
       "put": {
         "operationId": "set_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_put",
         "parameters": [
@@ -22102,6 +24538,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -22125,6 +24588,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -22134,6 +24600,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Set Group Tags",
@@ -22286,6 +24755,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -22309,6 +24805,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -22318,6 +24817,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Create Tag",
@@ -22464,11 +24966,41 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
           },
           "422": {
             "content": {
@@ -22479,6 +25011,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Delete Tag",
@@ -22637,6 +25172,33 @@
               ],
               "title": "Cairndex Session"
             }
+          },
+          {
+            "description": "Database read basis retained when editing began",
+            "in": "header",
+            "name": "X-Cairndex-Basis",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable random identity reused only for an identical retry",
+            "in": "header",
+            "name": "X-Cairndex-Operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact unit revisions explicitly reviewed by the owner",
+            "in": "header",
+            "name": "X-Cairndex-Review",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -22660,6 +25222,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Conflicting metadata; keep the draft and review"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -22669,6 +25234,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "description": "Client upgrade/edit preconditions required"
           }
         },
         "summary": "Update Tag",

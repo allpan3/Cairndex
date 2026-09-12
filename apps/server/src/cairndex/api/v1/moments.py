@@ -18,7 +18,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession
-from cairndex.api.schemas.bundles import SetIdsRequest
+from cairndex.api.metadata import MetadataRoute
+from cairndex.api.schemas.bundles import MembershipDelta, SetIdsRequest
 from cairndex.api.schemas.moments import (
     MomentCreate,
     MomentRead,
@@ -33,6 +34,7 @@ from cairndex.persistence.models import AssetBundle, AssetFile, Moment
 from cairndex.services import moments as service
 
 router = APIRouter(
+    route_class=MetadataRoute,
     prefix="/libraries/{library_id}/bundles/{bundle_id}/moments",
     tags=["moments"],
 )
@@ -140,6 +142,16 @@ def set_moment_tags(
 def delete_moment(bundle_id: str, moment_id: str, db: LibrarySession) -> None:
     """Forget a moment. Tags it put on the bundle stay there (plan 7 §4.1)."""
     service.delete_moment(db, bundle_id, moment_id)
+
+
+# Propagation stays additive while separate clients edit different moment-tag edges
+@router.post("/{moment_id}/tags", response_model=MomentTags)
+def change_moment_tags(
+    bundle_id: str, moment_id: str, payload: MembershipDelta, db: LibrarySession
+) -> MomentTags:
+    current = _tag_ids(service.get_moment(db, bundle_id, moment_id))
+    selected = (set(current) - set(payload.remove_ids)) | set(payload.add_ids)
+    return set_moment_tags(bundle_id, moment_id, SetIdsRequest(ids=sorted(selected)), db)
 
 
 def _preview_source(db: Session, moment: Moment) -> tuple[Path, str | None]:

@@ -1,3 +1,4 @@
+import { useMetadataDraft } from '../state/useMetadataDraft'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -159,7 +160,9 @@ export function MultiBundleInspector({
   const batch = useBatchUpdate()
   const createTag = useCreateTagPath()
   const createCollection = useCreateCollection()
-  const [title, setTitle] = useState('')
+  const titleDraft = useMetadataDraft(`bulk:${[...ids].sort().join(',')}:title`, '', items)
+  const title = titleDraft.value
+  const setTitle = titleDraft.change
 
   const totalFiles = items.reduce((s, i) => s + i.file_count, 0)
   const totalSize = items.reduce((s, i) => s + i.total_size, 0)
@@ -169,8 +172,9 @@ export function MultiBundleInspector({
   const commitTitle = () => {
     const trimmed = title.trim()
     if (!trimmed) return
-    bulkUpdate.mutate({ ids, patch: { title: trimmed } })
-    setTitle('')
+    bulkUpdate.mutate(titleDraft.bind({ ids, patch: { title: trimmed } }), {
+      onSuccess: () => titleDraft.saved(title),
+    })
   }
 
   const toggleTag = (tagId: string) => {
@@ -218,6 +222,7 @@ export function MultiBundleInspector({
         className="edit edit--title"
         value={title}
         placeholder="Multiple titles — type to rename all"
+        onFocus={titleDraft.begin}
         onChange={(e) => setTitle(e.target.value)}
         onBlur={commitTitle}
         onKeyDown={(e) => {

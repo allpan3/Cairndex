@@ -1,3 +1,5 @@
+import { bindEdit } from './api/editBasis'
+import { MetadataReview } from './app/MetadataReview'
 import { libraryStateKey } from './state/useBundleDraft'
 import { ConnectionControls } from './desktop/ConnectionControls'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -18,7 +20,6 @@ import {
   fetchBundleTags,
   type FileRead,
   setActiveLibraryId,
-  setBundleTags,
   suggestTargetBundles,
 } from './api/client'
 import {
@@ -750,6 +751,7 @@ function LibraryApp() {
 
   return (
     <>
+      <MetadataReview key={`edits:${libraryId}`} libraryId={libraryId} />
       <Workspace
         key={libraryId}
         libraries={libraries}
@@ -2210,6 +2212,7 @@ function Workspace({
       // That keeps the per-file Undo notice (the way back from an accidental
       // add) and lets a name collision raise the ordinary Replace / Skip /
       // Keep both prompt rather than silently suffixing.
+      const linkFiles = bindEdit(addUnbundledFilesToBundle)
       const accepted = webImports.copyIn(files, destDir, {
         onSettled: async (result) => {
           // Only what actually landed: a skipped collision or a failed upload
@@ -2217,7 +2220,7 @@ function Workspace({
           // put a row in the bundle for a file that is not there.
           const landed = result.imported.map((item) => item.path)
           if (bundleId && landed.length > 0) {
-            await addUnbundledFilesToBundle(bundleId, { relativePaths: landed })
+            await linkFiles(bundleId, { relativePaths: landed })
             queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
           }
           invalidateAfterFileOperation(queryClient)
@@ -2247,13 +2250,14 @@ function Workspace({
     (destDir: string) => {
       const pending = pendingBundleDrop
       if (!pending) return
+      const linkFiles = bindEdit(addUnbundledFilesToBundle)
       const accepted = webImports.copyIn(pending.files, destDir, {
         onConflict: 'suffix',
         announceEach: false,
         onSettled: async (result) => {
           const landed = result.imported.map((item) => item.path)
           if (landed.length > 0) {
-            await addUnbundledFilesToBundle(pending.bundleId, { relativePaths: landed })
+            await linkFiles(pending.bundleId, { relativePaths: landed })
           }
           invalidateAfterFileOperation(queryClient)
           queryClient.invalidateQueries({ queryKey: ['bundle', pending.bundleId] })
@@ -2664,45 +2668,20 @@ function Workspace({
     void fetchBundleTags(activeId).then(({ tag_ids }) => finish(tag_ids))
   }, [activeId, showFlash, queryClient])
 
-  // Optimistic end to end, matching the pill menu's own paste: the toast and the
-  // pills move now, the PUTs catch up behind. Waiting on fetch+PUT for the toast
-  // and a refetch for the pills read as two separate one-second stalls (owner,
-  // 2026-07-27).
+  // Paste is one additive operation, preserving each bundle's independent tag edges
   const pasteTagsOntoSelection = useCallback(() => {
     const copied = getCopiedTags()
     const targets = selectedIds.size > 0 ? [...selectedIds] : activeId ? [activeId] : []
     if (copied.length === 0 || targets.length === 0) return
-    showFlash(
-      `Pasted ${copied.length} tag${copied.length === 1 ? '' : 's'} onto ${targets.length} bundle${targets.length === 1 ? '' : 's'}.`,
+    batch.mutate(
+      { bundle_ids: targets, add_tag_ids: copied },
+      {
+        onSuccess: () => showFlash(`Pasted ${copied.length} tags onto ${targets.length} bundles.`),
+        onError: (error) =>
+          showFlash(error instanceof Error ? error.message : 'Could not paste tags.'),
+      },
     )
-    void Promise.all(
-      targets.map(async (id) => {
-        const key = ['bundle-tags', id]
-        // Cancel any in-flight refetch so it cannot land on top of the
-        // optimistic value (the same guard useSetBundleTags takes).
-        await queryClient.cancelQueries({ queryKey: key })
-        const cached = queryClient.getQueryData<{ bundle_id: string; tag_ids: string[] }>(key)
-        const existing = cached?.tag_ids ?? (await fetchBundleTags(id)).tag_ids
-        const union = [...new Set([...existing, ...copied])]
-        // Nothing new for this bundle — leave its version alone.
-        if (union.length === existing.length) return
-        queryClient.setQueryData(key, { bundle_id: id, tag_ids: union })
-        await setBundleTags(id, union)
-      }),
-    )
-      .then(() => {
-        // The pills are already right; only the aggregates catch up, and the
-        // grid lazily (only the Untagged view's membership depends on tags).
-        void queryClient.invalidateQueries({ queryKey: ['tag-counts'] })
-        void queryClient.invalidateQueries({ queryKey: ['view-counts'] })
-        void queryClient.invalidateQueries({ queryKey: ['browse'], refetchType: 'none' })
-      })
-      .catch((error: unknown) => {
-        // Roll everything back to the server's truth before reporting.
-        void queryClient.invalidateQueries({ queryKey: ['bundle-tags'] })
-        showFlash(error instanceof Error ? error.message : 'Could not paste tags.')
-      })
-  }, [activeId, selectedIds, showFlash, queryClient])
+  }, [activeId, selectedIds, showFlash, batch])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

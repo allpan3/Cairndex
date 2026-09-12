@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock of the unified add-library flow (ADR-0008). With no libraries
@@ -33,20 +34,28 @@ async function mockApi(
     .map((letter) => ({ path: `/mnt/${letter.repeat(3)}`, is_library: letter === 'c' }))
 
   await page.route('**/bundles/counts**', (r) =>
-    r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 },
+    }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts**', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
-  await page.route('**/api/v1/jobs/active?*', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/v1/jobs/active?*', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/file-ops/trash', (r) =>
-    r.fulfill({ json: { operations: [], size_bytes: 0 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { operations: [], size_bytes: 0 } }),
   )
   await page.route('**/api/v1/health', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         status: 'ok',
         app_name: 'cairndex',
@@ -57,13 +66,16 @@ async function mockApi(
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
 
   // Directory autocomplete, with one entry already marked as a library.
   await page.route('**/path-suggestions**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         suggestions: options.manySuggestions
           ? long
@@ -79,6 +91,7 @@ async function mockApi(
   // What the typed path is. The modal asks once, on submit.
   await page.route('**/probe-path**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         exists: true,
         is_library: options.probeIsLibrary ?? false,
@@ -107,22 +120,22 @@ async function mockApi(
 
   await page.route('**/api/v1/libraries/create', async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>
-    await r.fulfill({ status: 201, json: created(body, body.display_name) })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created(body, body.display_name) })
   })
   await page.route('**/api/v1/libraries/register', async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>
-    await r.fulfill({ status: 201, json: created(body, 'Existing Library') })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created(body, 'Existing Library') })
   })
 
   // Deregistration is metadata-only; the mock just drops the row.
   await page.route('**/api/v1/libraries/lib1', async (r) => {
     if (r.request().method() !== 'DELETE') return r.fallback()
     libraries.length = 0
-    await r.fulfill({ status: 204, body: '' })
+    await r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
   })
 
   // Libraries list (mutable).
-  await page.route('**/api/v1/libraries', (r) => r.fulfill({ json: libraries }))
+  await page.route('**/api/v1/libraries', (r) => r.fulfill({ ...METADATA_REPLY, json: libraries }))
   return { libraries }
 }
 
@@ -370,24 +383,36 @@ test('switching libraries replaces the browser shell without a reload', async ({
   })
   const libraryFrom = (url: string) => (url.includes('/lib2/') ? 'lib2' : 'lib1')
 
-  await page.route('**/api/v1/libraries', (route) => route.fulfill({ json: libraries }))
+  await page.route('**/api/v1/libraries', (route) =>
+    route.fulfill({ ...METADATA_REPLY, json: libraries }),
+  )
   await page.route('**/auth/status', (route) =>
-    route.fulfill({ json: { protected: false, unlocked: true } }),
+    route.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
   await page.route('**/ownership', (route) =>
-    route.fulfill({ json: { state: 'own', mountable: true } }),
+    route.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
   )
   await page.route('**/bundles/counts**', (route) =>
-    route.fulfill({ json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 } }),
+    route.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 },
+    }),
   )
-  await page.route('**/collections/counts**', (route) => route.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections/counts**', (route) =>
+    route.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
   await page.route('**/collections?*', (route) =>
-    route.fulfill({ json: { items: [], next_cursor: null } }),
+    route.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/smart-collections', (route) => route.fulfill({ json: [] }))
+  await page.route('**/smart-collections', (route) =>
+    route.fulfill({ ...METADATA_REPLY, json: [] }),
+  )
   await page.route('**/bundles/browse**', (route) => {
     const libraryId = libraryFrom(route.request().url())
-    route.fulfill({ json: { items: [item(libraryId)], total: 1, offset: 0, limit: 100 } })
+    route.fulfill({
+      ...METADATA_REPLY,
+      json: { items: [item(libraryId)], total: 1, offset: 0, limit: 100 },
+    })
   })
 
   await page.addInitScript(() => localStorage.removeItem('cairndex.libraryId'))

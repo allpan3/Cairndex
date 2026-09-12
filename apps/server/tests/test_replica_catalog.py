@@ -991,3 +991,41 @@ def test_recover_collection_with_descendant_cover(catalog_pair):
     )
     assert value(store, "collections", "collections-root", "cover_bundle_id") == "bundle-000000"
     assert value(store, "collections", "collections-child", "name") == "Keep child name"
+
+
+# Private edit clocks and exact retry bytes survive disposable conversion and unchanged rollback
+def test_shared_server_bookkeeping_roundtrip(tmp_path):
+    from uuid import uuid4
+
+    from sqlalchemy import create_engine, event
+
+    from cairndex.metadata.schema import ensure_metadata_schema
+
+    fixture = create_disposable(parent=tmp_path, bundles=3)
+    source = fixture.source / ".cairndex" / "library.db"
+    plans = fixture.directory / "private" / "plans.db"
+    engine = create_engine(f"sqlite:///{source}")
+
+    @event.listens_for(engine, "connect")
+    def attach(db, _):
+        db.execute("ATTACH DATABASE ? AS plans", (str(plans),))
+
+    ensure_metadata_schema(engine)
+    with engine.begin() as db:
+        db.exec_driver_sql(
+            "INSERT INTO metadata_receipts VALUES (?, ?, 200, ?, ?)",
+            (uuid4().hex, "synthetic-digest", b'{"title":"Synthetic retry"}', "synthetic-basis"),
+        )
+    engine.dispose()
+    conversion = prepare_disposable(fixture)
+    output = export_legacy(conversion)
+    compare_checkpoints(source, output / "library.db")
+    compare_checkpoints(plans, output / "plans.db")
+    with sqlite3.connect(source) as db:
+        db.execute("DROP TRIGGER metadata_asset_bundles_insert")
+        db.execute(
+            "CREATE TRIGGER metadata_asset_bundles_insert AFTER INSERT ON asset_bundles "
+            "BEGIN SELECT 1; END"
+        )
+    with pytest.raises(ReplicaError, match="schema"):
+        prepare_disposable(fixture)

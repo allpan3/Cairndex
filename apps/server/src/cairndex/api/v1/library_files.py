@@ -14,6 +14,7 @@ from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import FileResponse, Response
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession, RegistryDbSession
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
@@ -24,7 +25,9 @@ from cairndex.registry import services as registry_service
 from cairndex.scanning.fast_add import fast_add
 from cairndex.services import file_browser as file_browser_service
 
-router = APIRouter(prefix="/libraries/{library_id}", tags=["library-files"])
+router = APIRouter(
+    route_class=MetadataRoute, prefix="/libraries/{library_id}", tags=["library-files"]
+)
 
 
 @router.get("/file-browser/entries", response_model=FileBrowserListingRead)

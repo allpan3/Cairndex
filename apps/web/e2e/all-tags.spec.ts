@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the All Tags management page (Slice 3). Tag hierarchy:
@@ -43,32 +44,50 @@ async function mockApi(page: Page): Promise<{
 
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 3, recent: 3, uncategorized: 3, untagged: 1, missing: 0, unbundled: 0 },
     }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/tag-groups?*', (r) =>
-    r.fulfill({ json: { items: groups, next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: groups, next_cursor: null } }),
   )
   await page.route('**/tag-groups/*/tags', async (r) => {
     const groupId = r.request().url().split('/tag-groups/')[1]!.split('/')[0]!
+    if (r.request().method() === 'POST') {
+      const delta = r.request().postDataJSON() as { add_ids: string[]; remove_ids: string[] }
+      members[groupId] = [...new Set([...(members[groupId] ?? []), ...delta.add_ids])].filter(
+        (id) => !delta.remove_ids.includes(id),
+      )
+      groupWrites.push({ groupId, tag_ids: members[groupId] })
+    }
     if (r.request().method() === 'PUT') {
       const body = r.request().postDataJSON() as { tag_ids: string[] }
       groupWrites.push({ groupId, tag_ids: body.tag_ids })
       members[groupId] = body.tag_ids
     }
-    await r.fulfill({ json: { group_id: groupId, tag_ids: members[groupId] ?? [] } })
+    await r.fulfill({
+      ...METADATA_REPLY,
+      json: { group_id: groupId, tag_ids: members[groupId] ?? [] },
+    })
   })
   // Collection routes, matched without a query string so the paginated GETs
   // above still win: creating a tag or a group POSTs to the bare path.
@@ -81,7 +100,7 @@ async function mockApi(page: Page): Promise<{
     createdTags.push({ name: body.name, parent_id: body.parent_id ?? null })
     const created = tag(`new${createdTags.length}`, body.name, body.parent_id ?? null)
     tags.push(created)
-    await r.fulfill({ status: 201, json: created })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
   await page.route('**/libraries/*/tag-groups', async (r) => {
     if (r.request().method() !== 'POST') {
@@ -99,39 +118,47 @@ async function mockApi(page: Page): Promise<{
     }
     groups.push(created)
     members[created.id] = []
-    await r.fulfill({ status: 201, json: created })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
   await page.route('**/tags/counts', (r) =>
-    r.fulfill({ json: { counts: { p: 1, c: 2, leaf: 0 } } }),
+    r.fulfill({ ...METADATA_REPLY, json: { counts: { p: 1, c: 2, leaf: 0 } } }),
   )
   await page.route('**/tags/reorder', async (r) => {
     reorders.push(r.request().postDataJSON() as Record<string, unknown>)
-    await r.fulfill({ json: tags })
+    await r.fulfill({ ...METADATA_REPLY, json: tags })
   })
   await page.route('**/tags/*/delete-impact', async (r) => {
     // 'parent' has one child; the leaf has nothing hanging off it.
     const id = r.request().url().split('/tags/')[1]!.split('/')[0]!
-    await r.fulfill({ json: id === 'p' ? { tags: 2, bundles: 3 } : { tags: 1, bundles: 0 } })
+    await r.fulfill({
+      ...METADATA_REPLY,
+      json: id === 'p' ? { tags: 2, bundles: 3 } : { tags: 1, bundles: 0 },
+    })
   })
   await page.route('**/tags/*', async (r) => {
     const method = r.request().method()
     if (method === 'PATCH') {
       const id = r.request().url().split('/tags/')[1]!.split('?')[0]!
       patched.push(id)
-      await r.fulfill({ json: { ...tag(id, 'renamed'), version: 2 } })
+      await r.fulfill({ ...METADATA_REPLY, json: { ...tag(id, 'renamed'), version: 2 } })
     } else if (method === 'DELETE') {
       deletes.push(r.request().url().split('/tags/')[1]!)
-      await r.fulfill({ status: 204, body: '' })
+      await r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
     } else {
-      await r.fulfill({ status: 404, json: { message: 'not found' } })
+      await r.fulfill({ ...METADATA_REPLY, status: 404, json: { message: 'not found' } })
     }
   })
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: tags, next_cursor: null } }))
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: tags, next_cursor: null } }),
+  )
 
   await page.route('**/bundles/browse**', (r) => {
     const filtered = r.request().method() === 'POST'
     if (filtered) lastBrowsePost = r.request().postDataJSON() as Record<string, unknown>
-    r.fulfill({ json: { items: [], total: filtered ? 1 : 3, offset: 0, limit: 100 } })
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { items: [], total: filtered ? 1 : 3, offset: 0, limit: 100 },
+    })
   })
 
   return {

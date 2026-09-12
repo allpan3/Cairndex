@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Header, Query
+from fastapi import Cookie, Depends, Header, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -115,6 +115,7 @@ def authorize_library(
 
 def get_library_session(
     library_id: str,
+    request: Request,
     registry: RegistryDbSession,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     authorization: Annotated[str | None, Header()] = None,
@@ -150,6 +151,9 @@ def get_library_session(
 
     session = get_library_sessionmaker(library)()
     try:
+        from cairndex.api.metadata import begin_metadata_request
+
+        begin_metadata_request(request, session)
         yield session
         session.commit()
     except Exception:

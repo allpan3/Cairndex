@@ -10,6 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Authored shared-server metadata saves require their opening read basis and a
+  stable retry identity. Disjoint fields and membership deltas save independently;
+  conflicts retain proposals for exact-version review. Bulk edits/deletion are
+  atomic, retries replay committed receipts, and connected views refresh on change.
+  Older clients must upgrade before editing. Synthetic replica rollback preserves
+  the private edit protocol state.
+
 - Bundle free text searches bundle names, all bundle/file notes and moment comments.
   File/path/tag/collection names stay outside free text. Search cache version two
   rebuilds atomically in bounded batches and follows note and membership edits.

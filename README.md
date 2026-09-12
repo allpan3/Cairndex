@@ -59,6 +59,11 @@ collection, and storyboard-generation actions remain available in the
 maintenance menu. There are no global storage-root content APIs in the current
 model.
 
+Multiple clients of one server use [protected metadata edits](docs/shared-server-edits.md):
+disjoint fields and membership changes save independently, conflicting proposals stay
+available for review, and exact retries cannot duplicate committed operations. Current
+clients and servers are required for authored saves; older clients can still browse.
+
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail; the desktop shell can

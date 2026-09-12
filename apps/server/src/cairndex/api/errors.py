@@ -14,9 +14,12 @@ from cairndex.core.errors import (
     ValidationError,
     WriteModeDisabledError,
 )
+from cairndex.metadata.session import EditPreconditionRequired, EditUnavailable
 
 # Domain error -> HTTP status. Anything not listed falls back to 400.
 _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
+    (EditPreconditionRequired, 428),
+    (EditUnavailable, 503),
     (NotFoundError, 404),
     (InvalidDeviceTokenError, 401),
     (AuthRequiredError, 401),

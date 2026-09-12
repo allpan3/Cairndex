@@ -19,6 +19,15 @@ events and play results. HLS keeps one VOD timebase across bounded runs, and
 incomplete native endings use session recovery without playlist advancement.
 Diagnostics remain bounded and local to the viewer.
 
+## Shared-server edit protection
+
+[ADR-0030](adr/0030-shared-server-edit-bases.md) reserves the SQLite writer before
+validating an authored request's retained read basis. Persistent unit-clock triggers
+cover HTTP and internal writers; content and exact retry receipts commit together.
+Clients retain field drafts, use membership deltas, and poll a small revision read to
+refresh connected views. [Shared-server edits](shared-server-edits.md) inventories the
+protected actions and the separate observation/source-operation boundaries.
+
 ## Private metadata replicas
 
 [ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases

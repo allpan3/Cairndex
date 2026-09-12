@@ -208,11 +208,28 @@ def export_legacy(conversion: Conversion) -> Path:
         with sqlite3.connect(output / "library.db") as legacy:
             legacy.row_factory = sqlite3.Row
             legacy.execute("BEGIN IMMEDIATE")
+            from cairndex.metadata.schema import trigger_definitions
+
+            triggers = [
+                (name, sql)
+                for name, sql in legacy.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='trigger'"
+                )
+                if name in trigger_definitions("main")
+            ]
+            for name, _ in triggers:
+                legacy.execute(f"DROP TRIGGER {name}")
+            changed = False
             for family in AUTHORED:
                 identities = IDENTITIES[family]
                 where = " AND ".join(f'"{column}"=?' for column in identities)
                 legacy.execute(f"CREATE TEMP TABLE saved_{family} AS SELECT * FROM {family}")
                 legacy.execute(f"DELETE FROM {family}")
+                old_count = legacy.execute(f"SELECT count(*) FROM saved_{family}").fetchone()[0]
+                new_count = replica.execute(
+                    "SELECT count(*) FROM catalog_rows WHERE family=?", (family,)
+                ).fetchone()[0]
+                changed |= old_count != new_count
                 for (body,) in replica.execute(
                     "SELECT body FROM catalog_rows WHERE family=? ORDER BY entity", (family,)
                 ):
@@ -233,7 +250,13 @@ def export_legacy(conversion: Conversion) -> Path:
                     else:
                         complete = dict(prior) if prior else {}
                     complete.update(authored)
+                    changed |= prior is None or complete != dict(prior)
                     insert_row(legacy, family, complete)
+            for _, sql in triggers:
+                legacy.execute(sql)
+            if changed and triggers:
+                # An edited rollback retires old client bases and receipt authority
+                legacy.execute("UPDATE metadata_clock SET epoch=? WHERE id=1", (uuid4().hex,))
             # Old resume records remain in the immutable archive when their file is deleted
             legacy.execute(
                 "DELETE FROM playback_progress WHERE file_id NOT IN (SELECT id FROM asset_files)"

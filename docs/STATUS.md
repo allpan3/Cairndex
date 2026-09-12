@@ -1,5 +1,21 @@
 # Project status
 
+- Shared-server metadata protection (S05/I04) is implemented and locally verified on
+  `fix/library-ownership-lifecycle`, under [ADR-0030](adr/0030-shared-server-edit-bases.md).
+  Mandatory read bases, transactional clocks/receipts, independent membership
+  deltas, atomic bulk operations, retained conflict drafts and connected refresh
+  are implemented. The [mutation inventory](shared-server-edits.md) records all
+  protected actions and observation/source boundaries. Backend Ruff/format/mypy
+  passed with 1,492 tests passing and one existing FFmpeg zscale test skipped.
+  Frontend lint/format/typecheck/build passed with 1,210 unit tests passing.
+  The complete synthetic frontend browser suite passed 159 tests; eight real-server
+  shared-edit/search cases and the final grouping browser regressions passed.
+  OpenAPI and generated TypeScript types reproduce exactly. The conflict dialog
+  was visually checked with synthetic data. No Rust/native source changed, so no
+  native build was run. Validation uses disposable libraries only; Docker/NAS,
+  owner libraries, provider work, deployment and publication are outside this group.
+  The next audit group awaits owner instruction.
+
 - Search/filter correctness (S04/S06/S07, I06–I10) is implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `c177565d`.
   Renames omit saved filters, advanced conditions

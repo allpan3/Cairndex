@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the Phase 5 flow: build a filter, watch the live preview
@@ -26,25 +27,38 @@ async function mockApi(page: Page) {
 
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
-    r.fulfill({ json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0 },
+    }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
 
   // Filtered (POST) vs. unfiltered (GET) browse return different totals so the
   // test can prove the Smart Collection actually filters.
   await page.route('**/bundles/browse**', (r) => {
     const filtered = r.request().method() === 'POST'
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: filtered ? [summary('b0', 'Movie 0')] : [summary('b0', 'A'), summary('b1', 'B')],
         total: filtered ? 1 : 2,
@@ -54,7 +68,9 @@ async function mockApi(page: Page) {
     })
   })
 
-  await page.route('**/filters/preview', (r) => r.fulfill({ json: { count: 1 } }))
+  await page.route('**/filters/preview', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { count: 1 } }),
+  )
 
   await page.route('**/smart-collections', async (r) => {
     if (r.request().method() === 'POST') {
@@ -70,9 +86,9 @@ async function mockApi(page: Page) {
         updated_at: 'x',
       }
       smartCollections.push(sc)
-      await r.fulfill({ status: 201, json: sc })
+      await r.fulfill({ ...METADATA_REPLY, status: 201, json: sc })
     } else {
-      await r.fulfill({ json: smartCollections })
+      await r.fulfill({ ...METADATA_REPLY, json: smartCollections })
     }
   })
 }

@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the ad-hoc toolbar Tags filter (Slice 1). No backend
@@ -44,30 +45,46 @@ async function mockApi(
 
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 3, recent: 3, uncategorized: 3, untagged: 1, missing: 0, unbundled: 0 },
     }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 2, t2: 1 } } }))
-  await page.route('**/tags?*', (r) =>
-    r.fulfill({ json: { items: [tag('t1', 'alpha'), tag('t2', 'beta')], next_cursor: null } }),
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/tag-groups?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/tags/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: { t1: 2, t2: 1 } } }),
+  )
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { items: [tag('t1', 'alpha'), tag('t2', 'beta')], next_cursor: null },
+    }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
 
   // Faceted counts for the popover.
   await page.route('**/filters/facets', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         tags: { t1: 2, t2: 1 },
         ratings: { '1': 0, '2': 0, '3': 1, '4': 1, '5': 1, unrated: 1 },
@@ -79,6 +96,7 @@ async function mockApi(
     const filtered = r.request().method() === 'POST'
     if (filtered) lastBrowsePost = r.request().postDataJSON() as Record<string, unknown>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: filtered
           ? [summary('b0', 'Alpha')]

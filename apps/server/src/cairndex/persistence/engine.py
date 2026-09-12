@@ -220,6 +220,9 @@ def create_app_engine(
     if engine.dialect.name == "sqlite":
         if no_checkpoint_on_close:
             event.listen(engine, "connect", _disable_close_checkpoint)
+        from cairndex.metadata.session import install_connection_guards
+
+        install_connection_guards(engine)
         event.listen(engine, "connect", _apply_connection_pragmas)
         if db_path is None:
             # An in-memory library gets an in-memory place to keep plans, so the
@@ -516,6 +519,10 @@ def ensure_content_indexes(engine: Engine) -> None:
                 continue
             for index in table.indexes:
                 index.create(bind=conn, checkfirst=True)
+
+    from cairndex.metadata.schema import ensure_metadata_schema
+
+    ensure_metadata_schema(engine)
 
 
 @lru_cache

@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { fetchBundle, setActiveLibraryId, setApiBaseUrl } from './client'
 import { replicaRequest, draftKey } from './replicas'
 import { useScopedMutation } from './useScopedMutation'
+import { currentDisplayedBasis, observeEditClient, rememberBasis } from './editBasis'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -77,4 +78,46 @@ test('uses stable local draft keys across sidecar ports and distinct remote keys
   const one = draftKey('same-library', 'same-bundle', 'editor')
   setApiBaseUrl('https://two.example', 'remote:two')
   expect(draftKey('same-library', 'same-bundle', 'editor')).not.toBe(one)
+})
+
+// Cache changes while onMutate waits cannot reauthorize the already-invoked save
+test('captures the displayed basis before delayed optimistic preparation', async () => {
+  setActiveLibraryId('one')
+  const opening = `${'a'.repeat(32)}:4:${'b'.repeat(32)}:0`
+  const later = `${'a'.repeat(32)}:9:${'b'.repeat(32)}:0`
+  const client = new QueryClient()
+  const stop = observeEditClient(client)
+  let finish!: () => void
+  const mutation = vi.fn((value: { title: string }) => {
+    expect(value.title).toBe('draft')
+    return Promise.resolve(currentDisplayedBasis())
+  })
+  const { result, unmount } = renderHook(
+    () =>
+      useScopedMutation({
+        mutationFn: mutation,
+        onMutate: () =>
+          new Promise<void>((resolve) => {
+            finish = resolve
+          }),
+      }),
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  )
+  const variables = rememberBasis({ title: 'draft' }, opening)
+  let pending!: Promise<string | undefined>
+  act(() => {
+    pending = result.current.mutateAsync(variables)
+  })
+  await vi.waitFor(() => expect(finish).toBeDefined())
+  client.setQueryData(['bundle'], rememberBasis({ title: 'remote' }, later))
+  rememberBasis(variables, later)
+  finish()
+  await expect(pending).resolves.toBe(opening)
+  unmount()
+  stop()
+  client.clear()
 })

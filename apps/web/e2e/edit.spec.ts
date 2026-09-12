@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic, stateful mock so editing flows (rating, tag assignment, multi-
@@ -45,21 +46,28 @@ async function mockApi(page: Page, initialTitle = 'Movie 0') {
 
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
-    r.fulfill({ json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 },
+    }),
   )
   // Reads titles/ratings from `state` at request time (not just at mockApi
   // setup) so a PATCH made via the inspector is reflected on refetch — the
   // multi-select bulk-rename test asserts the grid picks up the new titles.
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { ...summary('b0', state.bundle.title ?? 'Movie 0'), rating: state.bundle.rating },
@@ -71,10 +79,15 @@ async function mockApi(page: Page, initialTitle = 'Movie 0') {
       },
     }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
   await page.route('**/tags?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           {
@@ -91,40 +104,59 @@ async function mockApi(page: Page, initialTitle = 'Movie 0') {
       },
     }),
   )
-  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 0 } } }))
+  await page.route('**/tag-groups?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/tags/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: { t1: 0 } } }),
+  )
 
-  await page.route('**/bundles/b0/files', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b0/files', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/b0/collections', (r) =>
-    r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
+    r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', collection_ids: [] } }),
   )
   await page.route('**/bundles/b0/tags', async (r) => {
+    if (r.request().method() === 'POST') {
+      const delta = r.request().postDataJSON() as { add_ids: string[]; remove_ids: string[] }
+      state.tagIds = [...new Set([...state.tagIds, ...delta.add_ids])].filter(
+        (id) => !delta.remove_ids.includes(id),
+      )
+    }
     if (r.request().method() === 'PUT') {
       state.tagIds = (r.request().postDataJSON() as { ids: string[] }).ids
     }
-    await r.fulfill({ json: { bundle_id: 'b0', tag_ids: state.tagIds } })
+    await r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', tag_ids: state.tagIds } })
   })
   await page.route('**/bundles/b0', async (r) => {
     if (r.request().method() === 'PATCH') {
       Object.assign(state.bundle, r.request().postDataJSON())
     }
-    await r.fulfill({ json: state.bundle })
+    await r.fulfill({ ...METADATA_REPLY, json: state.bundle })
   })
 
   // b1 mirrors b0 (empty tags/collections) so the multi-bundle inspector's
   // per-bundle queries resolve deterministically in the multi-select test.
-  await page.route('**/bundles/b1/files', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/batch-edit', async (route) => {
+    const { bundle_ids, patch } = route.request().postDataJSON() as {
+      bundle_ids: string[]
+      patch: Partial<typeof state.bundle>
+    }
+    const rows = [state.bundle, state.bundleB1].filter((row) => bundle_ids.includes(row.id))
+    for (const row of rows) Object.assign(row, patch)
+    await route.fulfill({ ...METADATA_REPLY, json: rows })
+  })
+  await page.route('**/bundles/b1/files', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/b1/collections', (r) =>
-    r.fulfill({ json: { bundle_id: 'b1', collection_ids: [] } }),
+    r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b1', collection_ids: [] } }),
   )
   await page.route('**/bundles/b1/tags', (r) =>
-    r.fulfill({ json: { bundle_id: 'b1', tag_ids: [] } }),
+    r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b1', tag_ids: [] } }),
   )
   await page.route('**/bundles/b1', async (r) => {
     if (r.request().method() === 'PATCH') {
       Object.assign(state.bundleB1, r.request().postDataJSON())
     }
-    await r.fulfill({ json: state.bundleB1 })
+    await r.fulfill({ ...METADATA_REPLY, json: state.bundleB1 })
   })
 }
 
@@ -274,6 +306,7 @@ test('tag and collection pickers match Chinese names by pinyin', async ({ page }
   await mockApi(page)
   await page.route('**/tags?*', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 't1', parent_id: null, name: '摄影', color: null, sort_order: 0 },
@@ -285,6 +318,7 @@ test('tag and collection pickers match Chinese names by pinyin', async ({ page }
   )
   await page.route('**/collections?*', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 'c1', name: '电影', parent_id: null },
@@ -321,6 +355,7 @@ test('the collection picker assigns, surfaces recent, and filters to selected', 
   // Two collections (parent + child) and a stateful membership route.
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 'c1', name: 'Movies', parent_id: null },
@@ -332,10 +367,16 @@ test('the collection picker assigns, surfaces recent, and filters to selected', 
   )
   let memberIds: string[] = []
   await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'POST') {
+      const delta = r.request().postDataJSON() as { add_ids: string[]; remove_ids: string[] }
+      memberIds = [...new Set([...memberIds, ...delta.add_ids])].filter(
+        (id) => !delta.remove_ids.includes(id),
+      )
+    }
     if (r.request().method() === 'PUT') {
       memberIds = (r.request().postDataJSON() as { ids: string[] }).ids
     }
-    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: memberIds } })
+    await r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', collection_ids: memberIds } })
   })
 
   await page.goto('/')
@@ -361,17 +402,23 @@ test('clicking a collection pill navigates without removing the bundle', async (
   await mockApi(page)
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
     }),
   )
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: { c1: 1 } } }))
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: { c1: 1 } } }),
+  )
   await page.route('**/collections/c1/stats', (r) =>
-    r.fulfill({ json: { direct_bundles: 1, total_bundles: 1, subcollections: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { direct_bundles: 1, total_bundles: 1, subcollections: 0 },
+    }),
   )
   let membershipWrites = 0
   await page.route('**/bundles/b0/collections', async (r) => {
     if (r.request().method() === 'PUT') membershipWrites += 1
-    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: ['c1'] } })
+    await r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', collection_ids: ['c1'] } })
   })
 
   await page.goto('/')
@@ -390,13 +437,15 @@ test('typing an unmatched search offers to create a new tag', async ({ page }) =
   const tags = [
     { id: 't1', parent_id: null, name: 'Action', color: null, sort_order: 0 },
   ] as Record<string, unknown>[]
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: tags, next_cursor: null } }))
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: tags, next_cursor: null } }),
+  )
   await page.route('**/tags', async (r) => {
     if (r.request().method() !== 'POST') return r.fallback()
     const body = r.request().postDataJSON() as { name: string }
     const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }
     tags.push(created)
-    await r.fulfill({ status: 201, json: created })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
 
   await page.goto('/')
@@ -420,13 +469,15 @@ test('a search that partially matches an existing tag still offers to create the
   const tags = [
     { id: 't1', parent_id: null, name: 'Action', color: null, sort_order: 0 },
   ] as Record<string, unknown>[]
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: tags, next_cursor: null } }))
+  await page.route('**/tags?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: tags, next_cursor: null } }),
+  )
   await page.route('**/tags', async (r) => {
     if (r.request().method() !== 'POST') return r.fallback()
     const body = r.request().postDataJSON() as { name: string }
     const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }
     tags.push(created)
-    await r.fulfill({ status: 201, json: created })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
 
   await page.goto('/')
@@ -453,21 +504,27 @@ test('typing an unmatched search offers to create a new collection', async ({ pa
   await mockApi(page)
   const collections = [{ id: 'c1', name: 'Movies', parent_id: null }] as Record<string, unknown>[]
   await page.route('**/collections?*', (r) =>
-    r.fulfill({ json: { items: collections, next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: collections, next_cursor: null } }),
   )
   await page.route('**/collections', async (r) => {
     if (r.request().method() !== 'POST') return r.fallback()
     const body = r.request().postDataJSON() as { name: string; parent_id: string | null }
     const created = { id: 'new-col', note: null, cover_bundle_id: null, ...body }
     collections.push(created)
-    await r.fulfill({ status: 201, json: created })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
   let memberIds: string[] = []
   await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'POST') {
+      const delta = r.request().postDataJSON() as { add_ids: string[]; remove_ids: string[] }
+      memberIds = [...new Set([...memberIds, ...delta.add_ids])].filter(
+        (id) => !delta.remove_ids.includes(id),
+      )
+    }
     if (r.request().method() === 'PUT') {
       memberIds = (r.request().postDataJSON() as { ids: string[] }).ids
     }
-    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: memberIds } })
+    await r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', collection_ids: memberIds } })
   })
 
   await page.goto('/')
@@ -495,17 +552,14 @@ test('multi-select shows a bulk editor in the right panel, not a top bar', async
   await expect(page.locator('.inspector__multi-head')).toContainText('2 bundles selected')
   await expect(page.locator('.batchbar')).toHaveCount(0)
 
-  // Renaming overwrites the title on every selected bundle (a PATCH per id).
-  const patchedB0 = page.waitForResponse(
-    (r) => r.url().includes('/bundles/b0') && r.request().method() === 'PATCH',
-  )
-  const patchedB1 = page.waitForResponse(
-    (r) => r.url().includes('/bundles/b1') && r.request().method() === 'PATCH',
+  // Renaming commits the selected titles in one atomic request.
+  const patched = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/bundles/batch-edit') && response.request().method() === 'POST',
   )
   await page.getByLabel('Title').fill('Renamed All')
   await page.getByLabel('Title').press('Enter')
-  await patchedB0
-  await patchedB1
+  await patched
 
   // Both cards pick up the new title once the browse grid refetches.
   await expect(page.locator('.card__title')).toHaveText(['Renamed All', 'Renamed All'])

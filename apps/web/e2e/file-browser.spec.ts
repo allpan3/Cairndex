@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the read-only File Browser: switch surfaces, list the active
@@ -28,16 +29,20 @@ async function mockApi(page: Page) {
   let missingBundles = 0
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'NAS Media', root_path: '/mnt/media', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   // Collection-View endpoints the shell loads on mount.
   await page.route('**/bundles/counts**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         all: 0,
         recent: 0,
@@ -48,11 +53,16 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts**', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         // One bundle, whose file on disk sits in the mocked `Show` folder — the
         // fixture "Locate in File Browser" navigates to.
@@ -89,6 +99,7 @@ async function mockApi(page: Page) {
     if (path === 'Show') {
       missingBundles = 1
       r.fulfill({
+        ...METADATA_REPLY,
         json: {
           path: 'Show',
           missing_files_updated: 2,
@@ -109,6 +120,7 @@ async function mockApi(page: Page) {
       })
     } else {
       r.fulfill({
+        ...METADATA_REPLY,
         json: {
           path: '',
           missing_files_updated: 0,
@@ -153,11 +165,12 @@ async function mockApi(page: Page) {
   wav.write('data', 36)
   wav.writeUInt32LE(3200, 40)
   await page.route('**/file?path=song.mp3', (r) =>
-    r.fulfill({ status: 200, contentType: 'audio/wav', body: wav }),
+    r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'audio/wav', body: wav }),
   )
   await page.route('**/file/preview?*', (r) => {
     previewRequests.push(r.request().url())
     return r.fulfill({
+      ...METADATA_REPLY,
       status: 200,
       contentType: 'image/webp',
       body: Buffer.from(
@@ -184,6 +197,7 @@ for (const zoom of [120, 300]) {
     await mockApi(page)
     await page.route('**/file-browser/entries**', (route) =>
       route.fulfill({
+        ...METADATA_REPLY,
         json: {
           path: '',
           missing_files_updated: 0,
@@ -245,9 +259,10 @@ test('delayed thumbnails fill and failed thumbnails retain a usable file row', a
   await page.route('**/file/preview?*', async (route) => {
     const path = new URL(route.request().url()).searchParams.get('path')
     if (path === 'scan.tiff')
-      return route.fulfill({ status: 503, body: 'Synthetic thumbnail failure' })
+      return route.fulfill({ ...METADATA_REPLY, status: 503, body: 'Synthetic thumbnail failure' })
     await pending
     await route.fulfill({
+      ...METADATA_REPLY,
       contentType: 'image/png',
       body: Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',

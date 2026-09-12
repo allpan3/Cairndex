@@ -3,13 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import TagCreate, TagDeleteImpact, TagRead, TagUpdate
 from cairndex.services import browse as browse_service
 from cairndex.services import tags as service
 
-router = APIRouter(prefix="/libraries/{library_id}/tags", tags=["tags"])
+router = APIRouter(route_class=MetadataRoute, prefix="/libraries/{library_id}/tags", tags=["tags"])
 
 
 @router.get("/counts", response_model=CountsResponse)

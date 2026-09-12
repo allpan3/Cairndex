@@ -1,3 +1,4 @@
+import { basisOf, rememberBasis } from '../api/editBasis'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -67,7 +68,10 @@ export function TagEditor({
       addLabel="+ Tag"
       assignment={{
         assigned: bundleTags?.tag_ids,
-        onSetTags: (ids) => setTags.mutate(ids),
+        onSetTags: (ids) =>
+          setTags.mutate(
+            rememberBasis({ before: bundleTags?.tag_ids ?? [], ids }, basisOf(bundleTags)),
+          ),
         removeLabel: 'Remove from This Bundle',
       }}
       onFilterByTags={onFilterByTags}

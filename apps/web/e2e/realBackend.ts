@@ -108,11 +108,21 @@ export async function proxyApi(page: Page, apiBaseUrl: string) {
   })
 }
 
-/** Send JSON directly from the simulated device side. */
+/** Sequential synthetic setup explicitly reads before authoring; race tests retain their own bases */
 export async function apiPost<T>(baseUrl: string, path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const url = `${baseUrl}${path}`
+  const library = url.match(/^(.*\/api\/v1\/libraries\/[^/]+)\//)?.[1]
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (library) {
+    const read = await fetch(`${library}/metadata`)
+    if (read.ok) {
+      headers['X-Cairndex-Basis'] = ((await read.json()) as { basis: string }).basis
+      headers['X-Cairndex-Operation'] = crypto.randomUUID()
+    }
+  }
+  const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   })
   if (!response.ok) throw new Error(`POST ${path} failed with ${response.status}`)

@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import LibrarySession
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, UnbundledFilesPage
 from cairndex.api.schemas.manual_bundling import (
     AddFilesRequest,
@@ -30,7 +31,11 @@ from cairndex.manual_bundling import suggest as suggest_service
 from cairndex.services import file_browser as file_browser_service
 from cairndex.services.pagination import MAX_LIMIT
 
-router = APIRouter(prefix="/libraries/{library_id}/manual-bundling", tags=["manual-bundling"])
+router = APIRouter(
+    route_class=MetadataRoute,
+    prefix="/libraries/{library_id}/manual-bundling",
+    tags=["manual-bundling"],
+)
 
 
 # --- the Unbundled "to-bundle queue" (read-only) -----------------------------

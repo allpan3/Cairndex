@@ -3,6 +3,7 @@
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import IfMatchVersion, LibrarySession
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.smart_collections import (
     SmartCollectionCreate,
     SmartCollectionRead,
@@ -12,7 +13,11 @@ from cairndex.filters.ast import FilterExpression
 from cairndex.persistence.models import SmartCollection
 from cairndex.services import smart_collections as service
 
-router = APIRouter(prefix="/libraries/{library_id}/smart-collections", tags=["smart-collections"])
+router = APIRouter(
+    route_class=MetadataRoute,
+    prefix="/libraries/{library_id}/smart-collections",
+    tags=["smart-collections"],
+)
 
 
 def _read(sc: SmartCollection) -> SmartCollectionRead:
@@ -79,4 +84,4 @@ def update_smart_collection(
 @router.delete("/{smart_collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_smart_collection(smart_collection_id: str, db: LibrarySession) -> None:
     service.delete_smart_collection(db, smart_collection_id)
-    db.commit()
+    db.flush()

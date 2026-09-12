@@ -10,6 +10,16 @@
 
 import { hostFetch, resolveHostAssetUrl } from '../platform'
 import { advanceConnectionScope, advanceLibraryScope, captureRequestScope } from './requestScope'
+import {
+  basisOf,
+  clearEditBases,
+  editBasis,
+  minimumBasis,
+  rememberBasis,
+  rememberVersionBases,
+  type EditVersion,
+} from './editBasis'
+import { isMetadataWrite, sendMetadata, retireMetadataRequests } from './metadataEdits'
 import type { components } from './schema'
 
 export type HealthStatus = components['schemas']['HealthStatus']
@@ -116,6 +126,8 @@ const runtime = globalThis as CairndexRuntime
 // Selects the remote server used by the desktop host while browsers stay same-origin
 export function setApiBaseUrl(value: string | null, connectionKey: string | null = value): void {
   advanceConnectionScope(connectionKey)
+  clearEditBases()
+  retireMetadataRequests()
   runtime.__cairndexApiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
 }
 
@@ -132,7 +144,11 @@ export function resolveAssetUrl(value: string): string {
 }
 
 export function setActiveLibraryId(id: string | null): void {
-  if (activeLibraryId !== id) advanceLibraryScope()
+  if (activeLibraryId !== id) {
+    advanceLibraryScope()
+    clearEditBases()
+    retireMetadataRequests()
+  }
   activeLibraryId = id
 }
 
@@ -193,6 +209,8 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
   const result = (await response.json()) as T
   assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
   return result
 }
 
@@ -214,9 +232,11 @@ async function send<T>(
   method: string,
   body?: unknown,
   /** Optimistic-concurrency precondition: the entity `version` last read. */
-  ifMatch?: number,
+  ifMatch?: EditVersion,
   includeLibraryScope = true,
 ): Promise<T> {
+  if (isMetadataWrite(url, method))
+    return sendMetadata<T>(url, method, body, editBasis(url, ifMatch))
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
@@ -242,6 +262,8 @@ async function send<T>(
   }
   const result = (response.status === 204 ? undefined : await response.json()) as T
   assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
   return result
 }
 
@@ -268,6 +290,8 @@ async function sendSignal<T>(
   }
   const result = (await response.json()) as T
   assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
   return result
 }
 
@@ -386,7 +410,7 @@ export const createSmartCollection = (payload: SmartCollectionCreate) =>
 export const updateSmartCollection = (
   id: string,
   payload: SmartCollectionUpdate,
-  version?: number,
+  version?: EditVersion,
 ) => send<SmartCollectionRead>(`${lib()}/smart-collections/${id}`, 'PATCH', payload, version)
 
 export const deleteSmartCollection = (id: string) =>
@@ -559,14 +583,16 @@ interface Page<T> {
 
 async function fetchAllPaged<T>(path: string, signal?: AbortSignal): Promise<T[]> {
   const out: T[] = []
+  const bases: (string | undefined)[] = []
   let cursor: string | null = null
   do {
     const url = `${path}?limit=200${cursor ? `&cursor=${cursor}` : ''}`
     const page: Page<T> = await getJson<Page<T>>(url, signal)
+    bases.push(basisOf(page))
     out.push(...page.items)
     cursor = page.next_cursor
   } while (cursor)
-  return out
+  return rememberBasis(out, minimumBasis(bases))
 }
 
 export const fetchAllCollections = (signal?: AbortSignal) =>
@@ -596,7 +622,7 @@ export const createCollectionFromDirectory = (payload: {
     payload,
   )
 
-export const renameCollection = (id: string, name: string, version?: number) =>
+export const renameCollection = (id: string, name: string, version?: EditVersion) =>
   send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', { name }, version)
 
 export const updateCollection = (
@@ -608,7 +634,7 @@ export const updateCollection = (
     // Reparent (drag a collection into another; null = move to top level).
     parent_id?: string | null
   },
-  version?: number,
+  version?: EditVersion,
 ) => send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', patch, version)
 
 export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
@@ -1249,7 +1275,7 @@ export function updateMoment(
   bundleId: string,
   momentId: string,
   patch: MomentPatch,
-  version?: number,
+  version?: EditVersion,
 ): Promise<Moment> {
   return send<Moment>(`${lib()}/bundles/${bundleId}/moments/${momentId}`, 'PATCH', patch, version)
 }
@@ -1397,7 +1423,7 @@ export const createTag = (payload: TagCreate) => send<TagRead>(`${lib()}/tags`, 
 export const updateTag = (
   id: string,
   patch: { name?: string; parent_id?: string | null; color?: string | null },
-  version?: number,
+  version?: EditVersion,
 ) => send<TagRead>(`${lib()}/tags/${id}`, 'PATCH', patch, version)
 
 /** Delete a tag. `cascade` also removes its child tags, which the server
@@ -1444,7 +1470,7 @@ export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promis
 }
 
 // --- Mutations ---------------------------------------------------------------
-export const updateBundle = (id: string, patch: BundlePatch, version?: number) =>
+export const updateBundle = (id: string, patch: BundlePatch, version?: EditVersion) =>
   send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch, version)
 
 export const updateBundleCursor = (id: string, fileId: string) =>
@@ -1454,6 +1480,32 @@ export const updateBundleCursor = (id: string, fileId: string) =>
  *  opening a bundle must not wait on it, and must not fail because of it. */
 export const markBundleOpened = (id: string) =>
   send<void>(`${lib()}/bundles/${id}/opened`, 'POST').catch(() => undefined)
+
+export interface MembershipEdit {
+  before: string[]
+  ids: string[]
+}
+
+// Checkbox and paste operations name only changed edges from the displayed selection
+export function membershipDelta({ before, ids }: MembershipEdit) {
+  return {
+    add_ids: ids.filter((id) => !before.includes(id)),
+    remove_ids: before.filter((id) => !ids.includes(id)),
+  }
+}
+
+export const changeBundleTags = (id: string, edit: MembershipEdit) =>
+  send<unknown>(`${lib()}/bundles/${id}/tags`, 'POST', membershipDelta(edit))
+export const changeBundleCollections = (id: string, edit: MembershipEdit) =>
+  send<unknown>(`${lib()}/bundles/${id}/collections`, 'POST', membershipDelta(edit))
+export const changeMomentTags = (bundleId: string, momentId: string, edit: MembershipEdit) =>
+  send<MomentTags>(
+    `${lib()}/bundles/${bundleId}/moments/${momentId}/tags`,
+    'POST',
+    membershipDelta(edit),
+  )
+export const changeTagGroupTags = (groupId: string, add_ids: string[], remove_ids: string[]) =>
+  send(`${lib()}/tag-groups/${groupId}/tags`, 'POST', { add_ids, remove_ids })
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })
@@ -1470,8 +1522,12 @@ export const fetchBundleCollections = (id: string, signal?: AbortSignal) =>
     signal,
   )
 
-export const updateFile = (bundleId: string, fileId: string, patch: FilePatch, version?: number) =>
-  send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch, version)
+export const updateFile = (
+  bundleId: string,
+  fileId: string,
+  patch: FilePatch,
+  version?: EditVersion,
+) => send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch, version)
 
 export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
@@ -1546,3 +1602,13 @@ export async function fetchHealth(signal?: AbortSignal, baseUrl?: string): Promi
   }
   return getJson<HealthStatus>('/api/v1/health', signal)
 }
+
+// One small revision read drives refresh and supplies context for new independent objects
+export const fetchMetadataRevision = (signal?: AbortSignal) =>
+  getJson<{ basis: string }>(`${lib()}/metadata`, signal)
+
+// Bulk authored overwrites and metadata deletion commit atomically across the selection
+export const batchEditBundles = (ids: string[], patch: BundlePatch) =>
+  send<BundleRead[]>(`${lib()}/bundles/batch-edit`, 'POST', { bundle_ids: ids, patch })
+export const batchDeleteBundles = (ids: string[]) =>
+  send<void>(`${lib()}/bundles/batch-delete`, 'POST', { bundle_ids: ids })

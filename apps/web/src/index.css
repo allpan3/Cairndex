@@ -7469,3 +7469,40 @@ code {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* Scoped metadata drafts stay reachable without replacing the active editor */
+.metadata-drafts {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  z-index: 180;
+  display: flex;
+  gap: 8px;
+}
+.metadata-review {
+  z-index: 10020;
+}
+.metadata-review .modal {
+  max-width: 760px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.metadata-review__values {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.metadata-review__values section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.metadata-review pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.metadata-review__empty {
+  opacity: 0.6;
+}

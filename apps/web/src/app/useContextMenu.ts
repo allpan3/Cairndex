@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { currentDisplayedBasis } from '../api/editBasis'
 
 import { dropRightClickSelection } from './selection'
 
@@ -14,6 +15,7 @@ export interface MenuItem {
 export type MenuEntry = MenuItem | null
 
 export interface MenuState {
+  editBasis?: string
   x: number
   y: number
   items: MenuEntry[]
@@ -40,7 +42,7 @@ export function useContextMenu() {
     if (!items.some((i) => i && !i.disabled)) return
     const element = e.target instanceof Element ? e.target : null
     const returnFocus = element?.closest<HTMLElement>('button, [tabindex]') ?? null
-    setState({ x: e.clientX, y: e.clientY, items, returnFocus })
+    setState({ x: e.clientX, y: e.clientY, items, returnFocus, editBasis: currentDisplayedBasis() })
   }
   const close = () => setState(null)
   return { state, open, close }

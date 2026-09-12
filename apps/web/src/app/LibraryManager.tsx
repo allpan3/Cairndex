@@ -1,3 +1,4 @@
+import { captureRequestScope } from '../api/requestScope'
 import { useModalDialog } from './useModalDialog'
 import { useEffect, useRef, useState } from 'react'
 
@@ -252,10 +253,22 @@ export function LibraryManager({
 
   const removeLibrary = (libraryId: string) => {
     setError(null)
-    remove.mutate(libraryId, {
-      onSuccess: () => onRemoved?.(libraryId),
-      onError: (failure) => setError(messageOf(failure)),
-    })
+    const assertScope = captureRequestScope(false)
+    // The registry refresh can remount this dialog before per-observer callbacks run
+    void remove
+      .mutateAsync(libraryId)
+      .then(() => {
+        assertScope()
+        onRemoved?.(libraryId)
+      })
+      .catch((failure: unknown) => {
+        try {
+          assertScope()
+        } catch {
+          return
+        }
+        setError(messageOf(failure))
+      })
   }
 
   const { ref: dialogRef, close: closeDialog } = useModalDialog(

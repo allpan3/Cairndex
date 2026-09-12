@@ -412,6 +412,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Delete Bundles */
+        post: operations["batch_delete_bundles_api_v1_libraries__library_id__bundles_batch_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/batch-edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Edit Bundles */
+        post: operations["batch_edit_bundles_api_v1_libraries__library_id__bundles_batch_edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/browse": {
         parameters: {
             query?: never;
@@ -527,7 +561,8 @@ export interface paths {
         get: operations["get_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_get"];
         /** Set Collections */
         put: operations["set_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_put"];
-        post?: never;
+        /** Change Collections */
+        post: operations["change_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -880,7 +915,8 @@ export interface paths {
          *     a client setting tags on either owner sends the same body shape.
          */
         put: operations["set_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_put"];
-        post?: never;
+        /** Change Moment Tags */
+        post: operations["change_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -939,7 +975,8 @@ export interface paths {
         get: operations["get_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_get"];
         /** Set Tags */
         put: operations["set_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_put"];
-        post?: never;
+        /** Change Tags */
+        post: operations["change_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2466,6 +2503,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Metadata Revision */
+        get: operations["get_metadata_revision_api_v1_libraries__library_id__metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/ownership": {
         parameters: {
             query?: never;
@@ -2986,7 +3040,8 @@ export interface paths {
         get: operations["get_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_get"];
         /** Set Group Tags */
         put: operations["set_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_put"];
-        post?: never;
+        /** Change Group Tags */
+        post: operations["change_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3209,6 +3264,12 @@ export interface components {
             /** Unlocked */
             unlocked: boolean;
         };
+        /** BatchBundleEdit */
+        BatchBundleEdit: {
+            /** Bundle Ids */
+            bundle_ids: string[];
+            patch: components["schemas"]["BundleUpdate"];
+        };
         /** BatchResult */
         BatchResult: {
             /** Updated */
@@ -3403,6 +3464,11 @@ export interface components {
             collection_id?: string | null;
             /** Moved Ids */
             moved_ids: string[];
+        };
+        /** BundleSelection */
+        BundleSelection: {
+            /** Bundle Ids */
+            bundle_ids: string[];
         };
         /**
          * BundleSort
@@ -4754,6 +4820,18 @@ export interface components {
          * @enum {string}
          */
         MediaKind: "video" | "image" | "subtitle" | "audio" | "other";
+        /** MembershipDelta */
+        MembershipDelta: {
+            /** Add Ids */
+            add_ids?: string[];
+            /** Remove Ids */
+            remove_ids?: string[];
+        };
+        /** MetadataRevision */
+        MetadataRevision: {
+            /** Basis */
+            basis: string;
+        };
         /**
          * MomentCreate
          * @description Mark a moment on one of the bundle's files.
@@ -6424,8 +6502,14 @@ export interface operations {
     create_bundle_api_v1_libraries__library_id__bundles_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -6449,6 +6533,13 @@ export interface operations {
                     "application/json": components["schemas"]["BundleRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6458,13 +6549,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     batch_update_api_v1_libraries__library_id__bundles_batch_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -6488,6 +6592,13 @@ export interface operations {
                     "application/json": components["schemas"]["BatchResult"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6496,6 +6607,129 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    batch_delete_bundles_api_v1_libraries__library_id__bundles_batch_delete_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    batch_edit_bundles_api_v1_libraries__library_id__bundles_batch_edit_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchBundleEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleRead"][];
+                };
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6586,8 +6820,14 @@ export interface operations {
     cleanup_bundle_order_api_v1_libraries__library_id__bundles_cleanup_order_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -6609,6 +6849,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6617,6 +6864,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6658,8 +6912,14 @@ export interface operations {
     reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -6683,6 +6943,13 @@ export interface operations {
                     "application/json": components["schemas"]["BundleOrder"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6691,6 +6958,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6733,8 +7007,14 @@ export interface operations {
     delete_bundle_api_v1_libraries__library_id__bundles__bundle_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -6753,6 +7033,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6762,15 +7049,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_bundle_api_v1_libraries__library_id__bundles__bundle_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -6795,6 +7095,13 @@ export interface operations {
                     "application/json": components["schemas"]["BundleRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6803,6 +7110,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6845,8 +7159,14 @@ export interface operations {
     set_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -6871,6 +7191,13 @@ export interface operations {
                     "application/json": components["schemas"]["BundleCollections"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6879,6 +7206,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipDelta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleCollections"];
+                };
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -6997,8 +7391,14 @@ export interface operations {
     collapse_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7023,6 +7423,13 @@ export interface operations {
                     "application/json": components["schemas"]["DirectoryMemberRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7032,13 +7439,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     expand_directory_api_v1_libraries__library_id__bundles__bundle_id__directory_members__member_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7058,6 +7478,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7066,6 +7493,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7108,8 +7542,14 @@ export interface operations {
     add_file_api_v1_libraries__library_id__bundles__bundle_id__files_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7134,6 +7574,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7143,13 +7590,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     forget_missing_files_api_v1_libraries__library_id__bundles__bundle_id__files_forget_missing_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7174,6 +7634,13 @@ export interface operations {
                     "application/json": components["schemas"]["ForgetMissingResult"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7183,13 +7650,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reorder_files_api_v1_libraries__library_id__bundles__bundle_id__files_order_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7214,6 +7694,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"][];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7223,13 +7710,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     remove_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7249,6 +7749,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7258,15 +7765,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7292,6 +7812,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7301,13 +7828,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     repair_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7333,6 +7873,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7341,6 +7888,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7457,8 +8011,14 @@ export interface operations {
     create_moment_api_v1_libraries__library_id__bundles__bundle_id__moments_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7483,6 +8043,13 @@ export interface operations {
                     "application/json": components["schemas"]["MomentRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7492,13 +8059,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     delete_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7518,6 +8098,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7527,15 +8114,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_moment_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7561,6 +8161,13 @@ export interface operations {
                     "application/json": components["schemas"]["MomentRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7569,6 +8176,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7649,8 +8263,14 @@ export interface operations {
     set_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7676,6 +8296,13 @@ export interface operations {
                     "application/json": components["schemas"]["MomentTags"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7684,6 +8311,74 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_moment_tags_api_v1_libraries__library_id__bundles__bundle_id__moments__moment_id__tags_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                bundle_id: string;
+                moment_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipDelta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MomentTags"];
+                };
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7796,8 +8491,14 @@ export interface operations {
     set_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 bundle_id: string;
@@ -7822,6 +8523,13 @@ export interface operations {
                     "application/json": components["schemas"]["BundleTags"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7830,6 +8538,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipDelta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTags"];
+                };
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7910,8 +8685,14 @@ export interface operations {
     create_collection_api_v1_libraries__library_id__collections_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -7935,6 +8716,13 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7944,13 +8732,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     cleanup_collection_order_api_v1_libraries__library_id__collections_cleanup_order_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -7972,6 +8773,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7980,6 +8788,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -8058,8 +8873,14 @@ export interface operations {
     create_collection_from_directory_api_v1_libraries__library_id__collections_from_directory_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -8083,6 +8904,13 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionFromDirectoryResult"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8092,13 +8920,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reorder_collections_api_v1_libraries__library_id__collections_reorder_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -8122,6 +8963,13 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionRead"][];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8130,6 +8978,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -8174,8 +9029,14 @@ export interface operations {
             query?: {
                 cascade?: boolean;
             };
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 collection_id: string;
@@ -8194,6 +9055,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8203,15 +9071,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_collection_api_v1_libraries__library_id__collections__collection_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 collection_id: string;
@@ -8236,6 +9117,13 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8244,6 +9132,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -8360,8 +9255,14 @@ export interface operations {
     fast_add_files_api_v1_libraries__library_id__fast_add_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -8385,6 +9286,13 @@ export interface operations {
                     "application/json": components["schemas"]["FastAddResponse"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8393,6 +9301,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9111,8 +10026,14 @@ export interface operations {
     set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 file_id: string;
@@ -9137,6 +10058,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -9146,13 +10074,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 file_id: string;
@@ -9173,6 +10114,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -9181,6 +10129,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9864,8 +10819,14 @@ export interface operations {
     generate_plan_api_v1_libraries__library_id__grouping_plans_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -9889,6 +10850,13 @@ export interface operations {
                     "application/json": components["schemas"]["PlanRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -9897,6 +10865,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9939,8 +10914,14 @@ export interface operations {
     apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -9965,6 +10946,13 @@ export interface operations {
                     "application/json": components["schemas"]["ApplyResultRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -9974,13 +10962,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10006,6 +11007,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10015,13 +11023,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10047,6 +11068,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10056,13 +11084,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     set_proposal_directory_expanded_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__directories__directory_id__put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10089,6 +11130,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10098,13 +11146,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10131,6 +11192,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalRead"][];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10140,13 +11208,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     convert_proposal_kind_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__kind_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10172,6 +11253,13 @@ export interface operations {
                     "application/json": components["schemas"]["PlanRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10181,13 +11269,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10213,6 +11314,13 @@ export interface operations {
                     "application/json": components["schemas"]["PlanRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10222,13 +11330,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     set_stem_level_api_v1_libraries__library_id__grouping_plans__plan_id__stem_levels_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 plan_id: string;
@@ -10253,6 +11374,13 @@ export interface operations {
                     "application/json": components["schemas"]["PlanRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10261,6 +11389,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -10393,8 +11528,14 @@ export interface operations {
     add_files_to_bundle_api_v1_libraries__library_id__manual_bundling_add_files_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -10418,6 +11559,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManualBundleResultRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10426,6 +11574,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -10470,8 +11625,14 @@ export interface operations {
     create_bundle_from_files_api_v1_libraries__library_id__manual_bundling_create_bundle_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -10495,6 +11656,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManualBundleResultRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10504,13 +11672,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     create_empty_bundle_api_v1_libraries__library_id__manual_bundling_create_empty_bundle_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -10534,6 +11715,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManualBundleResultRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -10542,6 +11730,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -10651,6 +11846,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnbundledFilesPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_revision_api_v1_libraries__library_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataRevision"];
                 };
             };
             /** @description Validation Error */
@@ -11626,8 +12856,14 @@ export interface operations {
     create_smart_collection_api_v1_libraries__library_id__smart_collections_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -11651,6 +12887,13 @@ export interface operations {
                     "application/json": components["schemas"]["SmartCollectionRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11659,6 +12902,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -11701,8 +12951,14 @@ export interface operations {
     delete_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 smart_collection_id: string;
@@ -11721,6 +12977,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11730,15 +12993,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 smart_collection_id: string;
@@ -11763,6 +13039,13 @@ export interface operations {
                     "application/json": components["schemas"]["SmartCollectionRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11771,6 +13054,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -11851,8 +13141,14 @@ export interface operations {
     create_tag_group_api_v1_libraries__library_id__tag_groups_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -11876,6 +13172,13 @@ export interface operations {
                     "application/json": components["schemas"]["TagGroupRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11884,6 +13187,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -11926,8 +13236,14 @@ export interface operations {
     delete_tag_group_api_v1_libraries__library_id__tag_groups__group_id__delete: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 group_id: string;
@@ -11946,6 +13262,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11955,13 +13278,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_tag_group_api_v1_libraries__library_id__tag_groups__group_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 group_id: string;
@@ -11986,6 +13322,13 @@ export interface operations {
                     "application/json": components["schemas"]["TagGroupRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11994,6 +13337,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -12036,8 +13386,14 @@ export interface operations {
     set_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_put: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 group_id: string;
@@ -12062,6 +13418,13 @@ export interface operations {
                     "application/json": components["schemas"]["TagGroupTags"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -12070,6 +13433,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
+            };
+            path: {
+                group_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipDelta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagGroupTags"];
+                };
+            };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -12114,8 +13544,14 @@ export interface operations {
     create_tag_api_v1_libraries__library_id__tags_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 library_id: string;
@@ -12139,6 +13575,13 @@ export interface operations {
                     "application/json": components["schemas"]["TagRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -12147,6 +13590,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -12226,8 +13676,14 @@ export interface operations {
             query?: {
                 cascade?: boolean;
             };
-            header?: {
+            header: {
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 tag_id: string;
@@ -12246,6 +13702,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -12255,15 +13718,28 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     update_tag_api_v1_libraries__library_id__tags__tag_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
                 authorization?: string | null;
+                /** @description Database read basis retained when editing began */
+                "X-Cairndex-Basis": string;
+                /** @description Stable random identity reused only for an identical retry */
+                "X-Cairndex-Operation": string;
+                /** @description Exact unit revisions explicitly reviewed by the owner */
+                "X-Cairndex-Review"?: string;
             };
             path: {
                 tag_id: string;
@@ -12288,6 +13764,13 @@ export interface operations {
                     "application/json": components["schemas"]["TagRead"];
                 };
             };
+            /** @description Conflicting metadata; keep the draft and review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -12296,6 +13779,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Client upgrade/edit preconditions required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

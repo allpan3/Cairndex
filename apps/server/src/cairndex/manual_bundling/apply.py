@@ -273,7 +273,10 @@ def add_unbundled_files_to_bundle(
 
     removed = reap_source_bundles(session, source_bundles)
     subtitles = len(auto_link_external_subtitles(session, target.id))
-    session.commit()
+    if session.info.get("metadata_edit"):
+        session.flush()
+    else:
+        session.commit()
     return ManualBundleResult(
         bundle_id=target.id,
         files_added=len(rows),
@@ -338,7 +341,10 @@ def create_bundle_from_unbundled(
 
     removed = reap_source_bundles(session, source_bundles)
     subtitles = len(auto_link_external_subtitles(session, target.id))
-    session.commit()
+    if session.info.get("metadata_edit"):
+        session.flush()
+    else:
+        session.commit()
     return ManualBundleResult(
         bundle_id=target.id,
         files_added=len(rows),
@@ -360,7 +366,10 @@ def create_empty_bundle(session: Session, *, title: str | None = None) -> Manual
         confirmed_at=utcnow(),
     )
     session.add(bundle)
-    session.commit()
+    if session.info.get("metadata_edit"):
+        session.flush()
+    else:
+        session.commit()
     return ManualBundleResult(bundle_id=bundle.id, created=True)
 
 

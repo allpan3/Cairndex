@@ -1,3 +1,4 @@
+const READ_HEADERS = new Headers({ 'X-Cairndex-Basis': `${'a'.repeat(32)}:0:${'b'.repeat(32)}:0` })
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -579,7 +580,12 @@ function mockGroupingApi(
     } else {
       body = {}
     }
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: READ_HEADERS,
+      json: () => Promise.resolve(body),
+    })
   })
 }
 
@@ -2055,8 +2061,8 @@ function mockRegeneratingApi() {
     }
     return Promise.resolve(
       new Response(JSON.stringify(body), {
+        headers: READ_HEADERS,
         status: 200,
-        headers: { 'content-type': 'application/json' },
       }),
     )
   })

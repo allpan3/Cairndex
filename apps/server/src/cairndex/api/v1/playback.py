@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
+from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.bundles import FileRead
 from cairndex.api.schemas.playback import (
     ContinueWatchingItem,
@@ -51,7 +52,7 @@ from cairndex.services import subtitles as sub_service
 from cairndex.services.bundles import get_bundle, list_active_files
 from cairndex.services.pagination import MAX_LIMIT
 
-router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
+router = APIRouter(route_class=MetadataRoute, prefix="/libraries/{library_id}", tags=["playback"])
 
 _VTT_SERVABLE = ("srt", "vtt")
 

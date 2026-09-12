@@ -976,3 +976,13 @@ filter contracts, visibility and complete ordered filename queries. From `apps/w
 `npx playwright test e2e/search-correctness.spec.ts` uses disposable real backends
 for nested-rule rename/cancel/conflicts and Unbundled paging/search/switch/retry.
 No test requires an owner library or source-media operation.
+
+## Shared-server edit clients
+
+Authored library requests require the `X-Cairndex-Basis` returned by the read used to
+begin the edit, plus a stable `X-Cairndex-Operation` retry identity. Retain both with
+the request; a save-time read must never replace a draft's basis. Backend tests use
+`raw_client` for explicit stale/upgrade scenarios and `ObservedTestClient` for
+sequential synthetic setup with fresh reads. Frontend fixtures expose synthetic
+basis headers; `e2e/metadata-edits.spec.ts` exercises actual server enforcement.
+See [shared-server edits](shared-server-edits.md) for the full contract and inventory.

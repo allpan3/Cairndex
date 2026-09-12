@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // The scan job carries `?suggest_grouping=`, which "Scan new files" turns off
@@ -47,40 +48,49 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   const items = Array.from({ length: 40 }, (_, i) => bundle(i))
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
-    r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 },
+    }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: {}, direct_counts: {} } }),
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {}, direct_counts: {} } }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items, total: items.length, offset: 0, limit: 100 } }),
   )
   await page.route('**/bundles/b0**', (r) => {
     const url = r.request().url()
     if (url.endsWith('/playback')) {
-      r.fulfill({ json: { bundle_id: 'b0', videos: [] } })
+      r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', videos: [] } })
     } else if (url.includes('/moments')) {
       // Nothing marked in this fixture. Needed explicitly for the same reason as
       // directory-members: the catch-all below answers with the bundle *detail*
       // object, and the inspector asks this endpoint for a list on every
       // selection (plan 7).
-      r.fulfill({ json: [] })
+      r.fulfill({ ...METADATA_REPLY, json: [] })
     } else if (url.includes('/directory-members')) {
       // No folder members in this fixture. Needed explicitly: the catch-all
       // below answers with the bundle *detail* object, and the inspector asks
       // this endpoint for a list on every selection (plan 6).
-      r.fulfill({ json: [] })
+      r.fulfill({ ...METADATA_REPLY, json: [] })
     } else if (url.includes('/files')) {
       r.fulfill({
+        ...METADATA_REPLY,
         json: [
           {
             id: 'f0',
@@ -119,11 +129,12 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
         ],
       })
     } else {
-      r.fulfill({ json: bundleDetail(coverFileId) })
+      r.fulfill({ ...METADATA_REPLY, json: bundleDetail(coverFileId) })
     }
   })
   await page.route('**/file-browser/entries**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: '',
         missing_files_updated: 0,
@@ -159,10 +170,11 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
 /** Enable both gates required for write-mode-only browser affordances */
 async function mockWriteMode(page: Page) {
   await page.route('**/api/v1/health', (route) =>
-    route.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
+    route.fulfill({ ...METADATA_REPLY, json: { status: 'ok', write_mode: 'allowed' } }),
   )
   await page.route('**/api/v1/libraries', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'lib1',
@@ -195,7 +207,7 @@ test('cold start waits for ownership before browsing the library', async ({ page
   })
   await page.route('**/ownership', async (route) => {
     await ownershipReady
-    await route.fulfill({ json: { state: 'own', mountable: true } })
+    await route.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } })
   })
   let browseRequests = 0
   page.on('request', (request) => {
@@ -255,16 +267,19 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   let scanPolls = 0
   await page.route(SCAN_ROUTE, (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({ id: 'job-scan', phase: 'discovering', processed: 42, total: 100 }),
     }),
   )
   await page.route('**/jobs/probe', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
     }),
   )
   await page.route('**/jobs/storyboards', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-storyboard',
         job_type: 'storyboard',
@@ -277,6 +292,7 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
     scanPolls += 1
     const done = scanPolls >= 2
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-scan',
         status: done ? 'succeeded' : 'running',
@@ -290,11 +306,13 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   })
   await page.route('**/api/v1/jobs/job-probe', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
     }),
   )
   await page.route('**/api/v1/jobs/job-storyboard', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-storyboard',
         job_type: 'storyboard',
@@ -340,6 +358,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
   }
   await page.route(SCAN_ROUTE, (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-scan',
         status: 'succeeded',
@@ -359,10 +378,15 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
     processed: 1,
     total: 10,
   })
-  await page.route('**/jobs/probe', (route) => route.fulfill({ json: runningProbe }))
-  await page.route('**/api/v1/jobs/job-probe', (route) => route.fulfill({ json: runningProbe }))
+  await page.route('**/jobs/probe', (route) =>
+    route.fulfill({ ...METADATA_REPLY, json: runningProbe }),
+  )
+  await page.route('**/api/v1/jobs/job-probe', (route) =>
+    route.fulfill({ ...METADATA_REPLY, json: runningProbe }),
+  )
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'plan-update',
@@ -377,6 +401,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
   )
   await page.route('**/grouping/plans/plan-update', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan-update',
         status: 'open',
@@ -405,6 +430,7 @@ test('standalone Scan reports the linked missing-file total', async ({ page }) =
   await page.route(SCAN_ROUTE, (route) => {
     scanUrls.push(route.request().url())
     return route.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-scan',
         status: 'succeeded',
@@ -430,6 +456,7 @@ test('Scan new files does not open grouping review', async ({ page }) => {
   await mockApi(page)
   await page.route(SCAN_ROUTE, (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-scan',
         status: 'succeeded',
@@ -452,6 +479,7 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await mockApi(page)
   await page.route('**/jobs/storyboards', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: jobRead({
         id: 'job-storyboard',
         job_type: 'storyboard',
@@ -518,6 +546,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
       activePlanId = 'plan2'
       generated = true
       return route.fulfill({
+        ...METADATA_REPLY,
         status: 201,
         json: {
           id: activePlanId,
@@ -532,6 +561,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
       })
     }
     return route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: activePlanId,
@@ -546,6 +576,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   })
   await page.route('**/grouping/plans/plan1', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan1',
         status: 'open',
@@ -560,6 +591,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   )
   await page.route('**/grouping/plans/plan2', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan2',
         status: 'open',
@@ -642,6 +674,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
   ]
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'plan-width',
@@ -656,6 +689,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
   )
   await page.route('**/grouping/plans/plan-width', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan-width',
         status: 'open',
@@ -754,6 +788,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   })
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'plan-destination',
@@ -768,6 +803,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   )
   await page.route('**/grouping/plans/plan-destination', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan-destination',
         status: 'open',
@@ -783,11 +819,11 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     createNewBundle = (route.request().postDataJSON() as { create_new_bundle: boolean })
       .create_new_bundle
     destinationWrites.push(createNewBundle)
-    return route.fulfill({ json: proposal() })
+    return route.fulfill({ ...METADATA_REPLY, json: proposal() })
   })
   await page.route('**/proposals/addition-ui', (route) => {
     title = (route.request().postDataJSON() as { title: string }).title
-    return route.fulfill({ json: proposal() })
+    return route.fulfill({ ...METADATA_REPLY, json: proposal() })
   })
 
   await page.goto('/')
@@ -1010,11 +1046,12 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   }> = []
 
   await page.route('**/collections?*', (route) =>
-    route.fulfill({ json: { items: persistedCollections, next_cursor: null } }),
+    route.fulfill({ ...METADATA_REPLY, json: { items: persistedCollections, next_cursor: null } }),
   )
 
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'plan-placement',
@@ -1029,6 +1066,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
   )
   await page.route('**/grouping/plans/plan-placement', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan-placement',
         status: 'open',
@@ -1084,6 +1122,7 @@ test('grouping placement uses a bounded searchable collection tree', async ({ pa
     }
     sampleBundle.parent_proposal_id = parentProposalId
     return route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan-placement',
         status: 'open',
@@ -1228,6 +1267,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   const bundleParents: Array<string | null> = []
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'plan1',
@@ -1242,6 +1282,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   )
   await page.route('**/grouping/plans/plan1', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan1',
         status: 'open',
@@ -1256,7 +1297,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await page.route('**/grouping/plans/plan1/proposals/collection1', (route) => {
     renamedCollection = (route.request().postDataJSON() as { title: string }).title
     proposals[0].title = renamedCollection
-    return route.fulfill({ json: proposals[0] })
+    return route.fulfill({ ...METADATA_REPLY, json: proposals[0] })
   })
   await page.route('**/grouping/plans/plan1/proposals/proposal2/files/file4/move', (route) => {
     const body = route.request().postDataJSON() as {
@@ -1271,7 +1312,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     source.files.forEach((file, sequence) => (file.sequence = sequence))
     target.files.forEach((file, sequence) => (file.sequence = sequence))
     fileMove = { source: source.id, target: target.id, index: body.target_index }
-    return route.fulfill({ json: [source, target] })
+    return route.fulfill({ ...METADATA_REPLY, json: [source, target] })
   })
   await page.route('**/grouping/plans/plan1/proposals/proposal1/parent', (route) => {
     const bundleParent = (
@@ -1283,6 +1324,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     bundleParents.push(bundleParent)
     proposals[1].parent_proposal_id = bundleParent
     return route.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'plan1',
         status: 'open',
@@ -1395,6 +1437,7 @@ test('inspector distinguishes pending files, folder membership and a large settl
   await page.route('**/bundles/b0/files', async (route) => {
     await filesReady
     await route.fulfill({
+      ...METADATA_REPLY,
       json: Array.from({ length: 74 }, (_, i) => ({
         id: `synthetic-${i}`,
         bundle_id: 'b0',
@@ -1414,6 +1457,7 @@ test('inspector distinguishes pending files, folder membership and a large settl
   await page.route('**/bundles/b0/directory-members', async (route) => {
     await foldersReady
     await route.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'synthetic-album',
@@ -1472,10 +1516,11 @@ test('a late inspector response cannot replace a newer selection and cached rese
   })
   await page.route('**/bundles/b0/files', async (route) => {
     await pending
-    await route.fulfill({ json: [] })
+    await route.fulfill({ ...METADATA_REPLY, json: [] })
   })
   await page.route('**/bundles/b1**', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: /\/(files|directory-members|moments)$/.test(route.request().url())
         ? []
         : { ...bundleDetail(null), id: 'b1', title: 'Movie 1' },
@@ -1564,7 +1609,7 @@ test('switches the cover highlight before the metadata request finishes', async 
       return
     }
     await heldPatch
-    await route.fulfill({ json: bundleDetail('f1') })
+    await route.fulfill({ ...METADATA_REPLY, json: bundleDetail('f1') })
     patchFinished = true
   })
   await page.goto('/')
@@ -1601,7 +1646,7 @@ test('rolls the optimistic cover highlight back after a failed write', async ({ 
       return
     }
     await heldPatch
-    await route.fulfill({ status: 500, json: { message: 'write failed' } })
+    await route.fulfill({ ...METADATA_REPLY, status: 500, json: { message: 'write failed' } })
   })
   await page.goto('/')
   await page.locator('.card').first().click()
@@ -1648,17 +1693,17 @@ test('moves a Bundle Inspector file to trash only when write mode supplies the a
       await route.fallback()
       return
     }
-    await route.fulfill({ json: [] })
+    await route.fulfill({ ...METADATA_REPLY, json: [] })
   })
   await page.route('**/file-ops/trash', async (route) => {
     if (route.request().method() === 'GET') {
-      await route.fulfill({ json: { operations: [], size_bytes: 0 } })
+      await route.fulfill({ ...METADATA_REPLY, json: { operations: [], size_bytes: 0 } })
       return
     }
     trashedPaths = (route.request().postDataJSON() as { paths: string[] }).paths
     await new Promise((resolve) => setTimeout(resolve, 2_000))
     fileTrashed = true
-    await route.fulfill({ json: {} })
+    await route.fulfill({ ...METADATA_REPLY, json: {} })
   })
 
   await page.goto('/')
@@ -1686,6 +1731,7 @@ test('dropping an OS file on the Bundle Inspector opens the bundle destination f
   await page.route('**/file-ops/import?*', async (route) => {
     await importFinished
     await route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: 'new-clip.mp4',
         operation: { id: 'op-import' },
@@ -1734,7 +1780,7 @@ test('reorders bundle files by dragging the inspector cards', async ({ page }) =
   let orderedIds: string[] | null = null
   await page.route('**/bundles/b0/files/order', async (route) => {
     orderedIds = (route.request().postDataJSON() as { ordered_ids: string[] }).ordered_ids
-    await route.fulfill({ status: 204 })
+    await route.fulfill({ ...METADATA_REPLY, status: 204 })
   })
   await page.goto('/')
   await page.locator('.card').first().click()
@@ -1792,10 +1838,16 @@ test('toolbar search queries the whole library, not just the loaded page', async
     const url = new URL(r.request().url())
     const q = url.searchParams.get('q')
     if (q && q.toLowerCase().includes('gem')) {
-      return r.fulfill({ json: { items: [gem], total: 1, offset: 0, limit: 100 } })
+      return r.fulfill({
+        ...METADATA_REPLY,
+        json: { items: [gem], total: 1, offset: 0, limit: 100 },
+      })
     }
     const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { items, total: items.length, offset: 0, limit: 100 },
+    })
   })
 
   await page.goto('/')
@@ -1812,10 +1864,12 @@ test('a protected library shows a lock screen and unlocks with the passphrase', 
 }) => {
   await mockApi(page)
   let unlocked = false
-  await page.route('**/auth/status', (r) => r.fulfill({ json: { protected: true, unlocked } }))
+  await page.route('**/auth/status', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { protected: true, unlocked } }),
+  )
   await page.route('**/auth/unlock', (r) => {
     unlocked = true
-    return r.fulfill({ json: { protected: true, unlocked: true } })
+    return r.fulfill({ ...METADATA_REPLY, json: { protected: true, unlocked: true } })
   })
 
   await page.goto('/')
@@ -1833,10 +1887,10 @@ test('a protected library shows a lock screen and unlocks with the passphrase', 
 test('right-clicking a bundle deletes it via the context menu', async ({ page }) => {
   await mockApi(page)
   let deleted: string | null = null
-  await page.route('**/bundles/b0', (r) => {
-    if (r.request().method() === 'DELETE') {
-      deleted = 'b0'
-      return r.fulfill({ status: 204, body: '' })
+  await page.route('**/bundles/batch-delete', (r) => {
+    if (r.request().method() === 'POST') {
+      deleted = (r.request().postDataJSON() as { bundle_ids: string[] }).bundle_ids[0] ?? null
+      return r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
     }
     return r.fallback()
   })
@@ -1885,16 +1939,19 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
     { id: 'c2', name: 'Action', parent_id: 'c1' },
   ]
   await page.route('**/collections?*', (r) =>
-    r.fulfill({ json: { items: collections, next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: collections, next_cursor: null } }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 2, c2: 1 }, direct_counts: { c1: 2, c2: 1 } } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { counts: { c1: 2, c2: 1 }, direct_counts: { c1: 2, c2: 1 } },
+    }),
   )
   let deleteUrl: string | null = null
   await page.route('**/collections/c1*', (r) => {
     if (r.request().method() === 'DELETE') {
       deleteUrl = r.request().url()
-      return r.fulfill({ status: 204, body: '' })
+      return r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
     }
     return r.fallback()
   })
@@ -1921,11 +1978,12 @@ test('the sidebar "+" creates a collection after its draft name is confirmed', a
   let nextId = 1
   await page.route('**/collections?*', (r) => {
     if (r.request().method() !== 'GET') return r.fallback()
-    return r.fulfill({ json: { items: state.collections, next_cursor: null } })
+    return r.fulfill({ ...METADATA_REPLY, json: { items: state.collections, next_cursor: null } })
   })
   // Mirror the backend: every collection appears in counts (0 when empty).
   await page.route('**/collections/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])),
         direct_counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])),
@@ -1937,14 +1995,14 @@ test('the sidebar "+" creates a collection after its draft name is confirmed', a
     const body = r.request().postDataJSON() as { name: string; parent_id: string | null }
     const created = { id: `c${nextId++}`, name: body.name, parent_id: body.parent_id }
     state.collections.push(created)
-    return r.fulfill({ status: 201, json: created })
+    return r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
   })
   await page.route('**/collections/c1', (r) => {
     if (r.request().method() !== 'PATCH') return r.fallback()
     const body = r.request().postDataJSON() as { name: string }
     const target = state.collections.find((c) => c.id === 'c1')
     if (target) target.name = body.name
-    return r.fulfill({ json: target })
+    return r.fulfill({ ...METADATA_REPLY, json: target })
   })
 
   await page.goto('/')
@@ -1975,6 +2033,7 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
   await mockApi(page)
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 'c1', name: 'Movies', parent_id: null },
@@ -1985,10 +2044,16 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } },
+    }),
   )
   await page.route('**/collections/c2/stats', (r) =>
-    r.fulfill({ json: { direct_bundles: 2, total_bundles: 2, subcollections: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { direct_bundles: 2, total_bundles: 2, subcollections: 0 },
+    }),
   )
   // Browse varies by collection_id + include_descendants: Movies has 1 direct
   // bundle, 3 with descendants included.
@@ -1998,10 +2063,16 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
     const withDesc = url.searchParams.get('include_descendants') === 'true'
     if (cid === 'c1') {
       const items = withDesc ? [bundle(0), bundle(1), bundle(2)] : [bundle(0)]
-      return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+      return r.fulfill({
+        ...METADATA_REPLY,
+        json: { items, total: items.length, offset: 0, limit: 100 },
+      })
     }
     const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { items, total: items.length, offset: 0, limit: 100 },
+    })
   })
 
   await page.goto('/')
@@ -2040,6 +2111,7 @@ test('collection cover thumbnails fill the card at the intended aspect ratio', a
   await mockApi(page)
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 'c1', name: 'Movies', parent_id: null },
@@ -2050,10 +2122,14 @@ test('collection cover thumbnails fill the card at the intended aspect ratio', a
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { counts: { c1: 1, c2: 2 }, direct_counts: { c1: 1, c2: 2 } },
+    }),
   )
   await page.route('**/collections/c2/thumbnail**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       status: 200,
       contentType: 'image/svg+xml',
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="10" />',
@@ -2062,10 +2138,16 @@ test('collection cover thumbnails fill the card at the intended aspect ratio', a
   await page.route('**/bundles/browse**', (r) => {
     const cid = new URL(r.request().url()).searchParams.get('collection_id')
     if (cid === 'c1') {
-      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+      return r.fulfill({
+        ...METADATA_REPLY,
+        json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 },
+      })
     }
     const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { items, total: items.length, offset: 0, limit: 100 },
+    })
   })
 
   await page.goto('/')
@@ -2098,6 +2180,7 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
   await mockApi(page)
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: [
           { id: 'c1', name: 'Movies', parent_id: null },
@@ -2110,6 +2193,7 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
   )
   await page.route('**/collections/counts', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { counts: { c1: 1, c2: 2, c3: 1 }, direct_counts: { c1: 1, c2: 2, c3: 1 } },
     }),
   )
@@ -2117,10 +2201,16 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
     const url = new URL(r.request().url())
     const cid = url.searchParams.get('collection_id')
     if (cid === 'c1') {
-      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+      return r.fulfill({
+        ...METADATA_REPLY,
+        json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 },
+      })
     }
     const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { items, total: items.length, offset: 0, limit: 100 },
+    })
   })
 
   await page.goto('/')
@@ -2159,25 +2249,35 @@ test('right-click a bundle in a collection sets it as the collection cover', asy
   await mockApi(page)
   await page.route('**/collections?*', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
     }),
   )
   await page.route('**/collections/counts', (r) =>
-    r.fulfill({ json: { counts: { c1: 1 }, direct_counts: { c1: 1 } } }),
+    r.fulfill({ ...METADATA_REPLY, json: { counts: { c1: 1 }, direct_counts: { c1: 1 } } }),
   )
   await page.route('**/bundles/browse**', (r) => {
     const cid = new URL(r.request().url()).searchParams.get('collection_id')
     if (cid === 'c1') {
-      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+      return r.fulfill({
+        ...METADATA_REPLY,
+        json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 },
+      })
     }
     const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { items, total: items.length, offset: 0, limit: 100 },
+    })
   })
   let coverPatch: { cover_bundle_id?: string } | null = null
   await page.route('**/collections/c1', (r) => {
     if (r.request().method() !== 'PATCH') return r.fallback()
     coverPatch = r.request().postDataJSON() as { cover_bundle_id?: string }
-    return r.fulfill({ json: { id: 'c1', name: 'Movies', parent_id: null, cover_bundle_id: 'b0' } })
+    return r.fulfill({
+      ...METADATA_REPLY,
+      json: { id: 'c1', name: 'Movies', parent_id: null, cover_bundle_id: 'b0' },
+    })
   })
 
   await page.goto('/')
@@ -2203,9 +2303,13 @@ test('a maintenance error is reported with the job rows, not under the button', 
   page,
 }) => {
   await mockApi(page)
-  await page.route('**/api/v1/jobs/active**', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/v1/jobs/active**', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/api/v1/libraries/lib1/jobs/storyboards', (r) =>
-    r.fulfill({ status: 500, json: { message: 'Background job was cancelled.' } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      status: 500,
+      json: { message: 'Background job was cancelled.' },
+    }),
   )
   await page.goto('/')
   await page.getByRole('button', { name: 'More library actions' }).click()
@@ -2240,13 +2344,16 @@ test('the sidebar tells a waiting job from a running one, and can stop either', 
   await mockApi(page)
   await page.route('**/api/v1/jobs/active**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [job({}), job({ id: 'j2', status: 'queued', phase: null, processed: 0, total: null })],
     }),
   )
   const cancelled = page.waitForRequest(
     (request) => request.url().includes('/api/v1/jobs/j1/cancel') && request.method() === 'POST',
   )
-  await page.route('**/api/v1/jobs/j1/cancel', (r) => r.fulfill({ json: job({}) }))
+  await page.route('**/api/v1/jobs/j1/cancel', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: job({}) }),
+  )
   await page.goto('/')
 
   // The running one names its phase and counts; the queued one says it is waiting
@@ -2270,6 +2377,7 @@ test('adding several files at once imports every one of them', async ({ page }) 
     const name = url.searchParams.get('filename') ?? ''
     imported.push(`${url.searchParams.get('dest_dir') ?? ''}|${name}`)
     await route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: name,
         operation: { id: `op-${imported.length}` },
@@ -2315,6 +2423,7 @@ test('opening a video mid-upload does not cancel the rest of the batch', async (
     // Hold the first request open, so the video is opened while it is in flight.
     if (imported.length === 1) await firstInFlight
     await route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: name,
         operation: { id: `op-${imported.length}` },
@@ -2362,6 +2471,7 @@ test('Skip leaves one file out and copies the rest', async ({ page }) => {
     // The first file collides until an answer arrives with the request.
     if (name === 'first.mp4' && policy === 'fail') {
       return route.fulfill({
+        ...METADATA_REPLY,
         status: 409,
         json: {
           detail: '“first.mp4” already exists here',
@@ -2370,6 +2480,7 @@ test('Skip leaves one file out and copies the rest', async ({ page }) => {
       })
     }
     return route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: name,
         operation: { id: `op-${attempted.length}` },
@@ -2409,6 +2520,7 @@ test('the sidebar can add files, which is the only way in on the web', async ({ 
     const query = new URL(route.request().url()).searchParams
     imported.push(`${query.get('dest_dir') ?? ''}|${query.get('filename') ?? ''}`)
     await route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: query.get('filename') ?? '',
         operation: { id: 'op-1' },
@@ -2478,6 +2590,7 @@ test('recovers a failed-save draft after switching libraries and reloading', asy
   await mockApi(page)
   await page.route('**/api/v1/libraries', (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: [
         { id: 'lib1', name: 'Library One', root_path: '/srv/one', status: 'available' },
         { id: 'lib2', name: 'Library Two', root_path: '/srv/two', status: 'available' },

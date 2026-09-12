@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
@@ -91,6 +92,7 @@ async function fulfillMedia(route: Route, body: Buffer) {
   const match = range?.match(/^bytes=(\d+)-(\d*)$/)
   if (!match) {
     await route.fulfill({
+      ...METADATA_REPLY,
       status: 200,
       contentType: 'video/mp4',
       headers: { 'Accept-Ranges': 'bytes', 'Content-Length': String(body.length) },
@@ -103,6 +105,7 @@ async function fulfillMedia(route: Route, body: Buffer) {
   const end = Math.min(requestedEnd, body.length - 1)
   if (!Number.isFinite(start) || start < 0 || start > end) {
     await route.fulfill({
+      ...METADATA_REPLY,
       status: 416,
       headers: { 'Content-Range': `bytes */${body.length}` },
     })
@@ -110,6 +113,7 @@ async function fulfillMedia(route: Route, body: Buffer) {
   }
   const chunk = body.subarray(start, end + 1)
   await route.fulfill({
+    ...METADATA_REPLY,
     status: 206,
     contentType: 'video/mp4',
     headers: {
@@ -268,6 +272,7 @@ async function proxyApi(page: Page, apiBaseUrl: string) {
       if (!['content-encoding', 'transfer-encoding'].includes(key)) headers[key] = value
     })
     route.fulfill({
+      ...METADATA_REPLY,
       status: response.status,
       headers,
       body: Buffer.from(await response.arrayBuffer()),
@@ -519,6 +524,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   let currentCursor = options.resumeFileId ?? 'f0'
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'lib1',
@@ -535,20 +541,22 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/ownership$/, (r) =>
-    r.fulfill({ json: { state: 'own', mountable: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) => {
     const missing = missingReconciled ? 1 : 0
     options.onViewCounts?.(missing)
     return r.fulfill({
+      ...METADATA_REPLY,
       json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing, unbundled: 0 },
     })
   })
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         items: Array.from({ length: options.summaryCount ?? 1 }, (_, index) => ({
           ...summary(index === 0 ? 'b0' : `b${index}`, `Movie ${index}`),
@@ -566,20 +574,22 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/collections\?/, (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/collections\/counts$/, (r) =>
-    r.fulfill({ json: { counts: {} } }),
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/smart-collections$/, (r) => r.fulfill({ json: [] }))
+  await page.route(/\/api\/v1\/libraries\/lib1\/smart-collections$/, (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: [] }),
+  )
   await page.route(/\/api\/v1\/libraries\/lib1\/tags\?/, (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/tag-groups\?/, (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/tags\/counts$/, (r) =>
-    r.fulfill({ json: { counts: {} } }),
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
   )
   // Moments (plan 7), backed by a store so the whole marking flow works:
   // mark it, see it in the docked rail, edit it, loop it, forget it.
@@ -608,17 +618,17 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       }
       momentStore.push(created)
       momentStore.sort((a, b) => (a.start_s as number) - (b.start_s as number))
-      return r.fulfill({ status: 201, json: created })
+      return r.fulfill({ ...METADATA_REPLY, status: 201, json: created })
     }
-    return r.fulfill({ json: momentStore })
+    return r.fulfill({ ...METADATA_REPLY, json: momentStore })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/moments\/([^/]+)$/, async (r) => {
     const id = new URL(r.request().url()).pathname.split('/').pop()
     const index = momentStore.findIndex((moment) => moment.id === id)
-    if (index < 0) return r.fulfill({ status: 404, json: { detail: 'gone' } })
+    if (index < 0) return r.fulfill({ ...METADATA_REPLY, status: 404, json: { detail: 'gone' } })
     if (r.request().method() === 'DELETE') {
       momentStore.splice(index, 1)
-      return r.fulfill({ status: 204, body: '' })
+      return r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
     }
     const patch = JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>
     const updated = {
@@ -628,14 +638,14 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }
     momentStore[index] = updated
     momentStore.sort((a, b) => (a.start_s as number) - (b.start_s as number))
-    return r.fulfill({ json: updated })
+    return r.fulfill({ ...METADATA_REPLY, json: updated })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+    r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/png', body: png }),
   )
   await page.route(
     /\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail(?:\?.*)?$/,
-    (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+    (r) => r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/png', body: png }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/cover-frame$/, async (r) => {
     coverTime =
@@ -644,6 +654,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         : (JSON.parse(r.request().postData() ?? '{}') as { time: number }).time
     options.onCoverFrame?.(coverTime)
     await r.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'f0',
         bundle_id: 'b0',
@@ -678,14 +689,15 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
     options.onContent?.(r.request().url())
-    return r.fulfill({ status: 200, contentType: 'image/png', body: png })
+    return r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/png', body: png })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/preview/, (r) => {
     options.onPreview?.(r.request().url())
-    return r.fulfill({ status: 200, contentType: 'image/webp', body: png })
+    return r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/webp', body: png })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/subtitles\/s0\/vtt$/, (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       status: 200,
       contentType: 'text/vtt',
       body: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello',
@@ -693,6 +705,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\.vtt/, (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       status: storyboardStatus,
       contentType: 'text/vtt',
       body:
@@ -702,7 +715,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\/sb_001\.jpg/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+    r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/png', body: png }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1|f2)\/progress$/, async (r) => {
     const match = r
@@ -720,7 +733,12 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       duration_s: body.duration_s,
       completed: Boolean(body.duration_s && body.position_s / body.duration_s >= 0.95),
     }
-    await r.fulfill({ status: 200, contentType: 'application/json', json: progressByFile[fileId] })
+    await r.fulfill({
+      ...METADATA_REPLY,
+      status: 200,
+      contentType: 'application/json',
+      json: progressByFile[fileId],
+    })
   })
 
   // Per-file playback decision (M7). f0 is directly playable (or a forced remux
@@ -753,6 +771,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       }
       if (options.forceHls && fileId === 'f0') {
         return r.fulfill({
+          ...METADATA_REPLY,
           json: {
             ...base,
             method: 'remux',
@@ -768,6 +787,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       }
       if (fileId === 'f1' && !options.secondPlayable && !options.threeVideos) {
         return r.fulfill({
+          ...METADATA_REPLY,
           json: {
             ...base,
             method: 'transcode',
@@ -779,6 +799,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         })
       }
       return r.fulfill({
+        ...METADATA_REPLY,
         json: {
           ...base,
           method: 'direct',
@@ -799,11 +820,13 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         const name = decodeURIComponent(r.request().url().split('?')[0].split('/').pop() ?? '')
         // hlsBreak keeps the playlist reachable but 404s the media bytes, so
         // hls.js hits a fatal load error and the client must re-attach.
-        if (options.hlsBreak && name !== 'index.m3u8') return r.fulfill({ status: 404, body: '' })
+        if (options.hlsBreak && name !== 'index.m3u8')
+          return r.fulfill({ ...METADATA_REPLY, status: 404, body: '' })
         const bytes = hlsFixture.get(name)
-        if (!bytes) return r.fulfill({ status: 404, body: '' })
+        if (!bytes) return r.fulfill({ ...METADATA_REPLY, status: 404, body: '' })
         const contentType = name === 'index.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp4'
         return r.fulfill({
+          ...METADATA_REPLY,
           status: 200,
           contentType,
           headers: { 'cache-control': 'no-store' },
@@ -815,7 +838,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/playback-sessions\/sess1$/, (r) => {
       if (r.request().method() === 'DELETE') {
         options.onSessionDelete?.(r.request().url())
-        return r.fulfill({ status: 204, body: '' })
+        return r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
       }
       return r.continue()
     })
@@ -824,6 +847,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) => {
     if (options.missingCurrent) missingReconciled = true
     return r.fulfill({
+      ...METADATA_REPLY,
       json: [
         {
           id: 'f0',
@@ -929,19 +953,20 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/collections$/, (r) =>
-    r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
+    r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', collection_ids: [] } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/tags$/, (r) =>
-    r.fulfill({ json: { bundle_id: 'b0', tag_ids: [] } }),
+    r.fulfill({ ...METADATA_REPLY, json: { bundle_id: 'b0', tag_ids: [] } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/cursor$/, async (r) => {
     const body = JSON.parse(r.request().postData() ?? '{}') as { file_id: string }
     currentCursor = body.file_id
     options.onCursor?.(currentCursor)
-    await r.fulfill({ json: { file_id: currentCursor } })
+    await r.fulfill({ ...METADATA_REPLY, json: { file_id: currentCursor } })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0$/, (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         id: 'b0',
         title: 'Movie 0',
@@ -964,6 +989,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) => {
     if (options.missingCurrent) missingReconciled = true
     return r.fulfill({
+      ...METADATA_REPLY,
       json: {
         bundle_id: 'b0',
         videos: [
@@ -1405,6 +1431,7 @@ test('previews a linked video card in the File Browser grid', async ({ page }) =
   await mockApi(page)
   await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         path: '',
         entries: [
@@ -1495,7 +1522,10 @@ test('plays a linked File Browser video in the app player, not native controls',
   await mockMedia(page)
   await mockApi(page)
   await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
-    route.fulfill({ json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) } }),
+    route.fulfill({
+      ...METADATA_REPLY,
+      json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) },
+    }),
   )
   await page.goto('/')
   await page.getByRole('tab', { name: 'Files' }).click()
@@ -1534,7 +1564,10 @@ test('decides playback for an unindexed File Browser video, by path', async ({ p
   await mockMedia(page)
   await mockApi(page)
   await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
-    route.fulfill({ json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) } }),
+    route.fulfill({
+      ...METADATA_REPLY,
+      json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) },
+    }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/file\?path=/, (route) =>
     fulfillMedia(route, generatedMp4 ?? Buffer.from([])),
@@ -1543,6 +1576,7 @@ test('decides playback for an unindexed File Browser video, by path', async ({ p
   // playable, so it comes back pointing at the path-scoped reader.
   await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/playback-decision$/, (route) =>
     route.fulfill({
+      ...METADATA_REPLY,
       json: {
         method: 'direct',
         reason: 'Source container and codecs are directly playable',
@@ -2786,6 +2820,7 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
         fps: 25,
       })
       return route.fulfill({
+        ...METADATA_REPLY,
         status: 202,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -2798,11 +2833,17 @@ test('exports the marked range as a GIF and drops the artifact after', async ({ 
         }),
       })
     }
-    if (request.method() === 'DELETE') return route.fulfill({ status: 204 })
+    if (request.method() === 'DELETE') return route.fulfill({ ...METADATA_REPLY, status: 204 })
     if (request.url().endsWith('/download')) {
-      return route.fulfill({ status: 200, contentType: 'image/gif', body: 'GIF89a-fake' })
+      return route.fulfill({
+        ...METADATA_REPLY,
+        status: 200,
+        contentType: 'image/gif',
+        body: 'GIF89a-fake',
+      })
     }
     return route.fulfill({
+      ...METADATA_REPLY,
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({

@@ -356,10 +356,31 @@ def validate_inventory(db: sqlite3.Connection, schema: str = "main") -> None:
         for name, spec in INVENTORY.items()
         if name.startswith("plans.") == (schema == "plans")
     }
-    if db.execute(
-        f"SELECT 1 FROM {schema}.sqlite_master WHERE type IN ('trigger','view') LIMIT 1"
-    ).fetchone():
+    from cairndex.metadata.schema import BOOKKEEPING, table_definitions, trigger_definitions
+
+    objects = {
+        (kind, name): sql
+        for kind, name, sql in db.execute(
+            f"SELECT type,name,sql FROM {schema}.sqlite_master "
+            "WHERE type IN ('table','trigger','view')"
+        )
+    }
+    bookkeeping = table_definitions(schema)
+    present = any(("table", name) in objects for name in bookkeeping)
+    known_triggers = trigger_definitions(schema) if present else {}
+    if any(
+        kind == "view" or (kind == "trigger" and known_triggers.get(name) != sql)
+        for (kind, name), sql in objects.items()
+    ):
         raise ReplicaError("Unknown schema extension blocks conversion")
+    if present:
+        if any(objects.get(("table", name)) != sql for name, sql in bookkeeping.items()) or any(
+            objects.get(("trigger", name)) != sql for name, sql in known_triggers.items()
+        ):
+            raise ReplicaError("Unknown protocol bookkeeping schema blocks conversion")
+        expected.update(
+            {name: {"private_edit_protocol": BOOKKEEPING[name]} for name in bookkeeping}
+        )
     actual = {
         row[0]
         for row in db.execute(

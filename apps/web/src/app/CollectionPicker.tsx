@@ -1,3 +1,4 @@
+import { basisOf, rememberBasis } from '../api/editBasis'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -53,7 +54,9 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
     const next = new Set(assigned)
     if (next.has(id)) next.delete(id)
     else next.add(id)
-    setCollections.mutate([...next])
+    setCollections.mutate(
+      rememberBasis({ before: [...assigned], ids: [...next] }, basisOf(bundleCollections)),
+    )
     setRecentIds([id, ...recentIds.filter((r) => r !== id)].slice(0, 20))
   }
 
@@ -74,7 +77,12 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
       { name, parent_id: null },
       {
         onSuccess: (created) => {
-          setCollections.mutate([...assigned, created.id])
+          setCollections.mutate(
+            rememberBasis(
+              { before: [...assigned], ids: [...assigned, created.id] },
+              basisOf(bundleCollections),
+            ),
+          )
           setRecentIds([created.id, ...recentIds.filter((r) => r !== created.id)].slice(0, 20))
         },
       },

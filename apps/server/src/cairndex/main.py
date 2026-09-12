@@ -97,6 +97,7 @@ def create_app() -> FastAPI:
         allow_origins=[*PACKAGED_DESKTOP_ORIGINS, *settings.cors_extra_origins],
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Cairndex-Basis"],
     )
     # Only present for a desktop sidecar (ADR-0018 §5); an ordinary NAS or
     # container deployment never registers it and is unaffected.
