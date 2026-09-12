@@ -21,11 +21,12 @@
   folder files. Native arrows traverse virtualized items beyond the first page;
   a focused production recheck with explicit activation and macOS foreground
   readback verifies native Home/End selection in both listings. Bundle End honors
-  the loaded boundary (100, then 132 after the next page loads). File-list Home
-  selects the first file but leaves it partly covered by the sticky column
-  header; accounting for that header in keyboard scrolling remains a proposed
-  follow-up, with no product-code change in this recheck. Browser Home/End checks
-  pass. All 76 original and 132 recheck synthetic source
+  the loaded boundary (100, then 132 after the next page loads). File-list keyboard
+  scrolling accounts for the measured sticky header and fully reveals the target
+  row. Two geometry regressions cover Home, End and upward navigation at different
+  item sizes; the focused repair passes 18 browser checks, the full frontend gate
+  with 1,192 unit tests, and a rebuilt production app with native Down/Home/End/Home
+  verification. All 76 original and both 132-file recheck fixtures' source
   hashes remain unchanged; test clients, backend, fixtures, registration and
   runtime identity data are cleaned up. Private evidence remains outside the repo.
   This group's privacy gate passes; the cumulative branch gate remains blocked

@@ -90,6 +90,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- File Browser keyboard scrolling keeps target rows clear of the sticky column
+  header, including Home and upward navigation at different item sizes.
+
 - Inspector file counts and sizes distinguish loading from zero, with retryable
   failures and readable cached content. Folder rows wait for membership data.
 - Folder disclosures survive File Browser and viewer round-trips. Indexed file

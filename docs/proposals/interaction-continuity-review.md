@@ -66,22 +66,21 @@ before every input sequence. Accessibility focus/selection and screenshots agree
   End selects 132 and reveals the bottom of the virtualized listing.
 - File list: Down moves 050 → 051; Home selects 001; End selects 132 and
   reveals the last file. Home selects the first file on a repeat check too.
-- File-list Home leaves the selected first row partly covered by the sticky
-  column header. The overlap persists after settling; an upward scroll reveals
-  the same selected row. Selection and key delivery pass, but full first-row
-  visibility remains a defect.
+- File-list keyboard scrolling accounts for the measured sticky column header.
+  The rebuilt production app verifies Down 050 → 051, Home → 001, End → 132
+  and Home → 001, with the complete first row visible below the header on both
+  Home checks.
 
 The earlier Raise/click attempts established WebKit focus while macOS still
 reported another application as frontmost. Explicit activation resolves the
 native verification gap; the earlier attempts do not establish Home/End
-interception by the OS. These checks send native Home/End without modifiers;
-physical Fn-key equivalents are not qualified. No system shortcuts, renderer
-instrumentation or application behavior are changed.
+interception by the OS. These checks send native Home/End without modifiers.
+No system shortcut changes or renderer instrumentation are used.
 
-The smallest proposed follow-up is to account for the sticky header in the
-File Browser's keyboard scroll positioning (`scrollIntoView` currently uses
-`block: 'nearest'` without an inset), with a regression check for full first-row
-visibility. This verification does not implement that repair.
+Two browser geometry regressions check full row visibility after Home, End and
+upward navigation at item sizes 120 and 300. Both reproduce the header overlap
+without the scroll correction and pass with it. The correction uses the actual
+header bounds after nearest-item scrolling; grid navigation has no header inset.
 
 ## Validation status
 
@@ -106,7 +105,9 @@ Docker or NAS qualification. Native input checks are not a comprehensive
 accessibility certification. Private synthetic screenshots and logs remain
 outside the repository.
 
-The focused recheck preserves all 132 generated source hashes and removes its
-disposable app copy, backend, library, registry, connection settings and runtime
-identity data. It changes validation documentation only; the earlier broad test
-gates are not rerun.
+Each focused native recheck preserves all 132 generated source hashes and removes
+its disposable app copy, backend, library, registry, connection settings and runtime
+identity data. The header repair passes frontend lint, formatting, types, all 1,192
+unit tests, 18 focused browser tests, production frontend/app builds and strict
+signature verification. Backend/Rust source is unchanged; their test suites and
+the broader browser matrix are not rerun for this repair.

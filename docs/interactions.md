@@ -5,6 +5,7 @@
 Click or Tab into a listing before using its selection shortcuts. Arrow keys
 move through the displayed order; Up/Down follow grid rows, including virtualized
 rows outside the viewport. Home/End reach the first/last loaded item.
+File-list keyboard scrolling keeps the target row below the sticky column header.
 
 Shift extends a range from its anchor, and reversing direction shrinks it.
 Command/Ctrl-click toggles an item; Command/Ctrl+Shift adds a range. Command/Ctrl

@@ -176,6 +176,66 @@ async function mockApi(page: Page) {
 // it first; the default viewport never did.
 test.use({ viewport: { width: 1180, height: 800 } })
 
+// Keyboard scrolling keeps whole rows below the sticky header at different item sizes
+for (const zoom of [120, 300]) {
+  test(`file keyboard boundaries remain visible below the header at zoom ${zoom}`, async ({
+    page,
+  }) => {
+    await mockApi(page)
+    await page.route('**/file-browser/entries**', (route) =>
+      route.fulfill({
+        json: {
+          path: '',
+          missing_files_updated: 0,
+          entries: Array.from({ length: 132 }, (_, index) =>
+            entry(`Boundary ${String(index + 1).padStart(3, '0')}.txt`),
+          ),
+        },
+      }),
+    )
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Files' }).click()
+    await page.getByRole('slider', { name: 'Zoom' }).fill(String(zoom))
+    const listing = page.getByRole('grid', { name: 'Files', exact: true })
+    // Find synthetic rows independently of their position in the viewport
+    const row = (number: number) =>
+      listing.locator(`[data-relpath="Boundary ${String(number).padStart(3, '0')}.txt"]`)
+
+    // Check geometry rather than visibility alone, which permits sticky-header occlusion
+    const expectRevealed = async (number: number) => {
+      await expect(row(number)).toHaveAttribute('aria-selected', 'true')
+      await expect
+        .poll(async () => {
+          const item = await row(number).boundingBox()
+          const header = await listing.locator('.file-table__head').boundingBox()
+          const viewport = await listing.boundingBox()
+          return !!(
+            item &&
+            header &&
+            viewport &&
+            item.y >= header.y + header.height - 1 &&
+            item.y + item.height <= viewport.y + viewport.height + 1
+          )
+        })
+        .toBe(true)
+    }
+
+    await row(50).click()
+    await page.keyboard.press('ArrowDown')
+    await expectRevealed(51)
+    for (let number = 50; number >= 35; number--) {
+      await page.keyboard.press('ArrowUp')
+      await expectRevealed(number)
+    }
+    await page.keyboard.press('Home')
+    await expectRevealed(1)
+    await page.keyboard.press('End')
+    await expectRevealed(132)
+    await page.keyboard.press('Home')
+    await expectRevealed(1)
+  })
+}
+
 test('delayed thumbnails fill and failed thumbnails retain a usable file row', async ({ page }) => {
   await mockApi(page)
   let release!: () => void

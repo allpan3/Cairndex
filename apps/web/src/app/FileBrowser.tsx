@@ -775,9 +775,16 @@ function FileList({
     setFocusedPath(target.relative_path)
     if (event.shiftKey || (!event.metaKey && !event.ctrlKey)) clickEntry(target, event)
     scrollEl?.focus({ preventScroll: true })
-    wrapperRef.current
-      ?.querySelector(`[data-relpath="${CSS.escape(target.relative_path)}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
+    const item = wrapperRef.current?.querySelector(
+      `[data-relpath="${CSS.escape(target.relative_path)}"]`,
+    )
+    item?.scrollIntoView({ block: 'nearest' })
+    // Sticky headers occlude rows that scrollIntoView considers inside the viewport
+    const stickyHeader = wrapperRef.current?.querySelector('.file-table__head')
+    if (item && stickyHeader && scrollEl) {
+      const overlap = stickyHeader.getBoundingClientRect().bottom - item.getBoundingClientRect().top
+      if (overlap > 0) scrollEl.scrollBy({ top: -overlap, behavior: 'instant' })
+    }
   }
 
   // The focused listing owns selection keys while editors and overlays keep their commands
