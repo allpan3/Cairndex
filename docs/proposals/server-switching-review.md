@@ -1,5 +1,9 @@
 # Server and library switching review
 
+Branch: `fix/library-ownership-lifecycle`. Implementation: `d07ece09`.
+Credential isolation: `0c5c18e4`. Staged, message and this group's committed-range
+privacy checks pass; the cumulative branch gate remains blocked.
+
 The shared app exposes one active server and one intended library. Persistent server
 controls remain reachable during outages; desktop offers saved remotes, This Computer,
 reconnect and cancellable preparation. Browser server selection navigates to the
@@ -45,7 +49,8 @@ The actual packaged app started its managed sidecar, switched to a disposable re
 then used native Browse from that remote view to create a confirmed local library and
 select This Computer. Switching back selected the remembered remote library. After
 quitting and stopping the disposable remote, the next launch retained that intended
-server, reported its outage and offered This Computer. The server dialog opened with
+server, reported its outage and offered This Computer. Choosing it restored the
+remembered synthetic local library with a fresh managed sidecar. The server dialog opened with
 Enter and closed with Escape through the macOS keyboard path. Native settings retained
 only the local mapping namespace and no local token; both synthetic library databases
 passed integrity checks after shutdown. These checks use the real WKWebView, Tauri IPC,

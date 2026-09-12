@@ -1,7 +1,8 @@
 # Project status
 
 - Server/library switching and outage recovery (S08/I13 + I20) are implemented on
-  `fix/library-ownership-lifecycle`, including credential checkpoint `0c5c18e4`.
+  `fix/library-ownership-lifecycle`, implementation checkpoint `d07ece09` and
+  credential checkpoint `0c5c18e4`.
   Persistent server controls, explicit library selection, compatible reconnect and
   cancellable preparation preserve intended destinations. Native folder selection
   registers through This Computer even while a remote server is selected. Ownership
@@ -22,7 +23,8 @@
   outage recovery; the review records the repository-cwd `.env` launch limitation. Docker/NAS, Ubuntu, Windows, notarization,
   real providers and large-library performance remain outside this qualification.
   No publication, deployment, installed-app replacement or owner-library operation
-  occurred. The cumulative publication-volume block remains; history is preserved.
+  occurred. This group's committed-range privacy gate passes. The full branch gate
+  remains blocked by cumulative publication volume; history is preserved.
 
 - Complete synthetic replica catalogs are implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `43b2690e`, under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
