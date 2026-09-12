@@ -109,12 +109,14 @@ pub(crate) async fn start_file_drag<R: Runtime>(
     // guard only for the drag it started and ignores a stale event (D4 review P0-4).
     drag_id: u64,
 ) -> Result<(), MappingError> {
+    let scope = mappings::mapping_scope(&app)?;
     let resolver = app.clone();
     // Resolve + validate off the IPC thread: canonicalizing a path on an offline
     // SMB mount can stall for the full mount timeout and must never block the UI.
-    let paths = async_runtime::spawn_blocking(move || resolve_drag_paths(&resolver, &items))
-        .await
-        .map_err(|_| MappingError::drag_action_failed())??;
+    let paths =
+        async_runtime::spawn_blocking(move || resolve_drag_paths(&resolver, &scope, &items))
+            .await
+            .map_err(|_| MappingError::drag_action_failed())??;
 
     // Remember what we are about to put on the pasteboard *before* the drag can
     // possibly be dropped, so a drop landing back on our window is recognised as
@@ -141,9 +143,10 @@ pub(crate) async fn start_file_drag<R: Runtime>(
 // surfacing the first structured rejection.
 fn resolve_drag_paths<R: Runtime>(
     app: &AppHandle<R>,
+    scope: &str,
     items: &[DragOutItem],
 ) -> Result<Vec<PathBuf>, MappingError> {
-    let mappings = mappings::load_mappings(app)?;
+    let mappings = mappings::load_mappings_for(app, scope)?;
     // Per distinct library id: Some(canonical root) once verified, None once it has
     // failed — so an offline mount is stat-ed once, not once per dragged file.
     let mut roots: BTreeMap<&str, Option<PathBuf>> = BTreeMap::new();

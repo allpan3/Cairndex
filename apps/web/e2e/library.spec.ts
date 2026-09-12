@@ -30,6 +30,7 @@ function bundle(i: number) {
 function bundleDetail(coverFileId: string | null) {
   return {
     id: 'b0',
+    version: 1,
     title: 'Movie 0',
     note: null,
     source_url: null,
@@ -215,7 +216,7 @@ test('cold start waits for ownership before browsing the library', async ({ page
 test('persisted hidden sidebar leaves the content pane usable', async ({ page }) => {
   await mockApi(page)
   await page.addInitScript(() => {
-    localStorage.setItem('cairndex.prefs', JSON.stringify({ sidebarVisible: false }))
+    localStorage.setItem('cairndex.prefs:web:lib1', JSON.stringify({ sidebarVisible: false }))
   })
   await page.goto('/')
 
@@ -2355,4 +2356,41 @@ test('Escape closes the library actions menu too', async ({ page }) => {
   await page.keyboard.press('Escape')
 
   await expect(page.getByRole('button', { name: 'Collect metadata' })).toHaveCount(0)
+})
+
+// Unsaved metadata stays with its original library when both libraries use the same bundle ID
+test('recovers a failed-save draft after switching libraries and reloading', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/libraries', (route) =>
+    route.fulfill({
+      json: [
+        { id: 'lib1', name: 'Library One', root_path: '/srv/one', status: 'available' },
+        { id: 'lib2', name: 'Library Two', root_path: '/srv/two', status: 'available' },
+      ],
+    }),
+  )
+  await page.route('**/libraries/*/bundles/b0', (route) =>
+    route.fulfill(
+      route.request().method() === 'PATCH'
+        ? { status: 503, json: { message: 'Synthetic interrupted save' } }
+        : { json: bundleDetail(null) },
+    ),
+  )
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click()
+  const title = page.locator('.inspector textarea[aria-label="Title"]')
+  await expect(title).toHaveValue('Movie 0')
+  await title.fill('Unsent library-one title')
+  await page.getByRole('combobox', { name: 'Library' }).selectOption('lib2')
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(title).toHaveValue('Movie 0')
+  await page.getByRole('combobox', { name: 'Library' }).selectOption('lib1')
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(title).toHaveValue('Unsent library-one title')
+  await expect(page.getByText('Recovered unsaved draft')).toBeVisible()
+  await page.reload()
+  await page.locator('[data-bundle-id="b0"]').click()
+  await expect(title).toHaveValue('Unsent library-one title')
+  await page.getByRole('button', { name: 'Discard draft' }).click()
+  await expect(title).toHaveValue('Movie 0')
 })

@@ -1,5 +1,29 @@
 # Project status
 
+- Server/library switching and outage recovery (S08/I13 + I20) are implemented on
+  `fix/library-ownership-lifecycle`, including credential checkpoint `0c5c18e4`.
+  Persistent server controls, explicit library selection, compatible reconnect and
+  cancellable preparation preserve intended destinations. Native folder selection
+  registers through This Computer even while a remote server is selected. Ownership
+  redirects resolve the portable library identity on their named server; missing
+  registrations, access loss and ownership uncertainty show recovery controls.
+  Server/library scopes isolate content preferences, legacy title/note drafts,
+  request continuations, optimistic cache writes and native mappings. Imports pin
+  their transport and mapping together and fence late UI callbacks. Existing
+  unscoped mappings require Locate again. See [connection workflows](connections.md)
+  and the [review summary](proposals/server-switching-review.md).
+  Validation: frontend lint/format/types/build and 1,169 tests; Rust formatting,
+  clippy and 124 tests; full browser 153 tests plus a final 56-test switching/library
+  rerun; backend Ruff/format/mypy and 1,434 tests/one existing zscale skip.
+  Desktop launcher, ARM packaged-sidecar build/smoke and 18 real managed-sidecar
+  lifecycle tests pass. The production `.app` builds with an isolated bundle ID
+  and deep-link scheme and passes signature verification. Native WKWebView/IPC checks
+  cover local/remote switching, Browse-to-local creation, Enter/Escape and cold remote
+  outage recovery; the review records the repository-cwd `.env` launch limitation. Docker/NAS, Ubuntu, Windows, notarization,
+  real providers and large-library performance remain outside this qualification.
+  No publication, deployment, installed-app replacement or owner-library operation
+  occurred. The cumulative publication-volume block remains; history is preserved.
+
 - Complete synthetic replica catalogs are implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `43b2690e`, under accepted [ADR-0029](adr/0029-cloud-metadata-replicas.md).
   Package/protocol version 2 covers every authored family through linked payloads,

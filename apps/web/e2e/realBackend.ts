@@ -21,7 +21,7 @@ async function freePort(): Promise<number> {
 }
 
 /** Start a real isolated Cairndex server for the pairing flow. */
-export async function startBackend(dataDir: string) {
+export async function startBackend(dataDir: string, environment: Record<string, string> = {}) {
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
   let lastOutput = ''
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -36,6 +36,7 @@ export async function startBackend(dataDir: string) {
           ...process.env,
           CAIRNDEX_DATA_DIR: dataDir,
           CAIRNDEX_WORKER_ENABLED: 'false',
+          ...environment,
         },
         stdio: 'pipe',
       },

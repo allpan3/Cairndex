@@ -14,7 +14,11 @@ import {
   useLibraryServing,
   useWriteModeMutation,
 } from '../api/hooks'
-import { getActiveConnection } from '../desktop/connections'
+import {
+  activeConnectionLabel,
+  getActiveConnection,
+  queueLibraryIndex,
+} from '../desktop/connections'
 import { confirmPickedLibrary, openLibraryFolder } from '../desktop/openLibraryFolder'
 import { hostOperationErrorMessage, isDesktopHost } from '../platform'
 
@@ -157,14 +161,16 @@ export function LibraryManager({
   // (switch to the local server), because the folder cannot otherwise join the
   // list being shown; that path keeps the old switch-and-close behaviour.
   const browse = async () => {
-    if (busy || listUnavailable) return
+    if (busy) return
     setError(null)
     setHostBusy(true)
     try {
       // `stage: true` — the shell parks the pick instead of adding it, so Browse
       // only picks a folder and the deliberate Add is the confirm step below.
       const { opened } = await openLibraryFolder(
-        rows.map((library) => library.library_uuid).filter(Boolean),
+        getActiveConnection()?.kind === 'remote'
+          ? []
+          : rows.map((library) => library.library_uuid).filter(Boolean),
         { stage: true },
       )
       if (!opened) return // cancelled — nothing changed
@@ -207,7 +213,10 @@ export function LibraryManager({
         const { opened } = await confirmPickedLibrary(confirming.token, chosen, { adopt })
         // A picked *folder* is new to Cairndex and holds nothing; a picked
         // library arrives with its own database and is left alone.
-        if (becomingALibrary && opened?.libraryId) onCreated?.(opened.libraryId)
+        if (becomingALibrary && opened?.libraryId) {
+          if (adopt) queueLibraryIndex('local', opened.libraryId)
+          else onCreated?.(opened.libraryId)
+        }
       } catch (failure) {
         setError(hostOperationErrorMessage(failure))
         return
@@ -264,6 +273,7 @@ export function LibraryManager({
           </button>
         </div>
 
+        <p className="lib-add__hint">Libraries served by {activeConnectionLabel()}</p>
         <div className="lib-list">
           {libraries.isPending && <div className="inspector__empty">Loading libraries…</div>}
           {libraries.isError && libraries.data === undefined && (
@@ -283,6 +293,10 @@ export function LibraryManager({
               busy={busy}
               writeModeAllowed={writeModeAllowed}
               onRemove={() => removeLibrary(library.id)}
+              onSelect={() => {
+                onSelect?.(library.id)
+                onClose()
+              }}
             />
           ))}
           {libraries.isError && libraries.data !== undefined && !addedLibrary && (
@@ -348,12 +362,7 @@ export function LibraryManager({
               </button>
             ) : !confirming ? (
               isDesktopHost() && (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => void browse()}
-                  disabled={busy || listUnavailable}
-                >
+                <button type="button" className="btn" onClick={() => void browse()} disabled={busy}>
                   Browse…
                 </button>
               )
@@ -362,7 +371,7 @@ export function LibraryManager({
               className="btn btn--primary"
               disabled={
                 busy ||
-                listUnavailable ||
+                (listUnavailable && confirming?.kind !== 'pick') ||
                 (!addedLibrary && !(confirming ? name.trim() : path.trim()))
               }
             >
@@ -382,9 +391,15 @@ export function LibraryManager({
               ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
               : confirming
                 ? newLibraryAsk(confirming)
-                : 'An absolute path on the server. An existing library is added as it is; any other folder is offered as a new one.'}
+                : `Typed paths belong to ${activeConnectionLabel()}. An existing library is added as it is; any other folder is offered as a new one.`}
           </p>
 
+          {isDesktopHost() && (
+            <p className="lib-add__hint">
+              Browse selects a folder on This Computer. Adding it uses the local server. If another
+              server owns it, connect to that server; a mounted folder does not transfer ownership.
+            </p>
+          )}
           {error && <div className="modal__error">{error}</div>}
         </form>
       </div>
@@ -427,7 +442,7 @@ function LibraryListError({
 function newLibraryAsk(target: ConfirmState): string {
   if (target.kind === 'pick') {
     return target.isLibrary
-      ? `“${target.folderName}” is a Cairndex library. Confirming adds it to this server.`
+      ? `“${target.folderName}” is a Cairndex library. Confirming adds it to This Computer.`
       : `“${target.folderName}” isn’t a Cairndex library. Confirming creates a new one there.`
   }
   if (target.createFolder) {
@@ -522,12 +537,14 @@ function LibraryRow({
   busy,
   writeModeAllowed,
   onRemove,
+  onSelect,
 }: {
   library: LibraryRead
   busy: boolean
   /** The deployment master switch (ADR-0013 §1); false forces read-only. */
   writeModeAllowed: boolean
   onRemove: () => void
+  onSelect: () => void
 }) {
   // At most one of the two confirmations is open, because they ask about the
   // same row and both replace it.
@@ -569,6 +586,14 @@ function LibraryRow({
         <span className="lib-row__name">{library.name}</span>
         <span className="lib-row__path">{library.root_path}</span>
       </div>
+      <button
+        className="btn btn--sm"
+        disabled={busy}
+        onClick={onSelect}
+        aria-label={`Open ${library.name}`}
+      >
+        Open
+      </button>
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>

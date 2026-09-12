@@ -110,7 +110,7 @@ describe('activation owns the API base URL', () => {
     expect(fetchHealth).toHaveBeenLastCalledWith(expect.anything(), 'http://dead.local:9999')
   })
 
-  it('a failed transport switch away from local restores the local transport', async () => {
+  it('a failed atomic transport switch leaves the local API target intact', async () => {
     await loadConnections()
     await ensureLocalConnection()
     await activateConnection(LOCAL_CONNECTION_ID)
@@ -126,6 +126,6 @@ describe('activation owns the API base URL', () => {
     expect(resolveApiUrl('/api/v1/libraries')).toBe(`${SIDECAR}/api/v1/libraries`)
     // The compensation re-supplied the local token rather than silently
     // skipping the URL-less local connection.
-    expect(configureHostServer).toHaveBeenLastCalledWith(SIDECAR, { localToken: 'local-tok' })
+    expect(configureHostServer).toHaveBeenLastCalledWith(NAS, { localToken: null })
   })
 })

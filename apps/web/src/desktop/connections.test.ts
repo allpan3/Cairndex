@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   activateConnection,
+  cancelActivation,
+  getConnectionSession,
+  getActivation,
+  takePendingLibrarySelection,
   addRemoteConnection,
   ensureLocalConnection,
   getActiveConnection,
@@ -30,6 +34,7 @@ vi.mock('./verifyServer', () => ({
 }))
 
 vi.mock('../platform', () => ({
+  hostFetch: (...args: Parameters<typeof fetch>) => fetch(...args),
   configureHostServer: (url: string, options?: unknown) => configureHostServer(url, options),
   startHostLocalServer: () => startHostLocalServer(),
   loadHostConnections: () => loadHostConnections(),
@@ -141,7 +146,7 @@ describe('activation', () => {
     expect(configureHostServer).not.toHaveBeenCalled()
   })
 
-  it('re-points transport at the previous server when configuring the new one fails', async () => {
+  it('preserves transport and restores the stored choice when configuring fails', async () => {
     // The media relay rotates its capability route on every reconfigure, so a
     // failure after that step would otherwise leave the previous connection
     // alive but with dead media URLs.
@@ -157,9 +162,9 @@ describe('activation', () => {
     await expect(activateConnection(LOCAL_CONNECTION_ID)).rejects.toThrow('relay unavailable')
 
     expect(getActiveConnection()?.id).toBe(remoteId)
-    // Second call is the compensating restore, aimed at the old server.
-    expect(configureHostServer).toHaveBeenCalledTimes(2)
-    expect(configureHostServer.mock.calls[1]?.[0]).toBe(NAS)
+    // Atomic transport failure leaves the previous relay intact
+    expect(configureHostServer).toHaveBeenCalledTimes(1)
+    expect(saveHostConnections.mock.lastCall?.[0].activeConnectionId).toBe(remoteId)
   })
 
   it('passes the sidecar token only for the local connection', async () => {
@@ -329,5 +334,94 @@ describe('adding connections', () => {
     await ensureLocalConnection()
     await ensureLocalConnection()
     expect(getConnections().connections.filter((entry) => entry.kind === 'local')).toHaveLength(1)
+  })
+})
+
+describe('cancel and durable reconnect', () => {
+  it('discards a cancelled delayed preparation without committing a target', async () => {
+    const remote = await addRemoteConnection(NAS)
+    await activateConnection(remote.id)
+    const local = await ensureLocalConnection()
+    let release!: (value: { baseUrl: string; token: string }) => void
+    startHostLocalServer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    )
+    const attempt = activateConnection(local.id)
+    expect(getActivation().cancellable).toBe(true)
+    cancelActivation()
+    release({ baseUrl: 'http://127.0.0.1:51000', token: 'local-test' })
+    await expect(attempt).rejects.toThrow('cancelled')
+    expect(getActiveConnection()?.id).toBe(remote.id)
+    expect(saveHostConnections.mock.lastCall?.[0].activeConnectionId).toBe(remote.id)
+  })
+
+  it('keeps the active target when storing the intended switch fails', async () => {
+    const remote = await addRemoteConnection(NAS)
+    await activateConnection(remote.id)
+    const local = await ensureLocalConnection()
+    configureHostServer.mockClear()
+    saveHostConnections.mockRejectedValueOnce(new Error('Settings are not writable'))
+    await expect(activateConnection(local.id)).rejects.toThrow('not writable')
+    expect(getActiveConnection()?.id).toBe(remote.id)
+    expect(configureHostServer).not.toHaveBeenCalled()
+  })
+
+  it('reconnects with a new session and persists each successfully selected server', async () => {
+    const one = await addRemoteConnection('https://one.example')
+    const two = await addRemoteConnection('https://two.example')
+    await activateConnection(one.id)
+    const first = getConnectionSession()
+    await activateConnection(one.id)
+    expect(getConnectionSession()).toBe(first + 1)
+    await activateConnection(two.id)
+    const stored = saveHostConnections.mock.lastCall?.[0]
+    resetConnectionsForTests()
+    loadHostConnections.mockResolvedValue(stored)
+    await loadConnections()
+    expect(getActiveConnection()?.id).toBe(two.id)
+  })
+})
+
+// Portable identity is resolved only inside the explicitly named serving server
+describe('ownership redirect selection', () => {
+  it('selects the redirected library using the target registry instead of its previous choice', async () => {
+    const target = await addRemoteConnection('https://holder.example')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { id: 'unrelated', library_uuid: 'another-uuid' },
+            { id: 'target-registry-id', library_uuid: 'portable-uuid' },
+          ]),
+        ),
+      ),
+    )
+    try {
+      await activateConnection(target.id, 'portable-uuid')
+      expect(takePendingLibrarySelection(target.id)).toBe('target-registry-id')
+      expect(fetch).toHaveBeenCalledWith(
+        'https://holder.example/api/v1/libraries',
+        expect.anything(),
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('refuses to switch when the holder no longer registers the named library', async () => {
+    const local = await ensureLocalConnection()
+    await activateConnection(local.id)
+    const target = await addRemoteConnection('https://holder.example')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('[]')))
+    try {
+      await expect(activateConnection(target.id, 'missing-uuid')).rejects.toThrow('does not list')
+      expect(getActiveConnection()?.id).toBe(local.id)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

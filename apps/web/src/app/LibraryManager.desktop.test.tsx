@@ -242,7 +242,7 @@ test('an initial library-list failure is explicit and retryable', async () => {
   expect(screen.queryByText(/No libraries yet/)).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Library path'), { target: { value: '/synthetic/new' } })
   expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Browse…' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Browse…' })).toBeEnabled()
 
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 

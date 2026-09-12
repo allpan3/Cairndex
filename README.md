@@ -138,6 +138,16 @@ obligations that Cairndex's own MIT license does not — see
 that notice, Cairndex's MIT license, and the full GPLv3/LGPLv3 texts under its
 `Contents/Resources/licenses/` directory.
 
+### Choose a server or library
+
+**Servers** remains visible while browsing or recovering a connection. Desktop
+remembers remote servers and **This Computer**, with one selected server at a time.
+**Reconnect** refreshes that server's session. **Libraries** lists libraries on the
+selected server and offers Open, Add, Release and Reopen. Typed paths belong to that
+server; desktop **Browse** selects a folder on this computer and uses its managed
+local server. A missing or offline remembered library stays selected with Retry.
+See [connection and recovery controls](docs/connections.md).
+
 ### Release a library without quitting
 
 Open **Libraries** and choose **Release** to stop this server serving a library

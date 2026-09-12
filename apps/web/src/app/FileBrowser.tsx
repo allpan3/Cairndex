@@ -1,3 +1,4 @@
+import { libraryStateKey } from '../state/useBundleDraft'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -412,7 +413,10 @@ function FileList({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Anchor for Shift-range selection (the last plainly-clicked file).
   const [anchor, setAnchor] = useState<string | null>(null)
-  const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
+  const [prefs, setPrefs] = usePersistentState<FilePrefs>(
+    libraryStateKey('cairndex.filePrefs'),
+    DEFAULT_FILE_PREFS,
+  )
   /**
    * The sort in force here, and how changing it is stored.
    *

@@ -290,8 +290,9 @@ fn source_is_inside_library<R: Runtime>(
     app: &AppHandle<R>,
     library_id: &str,
     source: &Path,
+    scope: &str,
 ) -> bool {
-    let Ok(mappings) = mappings::load_mappings(app) else {
+    let Ok(mappings) = mappings::load_mappings_for(app, scope) else {
         return false;
     };
     let Ok(root) = mappings::verified_root_for(&mappings, library_id) else {
@@ -349,23 +350,8 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
             "That file was not part of a drop into this window.",
         ));
     }
-    // A file already in this library must not be imported into it. The import
-    // endpoint cannot catch this — it receives bytes and no path, by design — but
-    // the shell holds the dropped path, so this is the one layer that can. The
-    // realistic accident is dragging out of a Finder window that happens to be
-    // showing the library (owner question, 2026-08-23).
-    //
-    // A copy would be silent whenever the destination folder differs, and worse
-    // when it does not: answering Replace trashes the original row, so a bundle
-    // containing that file loses it and identical bytes land at the same path
-    // with no row at all.
-    if source_is_inside_library(&app, &library_id, &source) {
-        return Err(ImportError::new(
-            "already_in_library",
-            "That file is already in this library. Use Move to… to file it somewhere else.",
-        ));
-    }
-    let Some((server_url, token)) = proxy.target_for(&library_id) else {
+    // Capture the namespace and authorized transport together before slow path checks
+    let Some(target) = proxy.target_for(&library_id) else {
         return Err(ImportError::new(
             "no_server",
             "This window is not connected to a Cairndex server yet.",
@@ -386,10 +372,17 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
     // Reading the file and waiting on the upload are both blocking; keep them
     // off the IPC thread so the window stays responsive during a large import.
     async_runtime::spawn_blocking(move || {
+        // Refuse self-import against the original server's mapping even after a switch
+        if source_is_inside_library(&app, &library_id, &source, &target.mapping_scope) {
+            return Err(ImportError::new(
+                "already_in_library",
+                "That file is already in this library. Use Move to… to file it somewhere else.",
+            ));
+        }
         upload(
             app,
-            &server_url,
-            token.as_deref(),
+            &target.server_url,
+            target.token.as_deref(),
             &library_id,
             &source,
             &name,

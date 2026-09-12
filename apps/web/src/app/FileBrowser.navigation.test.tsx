@@ -1,3 +1,4 @@
+import { libraryStateKey } from '../state/useBundleDraft'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -158,7 +159,7 @@ test('with the scope on, a folder keeps its own sort and the global one is untou
   withSortPane(() => fireEvent.click(screen.getByLabelText('Remember sort per folder')))
   fireEvent.click(screen.getByRole('button', { name: 'Sort by Size' }))
 
-  const stored = JSON.parse(localStorage.getItem('cairndex.filePrefs') ?? '{}')
+  const stored = JSON.parse(localStorage.getItem(libraryStateKey('cairndex.filePrefs')) ?? '{}')
   expect(stored.folderSorts).toEqual({ Movies: { sort: 'size', order: 'asc' } })
   // The global sort is what an unscoped folder still falls back to.
   expect(stored.sort).toBe('name')
@@ -169,7 +170,7 @@ test('without the scope, sorting stays global', () => {
   renderBrowser()
   fireEvent.click(screen.getByRole('button', { name: 'Sort by Size' }))
 
-  const stored = JSON.parse(localStorage.getItem('cairndex.filePrefs') ?? '{}')
+  const stored = JSON.parse(localStorage.getItem(libraryStateKey('cairndex.filePrefs')) ?? '{}')
   expect(stored.sort).toBe('size')
   expect(stored.folderSorts ?? {}).toEqual({})
 })

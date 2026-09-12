@@ -117,13 +117,24 @@ continues to exercise the shared components under it.
 
 The app resolves registry availability before the authorization and ownership
 mount gates. A row already marked `unavailable` never becomes the active content
-request scope, so it cannot fan out requests that the server must reject. A
-remembered offline choice yields to the first available library; when every row
-is offline, the shell shows a recovery card with manual Retry and Manage
-Libraries actions. The visible shell polls the registry every five seconds only
-in that all-unavailable state, stopping as soon as any library is reachable.
-This is detection, not path discovery: a moved root still requires the owner to
-register its actual location.
+request scope, so it cannot fan out requests that the server must reject. The remembered server and library remain intended destinations during outages;
+no available sibling silently replaces them. Retry refreshes registry availability,
+and the persistent server controls can select or reconnect another destination.
+Registry recovery polls while a row is unavailable or a read has failed. Ownership
+and auth polling detect changes during a session; content remains behind their gates.
+
+Desktop activation verifies compatibility before committing stored selection and
+transport. Preparation can be cancelled; the brief store/relay commit completes
+atomically from the client's perspective. Failed configuration preserves the old
+transport and restores the stored selection. A successful reconnect creates a new
+QueryClient even for the same server. Within a server, library switching removes
+content queries and advances a monotonic request scope. Guarded responses, mutation
+callbacks and cache access stop late continuations from reaching a replacement
+library. Explicit new-library indexing follows its server and library across a
+selection change. Private drafts and content preferences include server/library
+identity; local replica drafts use the stable managed-local key across ephemeral
+sidecar ports. See [connections](connections.md).
+
 The paired token is stored with its normalized issuing server and immutable
 approved library ids. Programmatic requests attach it only to those
 library-scoped URLs; global and unscoped requests stay anonymous. An unscoped

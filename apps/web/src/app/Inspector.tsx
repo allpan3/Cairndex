@@ -1,4 +1,5 @@
 import {
+  useEffect,
   Fragment,
   memo,
   useLayoutEffect,
@@ -44,6 +45,7 @@ import {
   formatResolution,
 } from '../lib/format'
 import type { HostLabels } from '../platform'
+import { libraryStateKey, useBundleDraft } from '../state/useBundleDraft'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
@@ -256,19 +258,26 @@ function BundleEditor({
 }) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
-  const update = useUpdateBundle(bundleId, bundle.version)
+  const draft = useBundleDraft(bundle)
+  const update = useUpdateBundle(bundleId, draft.version)
   const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
 
-  const [title, setTitle] = useState(bundle.title ?? '')
+  const title = draft.patch.title !== undefined ? (draft.patch.title ?? '') : (bundle.title ?? '')
+  const setTitle = (title: string) => draft.update({ title })
   // Multiple freeform notes; always keep at least one (empty) box so there is
   // something to type into and to append below with the "+" affordance.
-  const [notes, setNotes] = useState<string[]>(
-    bundle.notes && bundle.notes.length > 0 ? bundle.notes : [''],
+  const notes = useMemo(
+    () => draft.patch.notes ?? (bundle.notes?.length ? bundle.notes : ['']),
+    [draft.patch.notes, bundle.notes],
   )
+  const setNotes = (notes: string[]) => draft.update({ notes })
   // Mirror of ``notes`` kept synchronously current in the event handlers, so a
   // blur that lands in the same tick as the last keystroke still commits the
   // latest text (a plain render-closure could be one edit stale).
   const notesRef = useRef(notes)
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
   const applyNotes = (next: string[]) => {
     notesRef.current = next
     setNotes(next)
@@ -282,7 +291,7 @@ function BundleEditor({
   // V2 leaves prior fixed heights behind so one-line notes regain the compact
   // default rather than a stale manual value
   const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
-    'cairndex.noteHeights.v2',
+    libraryStateKey('cairndex.noteHeights.v2'),
     {},
   )
   const heights = noteHeights[bundleId] ?? []
@@ -303,7 +312,8 @@ function BundleEditor({
 
   const commitTitle = (value: string) => {
     if (value === (bundle.title ?? '')) return
-    update.mutate({ title: value === '' ? null : value })
+    const patch = { title: value === '' ? null : value }
+    update.mutate(patch, { onSuccess: (saved) => draft.saved({ title: value }, saved.version) })
   }
 
   // Notes edit as a whole-list replace. Blank/whitespace-only blocks (an
@@ -313,7 +323,11 @@ function BundleEditor({
     const cleaned = notesRef.current.filter((n) => n.trim() !== '')
     const prev = (bundle.notes ?? []).filter((n) => n.trim() !== '')
     if (cleaned.length === prev.length && cleaned.every((n, i) => n === prev[i])) return
-    update.mutate({ notes: cleaned })
+    const original = notesRef.current
+    update.mutate(
+      { notes: cleaned },
+      { onSuccess: (saved) => draft.saved({ notes: original }, saved.version) },
+    )
   }
   const changeNote = (i: number, value: string) =>
     applyNotes(notesRef.current.map((n, j) => (j === i ? value : n)))
@@ -438,6 +452,15 @@ function BundleEditor({
       </div>
 
       <ConflictNotice error={update.error} />
+      {draft.error && <p role="alert">{draft.error}</p>}
+      {draft.recovered && (
+        <div role="status">
+          Recovered unsaved draft{' '}
+          <button className="btn btn--sm" onClick={draft.discard}>
+            Discard draft
+          </button>
+        </div>
+      )}
 
       <BundleTitleEditor value={title} onChange={setTitle} onCommit={() => commitTitle(title)} />
 

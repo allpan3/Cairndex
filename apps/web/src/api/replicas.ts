@@ -1,5 +1,6 @@
 // Replica requests use explicit library scope so changing tabs cannot redirect a save
 import { hostFetch } from '../platform'
+import { captureRequestScope, getConnectionScopeKey } from './requestScope'
 import { resolveApiUrl } from './client'
 import type { components } from './schema'
 
@@ -19,18 +20,23 @@ export async function replicaRequest<T>(
   method = 'GET',
   body?: unknown,
 ): Promise<T> {
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/replica${path}`), {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  assertScope()
   if (!response.ok) {
     const problem = (await response.json().catch(() => ({}))) as { message?: string }
+    assertScope()
     throw new Error(
       problem.message ?? `Request failed (${response.status}); your draft is retained`,
     )
   }
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+  const result = response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+  assertScope()
+  return result
 }
 
 // A browser lock separates duplicated tabs that initially inherit the same session storage
@@ -87,7 +93,7 @@ export function holdEditor(onReady: (id: string) => void): () => void {
 
 // Include the connection and library so private drafts never bleed across scopes
 export function draftKey(libraryId: string, bundleId: string, editor: string): string {
-  return `cairndex.replica.draft:${resolveApiUrl(`/api/v1/libraries/${libraryId}`)}:${bundleId}:${editor}`
+  return `cairndex.replica.draft:${getConnectionScopeKey() === 'local' ? `local/api/v1/libraries/${libraryId}` : resolveApiUrl(`/api/v1/libraries/${libraryId}`)}:${bundleId}:${editor}`
 }
 
 // Display whole ordered notes as content, never as JSON or an implementation identifier

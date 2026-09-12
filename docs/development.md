@@ -234,7 +234,7 @@ An unavailable registered root is handled before either of those startup
 requests. The app shows **Library unavailable**, keeps Retry disabled as
 **Checking…** while the registry refresh is running, and offers **Manage
 Libraries** if the root moved. It also retries the registry every five seconds
-while the visible connection has no available library, then proceeds through
+while the visible connection has an unavailable library or failed registry read, then proceeds through
 ownership and authorization without requiring navigation when the root returns.
 No library-scoped request should appear before that transition; seeing one is a
 startup-gate regression, not an expected availability probe.
@@ -260,7 +260,7 @@ Settings → Libraries → **Locate on This Mac** runs the folder picker in the
 native command layer. The selected root must contain a readable
 `.cairndex/manifest.json` whose `library_uuid` equals the selected server
 library's portable UUID. The shell stores the canonical local root under that
-server registry id in `cairndex-settings.json`; removing a mapping changes only
+server and registry id in `cairndex-settings.json`; removing a mapping changes only
 shell configuration. File/bundle context menus and FileInspector offer native
 open/reveal only while the active library has a mapping. Handoffs send the Rust
 layer only the registry id plus a server-provided relative path. An offline
@@ -934,3 +934,15 @@ mutation-free inspection. Release the serving library first. SQLite journal
 mode, schema/index initialization and server-local plan files can change; source
 media are not modified. Maintenance uses an independent ephemeral identity so
 sharing a data directory cannot impersonate a running server.
+
+
+## Connection switching validation
+
+`e2e/connections.spec.ts` runs the production desktop entry and adapter in Chromium
+with simulated native IPC and three independent disposable HTTP backends. Shared
+portable UUIDs, drafts, local/remote selection, reconnect, cold outage, incompatible
+targets and cancelled delayed health responses are exercised through visible controls.
+This proves shared UI/HTTP behavior; it is not native IPC, managed-sidecar or physical
+storage qualification. Native mapping namespaces and credential grants have separate
+Rust/platform tests. Browser tests cover keyboard dismissal, missing intended libraries
+and legacy draft recovery after failed saves and reloads.

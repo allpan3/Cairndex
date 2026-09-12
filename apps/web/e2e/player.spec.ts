@@ -1398,7 +1398,7 @@ test('previews a linked video card in the File Browser grid', async ({ page }) =
   })
   await page.addInitScript(() => {
     localStorage.setItem(
-      'cairndex.filePrefs',
+      'cairndex.filePrefs:web:lib1',
       JSON.stringify({ layout: 'grid', zoom: 200, sort: 'name', order: 'asc' }),
     )
   })
@@ -2052,7 +2052,7 @@ test('plays a real generated MP4 without media-element mocks', async ({ page }) 
   test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real MP4 playback smoke')
   await page.addInitScript(() => {
     localStorage.setItem(
-      'cairndex.prefs',
+      'cairndex.prefs:web:lib1',
       JSON.stringify({
         layout: 'grid',
         zoom: 200,
@@ -2083,7 +2083,7 @@ test('reports real MP4 progress and resumes on reopen', async ({ page }) => {
   test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real progress e2e')
   await page.addInitScript(() => {
     localStorage.setItem(
-      'cairndex.prefs',
+      'cairndex.prefs:web:lib1',
       JSON.stringify({
         layout: 'grid',
         zoom: 200,
@@ -2342,7 +2342,7 @@ test('plays a remux HLS source through hls.js and shows the quality/audio menus'
   test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS engine e2e')
   await page.addInitScript(() => {
     localStorage.setItem(
-      'cairndex.prefs',
+      'cairndex.prefs:web:lib1',
       JSON.stringify({
         layout: 'grid',
         zoom: 200,
@@ -2435,7 +2435,7 @@ test('transparently re-attaches a fresh session when HLS segments fail', async (
   test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS re-attach e2e')
   await page.addInitScript(() => {
     localStorage.setItem(
-      'cairndex.prefs',
+      'cairndex.prefs:web:lib1',
       JSON.stringify({
         layout: 'grid',
         zoom: 200,
@@ -2503,7 +2503,7 @@ test('plays a real MKV over a backend remux session and tears it down on close @
 
     await page.addInitScript(() => {
       localStorage.setItem(
-        'cairndex.prefs',
+        'cairndex.prefs:web:lib1',
         JSON.stringify({
           layout: 'grid',
           zoom: 200,

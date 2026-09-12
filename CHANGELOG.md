@@ -49,6 +49,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Persistent Servers controls offer This Computer, saved remote servers and Reconnect.
+  Libraries names the serving server and provides explicit Open actions. Recovery
+  screens retain the intended library during server, storage or ownership failures.
+- Legacy title/note drafts retain their original save version and recover within
+  their server/library. Replica drafts survive local sidecar port changes.
+
 - Complete synthetic replica catalogs cover all authored metadata families, stable
   edges, membership transfers, hierarchy/order, explicit conflict choices and same-ID
   branch recovery. Linked payloads activate complete seeds atomically; durable jobs
@@ -79,6 +85,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Cancelled or failed server switches preserve the selected destination. Late requests,
+  optimistic cache updates and pairing responses cannot continue in a replacement scope.
+- Desktop local-folder picks use the managed local server while a remote is selected;
+  matching portable identities on different servers do not silently choose a backend.
+- Native folder mappings and content preferences are scoped by server and library.
+  Legacy unscoped mappings require Locate again and retain their stored records.
 
 - **Arrow keys walk the File Browser.** They previously reached the shell rather
   than the listing, which only drew a focus ring. In the Bundle Browser they now

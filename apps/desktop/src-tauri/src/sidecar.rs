@@ -680,7 +680,7 @@ fn remember_local_mapping<R: Runtime>(app: &AppHandle<R>, library_id: &str, root
     let Some(uuid) = read_uuid(root) else {
         return;
     };
-    let _ = mappings::remember_mapping(app, library_id, &uuid, root);
+    let _ = mappings::remember_mapping(app, "local", library_id, &uuid, root);
 }
 
 // One client for a single request to the sidecar, with a bound on how long a

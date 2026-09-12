@@ -7365,3 +7365,78 @@ code {
   border-bottom: 1px solid var(--border, #555);
   padding-block: 0.8rem;
 }
+
+/* Server choice remains reachable outside library and authentication gates */
+.connection-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.connection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.connection-bar > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connection-bar [role='alert'] {
+  color: var(--danger);
+}
+.connection-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.connection-content .app {
+  height: 100%;
+}
+.connection-content .lockscreen {
+  min-height: 100%;
+}
+.connection-dialog {
+  color: var(--text);
+  background: var(--panel);
+  padding: 20px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.connection-dialog::backdrop {
+  background: #0008;
+}
+.connection-choices {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.connection-choices > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  white-space: normal;
+  text-align: left;
+}
+.connection-choices [aria-current='true'] {
+  outline: 1px solid var(--accent);
+}
+:root[data-titlebar='overlay'] .connection-bar {
+  padding-left: 90px;
+}
+
+:root[data-titlebar='overlay'] .connection-content .sidebar__titlebar {
+  min-height: 28px;
+  padding-left: 8px;
+}
+
+.connection-dialog:not([open]) {
+  display: none;
+}

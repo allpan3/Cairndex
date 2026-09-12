@@ -256,7 +256,7 @@ test('a pointer press elsewhere in the inspector blurs and commits the active no
   fireEvent.pointerDown(filesProperty)
 
   expect(note).not.toHaveFocus()
-  expect(hooks.update.mutate).toHaveBeenCalledWith({ notes: ['Ready to save'] })
+  expect(hooks.update.mutate).toHaveBeenCalledWith({ notes: ['Ready to save'] }, expect.any(Object))
 })
 
 test('an inspector with no actions in scope loses the handler-gated entries', () => {

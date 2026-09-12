@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
+import { ConnectionControls } from './ConnectionControls'
 import { QueryScope } from '../QueryScope'
 import { NewLibraryDialog } from '../app/LibraryManager'
 import { INCOMPATIBLE_SERVER_ERROR, unreachableServerMessage } from './verifyServer'
@@ -8,6 +9,9 @@ import {
   activateConnection,
   addRemoteConnection,
   getConnections,
+  ensureLocalConnection,
+  queueLibraryIndex,
+  getConnectionSession,
   loadConnections,
   subscribeConnections,
 } from './connections'
@@ -57,6 +61,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     subscribeConnections,
     () => getConnections().activeConnectionId,
   )
+  const session = useSyncExternalStore(subscribeConnections, getConnectionSession)
   const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [naming, setNaming] = useState<NamingState | null>(null)
@@ -250,7 +255,9 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
       onConfirm={(name) => {
         setNaming({ ...naming, busy: true, error: null })
         void confirmPickedLibrary(naming.token, name)
-          .then(() => {
+          .then((result) => {
+            if (!naming.isLibrary && result.opened)
+              queueLibraryIndex('local', result.opened.libraryId)
             setNaming(null)
             setReady(true)
           })
@@ -267,7 +274,15 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   // previous server's cache and any request still in flight against it are
   // discarded rather than left to resolve into the new connection's cache
   // (plan 3 §7.1 — library ids are per-server and not globally unique).
-  if (ready) return <QueryScope key={activeConnectionId ?? 'initial'}>{children}</QueryScope>
+  if (ready)
+    return (
+      <div className="connection-shell">
+        <ConnectionControls />
+        <div className="connection-content">
+          <QueryScope key={`${activeConnectionId}:${session}`}>{children}</QueryScope>
+        </div>
+      </div>
+    )
   if (!setup)
     return (
       <>
@@ -277,44 +292,65 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     )
 
   return (
-    <main className="desktop-setup">
-      <form className="desktop-setup__card" onSubmit={connect}>
-        <img src="/favicon.svg" alt="" className="desktop-setup__mark" />
-        <p className="desktop-setup__eyebrow">Cairndex desktop</p>
-        <h1>Connect to your server</h1>
-        <p className="desktop-setup__copy">
-          Start Cairndex on this Mac or another private machine, then enter its URL.
-        </p>
-        <label className="field-label" htmlFor="desktop-server-url">
-          Server URL
-        </label>
-        <input
-          ref={serverInputRef}
-          id="desktop-server-url"
-          className="edit desktop-setup__input"
-          type="url"
-          value={setup.serverUrl}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          required
-          autoFocus
-          onChange={(event) => setSetup({ serverUrl: event.target.value, error: null })}
-        />
-        {setup.error && (
-          <div className="modal__error" role="alert">
-            {setup.error}
-          </div>
-        )}
-        <button className="btn btn--primary desktop-setup__submit" disabled={saving}>
-          {saving ? 'Connecting…' : 'Connect'}
-        </button>
-        <p className="desktop-setup__hint">
-          This address stays on this device and can point to localhost, a LAN host, or a private
-          reverse proxy.
-        </p>
-      </form>
-      {namingDialog}
-    </main>
+    <div className="connection-shell">
+      <ConnectionControls onConnected={() => setReady(true)} />
+      <main className="desktop-setup connection-content">
+        <form className="desktop-setup__card" onSubmit={connect}>
+          <img src="/favicon.svg" alt="" className="desktop-setup__mark" />
+          <p className="desktop-setup__eyebrow">Cairndex desktop</p>
+          <h1>Connect to your server</h1>
+          <p className="desktop-setup__copy">
+            Use libraries on this computer, or enter the address of Cairndex running on another
+            device.
+          </p>
+          <button
+            type="button"
+            className="btn"
+            disabled={saving}
+            onClick={() => {
+              setSaving(true)
+              void ensureLocalConnection()
+                .then((local) => activateConnection(local.id))
+                .then(() => setReady(true))
+                .catch((error: unknown) =>
+                  setSetup({ ...setup, error: hostOperationErrorMessage(error) }),
+                )
+                .finally(() => setSaving(false))
+            }}
+          >
+            Use This Computer
+          </button>
+          <label className="field-label" htmlFor="desktop-server-url">
+            Server URL
+          </label>
+          <input
+            ref={serverInputRef}
+            id="desktop-server-url"
+            className="edit desktop-setup__input"
+            type="url"
+            value={setup.serverUrl}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            required
+            autoFocus
+            onChange={(event) => setSetup({ serverUrl: event.target.value, error: null })}
+          />
+          {setup.error && (
+            <div className="modal__error" role="alert">
+              {setup.error}
+            </div>
+          )}
+          <button className="btn btn--primary desktop-setup__submit" disabled={saving}>
+            {saving ? 'Connecting…' : 'Connect'}
+          </button>
+          <p className="desktop-setup__hint">
+            This address stays on this device and can point to localhost, a LAN host, or a private
+            reverse proxy.
+          </p>
+        </form>
+        {namingDialog}
+      </main>
+    </div>
   )
 }

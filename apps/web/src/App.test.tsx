@@ -336,20 +336,20 @@ test('shows the empty shell (not a forced dialog) when no library exists', async
   expect(screen.queryByRole('heading', { name: 'Libraries' })).not.toBeInTheDocument()
 })
 
-test('prefers an available library over a remembered unavailable one', async () => {
+test('preserves an unavailable remembered library until the user chooses a sibling', async () => {
   const available = { ...LIBRARY, id: 'lib-available', name: 'Available Test Library' }
-  const storage = mockLocalStorage({
-    'cairndex.libraryId': JSON.stringify(UNAVAILABLE_LIBRARY.id),
-  })
+  const storage = mockLocalStorage({ 'cairndex.libraryId': JSON.stringify(UNAVAILABLE_LIBRARY.id) })
   mockApi([UNAVAILABLE_LIBRARY, available])
   renderApp()
-
-  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'Offline Test Library (unavailable)' })).toBeDisabled()
-  await waitFor(() => expect(storage.get('cairndex.libraryId')).toBe(JSON.stringify(available.id)))
+  expect(await screen.findByText('Library unavailable')).toBeInTheDocument()
+  expect(storage.get('cairndex.libraryId')).toBe(JSON.stringify(UNAVAILABLE_LIBRARY.id))
   const requestedUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url))
-  expect(requestedUrls.some((url) => url.includes(`/${UNAVAILABLE_LIBRARY.id}/`))).toBe(false)
-  expect(requestedUrls.some((url) => url.includes(`/${available.id}/auth/status`))).toBe(true)
+  expect(requestedUrls.some((url) => url.includes(`/${available.id}/auth/status`))).toBe(false)
+  fireEvent.change(screen.getByRole('combobox', { name: 'Library' }), {
+    target: { value: available.id },
+  })
+  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+  await waitFor(() => expect(storage.get('cairndex.libraryId')).toBe(JSON.stringify(available.id)))
 })
 
 test('shows recovery actions without querying an unavailable library', async () => {
@@ -597,4 +597,32 @@ test('Recent offers the date orders and nothing else', async () => {
     'Date Modified',
     'Date Opened',
   ])
+})
+
+// Revoked access replaces an already mounted workspace without losing recovery actions
+test('surfaces authorization loss after a successful session', async () => {
+  mockApi()
+  const original = vi.mocked(fetch).getMockImplementation()!
+  let revoked = false
+  vi.mocked(fetch).mockImplementation((input, init) =>
+    revoked && String(input).endsWith('/auth/status')
+      ? Promise.resolve(
+          new Response(JSON.stringify({ message: 'Session expired' }), { status: 401 }),
+        )
+      : original(input, init),
+  )
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <App />
+    </QueryClientProvider>,
+  )
+  await screen.findByText('Nothing here yet.')
+  revoked = true
+  await act(async () => {
+    await qc.invalidateQueries({ queryKey: ['auth-status'] })
+  })
+  expect(await screen.findByText('Could not verify library access')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Servers…' })).toBeEnabled()
 })

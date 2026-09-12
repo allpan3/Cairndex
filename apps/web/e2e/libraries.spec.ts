@@ -399,3 +399,24 @@ test('switching libraries replaces the browser shell without a reload', async ({
   await expect(page.getByText('Second Library Movie')).toBeVisible()
   await expect(page.getByText('First Library Movie')).toHaveCount(0)
 })
+
+// Keyboard users can leave a recovery screen without losing their intended library
+test('keeps a missing remembered library and exposes the server chooser by keyboard', async ({
+  page,
+}) => {
+  await mockApi(page, { startingLibraries: [registered('other', 'Another Library', '/srv/other')] })
+  await page.addInitScript(() =>
+    localStorage.setItem('cairndex.libraryId', JSON.stringify('missing')),
+  )
+  await page.goto('/')
+  await expect(page.getByText('Selected library is missing')).toBeVisible()
+  await page.getByRole('button', { name: 'Servers…' }).focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Servers' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('Server address').fill('https://another.example')
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByText('Selected library is missing')).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('cairndex.libraryId'))).toBe('"missing"')
+})

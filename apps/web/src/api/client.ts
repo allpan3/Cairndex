@@ -9,6 +9,7 @@
 // stay global.
 
 import { hostFetch, resolveHostAssetUrl } from '../platform'
+import { advanceConnectionScope, advanceLibraryScope, captureRequestScope } from './requestScope'
 import type { components } from './schema'
 
 export type HealthStatus = components['schemas']['HealthStatus']
@@ -113,7 +114,8 @@ type CairndexRuntime = typeof globalThis & {
 const runtime = globalThis as CairndexRuntime
 
 // Selects the remote server used by the desktop host while browsers stay same-origin
-export function setApiBaseUrl(value: string | null): void {
+export function setApiBaseUrl(value: string | null, connectionKey: string | null = value): void {
+  advanceConnectionScope(connectionKey)
   runtime.__cairndexApiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
 }
 
@@ -130,6 +132,7 @@ export function resolveAssetUrl(value: string): string {
 }
 
 export function setActiveLibraryId(id: string | null): void {
+  if (activeLibraryId !== id) advanceLibraryScope()
   activeLibraryId = id
 }
 
@@ -167,7 +170,9 @@ function apiErrorDetail(payload: unknown): string {
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
+  const assertScope = captureRequestScope(/\/libraries\/[^/?]+\//.test(url))
   const response = await hostFetch(resolvedUrl, { signal })
+  assertScope()
   if (!response.ok) {
     // Surface the server's structured `{message}` when present so callers can
     // show a friendly reason (e.g. "library is currently unavailable") instead
@@ -178,6 +183,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     // Status-bearing, so a caller can tell "this is gone" from "this failed".
     // The message is unchanged, which is what everything catching these reads.
     throw new HttpError(
@@ -185,7 +191,9 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
       detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
     )
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  return result
 }
 
 /**
@@ -207,15 +215,18 @@ async function send<T>(
   body?: unknown,
   /** Optimistic-concurrency precondition: the entity `version` last read. */
   ifMatch?: number,
+  includeLibraryScope = true,
 ): Promise<T> {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
+  const assertScope = captureRequestScope(includeLibraryScope)
   const response = await hostFetch(resolveApiUrl(url), {
     method,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
+  assertScope()
   if (!response.ok) {
     let detail = ''
     try {
@@ -223,12 +234,15 @@ async function send<T>(
     } catch {
       /* ignore */
     }
+    assertScope()
     if (response.status === 409) {
       throw new ConflictError(detail || 'This item was changed elsewhere.')
     }
     throw new Error(`Request failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`)
   }
-  return (response.status === 204 ? undefined : await response.json()) as T
+  const result = (response.status === 204 ? undefined : await response.json()) as T
+  assertScope()
+  return result
 }
 
 async function sendSignal<T>(
@@ -238,19 +252,23 @@ async function sendSignal<T>(
   body: unknown,
 ): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolvedUrl, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   })
+  assertScope()
   if (!response.ok) {
     throw new HttpError(
       response.status,
       `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
     )
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  return result
 }
 
 /** Carries the HTTP status so callers can branch (e.g. retry a 429). */
@@ -614,8 +632,8 @@ export const cleanupCollectionOrder = (order: 'asc' | 'desc') =>
   send<void>(`${lib()}/collections/cleanup-order`, 'POST', { order })
 
 // --- Libraries (registry) ----------------------------------------------------
-export const fetchLibraries = (signal?: AbortSignal): Promise<LibraryRead[]> =>
-  getJson<LibraryRead[]>('/api/v1/libraries', signal)
+export const fetchLibraries = (signal?: AbortSignal, baseUrl = ''): Promise<LibraryRead[]> =>
+  getJson<LibraryRead[]>(`${baseUrl}/api/v1/libraries`, signal)
 
 export const createLibrary = (payload: LibraryCreate) =>
   send<LibraryRead>('/api/v1/libraries/create', 'POST', payload)
@@ -667,11 +685,13 @@ export class PathConflictError extends Error {
 }
 
 async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
+  assertScope()
   if (!response.ok) {
     let payload: unknown = null
     try {
@@ -679,6 +699,7 @@ async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     const detail = apiErrorDetail(payload)
     const details = (payload as { details?: { code?: string; name?: string; path?: string } })
       ?.details
@@ -687,7 +708,9 @@ async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  return result
 }
 
 /** Rename one file or directory in place, carrying its metadata with it. */
@@ -731,12 +754,14 @@ export async function importFile(
     // bundle. Callers opt in explicitly if they ever want the link.
     link: String(options.link ?? false),
   })
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file,
     signal: options.signal,
   })
+  assertScope()
   if (!response.ok) {
     let payload: unknown = null
     try {
@@ -744,6 +769,7 @@ export async function importFile(
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     const detail = apiErrorDetail(payload)
     const details = (payload as { details?: { code?: string; name?: string; path?: string } })
       ?.details
@@ -752,7 +778,9 @@ export async function importFile(
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as ImportResult
+  const result = (await response.json()) as ImportResult
+  assertScope()
+  return result
 }
 
 /** Move files and folders into the library's trash. Never unlinks. */
@@ -816,11 +844,13 @@ export async function setLibraryWriteMode(
   enabled: boolean,
   passphrase?: string,
 ): Promise<WriteModeRead> {
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/write-mode`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled, passphrase: passphrase ?? null }),
   })
+  assertScope()
   if (!response.ok) {
     let detail = ''
     try {
@@ -828,23 +858,38 @@ export async function setLibraryWriteMode(
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     if (response.status === 401) {
       throw new PassphraseRequiredError(detail || "This library's passphrase is required.")
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as WriteModeRead
+  const result = (await response.json()) as WriteModeRead
+  assertScope()
+  return result
 }
 
 // --- Background jobs ----------------------------------------------------------
 /** Enqueue discovery. `suggestGrouping` adds the reviewable grouping pass to it. */
 export const enqueueScan = (options: { suggestGrouping?: boolean; libraryId?: string } = {}) => {
   const suggest = options.suggestGrouping ?? true
-  return send<JobRead>(`${lib(options.libraryId)}/jobs/scan?suggest_grouping=${suggest}`, 'POST')
+  return send<JobRead>(
+    `${lib(options.libraryId)}/jobs/scan?suggest_grouping=${suggest}`,
+    'POST',
+    undefined,
+    undefined,
+    options.libraryId === undefined,
+  )
 }
 
 export const enqueueProbe = (libraryId?: string) =>
-  send<JobRead>(`${lib(libraryId)}/jobs/probe`, 'POST')
+  send<JobRead>(
+    `${lib(libraryId)}/jobs/probe`,
+    'POST',
+    undefined,
+    undefined,
+    libraryId === undefined,
+  )
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 

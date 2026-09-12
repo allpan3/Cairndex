@@ -1,3 +1,8 @@
+import {
+  useScopedMutation as useMutation,
+  useScopedQueryClient as useQueryClient,
+} from './useScopedMutation'
+import { captureRequestScope } from './requestScope'
 import { changeLibraryServing } from './client'
 import { useCallback } from 'react'
 
@@ -7,10 +12,8 @@ import {
   type QueryClient,
   type QueryKey,
   useInfiniteQuery,
-  useMutation,
   useQueries,
   useQuery,
-  useQueryClient,
 } from '@tanstack/react-query'
 
 import {
@@ -221,12 +224,19 @@ function restoreBundleFileSnapshots(
 // Wait for a queued/running job to finish so dependent queries refetch fresh
 // data. ``onProgress`` (when given) receives each polled snapshot so the UI can
 // render live phase/message/progress; it fires for the initial state too.
-async function waitForJob(job: JobRead, onProgress?: JobProgressFn): Promise<JobRead> {
+async function waitForJob(
+  job: JobRead,
+  onProgress?: JobProgressFn,
+  includeLibrary = true,
+): Promise<JobRead> {
+  const assertScope = captureRequestScope(includeLibrary)
   let current = job
   onProgress?.(current)
   while (!TERMINAL_JOB_STATUSES.has(current.status)) {
     await new Promise((resolve) => setTimeout(resolve, 500))
+    assertScope()
     current = await fetchJob(job.id)
+    assertScope()
     onProgress?.(current)
   }
   if (current.status === 'failed') {
@@ -428,9 +438,8 @@ export function useLibraries({
     refetchInterval: (query) => {
       const libraries = query.state.data
       return pollWhileUnavailable &&
-        libraries !== undefined &&
-        libraries.length > 0 &&
-        libraries.every((library) => library.status === 'unavailable')
+        (query.state.status === 'error' ||
+          libraries?.some((library) => library.status === 'unavailable'))
         ? 5000
         : false
     },
@@ -671,6 +680,7 @@ export function useLibraryAuth(libraryId: string | null) {
     queryKey: ['auth-status', libraryId],
     queryFn: ({ signal }) => fetchAuthStatus(libraryId!, signal),
     enabled: libraryId !== null,
+    refetchInterval: 5000,
   })
 }
 
@@ -878,28 +888,31 @@ export function useScan(options: MaintenanceOptions = {}) {
  * storyboards, which are the expensive one and remain a deliberate action.
  */
 export function useIndexNewLibrary() {
-  const qc = useQueryClient()
+  const qc = useQueryClient(false)
   // Progress is not threaded through a callback here as it is for the sidebar's
   // own maintenance actions: this runs from the library dialog, which is a
   // level above the sidebar and does not own its job indicator. Nudging the
   // active-jobs query instead lets the sidebar find the work server-side and
   // report it exactly as it reports a scan the owner started.
   const showInSidebar = () => qc.invalidateQueries({ queryKey: ['active-jobs'] })
-  return useMutation({
-    mutationFn: async (libraryId: string) => {
-      const scan = await enqueueScan({ suggestGrouping: false, libraryId })
-      void showInSidebar()
-      await waitForJob(scan)
-      invalidateLibraryContent(qc)
-      const probe = await enqueueProbe(libraryId)
-      void showInSidebar()
-      await waitForJob(probe)
-      invalidateProbeContent(qc)
+  return useMutation(
+    {
+      mutationFn: async (libraryId: string) => {
+        const scan = await enqueueScan({ suggestGrouping: false, libraryId })
+        void showInSidebar()
+        await waitForJob(scan, undefined, false)
+        invalidateLibraryContent(qc)
+        const probe = await enqueueProbe(libraryId)
+        void showInSidebar()
+        await waitForJob(probe, undefined, false)
+        invalidateProbeContent(qc)
+      },
+      // A failure here is reported by the job row itself, and must not take the
+      // add flow down with it — the library is registered either way.
+      onSettled: showInSidebar,
     },
-    // A failure here is reported by the job row itself, and must not take the
-    // add flow down with it — the library is registered either way.
-    onSettled: showInSidebar,
-  })
+    false,
+  )
 }
 
 /** Enqueue scan/grouping, then hand metadata and storyboards to background progress */

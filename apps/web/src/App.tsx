@@ -1,3 +1,5 @@
+import { libraryStateKey } from './state/useBundleDraft'
+import { ConnectionControls } from './desktop/ConnectionControls'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -130,6 +132,7 @@ import {
   libraryStorageKey,
   subscribeConnections,
   takePendingLibrarySelection,
+  takeLibraryIndex,
 } from './desktop/connections'
 import { LibraryAccessNotice } from './app/LibraryAccessNotice'
 import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
@@ -240,6 +243,19 @@ function Resizer({
  * neither server state nor local UI state can bleed across libraries.
  */
 export default function App() {
+  if (getHostPlatform().kind === 'desktop') return <LibraryApp />
+  return (
+    <div className="connection-shell">
+      <ConnectionControls />
+      <div className="connection-content">
+        <LibraryApp />
+      </div>
+    </div>
+  )
+}
+
+// Resolves the intended library without silently substituting a different destination
+function LibraryApp() {
   const queryClient = useQueryClient()
   const librariesQuery = useLibraries({ pollWhileUnavailable: true })
   // Keyed per connection: library ids are per-server and not globally unique,
@@ -253,6 +269,9 @@ export default function App() {
     libraryStorageKey(activeConnectionId),
     null,
   )
+  const [linkedUuid, setLinkedUuid] = useState(() =>
+    new URLSearchParams(window.location.search).get('library_uuid'),
+  )
   const [managing, setManaging] = useState(false)
   // Following a lease redirect ("Connect to <holder>"): in flight, and why it
   // failed. Both only matter on the ownership notice below.
@@ -264,33 +283,47 @@ export default function App() {
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
-  const chosenLibrary = chosenId ? libraries.find((library) => library.id === chosenId) : undefined
   const defaultLibrary = libraries.find((library) => library.status === 'available') ?? libraries[0]
-  const libraryId = chosenLibrary?.id ?? defaultLibrary?.id ?? null
+  const libraryId = linkedUuid
+    ? (libraries.find((entry) => entry.library_uuid === linkedUuid)?.id ?? null)
+    : (chosenId ?? defaultLibrary?.id ?? null)
   const library = libraries.find((candidate) => candidate.id === libraryId)
-  const fallbackLibrary =
-    library?.status === 'unavailable'
-      ? libraries.find((candidate) => candidate.status === 'available')
-      : undefined
+  // Persist an initial default so a later registry reorder cannot change the intended library
+  useEffect(() => {
+    if (!linkedUuid && !chosenId && defaultLibrary) setChosenId(defaultLibrary.id)
+  }, [chosenId, defaultLibrary, setChosenId, linkedUuid])
 
   const changeLibrary = useCallback(
     (nextId: string) => {
-      if (nextId === libraryId) return
+      if (linkedUuid) {
+        setLinkedUuid(null)
+        const url = new URL(window.location.href)
+        url.searchParams.delete('library_uuid')
+        window.history.replaceState(null, '', url)
+      }
+      if (nextId === libraryId) {
+        setChosenId(nextId)
+        return
+      }
       // Set the request scope before active observers are removed so no old
       // query can restart against the library being left behind
       setActiveLibraryId(nextId)
       resetLibraryContentQueries(queryClient)
       setChosenId(nextId)
     },
-    [libraryId, queryClient, setChosenId],
+    [libraryId, queryClient, setChosenId, linkedUuid],
   )
 
-  // A remembered library can be offline at the next launch. Move to a usable
-  // sibling through the normal switch path so the previous library's unscoped
-  // content cache is cleared before the replacement workspace can mount
+  // Resolve browser ownership redirects within the destination server before content admission
   useEffect(() => {
-    if (fallbackLibrary) changeLibrary(fallbackLibrary.id)
-  }, [changeLibrary, fallbackLibrary])
+    let active = true
+    queueMicrotask(() => {
+      if (active && linkedUuid && libraryId) changeLibrary(libraryId)
+    })
+    return () => {
+      active = false
+    }
+  }, [linkedUuid, libraryId, changeLibrary])
 
   // A library was deregistered. Content query keys are not library-scoped — the
   // active library is module-global and the cache is cleared on every switch —
@@ -326,19 +359,18 @@ export default function App() {
     else if (action === 'manage-libraries') setManaging(true)
   })
 
-  // Opening a folder queues its result before activating the connection,
-  // because activation remounts this tree. Consumed here on mount rather than
-  // read during render: taking it is a side effect, and the take is idempotent
-  // (a second run finds nothing, and re-selecting the same library is a no-op),
-  // so StrictMode's double-invoke is harmless.
-  // Depends on the queue version as well as the connection, because re-opening
-  // a folder on the *already active* connection changes no id and remounts
-  // nothing — the case where the second open of a registered library silently
-  // did nothing.
+  // Native opens queue selection only after activation succeeds; the version also handles same-server opens
   const pendingVersion = useSyncExternalStore(subscribeConnections, getPendingSelectionVersion)
   useEffect(() => {
-    const pending = takePendingLibrarySelection(activeConnectionId)
-    if (pending) changeLibrary(pending)
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      const pending = takePendingLibrarySelection(activeConnectionId)
+      if (pending) changeLibrary(pending)
+    })
+    return () => {
+      active = false
+    }
   }, [activeConnectionId, pendingVersion, changeLibrary])
 
   // A cairndex:// link may name a library other than the active one, so the
@@ -395,6 +427,10 @@ export default function App() {
   // A folder that has just become a library indexes itself, so the owner is not
   // left with empty views and two menu items to discover.
   const indexNewLibrary = useIndexNewLibrary()
+  useEffect(() => {
+    if (mountableLibraryId && takeLibraryIndex(activeConnectionId, mountableLibraryId))
+      indexNewLibrary.mutate(mountableLibraryId)
+  }, [activeConnectionId, mountableLibraryId, pendingVersion, indexNewLibrary])
 
   // The one surface for adding, opening, and removing libraries. Rendered in
   // every state the menu item is enabled in — including the ones that replace
@@ -413,6 +449,36 @@ export default function App() {
     return (
       <>
         <div className="app-loading">Loading…</div>
+        {libraryDialog}
+      </>
+    )
+  }
+
+  if (librariesQuery.isError || ((libraryId || linkedUuid) && !library)) {
+    return (
+      <>
+        <LibraryAccessNotice
+          libraries={libraries}
+          libraryId={libraryId ?? ''}
+          onChangeLibrary={changeLibrary}
+          title={librariesQuery.isError ? 'Server unavailable' : 'Selected library is missing'}
+          message={
+            librariesQuery.isError
+              ? 'The library list could not be reached. Check the server or network, then retry or choose another server. Your selected library is remembered.'
+              : 'This server no longer lists the selected library. Restore its registration, retry, or choose another library.'
+          }
+        >
+          <button
+            className="lockscreen__submit"
+            disabled={librariesQuery.isFetching}
+            onClick={() => void librariesQuery.refetch()}
+          >
+            {librariesQuery.isFetching ? 'Checking…' : 'Retry'}
+          </button>
+          <button className="btn" onClick={() => setManaging(true)}>
+            Manage Libraries
+          </button>
+        </LibraryAccessNotice>
         {libraryDialog}
       </>
     )
@@ -451,16 +517,6 @@ export default function App() {
       onClose={() => setSettingsPage(null)}
     />
   )
-
-  if (fallbackLibrary) {
-    return (
-      <>
-        <div className="app-loading">Opening an available library…</div>
-        {settingsDialog}
-        {libraryDialog}
-      </>
-    )
-  }
 
   // Do not ask a row that already failed the registry probe for ownership,
   // authentication, or content. Besides producing redundant I/O, doing so used
@@ -519,7 +575,7 @@ export default function App() {
           reopenError={serving.error?.message ?? null}
           onConnectTo={(serverUrl) => {
             setConnectRedirect({ pending: true, error: null })
-            void connectToServer(serverUrl)
+            void connectToServer(serverUrl, library?.library_uuid)
               // On success the whole scope remounts, so there is nothing to
               // clear here — only the failure has to land somewhere visible.
               .catch((error: unknown) =>
@@ -555,6 +611,33 @@ export default function App() {
     return (
       <>
         <div className="app-loading">Checking library ownership…</div>
+        {settingsDialog}
+        {libraryDialog}
+      </>
+    )
+  }
+
+  if (ownership.isError) {
+    return (
+      <>
+        <LibraryAccessNotice
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={changeLibrary}
+          title="Could not check library ownership"
+          message="The server could not confirm that it can serve this library. Check its connection and storage, then retry."
+        >
+          <button
+            className="lockscreen__submit"
+            onClick={() => void ownership.refetch()}
+            disabled={ownership.isFetching}
+          >
+            {ownership.isFetching ? 'Checking…' : 'Retry'}
+          </button>
+          <button className="btn" onClick={() => setManaging(true)}>
+            Manage Libraries
+          </button>
+        </LibraryAccessNotice>
         {settingsDialog}
         {libraryDialog}
       </>
@@ -775,9 +858,13 @@ function Workspace({
   canLock,
   onLock,
 }: WorkspaceProps) {
-  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS, {
-    debounceMs: 300,
-  })
+  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>(
+    libraryStateKey('cairndex.prefs'),
+    DEFAULT_PREFS,
+    {
+      debounceMs: 300,
+    },
+  )
   // Merge in defaults so prefs persisted before newer fields existed
   // (sortScope/collectionSorts) don't read back as undefined. The zoom is also
   // clamped, because the slider's range has moved before and will again: a value
