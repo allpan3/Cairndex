@@ -19,8 +19,13 @@
   Shift ranges, retry, folder round-trips and parent/child playlist boundaries.
   Final-build checks also verify delayed counts and selection/clear of all 73
   folder files. Native arrows traverse virtualized items beyond the first page;
-  native Home/End delivery remains unqualified after system input routing
-  diverted those keys. Browser Home/End checks pass. All 76 synthetic source
+  a focused production recheck with explicit activation and macOS foreground
+  readback verifies native Home/End selection in both listings. Bundle End honors
+  the loaded boundary (100, then 132 after the next page loads). File-list Home
+  selects the first file but leaves it partly covered by the sticky column
+  header; accounting for that header in keyboard scrolling remains a proposed
+  follow-up, with no product-code change in this recheck. Browser Home/End checks
+  pass. All 76 original and 132 recheck synthetic source
   hashes remain unchanged; test clients, backend, fixtures, registration and
   runtime identity data are cleaned up. Private evidence remains outside the repo.
   This group's privacy gate passes; the cumulative branch gate remains blocked

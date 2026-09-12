@@ -57,10 +57,31 @@ generated images and invented metadata. Checks establish:
 - A child image playlist advances from 1/73 to 2/73; the parent remains 1/1.
   Folder Enter opens File Browser, and Back restores the disclosure.
 
-The native input trace observed system routing diverting Home/End away from the
-test application. Directly targeted synthetic attempts did not establish their
-delivery to WebKit. Home/End are browser-tested; native Home/End remain
-unqualified. No system shortcut configuration is changed.
+The focused native recheck on 2026-09-12 uses the unchanged production build
+with explicit application activation and macOS foreground-process readback
+before every input sequence. Accessibility focus/selection and screenshots agree:
+
+- Bundle list: Down moves 050 → 051; Home selects 001 and reveals the top.
+  End selects 100, the last loaded bundle. After the next page loads, another
+  End selects 132 and reveals the bottom of the virtualized listing.
+- File list: Down moves 050 → 051; Home selects 001; End selects 132 and
+  reveals the last file. Home selects the first file on a repeat check too.
+- File-list Home leaves the selected first row partly covered by the sticky
+  column header. The overlap persists after settling; an upward scroll reveals
+  the same selected row. Selection and key delivery pass, but full first-row
+  visibility remains a defect.
+
+The earlier Raise/click attempts established WebKit focus while macOS still
+reported another application as frontmost. Explicit activation resolves the
+native verification gap; the earlier attempts do not establish Home/End
+interception by the OS. These checks send native Home/End without modifiers;
+physical Fn-key equivalents are not qualified. No system shortcuts, renderer
+instrumentation or application behavior are changed.
+
+The smallest proposed follow-up is to account for the sticky header in the
+File Browser's keyboard scroll positioning (`scrollIntoView` currently uses
+`block: 'nearest'` without an inset), with a regression check for full first-row
+visibility. This verification does not implement that repair.
 
 ## Validation status
 
@@ -84,3 +105,8 @@ codec/performance matrix or claim Ubuntu, Windows, notarization, real providers,
 Docker or NAS qualification. Native input checks are not a comprehensive
 accessibility certification. Private synthetic screenshots and logs remain
 outside the repository.
+
+The focused recheck preserves all 132 generated source hashes and removes its
+disposable app copy, backend, library, registry, connection settings and runtime
+identity data. It changes validation documentation only; the earlier broad test
+gates are not rerun.
