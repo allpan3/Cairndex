@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useModalDialog } from './useModalDialog'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
 interface DeleteBundlesDialogProps {
@@ -34,28 +35,23 @@ export function DeleteBundlesDialog({
 }: DeleteBundlesDialogProps) {
   const [deleteFiles, setDeleteFiles] = useState(false)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, pending)
 
   const noun = count > 1 ? `these ${count} bundles` : 'this bundle'
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--confirm"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Delete bundle"
       >
         <div className="modal__head">
           <h2>{count > 1 ? `Delete ${count} bundles` : 'Delete Bundle'}</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Cancel">
+          <button className="modal__close" onClick={closeDialog} aria-label="Cancel">
             ×
           </button>
         </div>
@@ -94,7 +90,7 @@ export function DeleteBundlesDialog({
 
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onCancel} disabled={pending}>
+          <button className="btn" onClick={closeDialog} disabled={pending}>
             Cancel
           </button>
           <button

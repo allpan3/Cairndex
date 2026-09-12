@@ -92,6 +92,7 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      state.returnFocus?.focus({ preventScroll: true })
       onClose()
       e.stopPropagation()
     }
@@ -144,6 +145,7 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
             role="menuitem"
             disabled={item.disabled}
             onClick={() => {
+              state.returnFocus?.focus({ preventScroll: true })
               onClose()
               item.onClick()
             }}

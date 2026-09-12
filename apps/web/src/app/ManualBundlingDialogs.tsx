@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useModalDialog } from './useModalDialog'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { FileSelection, FileSuggestion, TargetSuggestion } from '../api/client'
@@ -23,40 +24,42 @@ import { usePinyinSearch } from './pinyin'
  * deleted (all operations are metadata-only).
  */
 
-// --- shared building blocks --------------------------------------------------
+// Keep manual bundling drafts open while their confirmed mutation is pending
 function Modal({
   title,
   onClose,
   children,
   footer,
   label,
+  pending,
 }: {
   title: string
   onClose: () => void
   children: React.ReactNode
   footer: React.ReactNode
   label: string
+  pending: boolean
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, pending)
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--mb"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={label}
       >
         <div className="modal__head">
           <h2>{title}</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Cancel">
+          <button
+            className="modal__close"
+            onClick={closeDialog}
+            disabled={pending}
+            aria-label="Cancel"
+          >
             ×
           </button>
         </div>
@@ -193,6 +196,7 @@ export function AddToBundleDialog({
     <Modal
       title="Add to Bundle"
       label="Add to bundle"
+      pending={addFiles.isPending}
       onClose={onClose}
       footer={
         <>
@@ -316,6 +320,7 @@ export function CreateBundleDialog({
     <Modal
       title="Create Bundle"
       label="Create bundle"
+      pending={createFromFiles.isPending}
       onClose={onClose}
       footer={
         <>
@@ -434,6 +439,7 @@ export function AddFilesToBundleDialog({
     <Modal
       title={`Add Files${bundle.data?.title ? ` to “${bundle.data.title}”` : ''}`}
       label="Add files to bundle"
+      pending={addFiles.isPending}
       onClose={onClose}
       footer={
         <>
@@ -510,6 +516,7 @@ export function CreateEmptyBundleDialog({
     <Modal
       title="Create Bundle"
       label="Create empty bundle"
+      pending={createEmpty.isPending}
       onClose={onClose}
       footer={
         <>

@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useMemo, useState } from 'react'
 
 import type { SmartCollectionRead } from '../api/client'
@@ -48,17 +49,21 @@ export function SmartCollectionEditor({
   const busy = create.isPending || update.isPending || remove.isPending
   const error = create.error ?? update.error
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={existing ? 'Edit Smart Collection' : 'New Smart Collection'}
       >
         <div className="modal__head">
           <h2>{existing ? 'Edit Smart Collection' : 'New Smart Collection'}</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -80,7 +85,11 @@ export function SmartCollectionEditor({
             : `${(preview.data ?? 0).toLocaleString()} matching bundle${preview.data === 1 ? '' : 's'}`}
         </div>
 
-        {error && <div className="modal__error">{(error as Error).message}</div>}
+        {error && (
+          <div className="modal__error" role="alert">
+            {(error as Error).message}
+          </div>
+        )}
 
         <div className="modal__actions">
           {existing && (
@@ -89,7 +98,7 @@ export function SmartCollectionEditor({
             </button>
           )}
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onClose} disabled={busy}>
+          <button className="btn" onClick={closeDialog} disabled={busy}>
             Cancel
           </button>
           <button className="btn btn--primary" onClick={save} disabled={busy || !name.trim()}>

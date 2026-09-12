@@ -1,3 +1,4 @@
+import { PromptDialog } from './PromptDialog'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
@@ -337,10 +338,12 @@ export function Sidebar({
   // or Cmd-toggled. A ref, not state — it never needs a re-render of its own.
   const rangeAnchorRef = useRef<string | null>(null)
 
-  // Id of the collection currently showing an inline rename box — set right
-  // after "+ Collection" creates one, so the user can type its name in place.
+  // Existing collections use inline renaming; new collections use a local draft
   const [editingId, setEditingId] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [collectionDraft, setCollectionDraft] = useState<{ parentId: string | null } | null>(null)
+  const [creatingCollection, setCreatingCollection] = useState(false)
+  const createInFlight = useRef(false)
   // Branch expand/collapse is normally per-node local state (depth 0 open by
   // default), but creating a collection nested under the currently open one
   // needs to force its ancestor chain open so the new node is visible.
@@ -455,28 +458,39 @@ export function Sidebar({
     [collections],
   )
 
+  // A new collection stays local until its name is explicitly confirmed
   const createCollectionUnder = useCallback(
     (parentId: string | null) => {
+      if (createInFlight.current) return
       setCreateError(null)
-      const siblingNames = new Set(
-        collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
-      )
-      let name = 'New Collection'
-      for (let n = 2; siblingNames.has(name); n++) name = `New Collection ${n}`
-
-      onCreateCollection(
-        { name, parent_id: parentId },
-        {
-          onSuccess: (created) => {
-            revealCollection(parentId)
-            setEditingId(created.id)
-          },
-          onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
-        },
-      )
+      setCollectionDraft({ parentId })
     },
-    [collections, onCreateCollection, revealCollection],
+    [setCreateError, setCollectionDraft],
   )
+
+  // Persist the named draft once, retaining it and its error when creation fails
+  const submitCollection = (name: string) => {
+    if (!collectionDraft || createInFlight.current) return
+    createInFlight.current = true
+    setCreatingCollection(true)
+    setCreateError(null)
+    onCreateCollection(
+      { name, parent_id: collectionDraft.parentId },
+      {
+        onSuccess: () => {
+          createInFlight.current = false
+          setCreatingCollection(false)
+          revealCollection(collectionDraft.parentId)
+          setCollectionDraft(null)
+        },
+        onError: (error) => {
+          createInFlight.current = false
+          setCreatingCollection(false)
+          setCreateError(error instanceof Error ? error.message : 'Could not create collection')
+        },
+      },
+    )
+  }
 
   /** Put a collection's row into its inline rename box, unfolding to reach it. */
   const renameCollection = useCallback(
@@ -487,17 +501,7 @@ export function Sidebar({
     [collections, revealCollection],
   )
 
-  // A request from outside the sidebar (the grid's empty-space menu, the native
-  // File menu). It arrives as a prop rather than a callback because the sidebar
-  // owns the flow — the new row's inline rename box and branch expansion are its
-  // state — while the caller only names the parent. An effect is the only hook
-  // available: the trigger is another pane or the OS menu, so there is no event in
-  // this subtree to hang it off (mirrors App's deepLink handling).
-  //
-  // Consumption is tracked by request identity rather than by trusting the
-  // caller's clear: `createCollectionUnder` changes identity whenever the
-  // collection list refetches — which creating one causes — so a caller that
-  // wired the request without the clear callback would otherwise create in a loop.
+  // Grid and native menu requests open one draft under the requested parent
   const consumedRequestRef = useRef<{ parentId: string | null } | null>(null)
   useEffect(() => {
     if (!newCollectionRequest || consumedRequestRef.current === newCollectionRequest) return
@@ -881,7 +885,7 @@ export function Sidebar({
           addTitle="New top-level collection"
           onContextMenu={collectionsBackgroundMenu}
         />
-        {createError && (
+        {createError && !collectionDraft && (
           <div className="sidebar__heading" role="alert">
             {createError}
           </div>
@@ -971,6 +975,20 @@ export function Sidebar({
         </button>
       </div>
 
+      {collectionDraft && (
+        <PromptDialog
+          title={collectionDraft.parentId ? 'New Subcollection' : 'New Collection'}
+          label="Collection name"
+          confirmLabel="Create"
+          pending={creatingCollection}
+          error={createError}
+          onCancel={() => {
+            setCollectionDraft(null)
+            setCreateError(null)
+          }}
+          onConfirm={submitCollection}
+        />
+      )}
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
   )

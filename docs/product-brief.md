@@ -53,6 +53,8 @@ Unless the product owner explicitly changes them, treat these as settled:
 - Product/API/model terminology is `collection`, not user-facing `folder`, except when referring to ordinary filesystem directories in File Browser or historical/external references.
 - Collections are hierarchical logical groupings. A bundle may belong to zero, one, or many collections.
 - Collections contain bundles only, not loose files.
+- New collections remain local name drafts until explicit Create confirmation;
+  cancelling a draft does not create, rename or remove a collection.
 - Selecting a tag or collection parent can include descendants; the UI exposes a toggle.
 - Smart Folders should be renamed to Smart Collections / saved collection filters. The legacy table name `smart_folders` may remain until a migration is worth it.
 - File Browser browses only the active library root.
@@ -364,9 +366,9 @@ Importing from an external Eagle library is out of scope. With the per-library a
 
 Bundles are formed by scanning the library and grouping related files. Grouping heuristics may consider same directory, matching or similar basenames, normalized subject prefixes, numeric part suffixes, language subtitle suffixes, names such as `cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
-Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects a cover, links external subtitles, and creates or reuses the logical collections a CONTAINER suggests, never touching the filesystem. Relevant existing collection branches remain visible in review so a new bundle can inherit or change its proposed collection placement even though confirmed bundles themselves stay outside regrouping.
+Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in _provisional_ bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates _confirmed_ groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects a cover, links external subtitles, and creates or reuses the logical collections a CONTAINER suggests, never touching the filesystem. Relevant existing collection branches remain visible in review so a new bundle can inherit or change its proposed collection placement even though confirmed bundles themselves stay outside regrouping.
 
-A scan stages each newly discovered file as a *provisional* one-file bundle.
+A scan stages each newly discovered file as a _provisional_ one-file bundle.
 Until the owner confirms it, that file is treated as **unbundled**
 (`grouping_state = provisional`, `grouping_source = scan_suggestion`): it lives
 only in a dedicated **Unbundled** system view and is hidden from All, Recently

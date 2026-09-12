@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useModalDialog } from './useModalDialog'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { CollectionRead } from '../api/client'
@@ -46,16 +47,7 @@ export function CollectionFromFolderDialog({
   const create = useCreateCollectionFromDirectory()
   const trimmed = name.trim()
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, create.isPending)
 
   // The parent tree, foldable. A native <select> cannot fold, and a flat list of
   // every collection in a library is unusable once there are many (owner,
@@ -105,17 +97,18 @@ export function CollectionFromFolderDialog({
           : `The ${bundleCount} bundles in this folder and below join it.`
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--confirm"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="New Collection from Folder"
       >
         <div className="modal__head">
           <h2>New Collection from “{folderName}”</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -219,7 +212,7 @@ export function CollectionFromFolderDialog({
 
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onClose} disabled={create.isPending}>
+          <button className="btn" onClick={closeDialog} disabled={create.isPending}>
             Cancel
           </button>
           <button

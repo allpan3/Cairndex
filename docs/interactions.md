@@ -19,3 +19,19 @@ set. Collection cards and bundles keep separate selections and actions.
 
 Escape clears a focused listing's selection. File and bundle selections use
 visible focus indicators independently of the selected range.
+
+## Dialogs and collection drafts
+
+Escape dismisses the top eligible dialog or picker. Tab stays within the active
+dialog, and closing returns focus to its opener. Nested pickers close before
+their parent dialog. Dialogs awaiting a confirmed mutation remain open until
+that operation finishes; closing a dialog does not undo a saved action.
+
+New Collection and New Subcollection open a local name draft. Create confirms
+the name and parent; Cancel, Close and Escape discard an unsubmitted draft.
+A failed create retains the name and focuses it for correction. Existing
+collections are unaffected by cancelling a new draft.
+
+Smart Collection changes are submitted by Create or Save. Cancel, Close and
+Escape discard that dialog's unsaved edits. Replica conflict review retains its
+existing private-draft behavior.

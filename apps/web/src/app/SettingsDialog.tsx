@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -44,18 +45,21 @@ export function SettingsDialog({
   const [page, setPage] = useState<'devices' | 'libraries' | 'appearance' | 'exports' | 'about'>(
     'devices',
   )
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal settings-modal"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
       >
         <div className="modal__head">
           <h2 id="settings-title">Settings</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close settings">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close settings">
             ×
           </button>
         </div>

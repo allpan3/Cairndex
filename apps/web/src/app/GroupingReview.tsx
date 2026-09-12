@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import {
   type DragEvent,
   Fragment,
@@ -2255,17 +2256,20 @@ export function GroupingReview({
     fold: foldControls,
   }
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal grp-modal"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Suggest grouping</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -2430,7 +2434,7 @@ export function GroupingReview({
           )}
           <div className="grp-foot__spacer" />
           {applied ? (
-            <button className="btn btn--primary" onClick={onClose}>
+            <button className="btn btn--primary" onClick={closeDialog}>
               Done
             </button>
           ) : (

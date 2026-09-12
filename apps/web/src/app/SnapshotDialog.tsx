@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useMemo, useState } from 'react'
 
 import { defaultSnapshotWidth, snapshotHeight, snapshotWidthOptions } from './snapshotExport'
@@ -27,10 +28,13 @@ export function SnapshotDialog({
   const [width, setWidth] = useState(() => defaultSnapshotWidth(options))
   const height = snapshotHeight(width, sourceWidth, sourceHeight)
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose)
+
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Snapshot options"
@@ -56,7 +60,7 @@ export function SnapshotDialog({
         </p>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={closeDialog}>
             Cancel
           </button>
           <button

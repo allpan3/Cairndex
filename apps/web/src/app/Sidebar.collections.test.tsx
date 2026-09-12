@@ -161,9 +161,17 @@ function StatefulHarness({ request = null }: { request?: { parentId: string | nu
   )
 }
 
+// Confirm the local draft through its ordinary name field and Create action
+function confirmCollection(name = 'New Collection') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Collection name' }), {
+    target: { value: name },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+}
+
 afterEach(() => vi.restoreAllMocks())
 
-test('a created collection lands in the rename box ready to be named', () => {
+test('a new collection stays a blank draft until confirmed', () => {
   render(<StatefulHarness />)
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 
@@ -171,21 +179,26 @@ test('a created collection lands in the rename box ready to be named', () => {
 
   // The name is a placeholder, so the point of creating one is typing over it.
   const input = screen.getByRole('textbox')
-  expect(input).toHaveValue('New Collection')
+  expect(input).toHaveValue('')
+  confirmCollection('Named collection')
+  expect(screen.getByText('Named collection')).toBeInTheDocument()
 })
 
-test('a collection created from the grid also lands in the rename box', () => {
+test('a grid request opens a blank collection draft', () => {
   // The grid and the native menu deliver a parent rather than a click, and the
   // user is not looking at the sidebar — so the row still has to open for typing.
   render(<StatefulHarness request={{ parentId: 'c1' }} />)
 
-  expect(screen.getByRole('textbox')).toHaveValue('New Collection')
+  expect(screen.getByRole('textbox')).toHaveValue('')
 })
 
 test('the + button creates at the top level even with a collection open', () => {
   const onCreateCollection = renderSidebar({ collectionId: 'c1' })
 
   fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
 
   // The reported bug: this used to nest under whatever was selected, leaving no
   // way to ask for a top-level collection while browsing one.
@@ -202,6 +215,8 @@ test('right-clicking a collection offers a subcollection under it', () => {
   fireEvent.contextMenu(screen.getByText('Films'))
   fireEvent.click(screen.getByRole('menuitem', { name: 'New Subcollection' }))
 
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
   expect(onCreateCollection.mock.calls[0]?.[0]).toEqual({
     name: 'New Collection',
     parent_id: 'c1',
@@ -215,6 +230,8 @@ test('right-clicking the Collections heading offers a top-level collection', () 
   expect(screen.getByRole('menuitem', { name: 'Clean Up Order…' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('menuitem', { name: 'New Collection' }))
 
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
   expect(onCreateCollection.mock.calls[0]?.[0]).toEqual({
     name: 'New Collection',
     parent_id: null,
@@ -229,6 +246,8 @@ test('a request from outside the sidebar creates and is cleared once', () => {
   })
 
   // The grid menu and the native File menu both arrive this way.
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
   expect(onCreateCollection).toHaveBeenCalledOnce()
   expect(onCreateCollection.mock.calls[0]?.[0]).toEqual({
     name: 'New Collection',
@@ -251,6 +270,8 @@ test('the same request is consumed once even if the caller never clears it', () 
   const props = { request, onCreateCollection }
 
   const { rerender } = render(<RequestHarness {...props} collections={COLLECTIONS} />)
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
   expect(onCreateCollection).toHaveBeenCalledOnce()
 
   // A refetch delivers a new collections array — same pending request object.
@@ -288,6 +309,8 @@ test('creating unfolds the branch that would hide the new row', () => {
   fireEvent.contextMenu(screen.getByText('Films'))
   fireEvent.click(screen.getByRole('menuitem', { name: 'New Subcollection' }))
 
+  expect(onCreateCollection).not.toHaveBeenCalled()
+  confirmCollection()
   expect(onCreateCollection).toHaveBeenCalledOnce()
   expect(screen.getByText('Nested')).toBeInTheDocument()
 })
@@ -322,24 +345,12 @@ test('a collection with nothing under it is not offered the fold', () => {
   expect(screen.getByRole('menuitem', { name: 'Delete Collection' })).toBeInTheDocument()
 })
 
-test('a new name avoids colliding with its own siblings only', () => {
-  // A top-level 'New Collection' already exists, and one under c1 as well, so the
-  // suffix must count per parent rather than library-wide.
-  const onCreateCollection = renderSidebarWith([
-    collection('c1', 'Films'),
-    collection('c9', 'New Collection'),
-  ])
-
+test('the collection draft uses the confirmed name without generating a placeholder', () => {
+  const create = renderSidebarWith([collection('c1', 'Films'), collection('c9', 'New Collection')])
   fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
-  expect(onCreateCollection.mock.calls[0]?.[0].name).toBe('New Collection 2')
-
-  // The same default is still free inside Films.
-  fireEvent.contextMenu(screen.getByText('Films'))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'New Subcollection' }))
-  expect(onCreateCollection.mock.calls[1]?.[0]).toEqual({
-    name: 'New Collection',
-    parent_id: 'c1',
-  })
+  expect(create).not.toHaveBeenCalled()
+  confirmCollection('Documentaries')
+  expect(create.mock.calls[0]?.[0]).toEqual({ name: 'Documentaries', parent_id: null })
 })
 
 test('right-clicking a collection opens its rename box', () => {
@@ -364,4 +375,31 @@ test('a rename raised from the grid unfolds the branch it has to reach', () => {
   )
 
   expect(screen.getByRole('textbox')).toHaveValue('Deeper')
+})
+
+// Cancelling a new collection never persists a placeholder or deletes an existing collection
+test('Escape cancels a collection draft without issuing a create', () => {
+  const create = renderSidebar()
+  fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(create).not.toHaveBeenCalled()
+  expect(screen.getByText('Films')).toBeInTheDocument()
+})
+
+// A rejected name retains the draft and focuses its field for correction
+test('a failed create keeps the draft name and allows cancellation without deleting anything', () => {
+  const create = renderSidebar()
+  create.mockImplementationOnce((_payload, callbacks) =>
+    callbacks.onError(new Error('Name already exists')),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+  confirmCollection('Existing name')
+  expect(screen.getByRole('alert')).toHaveTextContent('Name already exists')
+  const input = screen.getByRole('textbox', { name: 'Collection name' })
+  expect(input).toHaveValue('Existing name')
+  expect(input).toHaveFocus()
+  fireEvent.keyDown(input, { key: 'Escape' })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(create).toHaveBeenCalledTimes(1)
+  expect(screen.getByText('Films')).toBeInTheDocument()
 })

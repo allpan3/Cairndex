@@ -31,15 +31,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   now leads with a sidebar toggle and ends with an inspector toggle, each showing
   whether its panel is open. Their menu shortcuts are now <kbd>⌘S</kbd> and
   <kbd>⌘I</kbd> (previously <kbd>⇧⌘S</kbd>/<kbd>⇧⌘I</kbd>).
-- **Item size, not card size.** The View menu's zoom items are *Increase Item
-  Size* / *Decrease Item Size*, because the zoom drives card width in the grid
+- **Item size, not card size.** The View menu's zoom items are _Increase Item
+  Size_ / _Decrease Item Size_, because the zoom drives card width in the grid
   layouts and row height in the list ones. They now also apply to the File
   Browser, which keeps its own zoom and previously ignored them.
 - **New Folder moves to the menu bar.** It leaves the File Browser toolbar for
   **File ▸ New Folder**, enabled only while a folder can actually be created in
   the directory on screen. The listing's context menus keep the same item.
 - **One Full Screen item, showing <kbd>⌃⌘F</kbd>.** The View menu offered two
-  *Enter Full Screen* entries — ours and one AppKit adds itself, at
+  _Enter Full Screen_ entries — ours and one AppKit adds itself, at
   <kbd>🌐F</kbd>. Binding ours to the system action removed the duplicate but
   left the system's shortcut on display, because AppKit substitutes its own item
   and hides the app's. The shell now registers the AppKit default that stops
@@ -77,8 +77,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   retains registration and blocks background reacquisition, with a retry state
   when draining or database closure has not finished.
 
-- **A per-folder sort in the File Browser.** Its sort pane now offers *Remember
-  sort per folder*, the counterpart to the Bundle Browser's per-collection
+- **A per-folder sort in the File Browser.** Its sort pane now offers _Remember
+  sort per folder_, the counterpart to the Bundle Browser's per-collection
   scope: each directory keeps its own field and direction, and a folder with
   none yet inherits the global sort, so turning it on never changes what is
   already on screen. The flat unbundled queue is not a folder, so it keeps the
@@ -89,6 +89,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- New collections remain drafts until Create; cancellation leaves no placeholder.
+  Dialog Escape, Tab containment and focus return respect nested overlays, and
+  failed collection creation retains the entered name for correction.
 
 - Listing keyboard selection keeps a range anchor, follows virtualized rows,
   and limits Select All to the focused listing's loaded items. Editing fields
@@ -476,7 +480,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   arithmetic, so it should matter most for a library on network storage, where each
   round trip costs far more than it does on a local disk.
 - **A file showed one name in the File Browser and another inside its bundle.**
-  The bundle's file list, the inspector and the viewer render a *stored copy* of
+  The bundle's file list, the inspector and the viewer render a _stored copy_ of
   the filename, and the copy could drift: three separate code paths move a file's
   path — a rename Cairndex performs, a rename it discovers during a scan, and a
   missing file repaired by hand — and each one that forgot to update the copy left
@@ -514,7 +518,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   works wherever it means something — two or more videos split per video with
   sidecars following their own, and an image-only bundle splits per file.
 - **An "Add to …" suggestion sat outside the collection it was joining.** A new
-  file in `Studios/StudioAlpha/` showed up under *Studios*, beside that
+  file in `Studios/StudioAlpha/` showed up under _Studios_, beside that
   collection rather than inside it — reading as unrelated to the very bundle it
   adds to. Two causes, both fixed: an addition was pinned to the top level
   regardless of where its files live, and the collection its target bundle
@@ -522,7 +526,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   somewhere else. An addition now surfaces where the bundle it joins already
   lives, falling back to its own folder when that bundle is in no collection.
 - **A tooltip could stay on screen after its button was clicked.** Clicking is
-  what moves the row, and since nothing makes the pointer *leave* the button, no
+  what moves the row, and since nothing makes the pointer _leave_ the button, no
   hover-out ever fires — so the tooltip hung there at its old position, showing
   the new label. It is now dismissed on click, and a position computed for a label
   that has since changed is never shown.
@@ -532,7 +536,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   themselves into the viewport — and a disabled Narrow/Widen still explains
   itself, which is exactly when you want it to.
 - **A merged collection could lose its files.** Merging a collection whose
-  bundles live in subfolders leaves one bundle whose folder is the *parent* — a
+  bundles live in subfolders leaves one bundle whose folder is the _parent_ — a
   folder with no media of its own. That row was offered Narrow/Widen anyway, and
   using it deleted the row while the suggester had nothing to put back, so both
   files dropped out of the plan silently and could no longer be bundled. The
@@ -549,7 +553,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bundle↔collection conversions all survive an adjustment to some other folder.
   The adjusted folder itself comes back as fresh (checked) suggestions, which is
   what asking to re-group it means. Selection is additionally tracked by what a
-  suggestion *contains* rather than by its row id, as a second line of defense.
+  suggestion _contains_ rather than by its row id, as a second line of defense.
 
   An explicit **Suggest grouping** still starts from a clean slate — that is
   a fresh start rather than an adjustment.
@@ -588,7 +592,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   **Mounts are named for what they hold.** The container path is `/libraries`,
   with one mount per share beneath it (`/libraries/main`, `/libraries/archive`),
   replacing the single `/storage/media` — which named the wrong thing twice
-  over: a mount holds *libraries*, not "media", and it holds as many as you
+  over: a mount holds _libraries_, not "media", and it holds as many as you
   care to make. Nothing in the server or the web app referred to the old path;
   it was a deployment convention throughout, and the host-side variable is now
   `CAIRNDEX_LIBRARY_PATH` to match.
@@ -597,14 +601,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   library**: one mount can hold any number of libraries, created live in the
   app with no compose change and no restart, and you edit the compose file only
   when files sit somewhere the container cannot see at all. Mounting each share
-  as a *child* of `/libraries` is what makes that cheap — adding a second share
+  as a _child_ of `/libraries` is what makes that cheap — adding a second share
   later never moves the first, and moving one would orphan every library
   registered inside it, since the registry records the path the container saw.
   The startup preflight follows: it now warns when nothing is mounted at all
   (the first-run mistake) and checks each mount separately.
 
   **If you ran an earlier build of this, re-register your libraries.** A server
-  records each library under the path *it* saw, so one registered at
+  records each library under the path _it_ saw, so one registered at
   `/storage/media` reads as "currently unavailable" once the mount moves — the
   library package itself is untouched and re-registering at the new path
   restores it, along with everything it knows. The containerized dev stack keeps
@@ -626,13 +630,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   CI runs, and only then pushed — the second build reuses the layer cache, so
   the gate costs seconds. Publishing first would leave a broken image pullable
   in the gap, with `:latest` already moved.
+
 - **Turn a suggested bundle into a collection, and back.** The suggester decides
   from filenames alone whether a folder holds one thing or several, and it gets
   it wrong in a way Narrow could not fix: a folder whose files carry explicit
-  part markers reads as a single bundle at *every* stem sensitivity, so there
+  part markers reads as a single bundle at _every_ stem sensitivity, so there
   was no way to say "this folder is a collection". Each suggestion now carries a
-  compact split/merge icon button (tooltip: *Make this a collection of bundles
-  instead* / *Make this one bundle instead*), matching the destination toggle
+  compact split/merge icon button (tooltip: _Make this a collection of bundles
+  instead_ / _Make this one bundle instead_), matching the destination toggle
   beside it.
 
   Converting to a collection splits the folder into one bundle per video, with
@@ -703,7 +708,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   they belong to; they now sit on its first line.
 - **Narrow/Widen tooltips say what they do to which folder** — "Folder Trip
   (matching: balanced) — split into more bundles by matching more of each
-  filename". The pair belongs to a *folder*, and is attached to whichever row
+  filename". The pair belongs to a _folder_, and is attached to whichever row
   speaks for that folder, which is a collection row sometimes and a bundle row
   other times; the old "stem matching" wording made that read as two unrelated
   controls.
@@ -832,8 +837,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Save a contact sheet from anywhere a video is** — the File Browser, a
   bundle's album grid, and the bundle inspector's file list, not just the open
-  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1600, 2048,
-  2560) together, and says what the two add up to: the cell size, which is what
+  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1600, 2048, 2560) together, and says what the two add up to: the cell size, which is what
   actually decides whether a frame is legible. The black header now prints three
   compact rows: File Name; Details with size · duration · resolution / frame
   rate; and Codec with video codec / bitrate · audio codec / bitrate / sample
@@ -931,7 +935,7 @@ library is served by one machine at a time, enforced by a lease.
 - **A collection's description is reachable from the sidebar.** Opening a
   collection there now shows its inspector, so the description sits where a
   bundle's notes do rather than only appearing when you select a collection
-  *card*.
+  _card_.
 
 - **The tag picker takes the keyboard.** Enter accepts the single match, or
   creates what you typed; either way the field clears and the picker stays open
@@ -1104,7 +1108,6 @@ library is served by one machine at a time, enforced by a lease.
   so anything sharing them — a video starting, most visibly — queued behind frame
   extractions nobody was looking at. Thumbnails now load only once on screen.
 
-
 - **Dropping a file anywhere but a drop target no longer replaces the app with
   the file.** In the desktop shell an OS drop lands as a plain browser drop, and
   any surface without a handler let the webview navigate to the dropped file
@@ -1169,7 +1172,7 @@ library is served by one machine at a time, enforced by a lease.
   guesses, and never leaves a file whose recorded location is quietly wrong.
 
   A name that is already taken **asks** rather than failing: nothing has moved
-  when the prompt appears, and *Keep both* adds `(2)`. Replace is deliberately
+  when the prompt appears, and _Keep both_ adds `(2)`. Replace is deliberately
   not offered yet — it is defined as move-the-old-one-to-the-trash first, and
   the trash arrives in a later slice; until then there would be no way back.
 
@@ -1193,7 +1196,7 @@ library is served by one machine at a time, enforced by a lease.
   permissions wall on a share), the rest still move and the toast says which one
   stayed behind.
 
-  *Not yet:* dragging entries onto a folder to move them — the menu is the way
+  _Not yet:_ dragging entries onto a folder to move them — the menu is the way
   in for now.
 
 - **Write mode — delete to a trash, and Replace** (plan 4 W4). **Deleting never
@@ -1203,14 +1206,14 @@ library is served by one machine at a time, enforced by a lease.
   the trash lives inside `.cairndex/` it travels with the library — copy the
   folder to another machine and its trash comes too.
 
-  A restored file is the *same* file: same id, same bundle, same cover, same
+  A restored file is the _same_ file: same id, same bundle, same cover, same
   subtitles, same thumbnails. Deleting a folder takes everything in it as one
   deletion, and Put back returns the whole thing in one action rather than file
   by file.
 
   **Replace now exists**, in the rename collision prompt, and it is not an
   overwrite: the file being replaced is moved to the trash first, so the choice
-  stays reversible. Undoing a Replace brings back *both* files. This is why the
+  stays reversible. Undoing a Replace brings back _both_ files. This is why the
   trash was built before the button was offered.
 
   **Empty Trash is the only action in write mode with no way back** — it says so,
@@ -1218,7 +1221,7 @@ library is served by one machine at a time, enforced by a lease.
   then; there is no automatic expiry.
 
   Two smaller things that matter more than they sound: a trashed file is **not**
-  reported as *missing*, so scanning does not confuse "you deleted this" with
+  reported as _missing_, so scanning does not confuse "you deleted this" with
   "this vanished"; and the trash stays visible when write mode is switched
   off — the sidebar entry remains as long as anything is in it and the view
   turns read-only, with Put back and Empty Trash waiting for write mode to come
@@ -1297,7 +1300,7 @@ library is served by one machine at a time, enforced by a lease.
 ### Internal
 
 - **Documentation-only changes no longer run CI.** `paths-ignore` covers
-  `docs/**`, `**/*.md`, `LICENSE` and `.gitignore`; a commit touching docs *and*
+  `docs/**`, `**/*.md`, `LICENSE` and `.gitignore`; a commit touching docs _and_
   code still runs everything. About half this repository's commits touch only
   docs, and nothing in CI validates prose. `workflow_dispatch` runs the full
   matrix on demand, and `desktop-macos` gained a 30-minute timeout so a hung
@@ -1321,7 +1324,7 @@ library is served by one machine at a time, enforced by a lease.
   binaries — same filenames, no way to tell them apart.
 
 - **`build_sidecar.py` verifies the bundle's architecture.** The checksum gate
-  proves the *ffmpeg* matches the pin for `--platform`; it cannot see an arm64
+  proves the _ffmpeg_ matches the pin for `--platform`; it cannot see an arm64
   sidecar staged with a correctly-pinned Intel ffmpeg, which passes every digest
   check and produces an app that dies on launch. That is the mistake a
   two-architecture matrix makes, so the build now reads the frozen executable's
@@ -1415,7 +1418,7 @@ library is served by one machine at a time, enforced by a lease.
 
   In the main grid, right-clicking empty space now offers a collection **at the
   level you are looking at** — "New Collection" in the All view, "New
-  Subcollection" inside a collection — from *both* the collections section and the
+  Subcollection" inside a collection — from _both_ the collections section and the
   contents section below it, since a collection with no subcollections yet has no
   collections section to aim at. The Collections heading and its run-out in the
   sidebar offer the same, and the desktop shell gains **File → New Collection**
@@ -1445,7 +1448,7 @@ library is served by one machine at a time, enforced by a lease.
   gets the whole player shell, minus what genuinely needs a file row: no
   subtitles, storyboard, chapters, or saved position, and no server-side
   remux/transcode, so an exotic codec fails exactly as it did before. A file that
-  *is* indexed behaves identically to opening it from its bundle, resume point
+  _is_ indexed behaves identically to opening it from its bundle, resume point
   included.
 
 - **Date orders belong to Recent, and new bundles arrive at the front.** Date
@@ -1453,7 +1456,7 @@ library is served by one machine at a time, enforced by a lease.
   were a second route to what Recent is for. Every other view sorts by Manual,
   Title, Rating, Size or File Count. In manual order, a bundle nobody has dragged
   yet now sorts newest-first rather than oldest-first, so what was just imported
-  appears at the front instead of the end of the library. A group that *has* been
+  appears at the front instead of the end of the library. A group that _has_ been
   dragged keeps its explicit order untouched.
 
 - **A file's line now names what it is, not the role the scanner guessed.**
@@ -1480,7 +1483,7 @@ library is served by one machine at a time, enforced by a lease.
   the window, as a native toolbar does. Browser tabs are unaffected.
 
 - **"Recently Added" is now "Recent", and picks its date.** It ranks by **Date
-  Added**, **Date Modified**, or **Date Opened** — *which* date is the whole
+  Added**, **Date Modified**, or **Date Opened** — _which_ date is the whole
   choice the view offers, so its menu holds those three and nothing else. Sorting
   it by Title or Size only produced a second All view under a misleading name
   (the server treats `recent` as All; only the ordering differs), and the
@@ -1503,7 +1506,7 @@ library is served by one machine at a time, enforced by a lease.
 ### Fixed
 
 - **Bundles can be reordered in the All view.** It was disabled on the grounds
-  that "reordering everything is meaningless", but All *is* the global manual
+  that "reordering everything is meaningless", but All _is_ the global manual
   order — the one new bundles now arrive at the front of — so arranging it is
   exactly what someone curating a library wants. Only the flattened
   subcollection view stays fixed: its cards span several parents, so a drag there
@@ -1541,13 +1544,13 @@ library is served by one machine at a time, enforced by a lease.
   comfortable 63px, but 28% of a 29px row is 8px, so nesting kept winning drags
   meant as reorders — the edges are now at least 10px while the middle keeps a
   third of the row for nesting. And a row with its children showing now draws the
-  seam *below* those children, where the next sibling actually begins, instead of
+  seam _below_ those children, where the next sibling actually begins, instead of
   tight under the row where it read as "make this a child".
 
 - **One seam per drop location.** A gap between two cards was describable from
   either side — "after the left one" or "before the right one" — so a single
   insertion point presented as two seams that did the same thing. A drop now
-  resolves to a *destination* (the item the block lands in front of, or the end
+  resolves to a _destination_ (the item the block lands in front of, or the end
   of the group) and exactly one seam paints for it, wherever the pointer happens
   to be within that gap's reach. Nesting is untouched: a card's middle still
   rings for "make this a subcollection". Applies to the collection cards and the
@@ -1555,7 +1558,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Reordering collections no longer sometimes does nothing.** The owner's
   recording caught it: the insertion line promised "before Archive", but the release
-  landed two pixels into the *gutter* between cards — territory the cards didn't
+  landed two pixels into the _gutter_ between cards — territory the cards didn't
   own. It fell to an old surface handler that resolved drops by the grid's
   vertical midpoint, picked the last sibling as the edge, and when that sibling
   was the dragged card itself, silently discarded the move. The collection grid
@@ -1566,7 +1569,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Cards select on press, not release.** Selection used to land on mouse-up —
   so a drag that began on an unselected card swallowed the click that would have
-  selected it, and the drag left with the *previous* selection. Pressing a card
+  selected it, and the drag left with the _previous_ selection. Pressing a card
   now selects it immediately; pressing a card that is already part of a
   multi-selection keeps the group (so the group can be dragged), and a plain
   click still collapses to just that card on release. Modifier clicks (⌘, ⇧)
@@ -1586,24 +1589,24 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Drag-reorder rebuilt around three rules, after a screen recording showed a
   drop scrambling cards it never touched.** The recording's toolbar read
-  "Manual ↓" — and *descending manual order* was the hole: the server resolves
+  "Manual ↓" — and _descending manual order_ was the hole: the server resolves
   and returns the order ascending, so painting its correct answer onto a
   reversed display shuffled the whole grid, and a reload (fetching descending
   again) disagreed with what had been painted. The rules now:
 
-  *Manual order has no direction.* An order arranged by hand is just the order;
+  _Manual order has no direction._ An order arranged by hand is just the order;
   offering ascending/descending over it created two readings of one
   arrangement, and a drag can only be correct under one of them. The direction
   toggle is gone for Manual, and a stored "manual descending" preference is
   read as plain manual.
 
-  *What the line shows is what the drop does.* One computation over the cursor
+  _What the line shows is what the drop does._ One computation over the cursor
   position now produces both the blue insertion indicator and the committed
   move — cards no longer handle reorder drops at all, so there is nothing left
   to race and no second opinion. The indicator also clears when the drag leaves
   the grid.
 
-  *Rearranging the shelf doesn't edit the books.* The order writer now touches
+  _Rearranging the shelf doesn't edit the books._ The order writer now touches
   only rows whose position changed and carries their modified-time forward —
   previously each drag rewrote the entire scope, stamping every bundle in the
   library "modified just now" (quietly destroying Date Modified) and issuing
@@ -1612,7 +1615,7 @@ library is served by one machine at a time, enforced by a lease.
   drags. Overlapping drags are serialized so their results apply in commit
   order.
 
-- **A reorder no longer answers twice.** The move was settled by a *refetch*
+- **A reorder no longer answers twice.** The move was settled by a _refetch_
   after the write — a second answer to a question the write had already decided —
   so any disagreement between the client's guess and the server's order showed up
   as the row moving again half a second later, unprompted. Both reorder endpoints
@@ -1620,7 +1623,7 @@ library is served by one machine at a time, enforced by a lease.
   invalidated. One gesture, one request, one answer.
 
 - **Reordering collections sometimes did nothing at all.** The endpoint required
-  the client to send *exactly* the members of a sibling group, so a drag failed
+  the client to send _exactly_ the members of a sibling group, so a drag failed
   outright — silently — whenever the client's picture had drifted (a collection
   created, deleted, or moved elsewhere since the tree last loaded). It now takes
   the same move description bundles use and resolves it against the group as it
@@ -1628,7 +1631,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Superseded: a reorder appeared to trigger a second, unrelated one a moment later.** The
   optimistic update — the part that moves the card under the cursor before the
-  server answers — was applied to *every* cached listing rather than the one the
+  server answers — was applied to _every_ cached listing rather than the one the
   move belongs to. A drag inside one collection also rewrote the remembered order
   of the All view and every other cached collection, and each of those snapped
   back to the truth the moment it was next shown or refetched. Only the listings
@@ -1638,22 +1641,22 @@ library is served by one machine at a time, enforced by a lease.
   rebuilt.** Items landed one place off, jumped to the very start or end of the
   list, or did nothing at all.
 
-  *A drop on a card was handled twice.* The container's fallback handler — meant
+  _A drop on a card was handled twice._ The container's fallback handler — meant
   for drops in the margin — tested for cards with a selector that never matched
   the elements that carry the drop, so it fired for card drops as well and sent a
   second, contradictory move. The two raced, and the wrong one often won: that is
   the jump to an end.
 
-  *A drop in the gutter meant "an end".* Anything not exactly on a card was read
+  _A drop in the gutter meant "an end"._ Anything not exactly on a card was read
   as "send it to the start or the finish", including the few pixels between two
   tiles — the very place the insertion line invites the drop. Off-card drops now
   resolve to the nearest gap.
 
-  *The client decided the order.* It sent the whole list it could see and the
+  _The client decided the order._ It sent the whole list it could see and the
   server numbered it 0..n-1, which is only right when the client holds the entire
   collection. Browsing is paged, so a drag in anything larger than a page
   renumbered the loaded window on top of the order values the rest still held,
-  and bundles the user could not even see moved. The client now sends the *move*
+  and bundles the user could not even see moved. The client now sends the _move_
   — what was dragged, and what it was dropped in front of — and the server
   resolves it against the whole collection. The dragged ids also travel on the
   drag itself rather than in React state, so a drop no longer depends on a render
@@ -1678,13 +1681,13 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Dragging a collection to reorder it showed no insertion line.** The folder
   card's redesign clipped its own overflow, and the drop indicator is drawn in
-  the gap just *outside* the card — so it was clipped away, leaving a reorder
+  the gap just _outside_ the card — so it was clipped away, leaving a reorder
   drag with no sign of where it would land. The card no longer clips; the cover
   and the footer clip themselves, which is all that ever needed it.
 
 - **The window jittered between two sizes at one particular width.** The grid
   measures its scroll container to lay out columns, and that measurement excludes
-  a scrollbar — so at the width where content is *just* tall enough to need one,
+  a scrollbar — so at the width where content is _just_ tall enough to need one,
   showing the scrollbar narrowed the measurement, which relaid the cards shorter,
   which removed the need for the scrollbar, which widened it again, forever, at
   frame rate. The scrollbar's width is now always reserved, which makes the loop
@@ -1694,10 +1697,10 @@ library is served by one machine at a time, enforced by a lease.
 - **Cover art was intercepting the gestures meant for the card holding it.** A
   thumbnail is decoration, but the browser treated the image element as the
   thing being clicked, and WebKit then applied its own image behaviour on top:
-  grabbing a folder cover started a native *image* drag (a large translucent
+  grabbing a folder cover started a native _image_ drag (a large translucent
   copy of the artwork instead of the drag pill, ignoring the app's drag image
   entirely), right-clicking one opened the OS image menu instead of Cairndex's,
-  and macOS Live Text made the words recognised *inside* the picture
+  and macOS Live Text made the words recognised _inside_ the picture
   selectable — so a drag-select that crossed a cover highlighted text baked
   into the artwork rather than selecting items. Thumbnails and hover previews
   are now inert; the card or row beneath them owns every gesture. The real
@@ -1712,15 +1715,15 @@ library is served by one machine at a time, enforced by a lease.
   order. Any dragged collection that is an ancestor of the drop target is left
   behind instead of failing the whole drop on the server's cycle check.
   Clicking blank space now clears the selection in two places that ignored it:
-  the wide empty strip beside the *Subcollections* / *Contents* titles, and the
+  the wide empty strip beside the _Subcollections_ / _Contents_ titles, and the
   sidebar's own empty space.
 
 - **The macOS app bundle was invalidly signed, not merely unsigned.** Tauri only
   runs `codesign` when a signing identity is configured, and none was, so
   `Cairndex.app` shipped with no `_CodeSignature/CodeResources` — an executable
   carrying a bundle-style signature with nothing sealing its resources. macOS
-  rejects that as malformed (*"code has no resources but signature indicates
-  they must be present"*), which fails harder than an absent signature and
+  rejects that as malformed (_"code has no resources but signature indicates
+  they must be present"_), which fails harder than an absent signature and
   would have met the first person to download a release. It stayed invisible
   because Gatekeeper only assesses **quarantined** apps, and every build
   observed so far was local. `signingIdentity: "-"` now ad-hoc signs the
@@ -1877,7 +1880,7 @@ library is served by one machine at a time, enforced by a lease.
   are gone too: activation verifies reachability itself before committing.
 
 - **The sidecar bounds its graceful shutdown at 10 s** (review, P3). uvicorn's
-  default waits for open connections *indefinitely*, so one connection held
+  default waits for open connections _indefinitely_, so one connection held
   open at quit could push the shell past its 15 s grace into the kill fallback
   — the exact path that strands ownership leases and greets the next launch
   with a takeover prompt. The bound keeps the lifespan shutdown, lease release
@@ -1887,17 +1890,17 @@ library is served by one machine at a time, enforced by a lease.
   review, P1). The base moved only as a side effect of the reachability probe,
   so activating the local connection never pointed the app at the sidecar —
   requests kept going to the previous remote server (or nowhere on first run) —
-  and a *failed* activation left every request pointed at the dead server it
+  and a _failed_ activation left every request pointed at the dead server it
   had just probed while the UI still showed the old connection. `verifyServer`
   is now a pure probe, the base moves in activation's commit step for both
-  connection kinds, and the compensation path can restore a *local* previous
+  connection kinds, and the compensation path can restore a _local_ previous
   connection (it used to skip it entirely because local stores no URL). Pinned
   by a new suite that asserts where requests actually resolve after each
   activation outcome — the property every earlier test mocked away.
 
 - **A lease heartbeat no longer surrenders over a transient read failure**
-  (review, P2). A failed *write* was already tolerated ("an offline mount is
-  not a lost lease — nobody else can reach it either"), but a failed *read*
+  (review, P2). A failed _write_ was already tolerated ("an offline mount is
+  not a lost lease — nobody else can reach it either"), but a failed _read_
   was folded into "corrupt" and surrendered — unmounting the library and
   cancelling its jobs over one NFS/SMB blip, then showing a takeover prompt
   for the user's own healthy library. `read_lease` now distinguishes an I/O
@@ -1975,7 +1978,7 @@ library is served by one machine at a time, enforced by a lease.
   `docs/development.md`.
 
 - **A confirmed takeover now waits ~80 s instead of 120 s, and says so.** The
-  observation window was two full heartbeat intervals; only the *first* carries
+  observation window was two full heartbeat intervals; only the _first_ carries
   the guarantee (a takeover starts at an arbitrary point in the holder's cycle,
   so a whole interval must pass before a live holder is certain to have written).
   The second was margin for a write that has to propagate through a cloud-sync
@@ -1992,7 +1995,7 @@ library is served by one machine at a time, enforced by a lease.
   other fallible step, and a failure leaves the previous connection untouched.
 
 - **Fixed: opening a folder your current server already serves.** ⌘O started a
-  *second* server against the same folder, which the ownership lease then
+  _second_ server against the same folder, which the ownership lease then
   correctly refused — reporting the library as "open on <your own machine>",
   since both servers were on it. The shell is now told which libraries the
   current server already has, and reports a match instead of opening anything;
@@ -2001,7 +2004,7 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Fixed: re-opening an already-registered library did not switch to it.** The
   library to show was handed over through a slot consumed on remount, but
-  activating the connection that is *already* active changes no id and remounts
+  activating the connection that is _already_ active changes no id and remounts
   nothing, so the second open appeared to do nothing. The queue is now observable
   in its own right.
 
@@ -2072,18 +2075,18 @@ library is served by one machine at a time, enforced by a lease.
 - **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
   the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus
   `fetch_ffmpeg.py` for pinned, checksum-verified static media binaries and a
-  `smoke_test.py` that runs the *packaged* bundle over HTTP. A new CI job builds
+  `smoke_test.py` that runs the _packaged_ bundle over HTTP. A new CI job builds
   and smoke-tests it on every push, because the unit suite imports from source
   and structurally cannot catch a frozen bundle missing a dynamically resolved
   import. `cairndex.sidecar` binds an ephemeral loopback port and announces it on
   stdout, refuses to start without its owner token, and releases its ownership
   leases on SIGTERM. The static-ffmpeg source is not yet pinned — choosing it is
   an owner decision (ADR-0019 §3) — so builds currently use `--skip-ffmpeg`.
-  *(Superseded: both macOS architectures are pinned as of the entry at the top
-  of this file. `--skip-ffmpeg` is now the Linux-only path.)*
+  _(Superseded: both macOS architectures are pinned as of the entry at the top
+  of this file. `--skip-ffmpeg` is now the Linux-only path.)_
 
 - **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
-  `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback
+  `CAIRNDEX_LOCAL_TOKEN` puts the server in _sidecar mode_, requiring a loopback
   owner token on every API request (health stays open so the shell can wait for
   readiness). It replaces the ADR-0015 pairing ceremony, which has nobody to
   approve it for a process the shell started itself — but deliberately does
@@ -2128,7 +2131,7 @@ library is served by one machine at a time, enforced by a lease.
   single-instance on a warm start. Links only resolve from a packaged,
   LaunchServices-registered app. A long maintenance run that finishes while the
   window is unfocused now posts a user notification and a dock badge, coalesced
-  per *run* rather than per job (`Update library` chains three jobs for one user
+  per _run_ rather than per job (`Update library` chains three jobs for one user
   action); returning to the window clears the badge. A native save-dialog seam for
   future media exports (plan 1 §10 / M11) is present but unused — no export UI
   ships here.
@@ -2174,7 +2177,7 @@ library is served by one machine at a time, enforced by a lease.
   run on a second Mac or reach someone else's hands. The stated distribution model
   becomes built-from-source / ad-hoc signed, with Developer ID documented as an
   upgrade path. Note that a DMG is install ergonomics, **not** trust: an unsigned
-  DMG on another Mac still requires System Settings → *Open Anyway*.
+  DMG on another Mac still requires System Settings → _Open Anyway_.
 
 - **Viewer fullscreen is real window fullscreen in the shell (Plan 3 D5a).** The
   viewer is already a full-window overlay, so the shell now toggles the native

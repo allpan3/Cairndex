@@ -1797,7 +1797,7 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
   await expect.poll(() => deleteUrl).toContain('cascade=true')
 })
 
-test('the sidebar "+" creates a collection with an inline rename box', async ({ page }) => {
+test('the sidebar "+" creates a collection after its draft name is confirmed', async ({ page }) => {
   await mockApi(page)
   const state: { collections: Array<{ id: string; name: string; parent_id: string | null }> } = {
     collections: [],
@@ -1834,15 +1834,14 @@ test('the sidebar "+" creates a collection with an inline rename box', async ({ 
   await page.goto('/')
   await page.getByRole('button', { name: 'New collection' }).click()
 
-  // Created at the top level (no collection open), with the rename box
-  // focused and its placeholder name pre-selected for immediate typing.
-  const input = page.getByRole('textbox', { name: 'Rename New Collection' })
+  // The local draft is named before the collection is created at the top level
+  const input = page.getByRole('textbox', { name: 'Collection name' })
   await expect(input).toBeFocused()
-  await expect(input).toHaveValue('New Collection')
+  await expect(input).toHaveValue('')
   await input.fill('Documentaries')
   await input.press('Enter')
 
-  // The renamed collection stays visible in the sidebar tree, even with no
+  // The confirmed collection stays visible in the sidebar tree, even with no
   // bundles in it yet, and shows a 0 count.
   const row = page.locator('.sidebar .collection-row', { hasText: 'Documentaries' })
   await expect(row).toBeVisible()

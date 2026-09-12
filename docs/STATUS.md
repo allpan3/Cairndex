@@ -4,8 +4,10 @@
   `fix/library-ownership-lifecycle`. Keyboard selection retains its anchor,
   distinguishes focus from selection, traverses virtualized rows and scopes
   Select All to loaded listing items. Focused selection tests and browser
-  ordering/File Browser checks pass. Dialog, loading, navigation continuity
-  and production desktop qualification are the remaining parts of this group.
+  ordering/File Browser checks pass. Collection creation remains a local draft
+  until confirmation; dialog Escape and focus respect nested overlays. Focused
+  dialog tests and browser cancellation/creation checks pass. Loading, navigation
+  continuity and production desktop qualification remain in this group.
   See [everyday interactions](interactions.md).
 
 - Playback reliability (S09/I14–I16) is implemented on
@@ -550,7 +552,7 @@ pre-commit, pre-push and pull-request paths as the rest:
   scoping the pre-push hook rejects every branch's first push, which is how the
   bug was found: it rejected this branch, at 818 paths and 314 MB of history.
 
-What the gate *prints* is a sentence from a closed table plus an integer, never a
+What the gate _prints_ is a sentence from a closed table plus an integer, never a
 string built from a scanned object. The first version echoed the finding, and
 CodeQL flagged it (`py/clear-text-logging-sensitive-data`, high) before the
 branch was merged — a path can itself be user data, and the only thing keeping
@@ -594,13 +596,13 @@ one pass, all UI:
    Trash). Their accelerators moved to ⌘S / ⌘I.
 4. **Full Screen is the system's predefined item.** The custom `fullscreen`
    entry is gone from `keymap.json`; the View menu carries
-   `{"predefined": "fullscreen"}` with the label *Enter Full Screen* and the
+   `{"predefined": "fullscreen"}` with the label _Enter Full Screen_ and the
    OS's ⌃⌘F. AppKit adds its own item unless one is bound to
    `toggleFullScreen:`, which is why the owner saw two. **Not verified live** —
    see the open item below.
 5. **Item size applies to the surface in view.** `zoom-in`/`zoom-out` are
    handled by `FileList` while it is mounted (its own `FILE_ZOOM_MIN/MAX`), and
-   `App` ignores them in file mode. The menu labels say *Item Size*, since the
+   `App` ignores them in file mode. The menu labels say _Item Size_, since the
    zoom drives row height in list layouts as well as card width.
 6. **New Folder left the toolbar for File ▸ New Folder**, gated by a new
    `new-folder` enablement group (`set_new_folder_menu_enabled` in Rust,
@@ -676,14 +678,14 @@ rejected).
 
 **Item 4 is now fixed, and the earlier diagnosis was wrong.** A Cocoa probe that
 dumps `NSApp.mainMenu` after launch (macOS 26.6) shows AppKit never touches the
-app's key equivalent: it *adds* its own Globe-F item and sets `hidden=1` on ours.
+app's key equivalent: it _adds_ its own Globe-F item and sets `hidden=1` on ours.
 
 ```text
 [3] Enter Full Screen  action=toggleFullScreen:  keyEq='f'  mods=0x800000 FUNCTION(Globe)  hidden=0
 [4] Enter Full Screen  action=toggleFullScreen:  keyEq='f'  mods=0x140000 Control+Command   hidden=1
 ```
 
-Registering `NSApplicationEnableGlobeShortcuts` as false *before* `NSApplication`
+Registering `NSApplicationEnableGlobeShortcuts` as false _before_ `NSApplication`
 exists stops the substitution, leaving one visible item at ⌃⌘F with the system
 action intact — verified at launch, after activation, after a menu update, and
 after forcing AppKit's own insertion call. The `Info.plist` route does nothing;
@@ -700,13 +702,14 @@ way. **Do not launch GUI probes without asking** — and note the finding here
 came from menu dumps already written to disk, not from the parts still running.
 
 A sixth pass added the **File Browser's per-folder sort** (`FilePrefs.sortScope`
-+ `folderSorts`, keyed by the library-relative path), mirroring the Bundle
-Browser's per-collection scope; `SortPref` is now generic so the file sorts can
-use it, and `SortControl` takes the scope checkbox's wording. Writing its test
-surfaced a deliberate behaviour worth knowing: with a picker open, the first
-click outside only dismisses it (`usePopover` stops that click in the capture
-phase), so a test that opens the pane must close it before clicking anything
-else.
+
+- `folderSorts`, keyed by the library-relative path), mirroring the Bundle
+  Browser's per-collection scope; `SortPref` is now generic so the file sorts can
+  use it, and `SortControl` takes the scope checkbox's wording. Writing its test
+  surfaced a deliberate behaviour worth knowing: with a picker open, the first
+  click outside only dismisses it (`usePopover` stops that click in the capture
+  phase), so a test that opens the pane must close it before clicking anything
+  else.
 
 A fifth pass: the **zoom slider moved** ahead of the right-hand buttons; the
 **sort pane narrowed** to 160px, sized to its options rather than to the scope
@@ -748,7 +751,7 @@ desktop shell was compiled and launched in dev mode to prove the new predefined
 menu item builds without panicking.
 
 **Item 4, a second wrong conclusion (superseded — see ADR-0028).** The owner's
-build shows a single *Enter Full Screen* displaying 🌐F, and this was read as
+build shows a single _Enter Full Screen_ displaying 🌐F, and this was read as
 AppKit normalizing the shortcut of whichever item carries `toggleFullScreen:`,
 making one-item-and-⌃⌘F impossible. AppKit does no such thing: it adds its own
 item and hides ours, and switching that substitution off gives both.
@@ -771,7 +774,7 @@ tables, `moments` and `moment_tags`, added to an existing library on open.
 `playback_progress` denormalizes it, and maintained by the same re-parent hook —
 so the whole lifecycle came free: the cascade handles a dropped file row, move
 repair preserves `AssetFile.id` so a rename keeps the moments, trashing repoints
-rather than deletes, and removing a *present* file from a bundle carries its
+rather than deletes, and removing a _present_ file from a bundle carries its
 moments to the one-file bundle it is re-staged into.
 
 **A range moment is an loop pair**, which is what makes the owner's two asks one
@@ -789,15 +792,15 @@ and survive a pause" was never a state that meant anything.
 - [ADR-0026](adr/0026-armed-range-loop.md) — an armed range loop confines ordinary
   playback, Space included, and survives a pause. This **extends** the owner's
   2026-08-16 decision that a marked span must not redefine the play button, on
-  the reading that what was rejected was the *quiet* redefinition. The ADR records
+  the reading that what was rejected was the _quiet_ redefinition. The ADR records
   the fallback if the owner would rather keep the older rule: it is a two-line
   change to the pause handler.
 
 **One departure from the approved design, made while building.** §5.1 planned an
-empty state wherever the section appears. An unmarked video now shows *nothing*
+empty state wherever the section appears. An unmarked video now shows _nothing_
 in a pane with no playhead: the planned hint would have put a permanent "press B
 while playing" line — and its height — on every video bundle's rail, in a pane
-where `B` does nothing. A bundle that *has* moments shows them in both rails.
+where `B` does nothing. A bundle that _has_ moments shows them in both rails.
 
 **One bug fixed on the way, found by the new e2e and not specific to this
 feature.** `ContextMenu` dismissed itself: clicking a row's `⋯` near the edge of a
@@ -810,7 +813,7 @@ scrolling had the same fragility.
 after all.** Owner: it sits on the first frame for about a second, and that frame
 is not even inside the range. Measuring rather than guessing separated two causes.
 About 340ms of a ~400ms wait was two of our own constants — an arm delay paid
-*before* anything loaded, then a fade after it was already playing — and those are
+_before_ anything loaded, then a fade after it was already playing — and those are
 now 100ms and 60ms. The rest was inherent to streaming the original: an accurate
 seek makes the decoder run forward from the preceding keyframe (14ms landing just
 after one, 123ms just before the next, on 1080p/30fps, and worse with resolution
@@ -821,13 +824,13 @@ range.
 So **two pre-made artifacts** (`media/moment_previews.py`), 480px, cached under
 `.cairndex/cache/moment-previews/`.
 
-- **A poster frame** for *every* moment, decoded at the marked instant, queued by
+- **A poster frame** for _every_ moment, decoded at the marked instant, queued by
   the save rather than the first hover — it is the picture rather than the motion,
   and one frame is a keyframe seek and a JPEG (~1KB). This is the fix for the
   wrong-frame report, and the whole fix for a **frame** moment, which had only the
   stale tile and no second act to correct it.
 - **A clip of the span** for a range, muted and faststart, keyed by the source
-  fingerprint *and* the span. Plays from byte 0, and its own first frame is the
+  fingerprint _and_ the span. Plays from byte 0, and its own first frame is the
   in-point too. Same 1080p source, hover to first moving frame: **385ms streaming,
   181ms from the clip**, 8-84KB per five-second span. Cut lazily on first hover
   (owner's choice), since a range can fall back to streaming while it builds.
@@ -836,7 +839,7 @@ Both routes answer 404 until the artifact lands and the request is what queues i
 so the client keeps what it can already show — no hover waits on ffmpeg, and the
 cache stays disposable (owner asked directly; there is a test for it). This
 reverses the GIF-removal decision from earlier on this branch: what was wrong
-there was *when* it ran, not *what* it made. Plan 7 §4.3 records all three
+there was _when_ it ran, not _what_ it made. Plan 7 §4.3 records all three
 attempts.
 
 **Three bugs worth remembering, all caught by verification rather than review.**
@@ -860,7 +863,7 @@ attempts.
 
 **A fourth bug, and this one was mine and new.** Owner: it saves, but it does not
 render until I reload the app. Queueing the poster from `POST /moments` as a
-**Starlette background task** was the cause: those run *before* FastAPI exits the
+**Starlette background task** was the cause: those run _before_ FastAPI exits the
 `yield` dependency that commits the library session, so a moment's own preview
 build held its own write invisible for as long as ffmpeg took. Proven by slowing
 the encode to 2000ms and watching the row stay invisible for 2121ms. The rail
@@ -874,11 +877,11 @@ too, for a milder version of the same hazard: a background task there delays the
 teardown of the library access dependency and so holds it across an ffmpeg run —
 the stranded-dependency shape ADR-0014's scoped sessions exist to avoid.
 Re-verified in the browser with the encode slowed to 3000ms: the row renders at
-55ms. The regression test asserts the POST returns *before* its build finishes and
+55ms. The regression test asserts the POST returns _before_ its build finishes and
 that the write is already listed in that window; it fails on the old behaviour.
 
 **And the last of the owner's pass: create and remove felt slow.** Neither moved
-the rail until the write had answered *and* a refetch after it had answered too;
+the rail until the write had answered _and_ a refetch after it had answered too;
 create additionally invalidated `bundle-tags`, `tag-counts` and `view-counts`,
 none of which a moment saved without tags can have changed. Now: remove is
 optimistic (rollback on error), create writes the row it was handed into the list
@@ -888,7 +891,7 @@ locally: press-to-row 64ms -> 52ms, and 5 requests -> 1. The local delta is smal
 because a loopback round trip is milliseconds; the requests removed are the ones
 that scale with library size, so the owner's machine should see more of it.
 
-Create is deliberately *not* optimistic ahead of the write, unlike `setTags`: the
+Create is deliberately _not_ optimistic ahead of the write, unlike `setTags`: the
 id comes from the server and the poster URL, the clip URL and the capture note
 that opens the comment box all need the real one, so a placeholder row would have
 to be swapped underneath an open editor. If one round trip still reads as a delay
@@ -909,7 +912,7 @@ the chrome idle out from under it, and the next click passed through to the vide
 and was spent waking the chrome. Every button in the bar had it; the `b` key never
 did, which is why frame moments seemed fine. `useIdleHide` now declines to idle
 while the pointer is on a control, which is the same root cause as the wheel-zoom
-case fixed earlier on this branch — that one was a *specific* wake source, this is
+case fixed earlier on this branch — that one was a _specific_ wake source, this is
 the general rule. Reproduced first (0 moments after one click, 1 after two), then
 fixed, then re-checked all four save paths — key/click/idle-click for a range and
 `b` for a frame — each saving exactly one moment of the right kind.
@@ -938,16 +941,16 @@ the same `apps/web` build that passed here.
 **Known gaps, deliberate (plan 7 §9).**
 
 - A moment needs an `AssetFile` row, so an unindexed File Browser path cannot
-  have one — the same limit clips already carry. An *unbundled* file does have a
+  have one — the same limit clips already carry. An _unbundled_ file does have a
   row and could show moments in the `FileInspector`; not built.
 - Seek-track markers are non-interactive. The track's own `pointerdown` scrubs,
   and a click target competing with it is a separate design problem.
 - No keys to step between moments (`Alt+←/→` was considered and left out); the
   rail is the way to jump. Cheap to add if the owner wants them.
-- No *Export this moment* — loading a span into the marks and using `Save GIF…`
+- No _Export this moment_ — loading a span into the marks and using `Save GIF…`
   already works in two steps.
 - Clips are cut on first hover, not at save time (owner's choice, 2026-08-30), so
-  the first hover of a *range* is the slow one. Posters are made on save, so the
+  the first hover of a _range_ is the slow one. Posters are made on save, so the
   picture is right from the first hover either way.
 - The seek-bar hover tooltip still reads a storyboard tile, which is correct for
   it: it follows the pointer over arbitrary times, where a moment has one fixed
@@ -964,7 +967,7 @@ were invisible to reading the diff and only appeared in a running app against a
 real file: a fill class resolving against the viewport, two cache artifacts
 colliding on a `with_suffix` sidecar, a background task holding its own write
 invisible, and chrome idling out from under a resting pointer. Two of those were
-*introduced by the fix for the previous one*. On anything that generates a cached
+_introduced by the fix for the previous one_. On anything that generates a cached
 artifact or touches the request lifecycle, budget for driving the real app rather
 than trusting the gates — and reproduce before fixing, because three of these had
 a plausible wrong diagnosis that testing killed.
@@ -989,7 +992,6 @@ settled 2026-08-28, built and merged 2026-08-29;
 Owner wants a folder of 1000 photos to sit in a bundle without filling the
 inspector and the grouping dialog with 1000 rows. Design 2026-07-28, questions
 settled 2026-08-28; [plan 6](plans/06-folder-as-bundle-member.md) holds both.
-
 
 The record of how it got here follows, kept because several entries are
 decisions with reasons rather than progress notes.
@@ -1037,7 +1039,7 @@ no frontend source changed in S1.
 **S2 is built too** (2026-08-28), and the feature is usable end to end: the rail
 draws one folder row in place of the files it covers, right-click collapses a
 file's directory or expands the folder back, double-click hands off to the File
-Browser *inside* that folder, and playing the bundle skips a folder's contents.
+Browser _inside_ that folder, and playing the bundle skips a folder's contents.
 
 Three things the build settled. Opening a folder needed its **own shell action**
 — `onLocateFile` lands in a file's parent and highlights it, which for a folder
@@ -1066,8 +1068,8 @@ still green from S1. Not run: Playwright, and the desktop gate (no Rust changed)
 
 **S3 is built** (2026-08-28), and it corrected plan 6's own §2. The design
 assumed the dialog's problem was a bundle proposal listing a thousand files; it
-is not. The suggester turns a thousand-photo folder into a *collection wrapping a
-thousand single-photo bundles*, and those thousand rows are the complaint —
+is not. The suggester turns a thousand-photo folder into a _collection wrapping a
+thousand single-photo bundles_, and those thousand rows are the complaint —
 annotating a bundle proposal could never fire, because a bundle proposal's files
 always come from exactly one directory. **Owner-confirmed answer:** above the
 threshold the folder becomes one bundle whose single member is the folder.
@@ -1112,10 +1114,10 @@ Gates on 2026-08-28: `ruff`, `ruff format`, `mypy` (175 files), `pytest`
 needed. Frontend untouched in S4.
 
 **Owner testing on a real library (2026-08-28) found two faults, both fixed.**
-The synthetic fixtures for S1–S3 all put the album *alone* in its folder, so the
+The synthetic fixtures for S1–S3 all put the album _alone_ in its folder, so the
 shape the plan was actually written about — a work whose extras live in a
 subfolder — was the one case never tested. A folder holding one video and an
-album subfolder was suggested as a *collection*, so the video became one bundle
+album subfolder was suggested as a _collection_, so the video became one bundle
 and the album another and the thing being looked at had no single row; it is now
 **one bundle**, its own media plus a folder row per album child. Merging is
 narrow on purpose: only when the folder's own media is a single subject and every
@@ -1138,7 +1140,7 @@ run with real CSS. Recorded rather than papered over.
 
 Owner also reported (2026-08-28) that **"List files" was the only way to see
 inside a proposed folder, and it had no way back** — so deciding whether a folder
-*should* be a folder meant destroying the suggestion to find out. Split into two
+_should_ be a folder meant destroying the suggestion to find out. Split into two
 controls: a disclosure that lists the folder's files read-only and changes
 nothing about the plan, and a button that now toggles both ways. Declining marks
 the row (`grouping_proposal_directories.expanded`) instead of deleting it, so the
@@ -1148,7 +1150,7 @@ plans database is deleted wholesale at every server start (ADR-0022 §5), so it 
 genuinely always at the current shape.
 
 A follow-up on the same report (2026-08-29): listing a folder's files pushed the
-folder row to the *bottom* of the list, where it read as an empty folder with no
+folder row to the _bottom_ of the list, where it read as an empty folder with no
 relation to the 73 rows above it. The rule is now one line — **a folder is
 anchored where its files begin** — which covers both states: collapsed, the row
 sits exactly where the files it replaces would have been; listed, it is a header
@@ -1156,7 +1158,7 @@ immediately above them, with the control that folds them back beside them. The
 listed files are indented under it so the run reads as that folder's contents.
 Ordering lives in `proposalEntries` with its own tests, rather than in the JSX.
 
-Owner-reported 2026-08-29: *Expand folder into the bundle* "seems irreversible".
+Owner-reported 2026-08-29: _Expand folder into the bundle_ "seems irreversible".
 It is not — **Collapse** appears on any of the expanded files — but the way back
 sits on a different row under a different name, with nothing on screen saying so.
 The rail's folder row now has a **disclosure**: its files show nested beneath it
@@ -1170,7 +1172,7 @@ the folder should stop being one member.
   real library on 2026-08-29 and reported the result good, so the number is
   validated against one library's shapes rather than merely guessed. Left open
   because it is one sample, and because it stays cheap to change: it only ever
-  decides what to *propose*.
+  decides what to _propose_.
 - ~~No Playwright coverage~~ **Closed 2026-08-29.** `e2e/grouping-folders.spec.ts`
   covers the class of fault that reached the owner: sibling rows share one
   indent, the attention bar is not clipped off a top-level row, a folder row sits
@@ -1183,7 +1185,7 @@ the folder should stop being one member.
   significant"). The rail's drag gesture has no visible affordance — grab cursor
   and tooltip only — so it added an invisible capability to one more row, and
   ordering inside a bundle barely matters for the shape the feature is for. If
-  reordering ever does matter, fix the missing affordance for *every* row first.
+  reordering ever does matter, fix the missing affordance for _every_ row first.
   Recorded here because plan 6 §4.5 reads like an obvious requirement and will
   otherwise invite rebuilding.
 - **Folder-level trash** (§4.6) still journals one entry per file. Moving a whole
@@ -1195,18 +1197,18 @@ the folder should stop being one member.
 Owner-tested throughout, and merged once they were satisfied.
 
 Three designs were considered in one session, and the first two were killed by
-the owner in a sentence each. *Folder as a bundle member* collides with
+the owner in a sentence each. _Folder as a bundle member_ collides with
 `product-brief.md:67/124` and with the owner's own requirement that every file in
-the folder be in the bundle. *Automatic grouping* cannot work at all: a movie
+the folder be in the bundle. _Automatic grouping_ cannot work at all: a movie
 folder (film + subtitles + poster + cover) and a mixed-media album are
 indistinguishable from file properties, because the difference is what the folder
-*means*. That left explicit user-chosen groups — [ADR-0024](adr/0024-directory-groups-in-bundles.md),
+_means_. That left explicit user-chosen groups — [ADR-0024](adr/0024-directory-groups-in-bundles.md),
 now **superseded** — which fell to the sharpest objection of the three: there was
 no answer to "where in the UI do I create a group?" that did not invent a new
 noun.
 
 The owner then proposed nesting bundles, and reconsidered that too as "kind of
-messy". The **accepted design is smaller**: a bundle member may be a *directory*,
+messy". The **accepted design is smaller**: a bundle member may be a _directory_,
 opened in the File Browser rather than entered, its files kept out of the
 playlist, never a cover, carrying no rating. Its contents stay indexed — an
 amendment made in review, because unindexed they would lose search, tags and
@@ -1229,7 +1231,7 @@ frontend, full-stack e2e, packaged sidecar, Desktop Rust (Ubuntu), Desktop shell
 
 The eleven commits it was written in were squashed to six before review, one per
 coherent change: the four grip-placement attempts folded into the note-reordering
-commit, whose message keeps *why* the grip ended up under the remove button
+commit, whose message keeps _why_ the grip ended up under the remove button
 rather than the route there, and the e2e assertion joined the grouping commit it
 belongs to. Verified content-preserving — the tree hash before and after the
 rewrite was identical (`1fd8aeee`) — and each of the five code commits
@@ -1240,9 +1242,9 @@ unrelated to each other; they are one branch because they are one review round.
 
 ### 1. Update pressed while another job runs
 
-The report was two things at once. The visible half: *"the new job's progress bar
-would overlay on top of the old one and the UI is broken."* The half behind it:
-*"storyboard generation is low priority. Scan should be prioritized."*
+The report was two things at once. The visible half: _"the new job's progress bar
+would overlay on top of the old one and the UI is broken."_ The half behind it:
+_"storyboard generation is low priority. Scan should be prioritized."_
 
 **The overlay was one slot holding two jobs.** Every maintenance flow reported
 its polled snapshots into a single `activeJob` state, on the assumption that one
@@ -1262,18 +1264,18 @@ client's own snapshots as the only source of rows. Enqueuing now nudges it.
 
 **Priority is two mechanisms, not one.** Ordering the queue
 (`registry/jobs.py:JOB_PRIORITY` — scan, then probe/thumbnail, then storyboard;
-FIFO within a class) only decides what starts *next*, which does nothing for the
+FIFO within a class) only decides what starts _next_, which does nothing for the
 case the owner actually hit: the long job is already running. So a running job
 also asks, at its checkpoints, whether more urgent work is waiting, and stands
 aside if it is (`JobYielded` → `requeue_after_yield`).
 
 Standing aside is deliberately neither a cancellation nor a failure. The row
-keeps its identity — so the client watching it sees it return to *waiting*, and
+keeps its identity — so the client watching it sees it return to _waiting_, and
 `get_or_create_queued_job` reuses it instead of stacking a second copy of the
 same pass behind it — and only the item in flight is rolled back. Counts reset
 because the resumed pass sweeps from the start again; every library-wide pass
 skips work that is already current, so what it re-reads is cheap. The check is
-raised only from the checkpoint path, so a pass stands aside *between* items
+raised only from the checkpoint path, so a pass stands aside _between_ items
 rather than mid-ffmpeg, and the urgent job waits at most one item.
 
 Worth knowing for next time: **a scan is not slow, so the fix is mostly
@@ -1281,13 +1283,13 @@ invisible.** Measured against a synthetic 300-clip library, a scan enqueued
 behind a forced storyboard pass showed
 `scan:running | storyboard:queued [paused while more urgent work runs]` within
 half a second, and the pass resumed immediately after. The Update button reads
-**Waiting…** rather than *Updating…* for that half second, because the job
+**Waiting…** rather than _Updating…_ for that half second, because the job
 already running keeps the worker until its next checkpoint.
 
 ### 2. The Collections heading
 
 It hid every collection. That is the one thing the gesture could do that nobody
-wants — those rows are the sidebar's main content — so it now folds the *tree*:
+wants — those rows are the sidebar's main content — so it now folds the _tree_:
 one click down to the top level, another back out to every level. A collection's
 right-click menu carries the same for its own branch (**Expand All / Collapse
 All Subcollections**), offered only where there is something under it to fold.
@@ -1300,7 +1302,7 @@ only has ancestors to unfold.
 
 ### 3. The grouping suggestion's confidence
 
-Removed at the owner's request: *"It's often wrong anyways."* Every bundle row
+Removed at the owner's request: _"It's often wrong anyways."_ Every bundle row
 carried its band in words — confident / likely / guess — and a wrong claim of
 certainty is worse than no claim.
 
@@ -1341,7 +1343,7 @@ scrollbar it must not cover, plus a 12px glyph: **18px**, down from the 26 the
 one-line box (34px, the shortest a note box gets) with 5px to spare: `×` at
 3–17px from the box top, the grip at 17–29px. Below 18 the glyphs stop being
 clickable targets or start sitting on the scrollbar, so the affordance that
-*added* a control also gave the text two pixels back.
+_added_ a control also gave the text two pixels back.
 
 Two smaller notes on it. **The glyph is an inline SVG, not `⠿`** — U+283F is not
 in every platform's default font, and `icons.tsx` exists precisely so an icon
@@ -1351,7 +1353,7 @@ the box, which is the one thing a note box exists for — the same reason the
 bundle's file rail uses pointer capture, and the gesture is now the same on
 both.
 
-The order is carried through `moveTo` as *indices*, not ids: notes are plain
+The order is carried through `moveTo` as _indices_, not ids: notes are plain
 strings and two of them can be identical (two empty draft boxes, most obviously).
 Per-note heights are permuted the same way, so a note arrives at its new position
 with its own height instead of inheriting whatever used to be there.
@@ -1361,7 +1363,7 @@ with its own height instead of inheriting whatever used to be there.
 **Gates:** `ruff check`, `ruff format --check`, `mypy src packaging`, and **1153
 backend tests** green (1 skipped); `npm run lint`, `format:check`, `typecheck`, **1004
 frontend tests**, and `build` green. Playwright frontend e2e: **133 passed**,
-with one player spec failing on each of two full runs — a *different* one each
+with one player spec failing on each of two full runs — a _different_ one each
 time, both passing when their spec runs alone, and no playback code is touched
 by this branch. **Not run:** the desktop Rust/Tauri gates (no Rust, Tauri or
 packaging file changed) and the full-stack e2e.
@@ -1409,7 +1411,7 @@ Checked for user data before the PR went public, since the owner asked and the
 repository is public: no library filenames, folder names, machine paths, or
 library names in the diff, the commit messages, or the PR body; every fixture is
 invented or pre-existing. One near-miss worth recording — the bundle title from
-the owner's screenshot was typed into a *scratchpad* profiling script rather than
+the owner's screenshot was typed into a _scratchpad_ profiling script rather than
 replaced with an invented name, and stayed out of git only because of where that
 file happened to live. Invent the fixture at the point of writing it, not at the
 point of committing.
@@ -1419,8 +1421,8 @@ commits; the PR description is the summary that reads top to bottom.
 
 **What the owner asked for.** Not the refactor it started as. The opening request
 was "a bundle identifies one root directory, its files must live in that
-directory or below", then narrowed to the goal behind it: *quickly assign a file
-to a bundle while importing it*, through either route — the File Browser's
+directory or below", then narrowed to the goal behind it: _quickly assign a file
+to a bundle while importing it_, through either route — the File Browser's
 drag-in/Add Files Here, or the Bundle Browser's `Add Files to Library…` — with
 good performance on a large library and **no live scan**. The owner explicitly
 dropped the root-directory concept: "we may not even need to explicitly record a
@@ -1445,9 +1447,9 @@ network-mounted storage, where it is a whole-table read versus a few index pages
 
 Both directions of the relation are now indexed:
 
-- *bundles enclosing a file* — `directory_path IN (folder, …ancestors)`, one
+- _bundles enclosing a file_ — `directory_path IN (folder, …ancestors)`, one
   probe per level, bounded to three levels up;
-- *files within a bundle's folder* — a half-open range, `>= dir + '/'` and
+- _files within a bundle's folder_ — a half-open range, `>= dir + '/'` and
   `< dir + '0'`, since `'/'` is 0x2F and `'0'` is the next byte, which bounds the
   subtree exactly (`Set1-old` sorts below it, `Set1x` above). Verified against
   both sibling-prefix shapes.
@@ -1457,7 +1459,7 @@ everything, so matching on it is evidence of nothing, and its subtree is the
 whole library.
 
 **The plan test asserts the index by name, not the absence of a scan.** Reverting
-to `LIKE` does *not* reliably produce `SCAN asset_files` — the planner may drive
+to `LIKE` does _not_ reliably produce `SCAN asset_files` — the planner may drive
 from `asset_bundles` and test each bundle's files instead, which is just as slow
 and reads as innocent. The first version of that test passed against the old
 spelling; it was rewritten and then confirmed to fail against it and pass once
@@ -1467,14 +1469,14 @@ restored.
 `app/importBundleOffer.ts`: a suggestion below 0.4 confidence, and a leader less
 than 0.05 ahead of the runner-up. The second is the owner's original worry —
 "a file system directory can contain multiple bundles so the path is not unique
-to a bundle" — and it is real: two bundles in one folder score *identically*, so
+to a bundle" — and it is real: two bundles in one folder score _identically_, so
 naming one in a toast would present a coin flip as a recommendation. Both cases
 remain available under **Add to Bundle…**, which applies no threshold.
 
 **Verified end to end in a browser**, against a throwaway library on a scratch
 `CAIRNDEX_DATA_DIR` (never the owner's own; no lease of a real library was
 touched). Dropping `reel-behind.mp4` into a folder holding two bundles offered
-*Add to "Alpha Reel"* beside *Undo*; taking it linked the file as `video_part`;
+_Add to "Alpha Reel"_ beside _Undo_; taking it linked the file as `video_part`;
 dropping a neutrally-named `IMG_4021.mp4` into the same folder offered nothing
 but Undo. All five imports 201, all five `suggest-targets` 200, the `add-files`
 200, `link=false` unchanged on every import.
@@ -1487,12 +1489,12 @@ desktop Rust/Tauri gates — no e2e spec, Rust, or Tauri file changed.
 **Known gap, not a regression.** The picker half is reachable only from the
 desktop menu bar (`File ▸ Add Files to Library…`; `useDesktopMenu` early-returns
 off a desktop host), so a browser cannot exercise it — the same coverage gap
-recorded under *Add Files to Library* below. It is covered by component tests;
+recorded under _Add Files to Library_ below. It is covered by component tests;
 its appearance in the packaged app is unverified.
 
 **Two owner reports on this branch (2026-08-26), both fixed.**
 
-*"Right now it doesn't seem to suggest a bundle"* when dropping into a File
+_"Right now it doesn't seem to suggest a bundle"_ when dropping into a File
 Browser folder. Correct, and a gap in the work rather than a tuning problem: a
 Finder drag-in **on the desktop** goes through the shell's own importer
 (`useDesktopFileDrop` → `hostImports.copyIn` → `useHostImports`), which is
@@ -1501,15 +1503,15 @@ down. Only the second had been wired, so the offer existed on the web and was
 silently absent in the packaged app. `useHostImports` now accumulates what
 reached disk and reports it once the batch settles — deliberately a batch-level
 callback, because `onImported` fires per file and knows only an operation id,
-while the offer needs the landed *paths* and has to wait until nothing more can
+while the offer needs the landed _paths_ and has to wait until nothing more can
 join them. Called before the stopped-batch summary flash, so that summary still
 wins the toast, matching the web path's precedence.
 
 Worth keeping straight, since it decides where to look next time: **Add Files
 Here** and the toolbar picker always worked — they are `<input type=file>` and go
-through the web path even inside the desktop app. Only the Finder *drag* differed.
+through the web path even inside the desktop app. Only the Finder _drag_ differed.
 
-*Locate a bundle in the File Browser.* Its context menu now opens the folder the
+_Locate a bundle in the File Browser._ Its context menu now opens the folder the
 bundle's own file sits in, with that file highlighted, reusing
 `locateFileInBrowser` and `bundleHostPath` so the three card actions agree on
 what "this bundle's file" means. Placed above Open/Reveal and offered on the web
@@ -1529,7 +1531,7 @@ without asserting the match count while its neighbours had one. The feature was
 correct throughout. Assert the count on every scripted source edit.
 
 **Third report, same day: "Add Files Here still does not work", in the desktop
-app.** That path was *not* broken — driving the real hidden `<input type=file>`
+app.** That path was _not_ broken — driving the real hidden `<input type=file>`
 against a live server produced `Add to "Alpha Reel"` + `Undo`, and
 `useWebImports` has no host-specific branch, so the desktop app takes the same
 code. What was wrong is that **withholding the offer looked identical to the
@@ -1537,7 +1539,7 @@ feature not working.** The toast said nothing whenever the leader was below 0.4
 or within 0.05 of the runner-up — and one of those, two bundles in one folder,
 is common.
 
-So there is now *always* an action: an unconvincing guess degrades to **Add to
+So there is now _always_ an action: an unconvincing guess degrades to **Add to
 Bundle…** on the same toast, opening the full ranked list plus a search over
 every confirmed bundle. A failed suggestion lookup lands there too, rather than
 being swallowed. Verified live: the neutral-name tie case that produced silence
@@ -1545,43 +1547,43 @@ now offers the picker, and taking it opens the dialog with both tied candidates
 listed.
 
 **Resolved (2026-08-26), and it was discoverability.** The offer had been there
-the whole time: *"it looks like I have to explicitly click on the button in the
-toast to bring it up, so I didn't know about that."* Nothing was broken in either
+the whole time: _"it looks like I have to explicitly click on the button in the
+toast to bring it up, so I didn't know about that."_ Nothing was broken in either
 build. Worth keeping as the lesson: a toast action is easy to miss, and three
 rounds went into diagnosing a feature that worked.
 
-The owner's read on that round — *"maybe all the fixes you've done in the latest
-rounds are not necessary"* — is half right. **Locate in File Browser** was its own
+The owner's read on that round — _"maybe all the fixes you've done in the latest
+rounds are not necessary"_ — is half right. **Locate in File Browser** was its own
 request and stands; the **desktop Finder-drag** wiring was a genuine gap, since
 that path offered nothing at all; the **always-an-action** change was motivated by
 a misread but still fixes the tie case, and now composes with the work below.
 
-**The actual need, once the misunderstanding cleared:** *"a way to create a
-bundle along with the add to a bundle."* The suggester can only ever propose
+**The actual need, once the misunderstanding cleared:** _"a way to create a
+bundle along with the add to a bundle."_ The suggester can only ever propose
 joining an existing bundle, and a file arriving in the library is at least as
 likely to be a new one. **New Bundle…** now sits beside the add-to action on
 every import toast, opening the same `CreateBundleDialog` the File Browser's
 Create Bundle… uses — title proposed from the filename, nearby files offered.
 
 Put in the toast rather than in `DirectoryPicker`, because the toast is the one
-place every import route converges; the picker stays a question about *where*.
+place every import route converges; the picker stays a question about _where_.
 The picker's "Don't add to a bundle" now falls through to that toast, so
-answering it is a *not yet* rather than a no.
+answering it is a _not yet_ rather than a no.
 
 Verified live end to end: the toast shows `Add to "Alpha Reel"` / `New Bundle…` /
 `Undo`; taking the second opens the dialog titled `reel-featurette` from the
-filename; completing it reports *"Created a bundle from 1 file."* and the API
+filename; completing it reports _"Created a bundle from 1 file."_ and the API
 confirms a third bundle holding that path.
 
 **The picker flash, and what it was hiding (2026-08-26).** The owner noticed the
 destination picker reloading on every folder click, and asked the better
-question: *"does this mean it will potentially produce wrong behavior?"*
+question: _"does this mean it will potentially produce wrong behavior?"_
 
 The flash was cosmetic — a new cache key with nothing stored, so the list was
 replaced by "Loading…". But it sat on top of a real defect, and the obvious fix
-would have activated it. The rule *"forget the chosen bundle when you leave the
-folder"* had been implemented as *"forget it when the id is no longer in the
-fetched suggestion list"* — a correctness rule keyed on a network state, which
+would have activated it. The rule _"forget the chosen bundle when you leave the
+folder"_ had been implemented as _"forget it when the id is no longer in the
+fetched suggestion list"_ — a correctness rule keyed on a network state, which
 held only because TanStack retains `data` across a refetch. Any render where that
 list was momentarily empty for the **same** folder would have discarded an
 explicit choice and imported the file unbundled, and `placeholderData` is exactly
@@ -1617,15 +1619,15 @@ confirmed, `SCAN bundle_search VIRTUAL TABLE`. A create fires about ten of them
 
 Measured on a synthetic 60k-bundle library:
 
-| | |
-| --- | --- |
-| `create_bundle`, triggers on | **94 ms** |
-| `create_bundle`, triggers dropped | **6 ms** |
-| `DELETE … WHERE bundle_id = ?` | 8.5 ms (full scan) |
-| `DELETE … WHERE rowid = ?` | 0.0 ms |
-| the reindex `INSERT` from the view | 2.1 ms |
+|                                    |                    |
+| ---------------------------------- | ------------------ |
+| `create_bundle`, triggers on       | **94 ms**          |
+| `create_bundle`, triggers dropped  | **6 ms**           |
+| `DELETE … WHERE bundle_id = ?`     | 8.5 ms (full scan) |
+| `DELETE … WHERE rowid = ?`         | 0.0 ms             |
+| the reindex `INSERT` from the view | 2.1 ms             |
 
-So the delete was the cost, and the *view* — which the module's own docstring
+So the delete was the cost, and the _view_ — which the module's own docstring
 blamed, and which cost me a wrong first hypothesis — was never the problem. That
 docstring is corrected in place.
 
@@ -1646,7 +1648,7 @@ assigned under the old scheme bear no relation to their bundles.
 same script as an assertion that failed, so nothing was written and a later
 script silently re-applied only part of it — the fix ran for two measurements
 before I noticed the trigger was untouched. And the first version of the rowid
-invariant test *passed against the old scheme*, because on a fresh database auto
+invariant test _passed against the old scheme_, because on a fresh database auto
 rowids and bundle rowids coincidentally agree; it needed an edit first (a reindex
 is delete-then-insert, and the reinserted row took a fresh auto rowid) to bite.
 Both are the same lesson twice: verify the edit landed, and verify the test fails.
@@ -1693,7 +1695,7 @@ Three details that are not obvious from the requirement:
 
 - **Rows are `<button>` elements, not clickable divs.** This is a form field in a
   modal, so it has to be operable from the keyboard, and a button gets focus,
-  Enter and Space for free. The fold chevron is a *sibling* button, because a
+  Enter and Space for free. The fold chevron is a _sibling_ button, because a
   button inside a button is invalid HTML and folding is a different action from
   choosing.
 - **Searching flattens the tree**, so a match is never hidden inside a folded
@@ -1723,7 +1725,7 @@ carries two metadata-only entries (Copy Path, New Collection from Folder…), so
 opens read-only and the filesystem entries are gated individually.
 
 **Pre-existing quirk found while testing, deliberately not changed:**
-`UNIQUE(parent_id, name)` does not constrain *top-level* collections, because SQL
+`UNIQUE(parent_id, name)` does not constrain _top-level_ collections, because SQL
 treats NULL as distinct from NULL — so two top-level collections may share a
 name, while two siblings under a parent may not. True of every route that creates
 one, including the sidebar's "+". A test now asserts both halves so the
@@ -1754,7 +1756,7 @@ before merge. Started from an owner report while testing the card-menu fix below
 Owner: "Why are deleted files put into its own bundle and show up in Missing
 Files? Now the only way to dismiss them is to delete the bundle." Then, after the
 mechanism came out: "if a file is never bundled, I don't think it should ever be
-*missing*… I treat a bundle to be formally registered in the library. Unbundled is
+_missing_… I treat a bundle to be formally registered in the library. Unbundled is
 the pending zone waiting to be registered."
 
 **That model is the fix, and it is better than what was being designed.** Two
@@ -1797,8 +1799,8 @@ drops the rows, on two conditions read off the scan that finds them:
   exactly the distinction the delete rests on. It reports now, and one failure
   anywhere disqualifies the sweep.
 - **the file's recorded filesystem is still mounted where it was.** The owner's
-  correction, and the one that killed the previous draft: *"whenever the volumes
-  that I mounted on SMB dropped, the folder will be gone"* — so a vanished folder
+  correction, and the one that killed the previous draft: _"whenever the volumes
+  that I mounted on SMB dropped, the folder will be gone"_ — so a vanished folder
   is not proof. The surviving ancestor is then on the outer filesystem, and
   `AssetFile.filesystem_device` (recorded every scan since D2) does not match it.
   An unmounted mountpoint left behind as an empty directory fails the same check,
@@ -1812,7 +1814,7 @@ count. `missing_total` was deliberately **left raw**: after the sweep the only
 rows it can still count are a genuinely unreachable mount or an owner-decided
 staging row, and both are worth the scan-complete flash saying so.
 
-**Residual, accepted:** a nested mount that is *remounted* between scans gets a
+**Residual, accepted:** a nested mount that is _remounted_ between scans gets a
 new device number, so anything deleted in that window is refused permanently and
 lingers until Forget clears it. Fails toward keeping rows, and the blast radius is
 unregistered staging rows, so the worst case of any wrong call is a re-probe and
@@ -1820,19 +1822,19 @@ re-thumbnail of files that come back — never lost data.
 
 ### 4. The count was reported nowhere (`9acb7333`)
 
-Owner, immediately: *"where do I see forgotten? They don't show up anywhere
-right?"* — correct. `ScanSummary.forgotten` reached the job's result payload and
+Owner, immediately: _"where do I see forgotten? They don't show up anywhere
+right?"_ — correct. `ScanSummary.forgotten` reached the job's result payload and
 stopped there, which is not a surface. The scan-complete flash now reports both
-counts (*"Scan complete: 0 linked files are missing. Forgot 2 unbundled files that
-are gone."*), built by `scanCompleteMessage` in `app/scanSummary.ts` so the copy is
+counts (_"Scan complete: 0 linked files are missing. Forgot 2 unbundled files that
+are gone."_), built by `scanCompleteMessage` in `app/scanSummary.ts` so the copy is
 testable and the payload reading is defensive — a cancelled run or an older server
 carries neither key and reads as zero. The forgotten clause is omitted entirely
 when nothing was forgotten.
 
 ### 5. The inspector kept describing what was gone (`c5c0fc31`)
 
-Owner, testing: *"after a bundle/file is deleted/forgot, the inspector still shows
-the information"* — with a screenshot of a single-file bundle's panel, MISSING
+Owner, testing: _"after a bundle/file is deleted/forgot, the inspector still shows
+the information"_ — with a screenshot of a single-file bundle's panel, MISSING
 badge and Relink Unavailable, for a bundle that had just been forgotten.
 
 Two causes, both fixed. The detail request 404s and react-query keeps the last
@@ -1848,7 +1850,7 @@ left the selection on a bundle it had just deleted, so it now clears the selecti
 and closes the open bundle and viewer as deleting a bundle already did, and the
 album view backs out when forgetting takes the bundle it was showing.
 
-Not done, and deliberately: an effect backing the album view out when a *scan*
+Not done, and deliberately: an effect backing the album view out when a _scan_
 sweeps the bundle it is showing. There is no BundleAlbum test harness to pin it,
 and the inspector already says gone; the forget path — the one that actually
 happens — backs out explicitly.
@@ -1878,7 +1880,7 @@ gone, Missing Files still empty; a whole folder → 2; the rated staged file →
 leaves the bundle with its other three files; the single-file bundle → Forget takes
 the bundle. **The nested-mount guard was verified against a real disk image**
 mounted inside the library root (distinct device id): dropped with its mountpoint
-left behind *and* with the mountpoint removed, both refused to forget, and
+left behind _and_ with the mountpoint removed, both refused to forget, and
 re-attaching returned the row to available with no re-probe.
 
 Not verified in a browser: the owner's `tauri dev` was live on the same registry,
@@ -1905,14 +1907,14 @@ way."
 `AVAILABLE and is_supported`. So a present file in a format the viewer cannot
 stage, and every card in the Missing Files view, produced a null path and
 `hostFileMenuEntries` was never called: two rows gone with nothing said. The
-inversion is the point — reveal exists so *another* application can have the
+inversion is the point — reveal exists so _another_ application can have the
 file, which is most useful precisely when Cairndex cannot show it. ⌘↩ and ⇧↩ had
 the same hole, through `selectedBundlePath`.
 
 `BundleSummary` now carries **`primary_relative_path`**: the file the bundle
 stands for on disk, resolved as cursor file → the effective cover's source →
 first file, with no playability or availability test. Three steps rather than
-one, because `select_current_file` only ever returns a *supported* file, so an
+one, because `select_current_file` only ever returns a _supported_ file, so an
 audio-only or document bundle has no cursor at all; the cover's source is then
 the file the owner is actually looking at, and the first file is what is left for
 a bundle with no cover source either. Computed from rows the summary already
@@ -1972,17 +1974,17 @@ changed.** `RANDOM` and `ALL` compile to the same plan (`SCAN asset_bundles` +
 `USE TEMP B-TREE FOR ORDER BY` for both — the `_visible_file_exists` OR
 predicate already denies either an index walk) and cost the same:
 
-| one browse page, before                    | statements | time         |
-| ------------------------------------------ | ---------- | ------------ |
-| ALL, network-mounted library               | 56         | 145–185 ms   |
-| RANDOM, same library, same page size       | 56         | 178–184 ms   |
-| ALL, local synthetic, 1500 bundles         | 102        | 12.7 ms      |
-| RANDOM, same                               | 102        | 12.9 ms      |
+| one browse page, before              | statements | time       |
+| ------------------------------------ | ---------- | ---------- |
+| ALL, network-mounted library         | 56         | 145–185 ms |
+| RANDOM, same library, same page size | 56         | 178–184 ms |
+| ALL, local synthetic, 1500 bundles   | 102        | 12.7 ms    |
+| RANDOM, same                         | 102        | 12.9 ms    |
 
 **What it was: the summarizer ran one query per bundle.** Which is the exact
 shape the 2026-08-13 diagnosis below says this deployment cannot afford — the
-owner's library is on SMB at ~36 ms a round trip, so *count statements, not
-milliseconds*. That finding fixed the grouping code; it should have been read as
+owner's library is on SMB at ~36 ms a round trip, so _count statements, not
+milliseconds_. That finding fixed the grouping code; it should have been read as
 a constraint on the whole read path. A 100-row page was 100 extra round trips
 (~3.7 s cold, on top of the page and its count).
 
@@ -2003,7 +2005,7 @@ benchmark.
 
 **Not claimed: that this fully accounts for ten seconds.** 4 statements at 36 ms
 is ~0.15 s, and the page/count scans on a larger library are still O(bundles)
-page reads over the share. The other candidate mechanism was *not* reproduced and
+page reads over the share. The other candidate mechanism was _not_ reproduced and
 is recorded here rather than acted on: cover thumbnails are generated
 synchronously on the request path (`GET /bundles/{id}/thumbnail` →
 `thumbnails.generate_for_bundle`, no concurrency bound), and a Random page is by
@@ -2081,8 +2083,7 @@ because the box and the unfolding needed to reach it are the sidebar's state.
 `revealCollection` and shared, so a rename asked for on a card three levels deep
 opens a box that is actually on screen. Single selection only.
 
-Tests for the three: 7 new component/unit tests (900 web tests total, up from
-893) and 1 new e2e; `all-tags` (5) and `ordering` + `library` (49 → 50) suites
+Tests for the three: 7 new component/unit tests (900 web tests total, up from 893) and 1 new e2e; `all-tags` (5) and `ordering` + `library` (49 → 50) suites
 green. No server file changed, so the backend gate was not re-run for this
 round.
 
@@ -2099,7 +2100,7 @@ failing against the old placement.
 
 **⌘H hides the app.** The shell builds its whole menu bar from
 `apps/web/src/platform/keymap.json`, and that table's App menu was About /
-Settings / Quit. On macOS the Hide *menu item* is where ⌘H comes from, so with no
+Settings / Quit. On macOS the Hide _menu item_ is where ⌘H comes from, so with no
 such item the combo was simply dead — nothing was intercepting it. Added the
 standard trio (`hide`, `hide-others`, `show-all`) with their arms in
 `app_menu.rs`. **Not target-gated:** Tauri and muda expose all three on every
@@ -2142,7 +2143,7 @@ removes the action with no trace:
   Open and drag-out.
 
 Checked the owner's own store: `cairndex-settings.json` holds five
-`libraryMappings`, so the mapping gate was probably *not* the cause for them —
+`libraryMappings`, so the mapping gate was probably _not_ the cause for them —
 the likelier one is the second, since the Missing Files view is entirely made of
 bundles with no openable current file.
 
@@ -2198,7 +2199,7 @@ only in which handoff runs.
 It was first bound to ⇧⌘↩ on the reasoning that a bare ⇧↩ would "take the soft
 line break out of every note box". **The owner asked who had taken ⇧↩, and the
 answer was nobody** — and the stated cost was wrong: the note box has no keydown
-handler at all, so its line break comes from *plain* Enter, which an accelerator
+handler at all, so its line break comes from _plain_ Enter, which an accelerator
 on ⇧↩ does not touch. Rebound as asked. The keymap table's own comment now
 records ⇧↩ as the one Shift-only accelerator, what was checked before agreeing to
 it, and the cost that does remain: Shift held over from typing turns the next
@@ -2214,7 +2215,7 @@ drift that test was built to catch, working.
 this mac? library is on a mounted disk and can be directly opened." Right, for
 their case — and it is now automatic.
 
-The ceremony exists for a *remote* server, whose `root_path` names a directory on
+The ceremony exists for a _remote_ server, whose `root_path` names a directory on
 that machine (`/volume1/media`), which Finder cannot open here; the shell cannot
 derive a local path, so it asks, and proves the pick with the folder's
 `.cairndex` marker. None of that describes the local sidecar: this shell spawned
@@ -2239,8 +2240,8 @@ same class is the honest answer.
 **Known and not fixed** (spawned as follow-up work): a bundle card whose current
 file is missing or unsupported still has no reveal target on either the menu or
 the shortcut, for the `resume_relative_path` reason above. Revealing an
-*unsupported* file is one of the better reasons to want Finder, so this is worth
-correcting; revealing a *missing* one should be refused with a reason.
+_unsupported_ file is one of the better reasons to want Finder, so this is worth
+correcting; revealing a _missing_ one should be refused with a reason.
 
 Gates: `apps/web` lint / format / typecheck / **918 tests** / build;
 `apps/desktop/src-tauri` fmt / clippy `-D warnings` / **117 tests**. ⌘↩ itself is
@@ -2266,7 +2267,7 @@ documented as a reservation rather than a measurement. Measured after: **1.7778*
 at zoom 120, 200 and 480, with ~4px of card surface below the text as slack.
 
 **The Justified layout shaped each tile from the wrong file.** `aspect()` read
-`width`/`height`, which describe the file under the playback *cursor* — what
+`width`/`height`, which describe the file under the playback _cursor_ — what
 plays. The cover follows its own rule (selected → first image → first video), so
 any bundle where the two differ got a tile shaped for one file and a cover from
 another. That is the black frame the owner saw, and it is why it was worse here
@@ -2276,7 +2277,7 @@ had already resolved the cover), and `aspect()` prefers them, falling back to th
 cursor file and then to 16:9.
 
 **Follow-up on the same day: Justified was still too small, and its last row was
-strange.** Both came out of one packing rule. It always broke a row *after* the
+strange.** Both came out of one packing rule. It always broke a row _after_ the
 tile that overflowed it, so a wide cover arriving at the end dragged the whole
 row down; measured on a four-shape fixture, rows landed at 101–130px against a
 140px target — **every row under it, the worst 27% under**. The target was never
@@ -2288,7 +2289,7 @@ Separately, a short last row was allowed `targetH * 1.3` while full rows
 undershot, so the final row — a single bundle, often — was nearly twice its
 neighbour. Capped at the row above's own height rather than at the target,
 because a single-shape library packs its full rows a little under the target and
-a last row sitting *at* it would still stand out. Verified at zoom 200 (last row
+a last row sitting _at_ it would still stand out. Verified at zoom 200 (last row
 127.9 against 127.9 above) and 640 (448 against 448.9).
 
 The shared slider moved again, 120–480 → **140–640**, and a Justified row now
@@ -2296,7 +2297,7 @@ aims at **0.7** of the slider value rather than 0.6. The two layouts are judged
 separately and Justified was the one still reading small: it carries no title
 block under each tile, so the same height has less presence. Worth remembering if
 this is revisited — the Card cover's height is 9/16 of the slider value, so 0.7
-deliberately makes a Justified row *taller* than a Card cover at the same
+deliberately makes a Justified row _taller_ than a Card cover at the same
 setting.
 
 **Also: the layout buttons got real icons.** Card and Justified were `▦` and
@@ -2308,7 +2309,7 @@ named — a text glyph between two SVGs in one segmented control sits at a
 different weight and baseline. The File Browser's buttons share them.
 
 Checked at 96/24/16px in the running app. The justified split was widened to 11:5
-after the first pass read as a *misdrawn* grid rather than a deliberately uneven
+after the first pass read as a _misdrawn_ grid rather than a deliberately uneven
 one. Card went through four candidates rendered side by side for the owner (a
 2×2 of tiles, two cards with captions, a 3×2 of tiles, and one card); **the owner
 picked the single card**. It draws the tile rather than the arrangement, which is
@@ -2317,7 +2318,7 @@ the trade — it says nothing about how many there are — but it is unmistakabl
 "All" icon, which is itself a 2×2 grid. That last point is what ruled out the
 2×2 candidate that shipped first.
 
-**Known and deliberately not fixed:** a rotated video reports its *coded*
+**Known and deliberately not fixed:** a rotated video reports its _coded_
 dimensions, while ffmpeg applies the display matrix when generating the
 thumbnail — so a portrait phone video probed as 1920×1080 still gets a landscape
 tile. Pre-existing, and fixing it means parsing `side_data_list` rotation and
@@ -2421,12 +2422,12 @@ placement had built, since it then led nowhere.
 set included the folder's **own** row, which is where the dial lives and where its
 title and placement live. `_folder_header` now picks that row out — the outermost
 non-context container for the directory, so a collection the owner converted
-*inside* the folder is still grouping and still redone — and the splice keeps it,
+_inside_ the folder is still grouping and still redone — and the splice keeps it,
 skips the fresh container, and hangs the fresh bundles under it.
 
 One further fold, found while testing rather than reported: a folder the suggester
 insists is one bundle (`owns_directory`, e.g. explicit multipart names) proposes
-that bundle with the folder's *parent* as its parent. Kept header or not, that row
+that bundle with the folder's _parent_ as its parent. Kept header or not, that row
 landed beside the folder's row rather than inside it, so a hand-made conversion
 went childless and was deleted — the dial dissolving a collection on a folder it
 cannot regroup at all. Fresh rows for a non-root directory now always go inside
@@ -2505,7 +2506,7 @@ owner reported an `hev1` file still deciding `remux` after the relabel shipped,
 and the panel's reason carried none of the new explanation. Neither was a defect:
 the bundled `cairndex-sidecar` had been built at 18:47 and `hevc_relabel.py` did
 not exist until 22:33, so none of the HEVC work was in the running process. The
-frontend *was* current — Vite serves it, so the new Playback row appeared — and
+frontend _was_ current — Vite serves it, so the new Playback row appeared — and
 that split is exactly what makes this misleading: half the change is live and
 half is four hours stale.
 
@@ -2541,7 +2542,7 @@ Playback row shows it. The ladder, in the order worth checking:
 
 1. **"this client plays no HEVC tag progressively"** — the client decodes HEVC
    only through MSE, so relabelling would not help and a session is correct.
-   Chromium is *not* this case: measured here, Chrome 148 answers _probably_ to
+   Chromium is _not_ this case: measured here, Chrome 148 answers _probably_ to
    `hvc1` **and** `hev1` at both depths, so it direct-plays either without any
    relabel. WKWebView is the case that matters.
 2. **"its header carries no VPS…" / "…no hvcC configuration"** — the file itself.
@@ -2585,17 +2586,17 @@ something fundamentally missing, fix it fundamentally").
 Swift harness; worth rebuilding rather than trusting Chrome, which answers
 differently):
 
-| probe | `canPlayType` | `MSE.isTypeSupported` |
-| --- | --- | --- |
-| hevc `hvc1` 8-bit | probably | true |
-| hevc `hvc1` **10-bit** | **probably** | true |
-| hevc `hev1` 8-bit | **(empty)** | true |
-| hevc `hev1` 10-bit | **(empty)** | true |
-| h264 High10 | (empty) | false |
+| probe                  | `canPlayType` | `MSE.isTypeSupported` |
+| ---------------------- | ------------- | --------------------- |
+| hevc `hvc1` 8-bit      | probably      | true                  |
+| hevc `hvc1` **10-bit** | **probably**  | true                  |
+| hevc `hev1` 8-bit      | **(empty)**   | true                  |
+| hevc `hev1` 10-bit     | **(empty)**   | true                  |
+| h264 High10            | (empty)       | false                 |
 
 Two conclusions. The bit-depth rule added in PR #4 is **not** implicated —
 WKWebView advertises `hvc1` 10-bit as playable, so `hevc10` is in the profile and
-the rule never fires for it. And `hev1` is refused progressively at *both*
+the rule never fires for it. And `hev1` is refused progressively at _both_
 depths while MSE accepts it, which is the whole story.
 
 **The conversion is five bytes.** Encoding the same content twice with
@@ -2636,11 +2637,11 @@ arithmetic**, and the correction is worth keeping because the mistake is easy to
 repeat. I read "240 s file, 6 s segments, so 40 segments", then treated 29
 segments and an instant 404 on segment 30 as two bugs.
 
-A **remux** splits on the *source's own keyframes*, not a 6 s grid — its playlist
+A **remux** splits on the _source's own keyframes_, not a 6 s grid — its playlist
 is keyframe-derived, which `docs/architecture.md` §6 already says. The fixture was
 encoded `-g 250` at 30 fps, so its GOP is 8.33 s and the playlist is 29 segments
 averaging 8.28 s. ffmpeg had produced every one and **exited 0**; segment 30 does
-not exist, and refusing it instantly is correct. Only a *transcode* forces
+not exist, and refusing it instantly is correct. Only a _transcode_ forces
 keyframes onto the 6 s grid that would have given 40.
 
 Verified against a real session afterwards: the last segment (28) and a mid-file
@@ -2657,7 +2658,7 @@ commit. Owner-reported live, while testing on `claude/export-watermark-settings-
 seek, the rest of the UI fine. Later refined — it happens after seeking the
 playhead past the buffered region, and the bar then "drifts to the right end,
 goes back to the left, and reads 0.0/0.0". That reading is the signature of the
-element being *reset*: `currentTime / duration` renders 100% when duration hits
+element being _reset_: `currentTime / duration` renders 100% when duration hits
 0, then 0% when currentTime follows.
 
 **What the live system ruled out**, before touching any code — worth repeating
@@ -2697,13 +2698,13 @@ because it took minutes and saved hours:
 **Adversarial review earned its keep** and should be repeated for anything in
 this file. It caught two false positives in the watchdog before it shipped, both
 worse than the bug: sampling only `buffered.end(length - 1)` (a refilling
-*earlier* range reads as a dead read — i.e. it would have fired on exactly the
+_earlier_ range reads as a dead read — i.e. it would have fired on exactly the
 seek-past-the-buffer gesture that motivated it), and applying to HLS, where the
 server holds a segment request for two 20 s passes and 15 s would have been the
 tightest deadline in the stack.
 
 **Not verified by the owner yet.** The fix is reasoned and unit-tested; nobody
-has yet reproduced the freeze *with* it in place. The recovery that needs no
+has yet reproduced the freeze _with_ it in place. The recovery that needs no
 restart is a quality or audio-track switch, which bumps the epoch and reloads
 the element.
 
@@ -2841,18 +2842,18 @@ fragment equality-based session reuse). Verified end to end: a PQ/BT.2020 source
 comes out tagged `bt709`/`bt709`/`bt709`, and `normalize_metadata` reports
 `hdr: None` for the result.
 
-**Graph order is the substance, and it is measured.** Scale comes *first* so the
+**Graph order is the substance, and it is measured.** Scale comes _first_ so the
 float32 linear intermediate covers as few pixels as possible; burn-in comes
-*last* so subtitle graphics are not composited onto linear-light pixels. On this
+_last_ so subtitle graphics are not composited onto linear-light pixels. On this
 machine, 10 s of source through the chain:
 
-| source | wall | vs real time |
-| --- | --- | --- |
-| 1080p HDR -> 1080p SDR | 1.00 s | 10x |
-| 4K HDR -> 4K SDR | 6.73 s | **1.4x** |
+| source                 | wall   | vs real time |
+| ---------------------- | ------ | ------------ |
+| 1080p HDR -> 1080p SDR | 1.00 s | 10x          |
+| 4K HDR -> 4K SDR       | 6.73 s | **1.4x**     |
 
 So a 4K source on **Auto** quality (no height cap, so no downscale) has only 40%
-headroom here and would plausibly fall *below* real time on the NAS, where a
+headroom here and would plausibly fall _below_ real time on the NAS, where a
 session must stay ahead of the player. Deliberately not "fixed" by silently
 capping resolution — that is a product decision, not a bug fix. The mitigations
 that exist are the quality ladder (picking 1080p makes it 10x, because the

@@ -263,3 +263,50 @@ test('keyboard movement reaches offscreen bundle rows', async ({ page }) => {
   await expect(page.locator('[data-bundle-id="b0"]')).toBeVisible()
   await expect(page.locator('[data-bundle-id="b0"]')).toHaveAttribute('aria-selected', 'true')
 })
+
+// Smart Collection cancellation returns keyboard focus without saving a draft
+test('Escape dismisses the smart collection dialog and returns focus', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  const trigger = page.getByRole('button', { name: 'New smart collection', exact: true })
+  await trigger.click()
+  await page.getByRole('textbox', { name: 'Smart collection name' }).fill('Draft only')
+  await page.getByLabel('Field', { exact: true }).first().selectOption('collections')
+  const picker = page.getByRole('button', { name: 'Choose collections…' })
+  await picker.click()
+  await expect(picker).toHaveAttribute('aria-expanded', 'true')
+  await page.keyboard.press('Escape')
+  await expect(picker).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('textbox', { name: 'Smart collection name' })).toHaveValue(
+    'Draft only',
+  )
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('textbox', { name: 'Smart collection name' })).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
+// Cancel leaves no collection on the server; Create sends the entered name exactly once
+test('collection creation persists only after confirmation', async ({ page }) => {
+  await mockApi(page)
+  const writes: unknown[] = []
+  await page.route('**/collections', async (route) => {
+    const payload = route.request().postDataJSON()
+    writes.push(payload)
+    await route.fulfill({
+      status: 201,
+      json: { ...coll('created', payload.name, payload.parent_id, 0) },
+    })
+  })
+  await page.goto('/')
+  const trigger = page.getByRole('button', { name: 'New collection', exact: true })
+  await trigger.click()
+  await page.getByRole('textbox', { name: 'Collection name' }).fill('Local draft')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'New Collection', exact: true })).toHaveCount(0)
+  expect(writes).toEqual([])
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await page.getByRole('textbox', { name: 'Collection name' }).fill('Confirmed collection')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect.poll(() => writes).toEqual([{ name: 'Confirmed collection', parent_id: null }])
+})

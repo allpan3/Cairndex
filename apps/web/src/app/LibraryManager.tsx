@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useEffect, useRef, useState } from 'react'
 
 import {
@@ -257,18 +258,24 @@ export function LibraryManager({
     })
   }
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(
+    confirming ? cancelConfirm : onClose,
+    busy,
+  )
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         // `--menus`: this dialog's suggestion menu must be able to escape it.
         className="modal modal--menus"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Libraries</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -480,17 +487,20 @@ export function NewLibraryDialog({
   const [name, setName] = useState(folderName)
   const trimmed = name.trim()
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Add library</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -518,7 +528,7 @@ export function NewLibraryDialog({
           </p>
           <div className="modal__actions">
             <span className="toolbar__spacer" />
-            <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            <button type="button" className="btn" onClick={closeDialog} disabled={busy}>
               Cancel
             </button>
             <button className="btn btn--primary" disabled={busy || !trimmed}>

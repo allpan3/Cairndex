@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useState } from 'react'
 
 import {
@@ -55,10 +56,13 @@ export function ContactSheetDialog({
   const interval = target.duration ? target.duration / frames : 0
   const every = interval >= 1 ? formatDuration(interval) : null
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose)
+
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Contact sheet options"
@@ -97,7 +101,7 @@ export function ContactSheetDialog({
         </p>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={closeDialog}>
             Cancel
           </button>
           <button
