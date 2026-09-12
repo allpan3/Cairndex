@@ -1,5 +1,36 @@
 # Project status
 
+- Playback reliability (S09/I14–I16) is implemented on
+  `fix/library-ownership-lifecycle`. Playback intent survives buffering, seeks
+  and same-file source replacement; loading-time video commands keep their
+  selection, and asynchronous results are fenced to the current source. Initial
+  resume/moment time and the latest playhead govern decision attachment. Bounded
+  HLS windows retain absolute timestamps and exclude copied seek preroll. A
+  shortened native HLS end enters recovery without advancing or falsely marking
+  progress complete. Viewer Info offers a bounded local diagnostic snapshot.
+  A synthetic native video/image sequence reproduced hands-off advancement at
+  35.915 seconds of a 150-second file; the fixed sequence retains its full duration,
+  progresses for over 67 seconds and advances only at its normal 150.08-second end.
+  The historical owner observation remains unattributed. See
+  [playback behavior](playback.md) and the
+  [review and qualification limits](proposals/playback-reliability-review.md).
+  Validation: frontend lint/format/types/build and 1,177 tests; full browser 155
+  tests; backend Ruff/format/mypy and 1,436 tests with one existing zscale skip;
+  Rust formatting/clippy and 124 tests; 18 real managed-sidecar tests; desktop
+  launcher tests, self-contained ARM sidecar build/smoke, isolated production
+  `.app` build and signature verification. Synthetic browser/native tests cover
+  direct/remux/transcode, output dimensions, pause/seeks, moments/resume, subtitles
+  and ordered files. Picture, clock/counter and captured audio evidence remain
+  distinct. Background/occluded native presentation and broad picture quality
+  remain unqualified. Docker/NAS, Ubuntu, Windows, notarization, real providers
+  and representative large/high-bitrate libraries are outside this qualification.
+  The final three-case real browser matrix passes with about 65 seconds of
+  uninterrupted progression per case. All 12 synthetic sources/copies retain
+  their baseline hashes; disposable clients, backend, HLS sessions and library/
+  identity data are cleaned up. Private evidence remains outside the repository.
+  No deployment, publication, installed-app replacement or owner-library operation
+  occurred. The cumulative publication-volume block remains; history is preserved.
+
 - Server/library switching and outage recovery (S08/I13 + I20) are implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `d07ece09` and
   credential checkpoint `0c5c18e4`.

@@ -33,8 +33,8 @@ desktop web browser over asset bundles: portable per-library metadata,
 hierarchical **Collections**, a read-only physical **File Browser**, hierarchical
 tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail/
 storyboard jobs with high-confidence moved-file repair, and a hardened
-single-container production deployment. Media playback runs in a unified
-custom **media viewer** — a hand-built video player (auto-hiding controls,
+single-container production deployment. [Media playback](docs/playback.md) runs in
+a unified custom **media viewer** — a hand-built video player (auto-hiding controls,
 keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
 tracks, **seek-bar storyboard trickplay** and chapter ticks, **watch
 progress / resume**, and **moments**: saved frames and spans inside a video,

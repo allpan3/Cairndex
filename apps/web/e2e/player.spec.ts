@@ -3166,8 +3166,11 @@ test('dismissing the viewer context menu does not also toggle playback', async (
   const paused = () => video.evaluate((el) => (el as HTMLVideoElement).paused)
   // Settle into a known state first: the report is about a *paused* video
   // starting, so the test is meaningless if it was already playing.
-  await video.evaluate((el) => (el as HTMLVideoElement).pause())
-  expect(await paused()).toBe(true)
+  await page
+    .getByTestId('media-controls')
+    .getByRole('button', { name: 'Pause', exact: true })
+    .click()
+  await expect.poll(paused).toBe(true)
 
   await video.click({ button: 'right' })
   await expect(page.locator('.context-menu')).toBeVisible()
@@ -3182,4 +3185,44 @@ test('dismissing the viewer context menu does not also toggle playback', async (
   // And click-to-play is not broken by the fix: the *next* click still plays.
   await video.click()
   await expect.poll(paused).toBe(false)
+})
+
+// Buffering changes feedback, while the visible play/pause action still follows user intent
+test('keeps the Pause action while an unpaused video buffers', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+  const video = await openMovie(page)
+  await video.evaluate((element) => element.dispatchEvent(new Event('waiting')))
+  await page.mouse.move(700, 500)
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Pause', exact: true }).click()
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+  await video.evaluate((element) => element.dispatchEvent(new Event('playing')))
+  await expect(
+    page.getByTestId('media-controls').getByRole('button', { name: 'Play', exact: true }),
+  ).toBeVisible()
+})
+
+// Loading a video must not temporarily route seek keys as image playlist navigation
+test('loading-time arrows retain the selected video while its decision is delayed', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/files/f0/playback-decision', async (route) => {
+    await gate
+    await route.fallback()
+  })
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await expect(page.locator('.mv-state')).toContainText('Preparing playback')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('image-stage')).toHaveCount(0)
+  release()
+  await expect(page.getByTestId('media-video')).toHaveAttribute('src', /files\/f0\/stream/)
 })

@@ -70,7 +70,12 @@ have a timeout and be killed on teardown.
    or concurrently replaced file. Serving segment `n`: exists → serve; within a small window
    ahead of the encoder frontier → bounded async wait; before the current run
    or far ahead → kill ffmpeg and restart at `segment_starts[n]` (`-ss` seek +
-   `-start_number n`). Segment boundaries differ by method:
+   `-start_number n`). Every run retains absolute source timestamps with
+   `-output_ts_offset` and the MP4 muxer's `frag_discont` option, including when
+   native HLS caches the first init. `-copypriorss 0` excludes copied video/audio
+   packets before the requested start. Unmarked timestamp resets violate the
+   single VOD timeline and can make native playback end at a window boundary.
+   Segment boundaries differ by method:
    - **Transcode** forces `-force_key_frames "expr:gte(t,n_forced*6)"`, so its
      playlist is a uniform 6-second grid (`N = ceil(duration/6)`).
    - **Remux** copies video and can only split at existing keyframes. A

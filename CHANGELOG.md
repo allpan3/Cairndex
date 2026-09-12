@@ -49,6 +49,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Viewer Info includes a bounded local playback diagnostic snapshot with event
+  timings, intent, buffering and frame counters; media names, addresses and
+  subtitle text are excluded.
+
 - Persistent Servers controls offer This Computer, saved remote servers and Reconnect.
   Libraries names the serving server and provides explicit Open actions. Recovery
   screens retain the intended library during server, storage or ownership failures.
@@ -85,6 +89,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Play/Pause follows playback intent through buffering and source replacement.
+  Paused seeks remain paused; loading-time video commands retain the selection,
+  stale play/seek continuations are fenced, and delayed quality decisions honor
+  the latest playhead. Saved moments and resume seed the initial decision.
+- Bounded HLS windows retain source timestamps and exclude copied seek preroll.
+  Native HLS incomplete endings enter recovery instead of advancing to another
+  file or recording a shortened duration as completed progress.
 
 - Cancelled or failed server switches preserve the selected destination. Late requests,
   optimistic cache updates and pairing responses cannot continue in a replacement scope.

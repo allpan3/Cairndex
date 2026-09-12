@@ -11,6 +11,14 @@
 > roadmap, and `docs/STATUS.md` for current gaps, validation state, and
 > recommended next tasks.
 
+## Playback control and timeline
+
+The [shared viewer](playback.md) separates requested playback from actual pause
+and buffering. Media identity owns queued commands; engine identity fences late
+events and play results. HLS keeps one VOD timebase across bounded runs, and
+incomplete native endings use session recovery without playlist advancement.
+Diagnostics remain bounded and local to the viewer.
+
 ## Private metadata replicas
 
 [ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases

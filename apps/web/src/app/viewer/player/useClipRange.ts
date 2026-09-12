@@ -368,7 +368,17 @@ export type ClipPlaybackMode = 'off' | 'session' | 'armed'
 export function useClipPlayback(
   video: HTMLVideoElement | null,
   range: ClipRange | null,
-  { mode, onEnd }: { mode: ClipPlaybackMode; onEnd: () => void },
+  {
+    mode,
+    onEnd,
+    play,
+    pause,
+  }: {
+    mode: ClipPlaybackMode
+    onEnd: () => void
+    play?: () => void
+    pause?: () => void
+  },
 ) {
   useEffect(() => {
     if (!video || !range || mode === 'off') return
@@ -388,6 +398,7 @@ export function useClipPlayback(
       if (armed) video.currentTime = range.start
       // A session stops on the out-point and lets the pause below close it, so
       // there is one ending rather than two that can disagree.
+      else if (pause) pause()
       else video.pause()
     }
     // `pause` and `ended` get distinct owners, because a span whose out-point is
@@ -409,7 +420,8 @@ export function useClipPlayback(
     const onEnded = () => {
       if (armed) {
         video.currentTime = range.start
-        void video.play()
+        if (play) play()
+        else void video.play()
         return
       }
       // A session parks at the in-point rather than at the file's end, so the
@@ -427,5 +439,5 @@ export function useClipPlayback(
       video.removeEventListener('pause', onPause)
       video.removeEventListener('ended', onEnded)
     }
-  }, [mode, onEnd, range, video])
+  }, [mode, onEnd, range, video, play, pause])
 }

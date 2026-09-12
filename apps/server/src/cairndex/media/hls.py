@@ -388,7 +388,14 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
             args += ["-vf", ",".join(filters)]
 
     args += _audio_args(session)
+    # Copy seeks may include the preceding keyframe; exclude packets before the requested start
+    args += ["-copypriorss", "0"]
+    # Every bounded run shares one VOD timeline, including clients caching the first init
+    # frag_discont prevents the MP4 muxer subtracting this run's first decode timestamp
+    args += ["-output_ts_offset", f"{start_s:g}"]
     args += [
+        "-hls_segment_options",
+        "movflags=+frag_discont",
         "-f",
         "hls",
         "-hls_time",

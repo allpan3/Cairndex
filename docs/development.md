@@ -946,3 +946,22 @@ This proves shared UI/HTTP behavior; it is not native IPC, managed-sidecar or ph
 storage qualification. Native mapping namespaces and credential grants have separate
 Rust/platform tests. Browser tests cover keyboard dismissal, missing intended libraries
 and legacy draft recovery after failed saves and reloads.
+
+## Playback reliability validation
+
+[Playback behavior](playback.md) defines intent, source replacement, HLS timeline
+and local diagnostic boundaries. Use synthetic sources and disposable libraries
+for startup, pause, forward/backward/rapid seeks, moments/resume, subtitle and
+ordered-file checks. Exercise direct, remux and transcode decisions explicitly,
+recording input/output dimensions and actual stream/playlist/segment requests.
+
+Fresh browser contexts and isolated production desktop identities distinguish
+client state; neither proves cold server/OS caches. Include at least 60 seconds
+without player input, with visible-frame comparisons and a neighboring image.
+The native HLS path requires its own test: hls.js can conceal timestamp resets
+that shorten native playback and trigger early playlist advancement. Real FFmpeg
+tests probe successive windows with the first init and assert source timestamps.
+
+Record sound, picture quality, counters and progress as separate observations.
+Stop disposable clients/servers, remove their connection state, and verify source
+hashes after testing. Docker/NAS qualification is a separate deployment check.

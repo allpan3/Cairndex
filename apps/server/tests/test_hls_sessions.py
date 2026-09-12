@@ -11,6 +11,7 @@ stub manager injected via the FastAPI dependency.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -1257,3 +1258,66 @@ def test_hdr_does_not_fragment_session_reuse() -> None:
     """`hdr` is constant per source, so equality-based reuse still matches."""
     assert SessionParams(hdr="hdr10") == SessionParams(hdr="hdr10")
     assert SessionParams(hdr="hdr10") != SessionParams(hdr=None)
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("kind", ["remux", "transcode"])
+def test_real_windows_keep_absolute_timestamps_with_the_first_init(
+    tmp_path: Path, kind: str
+) -> None:
+    """A native HLS client can decode restarts with its cached initialization fragment"""
+    probe = shutil.which("ffprobe")
+    if probe is None:
+        pytest.skip("ffprobe not installed")
+    source = tmp_path / "timeline.mkv"
+    try:
+        _make_mkv(source, duration=32)
+    except subprocess.CalledProcessError:
+        pytest.skip("ffmpeg build cannot encode libx264/aac")
+    manager = SessionManager(
+        transcode_dir=tmp_path / "sessions", ahead_window=1, start_reaper=False, segment_wait=30
+    )
+    try:
+        session = manager.create_session(
+            library_id="lib",
+            file_id="f",
+            source_path=source,
+            duration=32,
+            kind=kind,
+            params=SessionParams(audio_copy=True, max_height=90),
+        )
+        init = manager.serve_artifact("lib", session.id, "init.mp4").read_bytes()
+        # The first handoff, a far jump and a backwards jump all retain source time
+        for index in [0, 2, 4, 1]:
+            fragment = manager.serve_artifact("lib", session.id, f"{index}.m4s").read_bytes()
+            joined = tmp_path / f"window-{index}.mp4"
+            joined.write_bytes(init + fragment)
+            data = json.loads(
+                subprocess.check_output(
+                    [
+                        probe,
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "packet=codec_type,pts_time",
+                        "-of",
+                        "json",
+                        str(joined),
+                    ]
+                )
+            )
+            expected = session.segment_starts[index]
+            for track in ["video", "audio"]:
+                timestamps = [
+                    float(p["pts_time"]) for p in data["packets"] if p["codec_type"] == track
+                ]
+                assert timestamps, (kind, index, track)
+                assert abs(min(timestamps) - expected) < 0.3, (
+                    kind,
+                    index,
+                    track,
+                    min(timestamps),
+                    expected,
+                )
+    finally:
+        manager.shutdown()

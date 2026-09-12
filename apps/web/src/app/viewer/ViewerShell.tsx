@@ -36,6 +36,8 @@ import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
 import { MediaFallback } from './MediaFallback'
 import { VideoStage } from './VideoStage'
+import { usePlaybackDiagnostics } from './player/usePlaybackDiagnostics'
+import { PlaybackDiagnosticPanel } from './player/PlaybackDiagnosticPanel'
 import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
@@ -235,6 +237,10 @@ export function ViewerShell({
   // guard a single failure could burn the whole budget at once. Mirrors the
   // HLS path's reattachingRef; cleared when the retried source is applied.
   const nativeRecoveringRef = useRef(false)
+  const resumePosition =
+    playable?.progress && playable.progress.position_s > 0 && !playable.progress.completed
+      ? playable.progress.position_s
+      : null
   const hls = useHlsSession({
     fileId: isVideo && videoAvailable ? fileId : null,
     // An unindexed File Browser path has no row to decide about, but it still
@@ -247,15 +253,13 @@ export function ViewerShell({
     directMimeType: playable?.mime_type ?? null,
     caps,
     getCurrentTime,
-    initialStartAt: startAt?.fileId === fileId ? startAt.time : null,
+    initialStartAt: startAt?.fileId === fileId ? startAt.time : resumePosition,
   })
   const source = hls.source
-  const resumePosition =
-    playable?.progress && playable.progress.position_s > 0 && !playable.progress.completed
-      ? playable.progress.position_s
-      : null
   const { player, videoRef, videoElement } = usePlayer({
     source,
+    mediaKey: currentKey,
+    expectedDuration: playable?.duration,
     rootRef,
     prefs: playerPrefs,
     onPrefs: onPlayerPrefs,
@@ -264,6 +268,16 @@ export function ViewerShell({
     onResumed: (position) => {
       if (currentKey) setResumeNotice({ key: currentKey, position })
     },
+  })
+  const captureDiagnostics = usePlaybackDiagnostics({
+    rootRef,
+    mediaKey: currentKey,
+    index,
+    kind: current?.mediaKind ?? null,
+    source,
+    video: videoElement,
+    player,
+    hls,
   })
   useEffect(() => {
     liveVideoRef.current = videoElement
@@ -335,6 +349,8 @@ export function ViewerShell({
   useClipPlayback(videoElement, clip.range, {
     mode: clipMode,
     onEnd: clip.endRangePlayback,
+    play: player.play,
+    pause: player.pause,
   })
 
   // --- Moments (plan 7) -------------------------------------------------
@@ -915,10 +931,10 @@ export function ViewerShell({
     return () => root.removeEventListener('wheel', onWheel)
   }, [setVolume, videoActive, volume])
 
-  useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
+  useShortcuts(rootRef, isVideo ? player : null, shortcutActions)
   // Native Playback menu items drive the same commands as the key bindings, and
   // the menu is live only while this viewer is mounted (plan 3 §7).
-  useViewerMenu(videoActive ? player : null, shortcutActions)
+  useViewerMenu(isVideo ? player : null, shortcutActions)
 
   // The cover affordance needs the live playhead, and only applies to an item
   // that can actually own a bundle cover.
@@ -1148,6 +1164,7 @@ export function ViewerShell({
           item={current}
           playable={playable}
           playback={describePlayback(hls.status, hls.method, hls.reason)}
+          captureDiagnostics={captureDiagnostics}
           items={items}
           index={index}
           onIndex={onIndex}
@@ -1437,6 +1454,7 @@ const Topbar = memo(function Topbar({
  * An unindexed File Browser path has no bundle to inspect and keeps the plain
  * metadata card. */
 function InfoPanel({
+  captureDiagnostics,
   item,
   playable,
   playback,
@@ -1447,6 +1465,7 @@ function InfoPanel({
   item: ViewerItem
   playable: PlayableVideo | null
   playback: PlaybackDescription | null
+  captureDiagnostics: () => string
   items: ViewerItem[]
   index: number
   onIndex: (index: number) => void
@@ -1522,6 +1541,7 @@ function InfoPanel({
           </div>
         )}
       </dl>
+      <PlaybackDiagnosticPanel capture={captureDiagnostics} />
       {items.length > 1 && <FileList items={items} index={index} onIndex={onIndex} />}
     </aside>
   )

@@ -7440,3 +7440,20 @@ code {
 .connection-dialog:not([open]) {
   display: none;
 }
+
+.mv-diagnostics {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.mv-diagnostics summary {
+  cursor: pointer;
+}
+.mv-diagnostics p {
+  color: var(--text-muted);
+}
+.mv-diagnostics textarea {
+  width: 100%;
+  margin-top: 8px;
+  font: 11px monospace;
+  resize: vertical;
+}
