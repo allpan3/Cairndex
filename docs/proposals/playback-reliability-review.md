@@ -1,7 +1,8 @@
 # Playback reliability review — S09 / I14–I16
 
 Scope: shared playback controls, source lifecycle, local diagnostics and bounded
-HLS timeline correctness on `fix/library-ownership-lifecycle`.
+HLS timeline correctness on `fix/library-ownership-lifecycle`, implementation
+checkpoint `65274532`.
 
 ## Behavior
 
@@ -126,6 +127,7 @@ remain outside the repository. Build artifacts remain in ignored build directori
 Docker/NAS validation is explicitly deferred. Ubuntu, Windows, notarization,
 real providers, owner libraries, large/high-bitrate media and representative NAS
 performance remain unqualified. No deployment, publication, history rewrite or
-owner source-file operation is included. The cumulative branch publication-volume
-block remains; history is preserved. The next proposed group is S10 everyday
+owner source-file operation is included. The group's committed-range privacy gate
+passes; the full branch gate remains blocked by cumulative new-blob volume above
+8 MiB. History is preserved. The next proposed group is S10 everyday
 keyboard/loading UX, subject to its own scope and authorization.

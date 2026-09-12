@@ -1,7 +1,8 @@
 # Project status
 
 - Playback reliability (S09/I14–I16) is implemented on
-  `fix/library-ownership-lifecycle`. Playback intent survives buffering, seeks
+  `fix/library-ownership-lifecycle`, implementation checkpoint `65274532`.
+  Playback intent survives buffering, seeks
   and same-file source replacement; loading-time video commands keep their
   selection, and asynchronous results are fenced to the current source. Initial
   resume/moment time and the latest playhead govern decision attachment. Bounded
@@ -29,7 +30,8 @@
   their baseline hashes; disposable clients, backend, HLS sessions and library/
   identity data are cleaned up. Private evidence remains outside the repository.
   No deployment, publication, installed-app replacement or owner-library operation
-  occurred. The cumulative publication-volume block remains; history is preserved.
+  occurred. This group's committed-range privacy gate passes. The full branch
+  gate remains blocked by the 8 MiB cumulative new-blob limit; history is preserved.
 
 - Server/library switching and outage recovery (S08/I13 + I20) are implemented on
   `fix/library-ownership-lifecycle`, implementation checkpoint `d07ece09` and
