@@ -40,7 +40,7 @@ from cairndex.replicas.transport import Transport
 
 COVERAGE = {
     "included": "One coherent private DB: immutable events/outbox, alternatives, drafts/bases, "
-    "jobs/receipts, inbox and local resume/cursors",
+    "jobs/receipts, inbox, discovery candidates/reviews and local resume/cursors",
     "client_drafts": "Only server-received drafts committed at the snapshot; "
     "browser-only or offline unreceived work is excluded",
     "excluded": "Source media, conversion/legacy archives, registry, credentials, "
@@ -195,6 +195,9 @@ def previous_gaps(previous: Path, prepared: Path) -> dict[str, int]:
             ("drafts", ("id",), ("id", "bundle", "revision", "body")),
             ("draft_receipts", ("id",), ("id", "revision")),
             ("catalog_jobs", ("id",), ("id", "intent", "result")),
+            ("discovery_candidates", ("id",), ("id", "run", "path", "body")),
+            ("discovery_identities", ("path", "evidence"), ("path", "evidence", "file_id")),
+            ("discovery_reviews", ("id",), ("id", "intent", "prepared", "event")),
             (
                 "local_progress",
                 ("file_id",),
@@ -255,6 +258,16 @@ def prepare(
             )
             db.execute(
                 "UPDATE local_media SET generation=NULL,state='unknown',metadata=NULL,error=NULL"
+            )
+            db.execute("DELETE FROM discovery_baselines")
+            db.execute(
+                "UPDATE discovery_runs SET state='failed',error='Recovered "
+                "Update; run Update again' WHERE state='running'"
+            )
+            db.execute(
+                "UPDATE discovery_reviews SET state='failed',error='Recovered "
+                "review; run Update and prepare again' WHERE state IN "
+                "('queued','ready','apply_queued')"
             )
     fault("prepare_after_copy")
     transport = Transport(root, store)

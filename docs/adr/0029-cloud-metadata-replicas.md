@@ -277,3 +277,6 @@ separately scoped. The first group is authorized; real-library conversion and th
 The complete synthetic catalog group includes all-family editing, structural
 conflict/recovery, shared UI controls and reversible disposable conversion tests.
 This authorization does not enable owner-library conversion or qualify a provider.
+[ADR-0032](0032-replica-discovery.md) defines the separately approved manual Update
+capability for new format-three synthetic packages, including private discovery,
+reviewed causal grouping and conservative moved-file repair.

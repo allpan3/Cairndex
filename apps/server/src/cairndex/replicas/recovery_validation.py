@@ -414,6 +414,11 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
             ):
                 raise ReplicaError("Private resume data is invalid")
 
+    if "discovery_runs" in media_tables:
+        from cairndex.replicas.discovery_validation import validate as validate_discovery
+
+        validate_discovery(db, store)
+
     for row in db.execute("SELECT * FROM catalog_jobs"):
         intent = json.loads(row["intent"])
         CatalogJobRequest.model_validate({"operation": row["id"], **intent})

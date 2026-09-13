@@ -21,6 +21,7 @@ import { CatalogEditor } from './CatalogEditor'
 import { CatalogFileBrowser } from './CatalogFileBrowser'
 import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
+import { ReplicaDiscovery } from './ReplicaDiscovery'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 
 // New identities are created from complete authored defaults and reviewed before saving
@@ -209,6 +210,8 @@ export function CatalogWorkspace({
     refetchInterval: 2000,
   })
   const identity = selected ?? page.data?.items[0]?.id
+  // Bind the initial selection before refreshed discoveries can sort ahead of its editor
+  if (selected === null && identity) setSelected(identity)
   const detail = useQuery({
     queryKey: ['catalog-detail', libraryId, family, identity],
     enabled: Boolean(identity),
@@ -261,6 +264,14 @@ export function CatalogWorkspace({
         )}
         <button onClick={refresh}>Refresh catalog status</button>
       </section>
+      {state?.discovery_version === 1 && state.ready && editor && (
+        <ReplicaDiscovery
+          key={`${libraryId}/${editor}`}
+          library={libraryId}
+          editor={editor}
+          refresh={refresh}
+        />
+      )}
       {state?.media_version === 1 &&
         detail.data &&
         detail.data.fields.$alive?.value === 'true' &&

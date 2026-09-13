@@ -1,5 +1,40 @@
 # Project status
 
+- Manual replica Update/discovery (bounded S12/I05) is implemented on
+  `fix/library-ownership-lifecycle` under [ADR-0032](adr/0032-replica-discovery.md).
+  New format-three synthetic packages support bounded cancellable discovery,
+  private grouping/identity review, explicit replacement decisions and causal
+  moved-file repair. Confirmed arrangements, stable IDs and attached metadata
+  survive verified moves. Prior local observation prevents Update from undoing
+  a peer's move; sample-only identity choices never imply complete equality.
+  Discovery jobs, evidence, candidate bodies, mappings and exact prepared reviews
+  are included in private recovery. Restart discards partial walk observations;
+  review retries retain their original causal bases. Superseded suggestions and
+  malformed browser draft bytes remain recoverable. The shared file editor exposes
+  competing content identities through complete conflict review.
+  Backend Ruff/format/mypy pass; the full suite reports **1,613 passed**, one
+  existing FFmpeg zscale skip. The source and rebuilt ARM frozen sidecar both
+  pass independent-process Update, move and private-review recovery acceptance;
+  the frozen package smoke test passes. OpenAPI and TypeScript contracts reproduce
+  exactly. Frontend lint/format/typecheck/build and all 1,214 unit tests pass; six
+  relevant browser scenarios pass, including preserved editor selection/drafts
+  during accepted discovery, recovered reviews and competing content choices.
+  The [review summary](proposals/replica-discovery-review.md) records scope and limits.
+  The isolated production desktop build and signature check pass. Verified
+  foreground interactions cover Update, typed private grouping, exact acceptance,
+  decoded image playback after an external synthetic move, and retained editor
+  selection/unsaved title after an earlier-sorting discovery is accepted. Private
+  receipts confirm both acceptances and complete retained drafts. All eight
+  synthetic source hashes match; the moved file keeps its ID. Normal Quit stops
+  the app and sidecar; the disposable app, fixtures and isolated runtime are removed.
+  Native host source is unchanged, so standalone Rust gates were not repeated.
+  Real conversion, providers, physical source operations, Docker/NAS, publication,
+  continuous watchers and deferred directory pagination remain outside this group.
+  The staged privacy gate passes for 47 source/reference text files and generated
+  API contracts; no media, databases or build output is included. The cumulative
+  branch publication-volume block remains in place. This bounded group is complete;
+  further audit groups await owner instruction.
+
 - Private replica backup/device recovery (bounded S12/I05) is implemented on
   `fix/library-ownership-lifecycle`, under [ADR-0031](adr/0031-private-replica-recovery.md).
   The [supported local command](replica-recovery.md), also included in the frozen

@@ -92,6 +92,31 @@ class ReplicaMedia:
             raise NotFoundError("Catalog item is unavailable; refresh the catalog")
         return value
 
+    # Discovery evidence fences a changed same-path source before it inherits saved media state
+    def check_content(self, identity: str, path: str) -> None:
+        if self.store.descriptor.format_version != 3:
+            return
+        from cairndex.replicas.discovery_sources import inspect
+
+        with self.store.connection(readonly=True) as db:
+            value = db.execute(
+                "SELECT value FROM catalog_units WHERE unit=?",
+                (f"asset_files/{identity}/$content",),
+            ).fetchone()
+            prior = db.execute(
+                "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
+            ).fetchone()
+        baseline = json.loads(prior[0]) if prior else None
+        expected = (
+            json.loads(value[0])
+            if value and value[0]
+            else (baseline["evidence"] if baseline and baseline["path"] == path else None)
+        )
+        if expected is not None and inspect(self.root, path, baseline)["evidence"] != expected:
+            raise NotFoundError(
+                "Different local content at this path; run Update and review its identity"
+            )
+
     # Local observations never establish shared presence or overwrite authored choices
     def file(self, identity: str, *, inspect: bool = False, probe: bool = False) -> AssetFile:
         row = self.row("asset_files", identity)
@@ -104,6 +129,7 @@ class ReplicaMedia:
         size: int | None = None
         if inspect or probe:
             try:
+                self.check_content(identity, row["relative_path"])
                 with open_source(self.root, row["relative_path"]) as handle:
                     info = os.fstat(handle)
                     current = generation(row["relative_path"], info)

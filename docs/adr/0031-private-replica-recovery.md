@@ -57,6 +57,9 @@ recovery preserves those ambiguous originals for inspection.
 
 The snapshot includes events/outbox, retained alternatives, drafts/dismissals,
 jobs/results, source/inbox receipts, local observations, progress and cursors.
+[ADR-0032](0032-replica-discovery.md) adds private discovery runs, evidence, identity
+mappings, candidates and exact prepared reviews. Restored reviews retain their
+causal bases and require explicit revalidation before acceptance.
 Observations are reset in the candidate for local revalidation; original values
 remain in the backup. Resume retains its source-generation fence. Different-device
 bytes do not inherit progress automatically, and no resume transport is introduced.

@@ -71,6 +71,20 @@ lifecycle boundaries. `e2e/replica-media.spec.ts` exercises actual decoded pictu
 resume, retry, ordered EOF and peer metadata exchange during sustained playback.
 The base catalog fixture's fake video bytes are unsuitable for playback checks.
 
+For manual replica Update, create a new format-three synthetic package:
+
+```bash
+uv run python -c 'from cairndex.devtools.discovery_fixture import create_discovery; print(create_discovery(playable=True))'
+```
+
+`tests/test_replica_discovery.py` covers identity, grouping, moves, replacement,
+restart and recovery. `tests/test_replica_discovery_binary.py` uses independent
+source sidecars, or `CAIRNDEX_RECOVERY_TEST_BINARY` for the frozen executable.
+`e2e/replica-discovery.spec.ts` exercises the shared Update/review controls and
+retained private drafts. Fixture roots and private server directories are separate;
+only immutable objects and synthetic source files are copied between peers.
+See [manual Update](replica-discovery.md) for the bounded capability and limitations.
+
 Run `uv run pytest tests/test_replicas.py tests/test_replica_catalog.py
 tests/test_replica_catalog_api.py -q` for conversion, protocol, HTTP and process-crash
 acceptance. From `apps/web`, run `npx playwright test e2e/replicas.spec.ts

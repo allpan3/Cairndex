@@ -32,6 +32,17 @@ belong in the synthetic legacy recovery archive rather than authored transport.
 Real-library conversion remains unavailable under
 [ADR-0029](adr/0029-cloud-metadata-replicas.md).
 
+## Replica discovery state
+
+Format three adds an optional authored `asset_files/{id}/$content` unit containing
+`algorithm`, byte `size` and `digest`; it is never a filesystem generation.
+The private `discovery_runs`, `discovery_entries`, `discovery_missing`,
+`discovery_baselines`, `discovery_identities`, `discovery_candidates` and
+`discovery_reviews` tables hold progress, physical observations, pending choices,
+persistent large-file IDs and exact prepared/accepted receipts. All are covered by
+private recovery, never authored transport. The [Update contract](replica-discovery.md)
+defines evidence strength, stable IDs, batch scope and source timestamps.
+
 ## Replica-local media tables
 
 These additive private tables are excluded from authored events and reconstruction:

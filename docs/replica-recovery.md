@@ -158,7 +158,9 @@ server directory; keep it available for separate inspection rather than deleting
 | `local_media` | Included in backup; availability, generation, probe and error observations reset for device revalidation in candidate |
 | `local_progress`, `local_cursors` | Included; stable IDs retained; progress applies only when the observed source generation still matches |
 | `cache/`, HLS, temporary `recovery-*` branch projections | Rebuildable and excluded; source inputs and retained immutable history are the authority |
-| Discovery iterator/repair cursors | Restarted; bounded exchange rediscovers immutable objects idempotently |
+| `discovery_runs`, `discovery_entries`, `discovery_missing`, `discovery_baselines` | Included; restored running work fails for deliberate retry, baselines reset and walks restart |
+| `discovery_identities`, `discovery_candidates`, `discovery_reviews` | Included with original bodies, source evidence, selections and causal receipts; pending reviews require explicit revalidation |
+| Transport discovery iterators | Restarted; bounded exchange rediscovers immutable objects idempotently |
 | Private bindings/locks | Rebuilt for the selected destination; old generations remain separate, and missing bound stores require explicit recovery |
 | Registry, tokens, passphrase configuration, endpoint preferences | Separate server backup/rebinding responsibility; never transplanted as new-device credentials |
 | Legacy conversion archive, legacy resume/auth/journals, source/trash files | Separate original recovery set/media backup responsibility; never replayed or altered here |
@@ -170,6 +172,10 @@ automatically resume those bytes. Cross-device resume transport and content-vers
 qualification are separate. No backup can recover unique unexchanged work absent
 from all surviving stores and backups. Local synthetic delivery and process-exit
 tests do not qualify provider sync, power loss, Windows or NAS behavior.
+
+[Manual Update recovery](replica-discovery.md#private-work-and-recovery) preserves
+prepared discovery intent. Superseded suggestions remain available as private
+evidence; backup validation rejects inconsistent identities and preview references.
 
 ## Synthetic acceptance
 

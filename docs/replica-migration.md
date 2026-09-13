@@ -3,7 +3,9 @@
 The accepted architecture is [ADR-0029](adr/0029-cloud-metadata-replicas.md).
 The package `cairndex.replica-library` supports version 1 with exactly
 `bundle_metadata_v1` and version 2 with the complete
-[authored catalog capability](replica-catalog.md). There is **no conversion endpoint
+[authored catalog capability](replica-catalog.md). Version 3 adds the exact
+`discovery_identity_v1` capability under [ADR-0032](adr/0032-replica-discovery.md);
+only a fresh disposable fixture can opt in. There is **no conversion endpoint
 or owner-library conversion command**. `replicas/inventory.py` sets
 `CONVERSION_AVAILABLE = False`. Developer functions create a new disposable legacy
 catalog, validate a private conversion checkpoint and export separate rollback

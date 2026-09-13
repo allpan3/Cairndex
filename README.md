@@ -29,6 +29,11 @@ ownership rules. See the [catalog workflow](docs/replica-catalog.md), accepted
 [migration contract](docs/replica-migration.md). NAS and cloud folders are storage
 scenarios, not required application modes.
 
+**Manual Update** in new format-three synthetic packages discovers local files,
+repairs verified external moves and prepares private grouping/identity choices for
+explicit acceptance. Confirmed changes preserve IDs and use causal catalog
+transactions. See [replica Update](docs/replica-discovery.md).
+
 [Private replica recovery](docs/replica-recovery.md) provides coherent backups,
 verified preparation, inspectable reviews and explicit activation into a separate
 private generation. Restores preserve unexchanged work and received drafts, use

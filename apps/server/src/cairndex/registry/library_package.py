@@ -105,7 +105,7 @@ def _parse_manifest(raw: str) -> LibraryManifest:
         try:
             descriptor = (
                 CatalogDescriptor.model_validate(data)
-                if data["format_version"] == 2
+                if data["format_version"] in (2, 3)
                 else Descriptor.model_validate(data)
             )
         except SchemaError as exc:

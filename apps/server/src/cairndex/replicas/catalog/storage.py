@@ -54,9 +54,10 @@ class CatalogStorage(PrivateStore):
     ) -> None:
         super().__init__(directory, descriptor, fault=fault)
         with self.connection() as db:
+            from cairndex.replicas.discovery_state import SCHEMA as DISCOVERY_SCHEMA
             from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
 
-            db.executescript(projection.SCHEMA + SCHEMA + MEDIA_SCHEMA)
+            db.executescript(projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
                 db.execute(
                     "ALTER TABLE catalog_cohorts ADD COLUMN anchor INTEGER NOT NULL DEFAULT 1"
@@ -66,6 +67,17 @@ class CatalogStorage(PrivateStore):
                     "ALTER TABLE catalog_cohorts ADD COLUMN cohort TEXT NOT NULL DEFAULT 'legacy'"
                 )
             db.execute("UPDATE catalog_jobs SET state='queued' WHERE state='running'")
+            db.execute(
+                "UPDATE discovery_runs SET phase='walk',cursor='',observed=0 WHERE state='running'"
+            )
+            db.execute(
+                "DELETE FROM discovery_entries WHERE run IN (SELECT id FROM "
+                "discovery_runs WHERE state='running')"
+            )
+            db.execute(
+                "DELETE FROM discovery_missing WHERE run IN (SELECT id FROM "
+                "discovery_runs WHERE state='running')"
+            )
 
     # Intake retains malformed bytes, while compatible missing payloads remain retryable
     def ingest(self, raw: bytes, source: str = "") -> None:
@@ -175,6 +187,10 @@ class CatalogStorage(PrivateStore):
         db.execute("DELETE FROM catalog_staging")
         try:
             for change in self.payload_records(db, root):
+                if change.unit.endswith("/$content") and self.descriptor.format_version != 3:
+                    raise ReplicaError(
+                        "Content identity requires a discovery-capable reader upgrade"
+                    )
                 if db.execute(
                     "SELECT 1 FROM catalog_staging WHERE unit=?", (change.unit,)
                 ).fetchone():
@@ -285,7 +301,8 @@ class CatalogStorage(PrivateStore):
             config = dict(db.execute("SELECT key,value FROM config"))
             return {
                 "ready": "catalog_ready" in config,
-                "catalog_version": 1,
+                "catalog_version": self.descriptor.catalog_version,
+                "discovery_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(

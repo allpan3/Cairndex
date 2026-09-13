@@ -20,20 +20,26 @@ from cairndex.replicas.protocol import (
 )
 
 CAPABILITIES = ["authored_catalog_v1", "linked_payload_v1", "structural_choices_v1"]
+DISCOVERY_CAPABILITIES = [*CAPABILITIES, "discovery_identity_v1"]
 SEGMENT_BYTES = 32 * 1024
 
 
 # Exact capability and reader gates stop incomplete clients before private-store mutation
 class CatalogDescriptor(PackageIdentity):
-    format_version: Literal[2]
+    format_version: Literal[2, 3]
     protocol_version: Literal[2]
-    catalog_version: Literal[1]
-    minimum_reader: Literal[2]
+    catalog_version: Literal[1, 2]
+    minimum_reader: Literal[2, 3]
     capabilities: list[str]
 
     # An unknown optional-looking capability cannot silently discard a durable family
     def model_post_init(self, context: Any) -> None:
-        if self.capabilities != CAPABILITIES:
+        if (
+            self.format_version,
+            self.catalog_version,
+            self.minimum_reader,
+            self.capabilities,
+        ) not in ((2, 1, 2, CAPABILITIES), (3, 2, 3, DISCOVERY_CAPABILITIES)):
             raise ValueError("Unsupported catalog capabilities")
 
 

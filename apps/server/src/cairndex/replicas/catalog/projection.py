@@ -131,6 +131,7 @@ def rebuild(db: sqlite3.Connection, entities: Iterable[tuple[str, str]]) -> set[
                 "SELECT field,value FROM catalog_units WHERE family=? AND entity=?",
                 (family, identity),
             )
+            if row[0] != "$content" or row[1] is not None
         }
         if not values or any(value is None for value in values.values()):
             raise ReplicaError("Catalog entity is incomplete")

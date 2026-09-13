@@ -48,6 +48,14 @@ new store atomically; the live database is never overwritten. Fresh author
 incarnations retain old immutable identities and private retry lineage under
 [ADR-0031](adr/0031-private-replica-recovery.md).
 
+[Manual Update](replica-discovery.md), gated by format three and ADR-0032, shares
+the bounded replica worker. Private observations/candidates precede catalog
+creation; reviewed groupings and verified repairs use guarded causal transactions.
+Optional authored content evidence distinguishes full small-file hashes from
+large-file samples. Same-path claims participate in conflict scopes; inode and
+availability remain private. Discovery receipts commit atomically with authored
+events, and recovery retains exact prepared intent for explicit revalidation.
+
 The media adapter reads validated authored rows into detached file/track values;
 it never presents the catalog as a legacy ORM session. Allowlisted indexed media
 routes share the existing playback decisions, viewer and HLS manager. Observations,

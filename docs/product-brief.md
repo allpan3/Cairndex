@@ -82,8 +82,11 @@ is accepted. The shared app provides bundle-first catalog editing and indexed
 File Browser paths for these packages. Cataloged video and images use the shared
 viewer, with availability, probes, derivatives and resume private to the serving
 device. Missing bytes keep their catalog identity and can be retried locally.
-Filesystem discovery and source operations remain unavailable. Legacy libraries retain their existing
-ownership and media workflows. Real-library conversion and provider qualification
+Format-three synthetic packages support [manual Update](replica-discovery.md):
+private discovery, conservative external-move repair and explicit grouping or
+ambiguous-identity review. Confirmed groupings and file IDs remain stable; local
+absence never removes shared metadata. Physical source operations remain
+unavailable. Legacy libraries retain their existing ownership and media workflows. Real-library conversion and provider qualification
 require separate approval and evidence.
 
 Private backups preserve this replica's unexchanged metadata and server-received

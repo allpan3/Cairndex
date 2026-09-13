@@ -294,6 +294,24 @@ export function CatalogEditor({
         />
         Show provenance and exact metadata
       </label>
+      {entity.fields.$content && (
+        <fieldset>
+          <legend>Content identity</legend>
+          <p>Update verifies local evidence before assigning these bytes to this file.</p>
+          <details>
+            <summary>View saved content evidence</summary>
+            <pre>{displayCell(entity.fields.$content.value)}</pre>
+          </details>
+          {entity.fields.$content.held && (
+            <>
+              <p role="alert">Competing content identities require review.</p>
+              <button onClick={() => setReview(entity.fields.$content!.unit)}>
+                Review content identity
+              </button>
+            </>
+          )}
+        </fieldset>
+      )}
       {shown
         .filter((control) => advanced || !advancedCatalogFields.has(control.field))
         .map((control) => {

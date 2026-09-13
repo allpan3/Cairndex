@@ -2,8 +2,9 @@
 
 The shared app/API serves complete **synthetic** metadata catalogs under
 [ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion, provider
-qualification, filesystem discovery and physical source operations remain
-unavailable for replica packages. Format-two catalogs support local media through
+qualification and physical source operations remain unavailable for replica
+packages. Format-three packages support [manual discovery](replica-discovery.md).
+Complete catalogs support local media through
 the shared production viewer. Legacy libraries retain their existing workflows.
 
 ## Compatibility and transport
@@ -12,8 +13,9 @@ the shared production viewer. Legacy libraries retain their existing workflows.
 | --- | --- | --- |
 | Format version 1 | Protocol 1 | `bundle_metadata_v1`: existing bundle title, notes and rating |
 | Format version 2 | Protocol 2, catalog 1, minimum reader 2 | Exact ordered capabilities `authored_catalog_v1`, `linked_payload_v1`, `structural_choices_v1` |
+| Format version 3 | Protocol 2, catalog 2, minimum reader 3 | Format-two capabilities plus `discovery_identity_v1` |
 
-Both use the `cairndex.replica-library` discriminator. An unknown format, reader
+All use the `cairndex.replica-library` discriminator. An unknown format, reader
 requirement, capability combination, field or operation requires upgrade/recovery;
 legacy and protocol-one mutators refuse a complete catalog before changing it.
 
@@ -40,6 +42,7 @@ it belongs to one of these units:
 
 | Unit | Meaning |
 | --- | --- |
+| File `$content` (format three) | Optional authored full-hash or explicitly sampled identity evidence |
 | Entity `$alive` | Retained lifetime; every edit/reference supplies observed live guards |
 | Bundle `$members` | Complete file/directory membership, role and sequence |
 | Tags/collections `_/$forest` | Complete hierarchy and sibling ordering |

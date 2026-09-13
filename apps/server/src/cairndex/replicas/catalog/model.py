@@ -107,7 +107,7 @@ def split_key(unit: str) -> tuple[str, str, str]:
     ids = identity.split("~")
     if len(ids) != len(IDENTITIES[family]) or not all(TOKEN.fullmatch(part) for part in ids):
         raise ReplicaError("Invalid catalog identity")
-    if field not in fields(family):
+    if field not in fields(family) and not (family == "asset_files" and field == "$content"):
         raise ReplicaError("Unsupported catalog field; upgrade required")
     return family, identity, field
 
@@ -181,7 +181,18 @@ def validate_unit(unit: str, raw: str) -> Any:
             raise ReplicaError("Catalog value is not canonical")
     except (ValueError, TypeError, RecursionError) as error:
         raise ReplicaError("Invalid catalog value") from error
-    if field == "$alive":
+    if field == "$content":
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"algorithm", "size", "digest"}
+            or value["algorithm"] not in ("sha256", "sample-sha256-v1")
+            or type(value["size"]) is not int
+            or value["size"] < 0
+            or not isinstance(value["digest"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", value["digest"])
+        ):
+            raise ReplicaError("Invalid content identity evidence")
+    elif field == "$alive":
         if type(value) is not bool:
             raise ReplicaError("Invalid entity lifetime")
     elif field in ("$members", "$forest"):
@@ -329,7 +340,7 @@ def structural_targets(unit: str, raw: str) -> set[tuple[str, str]]:
 def restore_row(
     family: str, identity: str, values: Mapping[str, str], placement: Row
 ) -> Row | None:
-    if set(values) != fields(family):
+    if set(values) - ({"$content"} if family == "asset_files" else set()) != fields(family):
         raise ReplicaError("Catalog entity is incomplete")
     if not json.loads(values["$alive"]):
         return None

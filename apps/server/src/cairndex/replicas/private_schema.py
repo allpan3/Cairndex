@@ -22,6 +22,7 @@ def schema(db: sqlite3.Connection) -> dict[str, str]:
 @lru_cache
 def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog import projection, storage
+    from cairndex.replicas.discovery_state import SCHEMA as discovery_schema
     from cairndex.replicas.media import SCHEMA as media_schema
     from cairndex.replicas.store import SCHEMA
 
@@ -35,7 +36,9 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
                 )
             expected.executescript(SCHEMA)
             if catalog:
-                expected.executescript(projection.SCHEMA + catalog_schema + media_schema)
+                expected.executescript(
+                    projection.SCHEMA + catalog_schema + media_schema + discovery_schema
+                )
                 if legacy == 2:
                     expected.execute(
                         "ALTER TABLE catalog_cohorts ADD COLUMN anchor INTEGER NOT NULL DEFAULT 1"
@@ -59,11 +62,19 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
     version = db.execute("PRAGMA user_version").fetchone()[0]
     if version not in (0, 1):
         raise ReplicaError("Private schema requires an upgrade")
+    from cairndex.replicas.discovery_state import TABLES
+
+    discovery = TABLES & actual.keys()
+    if discovery and discovery != TABLES:
+        raise ReplicaError("Private discovery schema is incomplete")
     present = MEDIA_TABLES & actual.keys()
     if present and present != MEDIA_TABLES:
         raise ReplicaError("Private media schema is incomplete")
     for known in known_schemas(catalog):
         expected = dict(known)
+        if not discovery:
+            for name in TABLES:
+                expected.pop(name, None)
         if version == 0:
             if not present:
                 for name in MEDIA_TABLES:

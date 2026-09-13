@@ -10,6 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- New format-three synthetic replicas support manual Update, private grouping
+  review and conservative external-move repair. Reviewed additions and explicit
+  ambiguous/replacement choices preserve IDs through causal catalog transactions;
+  source bytes remain unchanged. Discovery state and exact reviews are covered by
+  private recovery. Formats one and two retain their capabilities; real conversion
+  and provider qualification remain unavailable.
+
 - Complete synthetic replica catalogs open locally readable video and images in
   the shared viewer. Availability, bounded probes, source-generation checks,
   private derivatives and resume/cursors remain separate from authored history.

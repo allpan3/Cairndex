@@ -74,6 +74,9 @@ def exchange(library_id: str) -> None:
                 raise ReplicaError("Library descriptor changed; recovery review required")
             if isinstance(handle[0], CatalogStore):
                 run_one(handle[0])
+                from cairndex.replicas.discovery import tick
+
+                tick(handle[0], handle[1].root)
             handle[1].tick()
             with handle[0].connection() as db:
                 db.execute("DELETE FROM config WHERE key='exchange_error'")
@@ -95,6 +98,10 @@ def close(library_id: str) -> None:
     with _lock:
         handle = _handles.pop(library_id, None)
     if handle:
+        if isinstance(handle[0], CatalogStore):
+            from cairndex.replicas.discovery import close as close_discovery
+
+            close_discovery(handle[0])
         handle[1].close()
         handle[0].retire()
         handle[4].close()

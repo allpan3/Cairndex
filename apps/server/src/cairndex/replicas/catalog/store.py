@@ -95,6 +95,31 @@ class CatalogStore(CatalogStorage):
                     (unit,),
                 )
             }
+            if (
+                self.descriptor.format_version == 3
+                and unit.startswith("asset_files/")
+                and unit.endswith("/relative_path")
+            ):
+                values = {tip["value"] for tip in self.tips(db, unit)}
+                projected = db.execute(
+                    "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+                ).fetchone()
+                if projected and projected[0] is not None:
+                    values.add(projected[0])
+                for value in values:
+                    claims = {
+                        row[0]
+                        for row in db.execute(
+                            "SELECT unit FROM catalog_revisions WHERE value=? AND active=1 "
+                            "AND unit LIKE 'asset_files/%/relative_path'",
+                            (value,),
+                        )
+                    }
+                    if len(claims) > 1:
+                        more.update(claims)
+                        more.update(
+                            key("asset_files", split_key(claim)[1], "$alive") for claim in claims
+                        )
             targets = {
                 row[0]
                 for row in db.execute(
@@ -188,7 +213,7 @@ class CatalogStore(CatalogStorage):
                     "WHERE r.unit=? LIMIT 1",
                     (*root.parents, unit),
                 ).fetchone()
-                if local or observed:
+                if (local and self.descriptor.format_version != 3) or observed:
                     raise ReplicaError("Existing catalog units require an observed basis")
             if not basis and field != "$forest" and key(family, entity, "$alive") not in changed:
                 raise ReplicaError("New catalog identity needs its complete lifetime")
@@ -321,6 +346,24 @@ class CatalogStore(CatalogStorage):
         resolve: bool = False,
         recover: bool = False,
     ) -> str:
+        with self.connection() as db:
+            identity = self.save_in(
+                db, changes, operation, parents=parents, resolve=resolve, recover=recover
+            )
+        self.fault("save_after_commit")
+        return identity
+
+    # Discovery commits its exact catalog receipt and private acknowledgement in one transaction
+    def save_in(
+        self,
+        db: sqlite3.Connection,
+        changes: list[UnitChange],
+        operation: str,
+        *,
+        parents: list[str],
+        resolve: bool = False,
+        recover: bool = False,
+    ) -> str:
         intent = value_text(
             {
                 "changes": [change.model_dump() for change in changes],
@@ -329,42 +372,40 @@ class CatalogStore(CatalogStorage):
                 "parents": parents,
             }
         )
-        with self.connection() as db:
-            replica = db.execute("SELECT value FROM config WHERE key='replica'").fetchone()[0]
-            prior = retry_receipt(db, replica, operation)
-            if prior:
-                saved_intent = prior["intent"] or recovered_intent(
-                    db, self.descriptor, prior["id"], intent
+        replica = db.execute("SELECT value FROM config WHERE key='replica'").fetchone()[0]
+        prior = retry_receipt(db, replica, operation)
+        if prior:
+            saved_intent = prior["intent"] or recovered_intent(
+                db, self.descriptor, prior["id"], intent
+            )
+            if saved_intent != intent:
+                raise ReplicaError("Retry identity was reused for different work")
+            if prior["intent"] is None:
+                db.execute(
+                    "INSERT OR IGNORE INTO recovery_receipts VALUES (?, ?, ?)",
+                    (operation, intent, prior["id"]),
                 )
-                if saved_intent != intent:
-                    raise ReplicaError("Retry identity was reused for different work")
-                if prior["intent"] is None:
-                    db.execute(
-                        "INSERT OR IGNORE INTO recovery_receipts VALUES (?, ?, ?)",
-                        (operation, intent, prior["id"]),
-                    )
-                return str(prior["id"])
-            if (
-                not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone()
-                or db.execute("SELECT 1 FROM config WHERE key='blocked'").fetchone()
-            ):
-                raise ReplicaError("Waiting for complete catalog or recovery; draft retained")
-            identity = ""
-            for identity, raw in payload(
-                changes,
-                library=self.descriptor.library_uuid,
-                epoch=self.descriptor.epoch,
-                replica=replica,
-                operation=operation,
-                resolve=resolve,
-                recover=recover,
-                parents=parents,
-            ):
-                _, body = decode(raw, self.descriptor)
-                if self.accept(db, identity, body, raw, local=True, intent=intent) == "pending":
-                    raise ReplicaError("Observed dependencies are missing; draft retained")
-            self.fault("save_before_commit")
-        self.fault("save_after_commit")
+            return str(prior["id"])
+        if (
+            not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone()
+            or db.execute("SELECT 1 FROM config WHERE key='blocked'").fetchone()
+        ):
+            raise ReplicaError("Waiting for complete catalog or recovery; draft retained")
+        identity = ""
+        for identity, raw in payload(
+            changes,
+            library=self.descriptor.library_uuid,
+            epoch=self.descriptor.epoch,
+            replica=replica,
+            operation=operation,
+            resolve=resolve,
+            recover=recover,
+            parents=parents,
+        ):
+            _, body = decode(raw, self.descriptor)
+            if self.accept(db, identity, body, raw, local=True, intent=intent) == "pending":
+                raise ReplicaError("Observed dependencies are missing; draft retained")
+        self.fault("save_before_commit")
         return identity
 
     # Editors preserve their observed causal frontier with drafts and retry identities
