@@ -380,8 +380,8 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
         onConflict: onConflict ?? null,
       }),
     listenFileDrop: (handler) =>
-      // Tauri delivers OS file drops as a native webview event (dragDropEnabled),
-      // carrying the real absolute paths; internal DOM drag-and-drop is untouched.
+      // Retained native route; the shipping window disables dragDropEnabled to
+      // preserve internal HTML drops, so this listener currently receives none
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),

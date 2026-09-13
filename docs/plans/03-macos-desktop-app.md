@@ -217,33 +217,30 @@ handoff:
   ever stalls, §10's direct `NSDraggingSession` fallback still applies.
   Web-platform fallback: nothing (browser drag-out of server files isn't a
   thing beyond downloads).
-- **Drag-in:** files dropped from Finder that resolve *inside* a mapped
-  library root → reverse-map to relative paths → offer the existing
-  fast-add/manual-bundling flows. Files outside every mapped root → explain
-  ("Cairndex links files in place; move it into a library first") — no
-  copy/import in this milestone. **Implemented (D4):** Tauri delivers OS drops
-  as a native webview event (`dragDropEnabled`) carrying real absolute paths;
-  the `reverse_map_paths` Rust command canonicalizes each against the active
-  library's identity-verified root and categorizes it: in-library relative *files*,
-  out-of-library *files* (echoed back as the dropped absolute paths, which the web
-  supplied — no new library-internal path leaks), and a count of dropped
-  *directories*. In-library media seeds Create Bundle — the server tolerates and
-  *reports by reason* any path it can't bundle in that batch (non-media / missing /
-  already in a confirmed bundle), so a folder of media plus a stray `.nfo` or an
-  already-bundled file no longer aborts the whole add. An unmapped library is told
-  to locate itself first (a still-resolving mapping defers the drop); a drop is
-  ignored while any modal, context menu, popover, or viewer is open, or while the
-  app's own drag-out is in flight (an id-tagged guard); a dropped folder gets its
-  own "drop the files inside" message; outside files get the explanation. Once plan
-  4 W5 (import-external upload) lands, the outside-files branch upgrades into an
-  optional **"Copy into library…"** flow: the shell streams the local file to the
-  server, which writes it through the journaled write-mode path.
-  **Drag-and-drop media into the app is the owner's stated reason for write mode**
-  (2026-07-10), so plan 4 is sequenced immediately after this shell with W5
-  promoted (W0 → W1 → W5) — D4 lands with the reverse-map flow *and* the seam for
-  the copy flow (`handleFileDrop`'s `onCopyIntoLibrary`, handed exactly the outside
-  absolute paths of *every* drop — all-outside or the outside part of a mixed drop;
-  folders are never offered) so W5 plugs in without reworking the drop handler.
+- **Current drag-in:** `dragDropEnabled` is `false` so WKWebView retains
+  internal HTML drag-and-drop. OS files reach the HTML upload handlers as
+  `File` objects. With deployment and library write permission, File Browser
+  copies into its current directory; bundle cards and the Bundle Inspector
+  request a destination, import through the journaled endpoint, and link the
+  landed files. Imports have collision choices, cancellation and journal Undo.
+  A window-level handler prevents dropped files from replacing the application
+  page and explains drops outside an enabled target.
+- **Unresolved native integration:** the retained `useDesktopFileDrop` route
+  expects native events and cannot currently reverse-map OS drops into
+  metadata-only grouping. Its pending/unmapped/modal routing and Rust
+  deterministic self-drop guard do not protect the HTML upload path. A browser
+  `File` supplies bytes, not trusted source-path identity. Native drop delivery,
+  self-drops, modifiers, cancellation and cross-application receiving behavior
+  require real desktop verification; unit tests and a successful package build
+  do not close that gap.
+- **Native route boundary:** `reverse_map_paths` validates a mapped manifest and
+  classifies contained files as relative paths, outside files as dropped paths,
+  and directories separately. `importer.rs` can upload only paths independently
+  recorded from a native window drop, using the shell's configured server and
+  bearer; it refuses known files already inside the destination library.
+  Restoring this route must preserve internal HTML gestures, bundle target
+  selection and the ADR-0013 gates. Simply enabling Tauri interception handles
+  every drag event and blocks WKWebView's internal drop processing.
 
 ## 7. Native shell niceties
 
@@ -502,7 +499,7 @@ browser-only, where every desktop surface is inert.
 | D1 ✅ | Shell bootstrap | `apps/desktop`, window/menu skeleton, server-URL first-run, loads the SPA, CI job |
 | D2 ✅ | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
 | D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
-| D4 ✅ | Drag-out / drag-in | §6 |
+| D4 — integration open | Drag-out / drag-in | Implemented sources and HTML uploads; trusted native drop routing and OS delivery qualification remain open (§6) |
 | D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
 | D5b ✅ | Deep links, notifications, export seam | `cairndex://` bundle/collection deep links with cold-start parking and single-instance handoff, one dock badge / notification per long *run* (not per job), native save-dialog seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
 | D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app. *(The updater's premise did change — it moves to D7. Signing's did not; see §3.)* |

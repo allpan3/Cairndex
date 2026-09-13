@@ -270,23 +270,37 @@ Current File Browser milestone:
 - validate every requested path through the library-root path-safety layer;
 - never expose unrestricted absolute server paths;
 - visually separate files Cairndex can open natively from unsupported files;
-- allow later actions such as fast-add/link-to-bundle/create-bundle from selected files;
-- do not move, rename, delete, or rewrite source files.
+- fast-add/link-to-bundle/create-bundle from selected files without copying them;
+- leave source files unchanged by default; physical operations require the
+  deployment-and-library write-mode gates and journal described in ADR-0013;
+- offer Open in Default App and Reveal in Finder in the desktop shell when the
+  active library has a validated local mapping.
 
 Long-term File Browser milestone:
 
 - behave like a true filesystem browser scoped to library roots;
-- support safe write-mode operations such as rename, move, delete, and directory creation;
-- support `open with default app` and `reveal in file manager` where safe local/native host integration exists;
 - record or surface enough state that metadata repair, stale paths, and missing linked files are understandable.
 
 A supported/openable file means a file that the current app can preview or play natively through the web UI. Recognized-but-not-openable files may still be shown, linked, or treated as attachments where the bundle model permits it. PDF preview is optional future support; do not mark PDFs as natively supported until a real viewer path exists.
 
 ### Host file operations and default-app integration
 
-`Open with default app` and `Reveal in file manager` are future host-integration features. They must be designed deliberately because Cairndex may run inside Docker on a NAS while the user interacts through a browser on another machine.
+The Tauri desktop shell implements **Open in Default App** and **Reveal in
+Finder** through the local operating system. A server-scoped mapping connects
+the active library's registry ID to a local root and its portable manifest UUID.
+Each handoff rechecks identity, availability and path containment. Missing files,
+unavailable mounts and changed identities produce errors; an unmapped library
+does not offer these context-menu actions.
 
-Do not implement these features as arbitrary shell command execution from the web API. Acceptable future approaches include a Tauri/native desktop shell, a local companion helper, or a carefully scoped host integration that can prove the opened path is inside an allowed library root and that the action is initiated by the authenticated owner.
+A remote server path is not a desktop path. Remote libraries require explicit
+local location selection; only the shell's own local server can supply an
+automatically adopted root, which still passes manifest validation. The browser
+does not offer native handoff, and the web API never executes host commands.
+
+Desktop file drag-out uses the same mapped-path validation. Current drag-in uses
+HTML file uploads into write-enabled libraries. Native path reverse-mapping and
+self-drop detection remain an unresolved integration gap; see the current
+[desktop drag contract](plans/03-macos-desktop-app.md#6-drag-out--drag-in).
 
 ## File discovery, linking, and identity
 
@@ -544,7 +558,7 @@ Inside a collection, show breadcrumb/title, direct subcollection selector/count,
 
 ### File Browser
 
-Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists. Entering a directory may reconcile only the linked direct children expected there; it must not trigger a whole-library scan or guess moved-file identity from an unlinked path.
+Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances unless the library and deployment permit write mode. Replica packages retain their separate physical-operation capability limits. Entering a directory may reconcile only the linked direct children expected there; it must not trigger a whole-library scan or guess moved-file identity from an unlinked path.
 
 File Browser is not a replacement for Bundle Browser. It is a filesystem browser and linking/diagnostic surface. Bundle Browser remains the primary organization and browsing surface.
 
@@ -561,12 +575,8 @@ The simple filter toolbar and Smart Collection editor must compile to the same c
 Avoid schema choices that block these later features:
 
 - multiple users with per-user watch history, favorites, and view preferences;
-- File Browser write mode with audit logs and recovery;
-- open-with-default-app and reveal-in-file-manager via safe local/native host integration;
 - remote quality selection and hardware-accelerated transcoding;
 - Android TV native client;
-- Tauri desktop shell;
-- app-managed imports;
 - metadata sidecar export;
 - duplicate detection and manual duplicate/copy resolution;
 - plugin/import adapters;

@@ -86,10 +86,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if matches!(event, tauri::WindowEvent::Resized(_)) {
                 app_menu::broadcast_fullscreen(window.app_handle());
             }
-            // Record what was dropped *here*, in the shell, rather than trusting
-            // the webview to report it back later. The webview receives the same
-            // drop through its own event and drives the flow; this is only the
-            // record of what the user actually put on the window.
+            // Only native window events can authorize path-based uploads
+            // This retained route is inactive with dragDropEnabled set to false
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 importer::remember_drop(&window.state::<importer::DroppedFiles>(), paths);
             }

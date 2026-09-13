@@ -204,17 +204,22 @@ The same mapping/validation boundary powers desktop drag (plan 3 D4). Drag-out
 thread through the cross-platform `drag` crate — the engine behind
 `tauri-plugin-drag`, used directly so absolute paths never reach the web layer
 (the plugin's only surface is a JS command that takes them); the sole OS edge is
-the window handle. Drag-in relies on Tauri's `dragDropEnabled` webview event for
-the dropped absolute paths, which `reverse_map_paths` canonicalizes against the
-active library's identity-verified root and categorizes into in-library relative
-files (fed to Create Bundle), out-of-library files (echoed back as the dropped
-absolutes the web itself supplied), and a directory count. In-library media seeds
-Create Bundle; the server tolerates and reports by reason any path it can't bundle
-in that batch. Outside files are **copied in** when the library permits writing
-(ADR-0013 §7): `importer.rs` streams each one to the server's import endpoint,
-refusing any path the shell did not itself record from the OS drop event — the
-web layer may name a dropped path, never invent one. A read-only library still
-gets the in-place-linking explanation, and a dropped folder gets its own message.
+the window handle.
+
+The shipping window sets `dragDropEnabled: false`, preserving internal HTML
+drag-and-drop. Incoming OS files use HTML `File` uploads through `useWebImports`
+and the journaled import endpoint when deployment and library gates permit
+writing. File Browser targets its current directory; bundle/inspector targets
+ask for a destination before importing and linking. The window prevents default
+file navigation and explains unhandled drops.
+
+The native path-based route remains present but inactive: `reverse_map_paths`
+classifies files against the mapped root, and `importer.rs` refuses uploads of
+paths absent from the shell's last OS drop. Its grouping and deterministic
+self-drop protections do not cover the shipping HTML route. HTML file contents
+cannot prove their original library-relative location. Native routing that
+preserves internal gestures is an unresolved integration requirement; see
+[plan 3](plans/03-macos-desktop-app.md#6-drag-out--drag-in).
 
 An import selection remains a **client-owned sequential batch**, not a registry
 job: the bytes live in a browser `File` or a desktop file handle, so putting an

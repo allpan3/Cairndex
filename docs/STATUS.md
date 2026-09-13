@@ -1,5 +1,34 @@
 # Project status
 
+- Desktop file integration (I23/I26) is in progress on
+  `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
+  Current references describe implemented server-scoped mapped Open/Reveal and
+  the shipping HTML upload route. Native `reverse_map_paths`, dropped-path
+  upload authorization and deterministic self-drop detection remain inactive
+  with `dragDropEnabled: false`. Enabling whole-pipeline interception also blocks
+  internal HTML drops; preserving both flows remains unresolved.
+  This checkpoint changes documentation and explanatory source comments only.
+  The refreshed self-contained ARM sidecar and isolated production app build;
+  the app's strict code signature verifies. Rust format/Clippy and 124 tests,
+  57 focused frontend tests, 175 backend path/file-operation tests and eight
+  browser import/drag regressions pass. The production frontend build also
+  passes, retaining its existing chunk-size warning. Full frontend/backend suites
+  are not repeated for this documentation checkpoint; Linux execution is not
+  qualified. No new executable behavior or schema is claimed.
+  Computer Use reached the real production UI and started an isolated local
+  server with no libraries registered. Foreground observation showed that
+  window raise and direct control dispatch did not establish foreground app
+  ownership. Finder activation of that exact app was rejected by automatic
+  approval review, including a retry after clean-checkout/identity/signature
+  verification, and awaits direct owner confirmation. No alternative launch
+  route is used to bypass that rejection. Cross-application file delivery,
+  modifiers, cancellation/self-drops, mapped Open/Reveal after switches and
+  unavailable/wrong-identity cases remain **unverified**. Synthetic fixtures and
+  the isolated package are prepared; no owner media or installed app is changed.
+  Resume this same group with native foreground activation and the full
+  synthetic transfer matrix, fix reproduced defects, then requalify the final
+  package. This is not completion of the desktop integration group.
+
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
   following draft-delivery checkpoint `06fcf887`.

@@ -43,8 +43,9 @@ fresh author incarnations and keep the original stores and backups intact.
 
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
-hierarchical **Collections**, a read-only physical **File Browser**, hierarchical
-tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail/
+hierarchical **Collections**, a physical **File Browser** that is read-only by
+default, hierarchical tags + tag groups, filtering and Smart Collections,
+scan/probe/thumbnail/
 storyboard jobs with high-confidence moved-file repair, and a hardened
 single-container production deployment. [Media playback](docs/playback.md) runs in
 a unified custom **media viewer** — a hand-built video player (auto-hiding controls,

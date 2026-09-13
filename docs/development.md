@@ -316,12 +316,25 @@ tile, the File inspector, or the bundle inspector — its cover drags the whole
 bundle, while Option-dragging one of its pointer-reorderable file rows drags
 that file — out to Finder while the library is mapped;
 `dragout.rs` validates each path exactly like reveal/open and starts the native
-drag through the `drag` crate. Dropping files from Finder that land inside the
-mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are
-explained ("move them into the library first"); an unmapped library is told to
-locate itself. A plain captured-pointer drag on an inspector file row reorders
-it inside the bundle without invoking WebView HTML drag/drop. No absolute path
-ever crosses into the web layer.
+drag through the `drag` crate. A plain captured-pointer drag on an inspector file
+row reorders it inside the bundle without invoking WebView HTML drag/drop.
+Drag-out requests contain library IDs and relative paths; Rust resolves the
+absolute paths locally.
+
+`dragDropEnabled` is **false** to preserve HTML internal drag-and-drop. Incoming
+files therefore reach the HTML upload handlers: File Browser copies into the
+current directory; bundle cards and the Bundle Inspector open a destination
+picker, then import and link the landed files. Both require deployment and
+library write permission and use the journaled server import endpoint. An
+unhandled file drop cannot navigate away from the app and receives guidance.
+
+The native `reverse_map_paths` / `useDesktopFileDrop` / `importer.rs` route is
+retained but receives no native drop events in this configuration. Its
+in-library grouping, dropped-path allowlist and deterministic self-drop guard
+are consequently not evidence for the shipping HTML route. HTML `File` objects
+do not establish the source's local library path. Preserving internal gestures
+while restoring trusted native drop routing remains open; enabling Tauri's
+whole-pipeline interception alone also intercepts internal HTML drops.
 
 ### Menus and shortcuts (D5a)
 

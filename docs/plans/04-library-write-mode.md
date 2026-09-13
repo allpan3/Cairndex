@@ -222,11 +222,14 @@ dialog, complete now that W4 gave Replace somewhere to put what it displaces.
 Creation-only but the widest new surface (upload size limits, temp-file staging,
 partial-upload cleanup).
 
-**The desktop drag-in goes through the shell**, because Tauri's
-`dragDropEnabled` intercepts an OS drop *before* the webview sees it: the drop
-arrives as absolute paths, and the web layer cannot read those paths by design
-(plan 3 §5). `importer.rs` streams the file to the import endpoint using the
-media proxy's own server URL and bearer.
+**Current desktop drag-in uses HTML uploads.** `dragDropEnabled` is `false`
+to retain internal HTML drag-and-drop, so OS files reach `useWebImports` as
+browser `File` objects. The native `importer.rs` command remains present but
+receives no dropped-path credentials in this configuration. Its configured
+server/bearer streaming route and the safeguards below are retained boundaries,
+not proof of the shipping HTML route's source identity or self-drop behavior.
+See [plan 3 §6](03-macos-desktop-app.md#6-drag-out--drag-in) for the open native
+integration requirement.
 
 Two rules keep that command from becoming "the web layer can read any file on
 the disk and post it somewhere":

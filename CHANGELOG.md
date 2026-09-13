@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Desktop reference documentation describes implemented mapped Open/Reveal
+  actions and the shipping HTML upload route. Trusted native drop routing,
+  self-drop protection and cross-application delivery qualification remain open.
+
 - Replica Update groups complete directories across internal batches, including
   directories with more than 128 discovered or settled files. Paged review supports
   collections, required ancestors, existing placement and partial acceptance.
