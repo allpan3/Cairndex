@@ -40,8 +40,12 @@ rejects storage inside the library and detects linked/rebound metadata paths;
 it cannot discover every provider's configured synchronization roots. One physical
 private store is shared by clients of that server. SQLite serializes transactions;
 there is no synchronized active-owner lease. Copying a private DB to make another
-replica is unsupported: restoration/cloning needs a fresh author incarnation and a
-reviewed recovery procedure. Copy only package artifacts for synthetic replicas.
+replica is unsupported. The [supported recovery command](replica-recovery.md)
+verifies a private snapshot, prepares a separate generation with a fresh author,
+retains old retry lineage and requires explicit reviewed activation after Release.
+Private bindings select the original directory or `generations/<recovery ID>`;
+missing bound stores cannot silently reset. Copy only package artifacts when
+creating independent synthetic replicas without private recovery.
 
 A save commits archive, projection and outbox atomically before acknowledging local
 durability. Stable operation IDs retry the same intent. Imports validate all basis
@@ -157,6 +161,12 @@ mapping report before enabling conversion.
    archived events; missing dependencies remain pending. Unpublished events and
    drafts require the private backup. Cloning/restoration must create a fresh
    incarnation before authoring; independent seeds are not shared ancestry.
+
+The [private recovery workflow](replica-recovery.md) executes this private-store
+backup/restoration boundary for capable packages. It preserves received drafts,
+pending jobs, receipts and media resume data, and blocks incomplete history or
+surviving original work absent from the candidate. It does not activate a real
+legacy conversion or transplant authentication/registry state.
 
 No real conversion is available until this entire contract is executable and all
 families pass round-trip and conflict recovery tests. Provider qualification,

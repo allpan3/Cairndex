@@ -17,6 +17,13 @@ causal parent/frontier indexes, linked parts, conflict holds and durable jobs.
 The complete seed plus immutable edits reconstruct authored metadata. Private
 materialization is transactional and readers retain the last committed valid view.
 
+`recovery_receipts(operation, intent, event)` retains exact acknowledged intent
+across author changes. `recovery_authors(replica)` identifies prior incarnations
+whose delayed events can satisfy exact retries. Neither table enters shared
+transport. Private bindings select either the original working directory or a
+generated restoration directory. The [recovery policy](replica-recovery.md#private-state-policy)
+classifies every private table, draft/job state and device observation.
+
 The [catalog mapping](replica-catalog.md) covers every authored field and edge.
 Notes and opaque JSON columns retain exact SQLite text, including NULL versus
 JSON null, order, duplicates, whitespace and large numeric literals. Progress,

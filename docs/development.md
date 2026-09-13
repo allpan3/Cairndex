@@ -79,6 +79,18 @@ artifact delivery. The [catalog workflow](replica-catalog.md) documents creation
 review, private drafts and saved-operation recovery. The [migration contract](replica-migration.md)
 keeps real-library conversion unavailable.
 
+The supported [private recovery workflow](replica-recovery.md) runs through
+`python -m cairndex.replicas.recovery_cli` or the frozen sidecar's
+`replica-recovery` subcommand. `tests/test_replica_recovery.py` and
+`tests/test_replica_recovery_api.py` exercise coherent snapshots, corrupt/foreign
+sets, known older schemas, exact retries, private resume, abrupt subprocess exits
+and Release/activation exclusion. `tests/test_replica_recovery_binary.py` runs the
+same HTTP/CLI acceptance against source sidecars or the executable selected by
+`CAIRNDEX_RECOVERY_TEST_BINARY`; see the [commands](replica-recovery.md#synthetic-acceptance).
+`e2e/replica-recovery.spec.ts` restores into a
+separate real server and browser and recovers received drafts through the shared
+app. All fixtures are disposable and use invented metadata.
+
 ## Isolated cloud metadata prototype
 
 The disposable experiment under `apps/server/prototypes/cloud_metadata` is not

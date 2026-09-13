@@ -8,6 +8,7 @@ from cairndex.core.errors import DomainError, LibraryReleasedError
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.library_package import read_manifest
 from cairndex.registry.models import RegisteredLibrary
+from cairndex.replicas.binding import BindingLock, bind, location
 from cairndex.replicas.catalog.jobs import run_one
 from cairndex.replicas.catalog.protocol import CatalogDescriptor
 from cairndex.replicas.catalog.store import CatalogStore
@@ -15,7 +16,7 @@ from cairndex.replicas.protocol import PackageFormatError, ReplicaError
 from cairndex.replicas.store import Store
 from cairndex.replicas.transport import Transport
 
-_handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str]] = {}
+_handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str, BindingLock]] = {}
 _lock = threading.RLock()
 
 
@@ -41,15 +42,22 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
         base = get_settings().data_dir.resolve()
         if base.is_relative_to(root.resolve()):
             raise ReplicaError("Replica data directory must be private and outside the library")
-        target = base / "replicas" / manifest.library_uuid
-        if target.is_symlink() or target.parent.is_symlink():
-            raise ReplicaError("Private replica storage must not be symlinked")
-        store: Store | CatalogStore = (
-            CatalogStore(target, manifest.replica)
-            if isinstance(manifest.replica, CatalogDescriptor)
-            else Store(target, manifest.replica)
-        )
-        _handles[library.id] = store, Transport(root, store), threading.Lock(), identity
+        guard = BindingLock(base, manifest.replica)
+        try:
+            target, revision = location(base, manifest.replica)
+            if revision != "unbound" and not (target / "replica.db").is_file():
+                raise ReplicaError("Private database is missing; use explicit replica recovery")
+            store: Store | CatalogStore = (
+                CatalogStore(target, manifest.replica)
+                if isinstance(manifest.replica, CatalogDescriptor)
+                else Store(target, manifest.replica)
+            )
+            if revision == "unbound":
+                bind(base, manifest.replica, "original", "initial")
+            _handles[library.id] = store, Transport(root, store), threading.Lock(), identity, guard
+        except BaseException:
+            guard.close()
+            raise
         return store
 
 
@@ -88,6 +96,8 @@ def close(library_id: str) -> None:
         handle = _handles.pop(library_id, None)
     if handle:
         handle[1].close()
+        handle[0].retire()
+        handle[4].close()
 
 
 # Poll only replicas opened by this server, with bounded work per replica

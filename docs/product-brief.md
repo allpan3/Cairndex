@@ -86,6 +86,12 @@ Filesystem discovery and source operations remain unavailable. Legacy libraries 
 ownership and media workflows. Real-library conversion and provider qualification
 require separate approval and evidence.
 
+Private backups preserve this replica's unexchanged metadata and server-received
+drafts. [Explicit recovery](replica-recovery.md) prepares and reviews a separate
+generation, checks surviving private work, then activates after serving work has
+drained. Each restore has a fresh author identity; source media, old stores and
+backups remain intact. Unreceived browser-only work is outside a server snapshot.
+
 ## Canonical domain model
 
 Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until intentionally migrated or retained as historical table names.

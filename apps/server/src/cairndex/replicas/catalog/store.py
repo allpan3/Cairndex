@@ -11,6 +11,7 @@ from cairndex.replicas.catalog.model import AUTHORED, key, split_key, structural
 from cairndex.replicas.catalog.protocol import Root, UnitChange, decode, payload
 from cairndex.replicas.catalog.storage import CatalogStorage
 from cairndex.replicas.protocol import MAX_CANDIDATES, ReplicaError, checksum
+from cairndex.replicas.store import recovered_intent, retry_receipt
 
 
 # Active revisions and structural cohorts preserve alternatives without a timestamp winner
@@ -330,12 +331,18 @@ class CatalogStore(CatalogStorage):
         )
         with self.connection() as db:
             replica = db.execute("SELECT value FROM config WHERE key='replica'").fetchone()[0]
-            prior = db.execute(
-                "SELECT id,intent FROM events WHERE replica=? AND operation=?", (replica, operation)
-            ).fetchone()
+            prior = retry_receipt(db, replica, operation)
             if prior:
-                if prior["intent"] != intent:
+                saved_intent = prior["intent"] or recovered_intent(
+                    db, self.descriptor, prior["id"], intent
+                )
+                if saved_intent != intent:
                     raise ReplicaError("Retry identity was reused for different work")
+                if prior["intent"] is None:
+                    db.execute(
+                        "INSERT OR IGNORE INTO recovery_receipts VALUES (?, ?, ?)",
+                        (operation, intent, prior["id"]),
+                    )
                 return str(prior["id"])
             if (
                 not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone()

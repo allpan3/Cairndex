@@ -16,7 +16,12 @@ also live privately; queued jobs resume after restart, and interrupted saves ret
 with the same operation identity. The shared app lists retained jobs for recovery.
 Disposable rollback exports retain a separate `replica-recovery.db` alongside the
 legacy recovery copy; these exports never activate a real library. Do not clone private state into a
-second author. Exchange requires macOS/Linux POSIX directory descriptors and atomic
+second author. Use the [private replica recovery command](replica-recovery.md)
+for coherent backups, verified restoration and explicit generation activation
+after Release/shutdown. It also ships as `cairndex-sidecar replica-recovery`.
+Backups remain outside server data and provider trees; registry credentials and
+legacy conversion archives have separate backup/rebinding responsibilities.
+Exchange requires macOS/Linux POSIX directory descriptors and atomic
 hard-link publication; unsupported storage reports a retryable exchange failure.
 No provider or Windows qualification, real-library conversion, deployment or source
 write capability is implied. See the [contract](replica-migration.md).
@@ -612,6 +617,11 @@ Both also apply to the trash: `.cairndex/trash/` lives in the library package, s
 deleting a file that sits on a *different* mount from the package is a copy too.
 
 ### Backups
+
+For capable replica packages, use [private replica backup and recovery](replica-recovery.md).
+The scripts below address legacy library and registry SQLite files; copying a
+replica DB through a generic restore script does not create a valid new author
+incarnation or activate a reviewed generation.
 
 ADR-0008 split persistent state across multiple SQLite DBs:
 

@@ -125,7 +125,8 @@ class CatalogStorage(PrivateStore):
         return accepted
 
     # Verify the exact linked chain using disk-backed staging rather than retaining all chunks
-    def payload_records(self, db: sqlite3.Connection, root: Root) -> Iterator[UnitChange]:
+    @staticmethod
+    def payload_records(db: sqlite3.Connection, root: Root) -> Iterator[UnitChange]:
         db.execute(
             "CREATE TEMP TABLE IF NOT EXISTS catalog_chain (sequence INTEGER PRIMARY KEY,id TEXT)"
         )

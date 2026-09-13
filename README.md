@@ -29,6 +29,11 @@ ownership rules. See the [catalog workflow](docs/replica-catalog.md), accepted
 [migration contract](docs/replica-migration.md). NAS and cloud folders are storage
 scenarios, not required application modes.
 
+[Private replica recovery](docs/replica-recovery.md) provides coherent backups,
+verified preparation, inspectable reviews and explicit activation into a separate
+private generation. Restores preserve unexchanged work and received drafts, use
+fresh author incarnations and keep the original stores and backups intact.
+
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
 hierarchical **Collections**, a read-only physical **File Browser**, hierarchical

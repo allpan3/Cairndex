@@ -74,6 +74,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Private replica backup, verification, recovery review and explicit activation
+  through a supported local command and packaged sidecar. Coherent snapshots
+  preserve unpublished events, received drafts, conflicts, jobs, retry receipts
+  and private resume. Restores validate history/schema/references, retain original
+  stores, use fresh authors and require explicit retry of recovered pending work.
+  Missing private stores require recovery; activation excludes active server work.
+  Real conversion and provider qualification remain unavailable.
+
 - Viewer Info includes a bounded local playback diagnostic snapshot with event
   timings, intent, buffering and frame counters; media names, addresses and
   subtitle text are excluded.

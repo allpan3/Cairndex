@@ -39,6 +39,15 @@ and their validated dependencies use complete reviewed arrangements. Normal save
 and imports update indexed affected rows. Explicit branch recovery reconstructs
 history in a separate private store in a background job.
 
+[Private recovery](replica-recovery.md) snapshots SQLite online and independently
+validates schema, complete immutable history and private references. A local
+administrative command prepares an inspectable candidate, preserving the original.
+Exact review hashes and a private process lock coordinate activation with Release,
+requests, jobs, exchange and media drain. A private generation binding selects the
+new store atomically; the live database is never overwritten. Fresh author
+incarnations retain old immutable identities and private retry lineage under
+[ADR-0031](adr/0031-private-replica-recovery.md).
+
 The media adapter reads validated authored rows into detached file/track values;
 it never presents the catalog as a legacy ORM session. Allowlisted indexed media
 routes share the existing playback decisions, viewer and HLS manager. Observations,

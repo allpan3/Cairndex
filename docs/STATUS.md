@@ -1,5 +1,41 @@
 # Project status
 
+- Private replica backup/device recovery (bounded S12/I05) is implemented on
+  `fix/library-ownership-lifecycle`, under [ADR-0031](adr/0031-private-replica-recovery.md).
+  The [supported local command](replica-recovery.md), also included in the frozen
+  sidecar, provides coherent backup/verification, separate preparation, paginated
+  private inspection, cancellation, explicit receipt-based activation and exact
+  pending-job retry. It preserves original stores/backups, unexchanged events,
+  retained alternatives, received drafts/bases, jobs/receipts and private media
+  resume. Unknown schema/authority and incomplete dependencies are fenced; known
+  older layouts migrate only in separate candidates. Missing bound stores require
+  recovery. Fresh authors retain private lineage so delayed original events and
+  acknowledged retries do not impersonate old devices or create duplicate local
+  commits. Recovered stale choices retain their exact conflict-review checks.
+  Activation excludes admitted requests, exchange, jobs and media through the
+  existing Release/shutdown drain and a private process lock. It selects a new
+  generation without overwriting the old DB, and refuses a candidate that lacks
+  surviving original private work, transport receipts or retry lineage. Repeated
+  activation validates the current database; lost bindings cannot silently reopen
+  older generations. Browser-only unreceived text, registry/auth,
+  legacy conversion archives and source media remain explicit separate coverage.
+  Backend Ruff/format/mypy and the full suite pass: **1,587 passed**, one existing
+  FFmpeg zscale skip. This includes 59 recovery/API cases and source-sidecar
+  HTTP/CLI acceptance. Frontend lint/format/typecheck/build and 1,211 unit tests
+  pass; the existing chunk-size warning remains. Five relevant fullstack browser
+  scenarios pass, including fresh-browser draft recovery; that recovery scenario
+  also passes after activation hardening. The rebuilt ARM development frozen
+  sidecar passes the same recovery acceptance and existing packaged smoke test.
+  OpenAPI reproduces exactly; no response/schema or native host/UI code changed.
+  Native GUI, Rust and full desktop app gates were not repeated for this group;
+  the frozen command/HTTP boundaries were exercised directly. No installed app
+  replacement occurred. The source-only staged privacy gate passes for 29 text
+  files; no media, dependencies or build output is included. The cumulative branch
+  retains its existing 8 MiB publication-volume block, without bypass or cleanup.
+  Real libraries, providers, Docker/NAS, physical source operations, publication,
+  automations and the deferred directory-pagination group remain outside scope.
+  This bounded group is complete; further audit groups await owner instruction.
+
 - Replica-local media availability/playback (S12/I05) is implemented on
   `fix/library-ownership-lifecycle`. Complete synthetic catalogs use the production
   viewer and allowlisted media routes without legacy content SQL. Selected-file

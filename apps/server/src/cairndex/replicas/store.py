@@ -50,12 +50,64 @@ CREATE TABLE IF NOT EXISTS draft_receipts (id TEXT PRIMARY KEY, revision INTEGER
 CREATE TABLE IF NOT EXISTS drafts (
     id TEXT PRIMARY KEY, bundle TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS drafts_bundle ON drafts(bundle, id);
+CREATE TABLE IF NOT EXISTS recovery_receipts (
+    operation TEXT PRIMARY KEY, intent TEXT NOT NULL, event TEXT NOT NULL REFERENCES events(id));
+CREATE TABLE IF NOT EXISTS recovery_authors (replica TEXT PRIMARY KEY);
 """
 
 
 # Failpoints are injected by synthetic crash tests, never configured through an API
 def no_fault(point: str) -> None:
     pass
+
+
+# A restored author retains exact receipts without impersonating the archived incarnation
+def retry_receipt(db: sqlite3.Connection, replica: str, operation: str) -> sqlite3.Row | None:
+    row: sqlite3.Row | None = db.execute(
+        "SELECT id,intent FROM events WHERE replica=? AND operation=? UNION ALL "
+        "SELECT event AS id,intent FROM recovery_receipts WHERE operation=? UNION ALL "
+        "SELECT id,intent FROM events WHERE operation=? "
+        "AND replica IN (SELECT replica FROM recovery_authors) LIMIT 1",
+        (replica, operation, operation, operation),
+    ).fetchone()
+    return row
+
+
+# A returning original author may deliver a committed operation after the backup checkpoint
+def recovered_intent(
+    db: sqlite3.Connection, descriptor: PackageIdentity, event: str, supplied: str
+) -> str:
+    from cairndex.replicas.catalog.protocol import CatalogDescriptor, Root
+    from cairndex.replicas.catalog.protocol import decode as catalog_decode
+    from cairndex.replicas.catalog.storage import CatalogStorage
+
+    raw = db.execute("SELECT raw FROM events WHERE id=?", (event,)).fetchone()[0]
+    if isinstance(descriptor, CatalogDescriptor):
+        _, root = catalog_decode(raw, descriptor)
+        if not isinstance(root, Root):
+            raise ReplicaError("Retry receipt requires an authored event")
+        # Payload traversal needs no live store handle or mutation outside a temporary SQL table
+        changes = [change.model_dump() for change in CatalogStorage.payload_records(db, root)]
+        return canonical(
+            {
+                "changes": changes,
+                "parents": root.parents,
+                "resolve": root.resolve,
+                "recover": root.recover,
+            }
+        ).decode()
+    if not isinstance(descriptor, Descriptor):
+        raise ReplicaError("Unsupported retry capability")
+    _, body = decode(raw, descriptor)
+    if not isinstance(body, Edit):
+        raise ReplicaError("Retry receipt requires an authored edit")
+    return canonical(
+        {
+            "bundle": body.bundle,
+            "changes": {name: change.model_dump() for name, change in body.changes.items()},
+            "resolve": json.loads(supplied)["resolve"],
+        }
+    ).decode()
 
 
 # Each transaction opens its own connection; SQLite serializes clients and importer together
@@ -75,10 +127,18 @@ class PrivateStore:
         info = directory.stat()
         self._directory_identity = (info.st_dev, info.st_ino)
         self.path = directory / "replica.db"
+        self._initializing = not self.path.exists()
+        if not self._initializing:
+            self._database_identity = self.path.stat().st_dev, self.path.stat().st_ino
         if self.path.is_symlink():
             raise ReplicaError("Private replica database must not be a symlink")
         self.descriptor, self.fault = descriptor, fault
         with self.connection() as db:
+            if not self._initializing:
+                from cairndex.replicas.catalog.protocol import CatalogDescriptor
+                from cairndex.replicas.private_schema import validate_schema
+
+                validate_schema(db, catalog=isinstance(descriptor, CatalogDescriptor))
             db.executescript(SCHEMA)
             db.execute("BEGIN IMMEDIATE")
             identity = canonical(
@@ -89,6 +149,12 @@ class PrivateStore:
                 raise ReplicaError("Private history identity changed; recovery review required")
             db.execute("INSERT OR IGNORE INTO config VALUES ('identity', ?)", (identity,))
             db.execute("INSERT OR IGNORE INTO config VALUES ('replica', ?)", (uuid4().hex,))
+        self._initializing = False
+        self._database_identity = self.path.stat().st_dev, self.path.stat().st_ino
+
+    # Retired handles cannot resume a transaction against a replaced active generation
+    def retire(self) -> None:
+        self._directory_identity = (-1, -1)
 
     # FULL durability keeps save/outbox/projection in one local crash boundary
     @contextmanager
@@ -109,8 +175,16 @@ class PrivateStore:
         ):
             raise ReplicaError("Private metadata storage changed; recovery review required")
         try:
-            db = sqlite3.connect(self.path, timeout=10)
-        except sqlite3.Error as error:
+            if not self._initializing:
+                info = self.path.stat(follow_symlinks=False)
+                if self._database_identity != (info.st_dev, info.st_ino):
+                    raise ReplicaError("Private database changed; explicit recovery required")
+            db = sqlite3.connect(
+                self.path.as_uri() + ("?mode=rwc" if self._initializing else "?mode=rw"),
+                uri=True,
+                timeout=10,
+            )
+        except (sqlite3.Error, OSError) as error:
             raise ReplicaError(
                 "Private metadata storage unavailable; your draft is retained"
             ) from error
@@ -269,12 +343,18 @@ class Store(PrivateStore):
         ).decode()
         with self.connection() as db:
             replica = db.execute("SELECT value FROM config WHERE key='replica'").fetchone()[0]
-            prior = db.execute(
-                "SELECT id,intent FROM events WHERE replica=? AND operation=?", (replica, operation)
-            ).fetchone()
+            prior = retry_receipt(db, replica, operation)
             if prior:
-                if prior["intent"] != intent:
+                saved_intent = prior["intent"] or recovered_intent(
+                    db, self.descriptor, prior["id"], intent
+                )
+                if saved_intent != intent:
                     raise ReplicaError("Retry identity was reused for different work")
+                if prior["intent"] is None:
+                    db.execute(
+                        "INSERT OR IGNORE INTO recovery_receipts VALUES (?, ?, ?)",
+                        (operation, intent, prior["id"]),
+                    )
                 return str(prior["id"])
             self._writable(db)
             if resolve:

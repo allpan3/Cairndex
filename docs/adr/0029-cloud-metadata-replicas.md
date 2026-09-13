@@ -196,6 +196,11 @@ vary during migration without introducing a “NAS mode” or a second applicati
 
 ## Migration, compatibility and recovery
 
+[ADR-0031](0031-private-replica-recovery.md) defines the supported private backup,
+review and explicit generation activation workflow, including fresh author
+incarnations, retained retries, received drafts, pending jobs and private media
+state. It does not enable real legacy conversion or provider qualification.
+
 Automatic and real-library conversion remain unavailable. Disposable developer
 fixtures execute seed reconstruction and legacy round trips. Real activation still
 requires the following checkpoint and recovery contract:

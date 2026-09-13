@@ -87,7 +87,9 @@ def test_media_is_private_and_restart_retains_progress(media_api):
         client.get(base + "/replica/media/bundles/bundle-000001").json()["cursor"] == "media-direct"
     )
     assert peer.progress("media-direct", local["generation"]) is None
-    assert authored(store) == snapshots[0]
+    # Release retires the old handle; verify the reopened production handle's unchanged history
+    reopened_store = service._handles[base.split("/")[-1]][0]
+    assert authored(reopened_store) == snapshots[0]
     assert authored(peer.store) == snapshots[1]
     assert all(
         hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in hashes.items()

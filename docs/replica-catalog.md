@@ -71,6 +71,13 @@ choices conflict again. Rejected values/branches remain in history indefinitely.
 
 ## Private storage and jobs
 
+The [private backup/recovery command](replica-recovery.md) captures coherent
+private state, validates retained history and prepares a separate generation for
+explicit activation after Release. Restores keep exact drafts and bases, preserve
+retry receipts, allocate fresh authors and retain pending jobs for deliberate
+retry. Private media observations are revalidated; source-bound resume remains
+private. Shared package history alone cannot restore unexchanged work or drafts.
+
 SQLite under `CAIRNDEX_DATA_DIR/replicas` holds event bytes, linked parts, active
 revisions, authored projection, indexed placements/references/uniqueness, path
 indexes, parent/frontier graph, holds, inbox/outbox, drafts and jobs. Normal edits
