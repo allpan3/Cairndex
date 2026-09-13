@@ -1,22 +1,36 @@
 # Project status
 
-- File metadata consistency (S11/I12) is implemented on
-  `fix/library-ownership-lifecycle`. File responses expose saved notes and verbatim
+- File metadata consistency (S11/I12) is implemented and locally verified on
+  `fix/library-ownership-lifecycle`, implementation checkpoint `40743006`.
+  File responses expose saved notes and verbatim
   origin text, including non-HTTP strings, omitted-field retention and explicit
   clearing. File names remain current path basenames, including repair candidates.
   `display_title` writes accept only omitted/null values or exact filename echoes;
   other names fail atomically with 422. Stored legacy title values, stable IDs and
   related metadata are preserved; no migration, alias editor or cleanup is involved.
   See the [file contract](data-model.md#asset_files) and
-  [edit protocol](shared-server-edits.md). Focused backend checks and the full
-  frontend gate pass; all 56 relevant browser checks pass, including four new
+  [edit protocol](shared-server-edits.md). Backend Ruff/format/mypy and the full
+  suite pass: 1,508 tests with one existing FFmpeg zscale skip. Frontend
+  lint/format/typecheck/build and all 1,210 unit tests pass; the existing build
+  chunk-size warning remains. All 56 relevant browser checks pass, including four new
   real-server file cases and the existing shared-edit/search regressions.
-  Final backend and scoped privacy verification are in progress. File metadata
-  saves were exercised through the shipped API client, with inspector filename
-  and conflict/retry UI checks; there is no file note/source editor. Native host
+  OpenAPI and generated TypeScript reproduce exactly. File metadata saves were
+  exercised through the shipped API client, with inspector filename and
+  conflict/retry UI checks; the synthetic conflict dialog was visually inspected.
+  There is no file note/source editor. Read/save/reload/clear, rejected names,
+  commit failure, stable-ID repair, independent and conflicting edits, exact retry
+  receipts, retained drafts and note/search/source-filter boundaries are covered.
+  Synthetic fixture sources retain their bytes, and disposable browser fixtures
+  and servers are cleaned up. Native host
   source is unchanged and native packaging/UI are not requalified. Directory
   pagination/list redesign is owner-deferred and outside this group. Owner
   libraries, providers, Docker/NAS, deployment and publication remain untouched.
+  Staged-content and commit-message hooks pass; this group's committed-range
+  privacy gate passes from `3366bfc3`. All new blobs are source/reference text or
+  reproducible API contracts; no media/build output is committed. The cumulative
+  branch scan still fails its 8 MiB new-blob limit. No gate/history cleanup was
+  attempted and nothing is published. This group is complete; further audit work
+  awaits owner instruction.
 
 - Shared-server metadata protection (S05/I04) is implemented and locally verified on
   `fix/library-ownership-lifecycle`, implementation checkpoint `5ed13e2a`, under
