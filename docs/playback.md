@@ -5,6 +5,10 @@ play, copy-only HLS remux, or HLS transcoding from the source and client
 capabilities. Info shows that decision alongside source dimensions and codecs.
 Resolution choices preserve aspect ratio and never upscale.
 
+Video cover commands retain the displayed file's read basis when opened. An
+accepted selection supplies the basis for the next reset; a peer change after
+opening the command remains a conflict requiring review.
+
 ## Commands and source changes
 
 Playback intent, the media element's paused state, and buffering are separate.

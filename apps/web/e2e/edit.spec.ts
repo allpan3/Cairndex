@@ -440,7 +440,7 @@ test('typing an unmatched search offers to create a new tag', async ({ page }) =
   await page.route('**/tags?*', (r) =>
     r.fulfill({ ...METADATA_REPLY, json: { items: tags, next_cursor: null } }),
   )
-  await page.route('**/tags', async (r) => {
+  await page.route('**/api/v1/libraries/lib1/tags', async (r) => {
     if (r.request().method() !== 'POST') return r.fallback()
     const body = r.request().postDataJSON() as { name: string }
     const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }
@@ -472,7 +472,7 @@ test('a search that partially matches an existing tag still offers to create the
   await page.route('**/tags?*', (r) =>
     r.fulfill({ ...METADATA_REPLY, json: { items: tags, next_cursor: null } }),
   )
-  await page.route('**/tags', async (r) => {
+  await page.route('**/api/v1/libraries/lib1/tags', async (r) => {
     if (r.request().method() !== 'POST') return r.fallback()
     const body = r.request().postDataJSON() as { name: string }
     const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }

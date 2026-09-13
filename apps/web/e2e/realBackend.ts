@@ -88,28 +88,38 @@ export async function stopBackend(child: ChildProcessWithoutNullStreams) {
 export async function proxyApi(page: Page, apiBaseUrl: string) {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
-    const source = new URL(request.url())
-    const response = await fetch(`${apiBaseUrl}${source.pathname}${source.search}`, {
-      method: request.method(),
-      headers: request.headers(),
-      body: ['GET', 'HEAD'].includes(request.method())
-        ? undefined
-        : (request.postDataBuffer() ?? undefined),
-    })
-    const headers: Record<string, string> = {}
-    response.headers.forEach((value, key) => {
-      if (!['content-encoding', 'transfer-encoding'].includes(key)) headers[key] = value
-    })
-    await route.fulfill({
-      status: response.status,
-      headers,
-      body: Buffer.from(await response.arrayBuffer()),
-    })
+    try {
+      const source = new URL(request.url())
+      const response = await fetch(`${apiBaseUrl}${source.pathname}${source.search}`, {
+        method: request.method(),
+        headers: request.headers(),
+        body: ['GET', 'HEAD'].includes(request.method())
+          ? undefined
+          : (request.postDataBuffer() ?? undefined),
+      })
+      const headers: Record<string, string> = {}
+      response.headers.forEach((value, key) => {
+        if (!['content-encoding', 'transfer-encoding'].includes(key)) headers[key] = value
+      })
+      await route.fulfill({
+        status: response.status,
+        headers,
+        body: Buffer.from(await response.arrayBuffer()),
+      })
+    } catch (error) {
+      // Media replacement can cancel a routed range while its upstream read is still settling
+      if (
+        !page.isClosed() &&
+        !request.failure() &&
+        !String(error).includes('Route is already handled')
+      )
+        throw error
+    }
   })
 }
 
 /** Sequential synthetic setup explicitly reads before authoring; race tests retain their own bases */
-export async function apiPost<T>(baseUrl: string, path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(baseUrl: string, path: string, body?: unknown): Promise<T> {
   const url = `${baseUrl}${path}`
   const library = url.match(/^(.*\/api\/v1\/libraries\/[^/]+)\//)?.[1]
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }

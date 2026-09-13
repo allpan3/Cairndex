@@ -2421,7 +2421,7 @@ export function useFileMutations(bundleId: string) {
       onSuccess: updateCoverCache,
     }),
     clearCoverFrame: useMutation({
-      mutationFn: (fileId: string) => clearCoverFrame(fileId),
+      mutationFn: ({ fileId }: { fileId: string }) => clearCoverFrame(fileId),
       onSuccess: updateCoverCache,
     }),
   }
