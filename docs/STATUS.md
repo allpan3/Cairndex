@@ -1,7 +1,8 @@
 # Project status
 
 - Practical replica Update follow-through is implemented and verified on
-  `fix/library-ownership-lifecycle`, following draft-delivery checkpoint `06fcf887`.
+  `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
+  following draft-delivery checkpoint `06fcf887`.
   Production planning indexes complete directories and settled owners; paged
   review supports collections, required ancestors, existing placement, partial
   acceptance and file order. Explicit cancellable full verification provides
