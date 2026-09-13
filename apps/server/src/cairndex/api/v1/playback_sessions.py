@@ -9,6 +9,7 @@ idle. Path resolution stays server-side and every route is gated by the same
 served with ``no-store`` because they are throwaway session state.
 """
 
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Annotated, Any
@@ -19,6 +20,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
+from cairndex.api.media_deps import MediaAccessDep, MediaContext, MediaSession
 from cairndex.api.schemas.playback import (
     AudioStreamRead,
     ClientCapabilities,
@@ -39,6 +41,7 @@ from cairndex.media import hevc_relabel, hls, playback, probe_service, tonemap
 from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, SessionParams
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
+from cairndex.replicas.media import ReplicaMedia
 from cairndex.services import file_browser as file_browser_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
@@ -126,7 +129,9 @@ def _effective_video_tag(
         return tag, None
     if "hvc1" not in caps.video_codec_tags:
         return tag, "this client plays no HEVC tag progressively"
-    outcome = hevc_relabel.outcome_for(path)
+    from cairndex.media.inputs import source_path
+
+    outcome = hevc_relabel.outcome_for(source_path(path))
     if outcome.relabel is not None:
         return "hvc1", None
     # No relabel *and* nothing to say means the parser found no `hev1` sample
@@ -231,8 +236,12 @@ def _relative_subtitle_index(meta: dict[str, Any], absolute_index: int) -> int |
 
 
 def _resolve_burn_subtitle(
-    db: Session, asset_file: AssetFile, video_path: Path, track_id: str
+    db: MediaContext, asset_file: AssetFile, video_path: Path, track_id: str
 ) -> BurnSubtitle:
+    if isinstance(db, ReplicaMedia):
+        from cairndex.replicas.media_cache import burn_subtitle
+
+        return burn_subtitle(db, asset_file, video_path, track_id)
     track = sub_service.get_track(db, track_id)  # 404 if unknown
     if track.video_file_id is not None and track.video_file_id != asset_file.id:
         raise ValidationError("subtitle track does not belong to this video")
@@ -251,7 +260,7 @@ def _resolve_burn_subtitle(
 
 
 def _build_params(
-    db: Session,
+    db: MediaContext,
     asset_file: AssetFile,
     video_path: Path,
     meta: dict[str, Any],
@@ -312,7 +321,7 @@ class _DecisionContext:
 
 
 def _resolve_and_decide(
-    db: Session,
+    db: MediaContext,
     file_id: str,
     *,
     caps: ClientCapabilities,
@@ -320,30 +329,44 @@ def _resolve_and_decide(
     burn_subtitle_track_id: str | None,
     max_height: int | None,
 ) -> _DecisionContext:
-    video_path, asset_file = playback.resolve_video_path(db, file_id)
+    if isinstance(db, ReplicaMedia):
+        video_path, asset_file = db.resolve_file(file_id, probe=True)
+        if asset_file.media_kind != MediaKind.VIDEO:
+            raise ValidationError("Only cataloged video files have playback decisions")
+        if not asset_file.tech_metadata:
+            raise ValidationError("Local video could not be probed; retry when it is readable")
+    else:
+        video_path, asset_file = playback.resolve_video_path(db, file_id)
     # A scanned-but-unprobed row has no codec, depth or duration, and the matrix
     # below is deliberately optimistic about all three — so without this the
     # answer for a fresh library is always "direct", and every source the browser
     # cannot decode fails on arrival. Bounded, cached in the row, and silent on
     # failure (see ensure_probed).
-    probe_service.ensure_probed(db, asset_file)
+    if isinstance(db, Session):
+        probe_service.ensure_probed(db, asset_file)
     meta = asset_file.tech_metadata or {}
     profile = _profile(caps)
-    decision = _decide(
-        profile,
-        asset_file,
-        meta,
-        video_path,
-        audio_stream_index=audio_stream_index,
-        burn_subtitle_track_id=burn_subtitle_track_id,
-        max_height=max_height,
+    scope = (
+        db.input_scope({file_id: asset_file.quick_fingerprint})
+        if isinstance(db, ReplicaMedia)
+        else nullcontext()
     )
+    with scope:
+        decision = _decide(
+            profile,
+            asset_file,
+            meta,
+            video_path,
+            audio_stream_index=audio_stream_index,
+            burn_subtitle_track_id=burn_subtitle_track_id,
+            max_height=max_height,
+        )
     return _DecisionContext(video_path, asset_file, meta, profile, decision)
 
 
 def _start_session(
     manager: SessionManager,
-    db: Session,
+    db: MediaContext,
     ctx: _DecisionContext,
     *,
     library_id: str,
@@ -363,7 +386,14 @@ def _start_session(
         burn_subtitle_track_id=burn_subtitle_track_id,
         max_height=max_height,
     )
-    return manager.create_session(
+    inputs = {file_id: ctx.asset_file.quick_fingerprint}
+    if isinstance(db, ReplicaMedia) and burn_subtitle_track_id:
+        track = db.row("subtitle_tracks", burn_subtitle_track_id)
+        if track["source_file_id"]:
+            sub_id = track["source_file_id"]
+            inputs[sub_id] = db.file(sub_id, inspect=True).quick_fingerprint
+    media = db if isinstance(db, ReplicaMedia) else None
+    created = manager.create_session(
         library_id=library_id,
         file_id=file_id,
         source_path=ctx.video_path,
@@ -371,7 +401,17 @@ def _start_session(
         kind=ctx.decision.session_kind,
         params=params,
         start_s=start_s,
+        reuse=not isinstance(db, ReplicaMedia),
+        input_scope=(lambda: media.input_scope(inputs)) if media else nullcontext,
     )
+    if isinstance(db, ReplicaMedia):
+        created.source_generation = ctx.asset_file.quick_fingerprint
+        try:
+            db.validate(file_id, created.source_generation)
+        except Exception:
+            manager.teardown(library_id, created.id)
+            raise
+    return created
 
 
 @router.post("/files/{file_id}/playback-decision", response_model=PlaybackDecisionResponse)
@@ -379,10 +419,14 @@ def playback_decision(
     library_id: str,
     file_id: str,
     payload: PlaybackDecisionRequest,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> PlaybackDecisionResponse:
     """Decide direct/remux/transcode and, for non-direct, start an HLS session."""
+    if isinstance(db, ReplicaMedia):
+        if not payload.source_generation:
+            raise ValidationError("Replica playback requires the observed source generation")
+        db.validate(file_id, payload.source_generation)
     ctx = _resolve_and_decide(
         db,
         file_id,
@@ -391,19 +435,35 @@ def playback_decision(
         burn_subtitle_track_id=payload.burn_subtitle_track_id,
         max_height=payload.max_height,
     )
+    if isinstance(db, ReplicaMedia):
+        db.validate(file_id, payload.source_generation)
     meta = ctx.meta
     decision = _delivery_decision(ctx.decision, payload.caps, payload.force_hls)
     duration = _duration(meta)
-    tracks = sub_service.list_tracks_for_video(db, file_id)
+    tracks = (
+        db.tracks(file_id)
+        if isinstance(db, ReplicaMedia)
+        else sub_service.list_tracks_for_video(db, file_id)
+    )
     from cairndex.media import storyboards
 
-    progress = progress_service.progress_for_files(db, [file_id]).get(file_id)
+    progress = (
+        (
+            PlaybackProgressRead.model_validate(value)
+            if (value := db.progress(file_id, ctx.asset_file.quick_fingerprint))
+            else None
+        )
+        if isinstance(db, ReplicaMedia)
+        else progress_service.progress_for_files(db, [file_id]).get(file_id)
+    )
 
     stream_url: str | None = None
     session_ref: PlaybackSessionRef | None = None
     reason = decision.reason
     if decision.method == "direct":
         stream_url = f"/api/v1/libraries/{library_id}/files/{file_id}/stream"
+        if isinstance(db, ReplicaMedia):
+            stream_url += f"?source_generation={ctx.asset_file.quick_fingerprint}"
     elif duration is None or duration <= 0:
         # A VOD session needs a known duration; a legacy/un-probed row can't get
         # one. Don't fail the whole decision — return it with no session so the
@@ -434,7 +494,9 @@ def playback_decision(
         audio_streams=_audio_stream_reads(_audio_streams(meta)),
         subtitles=[_track_read(db, library_id, t) for t in tracks],
         chapters=_chapters(meta),
-        storyboard_url=storyboards.storyboard_url_for_file(db, library_id, ctx.asset_file),
+        storyboard_url=None
+        if isinstance(db, ReplicaMedia)
+        else storyboards.storyboard_url_for_file(db, library_id, ctx.asset_file),
         progress=(
             PlaybackProgressRead(
                 position_s=progress.position_s,
@@ -456,10 +518,14 @@ def create_playback_session(
     library_id: str,
     file_id: str,
     payload: PlaybackSessionCreate,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> PlaybackSessionCreated:
     """Explicitly start an HLS session (e.g. a mid-play quality/audio switch)."""
+    if isinstance(db, ReplicaMedia):
+        if not payload.source_generation:
+            raise ValidationError("Replica playback requires the observed source generation")
+        db.validate(file_id, payload.source_generation)
     ctx = _resolve_and_decide(
         db,
         file_id,
@@ -492,7 +558,7 @@ def playback_session_artifact(
     file_id: str,
     session_id: str,
     artifact: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: SessionManagerDep,
 ) -> Response:
     """Serve the session playlist, its init segment, or a media segment.
@@ -502,6 +568,15 @@ def playback_session_artifact(
     manager serves the bytes from session state, so no content session is
     opened at all. Bytes are throwaway session state, so ``no-store``.
     """
+    session = manager.get(library_id, session_id)
+    if session.file_id != file_id:
+        raise ValidationError("Playback session belongs to another file")
+    if access.replica is not None:
+        try:
+            access.replica.validate(file_id, session.source_generation)
+        except Exception:
+            manager.teardown(library_id, session_id)
+            raise
     no_store = {"Cache-Control": "no-store"}
     if artifact == "index.m3u8":
         body = manager.serve_playlist(library_id, session_id)
@@ -518,10 +593,12 @@ def delete_playback_session(
     library_id: str,
     file_id: str,
     session_id: str,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> Response:
     """Tear down a session (player close, file switch, unmount)."""
+    if manager.get(library_id, session_id).file_id != file_id:
+        raise ValidationError("Playback session belongs to another file")
     manager.teardown(library_id, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -537,7 +614,7 @@ def beacon_teardown_playback_session(
     library_id: str,
     file_id: str,
     session_id: str,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> Response:
     """Tear down a session via a POST beacon (pagehide `navigator.sendBeacon`)."""

@@ -21,6 +21,7 @@ import { CatalogEditor } from './CatalogEditor'
 import { CatalogFileBrowser } from './CatalogFileBrowser'
 import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
+import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -188,6 +189,7 @@ export function CatalogWorkspace({
   const [family, setFamily] = useState('asset_bundles')
   const [fileBrowser, setFileBrowser] = useState(false)
   const [showJobs, setShowJobs] = useState(false)
+  const [media, setMedia] = useState<ReplicaOpen | null>(null)
   const [after, setAfter] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
@@ -259,6 +261,41 @@ export function CatalogWorkspace({
         )}
         <button onClick={refresh}>Refresh catalog status</button>
       </section>
+      {state?.media_version === 1 &&
+        detail.data &&
+        detail.data.fields.$alive?.value === 'true' &&
+        ['asset_bundles', 'asset_files', 'moments', 'subtitle_tracks'].includes(family) && (
+          <button
+            onClick={() => {
+              if (family === 'asset_bundles') setMedia({ bundleId: detail.data!.id })
+              else if (family === 'asset_files') setMedia({ fileId: detail.data!.id })
+              else {
+                const field = detail.data!.fields[family === 'moments' ? '$span' : '$source']
+                const value = JSON.parse(field?.value ?? '{}') as {
+                  bundle_id: string
+                  file_id?: string
+                  video_file_id?: string
+                  start_s?: number
+                }
+                setMedia({
+                  bundleId: value.bundle_id,
+                  fileId: value.file_id ?? value.video_file_id,
+                  time: value.start_s,
+                })
+              }
+            }}
+          >
+            Open media on this device
+          </button>
+        )}
+      {media && (
+        <ReplicaViewer
+          key={`${libraryId}/${media.bundleId}/${media.fileId}/${media.time}`}
+          library={libraryId}
+          target={media}
+          onClose={() => setMedia(null)}
+        />
+      )}
       <button onClick={() => setShowJobs(!showJobs)}>Saved operations</button>
       {showJobs && (
         <CatalogJobs

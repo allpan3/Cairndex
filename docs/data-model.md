@@ -25,6 +25,22 @@ belong in the synthetic legacy recovery archive rather than authored transport.
 Real-library conversion remains unavailable under
 [ADR-0029](adr/0029-cloud-metadata-replicas.md).
 
+## Replica-local media tables
+
+These additive private tables are excluded from authored events and reconstruction:
+
+| Table | Key and current values |
+| --- | --- |
+| `local_media` | File ID; observed generation, local state, technical metadata and retryable probe error |
+| `local_progress` | File ID; source generation, position, duration and completion |
+| `local_cursors` | Bundle ID; last selected current member file ID |
+
+A generation hashes library-relative path plus device/inode/size/mtime/ctime; it is
+an observation token, not a content hash. Progress from replaced bytes is rejected
+and does not resume the new generation. Removing private state loses local resume
+and regenerable caches without changing authored metadata. Legacy conversion
+observations remain in the separate recovery archive.
+
 ## Conventions
 
 - **Primary keys:** ULID stored as `CHAR(26)` (`UlidPk`), generated in the app

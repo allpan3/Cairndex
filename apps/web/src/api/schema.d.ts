@@ -2918,6 +2918,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Playlist */
+        get: operations["playlist_api_v1_libraries__library_id__replica_media_bundles__bundle_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}/cursor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Cursor */
+        put: operations["cursor_api_v1_libraries__library_id__replica_media_bundles__bundle_id__cursor_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/media/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Local File */
+        get: operations["local_file_api_v1_libraries__library_id__replica_media_files__file_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/status": {
         parameters: {
             query?: never;
@@ -4800,6 +4851,17 @@ export interface components {
          * @enum {string}
          */
         LibraryStatus: "available" | "unavailable";
+        /** LocalMediaRead */
+        LocalMediaRead: {
+            file: components["schemas"]["FileRead"];
+            /** Generation */
+            generation: string | null;
+            /** Message */
+            message: string | null;
+            playback: components["schemas"]["PlayableVideo"] | null;
+            /** State */
+            state: string;
+        };
         /**
          * MakeDirectoryRequest
          * @description Create one new directory at a library-relative path.
@@ -5204,6 +5266,8 @@ export interface components {
             force_hls: boolean;
             /** Max Height */
             max_height?: number | null;
+            /** Source Generation */
+            source_generation?: string | null;
             /** Start S */
             start_s?: number | null;
         };
@@ -5250,6 +5314,8 @@ export interface components {
             duration_s?: number | null;
             /** Position S */
             position_s: number;
+            /** Source Generation */
+            source_generation?: string | null;
         };
         /** PlaybackSessionCreate */
         PlaybackSessionCreate: {
@@ -5260,6 +5326,8 @@ export interface components {
             caps: components["schemas"]["ClientCapabilities"];
             /** Max Height */
             max_height?: number | null;
+            /** Source Generation */
+            source_generation?: string | null;
             /** Start S */
             start_s?: number | null;
         };
@@ -5446,6 +5514,11 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** ReplicaCursorUpdate */
+        ReplicaCursorUpdate: {
+            /** File Id */
+            file_id: string;
+        };
         /** ReplicaField */
         ReplicaField: {
             /** Basis */
@@ -5454,6 +5527,23 @@ export interface components {
             candidates: components["schemas"]["Candidate"][];
             /** Value */
             value: string | number | string[] | null;
+        };
+        /** ReplicaPlaylist */
+        ReplicaPlaylist: {
+            /** Bundle Id */
+            bundle_id: string;
+            /** Cursor */
+            cursor: string | null;
+            /** Directories */
+            directories: components["schemas"]["DirectoryMemberRead"][];
+            /** Files */
+            files: components["schemas"]["FileRead"][];
+            /** Moments */
+            moments: components["schemas"]["MomentRead"][];
+            /** Next Offset */
+            next_offset: number | null;
+            /** Title */
+            title: string;
         };
         /** ReplicaStatus */
         ReplicaStatus: {
@@ -5465,6 +5555,8 @@ export interface components {
             exchange_error?: string | null;
             /** Invalid */
             invalid: number;
+            /** Media Version */
+            media_version?: number | null;
             /** Outbox */
             outbox: number;
             /**
@@ -12797,6 +12889,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplicaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    playlist_api_v1_libraries__library_id__replica_media_bundles__bundle_id__get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaPlaylist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cursor_api_v1_libraries__library_id__replica_media_bundles__bundle_id__cursor_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplicaCursorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_file_api_v1_libraries__library_id__replica_media_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalMediaRead"];
                 };
             };
             /** @description Validation Error */

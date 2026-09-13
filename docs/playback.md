@@ -9,6 +9,17 @@ Video cover commands retain the displayed file's read basis when opened. An
 accepted selection supplies the basis for the next reset; a peer change after
 opening the command remains a conflict requiring review.
 
+## Replica media
+
+Complete replica catalogs use the same viewer for locally readable indexed video
+and images. Opening checks current availability and progress; retry handles missing
+or replaced bytes without editing the catalog. Resume and ordered bundle cursors
+belong to the serving device. Cataloged subtitles, saved moments and cover times
+retain their authored choices. Every media generation fences decoder inputs,
+streamed bytes, private derivatives and progress. Playback creates no authored
+transactions. The [capability contract](replica-catalog.md#local-media) lists the
+supported formats and deferred workflows.
+
 ## Commands and source changes
 
 Playback intent, the media element's paused state, and buffering are separate.

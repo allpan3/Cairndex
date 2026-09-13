@@ -214,6 +214,12 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
     app.dependency_overrides[get_library_session] = _override_get_library_session
     app.dependency_overrides[get_library_access] = _override_get_library_access
+    from cairndex.api.media_deps import MediaAccess, get_media_access, get_media_context
+
+    app.dependency_overrides[get_media_access] = lambda: MediaAccess(
+        legacy=_override_get_library_access()
+    )
+    app.dependency_overrides[get_media_context] = _override_get_library_session
     with ObservedTestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

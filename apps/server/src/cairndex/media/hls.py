@@ -148,6 +148,8 @@ class HlsSession:
     last_access: float = 0.0  # monotonic clock; drives idle reaping
     closed: bool = False
     failed: bool = False
+    source_generation: str | None = None
+    input_scope: Callable[[], contextlib.AbstractContextManager[None]] = contextlib.nullcontext
 
     @property
     def segment_count(self) -> int:
@@ -420,7 +422,15 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
 def _launch_ffmpeg(args: list[str]) -> subprocess.Popen[bytes]:
     # stdout/stderr → DEVNULL: we never parse ffmpeg output (we watch the output
     # dir), and an unread PIPE can deadlock a long encode.
-    return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    from cairndex.media.inputs import command
+
+    args, descriptors = command(args)
+    return subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        pass_fds=descriptors,
+    )
 
 
 class SessionManager:
@@ -473,6 +483,7 @@ class SessionManager:
         params: SessionParams,
         start_s: float = 0.0,
         reuse: bool = True,
+        input_scope: Callable[[], contextlib.AbstractContextManager[None]] = contextlib.nullcontext,
     ) -> HlsSession:
         """Create (or reuse) and start a session; raise ``CapacityError`` past the bound.
 
@@ -491,7 +502,8 @@ class SessionManager:
         with self._lock:
             self._require_capacity()
         # Keyframe scan (remux only) runs outside the lock — it can be slow.
-        segment_starts = self._segment_starts(kind, source_path, duration)
+        with input_scope():
+            segment_starts = self._segment_starts(kind, source_path, duration)
         playlist = _render_playlist(segment_starts, duration)
 
         with self._lock:
@@ -510,6 +522,7 @@ class SessionManager:
                 file_id=file_id,
                 kind=kind,
                 source_path=source_path,
+                input_scope=input_scope,
                 output_dir=output_dir,
                 duration=duration,
                 segment_starts=segment_starts,
@@ -519,8 +532,12 @@ class SessionManager:
                 last_access=self._clock(),
             )
             self._sessions[session_id] = session
-        with session.lock:
-            self._start_run(session, _segment_index_for(segment_starts, start_s))
+        try:
+            with session.lock:
+                self._start_run(session, _segment_index_for(segment_starts, start_s))
+        except Exception:
+            self._teardown(session)
+            raise
         return session
 
     def _require_capacity(self) -> None:
@@ -716,7 +733,8 @@ class SessionManager:
                 (session.output_dir / _segment_name(session.run_end)).unlink()
         start_s = session.segment_starts[start_number]
         args = self._command_builder(session, start_number, start_s)
-        session.process = self._launcher(args)
+        with session.input_scope():
+            session.process = self._launcher(args)
 
     def _finalize_finished_run(self, session: HlsSession) -> None:
         """Remove an ffmpeg boundary extra once the current run has exited."""

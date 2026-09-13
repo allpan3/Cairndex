@@ -4767,6 +4767,58 @@
         "title": "LibraryStatus",
         "type": "string"
       },
+      "LocalMediaRead": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileRead"
+          },
+          "generation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "playback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayableVideo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "generation",
+          "state",
+          "message",
+          "playback"
+        ],
+        "title": "LocalMediaRead",
+        "type": "object"
+      },
       "MakeDirectoryRequest": {
         "description": "Create one new directory at a library-relative path.",
         "properties": {
@@ -5894,6 +5946,18 @@
             ],
             "title": "Max Height"
           },
+          "source_generation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Generation"
+          },
           "start_s": {
             "anyOf": [
               {
@@ -6079,6 +6143,18 @@
           "position_s": {
             "title": "Position S",
             "type": "number"
+          },
+          "source_generation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Generation"
           }
         },
         "required": [
@@ -6124,6 +6200,18 @@
               }
             ],
             "title": "Max Height"
+          },
+          "source_generation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Generation"
           },
           "start_s": {
             "anyOf": [
@@ -6609,6 +6697,19 @@
         "title": "ReplicaBundlePage",
         "type": "object"
       },
+      "ReplicaCursorUpdate": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "ReplicaCursorUpdate",
+        "type": "object"
+      },
       "ReplicaField": {
         "additionalProperties": false,
         "properties": {
@@ -6656,6 +6757,72 @@
         "title": "ReplicaField",
         "type": "object"
       },
+      "ReplicaPlaylist": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "directories": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryMemberRead"
+            },
+            "title": "Directories",
+            "type": "array"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileRead"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "moments": {
+            "items": {
+              "$ref": "#/components/schemas/MomentRead"
+            },
+            "title": "Moments",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "title",
+          "cursor",
+          "files",
+          "directories",
+          "moments",
+          "next_offset"
+        ],
+        "title": "ReplicaPlaylist",
+        "type": "object"
+      },
       "ReplicaStatus": {
         "additionalProperties": false,
         "properties": {
@@ -6695,6 +6862,17 @@
           "invalid": {
             "title": "Invalid",
             "type": "integer"
+          },
+          "media_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Version"
           },
           "outbox": {
             "title": "Outbox",
@@ -23098,6 +23276,281 @@
         "summary": "Exchange",
         "tags": [
           "replicas"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}": {
+      "get": {
+        "operationId": "playlist_api_v1_libraries__library_id__replica_media_bundles__bundle_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaPlaylist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Playlist",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}/cursor": {
+      "put": {
+        "operationId": "cursor_api_v1_libraries__library_id__replica_media_bundles__bundle_id__cursor_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplicaCursorUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cursor",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/files/{file_id}": {
+      "get": {
+        "operationId": "local_file_api_v1_libraries__library_id__replica_media_files__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalMediaRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Local File",
+        "tags": [
+          "replica-media"
         ]
       }
     },

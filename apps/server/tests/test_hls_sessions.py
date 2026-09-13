@@ -127,6 +127,18 @@ def _create(manager: SessionManager, **kwargs: object) -> HlsSession:
 
 
 # --- serving basics ---------------------------------------------------------
+# A failed initial launch must free both the capacity reservation and private artifacts
+def test_initial_launch_failure_cleans_reserved_session(make_manager: ManagerFactory) -> None:
+    def fail(_args: list[str]):
+        raise OSError("synthetic decoder start failure")
+
+    manager = make_manager(launcher=fail)
+    with pytest.raises(OSError, match="synthetic decoder"):
+        _create(manager)
+    assert not manager._sessions
+    assert not list(manager.transcode_dir.iterdir())
+
+
 def test_create_serves_init_and_segments(make_manager: ManagerFactory) -> None:
     manager = make_manager(delay=0.0)
     session = _create(manager, duration=30.0)  # 5 segments

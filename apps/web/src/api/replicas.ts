@@ -19,10 +19,12 @@ export async function replicaRequest<T>(
   path: string,
   method = 'GET',
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/replica${path}`), {
     method,
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })

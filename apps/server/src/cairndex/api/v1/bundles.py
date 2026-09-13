@@ -2,9 +2,10 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from cairndex.api.deps import (
     IfMatchVersion,
@@ -13,6 +14,7 @@ from cairndex.api.deps import (
     Pagination,
     WriteModeRequired,
 )
+from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
@@ -564,8 +566,20 @@ def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileRespon
 
 
 @router.get("/{bundle_id}/files/{file_id}/thumbnail")
-def get_file_thumbnail(bundle_id: str, file_id: str, access: LibraryAccessDep) -> FileResponse:
+def get_file_thumbnail(
+    bundle_id: str, file_id: str, access: MediaAccessDep, request: Request
+) -> FileResponse:
+    if access.replica is not None:
+        from cairndex.replicas.media_cache import thumbnail
+
+        if access.replica.row("asset_files", file_id)["bundle_id"] != bundle_id:
+            raise NotFoundError("File is not in this bundle")
+        access.replica.validate(file_id, request.query_params.get("source_generation"))
+        return FileResponse(
+            thumbnail(access.replica, file_id), headers={"Cache-Control": "private, no-store"}
+        )
     with access.session() as db:
+        assert isinstance(db, Session)
         try:
             path = thumbnails.generate_for_file(db, file_id)
         except thumbnails.ThumbnailError as exc:

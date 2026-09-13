@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
+from cairndex.api.media_deps import MediaAccessDep, MediaContext, MediaSession
 from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.bundles import FileRead
 from cairndex.api.schemas.playback import (
@@ -46,6 +47,7 @@ from cairndex.media import (
 )
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
+from cairndex.replicas.media import ReplicaMedia
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
@@ -89,13 +91,27 @@ def _chapters(meta: dict[str, object]) -> list[PlaybackChapter]:
     return chapters
 
 
-def _track_read(session: Session, library_id: str, track: SubtitleTrack) -> SubtitleTrackRead:
+def _track_read(session: MediaContext, library_id: str, track: SubtitleTrack) -> SubtitleTrackRead:
     external = track.source_file_id is not None
     src: str | None = None
     if external:
-        source = session.get(AssetFile, track.source_file_id) if track.source_file_id else None
+        source = (
+            (
+                session.file(track.source_file_id, inspect=True)
+                if isinstance(session, ReplicaMedia)
+                else session.get(AssetFile, track.source_file_id)
+            )
+            if track.source_file_id
+            else None
+        )
         if source is not None and extension_of(source.relative_path) in _VTT_SERVABLE:
             src = f"/api/v1/libraries/{library_id}/subtitles/{track.id}/vtt"
+            if isinstance(session, ReplicaMedia):
+                src = (
+                    f"{src}?source_generation={source.quick_fingerprint}"
+                    if source.quick_fingerprint
+                    else None
+                )
     return SubtitleTrackRead(
         id=track.id,
         language=track.language,
@@ -157,8 +173,14 @@ def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> Pl
     status_code=status.HTTP_200_OK,
 )
 def update_progress(
-    file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
+    file_id: str, payload: PlaybackProgressUpdate, db: MediaSession
 ) -> PlaybackProgressRead:
+    if isinstance(db, ReplicaMedia):
+        return PlaybackProgressRead.model_validate(
+            db.save_progress(
+                file_id, payload.source_generation, payload.position_s, payload.duration_s
+            )
+        )
     value = progress_service.upsert_progress(
         db,
         file_id,
@@ -179,7 +201,7 @@ def update_progress(
     status_code=status.HTTP_200_OK,
 )
 def beacon_progress(
-    file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
+    file_id: str, payload: PlaybackProgressUpdate, db: MediaSession
 ) -> PlaybackProgressRead:
     return update_progress(file_id, payload, db)
 
@@ -292,7 +314,7 @@ def continue_watching(
 
 
 @router.get("/files/{file_id}/stream")
-def stream_file(file_id: str, access: LibraryAccessDep, request: Request) -> Response:
+def stream_file(file_id: str, access: MediaAccessDep, request: Request) -> Response:
     """Range-streamed video, relabelling ``hev1`` HEVC as ``hvc1`` on the way out.
 
     The content session is scoped to path resolution and released *before* the
@@ -306,7 +328,21 @@ def stream_file(file_id: str, access: LibraryAccessDep, request: Request) -> Res
     relabel cannot vouch for streams untouched and the decision sends it to a
     session as before.
     """
+    if access.replica is not None:
+        from cairndex.media.replica_stream import ReplicaFileResponse
+
+        _, asset = access.replica.resolve_file(file_id)
+        token = request.query_params.get("source_generation") or asset.quick_fingerprint or ""
+        access.replica.validate(file_id, token)
+        return ReplicaFileResponse(
+            access.replica,
+            file_id,
+            token,
+            asset.mime_type or "application/octet-stream",
+            request.headers.get("range"),
+        )
     with access.session() as db:
+        assert isinstance(db, Session)
         path, asset_file = playback.resolve_video_path(db, file_id)
         cap = playback.assess_playability(asset_file)
         media_type, filename = cap.mime_type, asset_file.original_filename
@@ -326,7 +362,7 @@ def _video_response(path: Path, media_type: str, filename: str, request: Request
 
 
 @router.get("/files/{file_id}/content")
-def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
+def file_content(file_id: str, access: MediaAccessDep, request: Request) -> Response:
     """Serve a file's original bytes (e.g. full-resolution images for the viewer).
 
     Path-safe and read-only; FileResponse honors HTTP Range so large images and
@@ -334,7 +370,10 @@ def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
     content session is released before the response body streams (see
     ``LibraryAccess``).
     """
+    if access.replica is not None:
+        return stream_file(file_id, access, request)
     with access.session() as db:
+        assert isinstance(db, Session)
         path, asset_file = playback.resolve_file_path(db, file_id)
         filename = asset_file.original_filename
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -345,7 +384,8 @@ def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
 @router.get("/files/{file_id}/preview")
 def file_preview(
     file_id: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
+    request: Request,
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
     """Serve a lazily generated, fingerprint-invalidated WebP preview.
@@ -355,7 +395,17 @@ def file_preview(
     ``yield``-dependency connection, draining the pool. The session closes
     inside the handler, before the response streams.
     """
+    if access.replica is not None:
+        from cairndex.replicas.media_cache import preview
+
+        access.replica.validate(file_id, request.query_params.get("source_generation"))
+        return FileResponse(
+            preview(access.replica, file_id, size),
+            media_type="image/webp",
+            headers={"Cache-Control": "private, no-store"},
+        )
     with access.session() as db:
+        assert isinstance(db, Session)
         try:
             path = previews.preview_for_file(db, file_id, size)
         except NotFoundError:
@@ -445,9 +495,21 @@ def storyboard_sheet(file_id: str, sheet_name: str, access: LibraryAccessDep) ->
 
 
 @router.get("/subtitles/{track_id}/vtt")
-def subtitle_vtt(track_id: str, access: LibraryAccessDep) -> FileResponse:
+def subtitle_vtt(track_id: str, access: MediaAccessDep, request: Request) -> FileResponse:
     """Serve an external subtitle as WebVTT (converted + cached on first hit)."""
+    if access.replica is not None:
+        from cairndex.replicas.media_cache import subtitle
+
+        source_id = access.replica.row("subtitle_tracks", track_id)["source_file_id"]
+        if source_id:
+            access.replica.validate(source_id, request.query_params.get("source_generation"))
+        return FileResponse(
+            subtitle(access.replica, track_id),
+            media_type="text/vtt",
+            headers={"Cache-Control": "private, no-store"},
+        )
     with access.session() as db:
+        assert isinstance(db, Session)
         track = sub_service.get_track(db, track_id)
         path = playback.build_vtt_for_track(db, track)
     return FileResponse(str(path), media_type="text/vtt")

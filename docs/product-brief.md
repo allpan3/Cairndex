@@ -79,8 +79,10 @@ and reconcile through immutable artifacts. Disjoint fields combine; complete
 choices resolve conflicting values, membership, hierarchy or lifetime while
 retaining rejected branches and unrelated edits. [ADR-0029](adr/0029-cloud-metadata-replicas.md)
 is accepted. The shared app provides bundle-first catalog editing and indexed
-File Browser paths for these packages. Replica playback, filesystem discovery and
-source operations remain unavailable. Legacy libraries retain their existing
+File Browser paths for these packages. Cataloged video and images use the shared
+viewer, with availability, probes, derivatives and resume private to the serving
+device. Missing bytes keep their catalog identity and can be retried locally.
+Filesystem discovery and source operations remain unavailable. Legacy libraries retain their existing
 ownership and media workflows. Real-library conversion and provider qualification
 require separate approval and evidence.
 

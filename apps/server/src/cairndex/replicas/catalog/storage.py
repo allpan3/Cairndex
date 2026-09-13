@@ -54,7 +54,9 @@ class CatalogStorage(PrivateStore):
     ) -> None:
         super().__init__(directory, descriptor, fault=fault)
         with self.connection() as db:
-            db.executescript(projection.SCHEMA + SCHEMA)
+            from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
+
+            db.executescript(projection.SCHEMA + SCHEMA + MEDIA_SCHEMA)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
                 db.execute(
                     "ALTER TABLE catalog_cohorts ADD COLUMN anchor INTEGER NOT NULL DEFAULT 1"
@@ -283,6 +285,7 @@ class CatalogStorage(PrivateStore):
             return {
                 "ready": "catalog_ready" in config,
                 "catalog_version": 1,
+                "media_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(
                     "SELECT COUNT(*) FROM events WHERE local=1 AND published=0"

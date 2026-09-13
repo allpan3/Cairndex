@@ -39,6 +39,13 @@ and their validated dependencies use complete reviewed arrangements. Normal save
 and imports update indexed affected rows. Explicit branch recovery reconstructs
 history in a separate private store in a background job.
 
+The media adapter reads validated authored rows into detached file/track values;
+it never presents the catalog as a legacy ORM session. Allowlisted indexed media
+routes share the existing playback decisions, viewer and HLS manager. Observations,
+resume and cursors stay private, and source generations fence bytes, caches,
+subprocess inputs and progress. Playlist reads touch metadata only; selected-file
+probes are bounded. [Local media](replica-catalog.md#local-media) defines the limits.
+
 The API and shared app select the advertised capability. Replica packages never
 open legacy content/lease/source-write paths. The [catalog workflow](replica-catalog.md)
 and [migration contract](replica-migration.md) define wire limits, schema inventory,

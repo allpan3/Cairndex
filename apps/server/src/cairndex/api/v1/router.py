@@ -20,6 +20,7 @@ from cairndex.api.v1 import (
     ownership,
     playback,
     playback_sessions,
+    replica_media,
     replicas,
     smart_collections,
     tag_groups,
@@ -33,6 +34,7 @@ router.include_router(health.router)
 router.include_router(libraries.router)
 router.include_router(replicas.router)
 router.include_router(catalog_replicas.router)
+router.include_router(replica_media.router)
 router.include_router(jobs.router)
 # Per-library auth (reachable while locked — the way to unlock; not content-gated).
 router.include_router(auth.router)

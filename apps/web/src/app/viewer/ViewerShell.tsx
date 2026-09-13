@@ -1,7 +1,12 @@
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { type PlayableVideo, type PlaybackManifest, updatePlaybackProgress } from '../../api/client'
+import {
+  type PlayableVideo,
+  type PlaybackManifest,
+  type Moment,
+  updatePlaybackProgress,
+} from '../../api/client'
 import { useViewerMenu } from '../../desktop/useViewerMenu'
 import { getHostLabels } from '../../platform'
 import { contactSheetMenuItem, type ContactSheetTarget } from '../contactSheetExport'
@@ -143,6 +148,10 @@ interface ViewerShellProps {
    * owner picked deliberately.
    */
   startAt?: { fileId: string; time: number } | null
+  /** Replica adapters supply saved moments without enabling legacy mutations */
+  savedMoments?: Moment[]
+  onRetryMedia?: () => Promise<unknown>
+  serverExports?: boolean
 }
 
 /**
@@ -175,6 +184,9 @@ export function ViewerShell({
   cover = null,
   inspectorTarget = null,
   startAt = null,
+  savedMoments,
+  onRetryMedia,
+  serverExports = true,
 }: ViewerShellProps) {
   const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -254,6 +266,7 @@ export function ViewerShell({
     caps,
     getCurrentTime,
     initialStartAt: startAt?.fileId === fileId ? startAt.time : resumePosition,
+    sourceGeneration: current?.sourceGeneration,
   })
   const source = hls.source
   const { player, videoRef, videoElement } = usePlayer({
@@ -364,8 +377,8 @@ export function ViewerShell({
   const momentsAvailable = momentBundleId !== null && fileId !== null && videoActive
   // Only this file's, for the seek track: the list is bundle-wide.
   const fileMoments = useMemo(
-    () => (fileId ? moments.filter((moment) => moment.file_id === fileId) : []),
-    [fileId, moments],
+    () => (fileId ? (savedMoments ?? moments).filter((moment) => moment.file_id === fileId) : []),
+    [fileId, moments, savedMoments],
   )
 
   /**
@@ -488,7 +501,7 @@ export function ViewerShell({
   }, [captureMoment, goToMoment, momentsAvailable])
 
   const exportClip = useCallback(() => {
-    if (!fileId || !clip.range) return
+    if (!serverExports || !fileId || !clip.range) return
     setClipTarget({
       fileId,
       title: current?.title ?? title,
@@ -496,7 +509,16 @@ export function ViewerShell({
       sourceHeight: current?.height ?? null,
       sourceFps: current?.fps ?? null,
     })
-  }, [clip.range, current?.fps, current?.height, current?.title, current?.width, fileId, title])
+  }, [
+    clip.range,
+    current?.fps,
+    current?.height,
+    current?.title,
+    current?.width,
+    fileId,
+    title,
+    serverExports,
+  ])
   usePlaybackProgressReporter({
     bundleId,
     fileId,
@@ -505,6 +527,7 @@ export function ViewerShell({
     currentTime: player.currentTime,
     duration: player.duration || playable?.duration || 0,
     completed: playable?.progress?.completed,
+    sourceGeneration: current?.sourceGeneration,
   })
   const chromeIdle = useIdleHide(rootRef, scrubbing)
   const contextMenu = useContextMenu()
@@ -540,6 +563,7 @@ export function ViewerShell({
     void updatePlaybackProgress(fileId, {
       position_s: 0,
       duration_s: duration ?? null,
+      ...(current?.sourceGeneration ? { source_generation: current.sourceGeneration } : {}),
     }).then((progress) => {
       if (bundleId) {
         qc.setQueryData<PlaybackManifest>(['playback', bundleId], (previous) =>
@@ -555,7 +579,7 @@ export function ViewerShell({
       }
       qc.invalidateQueries({ queryKey: ['continue-watching'] })
     })
-  }, [bundleId, fileId, playableDuration, player, qc])
+  }, [bundleId, fileId, playableDuration, player, qc, current])
   const visibleResume =
     resumeNotice && resumeNotice.key === currentKey ? resumeNotice.position : null
   const { fallbackToHls, reattach, retry: retryPlayback } = hls
@@ -621,8 +645,12 @@ export function ViewerShell({
     nativeRecoverRef.current = 0
     nativeRecoveringRef.current = false
     setFailure(null)
-    retryPlayback()
-  }, [retryPlayback])
+    if (onRetryMedia)
+      void onRetryMedia()
+        .then(() => retryPlayback())
+        .catch(() => undefined)
+    else retryPlayback()
+  }, [retryPlayback, onRetryMedia])
   // Load watchdog (see LOAD_WATCHDOG_MS): a wedged load produces no error
   // event, so poke the stage-error path if metadata never arrives. Kept in a
   // ref so the effect doesn't re-arm on every handler identity change.
@@ -845,7 +873,7 @@ export function ViewerShell({
 
   const contactSheetTarget = useMemo(
     () =>
-      current?.fileId && isVideo
+      serverExports && current?.fileId && isVideo
         ? {
             fileId: current.fileId,
             title: current.title,
@@ -862,7 +890,7 @@ export function ViewerShell({
             audioSampleRate: current.audioSampleRate,
           }
         : null,
-    [current, isVideo],
+    [current, isVideo, serverExports],
   )
 
   useEffect(() => {
@@ -1102,6 +1130,7 @@ export function ViewerShell({
           <div className="mv-state mv-state--error">
             <strong>{errorHeading}</strong>
             <code>{error instanceof Error ? error.message : 'Unknown error'}</code>
+            {onRetryMedia && <button onClick={retryFailedPlayback}>Retry local media</button>}
           </div>
         )}
         {!loading && !hasError && emptyMessage && <div className="mv-state">{emptyMessage}</div>}
@@ -1121,6 +1150,7 @@ export function ViewerShell({
               currentKey && setFailure({ key: currentKey, kind: classifyMediaError(mediaError) })
             }
             onRetryFailed={retryFailedPlayback}
+            localReplica={Boolean(onRetryMedia)}
             onActivate={player.playPause}
           />
         )}
@@ -1152,7 +1182,7 @@ export function ViewerShell({
           fileLoop={fileLoop}
           onFileLoop={setFileLoop}
           clip={clipAvailable ? clip : undefined}
-          onExportClip={exportClip}
+          onExportClip={serverExports ? exportClip : undefined}
           maxExportSeconds={MAX_CLIP_EXPORT_SECONDS}
           moments={fileMoments}
           onSaveMoment={momentsAvailable ? captureMoment : undefined}
@@ -1233,6 +1263,7 @@ function Stage({
   onError,
   onFailed,
   onRetryFailed,
+  localReplica = false,
 }: {
   item: ViewerItem
   playable: PlayableVideo | null
@@ -1251,14 +1282,20 @@ function Stage({
   /** Unrecoverable media errors: straight to the failed card, no recovery. */
   onFailed: (mediaError: MediaError | null) => void
   onRetryFailed: () => void
+  localReplica?: boolean
 }) {
   const failed = failedKind !== null
   if (!item.available) {
     return (
       <FallbackCard
         item={item}
-        heading="Missing file."
-        message="This file is no longer available at its linked path."
+        heading={localReplica ? 'Media unavailable on this device.' : 'Missing file.'}
+        message={
+          localReplica
+            ? 'Make this file readable in the local replica folder, then retry. Catalog metadata is retained.'
+            : 'This file is no longer available at its linked path.'
+        }
+        action={localReplica ? { label: 'Retry local media', onClick: onRetryFailed } : undefined}
       />
     )
   }

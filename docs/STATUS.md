@@ -1,5 +1,39 @@
 # Project status
 
+- Replica-local media availability/playback (S12/I05) is implemented on
+  `fix/library-ownership-lifecycle`. Complete synthetic catalogs use the production
+  viewer and allowlisted media routes without legacy content SQL. Selected-file
+  availability/probes, source-generation checks, pinned decoder/stream inputs,
+  private derivatives and resume/cursors remain outside authored history.
+  Indexed video/images, direct ranges, HLS remux/transcode, cataloged subtitles,
+  saved moments, missing-file retry and ordered playback are supported. Real
+  conversion remains disabled; provider delivery/hydration, source discovery,
+  physical source operations and directory pagination/redesign are outside this
+  group. The separate cover-command repair is checkpoint `b01083da`.
+  Backend Ruff/format/mypy pass with 1,527 tests passing and the existing zscale
+  skip. Frontend lint/format/typecheck/build pass with 1,211 unit tests and all
+  179 browser tests; the existing build chunk-size warning remains. OpenAPI and
+  generated TypeScript reproduce exactly. Browser evidence includes decoded
+  pictures, subtitles, seek/resume, retry, ordered EOF and more than 60 seconds
+  of playback during peer metadata exchange, with source hashes and authored
+  history preserved. Two independent frozen sidecars passed direct byte ranges,
+  real remux/transcode segments, missing/recovery, clean process restart/resume,
+  metadata exchange and private progress/history isolation.
+  The final production app with an isolated test identity builds and passes
+  signature verification. Native UI
+  qualification remains incomplete: activation could not hold foreground focus,
+  so advancing clocks and earlier isolated pictures do not prove sustained native
+  picture continuity, pause/seek/resume, remux/transcode or missing/retry behavior.
+  Rust/native host source is unchanged; its full standalone gate was not rerun.
+  Disposable apps, native identities, test processes and fixtures are removed.
+  Documentation covers the API/private tables, capability limits and synthetic
+  workflow. The change contains only source/reference text and reproducible API contracts;
+  no media or build output is included. The cumulative branch retains its 8 MiB
+  publication-volume block; no gate bypass or history cleanup is authorized.
+  Owner libraries, installed owner app, providers, Docker/NAS, deployment and
+  publication remain untouched. Native qualification requires an uninterrupted
+  foreground session; further audit groups await owner instruction.
+
 - File metadata consistency (S11/I12) is implemented and locally verified on
   `fix/library-ownership-lifecycle`, implementation checkpoint `40743006`.
   File responses expose saved notes and verbatim

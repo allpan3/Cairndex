@@ -32,6 +32,8 @@ export interface ViewerImageTier {
 export interface ViewerItem {
   /** Identity for React keys and per-item viewer state. Unique within a list. */
   key: string
+  /** Device-local source generation; absent for legacy media */
+  sourceGeneration?: string | null
   /** `AssetFile` id when this item is indexed; null for an unindexed path. */
   fileId: string | null
   /**

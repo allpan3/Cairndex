@@ -20,7 +20,8 @@ agents working in this repository.
 
 Capable **synthetic** replica packages support library-wide authored metadata,
 concurrent offline edits, complete structural choices, retained history and private
-drafts. Reversible conversion tests create disposable legacy catalogs, preserve
+drafts. Cataloged local video and images open in the shared viewer with private
+availability, probes, caches and resume state. Reversible conversion tests create disposable legacy catalogs, preserve
 private recovery state and verify exact round trips. Real-library conversion and
 provider qualification remain unavailable; existing libraries retain their DB and
 ownership rules. See the [catalog workflow](docs/replica-catalog.md), accepted

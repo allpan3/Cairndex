@@ -22,6 +22,7 @@ interface ProgressReporterOptions {
   currentTime: number
   duration: number
   completed?: boolean | null
+  sourceGeneration?: string | null
 }
 
 // Keep server-side resume progress current for one playable video
@@ -33,9 +34,18 @@ export function usePlaybackProgressReporter({
   currentTime,
   duration,
   completed = false,
+  sourceGeneration = null,
 }: ProgressReporterOptions) {
   const qc = useQueryClient()
-  const stateRef = useRef({ fileId, enabled, status, currentTime, duration, completed })
+  const stateRef = useRef({
+    fileId,
+    enabled,
+    status,
+    currentTime,
+    duration,
+    completed,
+    sourceGeneration,
+  })
   const lastSentRef = useRef<{ fileId: string; position: number } | null>(null)
   const lastCompletedRef = useRef<{ fileId: string; completed: boolean } | null>(
     fileId ? { fileId, completed: Boolean(completed) } : null,
@@ -43,8 +53,16 @@ export function usePlaybackProgressReporter({
   const previousStatusRef = useRef(status)
 
   useEffect(() => {
-    stateRef.current = { fileId, enabled, status, currentTime, duration, completed }
-  }, [completed, currentTime, duration, enabled, fileId, status])
+    stateRef.current = {
+      fileId,
+      enabled,
+      status,
+      currentTime,
+      duration,
+      completed,
+      sourceGeneration,
+    }
+  }, [completed, currentTime, duration, enabled, fileId, status, sourceGeneration])
 
   useEffect(() => {
     lastCompletedRef.current = fileId ? { fileId, completed: Boolean(completed) } : null
@@ -57,7 +75,11 @@ export function usePlaybackProgressReporter({
       return null
     const safeDuration =
       Number.isFinite(current.duration) && current.duration > 0 ? current.duration : null
-    const body = { position_s: current.currentTime, duration_s: safeDuration }
+    const body = {
+      position_s: current.currentTime,
+      duration_s: safeDuration,
+      ...(current.sourceGeneration ? { source_generation: current.sourceGeneration } : {}),
+    }
     const last = lastSentRef.current
     if (
       !force &&

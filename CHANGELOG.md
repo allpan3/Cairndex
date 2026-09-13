@@ -10,6 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Complete synthetic replica catalogs open locally readable video and images in
+  the shared viewer. Availability, bounded probes, source-generation checks,
+  private derivatives and resume/cursors remain separate from authored history.
+  Missing-file retry, cataloged subtitles/moments, direct streaming and HLS
+  remux/transcode preserve catalog choices and source bytes. Real conversion,
+  provider integration and physical source operations remain unavailable.
+
 - File metadata writes accept `display_title` only as an omitted/null value or an
   exact current-filename echo. Unsupported custom names return 422 atomically;
   stored legacy titles remain preserved and filenames remain the displayed names.

@@ -2,8 +2,9 @@
 
 The shared app/API serves complete **synthetic** metadata catalogs under
 [ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion, provider
-qualification, playback, filesystem discovery and physical source operations remain
-unavailable for replica packages. Legacy libraries retain their existing workflows.
+qualification, filesystem discovery and physical source operations remain
+unavailable for replica packages. Format-two catalogs support local media through
+the shared production viewer. Legacy libraries retain their existing workflows.
 
 ## Compatibility and transport
 
@@ -100,12 +101,50 @@ recovery. **Saved operations** recovers a prepared review after a lost response,
 reload or restart. The indexed File Browser shows cataloged paths beneath the active
 root; it does not browse arbitrary server paths or prove local media availability.
 
+## Local media
+
+The server advertises `media_version: 1` for complete catalogs. **Open media on this
+device** opens a bundle, indexed file, saved moment or subtitle's video in the shared
+viewer while retaining the catalog editor and its draft. Bundle playlists use
+catalog order and paged file metadata; folder-member selection keeps its existing
+scope. A local cursor is resolved before starting a later-page member.
+
+Only the selected cataloged file is inspected. Video uses a bounded FFprobe operation
+for local codec/duration observations; images do not require FFprobe. Inspection never discovers tracks, creates file identities,
+repairs paths or changes authored choices. Unavailable bytes leave the catalog usable.
+**Retry local media** rechecks the file after it becomes readable. No provider
+hydration/download API or placeholder-recognition claim is included.
+
+Video supports direct ranged reads and the existing HLS remux/transcode decision;
+images use private thumbnails/previews and originals. Cataloged SRT/VTT tracks use
+bounded text conversion; applicable external/embedded choices can use burn-in.
+Saved moments and authored cover times retain their catalog IDs and values.
+Local resume and bundle cursors survive Release/Reopen and server restart; another
+server has separate progress. Closing/reopening observes current bytes and progress.
+
+Source generations include the relative path and filesystem identity, size and
+nanosecond modification/change times. Stream, decoder, session, derivative and
+progress operations reject stale generations. Sources are opened through no-follow
+directory descriptors; nonregular and hidden paths are refused. A direct response
+pins its descriptor and checks each bounded chunk. Decoder subprocesses inherit
+validated descriptors; replacement paths cannot redirect reads to another file.
+HLS startup failure frees its reservation, and release stops local sessions.
+
+Private observations and resume tables live beside authored projection in the
+private DB. Image/subtitle derivatives live under its `cache` directory; HLS stays
+in the server's private transcode directory. None becomes an authored event or a
+synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Storyboard jobs,
+server export workflows, audio-only viewing, cross-device resume, source discovery
+and physical source operations are outside this media capability.
+
 ## Conversion and evidence
 
 The [migration contract](replica-migration.md) defines the complete private archive
 and reversible activation boundary. Developer fixtures populate every content/plans
-table and use invented metadata and source byte specimens. The specimen with a video
-extension is not playback-qualified media. Conversion verifies DB integrity,
+table and use invented metadata and source byte specimens. The base catalog specimen
+with a video extension is not playback-qualified media. `replica_media_fixture.create_playable()`
+generates separate synthetic H.264, remux/transcode, image and subtitle specimens.
+Conversion verifies DB integrity,
 references, known inventory, independent seed reconstruction and exact legacy round
 trip. Rollback export retains original observations/auth plus a separate archive of
 all new events, conflicts, jobs and drafts. No owner-library activation is exposed.
@@ -114,6 +153,6 @@ Focused backend tests cover all-family edits/creation/deletion/recovery, exact
 conversion, delayed structural events, cover constraints, linked corruption, active
 readers, capability fences and subprocess exits around seed/save commits. Real
 browser tests use independent HTTP servers and controlled local artifact delivery.
-These results do not qualify native UI, actual providers, power loss, Windows or
-representative NAS/large-library performance. Current gate results are in
+Provider delivery, power loss, Windows and representative NAS/large-library
+performance remain unqualified. Current gate results are in
 [STATUS](STATUS.md).

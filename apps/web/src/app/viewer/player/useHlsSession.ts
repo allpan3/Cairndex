@@ -112,6 +112,7 @@ export interface UseHlsSessionOptions {
   getCurrentTime: () => number
   /** Saved-moment time requested before this file's first decision. */
   initialStartAt?: number | null
+  sourceGeneration?: string | null
 }
 
 export interface HlsSessionState {
@@ -160,6 +161,7 @@ export function useHlsSession({
   caps,
   getCurrentTime,
   initialStartAt = null,
+  sourceGeneration = null,
 }: UseHlsSessionOptions): HlsSessionState {
   // A row wins over a path: an indexed File Browser entry should reach the same
   // subtitles, storyboards and resume the Bundle Browser gives it.
@@ -168,7 +170,8 @@ export function useHlsSession({
       fileId ? { kind: 'file', fileId } : browserPath ? { kind: 'path', path: browserPath } : null,
     [fileId, browserPath],
   )
-  const sourceKey = (target?.kind === 'file' ? target.fileId : target?.path) ?? directStreamUrl
+  const targetKey = (target?.kind === 'file' ? target.fileId : target?.path) ?? directStreamUrl
+  const sourceKey = sourceGeneration ? `${targetKey}:${sourceGeneration}` : targetKey
   const [sourceState, setSourceState] = useState<{
     key: string | null
     source: PlaybackSource | null
@@ -300,6 +303,7 @@ export function useHlsSession({
     const decide = async () => {
       const payload = {
         caps,
+        ...(sourceGeneration ? { source_generation: sourceGeneration } : {}),
         audio_stream_index: active.audioStreamIndex,
         burn_subtitle_track_id: active.burnSubtitleTrackId,
         max_height: active.maxHeight,
@@ -417,6 +421,7 @@ export function useHlsSession({
     directMimeType,
     caps,
     sourceKey,
+    sourceGeneration,
     teardownLive,
   ])
 

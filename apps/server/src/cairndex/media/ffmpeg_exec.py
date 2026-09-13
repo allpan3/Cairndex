@@ -3,6 +3,7 @@
 import subprocess
 
 from cairndex.core.abort import OperationAborted, aborted
+from cairndex.media.inputs import command
 from cairndex.media.tool_paths import ffmpeg_path
 
 # How often a running ffmpeg is checked against the abort signal. Short enough
@@ -39,7 +40,13 @@ def run_ffmpeg(args: list[str], *, timeout: float = 60.0, stderr_limit: int = 30
 
     check_work_ownership()
     try:
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        args, descriptors = command(args)
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=descriptors,
+        )
     except OSError as exc:
         raise FfmpegError(str(exc)) from exc
 

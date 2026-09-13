@@ -71,7 +71,10 @@ and release also recheck capability before trusting cached ownership. These chec
 add small manifest reads to legacy operations; NAS latency has not been profiled.
 Legacy packages retain their existing DB, lease and
 write-mode gates. Replica packages cannot enter legacy catalog mutations, source
-operations, passphrase mutation, takeover, scan/probe/cache or playback paths.
+operations, passphrase mutation, takeover or legacy scan/probe/cache paths.
+Format-two catalogs expose an allowlisted local-media adapter for indexed files,
+private probes/derivatives, direct/HLS playback and device-local resume. It does not
+open a legacy content DB or publish observations. See [local media](replica-catalog.md#local-media).
 The shared app shows the capable metadata workflow, library navigation, conflicts,
 retained versions and draft recovery. It distinguishes local save, queued exchange,
 unverified delivery and upgrade/recovery failure. Peer delivery remains unknown.

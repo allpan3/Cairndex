@@ -291,6 +291,7 @@ export function usePlayer({
       setStatus('playing')
     }
     const onPause = () => {
+      setCurrentTime(video.currentTime)
       setPaused(true)
       setStatus('paused')
     }
@@ -316,6 +317,7 @@ export function usePlayer({
       setStatus(intentRef.current ? 'loading' : 'paused')
     }
     const onReady = () => {
+      setCurrentTime(video.currentTime)
       setBuffering(false)
       if (intentRef.current && video.paused && !video.ended) requestPlay(engine)
       else if (!intentRef.current && !video.paused) engine.pause()

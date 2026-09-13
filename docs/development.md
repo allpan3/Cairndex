@@ -58,6 +58,19 @@ only that package to another location and serve it from another isolated server/
 directory for concurrent editing. Never copy a private DB to create another author.
 The complete fixture's source byte specimens are metadata tests, not playable media.
 
+For actual replica playback, create a new disposable playable catalog:
+
+```bash
+uv run python -c 'from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable())'
+```
+
+It generates small H.264/AAC, remux/transcode, image and subtitle inputs; copy its
+returned package into independent temporary roots and register each with a separate
+private server directory. `tests/test_replica_media.py` checks byte/generation and
+lifecycle boundaries. `e2e/replica-media.spec.ts` exercises actual decoded pictures,
+resume, retry, ordered EOF and peer metadata exchange during sustained playback.
+The base catalog fixture's fake video bytes are unsuitable for playback checks.
+
 Run `uv run pytest tests/test_replicas.py tests/test_replica_catalog.py
 tests/test_replica_catalog_api.py -q` for conversion, protocol, HTTP and process-crash
 acceptance. From `apps/web`, run `npx playwright test e2e/replicas.spec.ts

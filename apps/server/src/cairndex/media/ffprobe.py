@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from cairndex.media.inputs import command
 from cairndex.media.tool_paths import ffprobe_path as resolve_ffprobe
 
 # 3 added ``video_codec_tag``; 4 added primary stream bitrates; 5 adds the
@@ -50,7 +51,14 @@ def run_ffprobe(path: Path, *, timeout: float = 30.0) -> dict[str, Any]:
         str(path),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+        cmd, descriptors = command(cmd)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            pass_fds=descriptors,
+        )
     except subprocess.TimeoutExpired as exc:
         raise ProbeError(f"ffprobe timed out for {path}") from exc
     if proc.returncode != 0:
@@ -87,7 +95,14 @@ def keyframe_times(path: Path, *, timeout: float = 60.0) -> list[float] | None:
         str(path),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+        cmd, descriptors = command(cmd)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            pass_fds=descriptors,
+        )
     except (subprocess.TimeoutExpired, OSError):
         return None
     if proc.returncode != 0:

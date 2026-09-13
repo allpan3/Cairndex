@@ -149,8 +149,12 @@ is **not** merging its unrelated edits. Normal conflicts do not use this shortcu
 | Unsaved editor text and conflict-review drafts | Private durable drafts with observed basis; retained across import, disconnect and crash |
 
 Conversion preserves old progress/cursors in a legacy resume record rather than
-silently dropping them. Cross-device resume hint transport is a distinct later
-slice; the prototype excludes it. Merely leaving two apps open creates no authored
+silently dropping them. Format-two local media uses private observation,
+progress and cursor tables with source-generation checks. The shared viewer and
+existing decoder/HLS pipeline read only indexed local files through validated,
+pinned descriptors. Missing bytes do not mutate authored identity. Private cache
+and session output never enter the package. Cross-device resume hint transport is
+a distinct later slice and remains unavailable. Merely leaving two apps open creates no authored
 generations. Replicating automatic scan observations as user edits would violate
 this rule and is not an acceptable production shortcut.
 
