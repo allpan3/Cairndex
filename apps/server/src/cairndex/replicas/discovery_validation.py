@@ -40,10 +40,31 @@ def references(db: sqlite3.Connection, events: list[str]) -> None:
 
 # Validation checks private shapes and receipts without choosing newer catalog alternatives
 def validate(db: sqlite3.Connection, store: CatalogStore) -> None:
+    from cairndex.replicas.discovery_verification import validate as validate_verification
+
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='discovery_verifications'").fetchone():
+        validate_verification(db)
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='discovery_accepted_files'").fetchone():
+        for accepted in db.execute("SELECT * FROM discovery_accepted_files"):
+            if not db.execute(
+                "SELECT 1 FROM catalog_revisions WHERE event=? AND unit=?",
+                (accepted["event"], f"asset_files/{accepted['file_id']}/$alive"),
+            ).fetchone():
+                raise ReplicaError("Private accepted-source receipt is missing its catalog event")
     for row in db.execute("SELECT * FROM discovery_runs"):
         if (
             row["state"] not in {"running", "succeeded", "failed", "cancelled"}
-            or row["phase"] not in {"walk", "known", "repair", "propose", "complete"}
+            or row["phase"]
+            not in {
+                "walk",
+                "known",
+                "repair",
+                "propose",
+                "plan_known",
+                "group",
+                "export",
+                "complete",
+            }
             or min(row["sequence"], row["observed"], row["repaired"]) < 0
         ):
             raise ReplicaError("Unsupported discovery job state")
@@ -71,9 +92,16 @@ def validate(db: sqlite3.Connection, store: CatalogStore) -> None:
             raise ReplicaError("Private discovery identity is inconsistent")
     for row in db.execute("SELECT * FROM discovery_candidates"):
         body = json.loads(row["body"])
+        if body.get("version") == 2:
+            from cairndex.replicas.discovery_review_validation import (
+                candidate as validate_candidate,
+            )
+
+            validate_candidate(db, row, body)
+            continue
         if (
-            body["kind"] not in {"new", "repair", "replacement"}
-            or not 1 <= len(body["files"]) <= 128
+            body["kind"] not in {"new", "repair", "replacement", "verification"}
+            or not body["files"]
             or row["state"] not in {"pending", "observed", "accepted", "superseded"}
             or row["id"] != checksum(value_text(body).encode())
             or row["path"] != body["files"][0]["path"]
@@ -85,6 +113,10 @@ def validate(db: sqlite3.Connection, store: CatalogStore) -> None:
             observation(choice, physical=choice["automatic"])
             references(db, choice["basis"])
             references(db, choice["content_basis"])
+        if "choices_digest" in body:
+            from cairndex.replicas.discovery_choices import validate as validate_choices
+
+            validate_choices(db, row["id"], body)
     for row in db.execute("SELECT * FROM discovery_reviews"):
         intent = json.loads(row["intent"])
         candidate = db.execute(
@@ -103,19 +135,38 @@ def validate(db: sqlite3.Connection, store: CatalogStore) -> None:
             raise ReplicaError("Unsupported discovery review state")
         if row["state"] in {"ready", "apply_queued", "applied"} and not row["prepared"]:
             raise ReplicaError("Private discovery review is missing its preview")
-        if row["prepared"]:
+        if json.loads(candidate[0]).get("version") == 2:
+            from cairndex.replicas.discovery_review_validation import review as validate_review
+
+            validate_review(db, store, row)
+        elif row["prepared"]:
             prepared = json.loads(row["prepared"])
             original = json.loads(candidate[0])
             if (
                 prepared["candidate"] != intent["candidate"]
                 or prepared["kind"] != original["kind"]
-                or not 1 <= len(prepared["files"]) <= 128
+                or not prepared["files"]
             ):
                 raise ReplicaError("Private discovery preview is inconsistent")
             for file in prepared["files"]:
                 observation(file)
                 if not any(
-                    all(file[name] == item[name] for name in ("path", "generation", "evidence"))
+                    all(file[name] == item[name] for name in ("path", "generation"))
+                    and (
+                        file["evidence"] == item["evidence"]
+                        or (
+                            file.get("sample") == item["evidence"]
+                            and db.execute(
+                                "SELECT 1 FROM discovery_hash_files WHERE operation=? AND path=? "
+                                "AND state='verified' AND evidence=?",
+                                (
+                                    intent.get("verification"),
+                                    file["path"],
+                                    value_text(file["evidence"]),
+                                ),
+                            ).fetchone()
+                        )
+                    )
                     for item in original["files"]
                 ):
                     raise ReplicaError("Private discovery preview changed its source selection")

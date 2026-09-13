@@ -141,3 +141,100 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
             lambda s: s.get("state") == "applied",
         )
         assert (root / "moved.png").read_bytes() == (peer / "new.png").read_bytes()
+
+
+# Source and frozen servers accept complete collections and verified large media
+def test_sidecar_complete_collection_and_full_verification(tmp_path):
+    import hashlib
+    from functools import partial
+
+    wait = partial(eventually, timeout=60)
+
+    root = create_discovery(parent=tmp_path, playable=True)
+    shelf = root / "Shelf"
+    (shelf / "Album").mkdir(parents=True)
+    picture = (root / "Playback/picture.png").read_bytes()
+    for index in range(201):
+        (shelf / "Album" / f"frame{index:03}.png").write_bytes(picture)
+    source = root / "large.mp4"
+    from cairndex.media.ffmpeg_exec import ffmpeg_exe, run_ffmpeg
+
+    run_ffmpeg(
+        [
+            ffmpeg_exe(),
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x360:rate=20",
+            "-t",
+            "20",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(source),
+        ],
+        timeout=30,
+        stderr_limit=200,
+    )
+    assert source.stat().st_size > 2 * 1024 * 1024
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    with running(tmp_path / "private-complete", tmp_path) as client:
+        registered = client.post("/api/v1/libraries/register", json={"root_path": str(root)})
+        assert registered.status_code == 201
+        prefix = f"/api/v1/libraries/{registered.json()['id']}"
+        base = prefix + "/replica/discovery"
+        wait(lambda: client.get(prefix + "/replica/status").json(), lambda s: s.get("ready"))
+        client.post(base + "/runs", json={"operation": "complete-update"})
+        wait(lambda: client.get(base + "/status").json(), lambda s: s.get("state") == "succeeded")
+        candidates = client.get(base + "/candidates").json()["items"]
+        album = next(c for c in candidates if c["body"]["kind"] == "collection")
+        large = next(c for c in candidates if c["path"] == "large.mp4")
+        client.post(
+            base + "/verifications", json={"operation": "complete-hash", "candidate": large["id"]}
+        )
+        verified = wait(
+            lambda: client.get(base + "/verifications/complete-hash").json(),
+            lambda s: s.get("state") == "succeeded",
+        )
+        assert verified["bytes_read"] == source.stat().st_size
+        for candidate, operation, extra in (
+            (album, "complete-album", {"collection": "collections-child"}),
+            (large, "complete-large", {"verification": "complete-hash"}),
+        ):
+            client.post(
+                base + "/reviews",
+                json={"operation": operation, "candidate": candidate["id"], **extra},
+            )
+            reviewed = wait(
+                lambda operation=operation: client.get(base + "/reviews/" + operation).json(),
+                lambda s: s.get("state") == "ready",
+            )
+            if candidate is album:
+                assert reviewed["prepared"]["file_count"] == 201
+                assert len(reviewed["prepared"]["files"]) == 50
+                assert reviewed["prepared"]["groups"][0]["placement"] == [
+                    "Synthetic root",
+                    "Synthetic child",
+                    "Shelf",
+                ]
+            else:
+                assert reviewed["prepared"]["files"][0]["evidence"]["digest"] == digest
+            client.post(
+                base + "/reviews/" + operation + "/accept", json={"receipt": reviewed["receipt"]}
+            )
+            wait(
+                lambda operation=operation: client.get(base + "/reviews/" + operation).json(),
+                lambda s: s.get("state") == "applied",
+            )
+        assert not client.get(base + "/candidates").json()["items"]
+        checkpoint = tmp_path / "complete-backup"
+        command(root, tmp_path / "private-complete", "backup", "--output", checkpoint)
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == digest

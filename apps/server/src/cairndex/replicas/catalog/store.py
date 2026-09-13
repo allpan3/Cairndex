@@ -62,6 +62,7 @@ class CatalogStore(CatalogStorage):
     def scope(self, db: sqlite3.Connection, units: Iterable[str]) -> set[str]:
         result, pending = set(units), list(units)
         live: dict[str, bool] = {}
+        expanded_cohorts: set[tuple[str, str]] = set()
 
         # Retained tombstoned fields do not become active relationship obligations
         def relevant(candidate: str) -> bool:
@@ -80,21 +81,25 @@ class CatalogStore(CatalogStorage):
 
         while pending:
             unit = pending.pop()
-            more = {
-                row[0]
-                for row in db.execute(
-                    "SELECT DISTINCT b.unit FROM catalog_cohorts a JOIN catalog_cohorts b "
-                    "ON a.event=b.event AND a.cohort=b.cohort "
-                    "JOIN catalog_revisions ra ON ra.event=a.event AND ra.unit=a.unit "
-                    "AND ra.active=1 "
-                    "JOIN catalog_revisions rb ON rb.event=b.event AND rb.unit=b.unit "
-                    "AND rb.active=1 "
-                    "WHERE a.unit=? AND EXISTS (SELECT 1 FROM catalog_revisions r "
-                    "JOIN catalog_cohorts c ON c.event=r.event AND c.unit=r.unit "
-                    "WHERE r.event=a.event AND c.cohort=a.cohort AND r.active=1 AND c.anchor=1)",
-                    (unit,),
-                )
-            }
+            more: set[str] = set()
+            # A complete cohort is expanded once per closure, even when every file references it
+            for cohort in db.execute(
+                "SELECT c.event,c.cohort FROM catalog_cohorts c JOIN catalog_revisions r "
+                "ON r.event=c.event AND r.unit=c.unit WHERE c.unit=? AND r.active=1",
+                (unit,),
+            ):
+                pair = (cohort[0], cohort[1])
+                if pair in expanded_cohorts:
+                    continue
+                expanded_cohorts.add(pair)
+                members = db.execute(
+                    "SELECT c.unit,c.anchor FROM catalog_cohorts c JOIN catalog_revisions r "
+                    "ON r.event=c.event AND r.unit=c.unit WHERE c.event=? AND c.cohort=? "
+                    "AND r.active=1",
+                    pair,
+                ).fetchall()
+                if any(member[1] for member in members):
+                    more.update(member[0] for member in members)
             if (
                 self.descriptor.format_version == 3
                 and unit.startswith("asset_files/")
@@ -257,7 +262,13 @@ class CatalogStore(CatalogStorage):
             expected = self.scope(db, changed)
             if not expected.issubset(changed):
                 raise ReplicaError("Structural choice must include its complete reviewed scope")
-        prior_scopes = [self.scope(db, [unit]) for unit in changed]
+        prior_scopes = []
+        pending_scopes = set(changed)
+        while pending_scopes:
+            prior = self.scope(db, [next(iter(pending_scopes))])
+            prior_scopes.append(prior)
+            # Reachability from a reached unit is already included in this complete closure
+            pending_scopes.difference_update(prior)
         atomic_groups = cohorts(self, db, rows)
         for row in rows:
             family, entity, field = split_key(row["unit"])

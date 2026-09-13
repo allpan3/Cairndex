@@ -101,8 +101,8 @@ def running(base, tmp_path):
 
 
 # Poll observable HTTP state rather than trusting command dispatch or database serialization alone
-def eventually(read, valid):
-    deadline = time.monotonic() + 15
+def eventually(read, valid, *, timeout=15):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         value = read()
         if valid(value):

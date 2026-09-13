@@ -62,19 +62,28 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
     version = db.execute("PRAGMA user_version").fetchone()[0]
     if version not in (0, 1):
         raise ReplicaError("Private schema requires an upgrade")
-    from cairndex.replicas.discovery_state import TABLES
+    from cairndex.replicas.discovery_plan import TABLES as PLAN_TABLES
+    from cairndex.replicas.discovery_preview import TABLES as PREVIEW_TABLES
+    from cairndex.replicas.discovery_proposals import TABLES as PROPOSAL_TABLES
+    from cairndex.replicas.discovery_state import BASE_TABLES
+    from cairndex.replicas.discovery_verification import TABLES as VERIFICATION_TABLES
 
-    discovery = TABLES & actual.keys()
-    if discovery and discovery != TABLES:
+    groups = (BASE_TABLES, VERIFICATION_TABLES, PLAN_TABLES, PROPOSAL_TABLES, PREVIEW_TABLES)
+    if any(group & actual.keys() for group in groups[1:]) and not actual.keys() >= BASE_TABLES:
         raise ReplicaError("Private discovery schema is incomplete")
+    for group in groups:
+        present_group = group & actual.keys()
+        if present_group and present_group != group:
+            raise ReplicaError("Private discovery schema is incomplete")
     present = MEDIA_TABLES & actual.keys()
     if present and present != MEDIA_TABLES:
         raise ReplicaError("Private media schema is incomplete")
     for known in known_schemas(catalog):
         expected = dict(known)
-        if not discovery:
-            for name in TABLES:
-                expected.pop(name, None)
+        for group in groups:
+            if not group & actual.keys():
+                for name in group:
+                    expected.pop(name, None)
         if version == 0:
             if not present:
                 for name in MEDIA_TABLES:

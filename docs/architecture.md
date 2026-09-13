@@ -51,8 +51,11 @@ incarnations retain old immutable identities and private retry lineage under
 [Manual Update](replica-discovery.md), gated by format three and ADR-0032, shares
 the bounded replica worker. Private observations/candidates precede catalog
 creation; reviewed groupings and verified repairs use guarded causal transactions.
-Optional authored content evidence distinguishes full small-file hashes from
-large-file samples. Same-path claims participate in conflict scopes; inode and
+Disk-backed planning retains complete directories and settled owners across worker
+batches. Normalized candidates and prepared values support paged collection review,
+required ancestors and partial acceptance. Optional authored content evidence
+distinguishes complete SHA-256 from samples; full large-file reads require an
+explicit cancellable verification job. Same-path claims participate in conflict scopes; inode and
 availability remain private. Discovery receipts commit atomically with authored
 events, and recovery retains exact prepared intent for explicit revalidation.
 

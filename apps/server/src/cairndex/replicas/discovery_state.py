@@ -5,6 +5,14 @@ from typing import Any
 
 from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.catalog.store import CatalogStore
+from cairndex.replicas.discovery_plan import SCHEMA as PLAN_SCHEMA
+from cairndex.replicas.discovery_plan import TABLES as PLAN_TABLES
+from cairndex.replicas.discovery_preview import SCHEMA as PREVIEW_SCHEMA
+from cairndex.replicas.discovery_preview import TABLES as PREVIEW_TABLES
+from cairndex.replicas.discovery_proposals import SCHEMA as PROPOSAL_SCHEMA
+from cairndex.replicas.discovery_proposals import TABLES as PROPOSAL_TABLES
+from cairndex.replicas.discovery_verification import SCHEMA as VERIFICATION_SCHEMA
+from cairndex.replicas.discovery_verification import TABLES as VERIFICATION_TABLES
 from cairndex.replicas.protocol import ReplicaError, checksum
 
 SCHEMA = """
@@ -57,6 +65,15 @@ TABLES = {
     "discovery_missing",
     "discovery_missing_evidence",
 }
+BASE_TABLES = set(TABLES)
+SCHEMA += VERIFICATION_SCHEMA
+TABLES |= VERIFICATION_TABLES
+SCHEMA += PLAN_SCHEMA
+TABLES |= PLAN_TABLES
+SCHEMA += PROPOSAL_SCHEMA
+TABLES |= PROPOSAL_TABLES
+SCHEMA += PREVIEW_SCHEMA
+TABLES |= PREVIEW_TABLES
 
 
 # A capability fence precedes all private discovery mutations
@@ -106,13 +123,15 @@ def cancel(store: CatalogStore, operation: str) -> None:
 
 # Candidates are paginated separately from the authored catalog
 def candidates(store: CatalogStore, after: str = "", limit: int = 30) -> dict[str, Any]:
+    from cairndex.replicas.discovery_proposals import display
+
     with store.connection(readonly=True) as db:
         rows = db.execute(
             "SELECT * FROM discovery_candidates WHERE state='pending' AND id>? ORDER BY id LIMIT ?",
             (after, limit + 1),
         ).fetchall()
         return {
-            "items": [dict(row) | {"body": json.loads(row["body"])} for row in rows[:limit]],
+            "items": [display(db, row) for row in rows[:limit]],
             "next_cursor": rows[limit - 1]["id"] if len(rows) > limit else None,
         }
 
@@ -135,6 +154,12 @@ def prepare(store: CatalogStore, operation: str, intent: dict[str, Any]) -> dict
                 "WHERE id=? AND state IN ('failed','cancelled')",
                 (operation,),
             )
+            db.execute(
+                "UPDATE discovery_review_work SET cursor=-1,progress=0 WHERE operation=? "
+                "AND EXISTS (SELECT 1 FROM discovery_reviews WHERE id=? AND prepared IS NOT NULL "
+                "AND state='queued')",
+                (operation, operation),
+            )
         db.execute(
             "INSERT OR IGNORE INTO discovery_reviews VALUES (?,?,'queued',NULL,NULL,NULL)",
             (operation, raw),
@@ -144,15 +169,21 @@ def prepare(store: CatalogStore, operation: str, intent: dict[str, Any]) -> dict
 
 # A review is durable and reopening never submits it
 def review(store: CatalogStore, operation: str) -> dict[str, Any]:
+    from cairndex.replicas.discovery_pages import display_review
+
     with store.connection(readonly=True) as db:
         row = db.execute("SELECT * FROM discovery_reviews WHERE id=?", (operation,)).fetchone()
         if row is None:
             raise ReplicaError("Discovery review is unavailable")
-        return dict(row) | {
-            "intent": json.loads(row["intent"]),
-            "prepared": json.loads(row["prepared"]) if row["prepared"] else None,
-            "receipt": checksum(row["prepared"].encode()) if row["prepared"] else None,
-        }
+        return display_review(
+            db,
+            dict(row)
+            | {
+                "intent": json.loads(row["intent"]),
+                "prepared": json.loads(row["prepared"]) if row["prepared"] else None,
+                "receipt": checksum(row["prepared"].encode()) if row["prepared"] else None,
+            },
+        )
 
 
 # Applying requires the exact visible preview; cancellation does not touch authored history
@@ -168,4 +199,9 @@ def accept(store: CatalogStore, operation: str, receipt: str) -> dict[str, Any]:
             "UPDATE discovery_reviews SET state='apply_queued' WHERE id=? AND state='ready'",
             (operation,),
         )
+        if row["state"] == "ready":
+            db.execute(
+                "UPDATE discovery_review_work SET cursor=-1,progress=0 WHERE operation=?",
+                (operation,),
+            )
     return review(store, operation)

@@ -574,7 +574,9 @@ def test_superseded_candidates_and_exact_review_retry(replicas):
             "SELECT * FROM discovery_candidates WHERE id=?", (candidate["id"],)
         ).fetchone()
         assert row["state"] == "superseded"
-        assert json.loads(row["body"]) == candidate["body"]
+        from cairndex.replicas.discovery_proposals import display
+
+        assert display(db, row)["body"] == candidate["body"]
     state.accept(store, "retained", state.review(store, "retained")["receipt"])
     discovery.tick(store, root)
     assert state.review(store, "retained")["state"] == "failed"

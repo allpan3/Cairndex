@@ -11,6 +11,12 @@ availability, fingerprints, pending files and review drafts belong to the servin
 replica. They are never catalog tombstones or provisional shared groupings. Confirmed
 groupings remain settled. Review accepts new bundles or additions through the
 catalog's guarded causal transactions, retaining the opening bases and retry intent.
+Complete directories and settled owners are indexed privately across batches.
+Normalized candidates carry all descendant groups and required ancestors; paged
+selection supports existing collection placement and additions to settled bundles.
+Accepted-source receipts preserve remaining siblings and partially accepted groups.
+Prepared values, memberships and linked payloads remain private until atomic
+validation and acceptance. Internal page sizes impose no total file-count limit.
 
 Discovery requires package format 3, catalog version 2, minimum reader 3 and the
 `discovery_identity_v1` capability. Formats 1 and 2 retain their supported workflows.
@@ -32,7 +38,10 @@ it never silently inherits an ID.
 
 Small-file discovery IDs derive from library/epoch, path and complete content
 evidence, allowing independently discovered identical files to share identity.
-Large-file discoveries retain independent random IDs unless explicitly reconciled.
+Large-file discoveries retain independent random IDs until explicit full-content
+verification establishes portable evidence. Verification reads bounded blocks in a
+cancellable private job, preserves completed receipts and rejects changed pinned
+generations. It never runs implicitly in discovery or in an HTTP handler.
 Competing paths, contents or groupings preserve all causal alternatives and a valid
 local arrangement. Neither inode nor path/size is portable content proof.
 
@@ -50,6 +59,7 @@ Derived traversal iterators restart. No recovered review submits itself.
 ## Boundaries
 
 No continuous watcher, source-file operation, provider integration or directory
-browser redesign is introduced. Bounded review batches do not establish measured
-large-library performance. Sampling cannot establish byte-for-byte equality for
-large independent copies; those candidates require explicit review.
+browser redesign is introduced. Batch sizes do not establish measured large-library performance. Complete catalog
+validation/activation and final generation checks remain atomic. Sampling cannot
+establish equality for independent large copies; explicit full verification and
+review provide that evidence. Real-library conversion remains disabled.

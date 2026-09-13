@@ -1,68 +1,78 @@
 # Manual replica discovery review
 
-Manual Update makes newly added local files reviewable in capable synthetic
-replicas and repairs verified external moves without changing source media.
-New groupings, additions and identity choices use guarded causal transactions;
-private scans and drafts never become shared provisional bundles or tombstones.
+Manual Update groups complete local directories and settled ownership context
+without splitting a review at a worker batch boundary. Collections, required
+ancestors, existing collection placement and additions use guarded catalog
+transactions. Source media remain unchanged; pending work stays private.
 
 ## Scope and design
 
-- Format 3, catalog 2, minimum reader 3 and `discovery_identity_v1` gate the workflow
-- Stable small-file identities use complete evidence; large-file identities stay
-  private until reviewed, with sampling limits visible
-- Confirmed membership/metadata survives repair; prior local observation is required
-  for automatic repair, and ambiguous source decisions require acceptance
-- Worker batches, source revalidation and atomic authored/private receipts cover
-  restart, cancellation, reviewed replacement and delivery-order conflicts
-- Recovery retains candidates, large-file mappings, draft bytes and opening bases
+- Format-three synthetic packages retain the existing `discovery_identity_v1`
+  wire capability; formats one and two keep their workflows
+- Disk-backed planning indexes all sources and owners before complete directory
+  classification; assignment, role and source preparation pages contain 32 files
+- Immutable candidates expose paged files, groups and missing-identity choices;
+  selections include all members by default and retain explicit exceptions/order
+- Partial acceptance receipts preserve siblings and append a group's remaining
+  files to its settled bundle without duplicating folder ownership
+- Explicit cancellable full SHA-256 verification pins descriptors and checks source
+  generations; complete evidence allows identical independent large discoveries
+  to converge after review
+- Staged values retain opening causal bases; linked payloads validate atomically
+  before acceptance and commit with private receipts after source revalidation
+- Recovery validates normalized sources/context, prepared values, linked parts,
+  retry intent and completed evidence; recovered jobs require explicit retry
+- Catalog dependency expansion visits each complete cohort once per closure and
+  reuses reached closures for large settled additions
+- Catalog editors fence obsolete delivery responses; candidate file pages refresh
+  on reopen so accepted sources are displayed consistently
 
-No real-library conversion or migration is enabled. Existing formats retain their
-capabilities. Collection/container grouping, full independent large-file equality
-verification, provider qualification and directory pagination remain outside scope.
-Source modification times initialize new timestamps and can conflict if peers
-observe different mtimes; they are never causal authority.
+Complete membership/forest serialization, final catalog validation/activation and
+source generation checks are atomic work that can exceed an internal batch time.
+These tests establish the exercised synthetic cases; no measured multi-terabyte
+readiness claim is made. Real conversion, provider qualification, source operations,
+continuous watchers and File Browser directory pagination remain outside scope.
 
 ## Validation
 
-Backend Ruff, formatting and mypy pass. The full source suite reports 1,613 passed
-and one existing FFmpeg zscale skip. Independent source and frozen sidecars pass
-Update, acceptance, convergence, move and prepared-review recovery checks. Frozen
-packaged smoke passes. Generated OpenAPI and TypeScript reproduce exactly.
+- Backend Ruff, format and mypy pass; the full suite has 1,632 passing tests and
+  one existing FFmpeg zscale skip
+- Frontend lint, format, typecheck and build pass, with 1,219 passing unit tests;
+  the existing bundle-size warning remains
+- All six relevant browser scenarios pass across the final runs; the large
+  partial-acceptance scenario passes after fixing stale candidate-page data
+- Source and self-contained ARM frozen sidecars each pass both independent-process
+  acceptance cases, including a 201-image album and verified playable large copy;
+  the packaged smoke test passes
+- OpenAPI and TypeScript contracts reproduce exactly
+- The isolated production desktop app passes signature/distribution checks and
+  foreground native Update cancellation/retry, full selection/receipt paging,
+  complete verification and acceptance of 204 files as two groups under an existing
+  collection with their required ancestor
+- Native selection and unsaved title survive acceptance; changing decoded movie
+  pictures are visible at seven and thirteen seconds, with a cataloged subtitle;
+  ordered EOF opens the cover image
+- Private receipts confirm all 204 sources verified and accepted and the original
+  draft retained; all 210 synthetic source hashes remain unchanged
+- Normal Quit stops the app and sidecar; the disposable app, fixture and isolated
+  runtime are removed. Standalone Rust gates were not repeated because native host
+  source is unchanged
 
-Frontend lint, formatting, typecheck, all 1,214 unit tests and production build
-pass. The existing chunk-size warning remains. Six final replica browser scenarios
-pass, including three discovery scenarios covering independent discovery/convergence,
-preserved editor selection and drafts, restored reviews, cancellation,
-retry, malformed draft retention, library switching, moved-file playback and
-competing replacement identities visible on both devices. Catalog, media and private
-recovery regressions pass alongside discovery.
-Focused hook tests cover dense input revisions, obsolete delivery errors and
-retention of invalid nested draft bytes.
-
-The isolated production desktop build and signature check pass. Native interactions
-with verified foreground identity and focused controls visibly demonstrate Update,
-typed private grouping, exact acceptance and decoded image playback after an external
-synthetic move. Accepting another discovery that sorts ahead of the selected bundle
-preserves that editor and its visible unsaved title. Private database readback confirms
-both acceptance receipts, complete retained drafts and the stable moved-file ID/path.
-All eight synthetic source hashes match, accounting for the intentional rename.
-Normal Quit stops both app and sidecar; disposable fixtures, the app and isolated
-runtime are removed. Catalog draft delivery fences obsolete responses and keeps
-current failures separate from malformed-storage errors. Focused editor tests cover
-rapid input, obsolete errors, current failures and retained malformed bytes.
-Rust source is unchanged and its standalone gate was not repeated.
+Fixtures use generated media and independent private authors. No owner library or
+installed application is used for validation. The current implementation checkpoint
+is recorded in `docs/STATUS.md`.
 
 ## Documentation updated
 
-README, product brief, architecture, data model, development, replica catalog,
-migration/recovery guides, ADR references/index, ADR-0032, the manual Update guide,
-STATUS and CHANGELOG describe current behavior and boundaries.
+README, product brief, architecture, data model, development, private recovery,
+ADR-0032, the manual Update guide, STATUS and CHANGELOG describe the complete review
+and verification workflow. OpenAPI and TypeScript contracts include paged
+inspection, selection exceptions, collection placement and verification jobs.
 
 ## Privacy and delivery
 
-Only source/reference text and reproducible API contracts belong in the change.
-Synthetic fixtures are generated at runtime; no media, database, cache, binary or
-build output belongs in the commit. The staged privacy gate passes for all 47
-source/reference text files and reproducible API contracts.
-The cumulative branch retains its existing 8 MiB publication-volume block. No push,
-PR, deployment, release, history rewrite or privacy-gate bypass is authorized.
+The staged privacy gate passes for all 47 source/reference text and reproducible
+API-contract files. Fixtures are generated at runtime. No media, database, cache,
+build output or vendored source is staged. Local staged privacy and commit hooks
+stay enabled. The cumulative branch retains its existing publication-volume block;
+no push, PR, deployment, release, history rewrite or gate bypass is authorized.

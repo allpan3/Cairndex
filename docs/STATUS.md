@@ -1,13 +1,40 @@
 # Project status
 
-- Practical replica Update follow-through is active on
-  `fix/library-ownership-lifecycle`, starting from `b51d8d05`. Complete directory
-  grouping across worker batches, collection/container review and cancellable
-  full-content verification remain required before this follow-through is complete.
-  The catalog editor now fences obsolete delivery responses and retains monotonic
-  draft revisions; genuine delivery errors and malformed stored bytes stay visible.
-  Six focused editor/draft tests pass. Full gates and production-native validation
-  will cover the completed workflow. Real conversion and publication remain disabled.
+- Practical replica Update follow-through is implemented and verified on
+  `fix/library-ownership-lifecycle`, following draft-delivery checkpoint `06fcf887`.
+  Production planning indexes complete directories and settled owners; paged
+  review supports collections, required ancestors, existing placement, partial
+  acceptance and file order. Explicit cancellable full verification provides
+  portable large-file identity. All private selections, staged values, payloads,
+  missing-identity choices and completed receipts participate in recovery.
+  Tests cover 201-file groups, 150-file settled additions, partial albums,
+  collection siblings, 150 missing-identity choices and playable large copies.
+  Backend Ruff/format/mypy pass; the full suite reports **1,632 passed**, one
+  existing FFmpeg zscale skip. Frontend lint/format/typecheck/build and all
+  **1,219 unit tests** pass; the existing chunk-size warning remains. All six
+  relevant browser scenarios pass across the final runs, including the corrected
+  partial-acceptance page refresh. Source and self-contained ARM frozen sidecars
+  each pass both independent-process acceptance cases; packaged smoke passes.
+  OpenAPI and TypeScript contracts reproduce exactly.
+  The isolated production desktop build passes signature and distribution checks.
+  Foreground native review covers Update cancellation/retry, all candidate and
+  prepared file pages, full verification of 204 sources, and acceptance of two
+  groups beneath an existing collection with the required ancestor retained.
+  The original selection and unsaved title survive acceptance. Playback shows
+  changing decoded synthetic pictures at seven and thirteen seconds, with the
+  cataloged subtitle visible; ordered EOF opens the cover image. Private receipts
+  confirm 204 verified and accepted sources and the retained draft. All 210 source
+  hashes match. Normal Quit stops the app and sidecar; the disposable test app,
+  fixtures and isolated runtime are removed. Native host source is unchanged, so
+  standalone Rust gates were not repeated.
+  Complete arrangement serialization, final catalog validation/activation and final
+  source stat checks remain atomic; no multi-terabyte readiness claim is made.
+  The [review summary](proposals/replica-discovery-review.md) records scope and limits.
+  This follow-through supersedes the directory-size limits of the initial Update
+  checkpoint below. The staged privacy gate passes for 47 source/reference text
+  files and generated API contracts; no media, databases or build output is staged.
+  Real conversion and publication remain disabled; the existing cumulative
+  publication-volume block remains intact. Further groups await owner instruction.
 
 - Manual replica Update/discovery (bounded S12/I05) is implemented on
   `fix/library-ownership-lifecycle` under [ADR-0032](adr/0032-replica-discovery.md).

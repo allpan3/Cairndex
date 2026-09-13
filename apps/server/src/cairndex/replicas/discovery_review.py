@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,20 +43,48 @@ def build(
         if len(chosen) != len(set(chosen)) or not set(chosen) <= by_id.keys():
             raise ReplicaError("Review files must come from the displayed candidate")
         files = [by_id[identity] for identity in chosen]
-    if not files or len(files) > 128:
-        raise ReplicaError("Choose between one and 128 files per review")
+    if not files:
+        raise ReplicaError("Choose at least one file per review")
     for file in files:
         if sources.inspect(root, file["path"])["generation"] != file["generation"]:
             raise ReplicaError("Local files changed; run Update before reviewing")
+    if intent.get("verification"):
+        from cairndex.replicas.discovery_verification import verified_file
+
+        verified = db.execute(
+            "SELECT candidate,state FROM discovery_verifications WHERE id=?",
+            (intent["verification"],),
+        ).fetchone()
+        if not verified or tuple(verified) != (intent["candidate"], "succeeded"):
+            raise ReplicaError("Complete the selected content verification before preparing")
+        files = [verified_file(db, root, file) for file in files]
+        if body["kind"] == "new":
+            files = [
+                file
+                | {
+                    "id": sources.file_id(
+                        store.descriptor.library_uuid, store.descriptor.epoch, file
+                    )
+                }
+                for file in files
+            ]
     builder = Preview(store, db)
     if body["kind"] == "repair":
-        old = next(
-            (
-                choice
-                for choice in body["choices"]
-                if choice["file_id"] == intent.get("repair_file")
-            ),
-            None,
+        selected_choice = db.execute(
+            "SELECT body FROM discovery_candidate_choices WHERE candidate=? AND file_id=?",
+            (intent["candidate"], intent.get("repair_file")),
+        ).fetchone()
+        old = (
+            json.loads(selected_choice[0])
+            if selected_choice
+            else next(
+                (
+                    choice
+                    for choice in body["choices"]
+                    if choice["file_id"] == intent.get("repair_file")
+                ),
+                None,
+            )
         )
         if (
             not old
@@ -74,12 +103,26 @@ def build(
         builder.put(key("asset_files", old["file_id"], "relative_path"), files[0]["path"])
         builder.put(key("asset_files", old["file_id"], "$content"), files[0]["evidence"])
         files = [files[0] | {"id": old["file_id"]}]
-    elif body["kind"] == "replacement":
-        if not intent.get("use_replacement"):
+    elif body["kind"] in ("replacement", "verification"):
+        if body["kind"] == "verification" and (
+            not intent.get("verification") or files[0]["evidence"] != body["expected"]
+        ):
+            raise ReplicaError(
+                "Verify this local copy completely; different bytes need a new replacement review"
+            )
+        if body["kind"] == "replacement" and not intent.get("use_replacement"):
             raise ReplicaError(
                 "Explicitly choose replacement bytes or leave this candidate pending"
             )
         identity = body["file_id"]
+        if "basis" in body and any(
+            set(body[basis])
+            != {tip["event"] for tip in store.tips(db, key("asset_files", identity, field))}
+            for field, basis in (("relative_path", "basis"), ("$content", "content_basis"))
+        ):
+            raise ReplicaError(
+                "The catalog identity changed; run Update and review its current choice"
+            )
         row = read_row(db, "asset_files", identity)
         if not row or row["relative_path"] != files[0]["path"]:
             raise ReplicaError("The replacement target moved; review its current location")
@@ -241,6 +284,14 @@ def apply(
 
 # The existing worker advances one bounded prepare/apply, while HTTP handlers only enqueue intent
 def tick(store: CatalogStore, root: Path) -> None:
+    deadline = time.monotonic() + 0.05
+    for _ in range(32):
+        if not step(store, root) or time.monotonic() >= deadline:
+            return
+
+
+# Each persisted phase commits independently; only acceptance authors complete catalog changes
+def step(store: CatalogStore, root: Path) -> bool:
     capable(store)
     with store.connection() as db:
         row = db.execute(
@@ -248,10 +299,28 @@ def tick(store: CatalogStore, root: Path) -> None:
             "('queued','apply_queued') ORDER BY id LIMIT 1"
         ).fetchone()
         if not row:
-            return
+            return False
         db.execute("SAVEPOINT discovery_review")
         try:
-            if row["state"] == "queued":
+            candidate = db.execute(
+                "SELECT body FROM discovery_candidates WHERE id=?",
+                (json.loads(row["intent"])["candidate"],),
+            ).fetchone()
+            normalized = candidate and json.loads(candidate[0]).get("version") == 2
+            if normalized:
+                from cairndex.replicas.discovery_commit import revalidate as revalidate_large
+                from cairndex.replicas.discovery_prepare import step as prepare_large
+                from cairndex.replicas.discovery_preview import DiscoveryPreview
+
+                if row["prepared"]:
+                    revalidate_large(
+                        DiscoveryPreview(store, db, row["id"]),
+                        root,
+                        apply=row["state"] == "apply_queued",
+                    )
+                else:
+                    prepare_large(store, db, root, row)
+            elif row["state"] == "queued":
                 prepared = (
                     json.loads(row["prepared"])
                     if row["prepared"]
@@ -279,3 +348,4 @@ def tick(store: CatalogStore, root: Path) -> None:
                     row["id"],
                 ),
             )
+        return True

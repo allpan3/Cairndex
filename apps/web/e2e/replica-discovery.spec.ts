@@ -436,3 +436,102 @@ test('competing source identities are reviewable on both replicas @fullstack', a
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+// Complete album selection and remaining-source receipts are exercised through the production API
+test('large Update review keeps later pages and partial acceptance complete @fullstack', async ({
+  browser,
+}) => {
+  test.setTimeout(180_000)
+  const scratch = await realpath(await mkdtemp(join(tmpdir(), 'cairndex-discovery-large-')))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.discovery_fixture import create_discovery; print(create_discovery(parent=Path(sys.argv[1]), playable=True))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const album = join(root, 'Gallery')
+  await mkdir(album)
+  const original = await readFile(join(root, 'Playback/picture.png'))
+  for (let index = 0; index < 201; index++)
+    await writeFile(join(album, `frame${String(index).padStart(3, '0')}.png`), original)
+  const backend = await startBackend(join(scratch, 'private'))
+  const context = await browser.newContext()
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const page = await context.newPage()
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Update', exact: true }).click()
+    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+    await page
+      .getByRole('navigation', { name: 'Discovery suggestions' })
+      .getByRole('button', { name: 'Gallery · 201 files', exact: true })
+      .click()
+    const choice = page.getByRole('region', { name: 'Discovery grouping choice' })
+    for (let index = 0; index < 4; index++) {
+      await choice.getByRole('button', { name: 'Next files', exact: true }).click()
+      await expect(
+        choice.getByRole('checkbox', {
+          name: `Gallery/frame${String((index + 1) * 50).padStart(3, '0')}.png`,
+          exact: true,
+        }),
+      ).toBeVisible()
+    }
+    await choice.getByRole('checkbox', { name: 'Gallery/frame200.png', exact: true }).uncheck()
+    await choice.getByRole('button', { name: 'Prepare grouping review', exact: true }).click()
+    const prepared = page.getByRole('region', { name: 'Prepared discovery review' })
+    await expect(prepared.getByText('Ready for your confirmation', { exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
+    await expect(prepared.getByText('200 selected files · 1 groups', { exact: true })).toBeVisible()
+    for (let index = 0; index < 3; index++) {
+      await prepared.getByRole('button', { name: 'Next prepared files', exact: true }).click()
+      await expect(
+        prepared
+          .getByRole('list', { name: 'Prepared files' })
+          .getByText(`Gallery/frame${String((index + 1) * 50).padStart(3, '0')}.png`, {
+            exact: false,
+          }),
+      ).toBeVisible()
+    }
+    await prepared.getByRole('button', { name: 'Accept reviewed changes', exact: true }).click()
+    await expect(prepared.getByText(/Reviewed changes saved here/)).toBeVisible({ timeout: 60_000 })
+    await prepared.getByRole('button', { name: 'Back to discoveries' }).click()
+    await page
+      .getByRole('navigation', { name: 'Discovery suggestions' })
+      .getByRole('button', { name: 'Gallery · 201 files', exact: true })
+      .click()
+    await expect(choice.getByRole('checkbox', { name: /Gallery\/frame000.png/ })).toBeDisabled()
+    await choice.getByRole('button', { name: 'Select all files', exact: true }).click()
+    await choice.getByRole('button', { name: 'Prepare grouping review', exact: true }).click()
+    await expect(prepared.getByText('Ready for your confirmation', { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(prepared.getByText('1 selected files · 1 groups', { exact: true })).toBeVisible()
+    await prepared.getByRole('button', { name: 'Accept reviewed changes', exact: true }).click()
+    await expect(prepared.getByText(/Reviewed changes saved here/)).toBeVisible({ timeout: 30_000 })
+    const response = await fetch(
+      `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/discovery/candidates`,
+    )
+    expect((await response.json()).items).toEqual([])
+    for (let index = 0; index < 201; index++)
+      expect(await readFile(join(album, `frame${String(index).padStart(3, '0')}.png`))).toEqual(
+        original,
+      )
+  } finally {
+    await context.close()
+    await stopBackend(backend)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

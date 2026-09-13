@@ -160,6 +160,9 @@ server directory; keep it available for separate inspection rather than deleting
 | `cache/`, HLS, temporary `recovery-*` branch projections | Rebuildable and excluded; source inputs and retained immutable history are the authority |
 | `discovery_runs`, `discovery_entries`, `discovery_missing`, `discovery_baselines` | Included; restored running work fails for deliberate retry, baselines reset and walks restart |
 | `discovery_identities`, `discovery_candidates`, `discovery_reviews` | Included with original bodies, source evidence, selections and causal receipts; pending reviews require explicit revalidation |
+| `discovery_candidate_files/groups/choices`, `discovery_review_*`, `discovery_accepted_files` | Included; validate complete source/context digests, staged bases, linked transactions and partial acceptance receipts |
+| `discovery_plan_*` | Included derived planning scratch; recovered active scans require a new Update |
+| `discovery_verifications`, `discovery_hash_files`, `discovery_verified` | Included progress and complete evidence; explicit retry revalidates local generations and restarts incomplete hashes |
 | Transport discovery iterators | Restarted; bounded exchange rediscovers immutable objects idempotently |
 | Private bindings/locks | Rebuilt for the selected destination; old generations remain separate, and missing bound stores require explicit recovery |
 | Registry, tokens, passphrase configuration, endpoint preferences | Separate server backup/rebinding responsibility; never transplanted as new-device credentials |

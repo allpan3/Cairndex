@@ -2,17 +2,16 @@
 
 import json
 import sqlite3
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from cairndex.core.errors import DomainError
 from cairndex.domain.enums import MediaKind
-from cairndex.grouping.suggester import FileObservation, suggest_grouping
 from cairndex.replicas import discovery_sources as sources
 from cairndex.replicas.catalog.commands import Preview
 from cairndex.replicas.catalog.model import key, value_text
-from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.discovery_state import capable
@@ -27,12 +26,19 @@ def media_kind(path: str) -> MediaKind:
 
 
 BATCH = 32
-REVIEW_FILES = 128
 _walks: dict[CatalogStore, tuple[str, Iterator[str | None]]] = {}
 
 
 # Release/cancel closes pinned directory handles before retiring a private generation
 def close(store: CatalogStore) -> None:
+    from cairndex.replicas.discovery_verification import close as close_verification
+
+    close_verification(store)
+    close_walk(store)
+
+
+# Finished traversal does not interrupt a separately queued content verification
+def close_walk(store: CatalogStore) -> None:
     entry = _walks.pop(store, None)
     if entry:
         entry[1].close()  # type: ignore[attr-defined]
@@ -135,9 +141,12 @@ def tick(store: CatalogStore, root: Path) -> None:
             "SELECT * FROM discovery_runs WHERE state='running' ORDER BY sequence LIMIT 1"
         ).fetchone()
     if row is None:
-        close(store)
+        close_walk(store)
         from cairndex.replicas.discovery_review import tick as review_tick
+        from cairndex.replicas.discovery_verification import tick as verification_tick
 
+        if verification_tick(store, root):
+            return
         review_tick(store, root)
         return
     run, phase = row["id"], row["phase"]
@@ -197,6 +206,12 @@ def enumerate_batch(store: CatalogStore, root: Path, run: str) -> None:
             if prior:
                 cached = json.loads(prior[0])
         observation = sources.inspect(root, path, cached)
+        from cairndex.replicas.discovery_verification import evidence
+
+        with store.connection(readonly=True) as db:
+            full = evidence(db, observation)
+            if full and observation["evidence"]["algorithm"] != "sha256":
+                observation = observation | {"sample": observation["evidence"], "evidence": full}
         found.append((run, path, path.rpartition("/")[0], value_text(observation)))
     with store.connection() as db:
         if not db.execute(
@@ -243,18 +258,34 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                 new = json.loads(observed[0])
                 expected = shared or (old["evidence"] if old and old["path"] == path else None)
                 if expected is not None and expected != new["evidence"]:
+                    needs_verification = (
+                        expected["algorithm"] == "sha256"
+                        and new["evidence"]["algorithm"] != "sha256"
+                    )
                     candidate(
                         db,
                         run,
                         {
-                            "kind": "replacement",
+                            "kind": "verification" if needs_verification else "replacement",
                             "files": [new | {"id": identity}],
                             "title": Path(path).name,
                             "target": None,
                             "file_id": identity,
+                            "expected": expected,
+                            "basis": [
+                                tip["event"]
+                                for tip in store.tips(
+                                    db, key("asset_files", identity, "relative_path")
+                                )
+                            ],
+                            "content_basis": [
+                                tip["event"]
+                                for tip in store.tips(db, key("asset_files", identity, "$content"))
+                            ],
                             "reason": (
-                                "Different content at an existing path; an explicit source choice "
-                                "is required"
+                                "Complete content verification is needed for this local copy"
+                                if needs_verification
+                                else "Different local content requires explicit replacement review"
                             ),
                         },
                     )
@@ -305,21 +336,6 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
         )
 
 
-# Uniqueness is checked in both directions before the automatic move policy may apply
-def possible(db: sqlite3.Connection, run: str, observation: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        json.loads(row[0])
-        for row in db.execute(
-            (
-                "SELECT body FROM discovery_missing WHERE run=? AND "
-                "json_extract(body,'$.evidence.digest')=? LIMIT ?"
-            ),
-            (run, observation["evidence"]["digest"], REVIEW_FILES + 1),
-        )
-        if json.loads(row[0])["evidence"] == observation["evidence"]
-    ]
-
-
 # Ambiguous source matches stay private and reviewable, retaining every original catalog identity
 def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
     with store.connection() as db:
@@ -332,7 +348,9 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
         ).fetchall()
         for path, raw in rows:
             new = json.loads(raw)
-            choices = possible(db, run, new)
+            from cairndex.replicas.discovery_choices import matching, stage
+
+            choices = [json.loads(r[0]) for r in matching(db, run, new).fetchmany(2)]
             matches = []
             if len(choices) == 1:
                 matches = [
@@ -342,7 +360,7 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                             "SELECT body FROM discovery_entries WHERE run=? AND handled IN "
                             "(0,2) AND json_extract(body,'$.evidence.digest')=? LIMIT ?"
                         ),
-                        (run, new["evidence"]["digest"], REVIEW_FILES + 1),
+                        (run, new["evidence"]["digest"], 2),
                     )
                     if choices[0]["evidence"] == json.loads(r[0])["evidence"]
                 ]
@@ -364,7 +382,7 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                 )
                 db.execute("UPDATE discovery_runs SET repaired=repaired+1 WHERE id=?", (run,))
             elif choices:
-                candidate(
+                stage(
                     db,
                     run,
                     {
@@ -390,89 +408,41 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
         )
 
 
-# Reuse the pure grouping rules on bounded directory batches, without legacy ORM mutation
+# Complete grouping context is indexed before rules run; batches never define review boundaries
 def propose_batch(store: CatalogStore, run: str) -> None:
-    with store.connection() as db:
-        first = db.execute(
-            "SELECT parent FROM discovery_entries WHERE run=? AND handled=0 ORDER BY path LIMIT 1",
-            (run,),
-        ).fetchone()
-        if not first:
-            # Retain historical bodies and drafts outside the completed run's active choices
-            db.execute(
-                "UPDATE discovery_candidates SET state='superseded' "
-                "WHERE run<>? AND state='pending'",
-                (run,),
-            )
-            db.execute(
-                "UPDATE discovery_runs SET state='succeeded',phase='complete' WHERE id=?", (run,)
-            )
+    from cairndex.replicas import discovery_plan as plan
+    from cairndex.replicas import discovery_proposals as proposals
+
+    deadline = time.monotonic() + 0.05
+    for _ in range(32):
+        with store.connection(readonly=True) as db:
+            job = db.execute("SELECT * FROM discovery_runs WHERE id=?", (run,)).fetchone()
+        if job["state"] != "running":
             return
-        rows = db.execute(
-            (
-                "SELECT body FROM discovery_entries WHERE run=? AND handled=0 AND "
-                "parent=? ORDER BY path LIMIT ?"
-            ),
-            (run, first[0], REVIEW_FILES),
-        ).fetchall()
-        observations = []
-        details = {}
-        for (raw,) in rows:
-            info = json.loads(raw)
-            evidence = value_text(info["evidence"])
-            prior = db.execute(
-                "SELECT file_id FROM discovery_identities WHERE path=? AND evidence=?",
-                (info["path"], evidence),
-            ).fetchone()
-            identity = (
-                prior[0]
-                if prior
-                else sources.file_id(store.descriptor.library_uuid, store.descriptor.epoch, info)
-            )
-            db.execute(
-                "INSERT OR IGNORE INTO discovery_identities VALUES (?,?,?)",
-                (info["path"], evidence, identity),
-            )
-            details[identity] = info | {"id": identity}
-            observations.append(FileObservation(identity, info["path"], media_kind(info["path"])))
-        known = db.execute(
-            (
-                "SELECT entity,path FROM catalog_paths WHERE family='asset_files' "
-                "AND parent=? ORDER BY path LIMIT ?"
-            ),
-            (first[0], REVIEW_FILES + 1),
-        ).fetchall()
-        if len(known) <= REVIEW_FILES:
-            for identity, path in known:
-                file = read_row(db, "asset_files", identity)
-                bundle = read_row(db, "asset_bundles", file["bundle_id"]) if file else None
-                if file and bundle and classify(path):
-                    observations.append(
-                        FileObservation(
-                            identity, path, media_kind(path), True, bundle["id"], bundle["title"]
-                        )
+        phase = job["phase"]
+        if phase in ("propose", "plan_known"):
+            done = plan.index_batch(store, run, job["cursor"], known=phase == "plan_known")
+        else:
+            with store.connection() as db:
+                done = plan.tick(db, run) if phase == "group" else proposals.tick(db, run)
+        if done:
+            following = {"propose": "plan_known", "plan_known": "group", "group": "export"}
+            with store.connection() as db:
+                if phase in following:
+                    db.execute(
+                        "UPDATE discovery_runs SET phase=?,cursor='' WHERE id=?",
+                        (following[phase], run),
                     )
-        for proposal in suggest_grouping(observations).proposals:
-            if not proposal.files:
-                continue
-            files = [
-                details[f.asset_file_id] | {"role": f.role.name, "sequence": f.sequence}
-                for f in proposal.files
-                if f.asset_file_id in details
-            ]
-            if files:
-                candidate(
-                    db,
-                    run,
-                    {
-                        "kind": "new",
-                        "files": files,
-                        "title": proposal.title,
-                        "target": proposal.target_bundle_id,
-                        "reason": proposal.reason,
-                    },
-                )
-        db.executemany(
-            "UPDATE discovery_entries SET handled=1 WHERE run=? AND path=?",
-            ((run, info["path"]) for info in details.values()),
-        )
+                else:
+                    db.execute(
+                        "UPDATE discovery_candidates SET state='superseded' "
+                        "WHERE run<>? AND state='pending'",
+                        (run,),
+                    )
+                    db.execute(
+                        "UPDATE discovery_runs SET state='succeeded',phase='complete' WHERE id=?",
+                        (run,),
+                    )
+                    return
+        if time.monotonic() >= deadline:
+            return

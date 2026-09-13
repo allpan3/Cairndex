@@ -198,6 +198,52 @@ def previous_gaps(previous: Path, prepared: Path) -> dict[str, int]:
             ("discovery_candidates", ("id",), ("id", "run", "path", "body")),
             ("discovery_identities", ("path", "evidence"), ("path", "evidence", "file_id")),
             ("discovery_reviews", ("id",), ("id", "intent", "prepared", "event")),
+            ("discovery_candidate_groups", ("candidate", "id"), ("candidate", "id", "body")),
+            (
+                "discovery_candidate_choices",
+                ("candidate", "file_id"),
+                ("candidate", "file_id", "body"),
+            ),
+            (
+                "discovery_candidate_files",
+                ("candidate", "position"),
+                ("candidate", "position", "group_id", "body"),
+            ),
+            ("discovery_review_work", ("operation",), ("operation", "parents", "total", "header")),
+            (
+                "discovery_review_files",
+                ("operation", "position"),
+                ("operation", "position", "group_id", "original", "body", "sort_order"),
+            ),
+            ("discovery_review_groups", ("operation", "id"), ("operation", "id", "body", "target")),
+            (
+                "discovery_review_values",
+                ("operation", "unit"),
+                ("operation", "unit", "value", "basis", "cohort"),
+            ),
+            (
+                "discovery_review_members",
+                ("operation", "bundle", "family", "id"),
+                ("operation", "bundle", "family", "id", "body", "sequence"),
+            ),
+            ("discovery_review_forest", ("operation", "id"), ("operation", "id", "body")),
+            (
+                "discovery_review_parts",
+                ("operation", "sequence"),
+                ("operation", "sequence", "id", "raw"),
+            ),
+            ("discovery_review_commit", ("operation",), ("operation", "intent")),
+            (
+                "discovery_accepted_files",
+                ("path", "generation"),
+                ("path", "generation", "file_id", "event"),
+            ),
+            ("discovery_verifications", ("id",), ("id", "candidate")),
+            (
+                "discovery_hash_files",
+                ("operation", "path"),
+                ("operation", "path", "original", "evidence"),
+            ),
             (
                 "local_progress",
                 ("file_id",),
@@ -260,6 +306,12 @@ def prepare(
                 "UPDATE local_media SET generation=NULL,state='unknown',metadata=NULL,error=NULL"
             )
             db.execute("DELETE FROM discovery_baselines")
+            db.execute("UPDATE discovery_verified SET trusted=0")
+            db.execute(
+                "UPDATE discovery_verifications SET state='failed',error='Recovered verification; "
+                "explicitly retry before using its evidence' WHERE state IN "
+                "('queued','running','succeeded')"
+            )
             db.execute(
                 "UPDATE discovery_runs SET state='failed',error='Recovered "
                 "Update; run Update again' WHERE state='running'"

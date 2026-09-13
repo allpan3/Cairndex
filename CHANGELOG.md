@@ -10,6 +10,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Replica Update groups complete directories across internal batches, including
+  directories with more than 128 discovered or settled files. Paged review supports
+  collections, required ancestors, existing placement and partial acceptance.
+  Explicit cancellable full-content verification establishes portable large-file
+  identities; normalized reviews and verified receipts are covered by recovery.
+  Catalog dependency expansion reuses complete closures for large settled additions.
+
 - Replica catalog editors retain rapid input with monotonic draft revisions.
   Obsolete delivery responses cannot leave misleading warnings; current failures
   remain visible until successful delivery, and malformed draft bytes are retained.

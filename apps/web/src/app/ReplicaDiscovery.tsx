@@ -8,202 +8,8 @@ import {
   type DiscoveryReview,
   type DiscoveryRun,
 } from '../api/discovery'
-import { CatalogValue } from './CatalogControls'
-import { useCatalogDraft } from './useCatalogDraft'
-
-// Persisted nested JSON must be a bounded selection before rendering or sending it
-function validSelection(body: { files: string }): boolean {
-  try {
-    const files: unknown = JSON.parse(body.files)
-    return (
-      Array.isArray(files) && files.length <= 128 && files.every((id) => typeof id === 'string')
-    )
-  } catch {
-    return false
-  }
-}
-
-// Prepared bytes and original draft values remain stable while catalog queries refresh
-function CandidateReview({
-  library,
-  editor,
-  candidate,
-  onPrepared,
-}: {
-  library: string
-  editor: string
-  candidate: DiscoveryCandidate
-  onPrepared: (id: string) => void
-}) {
-  const { body } = candidate
-  const [initialOperation] = useState(operationId)
-  const draft = useCatalogDraft(
-    library,
-    `discovery/${candidate.id}`,
-    editor,
-    {
-      title: body.title,
-      target: body.target ?? '',
-      files: JSON.stringify(body.files.flatMap((file) => (file.id ? [file.id] : []))),
-      repair: '',
-      replacement: false,
-      operation: initialOperation,
-    },
-    validSelection,
-  )
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const selected = JSON.parse(draft.body.files) as string[]
-  // Each revised selection is a new intent; retrying an unchanged request retains its identity
-  function update(value: Partial<typeof draft.body>) {
-    draft.update({ ...draft.body, ...value, operation: operationId() })
-  }
-  async function prepare() {
-    setBusy(true)
-    setError('')
-    try {
-      const review = await discovery<DiscoveryReview>(library, '/reviews', 'POST', {
-        operation: draft.body.operation,
-        candidate: candidate.id,
-        title: draft.body.title,
-        target: draft.body.target || null,
-        ...(body.kind === 'new' ? { files: selected } : {}),
-        repair_file: draft.body.repair || null,
-        use_replacement: draft.body.replacement,
-      })
-      onPrepared(review.id)
-    } catch (reason) {
-      setError((reason as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <section aria-label="Discovery grouping choice">
-      <h3>{body.title}</h3>
-      <p>{body.reason}</p>
-      {draft.error && <p role="alert">{draft.error}</p>}
-      {draft.copies.map((copy) => (
-        <button key={copy.id} onClick={() => draft.update(copy.body)}>
-          Recover discovery draft {copy.revision}
-        </button>
-      ))}
-      {body.kind === 'new' && (
-        <>
-          <label>
-            Bundle title
-            <input
-              value={draft.body.title}
-              onChange={(event) => update({ title: event.target.value })}
-            />
-          </label>
-          <label>
-            Destination
-            <CatalogValue
-              library={library}
-              control={{
-                field: 'bundle_id',
-                label: 'Destination',
-                kind: 'reference',
-                nullable: true,
-                choices: [],
-                reference_family: 'asset_bundles',
-                columns: [],
-              }}
-              raw={JSON.stringify(draft.body.target || null)}
-              onChange={(raw) => update({ target: (JSON.parse(raw) as string | null) ?? '' })}
-            />
-          </label>
-          <p>
-            {draft.body.target
-              ? 'Add selected files to this bundle; its existing order and metadata remain.'
-              : 'Create a new bundle from the selected files.'}
-          </p>
-        </>
-      )}
-      {body.kind === 'repair' && (
-        <label>
-          Missing file to repair
-          <select
-            value={draft.body.repair}
-            onChange={(event) => update({ repair: event.target.value })}
-          >
-            <option value="">Choose a missing file</option>
-            {body.choices?.map((choice) => (
-              <option key={choice.file_id} value={choice.file_id}>
-                {choice.path}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {body.kind === 'replacement' && (
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.body.replacement}
-            onChange={(event) => update({ replacement: event.target.checked })}
-          />
-          Use these replacement bytes for the existing file identity and its metadata
-        </label>
-      )}
-      <ol aria-label="Discovered files">
-        {[...body.files]
-          .sort((a, b) => selected.indexOf(a.id!) - selected.indexOf(b.id!))
-          .map((file) => (
-            <li key={file.path}>
-              {body.kind === 'new' ? (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(file.id!)}
-                    onChange={(event) =>
-                      update({
-                        files: JSON.stringify(
-                          event.target.checked
-                            ? [...selected, file.id!]
-                            : selected.filter((id) => id !== file.id),
-                        ),
-                      })
-                    }
-                  />
-                  {file.path}
-                </label>
-              ) : (
-                file.path
-              )}
-              {body.kind === 'new' && selected.includes(file.id!) && (
-                <button
-                  aria-label={`Move ${file.path} earlier`}
-                  disabled={selected.indexOf(file.id!) <= 0}
-                  onClick={() => {
-                    const order = [...selected]
-                    const index = order.indexOf(file.id!)
-                    ;[order[index - 1], order[index]] = [order[index]!, order[index - 1]!]
-                    update({ files: JSON.stringify(order) })
-                  }}
-                >
-                  Move earlier
-                </button>
-              )}
-            </li>
-          ))}
-      </ol>
-      {error && <p role="alert">{error}</p>}
-      <button
-        disabled={
-          busy ||
-          (body.kind === 'new' && !selected.length) ||
-          (body.kind === 'repair' && !draft.body.repair) ||
-          (body.kind === 'replacement' && !draft.body.replacement)
-        }
-        onClick={() => void prepare()}
-      >
-        {busy ? 'Preparing…' : 'Prepare grouping review'}
-      </button>
-    </section>
-  )
-}
+import { CandidateReview } from './DiscoveryCandidateReview'
+import { DiscoveryPrepared } from './DiscoveryPrepared'
 
 // Update and review remain mounted alongside the selected editor so refresh cannot discard drafts
 export function ReplicaDiscovery({
@@ -360,7 +166,7 @@ export function ReplicaDiscovery({
                   setReviewId(null)
                 }}
               >
-                {item.body.title} · {item.body.files.length} files
+                {item.body.title} · {item.body.file_count ?? item.body.files.length} files
               </button>
             ))}
           </nav>
@@ -401,29 +207,16 @@ export function ReplicaDiscovery({
                             ? 'Ready for your confirmation'
                             : 'Review retained; prepare again before applying.'}
                   </p>
+                  {review.data.progress &&
+                    ['queued', 'apply_queued'].includes(review.data.state) && (
+                      <p>
+                        {review.data.progress.phase} · {review.data.progress.progress} /{' '}
+                        {review.data.progress.total} files
+                      </p>
+                    )}
                   {review.data.error && <p role="alert">{review.data.error}</p>}
                   {review.data.prepared && (
-                    <>
-                      <h3>{review.data.prepared.title}</h3>
-                      <ol>
-                        {review.data.prepared.files.map((file) => (
-                          <li key={file.path}>{file.path}</li>
-                        ))}
-                      </ol>
-                      <details>
-                        <summary>Review complete metadata and order</summary>
-                        <pre>
-                          {JSON.stringify(
-                            review.data.prepared.catalog.changes.map((change) => ({
-                              field: change.unit,
-                              value: JSON.parse(change.value) as unknown,
-                            })),
-                            null,
-                            2,
-                          )}
-                        </pre>
-                      </details>
-                    </>
+                    <DiscoveryPrepared library={library} review={review.data} />
                   )}
                   {review.data.state === 'ready' && (
                     <button

@@ -40,7 +40,13 @@ The private `discovery_runs`, `discovery_entries`, `discovery_missing`,
 `discovery_baselines`, `discovery_identities`, `discovery_candidates` and
 `discovery_reviews` tables hold progress, physical observations, pending choices,
 persistent large-file IDs and exact prepared/accepted receipts. All are covered by
-private recovery, never authored transport. The [Update contract](replica-discovery.md)
+private recovery, never authored transport. `discovery_plan_*` stores derived
+complete directory context; `discovery_candidate_files/groups` stores immutable
+normalized suggestions. `discovery_review_*` stores selected sources, staged values,
+original bases, arrangements and linked preview parts. `discovery_accepted_files`
+retains partial acceptance receipts. `discovery_verifications`,
+`discovery_hash_files` and `discovery_verified` hold full-read progress and
+generation-bound complete evidence. The [Update contract](replica-discovery.md)
 defines evidence strength, stable IDs, batch scope and source timestamps.
 
 ## Replica-local media tables

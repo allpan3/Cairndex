@@ -83,7 +83,12 @@ source sidecars, or `CAIRNDEX_RECOVERY_TEST_BINARY` for the frozen executable.
 `e2e/replica-discovery.spec.ts` exercises the shared Update/review controls and
 retained private drafts. Fixture roots and private server directories are separate;
 only immutable objects and synthetic source files are copied between peers.
-See [manual Update](replica-discovery.md) for the bounded capability and limitations.
+`tests/test_replica_discovery_plan.py`, `tests/test_replica_discovery_large.py`
+and `tests/test_replica_verification.py` cover complete grouping across batches,
+settled additions, collection/partial acceptance, missing-identity pagination and
+explicit full reads. The independent sidecar acceptance includes a 201-image
+collection and a generated playable multi-megabyte MP4. See
+[manual Update](replica-discovery.md) for capabilities and remaining limits.
 
 Run `uv run pytest tests/test_replicas.py tests/test_replica_catalog.py
 tests/test_replica_catalog_api.py -q` for conversion, protocol, HTTP and process-crash

@@ -32,7 +32,9 @@ scenarios, not required application modes.
 **Manual Update** in new format-three synthetic packages discovers local files,
 repairs verified external moves and prepares private grouping/identity choices for
 explicit acceptance. Confirmed changes preserve IDs and use causal catalog
-transactions. See [replica Update](docs/replica-discovery.md).
+transactions. Complete directory/collection review supports existing placement
+and partial acceptance; explicit cancellable full verification establishes large-file
+identity. See [replica Update](docs/replica-discovery.md).
 
 [Private replica recovery](docs/replica-recovery.md) provides coherent backups,
 verified preparation, inspectable reviews and explicit activation into a separate

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections.abc import MutableMapping
 from typing import Any
 
 from cairndex.persistence.base import Base
@@ -25,7 +26,7 @@ class Preview:
     # A private writer transaction gives the complete preview one consistent observed basis
     def __init__(self, store: CatalogStore, db: sqlite3.Connection) -> None:
         self.store, self.db = store, db
-        self.values: dict[str, str] = {}
+        self.values: MutableMapping[str, str] = {}
 
     # Stage a complete unit while keeping its original observed revisions for the receipt
     def put(self, unit: str, value: Any) -> None:

@@ -84,7 +84,8 @@ viewer, with availability, probes, derivatives and resume private to the serving
 device. Missing bytes keep their catalog identity and can be retried locally.
 Format-three synthetic packages support [manual Update](replica-discovery.md):
 private discovery, conservative external-move repair and explicit grouping or
-ambiguous-identity review. Confirmed groupings and file IDs remain stable; local
+ambiguous-identity review, complete directory/collection grouping, existing placement
+and explicit full-content verification. Confirmed groupings and file IDs remain stable; local
 absence never removes shared metadata. Physical source operations remain
 unavailable. Legacy libraries retain their existing ownership and media workflows. Real-library conversion and provider qualification
 require separate approval and evidence.
