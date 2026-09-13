@@ -47,8 +47,9 @@ preserves that editor and its visible unsaved title. Private database readback c
 both acceptance receipts, complete retained drafts and the stable moved-file ID/path.
 All eight synthetic source hashes match, accounting for the intentional rename.
 Normal Quit stops both app and sidecar; disposable fixtures, the app and isolated
-runtime are removed. Rapid typing in the existing catalog editor can still show an
-obsolete-delivery warning; its complete final draft was verified in private storage.
+runtime are removed. Catalog draft delivery fences obsolete responses and keeps
+current failures separate from malformed-storage errors. Focused editor tests cover
+rapid input, obsolete errors, current failures and retained malformed bytes.
 Rust source is unchanged and its standalone gate was not repeated.
 
 ## Documentation updated

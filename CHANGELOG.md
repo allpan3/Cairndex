@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Replica catalog editors retain rapid input with monotonic draft revisions.
+  Obsolete delivery responses cannot leave misleading warnings; current failures
+  remain visible until successful delivery, and malformed draft bytes are retained.
+
 - New format-three synthetic replicas support manual Update, private grouping
   review and conservative external-move repair. Reviewed additions and explicit
   ambiguous/replacement choices preserve IDs through causal catalog transactions;

@@ -1,5 +1,5 @@
 // Durable family editors retain exact authored input and mandatory observed bases
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   advancedCatalogFields,
@@ -114,6 +114,8 @@ export function CatalogEditor({
       return 'The browser draft could not be read. Its stored bytes are retained.'
     }
   })
+  const latest = useRef(draft)
+  const [deliveryError, setDeliveryError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [prepared, setPrepared] = useState<Job | null>(null)
@@ -154,20 +156,17 @@ export function CatalogEditor({
     } catch {
       setError('Browser storage is unavailable; server draft delivery is pending.')
     }
+    latest.current = next
     setDraft(next)
-    void catalog(library, `/drafts/${owner}/${next.id}`, 'PUT', {
-      revision: next.revision,
-      body: next,
-    }).catch((reason: Error) => setError(reason.message))
   }
   // Retain original field bases while newly selected references add their own guards
   function change(unit: string, raw: string, observed: Record<string, string[]> = {}) {
     const next: Draft = {
-      id: draft?.id ?? operationId(),
-      revision: (draft?.revision ?? 0) + 1,
-      inputs: { ...draft?.inputs, [unit]: raw },
-      observed: { ...entity.observed, ...observed, ...draft?.observed },
-      parents: draft?.parents ?? entity.parents,
+      id: latest.current?.id ?? operationId(),
+      revision: (latest.current?.revision ?? 0) + 1,
+      inputs: { ...latest.current?.inputs, [unit]: raw },
+      observed: { ...entity.observed, ...observed, ...latest.current?.observed },
+      parents: latest.current?.parents ?? entity.parents,
       operation: operationId(),
     }
     setMessage('Private draft retained')
@@ -176,8 +175,12 @@ export function CatalogEditor({
   // Acknowledged generations cannot be revived by delayed background writes
   async function clear(current: Draft) {
     await catalog(library, `/drafts/${current.id}?revision=${current.revision}`, 'DELETE')
-    localStorage.removeItem(key)
-    setDraft(null)
+    if (latest.current === current) {
+      localStorage.removeItem(key)
+      latest.current = null
+      setDraft(null)
+      setDeliveryError('')
+    }
     void drafts.refetch()
   }
   // Save the exact draft intent and keep its retry identity until acknowledgement
@@ -255,14 +258,24 @@ export function CatalogEditor({
   }
   useEffect(() => {
     if (!draft) return
+    let active = true
     const deliver = () =>
       void catalog(library, `/drafts/${owner}/${draft.id}`, 'PUT', {
         revision: draft.revision,
         body: draft,
-      }).catch((reason: Error) => setError(reason.message))
+      })
+        .then(() => {
+          if (active && latest.current === draft) setDeliveryError('')
+        })
+        .catch((reason: Error) => {
+          if (active && latest.current === draft) setDeliveryError(reason.message)
+        })
     deliver()
     const timer = setInterval(deliver, 4000)
-    return () => clearInterval(timer)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
   }, [library, owner, draft])
   const shown =
     entity.id === '_'
@@ -284,6 +297,7 @@ export function CatalogEditor({
       <p>{owner}</p>
       <p role="status">{message}</p>
       {error && <p role="alert">{error}</p>}
+      {deliveryError && <p role="alert">{deliveryError}</p>}
       {previewDraft.error && <p role="alert">{previewDraft.error}</p>}
       {controls.error && <p role="alert">{controls.error.message}</p>}
       <label>

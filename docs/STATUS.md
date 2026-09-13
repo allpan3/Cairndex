@@ -1,5 +1,14 @@
 # Project status
 
+- Practical replica Update follow-through is active on
+  `fix/library-ownership-lifecycle`, starting from `b51d8d05`. Complete directory
+  grouping across worker batches, collection/container review and cancellable
+  full-content verification remain required before this follow-through is complete.
+  The catalog editor now fences obsolete delivery responses and retains monotonic
+  draft revisions; genuine delivery errors and malformed stored bytes stay visible.
+  Six focused editor/draft tests pass. Full gates and production-native validation
+  will cover the completed workflow. Real conversion and publication remain disabled.
+
 - Manual replica Update/discovery (bounded S12/I05) is implemented on
   `fix/library-ownership-lifecycle` under [ADR-0032](adr/0032-replica-discovery.md).
   New format-three synthetic packages support bounded cancellable discovery,
