@@ -20,10 +20,15 @@
   real remux/transcode segments, missing/recovery, clean process restart/resume,
   metadata exchange and private progress/history isolation.
   The final production app with an isolated test identity builds and passes
-  signature verification. Native UI
-  qualification remains incomplete: activation could not hold foreground focus,
-  so advancing clocks and earlier isolated pictures do not prove sustained native
-  picture continuity, pause/seek/resume, remux/transcode or missing/retry behavior.
+  signature verification. Native testing held foreground focus for 335 seconds.
+  A 90-second direct video run showed changing synthetic pictures and captions
+  before naturally advancing to the image. Missing-source retry restored visible
+  remux playback; native Info confirmed remux and transcode HLS decisions alongside
+  decoded pictures. Keyboard pause/seek retained the paused state and reopening
+  visibly resumed the saved position. A clean quit/relaunch retained the image
+  cursor and video progress, but foreground focus was not re-established for that
+  restarted-window replay, so that specific native qualification remains open.
+  All six synthetic source hashes match their pre-test values.
   Rust/native host source is unchanged; its full standalone gate was not rerun.
   Disposable apps, native identities, test processes and fixtures are removed.
   Documentation covers the API/private tables, capability limits and synthetic
@@ -31,8 +36,8 @@
   no media or build output is included. The cumulative branch retains its 8 MiB
   publication-volume block; no gate bypass or history cleanup is authorized.
   Owner libraries, installed owner app, providers, Docker/NAS, deployment and
-  publication remain untouched. Native qualification requires an uninterrupted
-  foreground session; further audit groups await owner instruction.
+  publication remain untouched. Only the restarted-window foreground replay remains
+  unqualified; further audit groups await owner instruction.
 
 - File metadata consistency (S11/I12) is implemented and locally verified on
   `fix/library-ownership-lifecycle`, implementation checkpoint `40743006`.
