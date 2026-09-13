@@ -260,9 +260,10 @@ class AssetFile(Base):
     # Indexed parent directory for bounded File Browser reconciliation
     directory_path: Mapped[str] = mapped_column(Text, default="", index=True)
     original_filename: Mapped[str] = mapped_column(String(1024))
+    # Retained legacy value; API names derive from relative_path and never infer an alias
     display_title: Mapped[str] = mapped_column(String(1024))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # The file's origin — a URL, magnet:, ed2k:, etc. (not necessarily http).
+    # Verbatim origin text, including non-HTTP values such as magnet: and ed2k:
     source: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     role: Mapped[FileRole] = mapped_column(Enum(FileRole, native_enum=False, length=32))

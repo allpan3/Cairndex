@@ -400,9 +400,9 @@ def test_file_and_moment_fields(raw_client, library_id, moment):
     assert file.status_code == 201, file.text
     url = f"{files}/{file.json()['id']}"
     first, independent, stale = (
-        {"display_title": "Blue"},
+        {"source": "magnet:blue"},
         {"note": "Separate"},
-        {"display_title": "Green"},
+        {"source": "ed2k:green"},
     )
     if moment:
         moments = f"{base}/bundles/{bundle['id']}/moments"
@@ -421,7 +421,7 @@ def test_file_and_moment_fields(raw_client, library_id, moment):
     assert saved.status_code == 200, saved.text
     rejected = client.patch(url, json=stale, headers=headers(opening))
     assert rejected.status_code == 409, rejected.text
-    assert rejected.json()["details"]["unit"].endswith("/$span" if moment else "/display_title")
+    assert rejected.json()["details"]["unit"].endswith("/$span" if moment else "/source")
     if moment:
         assert rejected.json()["details"]["current"]["start_s"] == 3
 

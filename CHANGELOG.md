@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- File metadata writes accept `display_title` only as an omitted/null value or an
+  exact current-filename echo. Unsupported custom names return 422 atomically;
+  stored legacy titles remain preserved and filenames remain the displayed names.
+
 - Authored shared-server metadata saves require their opening read basis and a
   stable retry identity. Disjoint fields and membership deltas save independently;
   conflicts retain proposals for exact-version review. Bulk edits/deletion are
@@ -103,6 +107,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- File responses include saved notes and verbatim source/origin text, including
+  explicit clears and non-HTTP origins. Repair candidates show the current
+  filename independently of retained legacy titles.
 
 - Smart Collection renames preserve accepted nested rules. Unsupported conditions
   are protected, stale saves retain the opening version, and previews count the

@@ -311,6 +311,16 @@ def list_active_files(session: Session, bundle_id: str) -> list[AssetFile]:
     return list(session.scalars(stmt))
 
 
+# Reject misleading custom names before changing any authored metadata
+def _check_filename_echo(value: str | None, relative_path: str) -> None:
+    if value is not None and value != relative_path.rsplit("/", 1)[-1]:
+        raise ValidationError(
+            "Custom file names are not supported. Omit display_title, send null, "
+            "or echo the current filename; files are displayed by their actual filename."
+        )
+
+
+# Link a library-relative file without changing its bytes
 def add_file(
     session: Session,
     bundle_id: str,
@@ -338,11 +348,12 @@ def add_file(
         raise ValidationError(str(exc)) from exc
 
     filename = normalized.rsplit("/", 1)[-1]
+    _check_filename_echo(display_title, normalized)
     asset_file = AssetFile(
         bundle_id=bundle_id,
         relative_path=normalized,
         original_filename=filename,
-        display_title=display_title or filename,
+        display_title=filename,
         note=note,
         source=source,
         role=role,
@@ -358,9 +369,10 @@ def add_file(
     return asset_file
 
 
-_FILE_SCALAR_FIELDS = ("display_title", "note", "source")
+_FILE_SCALAR_FIELDS = ("note", "source")
 
 
+# Patch authored fields while retaining the filename contract and opening edit guards
 def update_file(
     session: Session,
     bundle_id: str,
@@ -369,13 +381,14 @@ def update_file(
     *,
     expected_version: int | None = None,
 ) -> AssetFile:
-    """Update file-level metadata (display title/note/link/role/order).
+    """Update file-level metadata (note/origin/role/order).
 
     Only the on-bundle membership and metadata change — the physical file is
     never touched. ``expected_version`` enables optimistic concurrency (phase 9)."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None or asset_file.bundle_id != bundle_id:
         raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
+    _check_filename_echo(changes.get("display_title"), asset_file.relative_path)
     guard_and_bump_version(asset_file, expected_version)
     for field in _FILE_SCALAR_FIELDS:
         if field in changes:

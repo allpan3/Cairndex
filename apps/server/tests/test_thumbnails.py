@@ -279,6 +279,8 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     )
     bundle_service.update_bundle(session, bundle.id, {"cover_file_id": image.id})
     video.tech_metadata = {"duration": 20.0}
+    video.note = "Retained cover note"
+    video.source = "ed2k:cover-origin"
     session.commit()
     seen: list[float | None] = []
 
@@ -295,6 +297,8 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     assert client.post(base, json={"time": -1}).status_code == 422
     at_end = client.post(base, json={"time": 20})
     assert at_end.status_code == 200
+    assert at_end.json()["note"] == "Retained cover note"
+    assert at_end.json()["source"] == "ed2k:cover-origin"
     assert at_end.json()["cover_time"] == pytest.approx(19.9)
     just_past_end = client.post(base, json={"time": 20.05})
     assert just_past_end.status_code == 200
@@ -319,6 +323,8 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     cleared = client.delete(base)
     assert cleared.status_code == 200
     assert cleared.json()["cover_time"] is None
+    assert cleared.json()["note"] == "Retained cover note"
+    assert cleared.json()["source"] == "ed2k:cover-origin"
     session.expire_all()
     assert bundle_service.get_bundle(session, bundle.id).cover_file_id == image.id
     assert seen[-1] is None

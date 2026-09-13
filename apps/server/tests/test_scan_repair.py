@@ -157,16 +157,10 @@ def test_same_path_edit_is_update_not_move(session: Session, library_root: Path)
     assert f.id == original_id and f.relative_path == "clip.mp4"
 
 
-def test_a_rename_found_by_scan_carries_the_shown_name(
+# Existing scan moves maintain exact legacy basename copies
+def test_a_rename_found_by_scan_updates_legacy_basename_copy(
     session: Session, library_root: Path
 ) -> None:
-    """A rename Cairndex did not perform still has to update the shown name.
-
-    ``display_title`` is what every bundle surface renders, so leaving it behind
-    showed the file under its old name inside its bundle while the File Browser
-    showed the new one — the owner's report, reaching the repair pass rather than
-    the rename operation (2026-07-30).
-    """
     src = library_root / "SET-0251.webp"
     src.write_text("image bytes")
     scan_library(session, library_root)
@@ -182,22 +176,29 @@ def test_a_rename_found_by_scan_carries_the_shown_name(
     assert f.display_title == "Catalogue 0251.webp"
 
 
-def test_a_rename_found_by_scan_leaves_a_chosen_title_alone(
+# Non-basename legacy values and authored metadata survive automatic stable-ID repair
+def test_a_rename_found_by_scan_preserves_legacy_metadata(
     session: Session, library_root: Path
 ) -> None:
     src = library_root / "clip.mp4"
     src.write_text("bytes")
     scan_library(session, library_root)
     chosen = _only_file(session)
+    identity = chosen.id
     chosen.display_title = "Opening titles"
+    chosen.note = "Keep scan note"
+    chosen.source = "ed2k:scan-origin"
     session.commit()
 
     src.rename(library_root / "renamed.mp4")
     scan_library(session, library_root)
 
     f = _only_file(session)
+    assert f.id == identity
     assert f.relative_path == "renamed.mp4"
     assert f.display_title == "Opening titles"
+    assert f.note == "Keep scan note" and f.source == "ed2k:scan-origin"
+    assert (library_root / "renamed.mp4").read_text() == "bytes"
 
 
 def test_copy_does_not_merge_or_repair(session: Session, library_root: Path) -> None:
@@ -335,6 +336,9 @@ def test_repair_api_exposes_and_applies_the_unique_candidate(
     old_path.write_text("same bytes")
     scan_library(session, library_root)
     missing = _only_file(session)
+    missing.note = "Retained repair note"
+    missing.source = "magnet:retained-repair-origin"
+    missing.display_title = "Retained legacy title"
     _register(session, missing.bundle_id)
     old_path.rename(library_root / "new-name.mp4")
 
@@ -352,16 +356,30 @@ def test_repair_api_exposes_and_applies_the_unique_candidate(
 
     monkeypatch.setattr(scanner, "_entry_stat", changed_inode)
     scan_library(session, library_root)
+    replacement = session.scalar(select(AssetFile).where(AssetFile.relative_path == "new-name.mp4"))
+    assert replacement is not None
+    replacement.display_title = "Stale replacement title"
+    session.commit()
     base = f"/api/v1/libraries/{library_id}/bundles/{missing.bundle_id}/files/{missing.id}"
 
     candidate = client.get(f"{base}/repair-candidate")
     assert candidate.status_code == 200
+    assert candidate.json()["display_title"] == "new-name.mp4"
     replacement_id = candidate.json()["replacement_file_id"]
 
     repaired = client.put(f"{base}/repair", json={"replacement_file_id": replacement_id})
     assert repaired.status_code == 200
     assert repaired.json()["id"] == missing.id
     assert repaired.json()["relative_path"] == "new-name.mp4"
+    assert repaired.json()["display_title"] == "new-name.mp4"
+    assert repaired.json()["note"] == "Retained repair note"
+    assert repaired.json()["source"] == "magnet:retained-repair-origin"
+    session.expire_all()
+    assert session.get(AssetFile, missing.id).display_title == "Retained legacy title"
+    listed = client.get(f"/api/v1/libraries/{library_id}/bundles/{missing.bundle_id}/files")
+    assert listed.json()[0]["note"] == "Retained repair note"
+    assert listed.json()[0]["source"] == "magnet:retained-repair-origin"
+    assert (library_root / "new-name.mp4").read_text() == "same bytes"
 
 
 def test_repair_candidate_rejects_an_ambiguous_fingerprint(

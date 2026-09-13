@@ -986,3 +986,18 @@ the request; a save-time read must never replace a draft's basis. Backend tests 
 sequential synthetic setup with fresh reads. Frontend fixtures expose synthetic
 basis headers; `e2e/metadata-edits.spec.ts` exercises actual server enforcement.
 See [shared-server edits](shared-server-edits.md) for the full contract and inventory.
+
+### File metadata consistency
+
+`uv run pytest tests/test_file_metadata.py tests/test_metadata_edits.py
+tests/test_scan_repair.py tests/test_editing.py tests/test_thumbnails.py
+tests/test_search.py tests/test_filters_api.py` covers verbatim note/origin reads,
+omission and clearing, atomic unsupported-name rejection, legacy-value retention,
+stable-ID repair, search/filter boundaries and guarded retries.
+
+From `apps/web`, `npx playwright test e2e/file-metadata.spec.ts
+e2e/metadata-edits.spec.ts e2e/search-correctness.spec.ts` uses disposable real
+servers. File metadata tests invoke the shipped API client inside the browser and
+exercise the existing inspector and conflict/retry controls; there is no file
+note/source editor. They verify reload, retained request bytes/bases/identities,
+disjoint fields, conflict choices, lost responses and unchanged synthetic sources.

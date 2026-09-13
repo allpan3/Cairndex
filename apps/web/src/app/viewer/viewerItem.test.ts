@@ -10,6 +10,8 @@ afterEach(() => setActiveLibraryId('lib1'))
 
 function file(overrides: Partial<FileRead> = {}): FileRead {
   return {
+    note: null,
+    source: null,
     id: 'f1',
     bundle_id: 'b1',
     relative_path: 'photo.png',

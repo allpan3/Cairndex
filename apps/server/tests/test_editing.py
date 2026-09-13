@@ -29,9 +29,13 @@ def test_update_file_fields(session: Session) -> None:
     session.flush()
 
     updated = bundle_service.update_file(
-        session, bundle.id, f.id, {"display_title": "Part 1", "role": FileRole.PRIMARY_VIDEO}
+        session,
+        bundle.id,
+        f.id,
+        {"display_title": "a.mp4", "note": "Part 1", "role": FileRole.PRIMARY_VIDEO},
     )
-    assert updated.display_title == "Part 1"
+    assert updated.display_title == "a.mp4"
+    assert updated.note == "Part 1"
     assert updated.role == FileRole.PRIMARY_VIDEO
 
 

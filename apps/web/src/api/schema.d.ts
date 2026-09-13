@@ -4269,7 +4269,11 @@ export interface components {
         };
         /** FileLink */
         FileLink: {
-            /** Display Title */
+            /**
+             * Display Title
+             * @deprecated
+             * @description Compatibility echo only: omit, send null, or echo the current filename. Other names return 422. Never changes the stored legacy title or renames a file.
+             */
             display_title?: string | null;
             media_kind: components["schemas"]["MediaKind"];
             /** Mime Type */
@@ -4284,7 +4288,10 @@ export interface components {
              * @default 0
              */
             sequence: number;
-            /** Source */
+            /**
+             * Source
+             * @description File origin preserved verbatim, including non-HTTP strings such as magnet: or ed2k:
+             */
             source?: string | null;
         };
         /**
@@ -4375,13 +4382,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Display Title */
+            /**
+             * Display Title
+             * @description Current basename of relative_path, not a custom name
+             */
             display_title: string;
             /** Id */
             id: string;
             media_kind: components["schemas"]["MediaKind"];
             /** Mime Type */
             mime_type: string | null;
+            /** Note */
+            note: string | null;
             /** Original Filename */
             original_filename: string;
             /** Quick Fingerprint */
@@ -4395,6 +4407,11 @@ export interface components {
             sequence: number;
             /** Size Bytes */
             size_bytes: number | null;
+            /**
+             * Source
+             * @description File origin preserved verbatim, including non-HTTP strings such as magnet: or ed2k:
+             */
+            source: string | null;
             /**
              * Supported
              * @default false
@@ -4460,14 +4477,24 @@ export interface components {
         };
         /** FileUpdate */
         FileUpdate: {
-            /** Display Title */
+            /**
+             * Display Title
+             * @deprecated
+             * @description Compatibility echo only: omit, send null, or echo the current filename. Other names return 422. Never changes the stored legacy title or renames a file.
+             */
             display_title?: string | null;
-            /** Note */
+            /**
+             * Note
+             * @description Omit to retain; null clears the file note
+             */
             note?: string | null;
             role?: components["schemas"]["FileRole"] | null;
             /** Sequence */
             sequence?: number | null;
-            /** Source */
+            /**
+             * Source
+             * @description File origin preserved verbatim, including non-HTTP strings such as magnet: or ed2k:. Omit to retain; null clears the origin
+             */
             source?: string | null;
         };
         /**

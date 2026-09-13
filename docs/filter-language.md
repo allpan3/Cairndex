@@ -79,6 +79,11 @@ least one member path does not contain the text. `file_count` and `size_bytes`
 include stored member rows. `has_cover` accepts an explicit cover or an image
 member; `has_missing` tests missing member rows.
 
+File-note edits and clears update bundle free text. The structured `notes`
+predicate continues to test bundle notes only. Source values round-trip verbatim
+through the file API and explicit `source` predicates, including non-HTTP origins;
+neither origins nor stored legacy file titles participate in free text.
+
 The API supports empty AND/OR groups as match-all. Empty membership lists mean
 match-none for `contains_any`, match-all for `contains_all`/`contains_none`.
 `container`, `codec`, `duration`, `date_modified`, `date_imported`, `availability`,

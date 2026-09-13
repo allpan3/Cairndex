@@ -88,22 +88,42 @@ class BundleCursorRead(BaseModel):
 
 
 # --- Files -------------------------------------------------------------------
+_FILENAME_COMPATIBILITY = (
+    "Compatibility echo only: omit, send null, or echo the current filename. "
+    "Other names return 422. Never changes the stored legacy title or renames a file."
+)
+_FILE_SOURCE = "File origin preserved verbatim, including non-HTTP strings such as magnet: or ed2k:"
+
+
+# Link existing bytes with optional authored metadata and a filename compatibility echo
 class FileLink(BaseModel):
     relative_path: str = Field(min_length=1)
     role: FileRole
     media_kind: MediaKind
-    display_title: str | None = Field(default=None, max_length=1024)
+    display_title: str | None = Field(
+        default=None,
+        max_length=1024,
+        json_schema_extra={"deprecated": True},
+        description=_FILENAME_COMPATIBILITY,
+    )
     sequence: int = 0
     note: str | None = None
-    # File origin: a URL, magnet:, ed2k:, etc. (not necessarily an http link).
-    source: str | None = None
+    source: str | None = Field(default=None, description=_FILE_SOURCE)
     mime_type: str | None = Field(default=None, max_length=255)
 
 
+# Omitted metadata stays unchanged; explicit null clears only the named note/source
 class FileUpdate(BaseModel):
-    display_title: str | None = Field(default=None, max_length=1024)
-    note: str | None = None
-    source: str | None = None
+    display_title: str | None = Field(
+        default=None,
+        max_length=1024,
+        json_schema_extra={"deprecated": True},
+        description=_FILENAME_COMPATIBILITY,
+    )
+    note: str | None = Field(default=None, description="Omit to retain; null clears the file note")
+    source: str | None = Field(
+        default=None, description=f"{_FILE_SOURCE}. Omit to retain; null clears the origin"
+    )
     role: FileRole | None = None
     sequence: int | None = None
 
@@ -192,6 +212,7 @@ class BatchResult(BaseModel):
     updated: int
 
 
+# Return authored metadata faithfully alongside the current filename and stable identity
 class FileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -199,7 +220,9 @@ class FileRead(BaseModel):
     bundle_id: str
     relative_path: str
     original_filename: str
-    display_title: str
+    display_title: str = Field(description="Current basename of relative_path, not a custom name")
+    note: str | None
+    source: str | None = Field(description=_FILE_SOURCE)
     role: FileRole
     media_kind: MediaKind
     mime_type: str | None
@@ -226,23 +249,8 @@ class FileRead(BaseModel):
         self.supported = is_openable_media(self.media_kind, self.relative_path)
         return self
 
-    # The name a file is shown under is its *current* filename, derived here
-    # rather than served from the stored column.
-    #
-    # The column is a copy of the filename made when the row was created, and a
-    # copy can drift: three separate code paths repoint a row, and each one that
-    # forgot to update the copy left the file showing its old name inside its
-    # bundle while the File Browser showed the new one (owner reports,
-    # 2026-07-30 — three rounds, because fixing one writer at a time never
-    # reaches the rows already wrong). Deriving it makes that class of bug
-    # impossible instead of fixing it once per writer, and needs no guess about
-    # which stored titles are stale.
-    #
-    # The column is still kept in step by those paths, because the search index
-    # reads it — but nothing renders it. A real "call this file something else"
-    # feature would add its own nullable override and be preferred here, which is
-    # the distinction the current column cannot make: it cannot tell a title
-    # someone chose from a filename it happens to equal.
+    # Stored legacy titles cannot distinguish chosen names from stale filename copies
+    # Reads never mutate that column; bundle free text excludes all file names
     @model_validator(mode="after")
     def derive_display_title(self) -> "FileRead":
         self.display_title = PurePosixPath(self.relative_path).name

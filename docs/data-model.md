@@ -163,28 +163,31 @@ root relative), indexed derived `directory_path`, `original_filename`,
 container-level `bitrate`; older rows refresh once through the normal metadata
 job.
 
-Three of those columns are names, and they are not interchangeable.
-`relative_path` is where the file is; `original_filename` is what it was called
-when it entered the library and never changes; `display_title` is the name every
-bundle surface renders (the inspector's file rail, the album, the viewer's file
-list) and is owner-editable via `PATCH …/files/{file_id}`. **`display_title` is not what the API serves as a
-file's name.** `FileRead` derives that from `relative_path`, and the playback
-manifest does the same, because a stored copy of a filename drifts: three code
-paths repoint a row — a rename or move Cairndex performs, a rename it discovers
-during a scan, and a missing file repaired by hand — and each one that forgot to
-update the copy left a file showing its new name in the File Browser and its old
-one inside its bundle (fixed 2026-07-30, after three rounds of fixing it one
-writer at a time). Deriving it also needs no guess about which stored titles are
-stale, which is the part no heuristic could get right: once the scan path had
-updated `original_filename`, a leftover title is indistinguishable from a chosen
-one.
+`relative_path` locates the file; `original_filename` retains its import-time
+name. API `display_title` is the current basename of `relative_path`, used by the
+inspector, album, viewer, playback manifest and repair candidate. The stored
+`display_title` column is legacy metadata containing filename copies and possible
+chosen values whose origins cannot reliably be distinguished. It is retained,
+never interpreted as an alias, and excluded from bundle free-text search.
+Existing scan/repair/source-move paths update exact old-basename copies through
+`domain.file_names.display_title_after_move` and preserve other legacy values.
+Reads and file metadata PATCH requests never rewrite that column.
 
-The column remains, and all three paths keep it in step through one rule
-(`domain.file_names.display_title_after_move` — it follows the file only while it
-still equals the old basename), so stored filename metadata stays consistent.
-Nothing renders it. A future "call this file something else"
-feature should add its own nullable override and prefer it in that same
-validator.
+`FileLink` and `FileUpdate` retain a deprecated `display_title` compatibility field.
+Omission, `null`, or an exact current-basename echo is accepted; any other string
+(including an empty string) returns structured 422 `validation_error` before any
+metadata changes. Linking seeds the stored column with the normalized path's
+basename. PATCH echoes leave its stored value unchanged. This is neither an alias
+editor nor a physical rename operation; no schema migration or backfill is needed.
+
+`FileRead` includes nullable `note` and `source` verbatim on link, list, PATCH,
+reorder, repair and cover-frame responses. PATCH omission preserves a value;
+explicit `null` clears it, and an empty string remains an empty string. Source
+means freeform origin text, including HTTP URLs, `magnet:`, `ed2k:` and other
+non-HTTP strings; it is not normalized into an HTTP link. File notes participate
+in bundle free text; source strings remain available only through explicit source
+filters. File note/source editing controls are deferred. Authored API saves retain
+the displayed read basis and retry identity under [ADR-0030](adr/0030-shared-server-edit-bases.md).
 
 Filesystem device/inode identities preserve the unsigned 64-bit `stat()` value
 as signed two's-complement SQLite integers. This avoids overflow on network

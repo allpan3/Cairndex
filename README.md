@@ -64,6 +64,10 @@ disjoint fields and membership changes save independently, conflicting proposals
 available for review, and exact retries cannot duplicate committed operations. Current
 clients and servers are required for authored saves; older clients can still browse.
 
+Files display their current actual filename. The [file metadata API](docs/data-model.md#asset_files)
+returns saved notes and verbatim source/origin text, including non-HTTP origins.
+Custom file names are unsupported; legacy stored title values remain preserved.
+
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail; the desktop shell can

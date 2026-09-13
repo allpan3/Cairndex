@@ -1,5 +1,23 @@
 # Project status
 
+- File metadata consistency (S11/I12) is implemented on
+  `fix/library-ownership-lifecycle`. File responses expose saved notes and verbatim
+  origin text, including non-HTTP strings, omitted-field retention and explicit
+  clearing. File names remain current path basenames, including repair candidates.
+  `display_title` writes accept only omitted/null values or exact filename echoes;
+  other names fail atomically with 422. Stored legacy title values, stable IDs and
+  related metadata are preserved; no migration, alias editor or cleanup is involved.
+  See the [file contract](data-model.md#asset_files) and
+  [edit protocol](shared-server-edits.md). Focused backend checks and the full
+  frontend gate pass; all 56 relevant browser checks pass, including four new
+  real-server file cases and the existing shared-edit/search regressions.
+  Final backend and scoped privacy verification are in progress. File metadata
+  saves were exercised through the shipped API client, with inspector filename
+  and conflict/retry UI checks; there is no file note/source editor. Native host
+  source is unchanged and native packaging/UI are not requalified. Directory
+  pagination/list redesign is owner-deferred and outside this group. Owner
+  libraries, providers, Docker/NAS, deployment and publication remain untouched.
+
 - Shared-server metadata protection (S05/I04) is implemented and locally verified on
   `fix/library-ownership-lifecycle`, implementation checkpoint `5ed13e2a`, under
   [ADR-0030](adr/0030-shared-server-edit-bases.md).

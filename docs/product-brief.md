@@ -46,7 +46,7 @@ Unless the product owner explicitly changes them, treat these as settled:
 - A native macOS app is not required for the first release; a Tauri shell may be evaluated later.
 - The application links to files already on disk and stores metadata separately.
 - Asset bundle metadata is shared across the bundle.
-- Individual files may have a display title, note, and source/origin hyperlink in the schema; those file-level editing controls may be deferred.
+- Individual files display their current actual filename. File notes and verbatim source/origin text round-trip through the API; their editing controls are deferred. Stored legacy titles remain preserved without inferring aliases.
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
@@ -153,8 +153,8 @@ Required concepts:
 - bundle ID;
 - library-relative path;
 - original filename;
-- display title defaulting to the filename;
-- optional file-level note and source/origin hyperlink, even if their UI is deferred;
+- displayed name derived from the current filename, with no custom-name editor;
+- optional file-level note and verbatim source/origin text, even if their UI is deferred;
 - media kind and MIME type;
 - file role;
 - order/sequence within the bundle;
@@ -520,7 +520,7 @@ Plan for directory list/tree navigation scoped to the active library root, file 
 
 A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, current-media duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
-The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating (0–5 stars in half-star steps), aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
+The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating (0–5 stars in half-star steps), aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata. File note/source controls are deferred; filenames remain the displayed names.
 
 ### Tag selector
 

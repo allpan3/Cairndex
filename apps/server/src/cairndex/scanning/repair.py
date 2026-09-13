@@ -109,7 +109,7 @@ def find_repair_candidate(
         replacement_file_id=replacement.id,
         replacement_bundle_id=replacement.bundle_id,
         relative_path=replacement.relative_path,
-        display_title=replacement.display_title,
+        display_title=replacement.relative_path.rsplit("/", 1)[-1],
     )
 
 

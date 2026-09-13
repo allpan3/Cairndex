@@ -323,7 +323,7 @@ export interface BrowseParams {
   offset: number
   limit: number
   filter?: FilterExpression | null
-  // Whole-library full-text search over metadata (title/filename/tag/etc.).
+  // Bundle names, bundle/file notes and moment comments; file names and origins are excluded
   search?: string | null
   // Shuffle seed for the Random view; a new seed is a reshuffle.
   seed?: number | null
@@ -1522,6 +1522,7 @@ export const fetchBundleCollections = (id: string, signal?: AbortSignal) =>
     signal,
   )
 
+// Retain the file read's opening basis; note/source null clears and display_title only echoes a filename
 export const updateFile = (
   bundleId: string,
   fileId: string,

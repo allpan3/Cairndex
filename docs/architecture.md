@@ -544,9 +544,12 @@ The implemented schema is documented in `docs/data-model.md`. Core objects:
   `PlaybackProgress` uses. A moment's tags propagate to its bundle additively
   (ADR-0025); a range moment is the loop pair the player's clip range loops.
 
-Current schema note: source/origin hyperlink metadata exists at file level
-(`AssetFile.source`). Bundle-level source links are deferred until there is a
-clear product need.
+File reads return nullable notes and verbatim origin text (`AssetFile.source`),
+including non-HTTP strings. Displayed file names derive from the current path;
+the stored legacy title is retained without alias inference. File name writes
+accept only omitted/null values or an exact filename echo; other names fail
+before mutation. See the [file contract](data-model.md#asset_files).
+Bundle-level source links are deferred until there is a clear product need.
 
 ## 7. Scanning, repair, and grouping
 

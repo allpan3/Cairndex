@@ -54,6 +54,16 @@ edits and incoming references; tombstone clocks detect delete/recreate and ABA c
 | Grouping plans | Generate, proposal title, destination, files/directories, parent, kind, stem levels, apply | Private plan arrangement plus affected content units |
 | Subtitle metadata | Internal matching and regrouping writes | Track fields/references contribute clocks; no separate authored HTTP editor |
 
+File lists and successful link/PATCH/reorder/repair/cover responses include saved
+`note` and `source` with their read basis. Note and origin are independent scalar
+units; clearing one uses `null`, and omitted fields remain unchanged. A retained
+file-list row or successful response supplies the opening basis for a later edit.
+The optional `If-Match` counter remains an additional constraint. Filename echoes
+never write the stored legacy title; unsupported custom names return 422 without
+changing metadata. Historical unsupported requests remain retained for explicit
+discard/review; refresh never rewrites their bodies or bases. There is no file
+note/source or custom-name editor in the current UI.
+
 The explicit clock inventory is in `metadata/schema.py`. Internal ORM/bulk-SQL writers
 advance the same clocks. Automatic opened times, resume progress, bundle cursors,
 technical probes, availability and caches are observations. Browse/filter/preview,

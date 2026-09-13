@@ -5,6 +5,8 @@ import { bundleRows, isInside, memberCovering, playlistFor, proposalEntries } fr
 
 function file(path: string, overrides: Partial<FileRead> = {}): FileRead {
   return {
+    note: null,
+    source: null,
     id: path,
     bundle_id: 'b1',
     relative_path: path,
