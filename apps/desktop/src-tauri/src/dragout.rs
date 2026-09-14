@@ -8,7 +8,7 @@ use std::{
 use serde::Deserialize;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, Window};
 
-use crate::mappings::{self, MappingError};
+use crate::mappings::{self, MappingError, MappingRecord};
 
 // How long after a drag-out its files are still recognised as ours if they land
 // back on our own window. Long enough to cover a drag the user held for a while,
@@ -147,6 +147,14 @@ fn resolve_drag_paths<R: Runtime>(
     items: &[DragOutItem],
 ) -> Result<Vec<PathBuf>, MappingError> {
     let mappings = mappings::load_mappings_for(app, scope)?;
+    resolve_mapped_drag_paths(&mappings, items)
+}
+
+// Applies batch availability rules after the active server's mappings are loaded
+fn resolve_mapped_drag_paths(
+    mappings: &BTreeMap<String, MappingRecord>,
+    items: &[DragOutItem],
+) -> Result<Vec<PathBuf>, MappingError> {
     // Per distinct library id: Some(canonical root) once verified, None once it has
     // failed — so an offline mount is stat-ed once, not once per dragged file.
     let mut roots: BTreeMap<&str, Option<PathBuf>> = BTreeMap::new();
@@ -155,7 +163,7 @@ fn resolve_drag_paths<R: Runtime>(
 
     for item in items {
         if !roots.contains_key(item.library_id.as_str()) {
-            let root = match mappings::verified_root_for(&mappings, &item.library_id) {
+            let root = match mappings::verified_root_for(mappings, &item.library_id) {
                 Ok(root) => Some(root),
                 Err(error) => {
                     capture(&mut first_error, error);
@@ -237,7 +245,165 @@ fn begin_native_drag<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
     use super::*;
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    // Owns a disposable library with a portable identity and synthetic file bytes
+    struct LibraryFixture(PathBuf);
+
+    impl LibraryFixture {
+        // Matches production mapping input without a Tauri mock runtime
+        fn new() -> Self {
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let root =
+                std::env::temp_dir().join(format!("cairndex-dragout-{}-{id}", std::process::id()));
+            fs::create_dir(&root).expect("create isolated root");
+            fs::create_dir(root.join(".cairndex")).expect("create marker");
+            fs::write(
+                root.join(".cairndex/manifest.json"),
+                br#"{"library_uuid":"synthetic-library"}"#,
+            )
+            .expect("write identity");
+            for name in ["First.txt", "Second.txt"] {
+                fs::write(root.join(name), name.as_bytes()).expect("write synthetic file");
+            }
+            Self(root)
+        }
+
+        // Uses the same serialized mapping shape as the shell settings store
+        fn mappings(&self) -> BTreeMap<String, MappingRecord> {
+            serde_json::from_value(serde_json::json!({
+                "library": {
+                    "localRoot": self.0,
+                    "libraryUuid": "synthetic-library"
+                }
+            }))
+            .expect("mapping fixture")
+        }
+    }
+
+    impl Drop for LibraryFixture {
+        // Removes only this test's generated root
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // Builds the same relative-path request sent by every desktop drag source
+    fn item(relative_path: &str) -> DragOutItem {
+        DragOutItem {
+            library_id: "library".to_owned(),
+            relative_path: relative_path.to_owned(),
+        }
+    }
+
+    // Missing members do not prevent the surviving ordered files from being offered
+    #[test]
+    fn batch_preserves_request_order_and_skips_missing_members() {
+        let fixture = LibraryFixture::new();
+        let paths = resolve_mapped_drag_paths(
+            &fixture.mappings(),
+            &[item("Second.txt"), item("Missing.txt"), item("First.txt")],
+        )
+        .expect("available members");
+
+        assert_eq!(
+            paths,
+            ["Second.txt", "First.txt"]
+                .map(|name| { fs::canonicalize(fixture.0.join(name)).expect("canonical file") })
+        );
+        assert_eq!(fs::read(&paths[0]).unwrap(), b"Second.txt");
+        assert_eq!(fs::read(&paths[1]).unwrap(), b"First.txt");
+    }
+
+    // The actual first rejection is retained when no requested member is available
+    #[test]
+    fn fully_unavailable_batch_reports_the_first_structured_error() {
+        let fixture = LibraryFixture::new();
+        let error = resolve_mapped_drag_paths(
+            &fixture.mappings(),
+            &[item("Missing.txt"), item("../outside.txt")],
+        )
+        .expect_err("no available files");
+
+        assert_eq!(
+            serde_json::to_value(error).unwrap()["code"],
+            "path_not_found"
+        );
+    }
+
+    // Invalid relative paths never enter a partly successful OS payload
+    #[test]
+    fn unsafe_members_are_excluded_from_a_partly_available_batch() {
+        let fixture = LibraryFixture::new();
+        let paths = resolve_mapped_drag_paths(
+            &fixture.mappings(),
+            &[
+                item("../outside.txt"),
+                item("/absolute.txt"),
+                item("First.txt"),
+            ],
+        )
+        .expect("one safe member");
+
+        assert_eq!(
+            paths,
+            [fs::canonicalize(fixture.0.join("First.txt")).unwrap()]
+        );
+    }
+
+    // A failed mapping does not discard a valid file requested from another library
+    #[test]
+    fn an_unmapped_library_does_not_block_mapped_members() {
+        let fixture = LibraryFixture::new();
+        let mut missing = item("Second.txt");
+        missing.library_id = "unmapped".to_owned();
+        let paths = resolve_mapped_drag_paths(&fixture.mappings(), &[missing, item("First.txt")])
+            .expect("mapped member");
+
+        assert_eq!(
+            paths,
+            [fs::canonicalize(fixture.0.join("First.txt")).unwrap()]
+        );
+    }
+
+    // A changed portable identity is rejected even when every requested file still exists
+    #[test]
+    fn changed_library_identity_rejects_the_whole_batch() {
+        let fixture = LibraryFixture::new();
+        fs::write(
+            fixture.0.join(".cairndex/manifest.json"),
+            br#"{"library_uuid":"different-library"}"#,
+        )
+        .unwrap();
+        let error = resolve_mapped_drag_paths(
+            &fixture.mappings(),
+            &[item("First.txt"), item("Second.txt")],
+        )
+        .expect_err("wrong identity");
+
+        assert_eq!(
+            serde_json::to_value(error).unwrap()["code"],
+            "library_mismatch"
+        );
+    }
+
+    // An empty selection fails before starting an OS drag
+    #[test]
+    fn an_empty_batch_has_no_draggable_files() {
+        let error = resolve_mapped_drag_paths(&BTreeMap::new(), &[]).expect_err("empty request");
+
+        assert_eq!(
+            serde_json::to_value(error).unwrap()["code"],
+            "no_draggable_files"
+        );
+    }
 
     // Recognising our own drag-out is what stops a dropped card being copied back
     // into the library as if it came from Finder, so these pin the recogniser

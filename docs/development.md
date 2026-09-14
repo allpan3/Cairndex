@@ -314,7 +314,7 @@ command or an unchecked opener call.
 The active **This Computer** library adopts its validated local root automatically;
 removing that mapping allows it to be adopted again. Remote libraries require
 **Locate on This Mac**. The [verification matrix](desktop-file-integration-verification.md)
-separates automated coverage from the remaining native gestures.
+separates native outcomes, automated coverage and optional OS gesture spot checks.
 
 The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
 tile, the File inspector, or the bundle inspector — its cover drags the whole
@@ -323,8 +323,13 @@ that file — out to Finder while the library is mapped;
 `dragout.rs` validates each path exactly like reveal/open and starts the native
 drag through the `drag` crate. A plain captured-pointer drag on an inspector file
 row reorders it inside the bundle without invoking WebView HTML drag/drop.
+Option+Up/Down reorders the focused row using the displayed file arrangement's
+read basis. Pointer reorders retain the basis captured when the drag begins;
+concurrent arrangement changes require review.
 Drag-out requests contain library IDs and relative paths; Rust resolves the
-absolute paths locally.
+absolute paths locally. Batch resolution preserves request order, skips unavailable
+members and reports the first structured error when no member resolves. Synthetic
+filesystem tests exercise these rules through the production resolver.
 
 `dragDropEnabled` is **false** to preserve HTML internal drag-and-drop. Incoming
 files therefore reach the HTML upload handlers: File Browser copies into the

@@ -1,73 +1,63 @@
 # Project status
 
-- Desktop file integration (I23/I26) is in progress on
+- Desktop file integration (I23/I26) remains in progress on
   `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
   Current references describe implemented server-scoped mapped Open/Reveal and
   the shipping HTML upload route. Native `reverse_map_paths`, dropped-path
   upload authorization and deterministic self-drop detection remain inactive
   with `dragDropEnabled: false`. Enabling whole-pipeline interception also blocks
-  internal HTML drops; preserving both flows remains unresolved.
-  The native shell now restricts document navigation to the bundled app origin
-  or the exact configured development origin. An outside-window native drag
-  followed by a layout click replaced the SPA with the dragged local image twice
-  in the baseline package. The final package rejects that navigation; replaying
-  the same sequence keeps the SPA usable and the layout control works. This
-  protects the renderer without changing the shipping drop pipeline.
-  The refreshed self-contained ARM sidecar and isolated production app build;
-  the app's strict code signature verifies. Rust format/Clippy and 129 tests,
-  including five navigation-policy cases, pass. Eight browser import/drag
-  regressions and the production frontend build pass for the final package;
-  the existing chunk-size warning remains. The earlier audit baseline also
-  passed 57 focused frontend and 175 backend path/file-operation tests. Full
-  frontend/backend suites are not repeated for this native-only change; Linux
-  execution and a native development-server smoke test are not qualified.
-  Verification follow-through passes 111 additional targeted frontend tests
-  covering connections, mapping setup, import cancellation/collisions, modifiers,
-  file menus and reorder calculations. The owner-performed import has a completed
-  journal entry. These additional checks change no executable code.
-  Direct owner confirmation resolved the initial Finder-activation approval
-  block. Finder then activated the isolated production app with verified macOS
-  foreground ownership. A disposable legacy library was registered through the
-  production UI. **Open in Default App passed before and after a library
-  switch:** Preview became foreground, its document URL matched the selected
-  mapped file, and the visible synthetic image distinguished the same-named
-  specimens in the two libraries. No source bytes changed. **Reveal passed after
-  the library switch:** the configured file manager became foreground, its
-  breadcrumb and accessibility selection matched the synthetic target, and the
-  selected file was visibly confirmed. Mapped Open also passes in the final
-  package after the navigation guard is installed.
-  Computer Use is enabled and direct calls work. Absence from the general tool
-  catalog is intentional and does not establish a connection failure. The launch
-  approval remains valid; no alternate input system is used.
-  **Owner-performed single-file transfers pass in both directions:** dragging
-  from the File Browser to Finder creates the expected receiver copy, and
-  dragging an external Finder file into the writable library creates the
-  expected imported file. Independent SHA-256 checks match each destination to
-  its source; all six original synthetic files remain unchanged.
-  Computer Use's drag sequences do not reliably reproduce those gestures:
-  attempted cross-application drops give no intended transfer, and a Finder-only
-  control changes selection or moves a synthetic file during a later interaction.
-  That fixture was restored before the owner-performed checks. These controller
-  observations do not establish a failure of ordinary single-file transfers or
-  identify a specific drag-engine timing defect.
-  A contained self-drop shows the unhandled-drop guidance and retains the SPA;
-  deterministic native self-drop routing remains inactive.
-  Packaged Open visibly rejects a missing file and a changed portable identity;
-  Open and Reveal reject an unavailable mapped root. Restoring the fixture restores
-  Open. Switching to a second disposable server shows its own unmapped library
-  without host-action buttons; switching back restores the local mapping and
-  Open targets the correct local image. A failed server connection retains the
-  local workspace, and bundle Open still targets its correct cover. The native
-  folder picker remains inconclusive under Computer Use: the selected folder
-  leaves Open disabled, and cancelling creates no mapping.
-  [The verification matrix](desktop-file-integration-verification.md) records
-  the remaining native multi-file/source, modifier, cancellation, self-drop,
-  partial-availability and remote-mapping checks with exact manual steps.
-  A synthetic two-file bundle, source/target collections, input files and separate
-  receiver folders are prepared. Original source hashes and the temporary fault
-  manifest are restored exactly; no owner media or installed app is changed.
-  Complete those manual checks, fix any reproduced defects, then requalify the
-  final package. This is not completion of the desktop integration group.
+  internal HTML drops; preserving both flows remains an engineering task.
+  The native shell restricts document navigation to the bundled app origin or
+  the exact configured development origin. A reproduced outside-window drag
+  followed by a layout click replaced the baseline SPA with a local image; the
+  guarded package retains the app and the layout control works.
+  **Native keyboard testing found and fixed a false reorder conflict** at
+  `e9132c62`: a second reorder inherited an older unrelated UI read. Keyboard
+  reorder now uses the displayed file arrangement's basis, matching pointer
+  reorder's explicit drag-start basis. The real-backend regression fails with
+  HTTP 409 before the fix and passes afterward; stale pointer reorders still
+  require review. Three successive native reorders pass in the rebuilt package,
+  and the restored original order survives changing views.
+  **Agent-performed multi-file import passes through Add Files Here:** the native
+  picker selected two synthetic files, both destinations match their sources,
+  both have completed IMPORT journal entries, and both are visible after relaunch.
+  This exercises the shipping HTML upload implementation through its picker;
+  it is not a claim that a two-file Finder drag was performed. All 14 baseline
+  source hashes, the original manifest and all three database integrity checks pass.
+  Six added Rust tests exercise the actual drag payload resolver against synthetic
+  files: ordered survivors, no available files, unsafe paths, unmapped members,
+  changed portable identity and empty selection. No Tauri test runtime or new
+  dependency is introduced; runtime batch behavior is unchanged.
+  Final gates pass: frontend lint/format/typecheck and **1,219 tests**; Rust
+  format/Clippy and **135 tests**; two real-backend reorder browser cases;
+  production frontend and isolated app build; strict deep signature verification.
+  The earlier audit passed 175 backend path/file-operation tests, eight browser
+  drag/import cases and focused frontend integration tests. Backend code is
+  unchanged, so its full suite was not repeated. The existing chunk-size warning
+  remains; native Linux/Windows and development-server smoke tests are unqualified.
+  **Owner-performed single-file transfers pass in both directions**, independently
+  confirmed by destination hashes and unchanged originals. Native Open visibly
+  targets the correct same-named specimen before/after library and server switches,
+  and after a failed server connection. Reveal passed after the library switch.
+  Missing files and changed portable identities reject Open; unavailable roots
+  reject both host actions, and restoring the fixture restores Open. A second
+  disposable server exposes no host-action buttons until its library is mapped.
+  Computer Use is enabled. Its cross-app drag attempts remain inconclusive:
+  coordinates can fail or complete at a later interaction, and modifier holding
+  during a drag is not exposed. Native Locate selection leaves Open disabled under
+  automation; cancelling leaves no mapping. After the successful batch import,
+  Cairndex accessibility reads timed out while Finder remained accessible. A process
+  sample found its main thread waiting in the event loop; restarting only the
+  disposable app and sidecar restored controls. The timeout's cause is unresolved.
+  [The verification record](desktop-file-integration-verification.md) separates
+  observed native behavior from automated coverage. The owner need not repeat
+  engineering-owned tests; optional spot checks cover a multi-file OS payload,
+  cancellation/modifier gestures and remote Locate acceptance. Alternate native
+  drag sources and self-return drops remain unqualified. Synthetic inputs,
+  receiver folders and a two-file bundle remain prepared; original bundle order
+  and collection membership are restored. No owner media or installed app changed.
+  This is not completion of the desktop integration group; restoring trusted native
+  drop routing and qualifying remaining OS interactions remain open.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
