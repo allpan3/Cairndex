@@ -292,6 +292,40 @@ test('lost create response replays one receipt and historical drafts require rev
   }
 })
 
+// Repeated keyboard edits use the displayed file order despite older unrelated reads
+test('successive keyboard file reorders keep their own read basis @fullstack', async ({ page }) => {
+  test.setTimeout(60_000)
+  const f = await fixture()
+  try {
+    for (const name of ['Aster.txt', 'Birch.txt']) {
+      await apiPost(f.base, `/bundles/${f.bundle.id}/files`, {
+        relative_path: name,
+        role: 'attachment',
+        media_kind: 'other',
+      })
+    }
+    await open(page, f)
+    const rows = page.locator('.files .file-row')
+    const birch = rows.filter({ hasText: 'Birch.txt' })
+    // Observe a committed response before each subsequent gesture
+    for (const key of ['Alt+ArrowUp', 'Alt+ArrowDown', 'Alt+ArrowUp']) {
+      const saved = page.waitForResponse((response) =>
+        response.url().endsWith(`/bundles/${f.bundle.id}/files/order`),
+      )
+      await birch.press(key)
+      expect((await saved).status()).toBe(200)
+      await expect(rows.first()).toContainText(key === 'Alt+ArrowUp' ? 'Birch.txt' : 'Aster.txt')
+      await expect(page.getByRole('dialog', { name: 'Review metadata edit' })).toHaveCount(0)
+    }
+    await page.reload()
+    await page.locator('.card').filter({ hasText: 'Amber' }).first().click()
+    await expect(rows.first()).toContainText('Birch.txt')
+  } finally {
+    await page.close()
+    await f.cleanup()
+  }
+})
+
 // Pointer reorders keep their actual drag-start snapshot through a remote arrangement change
 test('stale file reorders retain the proposal without changing the new arrangement @fullstack', async ({
   page,

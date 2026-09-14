@@ -145,6 +145,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Repeated keyboard reordering in the bundle inspector uses the displayed file
+  arrangement's read basis, avoiding false conflicts from older unrelated reads
+  while retaining protection against concurrent arrangement changes.
+
 - Desktop file drops cannot replace the app with a local file or external page;
   the native shell restricts renderer navigation to the app origin.
 

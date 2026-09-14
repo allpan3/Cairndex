@@ -971,12 +971,16 @@ export function FileList({
     const visibleIndex = visibleFiles.findIndex((candidate) => candidate.id === file.id)
     const over = visibleFiles[visibleIndex + delta]
     if (visibleIndex === -1 || over === undefined) return
+    // Use this arrangement's read basis, as pointer reorder does at drag start
     reorder.mutate(
-      moveTo(
-        files.map((f) => f.id),
-        file.id,
-        over.id,
-        delta < 0,
+      rememberBasis(
+        moveTo(
+          files.map((f) => f.id),
+          file.id,
+          over.id,
+          delta < 0,
+        ),
+        basisOf(files),
       ),
     )
   }

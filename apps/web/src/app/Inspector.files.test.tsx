@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileRead } from '../api/client'
+import { basisOf, rememberBasis } from '../api/editBasis'
 import { FileList } from './Inspector'
 
 const hooks = vi.hoisted(() => ({
@@ -152,6 +153,7 @@ test('pointer-drags a file card into a new bundle playback position without arro
 })
 
 test('keeps keyboard reorder and desktop Option-drag copy-out', () => {
+  rememberBasis(hooks.files, 'catalog:7:plans:0')
   const onStartFileDrag = vi.fn()
   render(
     <FileList
@@ -170,6 +172,7 @@ test('keeps keyboard reorder and desktop Option-drag copy-out', () => {
 
   fireEvent.keyDown(secondRow, { key: 'ArrowUp', altKey: true })
   expect(hooks.reorder.mutate).toHaveBeenCalledWith(['second', 'first'])
+  expect(basisOf(hooks.reorder.mutate.mock.calls[0]?.[0])).toBe('catalog:7:plans:0')
 
   fireEvent.pointerDown(firstRow, {
     button: 0,
