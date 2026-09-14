@@ -2,6 +2,20 @@
 
 - Desktop file integration (I23/I26) remains in progress on
   `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
+  **Copy-only follow-through adds verified backend/component regressions without
+  runtime changes.** Three new backend cases cover another-directory Copy,
+  same-directory Keep Both, and same-path Replace/Undo: destination bytes match,
+  copied IDs/bundles are independent, and the original identity/membership is
+  preserved or restored by Undo. Scope teardown aborts an upload and prevents
+  queued imports or stale bundle linking. All **178 file-operation/path tests**
+  and **1,220 frontend tests** pass; backend Ruff/format/mypy and full frontend
+  lint/format/typecheck/build pass. The full backend suite and Rust/native build
+  were not repeated because runtime code is unchanged. Six real-backend browser
+  cases are prepared but remain unexecuted: the sandbox blocked Chromium startup
+  IPC, then both escalated approval reviews timed out. Native-control access also
+  timed out twice in automatic review. No new native results or runtime defect
+  are claimed; a further retry request is pending. The verification record keeps
+  these tool blocks separate from app behavior.
   **Copy-only file-manager drops are under assessment and already match the
   shipping HTML import path.** File Browser copies into its current directory;
   bundle targets choose a directory, copy with Keep Both, then link the new files.

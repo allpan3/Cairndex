@@ -31,6 +31,30 @@ sidecar restored automation. The cause of that accessibility timeout is unresolv
 
 ## Engineering coverage
 
+The copy-only follow-through adds three backend regression cases using synthetic
+bytes. Another-directory Copy and same-directory Keep Both create separate asset
+IDs/bundles and leave the source unchanged; Undo trashes the copy. Same-path
+Replace trashes the prior identity, catalogs a new identity, and Undo restores the
+original ID, membership, path and bytes. A new component case verifies that scope
+teardown aborts the request, prevents the remaining batch and skips stale linking.
+These checks pass with **178 backend file-operation/path tests** and **1,220
+frontend tests**. Backend Ruff/format/mypy and frontend lint/format/typecheck/build
+also pass. Runtime code is unchanged; no runtime defect was demonstrated.
+
+Six new real-backend browser cases cover File Browser copy/Undo, its three conflict
+choices, and bundle card/inspector Keep Both/linking. They pass lint/format and
+Playwright collection but
+have **not executed**: sandboxed Chromium failed startup IPC, and both escalated
+launch requests timed out in automatic approval review. Native-control access
+also timed out twice before controls loaded. A further retry request is pending.
+These are tooling blocks, not import failures. Previous native/browser results
+remain the baseline; no new OS delivery is claimed.
+
+An additional standalone strict TypeScript check of the e2e graph reports an
+existing `Buffer`/`BodyInit` incompatibility in unchanged `e2e/realBackend.ts`.
+The repository's normal frontend typecheck passes; the shared helper was not
+changed as part of this copy-only verification.
+
 | Behavior | Executed coverage |
 | --- | --- |
 | Multi-file drag payload and partial availability | Six added Rust tests exercise the production resolver against synthetic files: ordered survivors, fully unavailable selection, unsafe paths, unmapped members, changed portable identity and empty selection |
@@ -40,7 +64,7 @@ sidecar restored automation. The cause of that accessibility timeout is unresolv
 | Modifier changes and cancellation guard | Existing tests cover modifier polling, move/copy decisions, drag IDs, grace periods, stale completion, cancellation and failed starts |
 | Server/mapping isolation | Existing connection, settings and Rust mapping tests cover scope changes, failure recovery, identity validation and containment; native outcomes appear above |
 
-Final changed-code gates: frontend lint, format, typecheck and **1,219 tests**;
+Earlier changed-code gates: frontend lint, format, typecheck and **1,219 tests**;
 Rust format, Clippy and **135 tests**; two real-backend reorder browser cases;
 production frontend and isolated app build; strict deep code-signature verification.
 The prior eight browser drag/import cases also passed during this audit. No backend
@@ -111,5 +135,6 @@ and remote Locate acceptance remain unqualified, independently of automated test
 coverage. Windows/Linux native delivery, other receiving apps, development-server
 smoke and real NAS disconnect latency are not established by local macOS fixtures.
 
-This assessment changes no executable code and reruns no broad suites. The passed
+This follow-through changes tests only. The full backend suite and Rust/native
+build were not repeated because their runtime code is unchanged. The passed
 evidence above remains valid; the whole integration group is not declared complete.

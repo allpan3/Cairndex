@@ -134,3 +134,31 @@ test('the import row leaves before caller-specific settled work runs', async () 
 
   act(() => finishSettled?.())
 })
+
+// A library/server remount must retire its batch even if an aborted write replies late
+test('unmount aborts the upload and prevents queued imports or stale bundle linking', async () => {
+  let finishFirst: ((value: unknown) => void) | undefined
+  let signal: AbortSignal | undefined
+  const onSettled = vi.fn()
+  importOne.mockImplementationOnce(
+    (request: { signal: AbortSignal }) =>
+      new Promise((resolve) => {
+        signal = request.signal
+        finishFirst = resolve
+      }),
+  )
+  const { result, unmount } = setup()
+  act(() =>
+    result.current.copyIn([new File(['a'], 'a.png'), new File(['b'], 'b.png')], 'Destination', {
+      onSettled,
+    }),
+  )
+  await waitFor(() => expect(importOne).toHaveBeenCalledOnce())
+
+  unmount()
+  expect(signal?.aborted).toBe(true)
+  await act(async () => finishFirst?.(imported('Destination/a.png', 'op-1')))
+
+  expect(importOne).toHaveBeenCalledOnce()
+  expect(onSettled).not.toHaveBeenCalled()
+})

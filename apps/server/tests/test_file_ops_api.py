@@ -542,6 +542,95 @@ def test_undoing_an_import_deletes_it_to_the_trash(
     ]
 
 
+@pytest.mark.parametrize("destination,policy", [("Destination", "fail"), ("Source", "suffix")])
+def test_same_library_import_creates_independent_identity_and_undo_preserves_source(
+    client: TestClient,
+    writable: str,
+    library_root: Path,
+    session: Session,
+    destination: str,
+    policy: str,
+) -> None:
+    """A copy is a new catalog entry even when its bytes came from this library"""
+    for directory in ("Source", "Destination"):
+        (library_root / directory).mkdir()
+    _import(client, writable, b"synthetic movie bytes", "clip.mkv", dest_dir="Source", link=True)
+    source_path = library_root / "Source/clip.mkv"
+    source = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Source/clip.mkv"))
+    assert source is not None
+    source_id, source_bundle = source.id, source.bundle_id
+    before = source_path.read_bytes()
+
+    response = _import(
+        client,
+        writable,
+        before,
+        "clip.mkv",
+        dest_dir=destination,
+        on_conflict=policy,
+        link=True,
+    )
+    assert response.status_code == 201
+    copied = response.json()
+    session.expire_all()
+    copy = session.scalar(select(AssetFile).where(AssetFile.relative_path == copied["path"]))
+    assert copy is not None and copy.id != source_id and copy.bundle_id != source_bundle
+    assert (library_root / copied["path"]).read_bytes() == before == source_path.read_bytes()
+    assert copied["operation"]["status"] == "done"
+    assert copied["operation"]["op"] == "import"
+
+    undone = client.post(f"/api/v1/libraries/{writable}/file-ops/{copied['operation']['id']}/undo")
+    assert undone.status_code == 200
+    session.expire_all()
+    assert source.id == source_id and source.bundle_id == source_bundle
+    assert source.relative_path == "Source/clip.mkv"
+    assert source.availability is FileAvailability.AVAILABLE
+    assert copy.availability is FileAvailability.TRASHED
+    assert not (library_root / copied["path"]).exists()
+    assert source_path.read_bytes() == before
+
+
+def test_same_path_replace_trashes_original_identity_and_undo_restores_it(
+    client: TestClient,
+    writable: str,
+    library_root: Path,
+    session: Session,
+) -> None:
+    """Replace is an explicit destination mutation, even when source and target coincide"""
+    _import(client, writable, b"synthetic original", "clip.mkv", link=True)
+    source = session.scalar(select(AssetFile).where(AssetFile.relative_path == "clip.mkv"))
+    assert source is not None
+    original_id, original_bundle = source.id, source.bundle_id
+    before = (library_root / "clip.mkv").read_bytes()
+    collision = _import(client, writable, before, "clip.mkv", link=True)
+    assert collision.status_code == 409
+    skipped = _import(client, writable, before, "clip.mkv", on_conflict="skip", link=True)
+    assert skipped.json()["skipped"] is True
+    assert source.relative_path == "clip.mkv"
+
+    response = _import(client, writable, before, "clip.mkv", on_conflict="replace", link=True)
+    assert response.status_code == 201
+    replaced = response.json()
+    session.expire_all()
+    replacement = session.scalar(select(AssetFile).where(AssetFile.relative_path == "clip.mkv"))
+    assert replacement is not None and replacement.id != original_id
+    assert source.availability is FileAvailability.TRASHED
+    assert source.relative_path.startswith(".cairndex/trash/")
+    assert (library_root / source.relative_path).read_bytes() == before
+    assert (library_root / "clip.mkv").read_bytes() == before
+
+    undone = client.post(
+        f"/api/v1/libraries/{writable}/file-ops/{replaced['operation']['id']}/undo"
+    )
+    assert undone.status_code == 200
+    session.expire_all()
+    assert source.id == original_id and source.bundle_id == original_bundle
+    assert source.relative_path == "clip.mkv"
+    assert source.availability is FileAvailability.AVAILABLE
+    assert replacement.availability is FileAvailability.TRASHED
+    assert (library_root / "clip.mkv").read_bytes() == before
+
+
 def test_an_empty_upload_is_refused_and_leaves_nothing(
     client: TestClient, writable: str, library_root: Path
 ) -> None:

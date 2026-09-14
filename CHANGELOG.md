@@ -281,6 +281,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Copy-only imports have backend regressions for independent copied identities,
+  source preservation, same-path replacement and Undo, plus component coverage
+  for batch retirement on scope teardown. Real-backend browser scenarios are
+  prepared; their execution remains blocked by approval-service timeouts.
+
 - Desktop native-drop integration has a proposed selective-capture decision,
   with verified framework limits, implementation alternatives and engineering
   qualification requirements. Native capture and same-volume Move are on hold
