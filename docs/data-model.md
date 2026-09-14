@@ -545,14 +545,21 @@ Durable, reviewable snapshots of the grouping suggester output.
   (snapshot id, not an FK), `relative_path` (display snapshot), `proposed_role`,
   `sequence`.
 
+Accepted content and its exact `metadata_receipts` response commit before plan
+retirement. The nullable `grouping_settlement` receipt field stores only the plan
+incarnation, ID, accepted proposal IDs and selection mode. An indexed pending probe
+finishes plan retirement, then clears that field in a separate content commit.
+Startup discard never reconstructs unconfirmed plans; accepted content and retry
+receipts remain. Existing receipt tables acquire the nullable field additively.
+
 Apply is idempotent and conflict-aware: it merges/splits provisional bundles
 preserving `AssetFile.id`, assigns roles, selects a cover, links external
 subtitles, creates suggested collections, and never touches the filesystem.
 `POST /grouping/plans/{id}/apply` may include `proposal_ids`; only file-backed
 BUNDLE rows are accepted work. CONTAINER rows are structural: apply computes the
 complete ancestor path for each selected bundle, creates or reuses only those
-paths, and marks the plan applied, so unchecked bundles are not retained as
-pending work for the same plan. A plan in which *no* selected bundle applied —
+paths, and retires accepted proposals. Unchecked bundles retain their IDs and
+review edits in the same open plan; the plan closes when no file-backed work remains. A plan in which *no* selected bundle applied —
 every one blocked by a stale collection path or a vanished file — stays open, so
 the owner's renames, destination switches, and placements survive. Existing collection context resolves by
 `target_collection_id`; a missing or reparented target conflicts before its

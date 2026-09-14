@@ -684,12 +684,19 @@ Grouping behavior:
   commits the new child proposal IDs and reloads the complete plan before those
   IDs reach the client, so an immediate apply request cannot outrun request
   teardown or inherit a stale ORM proposal collection;
-- the apply API supports selected proposal ids. Applying selected bundles marks
-  the plan applied and resolves only their required collection paths; unchecked
-  bundles are intentionally left unapplied for that plan and can be re-suggested
-  by regenerating against current library state.
-  Apply commits before responding because the client immediately refreshes
-  bundle and collection queries from that response.
+- the apply API supports selected proposal ids and resolves only their required
+  collection paths. Accepted rows retire; unchecked bundles retain their proposal
+  IDs and edits in the same open plan until the remaining work is accepted;
+- acceptance commits library metadata and its exact request receipt before retiring
+  plan rows. A pending settlement on that receipt finishes disposable-plan cleanup
+  before subsequent metadata reads/writes. Recovery never reapplies content, and
+  startup still discards unconfirmed plans (ADR-0022). Superseded plans cannot apply.
+
+Incomplete walks mark unseen links missing but defer new staging and moved-file
+repair until a complete retry; Update reports the incomplete read as a failed job.
+The scanner ignores media symlinks, fences root identity at commit/reconciliation
+boundaries, and preserves journaled trash state. A cancelled walk retains committed
+same-path observations without accepting provisional grouping.
 
 ## 8. Media processing, thumbnails, playback, and subtitles
 

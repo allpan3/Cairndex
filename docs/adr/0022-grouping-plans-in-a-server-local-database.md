@@ -123,9 +123,14 @@ guarantees a transaction spanning two attached databases is atomic only when
 neither is in WAL; a library is in WAL while served (ADR-0021), so this was
 already true before the plans file existed. The exposure is a crash *during* a
 commit that writes both — applying a plan. Library changes therefore commit
-before the plan is marked applied, so the surviving failure is "the plan still
-looks open after its changes landed", which the owner can see and discard. The
-reverse — a plan marked applied whose changes are gone — would be silent.
+before accepted proposals retire or the plan is marked applied. The content
+transaction includes the existing metadata request receipt and a pending settlement
+containing the plan incarnation and accepted proposal IDs. Subsequent metadata
+reads/writes complete that retirement before exposing the remaining review, then
+clear the pending settlement in a separate content commit. Exact retries replay the
+receipt rather than reapplying content. Recovery never reconstructs a discarded
+plan or preserves unconfirmed review across startup; the plan incarnation check
+keeps a receipt from affecting a new server run.
 
 **A library keeps its grouping tables' free pages.** The drop frees them inside
 `library.db` rather than shrinking the file; SQLite reuses them. Not vacuumed,

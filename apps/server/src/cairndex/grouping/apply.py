@@ -14,6 +14,7 @@ the whole plan or silently overriding a confirmed user decision.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ConflictError, DomainError
+from cairndex.core.errors import ConflictError, DomainError, VersionConflictError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
     CONTEXT_DIRECTORY_PREFIX,
@@ -75,15 +76,33 @@ class _BundleOutcome:
 
 
 def apply_plan(
-    session: Session, plan: GroupingPlan, *, proposal_ids: set[str] | None = None
+    session: Session,
+    plan: GroupingPlan,
+    *,
+    proposal_ids: set[str] | None = None,
+    defer_settlement: bool = False,
 ) -> ApplyResult:
     """Apply ``plan`` to the library, confirming bundles and creating containers.
 
     Safe to call more than once; an already-applied proposal becomes a no-op. When
     ``proposal_ids`` is set, only that selected subset is accepted.
     """
-    if plan.status is GroupingPlanStatus.CANCELLED:
-        raise ConflictError("cannot apply a cancelled grouping plan")
+    if plan.status in (GroupingPlanStatus.CANCELLED, GroupingPlanStatus.SUPERSEDED):
+        raise ConflictError("cannot apply a cancelled or superseded grouping plan")
+    if plan.status is GroupingPlanStatus.APPLIED:
+        return ApplyResult()
+    context = session.info.get("metadata_edit")
+    if context is not None:
+        revision = (
+            session.connection()
+            .exec_driver_sql(
+                "SELECT revision FROM plans.metadata_revisions WHERE unit='grouping/_/$plan'"
+            )
+            .scalar()
+            or 0
+        )
+        if not context.guard("plans/grouping/_/$plan", revision, "null", "null"):
+            raise VersionConflictError("The grouping review changed; reopen it before accepting")
 
     result = ApplyResult()
     all_proposals = list(plan.proposals)
@@ -175,34 +194,31 @@ def apply_plan(
         if _add_bundle_to_collection(session, bundle_id, collection_id):
             result.bundles_added_to_collections += 1
 
-    # Accepting a *selection* is a batch inside a review that carries on, so it
-    # retires the rows it confirmed and leaves the rest exactly where they were, ids
-    # and all; the plan closes only once nothing is left. Applying the whole plan
-    # finishes the review, and keeps its long-settled behaviour unchanged: the rows
-    # stay, so a retried request is still the documented no-op.
-    #
-    # It used to close on any partial success, which forced the client to throw the
-    # plan away and generate a fresh one to carry on: two sequential round trips
-    # per accept (942 ms + 851 ms on the owner's library, measured 2026-08-15), a
-    # whole new set of proposal ids, and with them the loss of every collapsed
-    # folder, since fold state is keyed on those ids. Reviewing in batches is the
-    # documented workflow (owner-requested, 2026-08-13), so the plan has to survive
-    # a batch.
-    #
-    # Still only a plan that *confirmed* something retires anything: a plan whose
-    # every selected bundle was blocked (a stale collection path, a vanished file)
-    # keeps all of it, or the owner would lose renames and placements to a failure.
-    accepted_a_selection = proposal_ids is not None
-    if target_bundle_by_proposal and accepted_a_selection:
-        _retire_applied_proposals(session, plan, set(target_bundle_by_proposal))
-        session.flush()
-        session.expire(plan, ["proposals"])
+    # Content and its receipt commit before the disposable plan is retired (ADR-0022)
+    accepted = set(target_bundle_by_proposal)
+    selected = proposal_ids is not None
     result.proposals_remaining = (
-        sum(1 for p in plan.proposals if p.files) if accepted_a_selection else 0
+        sum(1 for p in all_proposals if p.files and p.id not in accepted) if selected else 0
     )
-    if target_bundle_by_proposal and result.proposals_remaining == 0:
-        plan.status = GroupingPlanStatus.APPLIED
-        plan.applied_at = utcnow()
+    if accepted:
+        if defer_settlement:
+            epoch = (
+                session.connection()
+                .exec_driver_sql("SELECT epoch FROM plans.metadata_clock WHERE id=1")
+                .scalar_one()
+            )
+            session.info["grouping_settlement"] = json.dumps(
+                {
+                    "plan_id": plan.id,
+                    "epoch": epoch,
+                    "accepted": sorted(accepted),
+                    "selected": selected,
+                }
+            )
+        else:
+            from cairndex.grouping.recovery import settle_plan
+
+            settle_plan(session, plan, accepted, selected)
     session.flush()
     return result
 
@@ -520,6 +536,9 @@ def _apply_addition(
         if row.bundle_id == target.id:
             already_present += 1
             continue  # already added (idempotent)
+        if row.availability is not FileAvailability.AVAILABLE:
+            result.conflicts.append(_conflict(proposal, "a file to add is no longer available"))
+            continue
         # ``membership_edited``, not ``owner_edited``: taking a file out of a
         # confirmed bundle is licensed only by the owner explicitly moving it here.
         # ``owner_edited`` is also set by renaming a suggestion and, before this,

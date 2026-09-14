@@ -145,6 +145,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Ordinary-library Update defers new staging and identity repair after incomplete
+  walks, reports a retryable failed scan, ignores media symlinks, rejects roots
+  replaced during scanning and preserves journaled trash identities.
+- Grouping acceptance commits content and retry receipts before disposable-plan
+  retirement, recovers interrupted retirement without duplicate bundles and keeps
+  unchecked proposals in the same review. Superseded plans reject acceptance;
+  missing additions retain their original membership for repair.
+
 - Repeated keyboard reordering in the bundle inspector uses the displayed file
   arrangement's read basis, avoiding false conflicts from older unrelated reads
   while retaining protection against concurrent arrangement changes.

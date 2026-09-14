@@ -499,8 +499,8 @@ Current workflow details:
   Update or Scan new files after filesystem changes before regenerating;
 - explicit cross-bundle review edits revise provisional suggestions while
   preserving stable file identities and cleaning up an emptied source bundle;
-- applying selected bundle proposals marks the plan applied, so unchecked
-  bundles are intentionally left unapplied for that plan. Apply resolves only
+- applying selected bundle proposals retires accepted rows while unchecked
+  bundles retain their IDs and edits in the same open plan. Apply resolves only
   the required collection paths, reuses existing context by stable collection
   id, and reports a localized conflict if that target was removed or reparented
   after the plan was generated instead of creating a same-name lookalike;

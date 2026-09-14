@@ -200,7 +200,7 @@ def triggers(schema: str, table: str, columns: list[str]) -> Iterable[str]:
 BOOKKEEPING = {
     "metadata_clock": "id epoch revision",
     "metadata_revisions": "unit revision",
-    "metadata_receipts": "operation fingerprint status body basis",
+    "metadata_receipts": "operation fingerprint status body basis grouping_settlement",
 }
 
 
@@ -215,7 +215,7 @@ def table_definitions(schema: str) -> dict[str, str]:
     if schema == "main":
         tables["metadata_receipts"] = (
             "(operation TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status INTEGER NOT NULL, "
-            "body BLOB NOT NULL, basis TEXT NOT NULL) WITHOUT ROWID"
+            "body BLOB NOT NULL, basis TEXT NOT NULL, grouping_settlement TEXT) WITHOUT ROWID"
         )
     return {name: f"CREATE TABLE {name} {body}" for name, body in tables.items()}
 
@@ -240,6 +240,22 @@ def ensure_metadata_schema(engine: Engine) -> None:
             for name, sql in table_definitions(schema).items():
                 connection.exec_driver_sql(
                     sql.replace(f"TABLE {name}", f"TABLE IF NOT EXISTS {schema}.{name}", 1)
+                )
+            if schema == "main":
+                columns = {
+                    row[1]
+                    for row in connection.exec_driver_sql(
+                        "PRAGMA main.table_info(metadata_receipts)"
+                    )
+                }
+                if "grouping_settlement" not in columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE metadata_receipts ADD COLUMN grouping_settlement TEXT"
+                    )
+                connection.exec_driver_sql(
+                    "CREATE INDEX IF NOT EXISTS ix_metadata_pending_grouping "
+                    "ON metadata_receipts(operation) "
+                    "WHERE grouping_settlement IS NOT NULL"
                 )
             connection.exec_driver_sql(
                 f"INSERT OR IGNORE INTO {schema}.metadata_clock VALUES (1, ?, 0)", (uuid4().hex,)

@@ -222,7 +222,7 @@ def apply_plan(
     proposal_ids = (
         set(payload.proposal_ids) if payload and payload.proposal_ids is not None else None
     )
-    result = apply_service.apply_plan(db, plan, proposal_ids=proposal_ids)
+    result = apply_service.apply_plan(db, plan, proposal_ids=proposal_ids, defer_settlement=True)
     # The client refreshes browse and collection queries as soon as this response
     # arrives; make those reads observe the grouping it says was accepted.
     db.flush()

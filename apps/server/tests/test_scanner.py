@@ -242,6 +242,7 @@ def test_unreachable_root_marks_files_missing(
     scan_library(session, library_root)
     # Scan against a now-missing root (simulate an unmounted NAS).
     summary = scan_library(session, tmp_path / "unmounted")
+    assert not summary.walk_complete
     assert summary.missing == 4
     assert summary.missing_total == 4
     assert _file_count(session) == 4  # nothing deleted

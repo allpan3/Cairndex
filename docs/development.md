@@ -43,6 +43,15 @@ uv run pytest                  # tests
 Auto-fix formatting/lint issues with `uv run ruff format .` and
 `uv run ruff check --fix .`.
 
+## Ordinary-library recovery regressions
+
+`tests/test_scan_recovery.py` uses disposable roots and controlled listing failures,
+root replacement and cancellation to verify stable metadata and retry behavior.
+`tests/test_grouping_recovery.py` exits independent processes before content commit,
+after content commit and after plan retirement, then exercises API reads and exact
+retries. Startup discard is checked separately from same-run recovery. The tests
+use synthetic data and do not qualify real NAS/provider failures or power loss.
+
 ## Synthetic production replica workflows
 
 From `apps/server`, `uv run python -m cairndex.devtools.replica_fixture` creates a

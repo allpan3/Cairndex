@@ -10,6 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import VersionConflictError
+from cairndex.grouping.recovery import recover_before_read
 from cairndex.metadata.session import (
     BASIS_HEADER,
     OPERATION_HEADER,
@@ -57,6 +58,7 @@ def begin_metadata_request(request: Request, session: Session) -> None:
     if state is None:
         return
     state.session = session
+    session.info.pop("grouping_settlement", None)
     if state.authored:
         state.context, state.digest = begin_edit(
             session,
@@ -68,6 +70,7 @@ def begin_metadata_request(request: Request, session: Session) -> None:
             body=state.body,
         )
     else:
+        recover_before_read(session)
         # Explicit BEGIN makes the basis and the following reads one SQLite snapshot
         session.connection().exec_driver_sql("BEGIN")
     state.basis = read_basis(session.connection())
@@ -115,6 +118,7 @@ class MetadataRoute(APIRoute):
             try:
                 response = await original(request)
                 if state.session is not None:
+                    settling_grouping = "grouping_settlement" in state.session.info
                     if authored:
                         state.basis = save_receipt(
                             state.session,
@@ -125,6 +129,9 @@ class MetadataRoute(APIRoute):
                         )
                     state.session.commit()
                     state.committed = True
+                    if settling_grouping:
+                        recover_before_read(state.session)
+                        state.basis = read_basis(state.session.connection())
                     response.headers[BASIS_HEADER] = state.basis
                 return response
             except ReplayedEdit as replay:

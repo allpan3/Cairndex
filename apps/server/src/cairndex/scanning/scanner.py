@@ -80,6 +80,7 @@ class ScanSummary:
     # ``created``, and broken out because it is the one kind of new file a scan
     # files without asking — worth being able to see in a log.
     joined_folders: int = 0
+    walk_complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,7 @@ def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]
     """
     subdirectories: list[Path] = []
     entries: list[os.DirEntry[str]] = []
+    complete = True
     try:
         listing = list(os.scandir(directory))
     except OSError:
@@ -134,7 +136,7 @@ def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]
             # follow_symlinks=False avoids symlink cycles and escapes out of the root.
             if entry.is_dir(follow_symlinks=False):
                 subdirectories.append(Path(entry.path))
-            elif classify(entry.name) is not None:
+            elif entry.is_file(follow_symlinks=False) and classify(entry.name) is not None:
                 # Read the stat here, in the worker, though nothing here needs it.
                 # ``DirEntry`` caches it, so ``_observe`` gets it for free on the
                 # main thread later. ``is_dir(follow_symlinks=False)`` above fills a
@@ -144,8 +146,9 @@ def _list_directory(directory: Path) -> tuple[list[Path], list[os.DirEntry[str]]
                     entry.stat()
                 entries.append(entry)
         except OSError:
+            complete = False
             continue
-    return subdirectories, entries, True
+    return subdirectories, entries, complete
 
 
 @dataclass
@@ -168,9 +171,8 @@ def _iter_media_entries(
 
     Breadth-first rather than depth-first purely so each level is a batch wide
     enough to be worth handing to the pool. ``status``, when given, records
-    whether every directory could be read. Per-entry failures are not counted: a
-    file vanishing mid-walk is what the missing pass is for, while a directory
-    that will not list is the signal that matters here.
+    whether every directory and entry could be read. Incomplete observations
+    defer repair and staging until a complete retry.
     """
     pending = [root_path]
     with ThreadPoolExecutor(max_workers=_LISTING_THREADS) as pool:
@@ -344,7 +346,16 @@ def scan_library(
             updated=0,
             missing=missing,
             missing_total=_missing_total(session),
+            walk_complete=False,
         )
+
+    root_stat = root_path.stat()
+
+    # Rebinding a root invalidates every observation made against its previous directory
+    def check_root() -> None:
+        current = root_path.stat()
+        if (current.st_dev, current.st_ino) != (root_stat.st_dev, root_stat.st_ino):
+            raise OSError("library root changed during scan; retry after restoring the library")
 
     if on_phase is not None:
         on_phase("discovering")
@@ -367,12 +378,13 @@ def scan_library(
     for entry in _iter_media_entries(root_path, walk):
         obs = _observe(entry, root_path)
         if obs is None:
+            walk.complete = False
             continue
         seen.add(obs.rel)
         current = existing.get(obs.rel)
         if current is None:
             new_obs.append(obs)
-        else:
+        elif current.availability is not FileAvailability.TRASHED:
             _apply_identity(current, obs)  # same-path edit = update, not a move
             updated += 1
 
@@ -385,14 +397,24 @@ def scan_library(
         # boundary meant any library smaller than one batch (200 files) showed
         # no movement whatsoever — the bar sat at zero and then the scan ended.
         if processed % batch_size == 0:
+            check_root()
             session.commit()
         if on_progress is not None:
             on_progress(processed, max(total, processed) if total else None)
 
     # Pass 2: repair moves before creating anything new.
+    check_root()
     if on_phase is not None:
         on_phase("reconciling")
-    missing_rows = [row for rel, row in existing.items() if rel not in seen]
+    missing_rows = [
+        row
+        for rel, row in existing.items()
+        if rel not in seen and row.availability is not FileAvailability.TRASHED
+    ]
+    # Unseen originals may still exist in an unreadable subtree; defer new identities
+    # too, so retry can repair a real move before staging a duplicate replacement
+    if not walk.complete:
+        new_obs = []
     repairs = _plan_repairs(new_obs, missing_rows)
     repaired_rel = {obs.rel for obs, _ in repairs}
     repaired_row_ids = {row.id for _, row in repairs}
@@ -477,10 +499,12 @@ def scan_library(
     still_missing = [row for row in missing_rows if row.id not in repaired_row_ids]
     missing = _mark_missing(still_missing, keep=frozenset())
 
+    check_root()
     session.commit()
     if on_progress is not None:
         on_progress(processed, max(total, processed) if total else None)
 
+    check_root()
     # After repair, so a file that moved was rescued rather than forgotten.
     forgotten = staging_cleanup.forget_vanished_staging(
         session, root_path, walk_complete=walk.complete
@@ -495,6 +519,7 @@ def scan_library(
         repaired=len(repairs),
         forgotten=forgotten,
         joined_folders=joined_folders,
+        walk_complete=walk.complete,
     )
 
 

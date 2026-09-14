@@ -66,7 +66,11 @@ each library is a directory carrying its own `.cairndex/` metadata
 scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
 active library per tab. The normal maintenance flow is **Update**: scan the
 library, persist a reviewable grouping plan, refresh the UI, and open grouping
-review when suggestions exist. Technical metadata continues in the background;
+review when suggestions exist. An incomplete or unavailable walk asks for a retry
+without staging replacement identities. Partial grouping acceptance preserves the
+remaining review, and exact retries recover committed results without duplicating
+bundles; unconfirmed plans still disappear when the server restarts.
+Technical metadata continues in the background;
 missing or stale storyboard generation follows it because storyboard eligibility
 uses the probed duration. Individual scan, grouping suggestion, metadata
 collection, and storyboard-generation actions remain available in the

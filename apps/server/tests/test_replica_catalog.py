@@ -1013,7 +1013,8 @@ def test_shared_server_bookkeeping_roundtrip(tmp_path):
     ensure_metadata_schema(engine)
     with engine.begin() as db:
         db.exec_driver_sql(
-            "INSERT INTO metadata_receipts VALUES (?, ?, 200, ?, ?)",
+            "INSERT INTO metadata_receipts(operation, fingerprint, status, body, basis) "
+            "VALUES (?, ?, 200, ?, ?)",
             (uuid4().hex, "synthetic-digest", b'{"title":"Synthetic retry"}', "synthetic-basis"),
         )
     engine.dispose()

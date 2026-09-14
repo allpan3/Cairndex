@@ -12,6 +12,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import DomainError, VersionConflictError
+from cairndex.grouping.recovery import recover_pending
 
 BASIS_HEADER = "X-Cairndex-Basis"
 OPERATION_HEADER = "X-Cairndex-Operation"
@@ -194,6 +195,9 @@ def begin_edit(
         )
     connection = session.connection()
     connection.exec_driver_sql("BEGIN IMMEDIATE")
+    while recover_pending(session):
+        connection = session.connection()
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
     current = read_basis(connection)
     if basis and BASIS_PATTERN.fullmatch(basis) and basis.split(":")[0] != current.split(":")[0]:
         raise VersionConflictError("This draft belongs to another database; reopen it for review")
@@ -220,9 +224,10 @@ def save_receipt(session: Session, operation: str, digest: str, status: int, bod
     basis = read_basis(connection)
     connection.exec_driver_sql(
         (
-            "INSERT INTO metadata_receipts(operation, fingerprint, status, body, basis) "
-            "VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO metadata_receipts(operation, fingerprint, status, body, basis, "
+            "grouping_settlement) "
+            "VALUES (?, ?, ?, ?, ?, ?)"
         ),
-        (operation, digest, status, body, basis),
+        (operation, digest, status, body, basis, session.info.pop("grouping_settlement", None)),
     )
     return basis

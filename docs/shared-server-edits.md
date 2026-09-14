@@ -105,8 +105,14 @@ Synthetic conversion accepts either the pre-clock schema or the exact recognized
 clock/receipt/trigger schema, archives it privately, and preserves unchanged rollback
 values. An edited rollback receives a new content incarnation so old client requests
 cannot authorize that authority. Unknown schema extensions still block conversion;
-real-library conversion and provider qualification remain unavailable. Attached plans
-retain ADR-0022's existing cross-database crash limitations.
+real-library conversion and provider qualification remain unavailable.
+
+Grouping acceptance stores a pending plan settlement with its content receipt.
+Content commits first; plan retirement commits separately; clearing the pending
+settlement commits last. Recovery finishes only those recorded plan effects before
+subsequent reads/writes, and exact retries retain the accepted result. Unconfirmed
+plans still disappear on server startup (ADR-0022); no review is reconstructed.
+The nullable receipt field is added without rewriting existing receipts.
 
 ## Verification
 

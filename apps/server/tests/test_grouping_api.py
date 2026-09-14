@@ -1636,4 +1636,5 @@ def test_reading_a_plan_costs_the_same_number_of_queries_at_any_size(
     # loose — what matters is that it does not grow with the 12+ proposals.
     assert for_many <= 8, f"plan read issued {for_many} queries for 12+ proposals"
     # The summary needs the counts, not the rows.
-    assert for_list <= 4, f"plans list issued {for_list} queries"
+    # One indexed receipt probe recovers committed acceptance before taking the read snapshot
+    assert for_list <= 5, f"plans list issued {for_list} queries"

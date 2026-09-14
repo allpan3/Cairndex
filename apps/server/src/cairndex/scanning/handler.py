@@ -34,6 +34,10 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         on_phase=lambda name: ctx.set_phase(JobPhase(name)),
         batch_size=batch_size,
     )
+    if not summary.walk_complete:
+        raise OSError(
+            "scan could not read every directory or file; restore access and retry Update"
+        )
     # Two steps with their own messages, because grouping is the one phase that
     # used to be a single opaque call: on a large library the bar sat animating
     # with nothing to say for it, which reads as a hang (owner-reported,

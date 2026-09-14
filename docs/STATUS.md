@@ -1,5 +1,35 @@
 # Project status
 
+- Ordinary local/shared-server Update and grouping recovery is implemented on
+  `fix/library-ownership-lifecycle` from `d9fe5fda`; **browser verification remains
+  INCOMPLETE**. Controlled failures reproduced wrong identity repair after an
+  unreadable subtree, symlink cataloging, undetected root replacement, implicit
+  revival of trash, superseded-plan acceptance and missing-file additions.
+  Scans now defer staging/repair on incomplete observations, report failed Update,
+  fence the root and retain trash. Grouping commits content plus its existing
+  request receipt before retiring disposable plan rows; recovery finishes only
+  recorded retirement and exact retries replay the committed result.
+  Independent-process exits before content commit, after content commit and after
+  plan retirement pass, as do startup discard, partial acceptance, receipt upgrade,
+  cancellation and stable-ID/reference preservation checks. Backend Ruff/format/
+  mypy and the full suite pass: **1,651 passed**, one existing FFmpeg zscale skip.
+  Frontend lint/format/typecheck, all **1,220 unit tests** and production build
+  pass. OpenAPI reproduces unchanged; the existing bundle-size warning remains.
+  The staged privacy gate passes for 23 source/reference/test files, including
+  only generated synthetic fixture bytes; no runtime data or build output is staged.
+  Four browser cases were attempted but never reached the UI: sandbox Chromium
+  launch failed, both escalation reviews timed out, and the built-in browser
+  also received an automatic approval-review timeout. The two new real-backend
+  browser regressions remain unexecuted; no browser or native pass is claimed.
+  Rust/native packaging and deployment gates were not run because their code is
+  unchanged. No real NAS/provider, power-loss or large-library qualification is
+  implied. The next action is authorized browser verification of this same group.
+  Desktop file integration remains **INCOMPLETE and paused**. Its passing copy-only evidence below is retained; QSpace,
+  multi-file OS drag and app-origin self-return checks remain open. ADR-0033,
+  the macOS adapter, framework patches, volume-based Move and source deletion
+  remain on hold. This group preserves ADR-0022 startup discard of unconfirmed
+  plans and excludes owner libraries, provider experiments and publication.
+
 - Desktop file integration (I23/I26) remains in progress on
   `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
   **Copy-only follow-through adds verified backend/component/browser regressions without
