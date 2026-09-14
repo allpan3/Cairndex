@@ -326,7 +326,10 @@ files therefore reach the HTML upload handlers: File Browser copies into the
 current directory; bundle cards and the Bundle Inspector open a destination
 picker, then import and link the landed files. Both require deployment and
 library write permission and use the journaled server import endpoint. An
-unhandled file drop cannot navigate away from the app and receives guidance.
+unhandled file drop receives guidance. The native navigation policy keeps the
+renderer on the bundled app origin (the exact configured Vite origin in
+development), blocking file/external-document navigation independently of HTML
+drop handling.
 
 The native `reverse_map_paths` / `useDesktopFileDrop` / `importer.rs` route is
 retained but receives no native drop events in this configuration. Its

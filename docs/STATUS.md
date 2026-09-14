@@ -7,14 +7,20 @@
   upload authorization and deterministic self-drop detection remain inactive
   with `dragDropEnabled: false`. Enabling whole-pipeline interception also blocks
   internal HTML drops; preserving both flows remains unresolved.
-  This checkpoint changes documentation and explanatory source comments only.
+  The native shell now restricts document navigation to the bundled app origin
+  or the exact configured development origin. An outside-window native drag
+  followed by a layout click replaced the SPA with the dragged local image twice
+  in the baseline package. The final package rejects that navigation; replaying
+  the same sequence keeps the SPA usable and the layout control works. This
+  protects the renderer without changing the shipping drop pipeline.
   The refreshed self-contained ARM sidecar and isolated production app build;
-  the app's strict code signature verifies. Rust format/Clippy and 124 tests,
-  57 focused frontend tests, 175 backend path/file-operation tests and eight
-  browser import/drag regressions pass. The production frontend build also
-  passes, retaining its existing chunk-size warning. Full frontend/backend suites
-  are not repeated for this documentation checkpoint; Linux execution is not
-  qualified. No new executable behavior or schema is claimed.
+  the app's strict code signature verifies. Rust format/Clippy and 129 tests,
+  including five navigation-policy cases, pass. Eight browser import/drag
+  regressions and the production frontend build pass for the final package;
+  the existing chunk-size warning remains. The earlier audit baseline also
+  passed 57 focused frontend and 175 backend path/file-operation tests. Full
+  frontend/backend suites are not repeated for this native-only change; Linux
+  execution and a native development-server smoke test are not qualified.
   Direct owner confirmation resolved the initial Finder-activation approval
   block. Finder then activated the isolated production app with verified macOS
   foreground ownership. A disposable legacy library was registered through the
@@ -24,12 +30,21 @@
   specimens in the two libraries. No source bytes changed. **Reveal passed after
   the library switch:** the configured file manager became foreground, its
   breadcrumb and accessibility selection matched the synthetic target, and the
-  selected file was visibly confirmed. An empty disposable Finder receiver is
-  prepared for the transfer matrix; no cross-application drag has been attempted.
+  selected file was visibly confirmed. Mapped Open also passes in the final
+  package after the navigation guard is installed.
   Computer Use is enabled and direct calls work. Absence from the general tool
   catalog is intentional and does not establish a connection failure. The launch
   approval remains valid; no alternate input system is used.
-  Cross-application drag delivery, modifiers, cancellation/self-drops,
+  Finder cross-application drags have been attempted in both directions, but no
+  intended destination transfer is verified. The receiver remains empty and
+  attempted incoming drops produce no import feedback. A Finder-only control
+  also fails to deliver to its requested target: selection changes occur, and one
+  synthetic external file appears in its parent during a later interaction.
+  That fixture is restored and all six original source hashes match. The observed
+  sequence does not distinguish controller timing from an app drag-engine issue.
+  A contained self-drop shows the unhandled-drop guidance and retains the SPA;
+  deterministic native self-drop routing remains inactive.
+  Cross-application drag delivery, modifier and cancellation outcomes,
   mapped actions after server switches and unavailable/wrong-identity cases remain
   **unverified**. Synthetic fixtures and the isolated package are prepared; no
   owner media or installed app is changed.

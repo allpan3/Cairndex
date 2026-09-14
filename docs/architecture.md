@@ -211,7 +211,11 @@ drag-and-drop. Incoming OS files use HTML `File` uploads through `useWebImports`
 and the journaled import endpoint when deployment and library gates permit
 writing. File Browser targets its current directory; bundle/inspector targets
 ask for a destination before importing and linking. The window prevents default
-file navigation and explains unhandled drops.
+file navigation and explains unhandled drops. A native navigation policy also
+restricts the webview to the bundled app origin, or the exact configured Vite
+origin during development. Files, external pages and other document schemes
+cannot replace the renderer even when a drop escapes the HTML handlers. This
+policy does not restrict media subresources or validated native Open/Reveal.
 
 The native path-based route remains present but inactive: `reverse_map_paths`
 classifies files against the mapped root, and `importer.rs` refuses uploads of

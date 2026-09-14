@@ -145,6 +145,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Desktop file drops cannot replace the app with a local file or external page;
+  the native shell restricts renderer navigation to the app origin.
+
 - Video cover commands retain the displayed file's read basis. An immediate reset
   after an accepted cover selection avoids unrelated stale-query conflicts;
   commands opened before a peer cover edit still require conflict review.
