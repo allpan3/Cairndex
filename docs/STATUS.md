@@ -21,13 +21,15 @@
   production UI. **Open in Default App passed before and after a library
   switch:** Preview became foreground, its document URL matched the selected
   mapped file, and the visible synthetic image distinguished the same-named
-  specimens in the two libraries. No source bytes changed. Reveal activated the
-  configured file manager and exposed the correct selected path in accessibility
-  state, but its visible target was not confirmed, so that case remains open.
-  Computer Use is connected again; no settings change was needed. Native input
-  is paused while other applications take foreground focus. The launch approval
-  remains valid; no alternate input system is used.
-  Cross-application drag delivery, modifiers, cancellation/self-drops, Reveal,
+  specimens in the two libraries. No source bytes changed. **Reveal passed after
+  the library switch:** the configured file manager became foreground, its
+  breadcrumb and accessibility selection matched the synthetic target, and the
+  selected file was visibly confirmed. An empty disposable Finder receiver is
+  prepared for the transfer matrix; no cross-application drag has been attempted.
+  Computer Use is enabled and direct calls work. Absence from the general tool
+  catalog is intentional and does not establish a connection failure. The launch
+  approval remains valid; no alternate input system is used.
+  Cross-application drag delivery, modifiers, cancellation/self-drops,
   mapped actions after server switches and unavailable/wrong-identity cases remain
   **unverified**. Synthetic fixtures and the isolated package are prepared; no
   owner media or installed app is changed.
