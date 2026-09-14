@@ -35,22 +35,26 @@
   Computer Use is enabled and direct calls work. Absence from the general tool
   catalog is intentional and does not establish a connection failure. The launch
   approval remains valid; no alternate input system is used.
-  Finder cross-application drags have been attempted in both directions, but no
-  intended destination transfer is verified. The receiver remains empty and
-  attempted incoming drops produce no import feedback. A Finder-only control
-  also fails to deliver to its requested target: selection changes occur, and one
-  synthetic external file appears in its parent during a later interaction.
-  That fixture is restored and all six original source hashes match. The observed
-  sequence does not distinguish controller timing from an app drag-engine issue.
+  **Owner-performed single-file transfers pass in both directions:** dragging
+  from the File Browser to Finder creates the expected receiver copy, and
+  dragging an external Finder file into the writable library creates the
+  expected imported file. Independent SHA-256 checks match each destination to
+  its source; all six original synthetic files remain unchanged.
+  Computer Use's drag sequences do not reliably reproduce those gestures:
+  attempted cross-application drops give no intended transfer, and a Finder-only
+  control changes selection or moves a synthetic file during a later interaction.
+  That fixture was restored before the owner-performed checks. These controller
+  observations do not establish a failure of ordinary single-file transfers or
+  identify a specific drag-engine timing defect.
   A contained self-drop shows the unhandled-drop guidance and retains the SPA;
   deterministic native self-drop routing remains inactive.
-  Cross-application drag delivery, modifier and cancellation outcomes,
+  Native multi-file and alternate-source transfers, modifier and cancellation outcomes,
   mapped actions after server switches and unavailable/wrong-identity cases remain
   **unverified**. Synthetic fixtures and the isolated package are prepared; no
   owner media or installed app is changed.
-  Resume this same group with an uninterrupted native foreground session and the
-  full synthetic transfer matrix, fix reproduced defects, then requalify the
-  final package. This is not completion of the desktop integration group.
+  Complete the remaining synthetic transfer matrix with reliable native gestures,
+  fix reproduced defects, then requalify the final package. This is not completion
+  of the desktop integration group.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
