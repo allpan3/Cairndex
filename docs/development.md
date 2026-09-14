@@ -349,8 +349,11 @@ do not establish the source's local library path. Preserving internal gestures
 while restoring trusted native drop routing remains open; enabling Tauri's
 whole-pipeline interception alone also intercepts internal HTML drops.
 Proposed [ADR-0033](adr/0033-selective-native-file-drops.md) records the locked
-framework's missing selective callback, the recommended native boundary and the
-implementation decision required before this route can be restored.
+framework's missing selective callback and a native boundary proposal now on hold.
+The copy-only file-manager import option uses the shipping HTML route, including
+same-library sources; it needs no reverse mapping or adapter. File Browser prompts
+on name collisions; bundle drops use Keep Both after directory selection. Reliable
+app-origin self-return suppression remains a separate unresolved requirement.
 
 ### Menus and shortcuts (D5a)
 

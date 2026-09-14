@@ -221,11 +221,13 @@ The native path-based route remains present but inactive: `reverse_map_paths`
 classifies files against the mapped root, and `importer.rs` refuses uploads of
 paths absent from the shell's last OS drop. Its grouping and deterministic
 self-drop protections do not cover the shipping HTML route. HTML file contents
-cannot prove their original library-relative location. Native routing that
-preserves internal gestures is an unresolved integration requirement; see
+cannot prove their original library-relative location. That identity is not
+needed for the copy-only file-manager import option under assessment, including
+copying from another directory of the same library. Reliable app-origin
+self-return discrimination remains unresolved; see
 [plan 3](plans/03-macos-desktop-app.md#6-drag-out--drag-in) and proposed
 [ADR-0033](adr/0033-selective-native-file-drops.md) for the framework API boundary,
-recommended extension and required implementation decision.
+held extension proposal and its separate implementation decision.
 
 An import selection remains a **client-owned sequential batch**, not a registry
 job: the bytes live in a browser `File` or a desktop file handle, so putting an

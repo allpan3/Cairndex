@@ -1,8 +1,23 @@
 # ADR-0033: Selective native file-drop capture
 
-- Status: proposed; owner decision required before implementation
+- Status: proposed; on hold during copy-only import assessment
 - Date: 2026-09-13
 - Branch: `fix/library-ownership-lifecycle`
+
+## Current scope decision
+
+The owner is considering treating every file-manager drop as a copy, including
+files from another directory of the same library. That matches the shipping HTML
+import path and does **not** require this native adapter, reverse mapping or a new
+physical Move/Copy operation. The same-volume-move proposal below is on hold too.
+Neither architecture is approved. See the [copy-only behavior and verification
+plan](../desktop-file-integration-verification.md#copy-only-import-assessment).
+
+Reliable app-origin self-return discrimination remains a separate unresolved
+requirement. Copy-only imports do not solve it, but it must not be used to imply
+that ordinary Finder/QSpace copying requires the adapter. The remaining sections
+record the broader, held proposal and its source evidence, not prerequisites for
+the copy-only option.
 
 ## Blocked requirement
 

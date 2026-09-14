@@ -242,15 +242,13 @@ handoff:
   selection and the ADR-0013 gates. Simply enabling Tauri interception handles
   every drag event and blocks WKWebView's internal drop processing.
   Proposed [ADR-0033](../adr/0033-selective-native-file-drops.md) specifies the
-  missing framework hook, recommended native adapter and alternative runtime
-  patch. Owner approval of that architecture decision precedes implementation;
-  physical-gesture testing cannot replace the missing integration.
-  Its proposed folder behavior uses same-volume Move, cross-volume Copy and
-  same-directory no-op. Logical bundle/collection drops do not imply a folder;
-  an explicit physical destination selects those file-operation rules. Existing
-  in-library Move is journaled, while in-library Copy and external-source Move
-  require additional design. Native capture does not itself authorize source
-  deletion or cross-library transfer.
+  missing framework hook, native adapter and runtime-patch alternative. Those
+  proposals and the same-volume Move design are on hold while the owner considers
+  copy-only file-manager drops. The shipping HTML path already copies same-library
+  sources too and needs no adapter or new Copy operation. File Browser collisions
+  prompt; bundle imports keep both after destination selection. Same-directory
+  drops are collisions, not automatic no-ops. App-origin self-return suppression
+  remains independent and unqualified. No source deletion or transfer is authorized.
 
 ## 7. Native shell niceties
 

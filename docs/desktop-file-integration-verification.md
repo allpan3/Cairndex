@@ -47,45 +47,69 @@ The prior eight browser drag/import cases also passed during this audit. No back
 code changed, so the full backend suite was not repeated. The existing frontend
 chunk-size warning remains. Build output and synthetic data stay outside Git.
 
-## Incomplete implementation and engineering qualification
+## Copy-only import assessment
 
-Trusted native reverse mapping, OS-path upload authority and deterministic
-self-drop routing are not active in the shipping window. The locked Tauri API
-cannot selectively forward internal drags. Proposed
-[ADR-0033](adr/0033-selective-native-file-drops.md) contains the framework evidence,
-recommended macOS adapter and maintained-runtime-patch alternative. The ADR needs
-an owner architecture decision before either implementation starts.
+The owner's simpler option is to treat file-manager drops as copies regardless
+of original location or volume. The shipping HTML `File` route already does this;
+it needs uploaded bytes, not the trusted original path. Native capture and
+same-volume Move in [ADR-0033](adr/0033-selective-native-file-drops.md) are on hold.
+No new native implementation, source deletion or general copy endpoint is needed
+for this workflow.
 
-This is an implementation gap, not an owner testing assignment. Engineering owns
-validation of the chosen repair and the following native outcomes:
-
-| Unqualified behavior | Practical significance |
+| Drop and destination | Current behavior |
 | --- | --- |
-| In-library Finder drops onto logical targets | Must group/link existing files without inferring a physical folder from a bundle/collection |
-| Explicit folder drops | Must distinguish same-directory no-op, same-volume Move and cross-volume Copy; moves preserve stable IDs. Copy and external-source move recovery need additional design |
-| Returning app-origin file drops | Must avoid duplicate imports while allowing later genuine Finder drops of the same files |
-| Internal drag forwarding | Collection move/copy and reorder must remain usable when native file capture is active |
-| Multi-file and alternate-source delivery | The receiving application must obtain the intended available files; unit payload tests alone cannot prove OS delivery |
-| Cancellation and mid-drag modifiers | Cancel must leave no copy and release the gesture; final Option state must determine collection move/copy |
-| Remote Locate acceptance | Wrong portable identity must be rejected and correct identity must enable the corresponding host actions |
+| Finder/QSpace files onto File Browser | Copy into the directory being viewed, subject to deployment/library write permission |
+| Files from another directory in the same library | Same copy-in route; do not reverse-map to the original asset or group it in place |
+| Files onto a bundle card/inspector | Choose an import directory; copy with automatic Keep Both suffixing, then link the landed copies |
+| Existing name in File Browser, including the same source/destination folder | Prompt Replace / Skip / Keep Both. Keep Both picks a free suffixed name; Skip leaves it alone; Replace trashes the existing destination before writing. No automatic same-directory no-op or content deduplication |
+| Unsupported target, including a collection without a file-import handler | Guidance; do not infer a physical directory from logical membership |
+| Ordinary internal grouping/reorder | Existing logical gestures remain separate from HTML file imports |
 
-Already-passed native observations remain baseline evidence. No owner spot check
-can close the missing native boundary, and changed boundary behavior requires
-engineering replay. Unsupported physical inputs remain explicitly unverified with
-their consequences recorded. Synthetic fixtures remain prepared; Library A retains
-the two verified batch imports and Drag Check remains Amber then Blue in Drag Source.
+Copy-in never requests source removal. Explicit Replace acts on the destination:
+if that destination is also the source being dragged, it can trash that original.
+Keep Both preserves both. Imported files do not borrow the source's asset ID or
+memberships. File Browser writes bytes without automatically cataloging them;
+bundle import/link catalogs the new path. Verify distinct IDs when cataloged and
+retain the existing destination-replacement/Undo contract rather than describing
+Replace as harmless to the original path.
+
+### Minimal engineering follow-through
+
+1. Verify synthetic same-library copies into another directory and the original
+   directory through the existing HTML workflow. Check bytes, completed journal
+   receipts, no implicit source removal, distinct cataloged IDs, memberships and
+   persistence. Cover File Browser and bundle destination/link behavior.
+2. Reuse focused import coverage for write rejection, collisions, cancellation,
+   partial batches, Undo and library/server scope changes; add only missing
+   meaningful regressions and fix reproduced defects in this path. File Browser
+   prompts and bundle Keep Both must be tested as their actual distinct policies.
+3. Qualify real file-manager delivery separately: the owner's Finder single-file
+   drop already passed; the agent's two-file picker import passed. Neither proves
+   QSpace transfer or multi-file OS drag delivery. Use only supported controls
+   and synthetic locations; prior broad QSpace inspection was rejected, and
+   repeated unsupported drag coordinates are not a substitute for delivery proof.
+   No owner regression checklist is assigned.
+4. Keep app-origin self-return as its own case. The shipping HTML handlers do not
+   deterministically distinguish a returning native drag from Finder/QSpace.
+   Targeted return may copy again; navigation protection prevents replacing the
+   SPA but does not suppress an import. Do not call source discrimination solved.
+
+The adapter is unnecessary solely to implement always-copy file-manager imports.
+If reliable self-return suppression remains required, its native source/session
+boundary may still need the held design or another separately reviewed solution.
+Metadata-only OS grouping, volume-based moves and outside-source deletion are not
+part of this copy-only assessment. Existing Open/Reveal and outgoing drag need no
+new adapter merely because the incoming policy is simplified.
 
 ## Limits
 
 Computer Use's drag coordinates can return `noWindowsAvailable` or complete at an
-unintended later interaction. It has no documented mid-drag modifier-hold API.
-Locate automation selected a directory but left Open disabled; cancellation worked.
-Those results do not establish ordinary-human defects or successful acceptance.
-Native alternate-source delivery, self-return drops and the gesture checks above
-remain unqualified; passing component tests does not change that evidence level.
+unintended later interaction; no mid-drag modifier-hold API is documented. Locate
+selection left Open disabled under automation; cancellation worked. These do not
+establish ordinary-user defects. QSpace, multi-file OS delivery, app-origin return
+and remote Locate acceptance remain unqualified, independently of automated test
+coverage. Windows/Linux native delivery, other receiving apps, development-server
+smoke and real NAS disconnect latency are not established by local macOS fixtures.
 
-The shipping HTML import route does not activate native reverse mapping or the
-deterministic native self-drop router. Restoring that integration remains an
-engineering task requiring internal gestures to keep working. Native Linux,
-Windows and development-server smoke tests, other receiving applications and
-real NAS disconnect latency remain outside this macOS local-fixture qualification.
+This assessment changes no executable code and reruns no broad suites. The passed
+evidence above remains valid; the whole integration group is not declared complete.

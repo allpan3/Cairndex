@@ -2,27 +2,23 @@
 
 - Desktop file integration (I23/I26) remains in progress on
   `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
-  Current references describe implemented server-scoped mapped Open/Reveal and
-  the shipping HTML upload route. Native `reverse_map_paths`, dropped-path
-  upload authorization and deterministic self-drop detection remain inactive
-  with `dragDropEnabled: false`. Enabling whole-pipeline interception also blocks
-  internal HTML drops; preserving both flows remains an engineering task.
-  **Implementation is blocked on a concrete native-boundary decision**, described
-  in proposed [ADR-0033](adr/0033-selective-native-file-drops.md). Locked Tauri
-  2.11.5/runtime 2.11.4 has no public synchronous selective-drop callback; its
-  handler always consumes the native event. Wry 0.55.1 can forward unhandled
-  macOS drags, but Tauri does not expose that decision. Runtime plugins receive
-  the queued event too late; the platform-view handle requires new native code.
-  The recommendation is a scoped macOS destination adapter with explicit lifetime,
-  original-handler chaining and OS-only drop authority, rather than a maintained
-  framework fork. Windows requires a different forwarding design. The ADR is
-  **proposed**, not accepted; no native API, dependency patch or vendor tree is added.
-  The proposed drop contract distinguishes physical folder destinations from
-  logical bundle/collection targets. Folder defaults follow filesystem/volume
-  identity: same-volume Move, cross-volume Copy, same-directory no-op. Existing
-  in-library Move preserves IDs; in-library Copy and outside-source move recovery
-  need additional design. Import currently copies only. An outside-source or
-  cross-library Move is not authorized by the native-capture proposal alone.
+  **Copy-only file-manager drops are under assessment and already match the
+  shipping HTML import path.** File Browser copies into its current directory;
+  bundle targets choose a directory, copy with Keep Both, then link the new files.
+  Files from another directory of the same library are copied too, without
+  reverse-mapping into metadata-only grouping or requesting source removal.
+  File Browser name collisions prompt Replace / Skip / Keep Both; a same-directory
+  drop is a collision, not an automatic no-op. Explicit Replace trashes the
+  existing destination, which may be the dragged original at that same path.
+  New copies have independent file identities when cataloged; ordinary internal
+  grouping/reorder remains separate. Write gates, cancellation and journal Undo
+  remain in force.
+  Proposed [ADR-0033](adr/0033-selective-native-file-drops.md) and its same-volume
+  Move design are **on hold**, not approved. Copy-only imports do not need native
+  source-path identity, a new copy endpoint or the proposed adapter. The inactive
+  native self-drop router still does not protect the HTML route; reliable
+  app-origin self-return discrimination remains an independent unresolved issue.
+  No native API, dependency patch, vendor tree or source-deletion code is added.
   The native shell restricts document navigation to the bundled app origin or
   the exact configured development origin. A reproduced outside-window drag
   followed by a layout click replaced the baseline SPA with a local image; the
@@ -66,14 +62,14 @@
   sample found its main thread waiting in the event loop; restarting only the
   disposable app and sidecar restored controls. The timeout's cause is unresolved.
   [The verification record](desktop-file-integration-verification.md) separates
-  observed native behavior from automated coverage. Native qualification remains
-  engineering-owned, including multi-file delivery, self-return safety, internal
-  forwarding, cancellation/modifiers and remote Locate acceptance. Owner spot checks
-  cannot close the missing implementation. Synthetic inputs,
-  receiver folders and a two-file bundle remain prepared; original bundle order
-  and collection membership are restored. No owner media or installed app changed.
-  This is not completion of the desktop integration group. Next is an owner decision
-  on ADR-0033, followed by implementation and qualification of the chosen boundary.
+  passed evidence from the minimal copy-only follow-through. Finder single-file
+  delivery and picker batch import pass; QSpace and multi-file OS delivery remain
+  unverified. Engineering owns remaining verification, including same-library
+  copies, collision/identity outcomes, target/scope safety and independent
+  self-return behavior. Original fixture order/membership remain restored; no
+  owner media or installed app changed. The whole integration group is not
+  declared complete, and adapter approval is not a prerequisite for assessing
+  the existing copy-only workflow.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
