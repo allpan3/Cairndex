@@ -7,6 +7,16 @@
   upload authorization and deterministic self-drop detection remain inactive
   with `dragDropEnabled: false`. Enabling whole-pipeline interception also blocks
   internal HTML drops; preserving both flows remains an engineering task.
+  **Implementation is blocked on a concrete native-boundary decision**, described
+  in proposed [ADR-0033](adr/0033-selective-native-file-drops.md). Locked Tauri
+  2.11.5/runtime 2.11.4 has no public synchronous selective-drop callback; its
+  handler always consumes the native event. Wry 0.55.1 can forward unhandled
+  macOS drags, but Tauri does not expose that decision. Runtime plugins receive
+  the queued event too late; the platform-view handle requires new native code.
+  The recommendation is a scoped macOS destination adapter with explicit lifetime,
+  original-handler chaining and OS-only drop authority, rather than a maintained
+  framework fork. Windows requires a different forwarding design. The ADR is
+  **proposed**, not accepted; no native API, dependency patch or vendor tree is added.
   The native shell restricts document navigation to the bundled app origin or
   the exact configured development origin. A reproduced outside-window drag
   followed by a layout click replaced the baseline SPA with a local image; the
@@ -50,14 +60,14 @@
   sample found its main thread waiting in the event loop; restarting only the
   disposable app and sidecar restored controls. The timeout's cause is unresolved.
   [The verification record](desktop-file-integration-verification.md) separates
-  observed native behavior from automated coverage. The owner need not repeat
-  engineering-owned tests; optional spot checks cover a multi-file OS payload,
-  cancellation/modifier gestures and remote Locate acceptance. Alternate native
-  drag sources and self-return drops remain unqualified. Synthetic inputs,
+  observed native behavior from automated coverage. Native qualification remains
+  engineering-owned, including multi-file delivery, self-return safety, internal
+  forwarding, cancellation/modifiers and remote Locate acceptance. Owner spot checks
+  cannot close the missing implementation. Synthetic inputs,
   receiver folders and a two-file bundle remain prepared; original bundle order
   and collection membership are restored. No owner media or installed app changed.
-  This is not completion of the desktop integration group; restoring trusted native
-  drop routing and qualifying remaining OS interactions remain open.
+  This is not completion of the desktop integration group. Next is an owner decision
+  on ADR-0033, followed by implementation and qualification of the chosen boundary.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,

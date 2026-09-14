@@ -314,7 +314,7 @@ command or an unchecked opener call.
 The active **This Computer** library adopts its validated local root automatically;
 removing that mapping allows it to be adopted again. Remote libraries require
 **Locate on This Mac**. The [verification matrix](desktop-file-integration-verification.md)
-separates native outcomes, automated coverage and optional OS gesture spot checks.
+separates native outcomes, automated coverage and unresolved engineering qualification.
 
 The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
 tile, the File inspector, or the bundle inspector — its cover drags the whole
@@ -348,6 +348,9 @@ are consequently not evidence for the shipping HTML route. HTML `File` objects
 do not establish the source's local library path. Preserving internal gestures
 while restoring trusted native drop routing remains open; enabling Tauri's
 whole-pipeline interception alone also intercepts internal HTML drops.
+Proposed [ADR-0033](adr/0033-selective-native-file-drops.md) records the locked
+framework's missing selective callback, the recommended native boundary and the
+implementation decision required before this route can be restored.
 
 ### Menus and shortcuts (D5a)
 

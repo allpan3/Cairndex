@@ -241,6 +241,10 @@ handoff:
   Restoring this route must preserve internal HTML gestures, bundle target
   selection and the ADR-0013 gates. Simply enabling Tauri interception handles
   every drag event and blocks WKWebView's internal drop processing.
+  Proposed [ADR-0033](../adr/0033-selective-native-file-drops.md) specifies the
+  missing framework hook, recommended native adapter and alternative runtime
+  patch. Owner approval of that architecture decision precedes implementation;
+  physical-gesture testing cannot replace the missing integration.
 
 ## 7. Native shell niceties
 

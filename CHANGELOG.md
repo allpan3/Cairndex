@@ -281,6 +281,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Desktop native-drop integration has a proposed selective-capture decision,
+  with verified framework limits, implementation alternatives and engineering
+  qualification requirements. Trusted native drop routing remains incomplete.
+
 - Accepted cloud-replica architecture and disposable causal metadata prototype, with
   deterministic two-replica delivery and crash tests. Real-library conversion,
   migration and provider support remain unimplemented.

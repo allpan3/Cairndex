@@ -51,3 +51,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0030](0030-shared-server-edit-bases.md) | Shared-server metadata edit bases and transactional retry receipts | accepted |
 | [0031](0031-private-replica-recovery.md) | Coherent private backups and explicit device recovery | accepted |
 | [0032](0032-replica-discovery.md) | Private replica discovery and reviewed catalog identity | accepted |
+| [0033](0033-selective-native-file-drops.md) | Selective native file-drop capture | proposed; owner decision required |

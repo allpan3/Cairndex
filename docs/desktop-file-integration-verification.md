@@ -47,22 +47,32 @@ The prior eight browser drag/import cases also passed during this audit. No back
 code changed, so the full backend suite was not repeated. The existing frontend
 chunk-size warning remains. Build output and synthetic data stay outside Git.
 
-## Optional native spot checks
+## Incomplete implementation and engineering qualification
 
-These are the remaining OS interaction gaps, not a request to repeat automated
-coverage. Use **Cairndex File Check** and only the synthetic fixture root
-`/private/tmp/cairndex-file-integration` if completing full native qualification.
+Trusted native reverse mapping, OS-path upload authority and deterministic
+self-drop routing are not active in the shipping window. The locked Tauri API
+cannot selectively forward internal drags. Proposed
+[ADR-0033](adr/0033-selective-native-file-drops.md) contains the framework evidence,
+recommended macOS adapter and maintained-runtime-patch alternative. The ADR needs
+an owner architecture decision before either implementation starts.
 
-| Check | Short procedure and expected outcome |
+This is an implementation gap, not an owner testing assignment. Engineering owns
+validation of the chosen repair and the following native outcomes:
+
+| Unqualified behavior | Practical significance |
 | --- | --- |
-| Multi-file OS payload | Library A → Bundles → select Drag Check. Drag the large inspector cover to Finder's `Receiver/Cover Out`. Amber and Blue should both arrive |
-| Gesture cancellation and modifier changes | Cancel an outgoing drag with Escape before release; no copy should land and the next drag should work. For collection copy behavior, drag Drag Check from Drag Source toward Drag Target, pressing Option while dragging: both memberships should remain, with source files unchanged |
-| Remote Locate acceptance | Connect to saved server 18973 → Settings → Libraries → Locate. Library A should be rejected; Library Remote should map successfully and Open should show its blue specimen. Return to This Computer afterward |
+| In-library Finder drops | Must group/link existing files through metadata without copying source bytes |
+| Returning app-origin file drops | Must avoid duplicate imports while allowing later genuine Finder drops of the same files |
+| Internal drag forwarding | Collection move/copy and reorder must remain usable when native file capture is active |
+| Multi-file and alternate-source delivery | The receiving application must obtain the intended available files; unit payload tests alone cannot prove OS delivery |
+| Cancellation and mid-drag modifiers | Cancel must leave no copy and release the gesture; final Option state must determine collection move/copy |
+| Remote Locate acceptance | Wrong portable identity must be rejected and correct identity must enable the corresponding host actions |
 
-The agent can inspect destination hashes, journal entries, order and membership
-after these gestures. No missing-file renaming, repeated layout sweep, collision
-exercise or backend validation is assigned to the owner. Library A contains the
-two verified batch imports; Drag Check remains Amber then Blue, only in Drag Source.
+Already-passed native observations remain baseline evidence. No owner spot check
+can close the missing native boundary, and changed boundary behavior requires
+engineering replay. Unsupported physical inputs remain explicitly unverified with
+their consequences recorded. Synthetic fixtures remain prepared; Library A retains
+the two verified batch imports and Drag Check remains Amber then Blue in Drag Source.
 
 ## Limits
 

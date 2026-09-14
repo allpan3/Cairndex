@@ -223,7 +223,9 @@ paths absent from the shell's last OS drop. Its grouping and deterministic
 self-drop protections do not cover the shipping HTML route. HTML file contents
 cannot prove their original library-relative location. Native routing that
 preserves internal gestures is an unresolved integration requirement; see
-[plan 3](plans/03-macos-desktop-app.md#6-drag-out--drag-in).
+[plan 3](plans/03-macos-desktop-app.md#6-drag-out--drag-in) and proposed
+[ADR-0033](adr/0033-selective-native-file-drops.md) for the framework API boundary,
+recommended extension and required implementation decision.
 
 An import selection remains a **client-owned sequential batch**, not a registry
 job: the bytes live in a browser `File` or a desktop file handle, so putting an
