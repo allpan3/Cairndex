@@ -31,7 +31,7 @@ for (const loseResponse of [false, true])
       const base = `${backend.baseUrl}/api/v1/libraries/${library.id}`
       await proxyApi(page, backend.baseUrl)
       await page.goto('/')
-      await page.getByRole('button', { name: /^Update/ }).click()
+      await page.getByRole('button', { name: /Update$/ }).click()
       const dialog = page.getByRole('dialog').filter({
         has: page.getByRole('heading', { name: 'Suggest grouping', exact: true }),
       })
@@ -59,8 +59,10 @@ for (const loseResponse of [false, true])
       await dialog.getByRole('button', { name: /^Accept / }).click()
       if (loseResponse) {
         await expect(page.getByRole('button', { name: 'Review unsaved edit 1' })).toBeVisible()
-        await page.getByRole('button', { name: 'Review unsaved edit 1' }).click()
-        await page.getByRole('button', { name: 'Retry save' }).click()
+        const review = page.getByRole('dialog', { name: 'Review metadata edit' })
+        await expect(review).toBeVisible()
+        await review.getByRole('button', { name: 'Retry save' }).click()
+        await expect(review).toBeHidden()
       }
       await expect
         .poll(async () => {

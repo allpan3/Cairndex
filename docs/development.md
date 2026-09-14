@@ -49,8 +49,11 @@ Auto-fix formatting/lint issues with `uv run ruff format .` and
 root replacement and cancellation to verify stable metadata and retry behavior.
 `tests/test_grouping_recovery.py` exits independent processes before content commit,
 after content commit and after plan retirement, then exercises API reads and exact
-retries. Startup discard is checked separately from same-run recovery. The tests
-use synthetic data and do not qualify real NAS/provider failures or power loss.
+retries. Startup discard is checked separately from same-run recovery.
+`e2e/update-recovery.spec.ts` runs Update through a real worker, accepts part of a
+review, retries a committed edit after a lost HTTP response, and verifies the
+remaining review and reload persistence. The tests use synthetic data and do not
+qualify real NAS/provider failures or power loss.
 
 ## Synthetic production replica workflows
 

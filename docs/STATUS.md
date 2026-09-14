@@ -1,10 +1,11 @@
 # Project status
 
-- Ordinary local/shared-server Update and grouping recovery is implemented at
+- Ordinary local/shared-server Update and grouping recovery is **complete for
+  the approved synthetic verification scope**, implemented at
   `13a1e77a` on `fix/library-ownership-lifecycle` from `d9fe5fda`;
-  **browser verification remains
-  INCOMPLETE**. Controlled failures reproduced wrong identity repair after an
-  unreadable subtree, symlink cataloging, undetected root replacement, implicit
+  all **four real-backend Chromium cases pass**. Controlled failures reproduced
+  wrong identity repair after an unreadable subtree, symlink cataloging,
+  undetected root replacement, implicit
   revival of trash, superseded-plan acceptance and missing-file additions.
   Scans now defer staging/repair on incomplete observations, report failed Update,
   fence the root and retain trash. Grouping commits content plus its existing
@@ -16,16 +17,20 @@
   mypy and the full suite pass: **1,651 passed**, one existing FFmpeg zscale skip.
   Frontend lint/format/typecheck, all **1,220 unit tests** and production build
   pass. OpenAPI reproduces unchanged; the existing bundle-size warning remains.
-  The staged privacy gate passes for 23 source/reference/test files, including
-  only generated synthetic fixture bytes; no runtime data or build output is staged.
-  Four browser cases were attempted but never reached the UI: sandbox Chromium
-  launch failed, both escalation reviews timed out, and the built-in browser
-  also received an automatic approval-review timeout. The two new real-backend
-  browser regressions remain unexecuted; no browser or native pass is claimed.
+  The implementation's staged privacy gate passed for 23 source/reference/test
+  files, including only generated synthetic fixture bytes; no runtime data or
+  build output was staged.
+  Browser checks verify own grouping edits, stale-review rejection after another
+  client's edit, Update partial acceptance and exact retry after a committed
+  response is lost. Both acceptance cases finish the remaining review and retain
+  two confirmed bundles after reload. Chromium ran with owner-approved escalation;
+  corrected test locators match the Update button and automatic recovery dialog.
+  The final test lint/format checks pass; no further runtime change was needed.
   Rust/native packaging and deployment gates were not run because their code is
   unchanged. No real NAS/provider, power-loss or large-library qualification is
-  implied. The next action is authorized browser verification of this same group.
-  Desktop file integration remains **INCOMPLETE and paused**. Its passing copy-only evidence below is retained; QSpace,
+  implied. This group is complete and stops at this boundary.
+  Desktop file integration remains **INCOMPLETE and paused**. Its passing copy-only
+  evidence below is retained; QSpace,
   multi-file OS drag and app-origin self-return checks remain open. ADR-0033,
   the macOS adapter, framework patches, volume-based Move and source deletion
   remain on hold. This group preserves ADR-0022 startup discard of unconfirmed
