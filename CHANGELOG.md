@@ -283,8 +283,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Copy-only imports have backend regressions for independent copied identities,
   source preservation, same-path replacement and Undo, plus component coverage
-  for batch retirement on scope teardown. Real-backend browser scenarios are
-  prepared; their execution remains blocked by approval-service timeouts.
+  for batch retirement on scope teardown. Six real-backend browser cases verify
+  File Browser collisions/Undo and bundle card/inspector destination selection,
+  Keep Both, linking and reload persistence with synthetic files.
 
 - Desktop native-drop integration has a proposed selective-capture decision,
   with verified framework limits, implementation alternatives and engineering

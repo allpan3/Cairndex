@@ -2,7 +2,7 @@
 
 - Desktop file integration (I23/I26) remains in progress on
   `fix/library-ownership-lifecycle`, starting at `fd62d59a`.
-  **Copy-only follow-through adds verified backend/component regressions without
+  **Copy-only follow-through adds verified backend/component/browser regressions without
   runtime changes.** Three new backend cases cover another-directory Copy,
   same-directory Keep Both, and same-path Replace/Undo: destination bytes match,
   copied IDs/bundles are independent, and the original identity/membership is
@@ -10,12 +10,14 @@
   queued imports or stale bundle linking. All **178 file-operation/path tests**
   and **1,220 frontend tests** pass; backend Ruff/format/mypy and full frontend
   lint/format/typecheck/build pass. The full backend suite and Rust/native build
-  were not repeated because runtime code is unchanged. Six real-backend browser
-  cases are prepared but remain unexecuted: the sandbox blocked Chromium startup
-  IPC, then both escalated approval reviews timed out. Native-control access also
-  timed out twice in automatic review. No new native results or runtime defect
-  are claimed; a further retry request is pending. The verification record keeps
-  these tool blocks separate from app behavior.
+  were not repeated because runtime code is unchanged. All **six real-backend
+  browser cases pass**, covering File Browser copy/Undo, Skip/Keep Both/Replace,
+  and bundle card/inspector destination selection, suffixing, fresh identities,
+  linking and reload persistence. Chromium ran with owner-approved escalation;
+  final test lint/format and normal typecheck pass. Native-control access still
+  timed out twice in automatic review during the approved retry, before input.
+  No new OS delivery results or runtime defect are claimed. The verification
+  record keeps these tool blocks separate from app behavior.
   **Copy-only file-manager drops are under assessment and already match the
   shipping HTML import path.** File Browser copies into its current directory;
   bundle targets choose a directory, copy with Keep Both, then link the new files.
@@ -78,9 +80,10 @@
   [The verification record](desktop-file-integration-verification.md) separates
   passed evidence from the minimal copy-only follow-through. Finder single-file
   delivery and picker batch import pass; QSpace and multi-file OS delivery remain
-  unverified. Engineering owns remaining verification, including same-library
-  copies, collision/identity outcomes, target/scope safety and independent
-  self-return behavior. Original fixture order/membership remain restored; no
+  unverified. Same-library copies and collision/identity outcomes now have
+  executed browser coverage; existing tests cover target/scope safety.
+  Engineering owns remaining native delivery and independent self-return
+  verification. Original fixture order/membership remain restored; no
   owner media or installed app changed. The whole integration group is not
   declared complete, and adapter approval is not a prerequisite for assessing
   the existing copy-only workflow.

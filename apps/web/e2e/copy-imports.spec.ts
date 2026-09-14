@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +29,13 @@ async function fixture() {
   const backend = await startBackend(join(scratch, 'server'), {
     UV_CACHE_DIR: join(scratch, 'uv-cache'),
     UV_NO_SYNC: '1',
+  })
+  let backendOutput = ''
+  backend.child.stdout.on('data', (chunk: Buffer) => {
+    backendOutput += chunk.toString()
+  })
+  backend.child.stderr.on('data', (chunk: Buffer) => {
+    backendOutput += chunk.toString()
   })
   const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/create', {
     root_path: root,
@@ -74,6 +81,7 @@ async function fixture() {
     paths,
     cleanup: async () => {
       await stopBackend(backend.child)
+      await writeFile(test.info().outputPath('backend.log'), backendOutput)
       await rm(scratch, { recursive: true, force: true })
     },
   }
@@ -98,7 +106,7 @@ function catalog(root: string): CatalogFile[] {
 async function receipts(base: string): Promise<Receipt[]> {
   const response = await fetch(`${base}/file-ops`)
   expect(response.ok).toBe(true)
-  return ((await response.json()) as { items: Receipt[] }).items
+  return ((await response.json()) as { operations: Receipt[] }).operations
 }
 
 // Use the production picker entry point to exercise browser File uploads
@@ -112,6 +120,11 @@ async function pick(page: Page, paths: string[]) {
 async function openFolder(page: Page, f: Awaited<ReturnType<typeof fixture>>, folder: string) {
   await proxyApi(page, f.baseUrl)
   await page.goto('/')
+  await browseFolder(page, folder)
+}
+
+// Re-enter the directory after startup resets the workspace to Bundles
+async function browseFolder(page: Page, folder: string) {
   await page.getByRole('tab', { name: 'Files', exact: true }).click()
   await page.locator('.file-browser__body').getByText(folder, { exact: true }).dblclick()
   await expect(page.getByRole('button', { name: 'Add Files Here' })).toBeVisible()
@@ -166,6 +179,7 @@ test('same-library folder copies keep independent identities and journal Undo @f
       original,
     )
     await page.reload()
+    await browseFolder(page, 'Destination')
     await expect(
       page.locator('.file-browser__body').getByText('Amber.png', { exact: true }),
     ).toBeVisible()
@@ -174,6 +188,7 @@ test('same-library folder copies keep independent identities and journal Undo @f
     )!
     await apiPost(f.base, `/file-ops/${receipt.id}/undo`)
     await page.reload()
+    await browseFolder(page, 'Destination')
     await expect(
       page.locator('.file-browser__body').getByText('Amber.png', { exact: true }),
     ).toHaveCount(0)
@@ -183,6 +198,7 @@ test('same-library folder copies keep independent identities and journal Undo @f
       original,
     )
   } finally {
+    await page.close()
     await f.cleanup()
   }
 })
@@ -236,6 +252,7 @@ for (const choice of ['Skip', 'Keep both', 'Replace'] as const)
       }
       expect(await readFile(f.paths[0]!)).toEqual(bytes)
     } finally {
+      await page.close()
       await f.cleanup()
     }
   })
@@ -254,7 +271,10 @@ for (const surface of ['card', 'inspector'] as const)
       await htmlDrop(surface === 'card' ? card : page.locator('aside.inspector'), f.paths)
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByRole('heading', { name: 'Copy 2 files into…' })).toBeVisible()
-      await dialog.getByRole('button', { name: 'Source', exact: true }).click()
+      await dialog
+        .getByRole('list')
+        .getByRole('button', { name: /Source$/ })
+        .click()
       await dialog.getByRole('button', { name: 'Copy into Source', exact: true }).click()
       await expect
         .poll(() => catalog(f.root).filter((file) => file.bundle_id === f.target.id).length)
@@ -281,6 +301,7 @@ for (const surface of ['card', 'inspector'] as const)
         page.locator('aside.inspector').getByText('Amber (2).png', { exact: true }),
       ).toBeVisible()
     } finally {
+      await page.close()
       await f.cleanup()
     }
   })

@@ -41,14 +41,16 @@ These checks pass with **178 backend file-operation/path tests** and **1,220
 frontend tests**. Backend Ruff/format/mypy and frontend lint/format/typecheck/build
 also pass. Runtime code is unchanged; no runtime defect was demonstrated.
 
-Six new real-backend browser cases cover File Browser copy/Undo, its three conflict
-choices, and bundle card/inspector Keep Both/linking. They pass lint/format and
-Playwright collection but
-have **not executed**: sandboxed Chromium failed startup IPC, and both escalated
-launch requests timed out in automatic approval review. Native-control access
-also timed out twice before controls loaded. A further retry request is pending.
-These are tooling blocks, not import failures. Previous native/browser results
-remain the baseline; no new OS delivery is claimed.
+All **six real-backend browser cases pass**: File Browser copy/Undo, its three
+conflict choices, and bundle card/inspector Keep Both/linking. They verify actual
+destination bytes, journal receipts, independent cataloged identities, preserved
+source membership and reload persistence. The browser uses the file picker and
+synthetic HTML drop events; these results do not qualify OS gesture delivery.
+Lint, formatting and the normal frontend typecheck pass after the final test
+corrections. Chromium executed with owner-approved escalation after sandbox IPC
+and approval-service timeouts. Native-control access still timed out twice in
+automatic approval review during the approved retry, before controls loaded.
+No new native input or delivery result is claimed.
 
 An additional standalone strict TypeScript check of the e2e graph reports an
 existing `Buffer`/`BodyInit` incompatibility in unchanged `e2e/realBackend.ts`.
@@ -59,7 +61,7 @@ changed as part of this copy-only verification.
 | --- | --- |
 | Multi-file drag payload and partial availability | Six added Rust tests exercise the production resolver against synthetic files: ordered survivors, fully unavailable selection, unsafe paths, unmapped members, changed portable identity and empty selection |
 | Repeated reorder and real concurrent conflict | Real-backend browser regression reproduces HTTP 409 before the fix and passes afterward; the existing stale pointer-reorder rejection still passes |
-| Import permissions, collisions, cancellation, cleanup and linking | Existing frontend import tests and 175 backend path/file-operation tests passed during this audit |
+| Import permissions, collisions, cancellation, cleanup and linking | Frontend import coverage, 178 backend path/file-operation tests and six real-backend copy/import browser cases pass |
 | Alternate drag sources, selection and internal reorder | Existing component/source tests cover selection-aware payloads and pointer-vs-Option behavior; full frontend suite passes |
 | Modifier changes and cancellation guard | Existing tests cover modifier polling, move/copy decisions, drag IDs, grace periods, stale completion, cancellation and failed starts |
 | Server/mapping isolation | Existing connection, settings and Rust mapping tests cover scope changes, failure recovery, identity validation and containment; native outcomes appear above |
