@@ -91,8 +91,9 @@ unscoped unprotected libraries retain anonymous access, while unscoped protected
 libraries offer pairing instead of an unusable cross-origin passphrase form. A
 desktop-only Settings page maps each server library to its local/SMB mount after
 matching the portable manifest UUID; mapped files gain safe reveal/default-app
-actions plus drag-out to Finder and reverse-mapped drag-in, while browser and
-unmapped-library behavior remain unchanged.
+actions and native file drag-out. Incoming files use journaled HTML uploads when
+write mode is enabled; trusted native reverse-mapping remains an open integration
+requirement.
 Important follow-ups include cross-filesystem repair candidates and token
 rotation/expiry policy. Bundle/container reclassification and File Browser
 write-mode drag-in copy are implemented. Job progress bars, large-library browse

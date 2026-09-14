@@ -18,20 +18,22 @@
   Direct owner confirmation resolved the initial Finder-activation approval
   block. Finder then activated the isolated production app with verified macOS
   foreground ownership. A disposable legacy library was registered through the
-  production UI. **Open in Default App passed one native case:** Preview became
-  foreground, its document URL matched the selected mapped file, and the visible
-  synthetic image matched that library's specimen. No source bytes changed.
-  Computer Use subsequently became unavailable in the task: the native control
-  tools were absent and the remaining general JavaScript runtime had no Computer
-  Use connection. Restoring that connection is the current prerequisite; the
-  launch approval remains valid. No alternate input system is used.
+  production UI. **Open in Default App passed before and after a library
+  switch:** Preview became foreground, its document URL matched the selected
+  mapped file, and the visible synthetic image distinguished the same-named
+  specimens in the two libraries. No source bytes changed. Reveal activated the
+  configured file manager and exposed the correct selected path in accessibility
+  state, but its visible target was not confirmed, so that case remains open.
+  Computer Use is connected again; no settings change was needed. Native input
+  is paused while other applications take foreground focus. The launch approval
+  remains valid; no alternate input system is used.
   Cross-application drag delivery, modifiers, cancellation/self-drops, Reveal,
-  mapped actions after switches and unavailable/wrong-identity cases remain
+  mapped actions after server switches and unavailable/wrong-identity cases remain
   **unverified**. Synthetic fixtures and the isolated package are prepared; no
   owner media or installed app is changed.
-  Resume this same group with Computer Use restored, native foreground activation and the full
-  synthetic transfer matrix, fix reproduced defects, then requalify the final
-  package. This is not completion of the desktop integration group.
+  Resume this same group with an uninterrupted native foreground session and the
+  full synthetic transfer matrix, fix reproduced defects, then requalify the
+  final package. This is not completion of the desktop integration group.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,
