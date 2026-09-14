@@ -6,17 +6,79 @@
 
 ## Blocked requirement
 
-A Finder drop of existing library files must support metadata-only grouping or
-linking without copying source bytes. External files require deployment and
-library write permission plus journaled imports. An app-originated file drag
-returning to its own window must not import a duplicate. Bundle-target drops,
-HTML/picker imports and internal reorder/collection gestures must keep working.
+A file dropped onto an explicit File Browser directory has a physical destination.
+A bundle or collection is a logical target and does not imply a directory. Drops
+must preserve that distinction, follow the owner's requested Finder-style defaults
+where supported, and obey write permission and journaling for physical changes.
+An app-originated file drag returning to its own window must not accidentally
+import a duplicate. HTML/picker imports and internal gestures must keep working.
 
 The shipping HTML `File` route supplies bytes without trustworthy source-path
 identity. Accepting a path or a claimed OS-drop token from JavaScript would not
 repair that boundary. Enabling the stock native handler consumes internal HTML
 drags. The integration group therefore remains incomplete independently of the
 already-passed transfer, Open/Reveal, picker-import and keyboard-reorder checks.
+
+## Proposed drop behavior and capability limits
+
+Finder's usual default is **move within the same filesystem/volume, copy between
+volumes**. Two directories inside one library can be on different volumes; an
+external drive can contain both source and destination on the same volume.
+Hardware labels and library membership therefore cannot select the operation.
+This policy uses ordinary filesystem identity and does not itself require AppKit.
+The adapter addresses native event/source identity and internal-drag forwarding.
+
+| Target and source | Proposed behavior | Existing capability or required work |
+| --- | --- | --- |
+| File Browser directory; source already at that exact destination | No-op by default; no duplicate or replacement of itself | Same-directory move is already skipped; compare validated identity as well as names |
+| File Browser directory; source elsewhere in this library | Same volume: move, preserving `AssetFile.id` and metadata. Different volume: copy, leaving the original identity and memberships intact | Journaled in-library move/Undo exists. A guarded in-library Copy is still needed; recommend fresh file identity using import/new-file metadata rules, without cloning logical memberships |
+| File Browser directory; source outside this library | Same volume: requested move. Different volume: copy | Journaled copy-in exists. Outside-source moves need separate source mutation authority, durable recovery and Undo; import success does not authorize deletion |
+| Bundle/collection; source already in this library, in any directory | Metadata-only linking/grouping or membership changes; no physical move from membership alone | Existing logical operations; a bundle can span directories. If physical relocation is requested, first choose an explicit destination, then apply the folder rules |
+| Bundle/collection; source outside this library | Choose a physical destination first, complete the permitted file operation, then link the resulting file | Existing bundle import chooser/link flow is reusable; do not derive a folder from the bundle title or cover |
+| Remote or unmapped physical target | No same-volume inference from client paths. Use an explicitly shown Copy/upload action where permitted, otherwise require mapping or reject | Server-local paths are not desktop paths. A UUID mapping alone does not prove volume equivalence across hosts/mount aliases |
+
+Physical writes retain deployment/library opt-in, library-format restrictions,
+ownership checks, path validation, collision choices, cancellation and journal
+Undo. Default no-op does not forbid a deliberately requested duplicate, but Copy
+must make that intent and its collision outcome explicit. Proposed file modifiers
+are Option for Copy and Command-Option for Move where permitted; capture the final
+native modifier/operation state and show the selected action. Unsupported Move must
+be explained, never silently replaced with Copy. Collection membership modifiers
+retain their existing logical meaning.
+
+### What the current journal can and cannot do
+
+- `file_ops.operations.move` accepts source and destination paths under **one**
+  validated library root, journals intent, repoints existing file rows and supports
+  Undo. Its cross-device helper copies then removes the source for an explicit
+  Move; that mechanism is not a default-policy decision to move across volumes.
+- `file_ops.imports.import_stream` journals the destination upload only. The
+  desktop importer reads source bytes and rejects known in-library sources; it
+  neither deletes external sources nor journals how to restore them. There is no
+  general in-library Copy endpoint. Relaxing that guard alone is not a copy design.
+- Moving from an ordinary outside folder needs an approved host-side source
+  journal/authority contract tied to the destination receipt, source identity,
+  crash/cancellation recovery and collision-safe Undo. Never infer deletion
+  permission from a read/drop token or ask the OS source to delete as a shortcut.
+- Moving from another Cairndex library additionally needs both libraries' write
+  gates, ownership and coordinated journal/metadata handling. Do not mutate a
+  library owned by another server or carry its IDs/memberships into another DB
+  without a transfer design. An unknown outside source is not automatically safe
+  to remove merely because no source library is mapped.
+
+**Recommendation:** retain Finder-style defaults as the proposed folder contract,
+reuse the existing in-library Move, and design in-library Copy explicitly. Keep
+logical targets metadata-only unless a physical destination is chosen. The material
+scope decision is whether this implementation also includes recovery-safe moves
+from outside the active library. Recommend a separate source-transaction design
+before enabling those moves; meanwhile offer an explicit Copy or leave Move
+unavailable, without claiming full Finder parity. This clarification does not
+approve the adapter, external deletion or cross-library transfer.
+
+Three focused backend checks passed during this proposal review: stable-identity
+move, same-directory no-op, and an explicit cross-device move with a simulated
+`EXDEV` boundary. They qualify existing operation behavior, not native delivery or
+the unimplemented volume-based default policy.
 
 ## Verified framework evidence
 
@@ -96,10 +158,10 @@ pass opaque references, relative mapped paths and display metadata to the UI.
 
 Capture the intended target once from drop coordinates: File Browser directory,
 bundle card/inspector, or global grouping surface. Ignore blocked surfaces and
-reject a target made stale by a server/library switch. Route in-library files to
-metadata-only grouping/linking; route outside files through the existing gated,
-journaled import flow, preserving destination choices, collisions, cancellation,
-Undo and post-import linking. Mixed drops use one coordinated plan, not competing
+reject a target made stale by a server/library switch. Resolve physical folder
+operations separately from logical grouping/linking using the behavior table above.
+Preserve destination choices, collisions, cancellation, Undo and post-import
+linking. Mixed drops use one coordinated plan, not competing
 dialogs. Browser and picker HTML imports remain available. Never run both native
 and HTML import paths for the same physical drop.
 
@@ -128,6 +190,10 @@ Engineering owns this work; there is no owner regression checklist. After approv
   teardown, path retargeting, missing roots/identities, and non-file forwarding.
 - Exercise metadata-only in-library linking/grouping and mixed drops against a
   real disposable backend; verify unchanged source hashes and exact memberships.
+  Exercise physical folder moves with stable IDs, same-directory no-op, copies
+  with distinct identities, volume-based defaults and final modifier overrides.
+  External/cross-library source mutation requires its separate approved recovery
+  design and crash/Undo qualification before it can be enabled.
   Exercise gated external imports, destination selection, journal/Undo, collisions,
   cancellation and recovery. Keep HTML picker/import and internal gesture regressions.
 - Build the actual packaged app, run relevant frontend/backend/Rust gates and the
@@ -154,3 +220,4 @@ or ask the owner to close an implementation gap by testing.
 - [Wry macOS source, 0.55.1](https://docs.rs/crate/wry/0.55.1/source/src/wkwebview/drag_drop.rs): synchronous superclass forwarding and path collection
 - [Wry Windows source, 0.55.1](https://docs.rs/crate/wry/0.55.1/source/src/webview2/drag_drop.rs) and [GTK source](https://docs.rs/crate/wry/0.55.1/source/src/webkitgtk/drag_drop.rs): distinct interception behavior
 - [Desktop drag contract](../plans/03-macos-desktop-app.md#6-drag-out--drag-in), [ADR-0013](0013-library-write-mode.md), [verification record](../desktop-file-integration-verification.md)
+- Current file-operation boundaries: [move and Undo](../../apps/server/src/cairndex/file_ops/operations.py), [cross-device move](../../apps/server/src/cairndex/file_ops/fsmove.py), [import](../../apps/server/src/cairndex/file_ops/imports.py), [write gate](../../apps/server/src/cairndex/file_ops/gate.py), [desktop source guard](../../apps/desktop/src-tauri/src/importer.rs)

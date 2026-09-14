@@ -245,6 +245,12 @@ handoff:
   missing framework hook, recommended native adapter and alternative runtime
   patch. Owner approval of that architecture decision precedes implementation;
   physical-gesture testing cannot replace the missing integration.
+  Its proposed folder behavior uses same-volume Move, cross-volume Copy and
+  same-directory no-op. Logical bundle/collection drops do not imply a folder;
+  an explicit physical destination selects those file-operation rules. Existing
+  in-library Move is journaled, while in-library Copy and external-source Move
+  require additional design. Native capture does not itself authorize source
+  deletion or cross-library transfer.
 
 ## 7. Native shell niceties
 

@@ -17,6 +17,12 @@
   original-handler chaining and OS-only drop authority, rather than a maintained
   framework fork. Windows requires a different forwarding design. The ADR is
   **proposed**, not accepted; no native API, dependency patch or vendor tree is added.
+  The proposed drop contract distinguishes physical folder destinations from
+  logical bundle/collection targets. Folder defaults follow filesystem/volume
+  identity: same-volume Move, cross-volume Copy, same-directory no-op. Existing
+  in-library Move preserves IDs; in-library Copy and outside-source move recovery
+  need additional design. Import currently copies only. An outside-source or
+  cross-library Move is not authorized by the native-capture proposal alone.
   The native shell restricts document navigation to the bundled app origin or
   the exact configured development origin. A reproduced outside-window drag
   followed by a layout click replaced the baseline SPA with a local image; the

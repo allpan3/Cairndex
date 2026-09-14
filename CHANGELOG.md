@@ -283,7 +283,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Desktop native-drop integration has a proposed selective-capture decision,
   with verified framework limits, implementation alternatives and engineering
-  qualification requirements. Trusted native drop routing remains incomplete.
+  qualification requirements. The proposed contract separates physical folder
+  move/copy defaults from logical bundle/collection targets and records missing
+  copy/source-move capabilities. Trusted native drop routing remains incomplete.
 
 - Accepted cloud-replica architecture and disposable causal metadata prototype, with
   deterministic two-replica delivery and crash tests. Real-library conversion,

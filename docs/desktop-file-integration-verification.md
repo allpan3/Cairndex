@@ -61,7 +61,8 @@ validation of the chosen repair and the following native outcomes:
 
 | Unqualified behavior | Practical significance |
 | --- | --- |
-| In-library Finder drops | Must group/link existing files through metadata without copying source bytes |
+| In-library Finder drops onto logical targets | Must group/link existing files without inferring a physical folder from a bundle/collection |
+| Explicit folder drops | Must distinguish same-directory no-op, same-volume Move and cross-volume Copy; moves preserve stable IDs. Copy and external-source move recovery need additional design |
 | Returning app-origin file drops | Must avoid duplicate imports while allowing later genuine Finder drops of the same files |
 | Internal drag forwarding | Collection move/copy and reorder must remain usable when native file capture is active |
 | Multi-file and alternate-source delivery | The receiving application must obtain the intended available files; unit payload tests alone cannot prove OS delivery |
