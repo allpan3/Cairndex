@@ -1,7 +1,8 @@
 # Project status
 
-- Ordinary local/shared-server Update and grouping recovery is implemented on
-  `fix/library-ownership-lifecycle` from `d9fe5fda`; **browser verification remains
+- Ordinary local/shared-server Update and grouping recovery is implemented at
+  `13a1e77a` on `fix/library-ownership-lifecycle` from `d9fe5fda`;
+  **browser verification remains
   INCOMPLETE**. Controlled failures reproduced wrong identity repair after an
   unreadable subtree, symlink cataloging, undetected root replacement, implicit
   revival of trash, superseded-plan acceptance and missing-file additions.
