@@ -21,6 +21,10 @@
   passed 57 focused frontend and 175 backend path/file-operation tests. Full
   frontend/backend suites are not repeated for this native-only change; Linux
   execution and a native development-server smoke test are not qualified.
+  Verification follow-through passes 111 additional targeted frontend tests
+  covering connections, mapping setup, import cancellation/collisions, modifiers,
+  file menus and reorder calculations. The owner-performed import has a completed
+  journal entry. These additional checks change no executable code.
   Direct owner confirmation resolved the initial Finder-activation approval
   block. Finder then activated the isolated production app with verified macOS
   foreground ownership. A disposable legacy library was registered through the
@@ -48,13 +52,22 @@
   identify a specific drag-engine timing defect.
   A contained self-drop shows the unhandled-drop guidance and retains the SPA;
   deterministic native self-drop routing remains inactive.
-  Native multi-file and alternate-source transfers, modifier and cancellation outcomes,
-  mapped actions after server switches and unavailable/wrong-identity cases remain
-  **unverified**. Synthetic fixtures and the isolated package are prepared; no
-  owner media or installed app is changed.
-  Complete the remaining synthetic transfer matrix with reliable native gestures,
-  fix reproduced defects, then requalify the final package. This is not completion
-  of the desktop integration group.
+  Packaged Open visibly rejects a missing file and a changed portable identity;
+  Open and Reveal reject an unavailable mapped root. Restoring the fixture restores
+  Open. Switching to a second disposable server shows its own unmapped library
+  without host-action buttons; switching back restores the local mapping and
+  Open targets the correct local image. A failed server connection retains the
+  local workspace, and bundle Open still targets its correct cover. The native
+  folder picker remains inconclusive under Computer Use: the selected folder
+  leaves Open disabled, and cancelling creates no mapping.
+  [The verification matrix](desktop-file-integration-verification.md) records
+  the remaining native multi-file/source, modifier, cancellation, self-drop,
+  partial-availability and remote-mapping checks with exact manual steps.
+  A synthetic two-file bundle, source/target collections, input files and separate
+  receiver folders are prepared. Original source hashes and the temporary fault
+  manifest are restored exactly; no owner media or installed app is changed.
+  Complete those manual checks, fix any reproduced defects, then requalify the
+  final package. This is not completion of the desktop integration group.
 
 - Practical replica Update follow-through is implemented and verified on
   `fix/library-ownership-lifecycle` at implementation checkpoint `6c46a62f`,

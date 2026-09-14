@@ -311,6 +311,11 @@ layer only the registry id plus a server-provided relative path. An offline
 mapped root returns **Volume not mounted**; it never falls back to a server-side
 command or an unchecked opener call.
 
+The active **This Computer** library adopts its validated local root automatically;
+removing that mapping allows it to be adopted again. Remote libraries require
+**Locate on This Mac**. The [verification matrix](desktop-file-integration-verification.md)
+separates automated coverage from the remaining native gestures.
+
 The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
 tile, the File inspector, or the bundle inspector — its cover drags the whole
 bundle, while Option-dragging one of its pointer-reorderable file rows drags
