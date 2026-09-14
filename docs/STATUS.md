@@ -15,17 +15,21 @@
   passes, retaining its existing chunk-size warning. Full frontend/backend suites
   are not repeated for this documentation checkpoint; Linux execution is not
   qualified. No new executable behavior or schema is claimed.
-  Computer Use reached the real production UI and started an isolated local
-  server with no libraries registered. Foreground observation showed that
-  window raise and direct control dispatch did not establish foreground app
-  ownership. Finder activation of that exact app was rejected by automatic
-  approval review, including a retry after clean-checkout/identity/signature
-  verification, and awaits direct owner confirmation. No alternative launch
-  route is used to bypass that rejection. Cross-application file delivery,
-  modifiers, cancellation/self-drops, mapped Open/Reveal after switches and
-  unavailable/wrong-identity cases remain **unverified**. Synthetic fixtures and
-  the isolated package are prepared; no owner media or installed app is changed.
-  Resume this same group with native foreground activation and the full
+  Direct owner confirmation resolved the initial Finder-activation approval
+  block. Finder then activated the isolated production app with verified macOS
+  foreground ownership. A disposable legacy library was registered through the
+  production UI. **Open in Default App passed one native case:** Preview became
+  foreground, its document URL matched the selected mapped file, and the visible
+  synthetic image matched that library's specimen. No source bytes changed.
+  Computer Use subsequently became unavailable in the task: the native control
+  tools were absent and the remaining general JavaScript runtime had no Computer
+  Use connection. Restoring that connection is the current prerequisite; the
+  launch approval remains valid. No alternate input system is used.
+  Cross-application drag delivery, modifiers, cancellation/self-drops, Reveal,
+  mapped actions after switches and unavailable/wrong-identity cases remain
+  **unverified**. Synthetic fixtures and the isolated package are prepared; no
+  owner media or installed app is changed.
+  Resume this same group with Computer Use restored, native foreground activation and the full
   synthetic transfer matrix, fix reproduced defects, then requalify the final
   package. This is not completion of the desktop integration group.
 
