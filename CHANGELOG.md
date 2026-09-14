@@ -286,6 +286,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   for batch retirement on scope teardown. Six real-backend browser cases verify
   File Browser collisions/Undo and bundle card/inspector destination selection,
   Keep Both, linking and reload persistence with synthetic files.
+  Packaged macOS checks verify same-directory picker Keep Both, collision Cancel,
+  and recoverable Trash/Put back with matching bytes and journal receipts.
 
 - Desktop native-drop integration has a proposed selective-capture decision,
   with verified framework limits, implementation alternatives and engineering

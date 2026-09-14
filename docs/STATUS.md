@@ -14,10 +14,16 @@
   browser cases pass**, covering File Browser copy/Undo, Skip/Keep Both/Replace,
   and bundle card/inspector destination selection, suffixing, fresh identities,
   linking and reload persistence. Chromium ran with owner-approved escalation;
-  final test lint/format and normal typecheck pass. Native-control access still
-  timed out twice in automatic review during the approved retry, before input.
-  No new OS delivery results or runtime defect are claimed. The verification
-  record keeps these tool blocks separate from app behavior.
+  final test lint/format and normal typecheck pass. Native controls are available
+  again under standing owner approval for isolated verification. Native picker
+  same-directory Keep Both and collision Cancel pass; the copy matches source
+  bytes and its import receipt is complete. Native Trash/Put back restores the
+  copy with matching bytes and an `UNDONE` trash receipt. Cleanup leaves the copy
+  recoverable in trash; all 16 pre-existing synthetic images, the original
+  manifest and three database integrity checks pass. A fresh two-file Finder
+  drag returned controller error `noWindowsAvailable` without visible import;
+  multi-file OS delivery remains unqualified. Transient native Undo was not
+  verified; restoration used Put back. No runtime defect is claimed.
   **Copy-only file-manager drops are under assessment and already match the
   shipping HTML import path.** File Browser copies into its current directory;
   bundle targets choose a directory, copy with Keep Both, then link the new files.

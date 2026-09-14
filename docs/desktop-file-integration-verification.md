@@ -12,6 +12,9 @@ bytes; simulated events and command dispatch alone do not establish that deliver
 | --- | --- |
 | Single-file drag-out and drag-in | Owner performed both gestures; independently checked destination hashes match their sources |
 | Multi-file import | Agent selected two synthetic files through the packaged app's Add Files Here picker; both destinations match their sources, both have completed `IMPORT` journal entries, and both are visible after relaunch |
+| Same-directory native picker copy | Agent chose a source already in the viewed library directory, observed the conflict prompt, and chose Keep Both; the suffixed copy is visible, matches the original bytes and has a completed import receipt |
+| Native collision cancellation | A second same-source attempt was cancelled at the conflict prompt; the app reports zero imported, no additional copy or journal entry appears, and source bytes remain unchanged |
+| Native trash restoration | The disposable copy was moved to Trash and restored with Put back; the visible restored file matches the source bytes and the trash operation is `UNDONE`. Final cleanup leaves only that copy in recoverable trash |
 | Keyboard reorder | Agent reproduced a false conflict on a second reorder, fixed the file-read basis, then performed three successful reorders in the rebuilt package; the restored order persists across view changes |
 | Mapped Open | Preview's document URL and visible image match before/after library switching, after a server round trip, and after recovery from missing files/roots |
 | Failed server switch | The local workspace remains selected; bundle Open targets its correct local cover |
@@ -48,9 +51,16 @@ source membership and reload persistence. The browser uses the file picker and
 synthetic HTML drop events; these results do not qualify OS gesture delivery.
 Lint, formatting and the normal frontend typecheck pass after the final test
 corrections. Chromium executed with owner-approved escalation after sandbox IPC
-and approval-service timeouts. Native-control access still timed out twice in
-automatic approval review during the approved retry, before controls loaded.
-No new native input or delivery result is claimed.
+and approval-service timeouts.
+
+Native controls are available again under the owner's standing approval for
+isolated verification. One further observation review timed out and its retry
+succeeded. A fresh two-file Finder drag was rejected by the controller with
+`noWindowsAvailable`; the app showed no import. The picker/collision and Trash
+outcomes above are verified, but multi-file OS delivery remains unqualified.
+After cleanup all 16 pre-existing synthetic images, the original manifest and
+three database integrity checks pass. Transient Undo controls were not exercised
+successfully in this native retry; the verified restore used persistent Put back.
 
 An additional standalone strict TypeScript check of the e2e graph reports an
 existing `Buffer`/`BodyInit` incompatibility in unchanged `e2e/realBackend.ts`.
