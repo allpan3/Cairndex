@@ -15,6 +15,7 @@ from cairndex.api.deps import (
     WriteModeRequired,
 )
 from cairndex.api.media_deps import MediaAccessDep
+from cairndex.api.media_work import run_derivative
 from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
@@ -546,7 +547,7 @@ def change_collections(
 
 # --- Thumbnails (generated lazily and cached) --------------------------------
 @router.get("/{bundle_id}/thumbnail")
-def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileResponse:
+async def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve the bundle's cover thumbnail (generated on first request).
 
     404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
@@ -555,18 +556,23 @@ def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileRespon
     connection, draining the pool (same class of bug as drag-seek on
     ``/stream``). The session closes before the image streams.
     """
-    with access.session() as db:
-        try:
-            path = thumbnails.generate_for_bundle(db, bundle_id)
-        except thumbnails.ThumbnailError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Resolve and build inside one bounded worker without occupying the pool while queued
+    def generate() -> Path | None:
+        with access.session() as db:
+            return thumbnails.generate_for_bundle(db, bundle_id)
+
+    try:
+        path = await run_derivative(generate)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
     return _thumbnail_response(path)
 
 
 @router.get("/{bundle_id}/files/{file_id}/thumbnail")
-def get_file_thumbnail(
+async def get_file_thumbnail(
     bundle_id: str, file_id: str, access: MediaAccessDep, request: Request
 ) -> FileResponse:
     if access.replica is not None:
@@ -578,10 +584,15 @@ def get_file_thumbnail(
         return FileResponse(
             thumbnail(access.replica, file_id), headers={"Cache-Control": "private, no-store"}
         )
-    with access.session() as db:
-        assert isinstance(db, Session)
-        try:
-            path = thumbnails.generate_for_file(db, file_id)
-        except thumbnails.ThumbnailError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Resolve and build inside one bounded worker without occupying the pool while queued
+    def generate() -> Path:
+        with access.session() as db:
+            assert isinstance(db, Session)
+            return thumbnails.generate_for_file(db, file_id)
+
+    try:
+        path = await run_derivative(generate)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _thumbnail_response(path)

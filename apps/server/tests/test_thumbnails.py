@@ -2,6 +2,8 @@
 
 import shutil
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -104,6 +106,85 @@ def test_thumbnail_is_deduplicated(session: Session, library_root: Path) -> None
     second = thumbnails.generate_for_file(session, file_id)  # cache hit
     assert second == first
     assert second.stat().st_mtime_ns == mtime  # not regenerated
+
+
+def test_concurrent_cold_thumbnail_requests_share_one_atomic_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    session_factory,
+    library_root: Path,
+) -> None:
+    source = library_root / "poster.png"
+    source.write_bytes(b"synthetic source")
+    bundle = bundle_service.create_bundle(session, title="b")
+    asset_file = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path=source.name,
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+
+    def generate(_source: Path, dest: Path, _kind: MediaKind, _cover_time=None) -> None:
+        nonlocal calls
+        calls += 1
+        entered.set()
+        assert release.wait(5)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"jpeg")
+
+    def request() -> Path:
+        with session_factory() as worker_session:
+            return thumbnails.generate_for_file(worker_session, asset_file.id)
+
+    monkeypatch.setattr(thumbnails, "_generate", generate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(request)
+        assert entered.wait(5)
+        second = pool.submit(request)
+        release.set()
+        assert first.result(5) == second.result(5)
+    assert calls == 1
+    assert source.read_bytes() == b"synthetic source"
+
+
+def test_library_thumbnail_pass_does_not_retain_every_file_row(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    session_factory,
+) -> None:
+    bundle = bundle_service.create_bundle(session, title="many")
+    for index in range(thumbnails._LIBRARY_PAGE_SIZE + 40):
+        bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=f"synthetic-{index:04}.jpg",
+            role=FileRole.IMAGE,
+            media_kind=MediaKind.IMAGE,
+        )
+    session.commit()
+    session.expunge_all()
+
+    with session_factory() as worker_session:
+        retained: list[int] = []
+        monkeypatch.setattr(
+            thumbnails,
+            "generate_for_file",
+            lambda _session, _file_id, force=False: Path("synthetic.jpg"),
+        )
+        summary = thumbnails.generate_for_library(
+            worker_session,
+            on_progress=lambda _processed, _total: retained.append(
+                len(worker_session.identity_map)
+            ),
+        )
+
+    assert summary == thumbnails.ThumbnailSummary(generated=296, failed=0)
+    assert max(retained) == 0
 
 
 @requires_ffmpeg

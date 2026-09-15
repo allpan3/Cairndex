@@ -4,12 +4,14 @@ Operate on the library DB selected by ``{library_id}`` via ``LibrarySession``,
 so a collection created in one library is invisible to another.
 """
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
+from cairndex.api.media_work import run_derivative
 from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.browse import CollectionCountsResponse
 from cairndex.api.schemas.common import Page
@@ -167,7 +169,7 @@ def update_collection(
 
 
 @router.get("/{collection_id}/thumbnail")
-def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> FileResponse:
+async def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve the collection's cover thumbnail — the chosen cover bundle's cover,
     or an auto-picked bundle from the subtree. 404 if the collection has no
     thumbnailable bundle; 503 if ffmpeg is unavailable.
@@ -177,14 +179,19 @@ def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> Fi
     session must not stay checked out for either the generation or the transfer
     (see ``LibraryAccess``).
     """
-    with access.session() as db:
-        bundle_id = service.resolve_cover_bundle_id(db, collection_id)
-        if bundle_id is None:
-            raise NotFoundError(f"collection {collection_id!r} has no cover")
-        try:
-            path = thumbnails.generate_for_bundle(db, bundle_id)
-        except thumbnails.ThumbnailError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Resolve and build inside one bounded worker without occupying the pool while queued
+    def generate() -> Path | None:
+        with access.session() as db:
+            bundle_id = service.resolve_cover_bundle_id(db, collection_id)
+            if bundle_id is None:
+                raise NotFoundError(f"collection {collection_id!r} has no cover")
+            return thumbnails.generate_for_bundle(db, bundle_id)
+
+    try:
+        path = await run_derivative(generate)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"collection {collection_id!r} has no cover")
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(path))

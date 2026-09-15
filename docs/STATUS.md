@@ -1,5 +1,41 @@
 # Project status
 
+- Browser/thumbnail performance and same-library worker recovery are complete for
+  the approved disposable synthetic scope on `fix/library-ownership-lifecycle`.
+  Whole-library thumbnail jobs now keyset-page IDs in groups of 256 instead of
+  retaining every eligible ORM row. Identical cold requests share one OS-locked
+  generation with atomic cache replacement; two ffmpeg slots bound encoding, and
+  four-request admission occurs before lazy media work enters the shared AnyIO
+  worker pool. A 44-task regression proves queued derivative work leaves shared
+  worker capacity available.
+  On 235,204 eligible files, enumeration peak RSS fell from 496.2 to 48.4 MiB
+  and elapsed time from 3.738 to 1.806 seconds. In an equivalent 48-request cold
+  workload, wall time fell from 2.824 to 1.432 seconds; thumbnail p50/p95/max fell
+  from 2304.5/2813.0/2817.8 to 1325.8/1424.9/1429.1 ms, while browse
+  p50/p95/max fell from 82.7/111.5/2372.2 to 10.5/18.7/62.1 ms. A separate
+  ten-round warm control served 480 thumbnails in 1.046 seconds.
+  Two visible browser clients shared one authoritative synthetic server: playback,
+  collection browsing, search and a cross-client title edit passed, and five reloads
+  reached a visible card in 194--325 ms. Update found 2,026 files and durably staged
+  2,002 provisional bundles while search remained responsive. Visible cancellation
+  stopped metadata probing at 1,750/2,026; reload restored 24 confirmed bundles plus
+  all provisional items, with no active job. Source hashes, the concurrent title
+  edit, SQLite integrity and foreign keys remained intact.
+  Backend Ruff/format/mypy and the full suite pass: **1,654 passed**, one existing
+  FFmpeg zscale skip. Focused Update/multi-client browser coverage passes nine cases.
+  The real-backend storyboard case passes; the MKV/remux case exceeded its initial
+  30-second suite budget after reaching visible playback, then passed alone in
+  4.7 seconds including HLS-session deletion and backend cleanup. No player change
+  was warranted. Detailed measurements and boundaries are in
+  [performance](performance.md).
+  This work does not qualify native desktop startup, remote browsers, network mounts,
+  multi-terabyte media, real providers or NAS deployment. The slowest 100,000-bundle
+  aggregate/descendant queries and folder pagination remain measurement-driven future
+  work. No owner library, deployment, publication, PR or release is included.
+  Desktop file integration remains **INCOMPLETE and paused**: QSpace, multi-file OS
+  drag and app-origin self-return, native adapters/framework patches, volume-based
+  Move and source deletion remain outside this group.
+
 - Ordinary local/shared-server Update and grouping recovery is **complete for
   the approved synthetic verification scope**, implemented at
   `13a1e77a` on `fix/library-ownership-lifecycle` from `d9fe5fda`;

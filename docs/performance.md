@@ -128,6 +128,85 @@ comfortably interactive:
 † Remeasured after descendant rollup on 100,000 bundles / 300,212 files and
 1,000 collections.
 
+## Browser and thumbnail-concurrency audit (2026-09-14)
+
+This audit used disposable synthetic libraries on an Apple Silicon laptop with
+local SSD storage. Query timings are repeated in-process service calls after the
+library is open; the browser checks used the Vite client over loopback against
+one uvicorn worker. They do not measure NAS latency or native desktop startup.
+
+### Current metadata scale
+
+The current query benchmark used one to five files per bundle. Values are
+medians in milliseconds; each column names its sample count.
+
+| bundles / files | samples | browse first | deep page | view counts | collection counts | Smart preview |
+| --------------- | ------: | -----------: | --------: | ----------: | ----------------: | ------------: |
+| 1,000 / 2,981 | 100 | 6.73 | 7.09 | 5.78 | 1.04 | 5.41 |
+| 10,000 / 30,060 | 200 | 23.97 | 28.42 | 46.34 | 15.13 | 12.87 |
+| 100,000 / 300,066 | 20 | 235.08 | 290.57 | 535.81 | 585.44 | 118.84 |
+
+At 100,000 bundles, direct collection and tag filters remained at 5.49 and
+3.74 ms. Including descendants raised those medians to 116.04 and 307.06 ms.
+These results qualify metadata queries only: the 100,000-bundle fixture has no
+source media and was not rendered as a 100,000-item browser UI.
+
+With a warm server and 24 real synthetic 1080p H.264 videos, five browser
+reloads reached a visible catalog card in 194, 201, 249, 308 and 325 ms
+(median 249 ms). The browser visibly opened the 24-item collection, narrowed a
+search to one item, decoded changing video frames and received an edit made by a
+second client while the viewer remained open. Automation elapsed time is not
+used as application latency; only the locator-ready reload samples above are
+timed.
+
+### Large thumbnail job memory
+
+A 100,000-bundle library contained 235,204 eligible thumbnail files. With media
+generation stubbed so the measurement isolates enumeration, retaining every ORM
+row raised peak RSS by 496.2 MiB and took 3.738 s. Enumerating IDs in 256-row
+keyset pages raised peak RSS by 48.4 MiB and took 1.806 s. Progress still reports
+every 20 files. Both measurements ran in fresh processes and used macOS peak-RSS
+accounting.
+
+### Concurrent cold thumbnails
+
+The contention workload issues 48 simultaneous requests: two clients each ask
+for the same 24 cold video covers while another thread continuously probes the
+browse endpoint. Cache artifacts are absent at the start of each compared run;
+ffmpeg generation is real. All thumbnail responses were 200.
+
+| measure | before | bounded and deduplicated |
+| ------- | -----: | -----------------------: |
+| thumbnail wall time | 2.824 s | 1.432 s |
+| thumbnail p50 / p95 / max, 48 requests | 2304.5 / 2813.0 / 2817.8 ms | 1325.8 / 1424.9 / 1429.1 ms |
+| browse p50 / p95 / max | 82.7 / 111.5 / 2372.2 ms (5 probes) | 10.5 / 18.7 / 62.1 ms (37 probes) |
+
+Identical cold requests now share one OS-locked generation and recheck the cache
+after acquiring the lock. ffmpeg writes a temporary artifact that atomically
+replaces the destination. At most two thumbnails encode simultaneously, and at
+most four lazy media requests enter the shared worker pool, leaving request and
+database-session capacity for browsing, edits, playback and job control.
+
+As a separate warm-cache control, ten consecutive rounds produced 480 successful
+thumbnail responses in 1.046 s. Thumbnail p50/p95/max was
+82.3/106.6/127.9 ms; 17 concurrent browse probes measured 40.8/70.5/93.4 ms.
+This sustained ten-round workload records warm behavior and is not the paired
+comparison for the single cold batch above.
+
+### Same-library worker recovery
+
+Two browser clients also shared a 2,026-file synthetic library during Update.
+The scan durably staged 2,002 new provisional bundles and one grouping proposal;
+the metadata worker remained searchable and visibly cancellable. Cancellation
+completed at 1,750/2,026, no job remained active, and reload restored the 24
+confirmed bundles plus 2,002 unbundled provisional files. The concurrent title
+edit, all source bytes, SQLite integrity and foreign keys remained intact.
+
+The audit does not qualify a production desktop build, remote browsers, network
+mounts, multi-terabyte source media, provider replicas or NAS deployment. Folder
+pagination and the slowest 100,000-bundle aggregate/descendant queries remain
+future measurement-driven work rather than changes in this fix.
+
 ## Storyboard generation (2026-07-30)
 
 Trickplay sheets are the most expensive derived artifact Cairndex produces, and

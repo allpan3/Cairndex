@@ -145,6 +145,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Concurrent cold thumbnail requests share one atomic generation and cannot fill
+  the shared request worker pool. Bounded ffmpeg concurrency preserves browse,
+  edit, playback and job-control capacity while temporary outputs prevent partial
+  cache files.
+- Whole-library thumbnail jobs enumerate IDs in bounded keyset pages instead of
+  retaining every eligible ORM row for the duration of the job.
+
 - Ordinary-library Update defers new staging and identity repair after incomplete
   walks, reports a retryable failed scan, ignores media symlinks, rejects roots
   replaced during scanning and preserves journaled trash identities.
@@ -288,6 +295,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   email addresses in commit messages remain blocked.
 
 ### Internal
+
+- Synthetic performance coverage records metadata-query scaling through 100,000
+  bundles, cold and warm two-client thumbnail latency, bounded thumbnail-job
+  memory, browser reload/collection/search/playback/edit behavior and Update
+  cancellation integrity. Regressions cover atomic cold-cache deduplication,
+  bounded ORM retention and media admission before shared worker use.
 
 - Copy-only imports have backend regressions for independent copied identities,
   source preservation, same-path replacement and Undo, plus component coverage
