@@ -11,6 +11,20 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## NAS verification in progress
+
+The approved isolated NAS/storage audit starts from `0fe31a48` on the existing
+branch. The owner library is inspected through an enforced read-only mount;
+SQLite accounting uses a stable private copy. All source writes use disposable
+fixtures. The production deployment and installed desktop app are unchanged.
+
+Real Mac SMB testing reproduced unsupported hard links and a cached-session
+failure after the first refused request. Session factories retain a scalar
+library ID across registry rollback/detachment. Replace probes staged bytes
+before displacement and reports unsupported links explicitly. Focused lifecycle
+and replacement regressions pass 45 cases; final NAS redeployment, recovery and
+full validation receipts remain in progress. This is not power-loss qualification.
+
 ## Approved UX refinement
 
 Inspector density, narrow-window controls and shortcut discoverability are

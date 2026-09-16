@@ -197,6 +197,29 @@ def test_failed_publish_restores_original(
     assert operations.list_trash(session) == []
 
 
+# Unsupported filesystems refuse publication and restore displaced bytes before responding
+@pytest.mark.parametrize("replace", [False, True])
+def test_unsupported_hard_links_refuse_copy_safely(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch, replace: bool
+) -> None:
+    import errno
+
+    row = decorated_file(session, library_root)
+
+    def unsupported(source, destination):
+        raise OSError(errno.EOPNOTSUPP, "synthetic unsupported hard link")
+
+    monkeypatch.setattr(replacement.os, "link", unsupported)
+    with pytest.raises(ConflictError, match="hard links required for safe copy imports"):
+        upload(session, library_root, b"incoming", name="clip.mkv" if replace else "copy.mkv")
+    assert (library_root / "clip.mkv").read_bytes() == b"old synthetic video"
+    assert not (library_root / "copy.mkv").exists()
+    assert row.note == "Destination note"
+    assert operations.list_trash(session) == []
+    assert list(imports.staging_dir(library_root).iterdir()) == []
+    assert journal.list_operations(session, limit=1)[0].status is FileOpStatus.FAILED
+
+
 # Simulate a process interruption without invoking normal exception cleanup
 class Interrupted(BaseException):
     pass

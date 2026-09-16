@@ -23,6 +23,7 @@ all three worse to get a round trip back.
 
 import asyncio
 import contextlib
+import errno
 import os
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
@@ -227,13 +228,12 @@ async def import_stream(
         ),
         size_bytes=written,
     )
-    backup = (
-        replacement.prepare_backup(session, operation, key="replaced_operation_id")
-        if replacing
-        else None
-    )
+    backup = None
     try:
-        if backup is not None:
+        if replacing:
+            # Refuse unsupported storage before moving the original into Trash
+            replacement.check_hard_links(staging)
+            backup = replacement.prepare_backup(session, operation, key="replaced_operation_id")
             replacement.stash(session, root, backup)
         # Refuse a newcomer instead of overwriting bytes that have no Trash receipt
         if os.path.lexists(destination):
@@ -248,6 +248,11 @@ async def import_stream(
             replacement.restore_backup(session, root, backup)
         _discard(staging)
         journal.fail(session, operation, _reason(error))
+        if isinstance(error, OSError) and error.errno in {errno.ENOTSUP, errno.EOPNOTSUPP}:
+            raise ConflictError(
+                "This filesystem does not support the hard links required for safe copy imports. "
+                "Use a server with local access to storage that supports hard links."
+            ) from error
         raise ConflictError(f"Could not save {filename!r} into the library.") from error
 
     linked = replacement.refresh_file(session, root, operation)

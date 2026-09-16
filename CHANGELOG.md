@@ -184,6 +184,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Cached library sessions retain a stable library ID across failed registry
+  transactions, so one refused request cannot break subsequent requests or release.
+- Copy-import Replace checks staging-filesystem hard-link support before moving
+  the original. Unsupported storage returns an actionable refusal without
+  displacing the destination.
+
 - Concurrent cold thumbnail requests share one atomic generation and cannot fill
   the shared request worker pool. Bounded ffmpeg concurrency preserves browse,
   edit, playback and job-control capacity while temporary outputs prevent partial

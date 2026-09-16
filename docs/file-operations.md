@@ -24,8 +24,10 @@ retain. Uploads cannot replace directories or symlink entries.
 
 The complete upload is staged before the original moves. Publication uses a
 same-filesystem hard link followed by staging cleanup, so a newcomer at the
-destination cannot be overwritten. Filesystems that refuse hard links reject
-publication; failed rollback leaves the original recoverable in Trash. The journal
+destination cannot be overwritten. Replace probes hard-link support using staged
+bytes before moving the original. Unsupported storage returns a structured
+refusal and leaves the original in place. A later publication or rollback failure
+can still leave the original recoverable in Trash. The journal
 references a separate Trash operation before the backup move. That Trash entry
 holds the old bytes with no catalog-file ownership; the active destination retains its row.
 Empty Trash removes the backup, disables its Undo, and does not delete the active

@@ -94,6 +94,9 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
         # Create/populate the FTS5 search index + maintenance triggers if missing.
         ensure_search_schema(engine)
 
+        # Cached sessions outlive the registry transaction, including rollback expiry
+        library_id = library.id
+
         # Sessions pin the engine even outside HTTP or a job context
         class OwnedSession(Session):
             """Retain admission until the checked-out connection is closed"""
@@ -103,13 +106,13 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
                     raise LibraryReleasedError(
                         "This library session was closed; reopen a fresh session"
                     )
-                lifecycle.retain(library.id)
+                lifecycle.retain(library_id)
                 self._admitted = True
                 try:
                     super().__init__(**kwargs)  # type: ignore[arg-type]
                 except BaseException:
                     self._admitted = False
-                    lifecycle.leave(library.id)
+                    lifecycle.leave(library_id)
                     raise
 
             def close(self) -> None:
@@ -118,7 +121,7 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
                 finally:
                     if self._admitted:
                         self._admitted = False
-                        lifecycle.leave(library.id)
+                        lifecycle.leave(library_id)
 
         maker: sessionmaker[Session] = sessionmaker(
             bind=engine, class_=OwnedSession, expire_on_commit=False, future=True

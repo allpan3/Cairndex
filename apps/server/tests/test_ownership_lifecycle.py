@@ -509,6 +509,24 @@ def test_old_session_factory_cannot_reopen_retired_engine(
         assert session.execute(text("SELECT 1")).scalar() == 1
 
 
+# Cached content sessions must outlive a failed request's registry transaction
+@pytest.mark.parametrize("open_before_rollback", [False, True])
+def test_session_factory_survives_expired_registry_record(
+    registry_session: Session, library_id: str, open_before_rollback: bool
+) -> None:
+    library = services.get_library(registry_session, library_id)
+    maker = library_engine.get_library_sessionmaker(library)
+    session = maker() if open_before_rollback else None
+    registry_session.rollback()
+    registry_session.expunge(library)
+    if session is not None:
+        session.close()
+    with maker() as fresh:
+        assert fresh.execute(text("SELECT 1")).scalar() == 1
+    lifecycle.close(library_id, timeout=0)
+    assert not get_lease_manager().holds(library_id)
+
+
 def test_failed_release_status_does_not_claim_completed_handoff(
     isolated_client: TestClient, library_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

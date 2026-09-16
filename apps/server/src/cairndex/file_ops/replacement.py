@@ -217,6 +217,14 @@ def embedded_snapshot(session: Session, file_id: str | None) -> list[dict[str, A
     )
 
 
+# Probe only staged bytes; interrupted probes remain in the swept staging directory
+def check_hard_links(staging: Path) -> None:
+    check_work_ownership()
+    probe = staging.with_suffix(".link")
+    os.link(staging, probe)
+    probe.unlink()
+
+
 # Commit a staged regular file without an overwrite race against an external newcomer
 def publish(source: Path, destination: Path) -> None:
     check_work_ownership()
