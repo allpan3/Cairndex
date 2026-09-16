@@ -55,6 +55,37 @@ async function open(page: Page, f: Awaited<ReturnType<typeof fixture>>) {
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Amber')
 }
 
+test('ordinary LAN HTTP saves without secure-context APIs @fullstack', async ({
+  browser,
+  baseURL,
+}) => {
+  const f = await fixture()
+  const page = await browser.newPage()
+  try {
+    // Serve the real app at a synthetic insecure origin without altering browser capabilities
+    await page.route('http://cairndex.invalid/**', async (route) => {
+      const url = new URL(route.request().url())
+      const response = await route.fetch({ url: `${baseURL}${url.pathname}${url.search}` })
+      await route.fulfill({ response })
+    })
+    await proxyApi(page, f.baseUrl)
+    await page.goto('http://cairndex.invalid')
+    expect(await page.evaluate(() => window.isSecureContext)).toBe(false)
+    expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe('undefined')
+    await page.locator('.card').filter({ hasText: 'Amber' }).first().click()
+    await page.getByLabel('Title', { exact: true }).fill('LAN edit')
+    await page.getByLabel('Title', { exact: true }).press('Enter')
+    await expect
+      .poll(async () => (await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).title)
+      .toBe('LAN edit')
+    await page.reload()
+    await expect(page.locator('.card').filter({ hasText: 'LAN edit' })).toBeVisible()
+  } finally {
+    await page.close()
+    await f.cleanup()
+  }
+})
+
 test('two clients preserve disjoint drafts and exact conflict choices @fullstack', async ({
   browser,
 }) => {

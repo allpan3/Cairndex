@@ -17,6 +17,8 @@ identity is a random 16–100 character ASCII identifier; reuse it only with ide
 method, URL, body, basis and review headers. An exact retry returns the committed
 response. Reusing an identity with different bytes returns 409. Missing or invalid
 preconditions return 428; old clients may browse but must upgrade before saving.
+Clients generate 128-bit cryptographic edit identities on private LAN HTTP as
+well as HTTPS and desktop origins; secure-context-only UUID APIs are not required.
 The current client also refuses to send authored requests without a valid basis.
 Optional entity `If-Match` checks remain an additional compatibility constraint.
 

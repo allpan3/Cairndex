@@ -25,6 +25,14 @@ before displacement and reports unsupported links explicitly. Focused lifecycle
 and replacement regressions pass 45 cases; final NAS redeployment, recovery and
 full validation receipts remain in progress. This is not power-loss qualification.
 
+Plain LAN HTTP browser testing also reproduced metadata saves failing before a
+request because the origin lacks `crypto.randomUUID`. Edit IDs use 128-bit
+cryptographic random bytes available on these origins. The insecure-origin
+browser regression and all 17 affected real-backend cases pass. Frontend lint,
+formatting, typecheck, 1,229 unit tests and production build pass. Backend full
+validation passes 1,713 tests with one existing skip. Final deployed verification
+and cleanup remain in progress.
+
 ## Approved UX refinement
 
 Inspector density, narrow-window controls and shortcut discoverability are

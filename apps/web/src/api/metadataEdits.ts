@@ -38,6 +38,13 @@ export const editStorageWarning = () => storageFailures.has(storageKey())
 const validBasis = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-f0-9]{32}:\d+:[a-f0-9]{32}:\d+$/.test(value)
 
+// Cryptographic operation identities also work on private LAN HTTP origins
+function editId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
+}
+
 // Draft requests remain private and are isolated by durable server/library identity
 function storageKey(): string {
   return `cairndex.metadataEdits:${getConnectionScopeKey() ?? 'web'}:${getActiveLibraryId() ?? ''}`
@@ -162,13 +169,13 @@ export async function chooseEdit(edit: PendingEdit, choice: Choice): Promise<voi
       ...edit,
       basis: edit.recovery.basis,
       recovery: undefined,
-      operation: crypto.randomUUID(),
+      operation: editId(),
     }
   if (choice === 'reviewed' && edit.conflict?.reviewable) {
     edit = {
       ...edit,
       reviewed: { ...edit.reviewed, [edit.conflict.unit]: edit.conflict.revision },
-      operation: crypto.randomUUID(),
+      operation: editId(),
     }
   }
   try {
@@ -321,12 +328,12 @@ async function runEdit<T>(initial: PendingEdit): Promise<T> {
       throw new MetadataEditError(message, choice === 'discard')
     }
     if (choice === 'reviewed' && recovery)
-      edit = { ...edit, basis: recovery.basis, recovery: undefined, operation: crypto.randomUUID() }
+      edit = { ...edit, basis: recovery.basis, recovery: undefined, operation: editId() }
     if (choice === 'reviewed' && conflict?.reviewable) {
       edit = {
         ...edit,
         reviewed: { ...edit.reviewed, [conflict.unit]: conflict.revision },
-        operation: crypto.randomUUID(),
+        operation: editId(),
       }
     }
   }
@@ -346,12 +353,12 @@ export function sendMetadata<T>(
   )
   if (pending) return executeEdit<T>(pending)
   return executeEdit<T>({
-    id: crypto.randomUUID(),
+    id: editId(),
     url,
     method,
     body: encoded,
     basis,
-    operation: crypto.randomUUID(),
+    operation: editId(),
     reviewed: {},
     message: '',
   })

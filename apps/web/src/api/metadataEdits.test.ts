@@ -90,6 +90,21 @@ test('completed orphan requests clear only their matching scoped draft generatio
   expect(JSON.parse(localStorage.getItem(newerKey)!)).toMatchObject({ value: 'newer draft' })
 })
 
+test('LAN HTTP edits use cryptographic identities without secure-context randomUUID', async () => {
+  vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
+  const fetcher = vi.fn().mockImplementation(async () => reply({ id: 'saved' }))
+  vi.stubGlobal('fetch', fetcher)
+  await sendMetadata(url, 'PATCH', { title: 'LAN edit' }, opening)
+  await sendMetadata(url, 'PATCH', { title: 'Another edit' }, opening)
+  const identities = fetcher.mock.calls.map(([, options]) =>
+    new Headers(options.headers).get('X-Cairndex-Operation'),
+  )
+  expect(identities).toHaveLength(2)
+  identities.forEach((id) => expect(id).toMatch(/^[a-f0-9]{32}$/))
+  expect(new Set(identities).size).toBe(2)
+  expect(pendingEdits()).toHaveLength(0)
+})
+
 test('missing baselines cannot reach an old server that would accept unversioned writes', async () => {
   const fetcher = vi.fn().mockResolvedValue(reply({ id: 'unexpected' }))
   vi.stubGlobal('fetch', fetcher)

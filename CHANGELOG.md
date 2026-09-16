@@ -184,6 +184,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Shared-server metadata edits work from private LAN HTTP browser origins,
+  using cryptographic request IDs without requiring secure-context UUID APIs.
 - Cached library sessions retain a stable library ID across failed registry
   transactions, so one refused request cannot break subsequent requests or release.
 - Copy-import Replace checks staging-filesystem hard-link support before moving
