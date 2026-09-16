@@ -26,7 +26,11 @@ export function ViewOptions<T extends string>(props: ViewOptionsProps<T>) {
         title="View options: layout and item size"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={(event) => {
+          // WebKit does not focus buttons on pointer activation
+          event.currentTarget.focus({ preventScroll: true })
+          setOpen(true)
+        }}
       >
         •••
       </button>

@@ -1615,7 +1615,9 @@ button {
 .list-row {
   position: absolute;
   display: grid;
-  grid-template-columns: 56px 1fr 110px 70px 90px 110px;
+  /* Preserve a readable name while secondary columns scroll horizontally */
+  min-width: 704px;
+  grid-template-columns: 56px minmax(180px, 1fr) 110px 70px 90px 110px;
   align-items: center;
   gap: 12px;
   padding: 0 14px;
@@ -6116,6 +6118,8 @@ code {
    are also used (with a different layout) by the bundle inspector. */
 .file-table {
   font-size: 13px;
+  /* Keep 180px for names beside the fixed metadata columns and their gaps */
+  min-width: 838px;
 }
 .file-table__head,
 .file-table .file-row {

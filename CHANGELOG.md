@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Pointer-opened View options and Settings dialogs return focus to their
+  buttons in the macOS webview as well as the browser.
+- Narrow bundle and file lists preserve readable name columns while secondary
+  metadata columns scroll horizontally.
+
 - Inspectors use compact bundle covers and aligned file facts; file actions
   precede expandable technical details and full paths. Cover Play is visible on
   keyboard focus. Existing editing and selection behavior is retained.

@@ -44,6 +44,8 @@ shrink above their existing minimum widths to reserve 400 pixels for the listing
 widening the window restores the preferred widths. Panel visibility, selection,
 layout and item-size preferences remain independent. The desktop minimum is
 960 × 640; browser checks also cover 800-pixel-wide windows.
+List layouts preserve a readable name column; additional metadata columns scroll
+horizontally when the listing is narrow.
 
 When item sizing leaves the toolbar, **View options** exposes layout and item
 size in a keyboard-accessible dialog. At narrower widths it also replaces the

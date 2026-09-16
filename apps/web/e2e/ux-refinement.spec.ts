@@ -108,6 +108,11 @@ for (const width of [800, 960, 1200]) {
     await expect(dialog).toBeHidden()
     await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeFocused()
     await expect(selected).toHaveAttribute('aria-selected', 'true')
+    const name = selected.locator('.list-row__title')
+    expect(await name.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(
+      180,
+    )
+    await expect(name).toBeInViewport({ ratio: 1 })
     await page.setViewportSize({ width: 1440, height: 900 })
     await expect
       .poll(() => page.locator('.sidebar').evaluate((el) => el.getBoundingClientRect().width))
@@ -132,6 +137,11 @@ test('file facts, actions, optional details and narrow view controls remain acce
   await page.getByRole('row', { name: new RegExp(folderName) }).dblclick()
   await page.getByRole('row', { name: /Study.png/ }).click()
   await toolbarFits(page)
+  const filename = page.getByRole('row', { name: /Study.png/ }).locator('.file-row__name')
+  expect(await filename.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(
+    180,
+  )
+  await expect(filename).toBeInViewport({ ratio: 1 })
   const inspector = page.locator('.inspector')
   await expect(inspector.getByRole('button', { name: 'Locate in Bundle Browser' })).toBeInViewport({
     ratio: 1,

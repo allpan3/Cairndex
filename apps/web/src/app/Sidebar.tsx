@@ -967,7 +967,14 @@ export function Sidebar({
             {maintenanceError}
           </div>
         )}
-        <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
+        <button
+          className="nav-item sidebar__settings"
+          onClick={(event) => {
+            // Preserve the dialog return target after WebKit pointer activation
+            event.currentTarget.focus({ preventScroll: true })
+            onOpenSettings()
+          }}
+        >
           <span className="nav-item__icon">
             <IconSettings />
           </span>

@@ -27,6 +27,7 @@ function renderSidebar(overrides: Overrides = {}) {
 }
 
 interface Overrides {
+  onOpenSettings?: () => void
   collectionId?: string | null
   newCollectionRequest?: { parentId: string | null } | null
   onNewCollectionHandled?: () => void
@@ -49,7 +50,7 @@ function renderSidebarWith(collections: CollectionRead[], overrides: Overrides =
       libraryId="lib1"
       onChangeLibrary={() => undefined}
       onManageLibraries={() => undefined}
-      onOpenSettings={() => undefined}
+      onOpenSettings={overrides.onOpenSettings ?? (() => undefined)}
       onUpdateLibrary={() => undefined}
       onScanFiles={() => undefined}
       onProbe={() => undefined}
@@ -77,6 +78,15 @@ function renderSidebarWith(collections: CollectionRead[], overrides: Overrides =
   )
   return onCreateCollection
 }
+
+test('pointer activation focuses Settings before opening its dialog', () => {
+  const onOpenSettings = vi.fn(() => {
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
+  })
+  renderSidebar({ onOpenSettings })
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  expect(onOpenSettings).toHaveBeenCalledOnce()
+})
 
 /** Sidebar with a caller-controlled pending request and no clear callback. */
 function RequestHarness({
