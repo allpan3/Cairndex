@@ -100,7 +100,9 @@ write mode is enabled. Desktop file integration is **incomplete and paused**:
 QSpace, multi-file OS drag delivery and app-origin self-return remain unqualified.
 [Copy-import Replace](docs/file-operations.md) keeps destination metadata and
 identity, retains old bytes in Trash, and refreshes derived media; Undo restores
-those bytes. Ordinary copies retain independent identities.
+those bytes. Ordinary copies retain independent identities. Explicit Rename/Move
+Replace keeps the source's identity and metadata at its new path, preserves the
+displaced file and its metadata in Trash, and returns both on Undo.
 Copy-only imports do not require native reverse-mapping; ADR-0033 and its adapter,
 framework patch and volume-based Move proposals remain on hold.
 Important follow-ups include cross-filesystem repair candidates and token

@@ -42,7 +42,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileOpStatus, FileOpType
-from cairndex.file_ops import fsmove, imports, journal, replacement, trash
+from cairndex.file_ops import fsmove, imports, journal, relocation, replacement, trash
 from cairndex.file_ops.operations import mark_rows_trashed, repoint_linked_rows
 from cairndex.file_ops.paths import resolve_writable
 from cairndex.persistence.models import FileOperation
@@ -92,6 +92,14 @@ def reconcile_pending(session: Session, root: Path) -> ReconcileReport:
 
 def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
     """Return whether the operation turned out to have completed on disk."""
+    if operation.payload.get("relocation_protocol") == 1:
+        relocation.recover(session, root, operation)
+        return operation.status in (FileOpStatus.DONE, FileOpStatus.UNDONE)
+    if operation.payload.get("relocation_parent") and operation.payload.get("restore_started"):
+        from cairndex.file_ops.operations import restore
+
+        restore(session, root, operation_id=operation.id)
+        return operation.status is FileOpStatus.UNDONE
     if operation.op is FileOpType.MKDIR:
         destination = operation.payload.get("destination")
         if destination and resolve_writable(root, destination).is_dir():

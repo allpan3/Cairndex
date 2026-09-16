@@ -11,6 +11,46 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+Rename/Move Replace uses the owner-approved source-identity rule: the incoming
+file retains all metadata at the destination, and the displaced file and its
+metadata remain in recoverable Trash. Undo returns both files without merging
+metadata or reverting later edits. ADR-0013 §4–5 and the
+[file-operations reference](file-operations.md) distinguish this from copy-import
+Replace, which retains destination identity. New versioned receipts recover
+interrupted displacement, movement, Undo and Put back; old receipts retain their
+historical semantics.
+
+This group is complete for synthetic local verification on
+`fix/library-ownership-lifecycle` from `6d615e44`. Backend Ruff, formatting, mypy
+and the full suite pass: **1,709 tests**, one existing skip. The final focused
+file-operation/HLS suite passes **271 tests**, including 36 Rename/Move metadata,
+linked/unlinked, directory, partial-batch, refusal, Trash and interruption cases;
+eight use separate-process exits. All **nine real-backend Chromium cases pass**,
+including explicit Rename/Move, source thumbnail continuity, visible Undo and
+metadata edits after movement. The initial browser launch was sandbox-blocked;
+the authorized rerun exposed a test-only SQLite enum casing mismatch, corrected
+before the final pass. Frontend lint, formatting, typecheck, **1,221 tests** and
+build pass; the existing bundle-size warning remains. All 151 local reference
+targets validate. Browser screenshots were checked using synthetic data and remain
+local, outside the source commit.
+
+No public schema changed, so OpenAPI/frontend types need no regeneration.
+Rust/native and Docker gates were not repeated because host/deployment code is
+unchanged. There is no owner-data mutation, publication, desktop integration or
+deployment. NAS/power-loss and cross-device interruption qualification remain
+separate. Copy-import publication still requires filesystem hard-link support.
+The 15-file source/test/reference slice passes the local staged privacy gate.
+Cumulative inherited privacy and volume blockers remain; the owner chose to retain
+inherited history unchanged. The next unapproved group is UX refinement; this
+checkpoint does not authorize starting it.
+
+Current behavior is described in the topic references linked from that ledger.
+The receipts below preserve their original dates, branches, tests and unresolved
+observations; older “current,” “next” and “in progress” labels are historical, not
+authorization or the current work queue.
+
+## Historical validation receipts
+
 Copy-import Replace/Undo retains destination identity and authored metadata,
 keeps old bytes in recoverable Trash, and refreshes byte-derived data. The
 [contract](file-operations.md) and [audit ledger](audit-status.md) distinguish
@@ -35,13 +75,6 @@ and bulk-volume limits; history is retained under the owner's decision. No push,
 PR, release, deployment or owner-library mutation is included. Rust/native and
 Docker gates are not repeated because no host or deployment behavior changed.
 NAS, power-loss and OS drag-delivery qualification remain outside this group.
-
-Current behavior is described in the topic references linked from that ledger.
-The receipts below preserve their original dates, branches, tests and unresolved
-observations; older “current,” “next” and “in progress” labels are historical, not
-authorization or the current work queue.
-
-## Historical validation receipts
 
 Documentation reconciliation checks: 320 local Markdown file/anchor links, the
 published JSON filter example against disposable SQLite, 36 filter/API regressions

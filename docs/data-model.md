@@ -684,8 +684,12 @@ payload records `retained_file_id`, staged/past filesystem observations and
 original embedded subtitle records. A journaled inverse records its own Trash
 receipt before moving replacement bytes; recovery can finish either boundary.
 No schema migration is required. [Replace and Undo](file-operations.md) describes
-the metadata and derived-cache contract; Rename/Move retain a separate identity
-disagreement.
+the metadata and derived-cache contract. Rename/Move replacement receipts carry
+`relocation_protocol: 1`, source/destination observations and linked Trash IDs
+committed before displacement. Their `moves` entries retain the source IDs and
+Undo progress; displaced rows retain their IDs in Trash. `undo_started` and a
+Trash receipt's `restore_started` allow an interrupted inverse to finish.
+Legacy receipts remain on their original interpreter.
 
 Renaming updates `AssetFile.relative_path` (and the derived `directory_path`)
 in the same transaction, **preserving `AssetFile.id`**, which is what carries

@@ -43,6 +43,16 @@ uv run pytest                  # tests
 Auto-fix formatting/lint issues with `uv run ruff format .` and
 `uv run ruff check --fix .`.
 
+## File replacement regressions
+
+`tests/test_move_replacement.py` covers source-preserving Rename/Move collisions,
+both files' metadata, linked/unlinked combinations, directory replacement, partial
+batches, Trash restoration and process exits across Move/Undo. The existing
+`tests/test_import_replacement.py` covers destination-preserving copy-imports.
+`e2e/copy-imports.spec.ts` runs both contracts through isolated real backends and
+the shared browser, including visible Undo and metadata continuity. All fixtures
+are synthetic; no owner library is used.
+
 ## Ordinary-library recovery regressions
 
 `tests/test_scan_recovery.py` uses disposable roots and controlled listing failures,

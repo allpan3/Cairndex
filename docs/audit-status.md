@@ -88,11 +88,14 @@ and invalidates derived media. Same-path imports follow this explicit Replace
 contract; ordinary distinct copies and Keep Both remain independent. See
 [Replace and Undo](file-operations.md) for cancellation, recovery and coverage.
 
-Rename/Move retain the source ID and trash the displaced destination row. With
-two linked files, preserving source identity under ADR-0013 §4 conflicts with
-keeping destination identity under §5 unless a metadata-transfer policy is chosen.
-That separate product choice remains unresolved; the accepted ADR is unchanged,
-and this group does not claim full Replace specification agreement.
+Rename/Move Replace follows the owner-ratified source-identity rule in ADR-0013
+§4–5: the source retains all metadata at its new path, while the displaced
+identity and metadata remain in recoverable Trash. Undo restores both paths and
+retains later edits; no metadata is merged. Versioned receipts cover interrupted
+new replacements and their inverse without changing historical journal semantics.
+Synthetic process/backend/browser coverage is recorded in [STATUS](STATUS.md).
+Desktop integration remains **INCOMPLETE and paused**; this rule applies only to
+existing explicit Rename/Move commands, not incoming file-manager drags.
 
 ## Evidence and original-register crosswalk
 

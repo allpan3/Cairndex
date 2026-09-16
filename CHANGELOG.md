@@ -10,6 +10,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Rename/Move Replace preserves the source file's identity and all metadata at
+  the destination. The displaced file retains its separate identity and metadata
+  in recoverable Trash; Undo returns both files and preserves later metadata edits.
+  Replacement receipts and inverse intent survive interrupted moves, Undo and
+  Put back without changing historical journal semantics. Path-bound encoders close
+  before relocation; unchanged source derivatives remain valid. Copy-import Replace
+  retains its separate destination-identity contract.
+
 - Copy-import Replace keeps the linked destination ID, bundle membership, notes,
   rating, cover references, external subtitle links and moments. Undo restores
   previous bytes on that identity and retains subsequent metadata edits. Ordinary

@@ -26,7 +26,7 @@ from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
 from cairndex.domain.file_names import display_title_after_move
-from cairndex.file_ops import fsmove, journal, replacement, trash
+from cairndex.file_ops import fsmove, journal, relocation, replacement, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
 from cairndex.ownership.lifecycle import check_work_ownership
@@ -163,29 +163,21 @@ def rename(
     if not settled.replace:
         _ensure_no_linked_conflict(session, target_relative)
 
+    if settled.replace:
+        operation = relocation.begin(
+            session,
+            root,
+            op=FileOpType.RENAME,
+            planned=[(source_relative, target_relative, True)],
+        )
+        updated, failed = relocation.execute(session, root, operation)
+        return OperationResult(operation, target_relative, updated, failed_paths=failed)
+
     operation = journal.begin(
         session,
         op=FileOpType.RENAME,
         payload={"source": source_relative, "destination": target_relative},
     )
-    if settled.replace:
-        # Trash-then-write (ADR-0013 §3.3): the displaced entry is deleted to the
-        # trash *as its own trash operation*, and this rename records which one.
-        # Making it a real deletion rather than a footnote in the rename's
-        # payload is what puts it in the Trash view, restorable on its own, and
-        # emptied by the same sweep as everything else — one concept, one code
-        # path. Undoing this rename restores that operation.
-        try:
-            displaced = trash_paths(session, root, paths=[target_relative])
-            journal.finish_payload(session, operation, replaced_operation_id=displaced.operation.id)
-        except (OSError, ConflictError) as error:
-            journal.fail(
-                session,
-                operation,
-                _os_error_message(error) if isinstance(error, OSError) else str(error),
-            )
-            raise ConflictError(f"Could not move the existing {name!r} to the trash.") from error
-
     try:
         _rename_on_disk(source, destination)
     except OSError as error:
@@ -320,6 +312,18 @@ def move(
             operation=operation, path=dest_relative, files_updated=0, skipped=skipped_any
         )
 
+    if any(replace for _, _, replace in planned):
+        operation = relocation.begin(
+            session, root, op=FileOpType.MOVE, planned=planned, dest_dir=dest_relative
+        )
+        updated, failed_paths = relocation.execute(session, root, operation)
+        return OperationResult(
+            operation,
+            operation.payload["moves"][0]["destination"],
+            updated,
+            failed_paths=failed_paths,
+        )
+
     operation = journal.begin(
         session,
         op=FileOpType.MOVE,
@@ -337,15 +341,8 @@ def move(
     error_reason = ""
     total_updated = 0
     try:
-        for source_relative, destination, replace in planned:
-            replaced_operation_id = ""
+        for source_relative, destination, _replace in planned:
             try:
-                if replace:
-                    # Trash-then-write (ADR-0013 §3.3): the displaced entry is
-                    # deleted as its own trash operation, so it lands in the Trash
-                    # view and undoing this move restores it.
-                    displaced = trash_paths(session, root, paths=[destination])
-                    replaced_operation_id = displaced.operation.id
                 source_full = resolve_writable(root, source_relative, what="source")
                 destination_full = resolve_writable(root, destination, what="destination")
                 _rename_on_disk(source_full, destination_full)
@@ -359,8 +356,6 @@ def move(
                 session, source=source_relative, destination=destination
             )
             entry = {"source": source_relative, "destination": destination}
-            if replaced_operation_id:
-                entry["replaced_operation_id"] = replaced_operation_id
             performed.append(entry)
     except Exception as error:  # metadata side failed after a file moved
         journal.fail(session, operation, "metadata update failed after a file was moved")
@@ -454,7 +449,9 @@ def mark_rows_trashed(
     return [entry, *recorded] if entry.is_directory else recorded
 
 
-def trash_paths(session: Session, root: Path, *, paths: list[str]) -> OperationResult:
+def trash_paths(
+    session: Session, root: Path, *, paths: list[str], prepared: FileOperation | None = None
+) -> OperationResult:
     """Move files and directories into the library's trash (ADR-0013 §3.2).
 
     Never unlinks. Every id, bundle membership, cover, subtitle link and cache
@@ -481,7 +478,7 @@ def trash_paths(session: Session, root: Path, *, paths: list[str]) -> OperationR
     # stops the second move failing on a path the first one already took away.
     targets = _drop_nested(targets)
 
-    operation = journal.begin(session, op=FileOpType.TRASH, payload={"paths": targets})
+    operation = prepared or journal.begin(session, op=FileOpType.TRASH, payload={"paths": targets})
     entries: list[trash.TrashedEntry] = []
     failed: list[str] = []
     error_reason = ""
@@ -530,6 +527,27 @@ def restore(session: Session, root: Path, *, operation_id: str) -> OperationResu
     operation = journal.get_operation(session, operation_id)
     if operation is None or operation.op is not FileOpType.TRASH:
         raise NotFoundError(f"trashed operation {operation_id!r} not found")
+    if operation.payload.get("relocation_parent") and operation.status in (
+        FileOpStatus.DONE,
+        FileOpStatus.PENDING,
+    ):
+        parent = session.get(FileOperation, operation.payload["relocation_parent"])
+        if parent is not None:
+            entry = next(
+                (
+                    item
+                    for item in parent.payload["moves"] + parent.payload.get("failed_moves", [])
+                    if item.get("replaced_operation_id") == operation.id
+                ),
+                None,
+            )
+            if entry is not None:
+                relocation.restore_backup(session, root, entry)
+                return OperationResult(
+                    operation,
+                    entry["destination"],
+                    sum(bool(item.get("file_id")) for item in operation.payload.get("entries", [])),
+                )
     if operation.status is not FileOpStatus.DONE:
         raise ConflictError(f"This deletion is {operation.status.value} and cannot be restored.")
 
@@ -804,6 +822,16 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     operation = journal.get_operation(session, operation_id)
     if operation is None:
         raise NotFoundError(f"operation {operation_id!r} not found")
+    if (
+        operation.payload.get("relocation_protocol") == 1
+        and operation.payload.get("undo_started")
+        and operation.status is FileOpStatus.PENDING
+    ):
+        return OperationResult(
+            operation,
+            operation.payload.get("source", operation.payload["dest_dir"]),
+            relocation.undo(session, root, operation),
+        )
     if operation.status is not FileOpStatus.DONE:
         raise ConflictError(f"This operation is {operation.status.value} and cannot be undone.")
     if operation.payload.get("skipped"):
@@ -816,6 +844,12 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     # alone would leave the destination empty and the journal still claiming the
     # operation is undoable, with the next attempt failing on a missing source.
     _ensure_replacement_restorable(session, operation)
+
+    if operation.payload.get("relocation_protocol") == 1:
+        updated = relocation.undo(session, root, operation)
+        return OperationResult(
+            operation, operation.payload.get("source", operation.payload["dest_dir"]), updated
+        )
 
     if operation.op is FileOpType.TRASH:
         # Undoing a deletion *is* restoring it — same inverse, same journal row.

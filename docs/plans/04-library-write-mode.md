@@ -123,13 +123,16 @@ destination; destination parent must exist (or be created by the same
   to the Eagle/Finder prompt (owner requirement): **Replace / Skip / Keep
   both** (`suffix` = ` (2)`-style keep-both).
   - **Replace = journaled trash-then-write:** the existing file first moves
-    into `.cairndex/trash/` under the same op id, then the incoming file
+    into `.cairndex/trash/` under a linked Trash receipt, then the incoming file
     takes the path — so even Replace is undoable until Empty Trash.
-  - When the replaced path is a linked `AssetFile`, the row **keeps its id**
+  - For copy-import Replace, a linked destination `AssetFile` **keeps its id**
     (new size/mtime/fingerprint; derived caches invalidate via the
     fingerprint change; the journal records the prior identity for undo) —
     the "swap in the better-quality version" case preserves bundle
     membership, cover/primary selection, and subtitle links.
+  - For Rename/Move Replace, the incoming file keeps its ID, bundle and metadata.
+    The displaced file retains its own ID and metadata in Trash; Undo returns
+    both without merging or reverting later authored edits (ADR-0013 §4–5).
   - Note: this prompt is about **path collisions**. Content-duplicate
     detection at import (Eagle's other trigger for the same dialog) remains
     deferred per the product brief.

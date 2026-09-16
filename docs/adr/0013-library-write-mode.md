@@ -40,17 +40,24 @@ product anti-goal "destructive file management enabled **by default**"
 4. **In-app move/rename updates `AssetFile.relative_path` in place**,
    preserving `AssetFile.id` and all linked metadata by construction —
    extending the ADR-0006 invariant from repair-after-the-fact to
-   app-initiated operations.
+   app-initiated operations. This applies to **Replace collisions too**: the
+   source keeps its identity, bundle and all authored metadata at the destination.
+   The displaced file keeps its separate identity and metadata in recoverable
+   Trash. There is no automatic metadata merging. Undo returns both files with
+   their current metadata, including edits made after the operation. This scope
+   distinction was owner-ratified on 2026-09-15.
 5. **No in-place overwrites; collisions get the Eagle/Finder prompt.**
    There is no filesystem truncate/overwrite primitive. Collision policy is
    `fail` (default) | `skip` | `suffix` ("keep both") | `replace`, surfaced
    in the UI as **Replace / Skip / Keep both** (+ Apply-to-all for batches).
    **Replace = journaled trash-then-write**: the existing file moves into
-   `.cairndex/trash/` under the same op id before the incoming file takes
-   the path, so Replace stays undoable until Empty Trash; a linked
-   `AssetFile` at that path keeps its id (updated size/mtime/fingerprint,
-   caches invalidated by the fingerprint change). The prompt covers **path
-   collisions** only — content-duplicate detection remains deferred.
+   `.cairndex/trash/` under a linked Trash receipt before the incoming file takes
+   the path, so Replace stays undoable until Empty Trash. For **copy-import
+   Replace**, the linked destination `AssetFile` keeps its ID and authored
+   metadata while its bytes change (size/mtime/fingerprint and derived media
+   refresh). For **Rename/Move Replace**, §4 applies: the source retains its ID
+   and metadata; the displaced destination's row travels with its bytes to Trash.
+   The prompt covers **path collisions** only — content-duplicate detection remains deferred.
    Sources and destinations both pass the library-root validator
    (relative-only, traversal/symlink-escape rejection).
 6. **Concurrency via the existing queue.** Single-item ops run synchronously;

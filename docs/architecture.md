@@ -230,8 +230,10 @@ before moving the original; Undo stashes the replacement bytes and restores the
 original without moving metadata to a new row. Byte observations distinguish
 interrupted publication from an untouched destination. Derived media and running
 encoders are invalidated when bytes change. Ordinary copies remain independent;
-see [Replace and Undo](file-operations.md) for recovery and the separate
-Rename/Move identity disagreement.
+explicit Rename/Move instead carries source identity and metadata, retaining
+both displaced bytes and metadata in Trash. Its parent/backup intent and inverse
+receipts support recovery without merging identities. See
+[Replace and Undo](file-operations.md).
 
 An import selection remains a **client-owned sequential batch**, not a registry
 job: the bytes live in a browser `File` or a desktop file handle, so putting an

@@ -382,3 +382,103 @@ test('Replace and toast Undo retain metadata and refresh the cover @fullstack', 
     await f.cleanup()
   }
 })
+
+// Explicit relocations carry the source bundle and leave the displaced catalog recoverable
+for (const verb of ['rename', 'move'] as const)
+  test(`${verb} Replace keeps source metadata and visible Undo restores both files @fullstack`, async ({
+    page,
+  }) => {
+    const f = await fixture()
+    try {
+      const destinationPath = verb === 'rename' ? 'Source/Target.png' : 'Destination/Amber.png'
+      await writeFile(join(f.root, destinationPath), await readFile(f.paths[1]!))
+      const displaced = await apiPost<{ bundle_id: string }>(
+        f.base,
+        '/manual-bundling/create-bundle',
+        {
+          relative_paths: [destinationPath],
+          title: 'Displaced bundle',
+        },
+      )
+      const original = catalog(f.root)
+      const a = original.find((row) => row.relative_path === 'Source/Amber.png')!
+      const b = original.find((row) => row.relative_path === destinationPath)!
+      // Use authored API edits so the test observes the same metadata contract as the inspector
+      const annotate = async (id: string, note: string, rating: number, cover: string) => {
+        const basis = (await (await fetch(`${f.base}/metadata`)).json()) as { basis: string }
+        const detail = (await (await fetch(`${f.base}/bundles/${id}`)).json()) as {
+          version: number
+        }
+        expect(
+          (
+            await fetch(`${f.base}/bundles/${id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Cairndex-Basis': basis.basis,
+                'X-Cairndex-Operation': crypto.randomUUID(),
+              },
+              body: JSON.stringify({
+                version: detail.version,
+                notes: [note],
+                rating,
+                cover_file_id: cover,
+              }),
+            })
+          ).ok,
+        ).toBe(true)
+      }
+      await annotate(f.source.bundle_id, 'Mountain annotation', 5, a.id)
+      await annotate(displaced.bundle_id, 'Beach annotation', 2, b.id)
+      const thumbUrl = `${f.base}/bundles/${f.source.bundle_id}/thumbnail`
+      const originalThumb = Buffer.from(await (await fetch(thumbUrl)).arrayBuffer())
+      const sourceBytes = await readFile(f.paths[0]!)
+      await openFolder(page, f, 'Source')
+      await page
+        .locator('.file-browser__body')
+        .getByText('Amber.png', { exact: true })
+        .click({ button: 'right' })
+      await page
+        .getByRole('menuitem', { name: verb === 'rename' ? 'Rename…' : 'Move to…', exact: true })
+        .click()
+      if (verb === 'rename') {
+        await page.getByRole('textbox', { name: 'Rename Amber.png' }).fill('Target.png')
+        await page.getByRole('textbox', { name: 'Rename Amber.png' }).press('Enter')
+      } else {
+        const picker = page.getByRole('dialog', { name: 'Move to', exact: true })
+        await picker
+          .getByRole('list')
+          .getByRole('button', { name: /Destination$/ })
+          .click()
+        await picker.getByRole('button', { name: 'Move here', exact: true }).click()
+      }
+      const conflict = page.getByRole('dialog', { name: 'Name already in use' })
+      await expect(conflict).toBeVisible()
+      expect(catalog(f.root)).toEqual(original)
+      await conflict.getByRole('button', { name: 'Replace', exact: true }).click()
+      await expect
+        .poll(() => catalog(f.root).find((row) => row.id === a.id)?.relative_path)
+        .toBe(destinationPath)
+      expect(catalog(f.root).find((row) => row.id === b.id)?.availability).toBe('TRASHED')
+      expect(await readFile(join(f.root, destinationPath))).toEqual(sourceBytes)
+      expect(Buffer.from(await (await fetch(thumbUrl)).arrayBuffer()).equals(originalThumb)).toBe(
+        true,
+      )
+      await annotate(f.source.bundle_id, 'Mountain edited after move', 5, a.id)
+      await page.getByRole('button', { name: 'Undo', exact: true }).click()
+      await expect.poll(() => catalog(f.root)).toEqual(original)
+      await page.reload()
+      await page.locator(`[data-bundle-id="${f.source.bundle_id}"]`).first().click()
+      await expect(
+        page.locator('aside.inspector').getByText('Mountain edited after move', { exact: true }),
+      ).toBeVisible()
+      await page.locator(`[data-bundle-id="${displaced.bundle_id}"]`).first().click()
+      await expect(
+        page.locator('aside.inspector').getByText('Beach annotation', { exact: true }),
+      ).toBeVisible()
+      await page.screenshot({ path: test.info().outputPath(`${verb}-replace-undo.png`) })
+    } finally {
+      await page.close()
+      await f.cleanup()
+    }
+  })
