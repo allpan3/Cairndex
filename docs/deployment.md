@@ -38,6 +38,14 @@ the app runs in production.
 
 One hardened container serves the API and the built frontend on port `8000`.
 
+The [NAS verification checkpoint](nas-verification.md) covers an isolated Linux
+NAS production image, non-root/read-only-root permissions, clean shutdown,
+process recovery and Mac browser/native clients. NAS-local hard links succeed;
+the tested Mac SMB mount refuses them, so copy imports return a structured
+conflict before replacing existing bytes. Same-share Rename/Move/Trash/Undo pass.
+This bounded topology is not a claim about all NAS/SMB configurations, power loss
+or public internet exposure.
+
 **The server pulls a published image.**
 [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole
 deployment — every setting carries a working default, so it needs no `.env`

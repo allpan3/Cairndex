@@ -100,11 +100,15 @@ changed-image Replace, explicit Rename/Move collisions and the visible Undo
 button. Rename/Move regressions cover both metadata sets, linked/unlinked
 combinations, directory replacement, partial batches, occupied paths, direct
 Put back and separate-process exits during displacement, movement and Undo. These
-are local checks, not NAS/power-loss qualification or OS drag-delivery evidence. Desktop OS integration
-remains incomplete and paused.
+are supplemented by [bounded real NAS and Mac SMB checks](nas-verification.md).
+They do not establish power-loss durability or OS drag delivery. Desktop OS
+integration remains incomplete and paused.
 
 Filesystem identity observations are conservative recovery evidence, not full
 content verification. Cross-device moves use the existing copy/marker fallback;
-an interruption without sufficient identity/marker evidence needs review. Real
-NAS mounts, hostile concurrent filesystem mutation and power-loss durability are
-not qualified. Copy-import publication still requires filesystem hard-link support.
+an interruption without sufficient identity/marker evidence needs review. The
+tested NAS-local filesystem supports hard links; the tested Mac SMB mount
+refuses copy imports safely while same-share Rename/Move/Trash/Undo work. Other
+mounts, cross-device recovery, hostile concurrent filesystem mutation and
+power-loss durability remain unqualified. Copy-import publication requires
+filesystem hard-link support.

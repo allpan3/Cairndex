@@ -343,6 +343,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record bounded NAS deployment, browser/native playback, process recovery,
+  Mac SMB file-operation and read-only storage-accounting evidence, with
+  explicit cold-cache, heavier-transcode and power-loss limits.
+
 - Synthetic performance coverage records metadata-query scaling through 100,000
   bundles, cold and warm two-client thumbnail latency, bounded thumbnail-job
   memory, browser reload/collection/search/playback/edit behavior and Update

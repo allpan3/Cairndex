@@ -8,6 +8,46 @@ measurements justify — targeted indexes and one query rewrite for the query
 paths, keyframe sampling for storyboard generation. Re-run the tools after
 schema, query, or media-pipeline changes and update the numbers.
 
+## NAS playback checkpoint
+
+The [2026-09-16 NAS checkpoint](nas-verification.md) uses a non-root Linux
+production container with a four-core CPU quota and 3 GiB memory, accessed from
+a Mac over the existing LAN. Synthetic clips are 180 seconds at 1280×720/30 fps:
+H.264/AAC MP4 at about 3.5 Mbps, the same streams remuxed into MKV, and MPEG4/MP3
+AVI at about 7 Mbps. Direct playback is enabled for the directly playable clip.
+
+Each Chromium run uses a fresh browser context and app session, observes decoded
+pixels, performs forward/backward seeks and samples progression 13 times over
+approximately 60 seconds. All 13 image hashes differ for every path. Sources
+were generated/read earlier; OS/NAS caches were not flushed or proven cold.
+These are individual observations, not latency percentiles or service budgets.
+
+| Path | First picture | Forward seek | Backward seek | Media / wall progression |
+| --- | ---: | ---: | ---: | ---: |
+| Direct | 478 ms | 874 ms | 872 ms | 60.097 / 60.098 s |
+| Remux | 387 ms | 871 ms | 869 ms | 60.380 / 60.093 s |
+| Transcode | 1,512 ms | 2,879 ms | 2,876 ms | 60.094 / 60.096 s |
+
+The isolated production native app shows decoded synthetic pictures on all
+three paths, forward/backward seeks and hands-off progression. Direct advances
+about 74 seconds over 74.4 seconds; remux advances about 113 seconds over 113.7
+seconds and reaches normal EOF. Transcode advances about 83 seconds over 85.5
+seconds including seek recovery. Partial native diagnostic exports are truncated
+and do not establish complete stall histories. The final rebuilt app also passes
+a direct-play picture/resume and connected metadata-refresh smoke check.
+
+Two read-only representative sources decode and seek in the browser. The heavier
+HEVC transcode does not maintain uninterrupted real-time progression during the
+sampled minute. No conclusion attributes that solely to CPU quota. Exact owner
+media characteristics and measurements remain in private receipts. Representative
+owner media is not qualified in the native app.
+
+Two browser clients complete retained-draft conflict resolution and refresh on
+plain LAN HTTP; browser/native edits also propagate visibly. Peer-search checks
+show responsiveness but their timing did not await search completion, so no
+search-latency claim is made. This checkpoint does not qualify multi-terabyte
+scale, every quality/device, broad concurrency or fully cold storage.
+
 ## Tooling
 
 Two devtools for the query paths live under `apps/server` (`cairndex.devtools`);
@@ -202,7 +242,7 @@ completed at 1,750/2,026, no job remained active, and reload restored the 24
 confirmed bundles plus 2,002 unbundled provisional files. The concurrent title
 edit, all source bytes, SQLite integrity and foreign keys remained intact.
 
-The audit does not qualify a production desktop build, remote browsers, network
+That local audit does not qualify a production desktop build, remote browsers, network
 mounts, multi-terabyte source media, provider replicas or NAS deployment. Folder
 pagination and the slowest 100,000-bundle aggregate/descendant queries remain
 future measurement-driven work rather than changes in this fix.

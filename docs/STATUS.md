@@ -11,27 +11,47 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## NAS verification in progress
+## NAS and storage verification checkpoint
 
-The approved isolated NAS/storage audit starts from `0fe31a48` on the existing
-branch. The owner library is inspected through an enforced read-only mount;
-SQLite accounting uses a stable private copy. All source writes use disposable
-fixtures. The production deployment and installed desktop app are unchanged.
+The approved group on `fix/library-ownership-lifecycle` is verified within the
+[recorded topology and limits](nas-verification.md). Runtime repairs are
+`0d6a4b2f` (cached library sessions and safe unsupported-link refusal) and
+`ab8fed9b` (metadata edit IDs on plain LAN HTTP). The original library is inspected
+only through enforced read-only mounts; SQLite accounting queries a private copy.
+Source writes and process interruption use disposable fixtures.
 
-Real Mac SMB testing reproduced unsupported hard links and a cached-session
-failure after the first refused request. Session factories retain a scalar
-library ID across registry rollback/detachment. Replace probes staged bytes
-before displacement and reports unsupported links explicitly. Focused lifecycle
-and replacement regressions pass 45 cases; final NAS redeployment, recovery and
-full validation receipts remain in progress. This is not power-loss qualification.
+The final NAS image passes Docker smoke, file identity/Replace/Undo checks and
+203 non-root Linux regression/process tests. Mac SMB safely refuses unsupported
+copy imports and passes Rename, Move, Move Replace, Trash and Undo. An interrupted
+NAS Replace upload recovers original bytes and clean staging/journal state after
+restart. Two actual LAN browser clients pass refresh, retained draft/conflict
+resolution and picker Replace/Undo. The final packaged native app passes build,
+strict signing, remembered reconnect, visible synthetic playback and bidirectional
+browser/native metadata refresh.
 
-Plain LAN HTTP browser testing also reproduced metadata saves failing before a
-request because the origin lacks `crypto.randomUUID`. Edit IDs use 128-bit
-cryptographic random bytes available on these origins. The insecure-origin
-browser regression and all 17 affected real-backend cases pass. Frontend lint,
-formatting, typecheck, 1,229 unit tests and production build pass. Backend full
-validation passes 1,713 tests with one existing skip. Final deployed verification
-and cleanup remain in progress.
+Full backend validation passes Ruff, formatting, mypy and 1,713 tests with one
+existing skip. Frontend lint, formatting, typecheck, 1,229 tests, production build
+and all 17 affected real-backend browser cases pass. Rust source is unchanged;
+full Rust gates are not repeated for this repair slice. The existing frontend
+bundle-size warning remains. [Playback measurements](performance.md#nas-playback-checkpoint)
+qualify synthetic direct/remux/transcode paths; a representative HEVC workload
+falls short of uninterrupted real-time progression. OS/NAS cache coldness,
+power-loss durability, cross-device moves and broad scale remain unqualified.
+
+Current storage accounting reconciles indexed and physical source bytes through
+retained missing-file records minus unindexed files, with no available-file size
+mismatches. SQLite, backups, cache and recoverable Trash are separately accounted
+for; exact historical per-file causes remain unavailable. No original purge,
+rescan or vacuum is performed. Disposable NAS containers, network, fixture roots,
+temporary sources and task image tags are removed. The local SMB server and
+isolated native app are stopped; isolated native runtime state is removed.
+Private receipts are retained outside tracked source. The production container
+remains running with its original image and start time.
+
+Only the new source/documentation slice is privacy-reviewed. Inherited cumulative
+privacy/volume blockers remain; history and publication state are preserved.
+This checkpoint ends the approved group. Desktop OS drag integration remains
+**INCOMPLETE and paused**; cloud and other audit groups need separate direction.
 
 ## Approved UX refinement
 

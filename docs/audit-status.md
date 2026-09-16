@@ -1,6 +1,6 @@
 # Audit status
 
-Current disposition on `fix/library-ownership-lifecycle`, reconciled 2026-09-15
+Current disposition on `fix/library-ownership-lifecycle`, reconciled 2026-09-16
 against implementation checkpoint `51e05546`, accepted ADRs and the owner's
 subsequent decisions. This ledger covers the original I01–I29 register. Earlier
 observations and test counts in [STATUS](STATUS.md#historical-validation-receipts)
@@ -24,23 +24,23 @@ verified; it does not mean every deployment or scale is qualified.
 | I10 — Bundle search scope | Complete | Bundle names, ordered bundle notes, file notes and moment comments are indexed; filename/path/tag/collection names and retired scalar notes are excluded |
 | I11 — Directory/list scaling | Owner-deferred | Directory responses remain whole-directory and folded-name ties remain an open contract issue. Other whole-list endpoints still need a cardinality/limits census; Unbundled paging does not close this item |
 | I12 — File metadata contract | Complete | Notes and verbatim origins round-trip; unsupported custom names are rejected without deleting stored legacy titles. File note/source editing UI remains deferred |
-| I13 — Server/library navigation | Complete | Persistent chooser, local Browse, remembered destinations, isolated credentials/caches and packaged synthetic switching/restart checks; no current NAS deployment claim |
+| I13 — Server/library navigation | Complete | Persistent chooser, local Browse, remembered destinations, isolated credentials/caches and packaged synthetic switching/restart checks; isolated NAS production-app reconnect and bidirectional browser/native edits also pass |
 | I14 — Playback intent | Complete | Buffering, pause intent, same-file replacement and source-scoped commands are separated; synthetic native premature EOF reproduction is fixed |
-| I15 — Web playback qualification | Complete bounded scope | Synthetic direct/remux/transcode, seeks and hands-off progression pass. Real NAS/high-bitrate, broad quality and device-specific performance budgets remain unqualified |
-| I16 — Native playback qualification | Complete bounded scope | Isolated production app shows decoded pictures, seeking, subtitles, ordered EOF and restart/resume. The historical owner-media transition remains unattributed; installed-app replacement and background presentation are not qualified |
+| I15 — Web playback qualification | Complete bounded scope | Synthetic direct/remux/transcode, seeks and hands-off progression pass. NAS synthetic paths and read-only representative decode/seek checks pass; heavier HEVC falls short of uninterrupted real time, and broad quality/device budgets remain unqualified |
+| I16 — Native playback qualification | Complete bounded scope | Isolated production app shows decoded pictures, seeking, subtitles, ordered EOF and restart/resume; synthetic NAS direct/remux/transcode paths also have native evidence. The historical owner-media transition remains unattributed; installed-app replacement and background presentation are not qualified |
 | I17 — Keyboard selection | Complete bounded scope | Focused range/additive selection, loaded-item Select All and virtualized Home/End pass in browser and native checks; comprehensive assistive-technology coverage remains open |
 | I18 — Dialog cancellation | Complete | Collection creation is a local draft until Create; nested Escape, focus return and cancellation pass |
 | I19 — Loading/empty/error states | Complete | Pending counts differ from zero, cached content survives failed refresh, and stale responses cannot replace the current selection |
-| I20 — Outage recovery | Complete bounded scope | Remembered destination, retry/reconnect, auth/ownership guidance and synthetic packaged cold-outage recovery; actual NAS outage qualification remains open |
+| I20 — Outage recovery | Complete bounded scope | Remembered destination, retry/reconnect, auth/ownership guidance and synthetic packaged cold-outage recovery; actual isolated NAS process termination/restart also passes; mount loss and power loss remain unqualified |
 | I21 — Density/discoverability | Complete bounded scope | Compact inspectors, panel fitting, readable narrow list names, View options and keyboard reference pass synthetic browser and production-desktop checks. Native Help, focused help scrolling, Tab/Escape, pointer-opener focus return, layout/size controls and preserved selection have visible evidence through background app-targeted control. Global accelerator routing and comprehensive assistive-technology qualification remain separate |
 | I22 — Folder members | Complete bounded scope | Folder disclosure/selection continuity and parent/child playlist boundaries pass. Nested-member support and large-folder qualification remain separate |
 | I23 — Desktop file integration | **INCOMPLETE and paused** | Mapped Open/Reveal, single-file Finder transfers, picker batches, copy/collision/identity/Undo regressions have evidence. QSpace, multi-file OS delivery and app-origin self-return remain open |
 | I24 — Update/grouping recovery | Complete bounded scope | Incomplete walks, root replacement, stable-ID repair, trash preservation, stale plans and committed-result retries have synthetic process/browser coverage. Unconfirmed plans still discard on restart under ADR-0022; arbitrary ambiguous repair and power-loss qualification remain open |
-| I25 — Performance/concurrent use | Incomplete qualification | Local query matrices, bounded thumbnail work and visible two-client playback/edit/Update checks pass. Native startup, remote browsers, NAS/network mounts, multi-terabyte media and slowest aggregate/descendant queries remain follow-up |
+| I25 — Performance/concurrent use | Incomplete qualification | Local query matrices, bounded thumbnail work and visible two-client playback/edit/Update checks pass. Bounded NAS browser/native playback, two-client edits and Mac SMB file checks pass; full startup, heavier HEVC, multi-terabyte scale and slowest aggregate/descendant queries remain follow-up |
 | I26 — Documentation reconciliation | Complete for this group | Current references and this ledger separate implemented behavior, accepted decisions, historical receipts and explicit limitations; ADR-0019 is accepted, while genuinely proposed ADRs remain proposed |
 | I27 — Safety/publication invariants | Preserved; continuing gate | Metadata-only defaults, journaled opt-in writes, scoped paths and stable IDs remain mandatory. Local committed-content review is separate from publication permission; cumulative volume gates still block publication |
-| I28 — Storage accounting | Deferred diagnosis | Database, derived cache and recoverable Trash are distinct. The historical inventory discrepancy remains unexplained; no cleanup, purge or rescan is implied |
-| I29 — Capability/security/deployment | Incomplete qualification | Scoped auth, pairing/relay, packaged synthetic lifecycles and private recovery have bounded evidence. Current full deployment/release/provider/platform acceptance and unresolved ADR decisions remain open |
+| I28 — Storage accounting | Complete current accounting | Read-only inventory and a stable private DB copy reconcile the current gap as missing indexed bytes minus unindexed files, with no available-file size mismatch. DB, backup, cache and Trash are separate; exact historical per-file causes remain unavailable. No cleanup, purge or rescan is implied |
+| I29 — Capability/security/deployment | Incomplete qualification | Scoped auth, pairing/relay, packaged synthetic lifecycles and private recovery have bounded evidence. Isolated hardened NAS image, permissions and shutdown smoke pass; broader release/provider/platform acceptance and unresolved ADR decisions remain open |
 
 ## Capability and decision boundaries
 
@@ -104,8 +104,9 @@ Current topic references: [connections](connections.md),
 [interactions](interactions.md), [playback](proposals/playback-reliability-review.md),
 [replica catalog](replica-catalog.md), [migration](replica-migration.md),
 [private recovery](replica-recovery.md), [replica Update](replica-discovery.md),
-[desktop receipts](desktop-file-integration-verification.md) and
-[performance](performance.md). Their test receipts belong to their stated commits;
+[desktop receipts](desktop-file-integration-verification.md),
+[performance](performance.md), and [NAS/storage verification](nas-verification.md).
+Their test receipts belong to their stated commits;
 this documentation group does not rerun or certify every runtime suite.
 
 Original reproductions map as follows: R1→I07, R2→I09, R3→I06, R4→I01/I03,
@@ -123,6 +124,6 @@ The main unfinished product work is qualifying and enabling ordinary cloud
 replica use, completing the paused OS drag integration, and testing representative
 native/NAS/provider workloads. Smaller follow-ups include the deferred listing
 contracts, measured slow queries, usability/accessibility refinement, unresolved
-ADR approvals and storage accounting. Deployment and publication require their
-own owner authorization and fresh gates. Engineering owns the checks; this ledger
+ADR approvals and historical storage evidence if it becomes available. Deployment
+and publication require their own owner authorization and fresh gates. Engineering owns the checks; this ledger
 is not an owner testing checklist or authorization to resume those groups.
