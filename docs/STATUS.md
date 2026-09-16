@@ -41,9 +41,10 @@ lint, formatting, typecheck, **1,228 tests** and production build. One concurren
 run hit two existing long-list test timeouts; the subsequent full run passed.
 The existing bundle-size warning remains. The six UX cases pass again after the
 native follow-up, including name-column geometry. Chromium initially could not
-launch inside the sandbox; its permitted rerun passed. An additional attempt to
-repeat the broader list suites did not start because automatic approval review
-timed out twice; the earlier 70-case result is retained, not claimed as rerun.
+launch inside the sandbox; its permitted rerun passed. After the native follow-up,
+all **52 bundle and file-list regressions** also pass, including keyboard target
+visibility, inspector states, selection, metadata editing and navigation. Earlier
+automatic approval timeouts are resolved for this verification run.
 
 Rust formatting, Clippy and **135 tests** pass, including real-sidecar lifecycle
 checks. A fresh isolated production `.app` builds with the current bundled
