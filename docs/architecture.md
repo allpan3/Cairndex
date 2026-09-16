@@ -1,15 +1,10 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D4
-> (probe enrichment, the unified custom media viewer, storyboard trickplay,
-> watch progress/resume, image viewer v2 with preview derivatives, the
-> server-side playback decision + HLS remux/transcode session foundation, and
-> the web hls.js/native-HLS engine
-> integration, player polish, card hover previews, and device pairing/scoped
-> bearer tokens; merged through M12 #12, with T0 on `feat/device-pairing`). See
-> `AGENTS.md` for the product brief, `docs/plans/` for the client-platform
-> roadmap, and `docs/STATUS.md` for current gaps, validation state, and
-> recommended next tasks.
+This reference describes implemented storage, serving, media and desktop boundaries.
+The [product brief](product-brief.md) defines product intent;
+[Project status](STATUS.md) separates current audit dispositions from historical
+validation. Accepted ADRs govern decisions; proposed ADRs remain unratified even
+where related mechanisms exist in code.
 
 ## Playback control and timeline
 
@@ -130,7 +125,7 @@ registry tracks which libraries are known and owns the runtime job queue.
 │  apps/web    │ ─────────────────────────────────▶ │  apps/server        │
 │  React/Vite  │ ◀───────────────────────────────── │  FastAPI            │
 └──────┬───────┘                                     │  API + worker       │
-       │ active library id per tab                   └──────────┬──────────┘
+       │ selected server/library                   └──────────┬──────────┘
        │                                                        │
        │                         ┌──────────────────────────────┼──────────────────────────┐
        │                         ▼                              ▼                          ▼
@@ -329,7 +324,7 @@ src/
   lib/        formatting helpers
 ```
 
-The app picks one active library per browser tab and routes all content requests
+The app has one selected server and one intended library and routes content requests
 under `/api/v1/libraries/{id}/…`. Before switching, the app points the API client
 at the next library and removes every active-library content query from TanStack
 Query; the global library registry and library-id-keyed auth queries remain.
@@ -343,7 +338,7 @@ Current browsing surfaces:
 - **Bundle Browser:** virtualized bundle browser with grid/list/justified
   layouts, sidebar system views, Smart Collections, collections, tags, toolbar
   controls, selection, batch editing, and an in-bundle album/viewer.
-- **File Browser:** read-only filesystem browser over the active library root,
+- **File Browser:** filesystem browser, read-only by default, over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 
 M12 adds one shared card-hover preview path across bundle cards, bundle-album
@@ -1038,7 +1033,7 @@ and failed reads have distinct messages with retry. Pagination is deterministic
 for an unchanged catalog; concurrent catalog edits can change offset boundaries.
 General recursive filesystem search and directory pagination are separate work.
 
-File Browser is a read-only, filesystem-first browser over the active library root:
+File Browser lists the active library root through a read-only endpoint:
 `GET /api/v1/libraries/{library_id}/file-browser/entries?path=...`.
 
 It returns directories first, then files, sorted case-insensitively. Each entry
@@ -1057,8 +1052,11 @@ Raw preview bytes for File Browser entries are served by
 constraints.
 
 File Browser selection is independent of Bundle Browser/bundle selection, and the
-right pane shows `FileInspector` rather than the bundle inspector. There are no
-move/rename/delete controls in the current milestone.
+right pane shows `FileInspector` rather than the bundle inspector. Legacy libraries
+offer rename, move, new folder, trash/restore and copy imports behind both write
+gates, with journaled intent (ADR-0013). Replica source writes remain unavailable.
+Directory listing currently returns the complete directory; pagination is
+owner-deferred. Unbundled uses the separate paginated SQL path above.
 
 ## 11. Background jobs
 
@@ -1156,17 +1154,19 @@ authenticating reverse proxy, not the public internet.
 
 ## 14. Known architectural debt
 
-- grouping bundle/container reclassification before apply;
-- browse-summary query optimization and indexes for larger libraries;
-- cross-filesystem moved-file repair and manual repair candidates;
+- measured large-library aggregate/descendant-query tuning and broader scale qualification;
+- ambiguous cross-filesystem/content-changed repair and duplicate verification beyond
+  the implemented explicit unique-candidate relink;
 - scheduled scans and stronger job scheduling;
-- safe File Browser write mode plus desktop/native host integration;
-- single-owner authentication before real remote exposure;
+- incomplete, paused desktop file integration: QSpace, multi-file OS delivery and
+  app-origin self-return;
+- token rotation/expiry and hardened public exposure, beyond optional private-network guards;
 - embedded subtitle extraction to servable text tracks (M8) — the web
   hls.js/native-HLS engine integration for the M6 remux/transcode sessions
   landed in M7;
-- transcode-cache location is settled (ADR-0014: server-local ephemeral under
-  `{CAIRNDEX_DATA_DIR}/transcode/`, never inside a library package).
+- ADR-0014, ADR-0015 and ADR-0017 still require owner ratification. Implemented
+  HLS caches are server-local and ephemeral under `{CAIRNDEX_DATA_DIR}/transcode/`,
+  outside the library package; that implementation does not ratify ADR-0014.
 
 Managed library connections disable SQLite's implicit checkpoint on last close.
 Lost-owner disposal therefore retains the database and WAL recovery bytes without

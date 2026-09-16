@@ -31,7 +31,7 @@ rewrite the filter, and an absent target matches no direct membership.
 - One canonical, versioned, JSON-serializable filter AST used by **both**
   the simple top-toolbar filters and the Smart Collection editor — they must
   compile to the same model and return identical results for equivalent
-  expressions (`AGENTS.md` §4.8, product brief Phase 5 acceptance criteria).
+  expressions; see the [product brief](product-brief.md#smart-collection-editor).
 - Server-side validation against an allowlist of fields/operators. The AST
   is never interpolated into raw SQL; it is compiled by trusted code that
   maps each node to a parameterized query fragment.

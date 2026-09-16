@@ -6,10 +6,9 @@ library's root directory, identified by a root-relative path — it never accept
 or exposes an absolute server path, and never moves, renames, deletes, or
 rewrites anything on disk (ADR-0008: the library root comes from the registry).
 
-This first milestone is strictly read-only. It is structured so later write-mode
-operations (open-with-default-app, reveal, guarded rename/move/delete — see
-``docs/adr/0007`` and Phase 7) can be layered on without a rewrite: all path
-resolution already funnels through ``core.paths``.
+Journaled write-mode operations live separately in ``file_ops`` (ADR-0013).
+Both surfaces validate library-relative paths through ``core.paths``. Native
+Open/Reveal use desktop mappings; this listing service cannot execute host actions.
 """
 
 from __future__ import annotations

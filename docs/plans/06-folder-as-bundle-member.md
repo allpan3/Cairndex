@@ -1,15 +1,13 @@
 # Plan 6 — A folder as one item inside a bundle
 
-> Status: **owner-approved design, not yet built** (design 2026-07-28, questions
+> Status: **implemented S1–S4**; historical design and implementation receipts below
+> (design 2026-07-28, questions
 > settled 2026-08-28). Supersedes
 > [ADR-0024](../adr/0024-directory-groups-in-bundles.md), which was accepted and
 > reopened before any of it shipped.
 >
-> The deferral this document was written under — "post-v0.1.0" — has expired:
-> v0.1.0 shipped on 2026-07-28. It also referred to a tracking PR (#39) that no
-> longer exists; the 2026-08-09 repository recreation dropped every open PR, and
-> the work lives on branch `feat/folder-as-bundle-member` with no PR open. Per
-> repository rules, opening one is the owner's call.
+> The design discussion below is historical. Current interaction behavior and
+> remaining qualification are recorded in [the audit ledger](../audit-status.md).
 
 ## 1. The problem
 

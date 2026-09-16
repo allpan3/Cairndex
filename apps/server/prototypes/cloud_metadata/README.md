@@ -1,7 +1,9 @@
 # Cloud metadata experiment
 
-**Disposable prototype for proposed [ADR-0029](../../../../docs/adr/0029-cloud-metadata-replicas.md).
-No production synchronization or migration is enabled.**
+**Disposable design prototype for accepted [ADR-0029](../../../../docs/adr/0029-cloud-metadata-replicas.md).
+This package does not run production synchronization or migration.**
+Production synthetic-replica capabilities and remaining limits are documented in
+the [current audit ledger](../../../../docs/audit-status.md).
 
 Run from `apps/server` using the existing development environment:
 

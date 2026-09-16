@@ -1,5 +1,10 @@
 # Desktop file integration verification
 
+**Current status: INCOMPLETE and paused.** QSpace, multi-file OS dragging and
+app-origin self-return remain open. ADR-0033, its macOS adapter/framework patch,
+volume-based Move and source deletion remain on hold. The receipts below retain
+their individual evidence boundaries; they do not qualify the whole integration.
+
 Scope: the production macOS shell on `fix/library-ownership-lifecycle`, using
 disposable libraries and Finder. Engineering owns the automated checks and
 native controls it can operate. The owner does not need to repeat the regression

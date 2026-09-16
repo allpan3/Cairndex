@@ -28,13 +28,13 @@ The first product target is the computer-side web application. Android TV suppor
 3. **Libraries are the storage scope.** Legacy packages use `.cairndex/{manifest.json,library.db,cache/}`; capable replicas exchange immutable metadata and keep their working DB privately outside provider folders (ADR-0029). The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-6. **Metadata-only and non-destructive first.** The current File Browser milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
+6. **Metadata-only and non-destructive first.** File Browser is read-only by default. Legacy libraries support explicit journaled rename/move/trash and copy imports when both library and deployment write gates permit them (ADR-0013). Replica source operations remain unavailable.
 7. **Logical organization must survive filesystem moves.** If a linked path changes externally, preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata by repairing the existing file row when confidence is high.
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
-9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN or private overlay network.
+9. **Local-first and self-hosted.** The desktop app can serve local libraries through its bundled server, or connect to an authoritative private server. Docker on a NAS/server is optional; neither NAS nor cloud storage defines a required operating mode.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
 11. **Explicit metadata authority.** Legacy libraries use their `library.db`; capable replicas use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
-12. **Progressive capability.** Direct playback comes first; remux/transcoding, File Browser write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
+12. **Progressive capability.** Direct playback, remux/transcoding, gated legacy file operations and mapped desktop host actions are implemented. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
 
 ## Fixed product decisions
 
@@ -43,7 +43,7 @@ Unless the product owner explicitly changes them, treat these as settled:
 - Build from scratch rather than forking SmartGallery DAM.
 - Use SmartGallery DAM, Eagle, Jellyfin clients, and Wholphin as reference material only.
 - Start with a Dockerized server and an app-like web UI/PWA.
-- A native macOS app is not required for the first release; a Tauri shell may be evaluated later.
+- The Tauri desktop shell shares the web UI and bundles a local server; macOS packaging is supported. Android TV and broader desktop-platform qualification remain deferred.
 - The application links to files already on disk and stores metadata separately.
 - Asset bundle metadata is shared across the bundle.
 - Individual files display their current actual filename. File notes and verbatim source/origin text round-trip through the API; their editing controls are deferred. Stored legacy titles remain preserved without inferring aliases.
@@ -60,10 +60,10 @@ Unless the product owner explicitly changes them, treat these as settled:
 - File Browser browses only the active library root.
 - File Browser should show all non-hidden files/directories, not only supported media.
 - File Browser should visually distinguish files Cairndex can open natively from unsupported files.
-- The first File Browser milestone is read-only, but the long-term File Browser milestone is a true filesystem browser over library roots.
-- Future File Browser should support `open with default app` and `reveal in file manager` where deployment mode permits safe local/native host integration.
+- File Browser remains scoped to library roots and read-only unless explicit write gates permit a journaled operation.
+- The desktop shell supports Open in Default App and Reveal through manifest-validated local mappings; cross-application drag qualification remains incomplete and paused.
 - Open-with-default-app must not be implemented as arbitrary command execution from a remote browser. It needs an explicit local desktop/native helper, Tauri shell, or similarly safe host-integration design.
-- Start with metadata-only removal. File rename/move/delete capabilities come later under an explicit write mode.
+- Metadata-only removal remains distinct from physical rename/move/trash under explicit write mode. Collections never move source files.
 - Move repair is automatic during scan/rescan/reconciliation when confidence is high. Do not require a separate normal user workflow for repair.
 - Duplicate detection is deferred. If a still-present file is also found at another path, treat that as an unresolved duplicate/copy candidate later, not as an automatic bundle merge.
 - Bundles remain flexible logical objects. A bundle does not require a canonical physical folder and may contain files from different directories.
@@ -298,8 +298,10 @@ automatically adopted root, which still passes manifest validation. The browser
 does not offer native handoff, and the web API never executes host commands.
 
 Desktop file drag-out uses the same mapped-path validation. Current drag-in uses
-HTML file uploads into write-enabled libraries. Native path reverse-mapping and
-self-drop detection remain an unresolved integration gap; see the current
+HTML file uploads into write-enabled libraries. App-origin self-return remains
+an unresolved integration gap. Desktop file integration is incomplete and paused;
+QSpace and multi-file OS delivery remain unqualified, while native adapters and
+volume-based Move remain on hold. See the current
 [desktop drag contract](plans/03-macos-desktop-app.md#6-drag-out--drag-in).
 
 ## File discovery, linking, and identity
@@ -597,7 +599,7 @@ Do not spend MVP time on:
 - destructive file management enabled by default;
 - open-with-default-app before a safe local/native host-integration design exists;
 - duplicate detection or automatic duplicate merging;
-- native macOS or Android TV applications;
+- Android TV implementation beyond the existing pairing groundwork;
 - a general plugin marketplace;
 - a complex distributed job system;
 - premature replacement of SQLite.

@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Current references distinguish optional access guards, gated legacy file writes,
+  synthetic replica capabilities and paused desktop integration. The audit status
+  ledger separates completed scopes, remaining qualification and owner deferrals
+  from historical receipts; ADR-0019 is indexed as accepted.
+
 - Desktop reference documentation describes implemented mapped Open/Reveal
   actions and the shipping HTML upload route. Trusted native drop routing,
   self-drop protection and cross-application delivery qualification remain open.

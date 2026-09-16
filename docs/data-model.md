@@ -750,7 +750,7 @@ library DB, and writes progress/terminal state back to the registry row.
 
 ### File Browser entries
 
-Read-only File Browser entries are produced by `services/file_view.py` from the live
+Read-only File Browser entries are produced by `services/file_browser.py` from the live
 filesystem under the active library root. They are response models rather than
 persistent rows. Each entry is derived from a library-relative path, path-safety
 checks, filesystem metadata, media classification, and an optional linked
@@ -759,8 +759,10 @@ from media kind plus format support: video/audio are playable, browser-native
 images remain openable, and preview-capable images such as HEIC, TIFF, and BMP
 are openable through the server preview pipeline.
 
-Future native file handoff and write mode are documented in ADR-0007 and have no
-schema yet.
+Native handoff uses server-scoped desktop mappings and manifest/path validation.
+Legacy file writes use the registry write-mode flag and `file_operations` journal
+described above (ADR-0013); replica source writes remain unavailable. Directory
+entries are currently unpaginated; that redesign is owner-deferred.
 
 ### Derived media cache
 
@@ -791,17 +793,17 @@ manual cover choice is never overwritten. These values are portable metadata in
 
 ## Deferred to later phases
 
-- Generalized media tracks / embedded-stream extraction and remux/transcode
-  fallback.
+- Generalized media tracks and embedded-stream extraction; remux/transcode
+  playback fallback is implemented.
 - Bundle-level links/sources if needed beyond current file-level `source`.
 - Cross-filesystem moved-file repair, ambiguous repair candidates, duplicate/copy
   resolution, and optional full-hash verification.
-- File Browser write/native integration.
-- Index plan beyond current PK/unique constraints, especially for server-side
-  text search/SQLite FTS5, browse-summary aggregation, tag/collection membership
-  queries, and larger-library benchmarks.
-- Collection delete service semantics beyond current FK defaults (tag delete now
-  has explicit safe-delete semantics — see `tags` above).
+- Remaining desktop drop integration and platform qualification; gated legacy writes
+  and mapped Open/Reveal are implemented.
+- Further measured aggregate/descendant-query tuning and representative scale
+  qualification beyond current relational/FTS5 indexes.
+- Broader storage/provider qualification. Collection deletion already supports
+  explicit subtree deletion or child reparenting without moving source files.
 
 ### Explicit serving release
 

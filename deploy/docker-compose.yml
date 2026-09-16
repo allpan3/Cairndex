@@ -25,10 +25,10 @@
 # To run an unpublished branch instead, build from a checkout with
 # docker-compose.prod.yml at the repository root.
 #
-# SECURITY: Cairndex has no authentication yet (AGENTS.md §12). Anyone who can
-# reach the port can use it. That is why the default below is your LAN and not
-# the world — do not port-forward this or put it on a public interface. For
-# access from outside the house, use Tailscale or a VPN, not a router rule.
+# SECURITY: Optional library passphrases and scoped device tokens are private-network
+# access guards; unlocked libraries permit anonymous access
+# Direct public exposure is unsupported; use a private LAN, Tailscale or a VPN
+# The default bind below accepts connections on all host interfaces
 
 services:
   app:

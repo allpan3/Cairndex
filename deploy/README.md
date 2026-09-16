@@ -14,9 +14,10 @@ For the reasoning behind any of it — the hardening, the ownership lease,
 backups, remote access — see [`docs/deployment.md`](../docs/deployment.md). This
 page is the runbook.
 
-> **No authentication yet** (`AGENTS.md` §12). Anyone who can reach the port can
-> use it. The compose file binds your LAN, which is the intended reach; do not
-> port-forward it. For access from outside, use Tailscale or a VPN.
+> Optional per-library passphrase sessions and paired device tokens provide a
+> private-network access guard; unlocked libraries remain anonymous. The compose
+> file binds all host interfaces by default, so restrict it to the intended LAN.
+> Direct public exposure is unsupported. Use Tailscale or a VPN for remote access.
 
 ## Install — through your NAS's Docker UI
 

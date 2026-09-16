@@ -709,7 +709,9 @@ candidate — the pre-release upgrade rehearsal.
 
 ### Remote access and security
 
-The compose file binds to `127.0.0.1` by default. Do **not** expose this directly
+The repository-root production compose binds to `127.0.0.1` by default;
+`deploy/docker-compose.yml` binds to `0.0.0.0` for private LAN access. Restrict
+that address to the intended interface. Do **not** expose either deployment directly
 to the public internet. For remote access, reach it over a private network or
 Tailscale, or front it with a reverse proxy that adds authentication.
 

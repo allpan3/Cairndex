@@ -7,9 +7,9 @@ cross-platform Tauri desktop shell.
 
 In **Bundle Browser**, the primary object is an **Asset Bundle** (cover + video
 parts + alternate versions + subtitles + screenshots + attachments), not a
-single file. Cairndex links existing files in place — it does not copy, move,
-rename, or otherwise manage your files in the normal MVP path. A separate
-**File Browser** browses the underlying directories and files inside the active
+single file. Cairndex links existing files in place by default. Legacy libraries
+can opt into journaled rename, move, trash and copy imports when the deployment
+permits write mode (ADR-0013). A separate **File Browser** browses the underlying directories and files inside the active
 Cairndex library.
 
 See [docs/product-brief.md](docs/product-brief.md) for the product model and
@@ -64,8 +64,8 @@ each library is a directory carrying its own `.cairndex/` metadata
 (`manifest.json`, `library.db`, `cache/`), and a separate server-side
 **registry** tracks registered libraries and the job queue. All content APIs are
 scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
-active library per tab. The normal maintenance flow is **Update**: scan the
-library, persist a reviewable grouping plan, refresh the UI, and open grouping
+intended library on one selected server at a time. The normal maintenance flow is
+**Update**: scan the library, persist a reviewable grouping plan, refresh the UI, and open grouping
 review when suggestions exist. An incomplete or unavailable walk asks for a retry
 without staging replacement identities. Partial grouping acceptance preserves the
 remaining review, and exact retries recover committed results without duplicating
@@ -96,8 +96,10 @@ libraries offer pairing instead of an unusable cross-origin passphrase form. A
 desktop-only Settings page maps each server library to its local/SMB mount after
 matching the portable manifest UUID; mapped files gain safe reveal/default-app
 actions and native file drag-out. Incoming files use journaled HTML uploads when
-write mode is enabled; trusted native reverse-mapping remains an open integration
-requirement.
+write mode is enabled. Desktop file integration is **incomplete and paused**:
+QSpace, multi-file OS drag delivery and app-origin self-return remain unqualified.
+Copy-only imports do not require native reverse-mapping; ADR-0033 and its adapter,
+framework patch and volume-based Move proposals remain on hold.
 Important follow-ups include cross-filesystem repair candidates and token
 rotation/expiry policy. Bundle/container reclassification and File Browser
 write-mode drag-in copy are implemented. Job progress bars, large-library browse
@@ -109,8 +111,8 @@ recommended next tasks.
 
 ## Install (macOS desktop app)
 
-> No release has been published yet (plan 3 D7). The pipeline that builds these
-> artifacts exists; the steps below describe what it publishes.
+Download published builds from [GitHub Releases](https://github.com/allpan3/Cairndex/releases).
+Unreleased branch validation does not qualify a new release.
 
 Releases publish a `.dmg` for **Apple Silicon**, with a `.sha256` beside it.
 Download it, open it, and drag **Cairndex** to Applications.
@@ -207,6 +209,8 @@ platform prerequisites. See
 [docs/development.md](docs/development.md) for full setup, environment variables,
 and troubleshooting.
 
+Run each service from the repository root in its own terminal.
+
 ```bash
 # Backend — installs Python 3.12 automatically via uv, runs on :8000
 cd apps/server
@@ -288,12 +292,14 @@ section (Synology, UGREEN, QNAP, TrueNAS all have one) and manage it from there
 with logs and stats, or run it from a shell:
 
 ```bash
-docker compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-The library directory must be writable by uid 10001, the container's non-root
-user. Do not expose this to the public internet — there is no authentication
-yet; reach it over your LAN or Tailscale.
+From this checkout, the explicit compose path selects the production image.
+The library metadata package must be writable by the configured container user
+(uid 10001 by default); protected source media can remain read-only. Optional
+per-library passphrase sessions and paired device tokens provide an access guard.
+Direct public-internet exposure is unsupported; use a private LAN or Tailscale.
 [deploy/README.md](deploy/README.md) is the runbook (permissions, updating,
 backups); [docs/deployment.md](docs/deployment.md) has the reasoning, the full
 environment table, and how to build the image yourself instead of pulling it.
@@ -347,7 +353,7 @@ blobs, and unreviewed binaries; see [AGENTS.md](AGENTS.md#mandatory-publication-
 Cairndex is released under the [MIT License](LICENSE) (owner decision,
 2026-07-21; [ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
 
-Release artifacts additionally bundle third-party software with its own terms —
-notably a GPL-licensed FFmpeg, whose redistribution obligations are discharged
-in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Building from source
-bundles nothing and is unaffected.
+Packaged desktop builds, including builds made from source, bundle third-party
+software with its own terms — notably GPL-licensed FFmpeg. Redistribution
+obligations and source provenance are described in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

@@ -1,5 +1,35 @@
 # Project status
 
+## Current audit disposition
+
+The [audit status ledger](audit-status.md) is the current I01–I29 disposition for
+`fix/library-ownership-lifecycle`, reconciled against `51e05546` and subsequent
+owner decisions. Completed bounded fixes retain their qualification limits. Cloud
+replica conversion/new-library readiness, providers and broader deployment/scale
+qualification remain incomplete. Folder pagination is owner-deferred.
+**Desktop file integration is INCOMPLETE and paused**; QSpace, multi-file OS
+dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
+patches, volume-based Move and source deletion remain on hold.
+
+The ledger also records the unresolved ADR-0013 Replace-identity disagreement;
+this documentation group does not choose an architecture change.
+
+Current behavior is described in the topic references linked from that ledger.
+The receipts below preserve their original dates, branches, tests and unresolved
+observations; older “current,” “next” and “in progress” labels are historical, not
+authorization or the current work queue.
+
+Documentation reconciliation checks: 320 local Markdown file/anchor links, the
+published JSON filter example against disposable SQLite, 36 filter/API regressions
+and the focused Replace/Undo identity regression pass. OpenAPI and TypeScript
+contracts reproduce exactly. Maintenance/recovery CLI help, task recipes and
+production compose configuration validate. Ruff passes for the comment-only Python
+change; runtime AST and deployment settings are unchanged. Full runtime/native/
+deployment suites are not repeated for prose and comments. No deployment or
+publication is part of this group.
+
+## Historical validation receipts
+
 - Browser/thumbnail performance and same-library worker recovery are complete for
   the approved disposable synthetic scope on `fix/library-ownership-lifecycle`.
   Whole-library thumbnail jobs now keyset-page IDs in groups of 256 instead of
@@ -6145,7 +6175,7 @@ Album tiles scale on the bundle-card ramp; album rows and collection rows follow
 file table had scoped its row-height rule to itself, which is why the album's
 identical rows ignored the slider.
 
-**"This library is open on AP3-M5Pro", diagnosed.** The lease on
+**"This library is open on the recorded owner device", diagnosed.** The lease on
 `/Volumes/media/library` was held by the _repo dev backend_ used for verification —
 its `server_uuid` matches `apps/server/var/registry.db`'s identity, not the
 desktop sidecar's — acquired 07:29:30 local, last heartbeat 07:30:09, holder
