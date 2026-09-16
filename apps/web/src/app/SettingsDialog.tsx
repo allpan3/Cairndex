@@ -1,3 +1,4 @@
+import { ShortcutReference } from './ShortcutReference'
 import { useModalDialog } from './useModalDialog'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -34,17 +35,19 @@ export function SettingsDialog({
   libraries,
   libraryId,
   startPairing = false,
+  showShortcuts = false,
   onClose,
 }: {
   libraries: LibraryRead[]
   libraryId: string | null
   startPairing?: boolean
+  showShortcuts?: boolean
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
-  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance' | 'exports' | 'about'>(
-    'devices',
-  )
+  const [page, setPage] = useState<
+    'devices' | 'libraries' | 'appearance' | 'exports' | 'about' | 'shortcuts'
+  >(showShortcuts ? 'shortcuts' : 'devices')
   const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose)
 
   return (
@@ -97,8 +100,16 @@ export function SettingsDialog({
             >
               About
             </button>
+            <button
+              className={`settings-nav__item${page === 'shortcuts' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('shortcuts')}
+            >
+              Keyboard shortcuts
+            </button>
           </nav>
-          {page === 'about' ? (
+          {page === 'shortcuts' ? (
+            <ShortcutReference />
+          ) : page === 'about' ? (
             <AboutPage />
           ) : page === 'appearance' ? (
             <AppearancePage />

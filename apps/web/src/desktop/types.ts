@@ -8,6 +8,7 @@ import type { ViewerCommand } from '../app/viewer/player/useShortcuts'
 export type DesktopWorkspaceAction =
   | 'reload'
   | 'settings'
+  | 'keyboard-shortcuts'
   | 'manage-libraries'
   | 'pair-device'
   | 'new-bundle'

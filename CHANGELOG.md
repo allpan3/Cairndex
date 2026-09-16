@@ -10,6 +10,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Inspectors use compact bundle covers and aligned file facts; file actions
+  precede expandable technical details and full paths. Cover Play is visible on
+  keyboard focus. Existing editing and selection behavior is retained.
+- Narrow windows temporarily fit panel widths around the listing without
+  overwriting saved widths. Compact View options keeps layout, item sizing and
+  eligible file imports reachable while search, sort and panel toggles remain visible.
+- Settings includes a platform-aware keyboard reference, also available from
+  the connected desktop Help menu. Desktop panel tooltips show their existing
+  shortcuts, and bundle search help describes the actual indexed fields.
+
 - Rename/Move Replace preserves the source file's identity and all metadata at
   the destination. The displaced file retains its separate identity and metadata
   in recoverable Trash; Undo returns both files and preserves later metadata edits.

@@ -11,6 +11,56 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Approved UX refinement
+
+Inspector density, narrow-window controls and shortcut discoverability are
+implemented on `fix/library-ownership-lifecycle` from `c3f28540`. This is an
+owner-approved implementation group. Native interaction verification is still
+blocked, so I21 is not closed as a fully verified group.
+
+- Bundle covers are capped at 144 pixels; keyboard focus reveals Play. File
+  actions follow essential facts, with full paths and technical fields under
+  More details. Editing, bulk metadata and loading/error semantics are retained.
+- Panels reserve 400 pixels for browsing when space is tight and restore saved
+  widths when the window expands. A 960-pixel window with the maximum saved
+  panels previously left an 80-pixel listing and clipped toolbar controls; the
+  same state now leaves 400 pixels. View options retains layout, sizing and
+  eligible imports when inline controls cannot fit.
+- Settings exposes listing/video/desktop shortcut groups from the native command
+  table. The connected desktop Help menu opens the reference, and desktop panel
+  tooltips show existing accelerators. No new bindings are registered.
+
+Browser verification uses a real isolated server and generated synthetic images.
+Six UX cases cover 800/960/1200-pixel windows, restoration at 1440 pixels, long
+paths/titles, single/multiple/empty/loading/error states, layout and sizing,
+help scrolling, Escape/focus return and editable-field selection. All six pass;
+70 existing affected browser cases also pass. The full frontend gate passes
+lint, formatting, typecheck, **1,226 tests** and production build. One concurrent
+run hit two existing long-list test timeouts; the subsequent full run passed.
+The existing bundle-size warning remains.
+
+Rust formatting, Clippy and **135 tests** pass, including real-sidecar lifecycle
+checks. A fresh isolated production `.app` builds with the current bundled
+server; strict signing verification passes. No owner-installed app was replaced.
+Computer Use exposes its window and native menu, but Raise and pointer focus did
+not establish macOS foreground ownership in independent read-only observations.
+A native Escape attempt also did not visibly dismiss that background menu; its
+supported accessibility Cancel action did. These are controller/focus evidence,
+not a product regression or proof of working native keyboard interaction.
+Native density, narrow-window and shortcut/focus outcomes remain unverified.
+
+No schema/API changes or generated-contract updates are required. Backend and
+Docker suites were not repeated for this UI scope; Ubuntu Rust execution is not
+available on this macOS host. Synthetic screenshots are local and outside tracked
+source. The source slice is reviewed through the intact local privacy hooks;
+inherited cumulative privacy/volume blockers remain and history is retained.
+There is no publication, deployment or owner-library mutation. The next step is
+foreground native verification of this group, not another audit group. Desktop
+OS drag integration remains **INCOMPLETE and paused**; NAS, power-loss and
+hard-link qualification are unchanged.
+
+### Previous Rename/Move checkpoint
+
 Rename/Move Replace uses the owner-approved source-identity rule: the incoming
 file retains all metadata at the destination, and the displaced file and its
 metadata remain in recoverable Trash. Undo returns both files without merging
@@ -41,8 +91,8 @@ deployment. NAS/power-loss and cross-device interruption qualification remain
 separate. Copy-import publication still requires filesystem hard-link support.
 The 15-file source/test/reference slice passes the local staged privacy gate.
 Cumulative inherited privacy and volume blockers remain; the owner chose to retain
-inherited history unchanged. The next unapproved group is UX refinement; this
-checkpoint does not authorize starting it.
+inherited history unchanged. The owner subsequently approved UX refinement, whose current qualification
+boundary is recorded above.
 
 Current behavior is described in the topic references linked from that ledger.
 The receipts below preserve their original dates, branches, tests and unresolved

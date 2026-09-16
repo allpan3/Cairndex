@@ -1,3 +1,4 @@
+import { usePanelWidths } from './app/usePanelWidths'
 import { bindEdit } from './api/editBasis'
 import { MetadataReview } from './app/MetadataReview'
 import { libraryStateKey } from './state/useBundleDraft'
@@ -201,15 +202,18 @@ function collectionSubtreeIds(collections: CollectionRead[], rootId: string): Se
   return ids
 }
 
+// Resize preferred panel widths while positioning the grip at their fitted boundary
 function Resizer({
   side,
   width,
+  preferredWidth,
   setWidth,
   min,
   max,
 }: {
   side: 'left' | 'right'
   width: number
+  preferredWidth: number
   setWidth: (n: number) => void
   min: number
   max: number
@@ -217,7 +221,7 @@ function Resizer({
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
-    const startW = width
+    const startW = preferredWidth
     const onMove = (ev: MouseEvent) => {
       const delta = side === 'left' ? ev.clientX - startX : startX - ev.clientX
       setWidth(Math.max(min, Math.min(max, startW + delta)))
@@ -286,7 +290,7 @@ function LibraryApp() {
     pending: boolean
     error: string | null
   }>({ pending: false, error: null })
-  const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
+  const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | 'shortcuts' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
@@ -362,6 +366,7 @@ function LibraryApp() {
     // menu makes it one — without this item the key did nothing at all.
     if (action === 'reload') globalThis.location.reload()
     else if (action === 'settings') setSettingsPage('devices')
+    else if (action === 'keyboard-shortcuts') setSettingsPage('shortcuts')
     else if (action === 'pair-device') setSettingsPage('pair')
     else if (action === 'manage-libraries') setManaging(true)
   })
@@ -508,6 +513,7 @@ function LibraryApp() {
             libraries={libraries}
             libraryId={null}
             startPairing={settingsPage === 'pair'}
+            showShortcuts={settingsPage === 'shortcuts'}
             onClose={() => setSettingsPage(null)}
           />
         )}
@@ -521,6 +527,7 @@ function LibraryApp() {
       libraries={libraries}
       libraryId={libraryId}
       startPairing={settingsPage === 'pair'}
+      showShortcuts={settingsPage === 'shortcuts'}
       onClose={() => setSettingsPage(null)}
     />
   )
@@ -1047,6 +1054,10 @@ function Workspace({
   }, [])
 
   const [mode, setMode] = useState<AppMode>('collection')
+  const panelWidths = usePanelWidths(
+    sidebarVisible ? sidebarW : 0,
+    inspectorVisible && mode !== 'tags' ? inspectorW : 0,
+  )
   // The Files surface has two scopes: browse the directory tree, or the flat
   // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
   const [fileScope, setFileScope] = useState<'browse' | 'unbundled' | 'trash'>('browse')
@@ -2781,8 +2792,8 @@ function Workspace({
       }`}
       style={
         {
-          ['--sidebar-w']: sidebarVisible ? `${sidebarW}px` : '0px',
-          ['--inspector-w']: `${inspectorW}px`,
+          ['--sidebar-w']: `${panelWidths.sidebar}px`,
+          ['--inspector-w']: `${panelWidths.inspector}px`,
         } as React.CSSProperties
       }
       // While an *internal* drag is live, the whole app accepts the dragover so
@@ -3165,10 +3176,24 @@ function Workspace({
       )}
 
       {sidebarVisible && (
-        <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
+        <Resizer
+          side="left"
+          width={panelWidths.sidebar}
+          preferredWidth={sidebarW}
+          setWidth={setSidebarW}
+          min={180}
+          max={400}
+        />
       )}
       {mode !== 'tags' && inspectorVisible && (
-        <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+        <Resizer
+          side="right"
+          width={panelWidths.inspector}
+          preferredWidth={inspectorW}
+          setWidth={setInspectorW}
+          min={220}
+          max={480}
+        />
       )}
 
       <ContextMenu state={menu.state} onClose={menu.close} />

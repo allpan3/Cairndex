@@ -388,7 +388,11 @@ native menu bar. The shell embeds it with `include_str!` and builds the menu
 from it (`src-tauri/src/keymap.rs`), so a label or accelerator cannot drift
 between the two consumers; the SPA reads the same file through
 `platform/keymap.ts` for action typing and the shortcut reference. Edit the
-table, not `app_menu.rs`.
+table, not `app_menu.rs`. **Settings → Keyboard shortcuts** and the connected
+desktop's **Help → Keyboard Shortcuts** expose that reference. Listing keys and
+shared video keys are separated from desktop-only accelerators; the page does
+not register shortcuts. Narrow toolbar View options uses the existing modal
+focus/Escape contract and the same persisted view preferences.
 
 A `predefined` entry names a Tauri built-in (`hide`, `undo`, `minimize`, …).
 Adding a *new* name is the one case that also needs a line in `app_menu.rs`,
@@ -439,8 +443,8 @@ duplicating a bare viewer key spends a global combo on a command you can only
 reach with the viewer open. That is why the Playback menu carries accelerators on
 just Previous/Next File: with a video loaded the arrow keys mean seek, so those
 two commands have no bare-key binding at all, while Play/Pause, seek ±10 s,
-speed, mute, subtitles, and snapshot are already covered by Space/K, J/L, `,`/`.`,
-M, C, and S. Menu items without an accelerator are perfectly normal — `Pair
+speed, mute, subtitles, and snapshot are already covered by Space/K, J/L, X/C,
+M, V, and S. Menu items without an accelerator are perfectly normal — `Pair
 Device…` has none either.
 
 The Playback menu is routed to the open media viewer. `runViewerCommand` in

@@ -497,15 +497,10 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
-/* What a toolbar gives up as its column narrows, in order: the title
-   ellipsizes, then the item count goes, then the zoom slider. Everything after
-   that is a control with no other home — the panel toggles, the layout group,
-   the sort control, the search field — so the row clips rather than painting
-   over the inspector beside it. Before this the row simply overflowed: the zoom
-   slider collapsed to nothing and the inspector toggle was drawn on top of the
-   panel it governs (owner, 2026-09-01). */
+/* A narrow surface keeps actions and search on one row, with view controls in a dialog */
 .toolbar {
   overflow: hidden;
+  flex-shrink: 0;
 }
 .toolbar__title {
   min-width: 0;
@@ -514,38 +509,39 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.toolbar__view-options {
+  display: none;
+  flex: none;
+  cursor: pointer;
+}
 @container surface (max-width: 700px) {
   .toolbar .toolbar__count {
     display: none;
+  }
+  .toolbar:has(.btn) .zoom {
+    display: none;
+  }
+  .toolbar:has(.btn) .toolbar__view-options {
+    display: inline-flex;
   }
 }
 @container surface (max-width: 620px) {
   .toolbar .zoom {
     display: none;
   }
+  .toolbar .toolbar__view-options {
+    display: inline-flex;
+  }
 }
-/* A row carrying an action — the File Browser's Add Files Here, Trash's Empty
-   Trash… — is ~100px heavier, so it reaches the same point sooner and gives the
-   same two things up there. */
 @container surface (max-width: 760px) {
   .toolbar:has(.btn) .toolbar__count {
     display: none;
   }
 }
-@container surface (max-width: 700px) {
-  .toolbar:has(.btn) .zoom {
+@container surface (max-width: 560px) {
+  .toolbar .toolbar__layouts {
     display: none;
   }
-}
-/* Narrower still: the File Browser's Add Files Here goes too, and the two
-   flexible things left — the breadcrumb trail, which scrolls, and the search
-   field — drop to a smaller floor. That keeps the controls with no other home
-   (sort, layout, both panel toggles) on the row down to the narrowest column
-   the app allows. Adding files stays reachable from File ▸ Add Files to
-   Library… and the sidebar's ⋯ menu; Trash's own action is deliberately not
-   matched here, because hiding it mid-confirmation would strip the buttons the
-   confirmation is asking about. */
-@container surface (max-width: 560px) {
   .center .toolbar {
     gap: 6px;
     padding-left: 8px;
@@ -554,20 +550,33 @@ button {
   .center .file-browser .toolbar .btn {
     display: none;
   }
-  /* One class more specific than the base rules further down the sheet, which
-     would otherwise win on order and pin these at their comfortable floors. */
   .center .toolbar input[type='search'] {
     min-width: 72px;
   }
   .center .file-browser__crumbs {
     min-width: 40px;
   }
-  /* The surface's name goes last of the text: the sidebar's highlighted row
-     already says which view is open, and the Bundle Browser's third layout
-     button makes its row the tightest of the two. */
   .center .toolbar .toolbar__title {
     display: none;
   }
+}
+.modal.view-options {
+  width: min(320px, 92vw);
+}
+.view-options__field {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.view-options__field select {
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.view-options__field input {
+  width: 100%;
 }
 
 /* One height for every boxed control in a toolbar — segmented groups, actions,
@@ -1701,6 +1710,7 @@ button {
 
 /* --- Inspector ----------------------------------------------------------- */
 .inspector {
+  min-width: 0;
   grid-column: 3;
   background: var(--bg-2);
   border-left: 1px solid var(--border);
@@ -1713,7 +1723,8 @@ button {
 }
 .inspector__cover {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
+  max-height: 144px;
   border-radius: 8px;
   background: var(--bg) center/cover no-repeat;
   border: 1px solid var(--border);
@@ -4409,7 +4420,8 @@ code {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.inspector__cover:hover .inspector__play {
+.inspector__cover:hover .inspector__play,
+.inspector__cover:focus-within .inspector__play {
   opacity: 1;
 }
 .inspector__play:hover {
@@ -6263,7 +6275,7 @@ code {
 }
 .file-meta {
   margin: 0;
-  padding: 12px 16px;
+  padding: 0;
 }
 .file-inspector__actions {
   display: grid;
@@ -7505,4 +7517,66 @@ code {
 }
 .metadata-review__empty {
   opacity: 0.6;
+}
+
+/* Technical details stay available without pushing file actions below long paths */
+.file-inspector__details {
+  margin-top: 12px;
+}
+.file-inspector__details summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--text-muted);
+}
+.file-meta__row dt {
+  flex-shrink: 0;
+}
+.file-meta__row dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.inspector__multi-head {
+  gap: 8px;
+}
+.inspector .prop__v {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-reference {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 4px 12px 18px;
+}
+.shortcut-reference h3 {
+  margin: 12px 0 8px;
+}
+.shortcut-reference p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shortcut-reference dl {
+  margin: 0;
+}
+.shortcut-reference__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.shortcut-reference__row dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-reference__row dd {
+  flex: none;
+  margin: 0;
+}
+.shortcut-reference kbd {
+  font: inherit;
+  color: var(--text-strong);
 }

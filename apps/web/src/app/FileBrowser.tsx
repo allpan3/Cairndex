@@ -1,3 +1,4 @@
+import { ViewOptions } from './ViewOptions'
 import { libraryStateKey } from '../state/useBundleDraft'
 import {
   useEffect,
@@ -1074,7 +1075,7 @@ function FileList({
           scopeLabel="Remember sort per folder"
         />
 
-        <div className="seg" role="group" aria-label="Layout">
+        <div className="seg toolbar__layouts" role="group" aria-label="Layout">
           <button
             className={prefs.layout === 'grid' ? 'is-active' : ''}
             onClick={() => setPrefs({ ...prefs, layout: 'grid' })}
@@ -1095,6 +1096,20 @@ function FileList({
           </button>
         </div>
 
+        <ViewOptions
+          onAddFiles={canCreateFolder ? () => fileInputRef.current?.click() : undefined}
+          addFilesDisabled={write.busy}
+          layout={prefs.layout}
+          layouts={[
+            { value: 'grid', label: 'Card' },
+            { value: 'list', label: 'List' },
+          ]}
+          onLayout={(layout) => setPrefs({ ...prefs, layout })}
+          zoom={prefs.zoom}
+          min={FILE_ZOOM_MIN}
+          max={FILE_ZOOM_MAX}
+          onZoom={(zoom) => setPrefs({ ...prefs, zoom })}
+        />
         {headerTrailing}
       </div>
 

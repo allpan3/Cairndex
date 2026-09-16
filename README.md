@@ -183,6 +183,15 @@ server; desktop **Browse** selects a folder on this computer and uses its manage
 local server. A missing or offline remembered library stays selected with Retry.
 See [connection and recovery controls](docs/connections.md).
 
+### Everyday controls
+
+**Settings → Keyboard shortcuts** lists selection, playback and desktop menu
+keys; desktop also exposes it under Help. Narrow toolbars keep layout and item
+sizing in **View options**. Panels temporarily shrink to preserve listing space
+and restore their preferred widths when the window expands. File inspectors
+keep technical facts and full paths under **More details**. See
+[everyday interactions](docs/interactions.md).
+
 ### Release a library without quitting
 
 Open **Libraries** and choose **Release** to stop this server serving a library

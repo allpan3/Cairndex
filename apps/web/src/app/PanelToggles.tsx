@@ -1,3 +1,5 @@
+import { getHostPlatform } from '../platform'
+import { actionShortcutLabel } from '../platform/keymap'
 import { IconPanelLeft, IconPanelRight } from './icons'
 
 /**
@@ -22,7 +24,7 @@ export function SidebarToggle({ visible, onToggle }: { visible: boolean; onToggl
       onClick={onToggle}
       aria-label="Toggle Sidebar"
       aria-pressed={visible}
-      title="Toggle Sidebar"
+      title={panelTitle('Toggle Sidebar', 'toggle-sidebar')}
     >
       <IconPanelLeft />
     </button>
@@ -36,9 +38,16 @@ export function InspectorToggle({ visible, onToggle }: { visible: boolean; onTog
       onClick={onToggle}
       aria-label="Toggle Inspector"
       aria-pressed={visible}
-      title="Toggle Inspector"
+      title={panelTitle('Toggle Inspector', 'toggle-inspector')}
     >
       <IconPanelRight />
     </button>
   )
+}
+
+// Browser tooltips must not advertise accelerators registered only by the desktop host
+function panelTitle(label: string, id: string): string {
+  if (getHostPlatform().kind !== 'desktop') return label
+  const shortcut = actionShortcutLabel(id, /Mac|iPhone|iPad/.test(navigator.platform))
+  return shortcut ? `${label} (${shortcut})` : label
 }

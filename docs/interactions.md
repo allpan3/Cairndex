@@ -37,6 +37,42 @@ Smart Collection changes are submitted by Create or Save. Cancel, Close and
 Escape discard that dialog's unsaved edits. Replica conflict review retains its
 existing private-draft behavior.
 
+## Panels and compact toolbars
+
+Panel widths are preferences. When a window narrows, the sidebar and inspector
+shrink above their existing minimum widths to reserve 400 pixels for the listing;
+widening the window restores the preferred widths. Panel visibility, selection,
+layout and item-size preferences remain independent. The desktop minimum is
+960 × 640; browser checks also cover 800-pixel-wide windows.
+
+When item sizing leaves the toolbar, **View options** exposes layout and item
+size in a keyboard-accessible dialog. At narrower widths it also replaces the
+inline layout buttons. File Browser includes **Add Files Here** in this dialog
+when the current directory permits imports. Search, sort and panel controls
+remain on the toolbar. Escape closes the dialog and returns focus to its opener.
+
+## Shortcut reference
+
+**Settings → Keyboard shortcuts** describes focused-listing keys, shared video
+keys and desktop menu accelerators separately. Desktop also provides **Help →
+Keyboard Shortcuts** once connected to a server. The reference reads the same
+command table as native menus, and panel tooltips show their accelerator only in
+the desktop app. Browser controls remain the way to invoke desktop-only actions;
+no new global or bare-key bindings are registered.
+
+## Inspector hierarchy
+
+Bundle covers retain their preview and drag behavior in a compact frame capped
+at 144 pixels high. The cover Play button is visible on keyboard focus as well as
+hover. Title, rating and metadata remain editable with the same save semantics.
+Existing section-folding preferences are retained.
+
+File inspectors show type, size, dimensions, duration, dates and status first,
+then location and available mapped-host actions. **More details** exposes the
+full path, encoding and other technical facts without pushing actions below a
+long path. This disclosure starts closed for each selected file. Long values
+wrap within the panel. Bulk selection retains its existing common-metadata controls.
+
 ## Inspector loading
 
 Unknown file counts and sizes show Loading. Failed requests offer Retry;
