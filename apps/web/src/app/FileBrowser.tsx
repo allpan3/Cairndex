@@ -149,7 +149,12 @@ function crumbs(path: string): { label: string; path: string }[] {
  */
 function thumbnailFor(entry: FileBrowserEntry): string | null {
   if (entry.kind === 'directory') return null
-  if (entry.file_id && entry.bundle_id) return fileThumbnailUrl(entry.bundle_id, entry.file_id)
+  if (entry.file_id && entry.bundle_id)
+    return fileThumbnailUrl(
+      entry.bundle_id,
+      entry.file_id,
+      `${entry.size_bytes}:${entry.modified_at}`,
+    )
   if (entry.media_kind === 'image') return fileBrowserPreviewUrl(entry.relative_path, 640)
   return null
 }

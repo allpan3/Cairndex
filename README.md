@@ -98,6 +98,9 @@ matching the portable manifest UUID; mapped files gain safe reveal/default-app
 actions and native file drag-out. Incoming files use journaled HTML uploads when
 write mode is enabled. Desktop file integration is **incomplete and paused**:
 QSpace, multi-file OS drag delivery and app-origin self-return remain unqualified.
+[Copy-import Replace](docs/file-operations.md) keeps destination metadata and
+identity, retains old bytes in Trash, and refreshes derived media; Undo restores
+those bytes. Ordinary copies retain independent identities.
 Copy-only imports do not require native reverse-mapping; ADR-0033 and its adapter,
 framework patch and volume-based Move proposals remain on hold.
 Important follow-ups include cross-filesystem repair candidates and token

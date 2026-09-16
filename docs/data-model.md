@@ -677,7 +677,15 @@ directory entries whose full size was not recorded. This keeps a network mount
 off the response path and avoids understating what Empty Trash will remove.
 A Replace records `replaced_operation_id` pointing at the `trash` row for the
 file it displaced — so the displaced file appears in the Trash view like any
-other deletion, and undoing the rename restores it.
+other deletion, and undoing the operation restores its bytes. Copy-import
+Replace uses a `bytes_only` Trash receipt with null entry `file_id`: the active
+destination retains its catalog row and authored relationships. The import
+payload records `retained_file_id`, staged/past filesystem observations and
+original embedded subtitle records. A journaled inverse records its own Trash
+receipt before moving replacement bytes; recovery can finish either boundary.
+No schema migration is required. [Replace and Undo](file-operations.md) describes
+the metadata and derived-cache contract; Rename/Move retain a separate identity
+disagreement.
 
 Renaming updates `AssetFile.relative_path` (and the derived `directory_path`)
 in the same transaction, **preserving `AssetFile.id`**, which is what carries

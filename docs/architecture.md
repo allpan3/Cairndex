@@ -224,6 +224,15 @@ self-return discrimination remains unresolved; see
 [ADR-0033](adr/0033-selective-native-file-drops.md) for the framework API boundary,
 held extension proposal and its separate implementation decision.
 
+Copy-import Replace retains the cataloged destination identity and authored
+relationships under ADR-0013 §5. Its journal references a bytes-only Trash backup
+before moving the original; Undo stashes the replacement bytes and restores the
+original without moving metadata to a new row. Byte observations distinguish
+interrupted publication from an untouched destination. Derived media and running
+encoders are invalidated when bytes change. Ordinary copies remain independent;
+see [Replace and Undo](file-operations.md) for recovery and the separate
+Rename/Move identity disagreement.
+
 An import selection remains a **client-owned sequential batch**, not a registry
 job: the bytes live in a browser `File` or a desktop file handle, so putting an
 entry in `job_queue` would move neither the upload nor its cancellation to the

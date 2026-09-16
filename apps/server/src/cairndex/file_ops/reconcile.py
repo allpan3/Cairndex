@@ -41,8 +41,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileOpType
-from cairndex.file_ops import fsmove, imports, journal, trash
+from cairndex.domain.enums import FileOpStatus, FileOpType
+from cairndex.file_ops import fsmove, imports, journal, replacement, trash
 from cairndex.file_ops.operations import mark_rows_trashed, repoint_linked_rows
 from cairndex.file_ops.paths import resolve_writable
 from cairndex.persistence.models import FileOperation
@@ -69,6 +69,8 @@ def reconcile_pending(session: Session, root: Path) -> ReconcileReport:
     completed = 0
     failed = 0
     for operation in pending:
+        if operation.status is not FileOpStatus.PENDING:
+            continue
         try:
             if _settle(session, root, operation):
                 completed += 1
@@ -141,6 +143,8 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         return _settle_move(session, root, operation)
 
     if operation.op is FileOpType.IMPORT:
+        if operation.payload.get("import_protocol") == 2:
+            return _settle_import(session, root, operation)
         # The destination existing is *not* enough to conclude the import
         # finished: a Replace-policy import whose upload died partway leaves the
         # old file still sitting at that path, and calling that success would
@@ -246,7 +250,11 @@ def _settle_trash(session: Session, root: Path, operation: FileOperation) -> boo
             is_directory=is_directory,
             size_bytes=size_bytes,
         )
-        moved.extend(mark_rows_trashed(session, operation.id, entry))
+        moved.extend(
+            [entry]
+            if operation.payload.get("bytes_only")
+            else mark_rows_trashed(session, operation.id, entry)
+        )
 
     if not moved:
         journal.fail(session, operation, "interrupted before anything was moved to the trash")
@@ -261,3 +269,26 @@ def _settle_trash(session: Session, root: Path, operation: FileOperation) -> boo
         reconciled=True,
     )
     return True
+
+
+# Finish only an observed publication, or return the old bytes after an abandoned upload
+def _settle_import(session: Session, root: Path, operation: FileOperation) -> bool:
+    if operation.payload.get("undo_started"):
+        replacement.undo(session, root, operation)
+        return True
+    destination = resolve_writable(root, operation.payload["destination"])
+    staging = imports.staging_dir(root) / f"{operation.id}.part"
+    if replacement.matches(destination, operation.payload.get("published", {})):
+        imports._discard(staging)
+        updated = replacement.refresh_file(session, root, operation)
+        if not updated and operation.payload.get("link"):
+            updated = imports._link_if_asked(session, operation.payload["destination"])
+        journal.finish(session, operation, files_updated=updated, reconciled=True)
+        return True
+    replaced_id = operation.payload.get("replaced_operation_id")
+    if replaced_id:
+        backup = session.get(FileOperation, replaced_id)
+        if backup is not None:
+            replacement.restore_backup(session, root, backup)
+    journal.fail(session, operation, "interrupted before the upload was published")
+    return False

@@ -599,6 +599,18 @@ class SessionManager:
         for session in sessions:
             self._teardown(session)
 
+    # Retained file IDs must not reuse encoders that still hold the displaced bytes
+    def close_source(self, path: Path) -> None:
+        with self._lock:
+            sessions = [
+                s
+                for s in self._sessions.values()
+                if s.source_path == path
+                or (s.params.burn_subtitle is not None and s.params.burn_subtitle.path == path)
+            ]
+        for session in sessions:
+            self._teardown(session)
+
     def shutdown(self) -> None:
         """Stop the reaper and tear down every session (server shutdown)."""
         self._stop.set()
@@ -888,3 +900,9 @@ def close_library_sessions(library_id: str) -> None:
     """Stop existing library encoders without initializing a new manager"""
     if _default_manager is not None:
         _default_manager.close_library(library_id)
+
+
+# Invalidate running derivatives without starting a manager just for an import
+def close_source_sessions(path: Path) -> None:
+    if _default_manager is not None:
+        _default_manager.close_source(path)

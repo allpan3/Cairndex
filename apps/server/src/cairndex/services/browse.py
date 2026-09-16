@@ -546,6 +546,8 @@ def _cover_key(asset_file: AssetFile | None) -> str | None:
     return (
         f"{asset_file.id}:{asset_file.updated_at.timestamp()}"
         if asset_file.cover_time is not None
+        else f"{asset_file.id}:{asset_file.quick_fingerprint}"
+        if asset_file.quick_fingerprint
         else asset_file.id
     )
 

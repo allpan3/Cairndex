@@ -348,7 +348,11 @@ files therefore reach the HTML upload handlers: File Browser copies into the
 current directory; bundle cards and the Bundle Inspector open a destination
 picker, then import and link the landed files. Both require deployment and
 library write permission and use the journaled server import endpoint. An
-unhandled file drop receives guidance. The native navigation policy keeps the
+unhandled file drop receives guidance. Copy-import Replace/Undo metadata and
+crash boundaries are covered by `tests/test_import_replacement.py`, including
+independent process exits. `e2e/copy-imports.spec.ts` exercises the real backend,
+changed image bytes and the visible Undo control; [the contract](file-operations.md)
+keeps this separate from native OS delivery qualification. The native navigation policy keeps the
 renderer on the bundled app origin (the exact configured Vite origin in
 development), blocking file/external-document navigation independently of HTML
 drop handling.

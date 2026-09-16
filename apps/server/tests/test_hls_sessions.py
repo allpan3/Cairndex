@@ -1333,3 +1333,21 @@ def test_real_windows_keep_absolute_timestamps_with_the_first_init(
                 )
     finally:
         manager.shutdown()
+
+
+# Replacing media or burned subtitles stops only encoders reading those bytes
+
+
+def test_replacement_closes_source_and_subtitle_sessions(make_manager: ManagerFactory) -> None:
+    manager = make_manager(max_sessions=4)
+    source = Path("/synthetic/clip.mkv")
+    subtitle = Path("/synthetic/clip.srt")
+    video = _create(manager, source_path=source)
+    burning = _create(
+        manager, file_id="burning", params=SessionParams(burn_subtitle=BurnSubtitle(path=subtitle))
+    )
+    other = _create(manager, file_id="other")
+    manager.close_source(source)
+    assert video.closed and not burning.closed and not other.closed
+    manager.close_source(subtitle)
+    assert burning.closed and not other.closed

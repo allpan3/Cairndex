@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.media import derived_cache
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile, SubtitleTrack
@@ -468,7 +469,7 @@ def build_vtt_for_track(session: Session, track: SubtitleTrack, *, force: bool =
 
     library_root = library_root_for_session(session)
     dest = vtt_cache_path(library_root, track.id)
-    if dest.exists() and not force:
+    if derived_cache.is_current(dest, source.quick_fingerprint) and not force:
         return dest
 
     abs_path = Path(resolve_within_root(library_root, source.relative_path))
@@ -476,6 +477,7 @@ def build_vtt_for_track(session: Session, track: SubtitleTrack, *, force: bool =
     vtt = raw if ext == "vtt" else _srt_to_vtt(raw)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(vtt, encoding="utf-8")
+    derived_cache.write_fingerprint(dest, source.quick_fingerprint)
     return dest
 
 

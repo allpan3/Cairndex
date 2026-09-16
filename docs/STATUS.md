@@ -11,13 +11,37 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-The ledger also records the unresolved ADR-0013 Replace-identity disagreement;
-this documentation group does not choose an architecture change.
+Copy-import Replace/Undo retains destination identity and authored metadata,
+keeps old bytes in recoverable Trash, and refreshes byte-derived data. The
+[contract](file-operations.md) and [audit ledger](audit-status.md) distinguish
+ordinary independent copies from explicit Replace. Rename/Move's two-linked-file
+identity choice remains unresolved; ADR-0013 is unchanged.
+
+The Replace/Undo repair is on `fix/library-ownership-lifecycle`, starting from
+`4f64fd33`. Focused backend checks pass 235 cases, including separate-process
+exits, cancellation, repeat/out-of-order Undo, metadata continuity, converted
+subtitles, thumbnail regeneration and HLS invalidation. All seven real-backend
+Chromium copy/import cases pass, including changed-image Replace and the visible
+Undo button. The final frontend gate passes lint, formatting, typecheck, 1,221
+tests and build; the existing bundle-size warning remains. Backend Ruff, formatting
+and mypy pass. The final full backend suite passes **1,673 tests**, with one
+existing skip. An initial ordinary-copy browser timeout and a replica-review
+assertion failure passed on rerun; the final gates are clean. Local reference
+targets validate (154 checked).
+
+The local staged-content privacy gate passes for this source/test/reference slice.
+The cumulative branch gate remains blocked by inherited private-content findings
+and bulk-volume limits; history is retained under the owner's decision. No push,
+PR, release, deployment or owner-library mutation is included. Rust/native and
+Docker gates are not repeated because no host or deployment behavior changed.
+NAS, power-loss and OS drag-delivery qualification remain outside this group.
 
 Current behavior is described in the topic references linked from that ledger.
 The receipts below preserve their original dates, branches, tests and unresolved
 observations; older “current,” “next” and “in progress” labels are historical, not
 authorization or the current work queue.
+
+## Historical validation receipts
 
 Documentation reconciliation checks: 320 local Markdown file/anchor links, the
 published JSON filter example against disposable SQLite, 36 filter/API regressions
@@ -27,8 +51,6 @@ production compose configuration validate. Ruff passes for the comment-only Pyth
 change; runtime AST and deployment settings are unchanged. Full runtime/native/
 deployment suites are not repeated for prose and comments. No deployment or
 publication is part of this group.
-
-## Historical validation receipts
 
 - Browser/thumbnail performance and same-library worker recovery are complete for
   the approved disposable synthetic scope on `fix/library-ownership-lifecycle`.

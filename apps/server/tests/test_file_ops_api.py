@@ -590,7 +590,7 @@ def test_same_library_import_creates_independent_identity_and_undo_preserves_sou
     assert source_path.read_bytes() == before
 
 
-def test_same_path_replace_trashes_original_identity_and_undo_restores_it(
+def test_same_path_replace_preserves_destination_identity_through_undo(
     client: TestClient,
     writable: str,
     library_root: Path,
@@ -613,10 +613,9 @@ def test_same_path_replace_trashes_original_identity_and_undo_restores_it(
     replaced = response.json()
     session.expire_all()
     replacement = session.scalar(select(AssetFile).where(AssetFile.relative_path == "clip.mkv"))
-    assert replacement is not None and replacement.id != original_id
-    assert source.availability is FileAvailability.TRASHED
-    assert source.relative_path.startswith(".cairndex/trash/")
-    assert (library_root / source.relative_path).read_bytes() == before
+    assert replacement is not None and replacement.id == original_id
+    assert source.availability is FileAvailability.AVAILABLE
+    assert source.relative_path == "clip.mkv"
     assert (library_root / "clip.mkv").read_bytes() == before
 
     undone = client.post(
@@ -627,7 +626,7 @@ def test_same_path_replace_trashes_original_identity_and_undo_restores_it(
     assert source.id == original_id and source.bundle_id == original_bundle
     assert source.relative_path == "clip.mkv"
     assert source.availability is FileAvailability.AVAILABLE
-    assert replacement.availability is FileAvailability.TRASHED
+    assert replacement.availability is FileAvailability.AVAILABLE
     assert (library_root / "clip.mkv").read_bytes() == before
 
 

@@ -461,7 +461,7 @@ function AlbumRow({
             {file.media_kind === 'image' || file.media_kind === 'video' ? (
               <img
                 className="file-row__thumb"
-                src={fileThumbnailUrl(file.bundle_id, file.id)}
+                src={fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)}
                 alt=""
                 loading="lazy"
               />

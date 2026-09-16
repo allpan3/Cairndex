@@ -233,17 +233,16 @@ for (const choice of ['Skip', 'Keep both', 'Replace'] as const)
       } else {
         const destination = choice === 'Keep both' ? 'Source/Amber (2).png' : 'Source/Amber.png'
         expect(await readFile(join(f.root, destination))).toEqual(bytes)
-        await apiPost(f.base, '/manual-bundling/add-files', {
-          target_bundle_id: f.target.id,
-          relative_paths: [destination],
-        })
-        const copy = catalog(f.root).find((file) => file.relative_path === destination)!
-        expect(copy.bundle_id).toBe(f.target.id)
-        expect(original.some((file) => file.id === copy.id)).toBe(false)
-        if (choice === 'Replace') {
-          const source = catalog(f.root).find((file) => file.id === original[0]!.id)!
-          expect(source.availability.toLowerCase()).toBe('trashed')
-          expect(source.relative_path).toContain('.cairndex/trash/')
+        if (choice === 'Keep both') {
+          await apiPost(f.base, '/manual-bundling/add-files', {
+            target_bundle_id: f.target.id,
+            relative_paths: [destination],
+          })
+          const copy = catalog(f.root).find((file) => file.relative_path === destination)!
+          expect(copy.bundle_id).toBe(f.target.id)
+          expect(original.some((file) => file.id === copy.id)).toBe(false)
+        } else {
+          expect(catalog(f.root)).toEqual(original)
         }
         await apiPost(f.base, `/file-ops/${receipt.id}/undo`)
         expect(catalog(f.root).filter((file) => file.bundle_id === f.source.bundle_id)).toEqual(
@@ -305,3 +304,81 @@ for (const surface of ['card', 'inspector'] as const)
       await f.cleanup()
     }
   })
+
+// Different bytes replace the destination's media while its visible bundle metadata stays put
+test('Replace and toast Undo retain metadata and refresh the cover @fullstack', async ({
+  page,
+}) => {
+  const f = await fixture()
+  try {
+    const original = catalog(f.root)
+    const destination = original.find((file) => file.relative_path === 'Source/Amber.png')!
+    const detailUrl = `${f.base}/bundles/${f.source.bundle_id}`
+    const detail = (await (await fetch(detailUrl)).json()) as { version: number }
+    const basis = (await (await fetch(`${f.base}/metadata`)).json()) as { basis: string }
+    expect(
+      (
+        await fetch(detailUrl, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Cairndex-Basis': basis.basis,
+            'X-Cairndex-Operation': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            version: detail.version,
+            notes: ['Destination annotation'],
+            rating: 4.5,
+            cover_file_id: destination.id,
+          }),
+        })
+      ).ok,
+    ).toBe(true)
+    const thumbnailUrl = `${detailUrl}/thumbnail`
+    const before = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
+    await openFolder(page, f, 'Source')
+    const picker = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: 'Add Files Here' }).click()
+    await (
+      await picker
+    ).setFiles({ name: 'Amber.png', mimeType: 'image/png', buffer: await readFile(f.paths[1]!) })
+    await page
+      .getByRole('dialog', { name: 'Name already in use' })
+      .getByRole('button', { name: 'Replace', exact: true })
+      .click()
+    await expect
+      .poll(
+        async () =>
+          (await receipts(f.base)).filter((r) => r.op === 'import' && r.status === 'done').length,
+      )
+      .toBe(1)
+    expect(catalog(f.root)).toEqual(original)
+    expect(await readFile(f.paths[0]!)).toEqual(await readFile(f.paths[1]!))
+    const after = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
+    expect(after.equals(before)).toBe(false)
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect
+      .poll(
+        async () =>
+          (await receipts(f.base)).filter((r) => r.op === 'import' && r.status === 'undone').length,
+      )
+      .toBe(1)
+    expect(catalog(f.root)).toEqual(original)
+    expect(Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer()).equals(before)).toBe(true)
+    await page.reload()
+    await page.locator(`[data-bundle-id="${f.source.bundle_id}"]`).first().click()
+    await expect(
+      page.locator('aside.inspector').getByText('Destination annotation', { exact: true }),
+    ).toBeVisible()
+    const restored = (await (await fetch(detailUrl)).json()) as {
+      rating: number
+      cover_file_id: string
+    }
+    expect(restored.rating).toBe(4.5)
+    expect(restored.cover_file_id).toBe(destination.id)
+    await page.screenshot({ path: test.info().outputPath('replace-undo.png') })
+  } finally {
+    await page.close()
+    await f.cleanup()
+  }
+})

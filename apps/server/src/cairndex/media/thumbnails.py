@@ -127,7 +127,7 @@ def _generate_for_file(session: Session, file_id: str, *, force: bool) -> Path:
 
     library_root = library_root_for_session(session)
     dest = thumbnail_cache_path(library_root, file_id)
-    if dest.exists() and not force:
+    if derived_cache.is_current(dest, asset_file.quick_fingerprint) and not force:
         return dest  # cache hit — reused, not regenerated
 
     source = resolve_within_root(library_root, asset_file.relative_path)
@@ -135,9 +135,10 @@ def _generate_for_file(session: Session, file_id: str, *, force: bool) -> Path:
     # lock and second cache check make that one atomic encode, while the global
     # slots keep a page of different cold tiles from launching an ffmpeg storm.
     with derived_cache.locked(dest):
-        if dest.exists() and not force:
+        if derived_cache.is_current(dest, asset_file.quick_fingerprint) and not force:
             return dest
         _generate(Path(source), dest, asset_file.media_kind, asset_file.cover_time)
+        derived_cache.write_fingerprint(dest, asset_file.quick_fingerprint)
     return dest
 
 

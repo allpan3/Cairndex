@@ -170,3 +170,15 @@ test('an unindexed path still has no dimensions to report', () => {
   expect(item.height).toBeNull()
   expect(item.fps).toBeNull()
 })
+
+// Keeping the destination ID must not let decoded images survive replacement bytes
+test('same-ID replacement refreshes thumbnail and original image sources', () => {
+  const original = viewerItemFromFile(file())
+  const replaced = viewerItemFromFile(
+    file({ quick_fingerprint: '124:789', updated_at: '2026-01-02T00:00:00Z' }),
+  )
+  expect(replaced.key).toBe(original.key)
+  expect(replaced.imageTiers.map((tier) => tier.tier)).toEqual(['thumbnail', 'original'])
+  for (let index = 0; index < original.imageTiers.length; index += 1)
+    expect(replaced.imageTiers[index]?.src).not.toBe(original.imageTiers[index]?.src)
+})

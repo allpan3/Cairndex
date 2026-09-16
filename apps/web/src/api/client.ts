@@ -1342,8 +1342,10 @@ export function collectionThumbnailUrl(collectionId: string, coverKey?: string |
   return resolveAssetUrl(coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base)
 }
 
-export function fileContentUrl(fileId: string): string {
-  return resolveAssetUrl(`${lib()}/files/${fileId}/content`)
+// Version retained identities so image viewers reload replaced source bytes
+export function fileContentUrl(fileId: string, version?: string | null): string {
+  const base = `${lib()}/files/${fileId}/content`
+  return resolveAssetUrl(version ? `${base}?v=${encodeURIComponent(version)}` : base)
 }
 
 export type PreviewSize = 640 | 1600 | 2560

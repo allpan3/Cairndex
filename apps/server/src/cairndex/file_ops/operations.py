@@ -26,7 +26,7 @@ from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
 from cairndex.domain.file_names import display_title_after_move
-from cairndex.file_ops import fsmove, journal, trash
+from cairndex.file_ops import fsmove, journal, replacement, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
 from cairndex.ownership.lifecycle import check_work_ownership
@@ -872,6 +872,11 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
         )
 
     if operation.op is FileOpType.IMPORT:
+        if operation.payload.get("import_protocol") == 2 and operation.payload.get(
+            "replaced_operation_id"
+        ):
+            updated = replacement.undo(session, root, operation)
+            return OperationResult(operation, operation.payload["destination"], updated)
         # Undoing an import deletes the file it created — to the trash, not with
         # an unlink, so "undo" is never the one action in the app that destroys
         # something. If the import replaced a file, that one comes back too.

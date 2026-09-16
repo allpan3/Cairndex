@@ -342,7 +342,8 @@ per-library one.
 
 **Importing files** (ADR-0013 §7): with write mode on, files can be copied into
 a library over the API — the one way outside bytes ever enter one. The upload is
-streamed to `.cairndex/tmp/` and renamed into place, so a large import needs
+streamed to `.cairndex/tmp/` and linked into a vacant destination before staging
+cleanup, so a large import needs
 **free space inside the library volume**, not on the server's app-data disk, and
 a crash leaves a `.part` file that the next library open removes.
 `CAIRNDEX_IMPORT_MAX_BYTES` caps a single file; it defaults to `0` (no limit),
@@ -639,6 +640,11 @@ with) the library folder.
 have not been permanently removed yet. It is not derived and cannot be
 regenerated, so a backup that skips it can turn "I can still get that back" into
 "it is gone". Two consequences worth planning for:
+
+Copy-import Replace also stores the previous bytes here, while retaining the
+active destination's catalog identity and metadata. Empty Trash discards that
+backup and makes its Undo unavailable; it does not remove the active replacement.
+See [Replace and Undo](file-operations.md).
 
 - **It grows.** A deletion is a rename, so the bytes stay in the library until
   someone empties the trash; a library's on-disk size does not drop when files

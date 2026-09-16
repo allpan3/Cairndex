@@ -79,17 +79,20 @@ verified; it does not mean every deployment or scale is qualified.
   grouping plans, additive moment tags and explicitly armed looping remain
   accepted behavior.
 
-## Unresolved specification disagreement
+## Replace identity disposition
 
-ADR-0013 §5 says a linked destination keeps its `AssetFile.id` during Replace.
-The implemented copy-import path instead retains that original row in Trash,
-catalogs a new destination ID and restores the original ID on Undo. The executed
-`test_same_path_replace_trashes_original_identity_and_undo_restores_it` regression
-and desktop copy receipts verify this distinction. The data is recoverable, but
-the accepted ADR and implementation do not state the same identity contract.
-This audit records the disagreement without changing runtime behavior or silently
-amending the decision. A separate owner decision must choose an ADR amendment
-or an implementation repair before claiming full specification agreement.
+Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and
+authored metadata, while the prior bytes receive a bytes-only Trash receipt.
+Undo restores those bytes on the same identity, retains subsequent authored edits,
+and invalidates derived media. Same-path imports follow this explicit Replace
+contract; ordinary distinct copies and Keep Both remain independent. See
+[Replace and Undo](file-operations.md) for cancellation, recovery and coverage.
+
+Rename/Move retain the source ID and trash the displaced destination row. With
+two linked files, preserving source identity under ADR-0013 §4 conflicts with
+keeping destination identity under §5 unless a metadata-transfer policy is chosen.
+That separate product choice remains unresolved; the accepted ADR is unchanged,
+and this group does not claim full Replace specification agreement.
 
 ## Evidence and original-register crosswalk
 

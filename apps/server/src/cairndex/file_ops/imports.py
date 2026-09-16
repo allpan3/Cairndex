@@ -10,8 +10,8 @@ three constraints:
   (AGENTS.md). So the body *is* the file.
 * **A 60 GB video must not be held in memory.** The body is written to a
   temporary file in chunks, and that temporary lives inside the library package
-  — the same filesystem as its destination — so the final step is a rename
-  rather than a second copy of everything just written.
+  — the same filesystem as its destination — so publication links it into a
+  vacant path and removes the staging name without copying all bytes again.
 * **A failed or abandoned upload must not leave litter.** The partial file is
   removed on every failure path, and the journal row records the failure.
 
@@ -21,22 +21,25 @@ answers, and per-file undo possible; batching them into one request would make
 all three worse to get a round trip back.
 """
 
+import asyncio
 import contextlib
 import os
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import ConflictError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.domain.enums import FileOpType
-from cairndex.file_ops import journal, operations
+from cairndex.file_ops import journal, operations, replacement
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, resolve_writable, validate_name
 from cairndex.ownership.lifecycle import check_work_ownership
+from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package as pkg
 
 # Chunk size for streaming a body to disk. Large enough that a big import is not
@@ -45,7 +48,7 @@ CHUNK_BYTES = 1024 * 1024
 
 # Partial uploads live here — inside the package, so they are invisible to
 # scanning, on the same filesystem as any destination (making the final move a
-# rename), and swept on the next import if a crash ever leaves one behind.
+# link), and swept on the next import if a crash ever leaves one behind.
 STAGING_DIR = "tmp"
 
 
@@ -144,7 +147,12 @@ async def import_stream(
     operation = journal.begin(
         session,
         op=FileOpType.IMPORT,
-        payload={"destination": target_relative, "filename": filename},
+        payload={
+            "destination": target_relative,
+            "filename": filename,
+            "import_protocol": 2,
+            "link": link,
+        },
     )
     staging = staging_dir(root) / f"{operation.id}.part"
     check_work_ownership()
@@ -165,7 +173,7 @@ async def import_stream(
                 handle.write(chunk)
         if written == 0:
             raise ValidationError("The uploaded file was empty.")
-    except Exception as error:
+    except (Exception, asyncio.CancelledError) as error:
         _discard(staging)
         journal.fail(session, operation, _reason(error))
         raise
@@ -194,27 +202,57 @@ async def import_stream(
         journal.fail(session, operation, _reason(error))
         raise
 
-    # Only if something is *still* there: a large upload gives the owner time to
-    # delete the file it was going to replace, and trashing a path that is
-    # already free would fail the import over a conflict that resolved itself.
-    if on_conflict is ConflictPolicy.REPLACE and os.path.lexists(root / target_relative):
-        try:
-            displaced = operations.trash_paths(session, root, paths=[target_relative])
-            journal.finish_payload(session, operation, replaced_operation_id=displaced.operation.id)
-        except Exception as error:
-            _discard(staging)
-            journal.fail(session, operation, _reason(error))
-            raise
-
+    # Record the completed staging identity before touching the existing destination
+    destination = resolve_writable(root, target_relative, what="destination")
+    replacing = on_conflict is ConflictPolicy.REPLACE and os.path.lexists(destination)
+    if replacing and (not destination.is_file() or (root / target_relative).is_symlink()):
+        _discard(staging)
+        journal.fail(session, operation, "an upload cannot replace a directory or symlink")
+        raise ConflictError("An upload can replace a regular file only.")
+    if replacing:
+        # Coarse filesystem timestamps must still distinguish the two cache generations
+        old_stat, new_stat = destination.stat(), staging.stat()
+        if (old_stat.st_size, old_stat.st_mtime_ns) == (new_stat.st_size, new_stat.st_mtime_ns):
+            os.utime(staging, ns=(new_stat.st_atime_ns, old_stat.st_mtime_ns + 1_000_000_000))
+    retained = session.scalar(select(AssetFile).where(AssetFile.relative_path == target_relative))
+    journal.finish_payload(
+        session,
+        operation,
+        destination=target_relative,
+        published=replacement.observation(staging),
+        previous=replacement.observation(destination) if replacing else None,
+        retained_file_id=retained.id if replacing and retained else None,
+        previous_embedded_tracks=replacement.embedded_snapshot(
+            session, retained.id if replacing and retained else None
+        ),
+        size_bytes=written,
+    )
+    backup = (
+        replacement.prepare_backup(session, operation, key="replaced_operation_id")
+        if replacing
+        else None
+    )
     try:
-        destination = resolve_writable(root, target_relative, what="destination")
-        os.rename(staging, destination)
-    except (OSError, PathSafetyError) as error:
+        if backup is not None:
+            replacement.stash(session, root, backup)
+        # Refuse a newcomer instead of overwriting bytes that have no Trash receipt
+        if os.path.lexists(destination):
+            raise ConflictError("The destination changed during import; retry the copy.")
+        check_work_ownership()
+        replacement.publish(staging, destination)
+    except (OSError, PathSafetyError, ConflictError) as error:
+        if replacement.matches(destination, operation.payload["published"]):
+            # Publication succeeded; leave the durable intent for recovery after cleanup failed
+            raise ConflictError("The upload was saved but needs journal recovery.") from error
+        if backup is not None:
+            replacement.restore_backup(session, root, backup)
         _discard(staging)
         journal.fail(session, operation, _reason(error))
         raise ConflictError(f"Could not save {filename!r} into the library.") from error
 
-    linked = _link_if_asked(session, target_relative) if link else 0
+    linked = replacement.refresh_file(session, root, operation)
+    if not linked and link:
+        linked = _link_if_asked(session, target_relative)
     journal.finish(session, operation, size_bytes=written, files_updated=linked)
     return ImportResult(
         operation=operations.OperationResult(
@@ -243,7 +281,7 @@ def _discard(staging: Path) -> None:
         staging.unlink()
 
 
-def _reason(error: Exception) -> str:
+def _reason(error: BaseException) -> str:
     if isinstance(error, OSError):
         return os.strerror(error.errno) if error.errno else "filesystem error"
     return str(error) or error.__class__.__name__

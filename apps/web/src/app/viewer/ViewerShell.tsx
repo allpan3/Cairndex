@@ -1327,7 +1327,9 @@ function Stage({
     )
   }
   if (item.mediaKind === 'image' && item.supported && !failed) {
-    return <ImageStage key={item.key} item={item} onError={onError} />
+    return (
+      <ImageStage key={`${item.key}:${item.imageTiers[0]?.src}`} item={item} onError={onError} />
+    )
   }
   // Audio keeps the native element the old File Browser lightbox used: there is
   // no decision/session pipeline for it, so its errors are unrecoverable and go

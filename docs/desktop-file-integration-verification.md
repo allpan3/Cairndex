@@ -37,7 +37,14 @@ left Cairndex accessibility reads timing out after import. A process sample show
 the main thread waiting in its event loop; restarting only the disposable app and
 sidecar restored automation. The cause of that accessibility timeout is unresolved.
 
-## Engineering coverage
+## Current copy-import contract
+
+[Replace and Undo](file-operations.md) retains the destination ID and authored
+metadata while keeping the previous bytes in a separate Trash receipt. Ordinary
+copies remain independent. The shared browser/backend checks do not qualify
+native OS drag delivery; that work remains incomplete and paused.
+
+## Historical engineering coverage
 
 The copy-only follow-through adds three backend regression cases using synthetic
 bytes. Another-directory Copy and same-directory Keep Both create separate asset
@@ -108,11 +115,11 @@ for this workflow.
 
 Copy-in never requests source removal. Explicit Replace acts on the destination:
 if that destination is also the source being dragged, it can trash that original.
-Keep Both preserves both. Imported files do not borrow the source's asset ID or
-memberships. File Browser writes bytes without automatically cataloging them;
-bundle import/link catalogs the new path. Verify distinct IDs when cataloged and
-retain the existing destination-replacement/Undo contract rather than describing
-Replace as harmless to the original path.
+Keep Both preserves both. Ordinary imported copies do not borrow the source's
+asset ID or memberships. Explicit Replace retains a linked destination's ID and
+metadata; a same-path copy therefore keeps that shared destination identity.
+File Browser does not automatically catalog new paths; bundle import/link does.
+Replace changes destination bytes and remains recoverable through Undo.
 
 ### Minimal engineering follow-through
 

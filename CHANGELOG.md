@@ -10,6 +10,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Copy-import Replace keeps the linked destination ID, bundle membership, notes,
+  rating, cover references, external subtitle links and moments. Undo restores
+  previous bytes on that identity and retains subsequent metadata edits. Ordinary
+  copies and Keep Both remain independent. Trash backups do not own the active
+  catalog row; Empty Trash cannot delete its metadata. Cancellation and journal
+  recovery cover upload, replacement and Undo boundaries.
+- Replacement refreshes probe/hash state, source-versioned thumbnails and subtitle
+  conversions, browser image URLs and active HLS encoders. Embedded subtitle
+  streams are regenerated for incoming bytes and restored from the journal on Undo.
+
+
 - Current references distinguish optional access guards, gated legacy file writes,
   synthetic replica capabilities and paused desktop integration. The audit status
   ledger separates completed scopes, remaining qualification and owner deferrals
