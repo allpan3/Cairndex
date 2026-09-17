@@ -343,6 +343,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Document the mounted-SMB copy-publication blocker: hard links, exclusive
+  rename and cloning are unsupported on the tested Mac mount. Record unsafe
+  fallback counterexamples, preserved refusal behavior and compatible local/NAS
+  boundaries without claiming a completed SMB import implementation.
+
 - Record bounded NAS deployment, browser/native playback, process recovery,
   Mac SMB file-operation and read-only storage-accounting evidence, with
   explicit cold-cache, heavier-transcode and power-loss limits.

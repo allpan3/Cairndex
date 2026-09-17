@@ -11,6 +11,38 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## SMB copy compatibility: blocked on publication capability
+
+The approved follow-up from `d5965249` remains **incomplete**. No runtime
+fallback is implemented. On the actual Mac SMB mount, hard links,
+`renamex_np(RENAME_EXCL)`, `renameatx_np(RENAME_EXCL)` and `clonefile` all return
+`ENOTSUP` for a vacant destination. Existing-target checks return `EEXIST`,
+which alone does not establish usable publication. The same calls succeed on
+local storage and preserve an occupied target. NAS-local hard-link publication
+and its collision refusal also pass.
+
+Disposable counterexamples show that check-then-rename overwrites an outsider
+arriving after the check, while exclusive-create copying exposes empty/partial
+final bytes. Neither is an acceptable fallback under the approved safety
+contract. [The capability matrix and choices](nas-verification.md#mounted-smb-copy-publication)
+record the blocker. Using the NAS-hosted server preserves the established
+contract; a separate storage transport requires a scoped design and verification,
+not an assumed safe mount fallback. No topology or safety change is adopted.
+
+Real loopback HTTP checks on synthetic mounted-SMB libraries confirm Copy and
+Replace still return 409, retain original bytes/catalog metadata, leave no
+Trash displacement, pending operation or staging file, and keep library access
+usable. Local HTTP Copy/Replace/Undo pass with independent copy identity,
+retained destination identity and edits made after Replace surviving Undo.
+SQLite integrity passes for both. The focused import, replacement, file-operation
+and write-gate suite passes **191 tests**, including existing interruption/process
+regressions. Browser/native SMB success and SMB interrupted-publication recovery
+are not claimed: no compatible publication path exists in this checkpoint.
+Full backend/frontend/desktop gates are not repeated for documentation-only work.
+The task server shuts down cleanly; its registry and all disposable local/SMB
+fixtures are removed. Private scripts/logs/receipts remain outside tracked source.
+No production service, owner library, installed app or share setting is changed.
+
 ## NAS and storage verification checkpoint
 
 The approved group on `fix/library-ownership-lifecycle` is verified within the

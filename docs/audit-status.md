@@ -81,6 +81,13 @@ verified; it does not mean every deployment or scale is qualified.
 
 ## Replace identity disposition
 
+**Mounted-SMB copy compatibility remains blocked.** The approved follow-up
+demonstrates that the tested Mac mount rejects hard links, exclusive rename and
+cloning. No safe fallback is implemented, and safe HTTP 409 refusal is not
+compatibility completion. [Capability evidence and choices](nas-verification.md#mounted-smb-copy-publication)
+separate the Mac-hosted mount from the working NAS-hosted topology. Existing
+identity/Undo receipts and the paused desktop OS-drag scope remain unchanged.
+
 Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and
 authored metadata, while the prior bytes receive a bytes-only Trash receipt.
 Undo restores those bytes on the same identity, retains subsequent authored edits,

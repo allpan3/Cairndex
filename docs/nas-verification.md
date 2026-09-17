@@ -49,6 +49,67 @@ after restart. The non-root NAS process/regression selection passes 203 tests.
 This is process-exit recovery evidence; power-loss durability, mount loss and
 hostile concurrent filesystem mutation remain unqualified.
 
+## Mounted-SMB copy publication
+
+The copy-compatibility follow-up at `d5965249` is **blocked**, with runtime
+behavior unchanged. Direct calls on new disposable roots produce this matrix:
+
+| Primitive | Mac-mounted SMB, vacant target | Mac-local storage, vacant target | Existing target |
+| --- | --- | --- | --- |
+| Hard link | `ENOTSUP` (45) | Success; identity retained | `EEXIST` (17); original intact |
+| `renamex_np(RENAME_EXCL)` | `ENOTSUP` (45) | Success; identity retained | `EEXIST` (17); original intact |
+| `renameatx_np(RENAME_EXCL)` | `ENOTSUP` (45) | Success; identity retained | `EEXIST` (17); original intact |
+| `clonefile` | `ENOTSUP` (45) | Success; separate inode | `EEXIST` (17); original intact |
+
+Every unsupported call leaves the staged source intact and the vacant target
+absent. The occupied-target result applies to both tested topologies. It is
+insufficient to test only a collision: the kernel can reject an existing target
+before discovering that the filesystem cannot perform the requested operation.
+An independent NAS-local hard-link check succeeds and rejects an occupied target.
+
+Two deterministic synthetic counterexamples rule out tempting substitutes:
+
+- An outsider created between a vacancy check and ordinary rename is overwritten
+  on both Mac-local and mounted-SMB storage.
+- Exclusive-create protects an occupied name but exposes a zero-byte final file
+  before copying, followed by readable partial bytes. Staging the input first
+  does not make that second copy atomic.
+
+No generic-error fallback, final-name placeholder, symlink publication or
+check-then-overwrite path is installed. Advisory application locks cannot bind
+other SMB clients. These results qualify this mounted topology only; they are
+not a proof that every SMB implementation or protocol transport lacks a safe
+publication operation. The installed macOS `rename(2)` manual explicitly makes
+exclusive rename filesystem-dependent.
+
+Real HTTP Copy/Replace requests on isolated SMB libraries still return structured
+409, preserve linked originals and notes without Trash displacement, leave staging
+empty and no pending journal rows, and permit subsequent library reads. Local
+HTTP Copy/Replace/Undo verifies distinct copy IDs/bundles, retained destination
+IDs and later notes surviving Undo. Both databases pass integrity checks.
+The focused backend selection passes 191 tests, including existing cancellation,
+failed publication, outsider arrival and independent-process recovery cases.
+Those local regressions do not qualify successful SMB publication or recovery.
+
+The concrete choices are:
+
+1. **Preserve the current safety contract.** Use the NAS-hosted server with
+   NAS-local storage for copy imports, Replace and Undo; retain safe refusal
+   for the tested Mac-hosted SMB library. This is the recommended available path.
+2. **Keep Mac-hosted SMB as a requirement.** Scope a separate storage-transport
+   design that can issue and verify server-side no-overwrite publication, with
+   authentication, path mapping, identity and recovery boundaries. No such
+   transport is implemented or qualified here; it requires a separate architecture
+   decision and does not follow from an ordinary mounted-filesystem fallback.
+
+Weakening complete-file visibility or allowing overwrite races would change the
+approved product safety contract and is not recommended. Production topology,
+share settings, owner libraries and the installed app remain unchanged.
+There is no successful SMB browser/native picker path to qualify at this
+checkpoint, so those checks and unrelated full component gates are not repeated.
+The isolated server shuts down cleanly and its registry and disposable fixture
+roots are removed. Only private scripts, logs and receipts remain outside source.
+
 ## Clients and gates
 
 Two independent browser contexts on plain LAN HTTP verify saved metadata,
