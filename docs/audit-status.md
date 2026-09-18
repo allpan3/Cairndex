@@ -86,7 +86,10 @@ demonstrates that the tested Mac mount rejects hard links, exclusive rename and
 cloning. No safe fallback is implemented, and safe HTTP 409 refusal is not
 compatibility completion. [Capability evidence](nas-verification.md#mounted-smb-copy-publication)
 records the required Mac-hosted scenario and a separate, unshipped direct-SMB
-prototype with 12 passing synthetic tests. NAS-hosted serving is a separate option. Existing
+prototype with 12 passing synthetic tests on both an isolated service and the
+normal NAS service. [ADR-0034](adr/0034-mounted-smb-copy-publication.md) proposes
+application integration; test-only credential access is approved, ongoing use is
+not. NAS-hosted serving is a separate option. Existing
 identity/Undo receipts and the paused desktop OS-drag scope remain unchanged.
 
 Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and

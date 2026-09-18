@@ -349,6 +349,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Record 12 passing synthetic direct-SMB prototype checks and the remaining
   authentication, permissions, mounted-observation and recovery-design limits;
   application copy compatibility remains incomplete.
+- Qualify the same 12 prototype checks against the normal NAS SMB service with
+  explicitly authorized test-only credentials and ordinary account permissions;
+  propose the application transport and credential boundary in ADR-0034.
 
 - Document the mounted-SMB copy-publication blocker: hard links, exclusive
   rename and cloning are unsupported on the tested Mac mount. Record unsafe

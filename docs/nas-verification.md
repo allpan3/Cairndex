@@ -128,14 +128,36 @@ is yet qualified for mount loss, power loss or arbitrary concurrent mutation.
 Application integration requires versioned observations and recovery receipts,
 validated endpoint/share mapping, an authentication design and recovery when
 credentials are unavailable. Existing native receipts cannot be reinterpreted as
-server identities. Testing against the normal SMB service remains outstanding;
-saved-credential access requires explicit owner authorization. No successful
-browser/native Copy flow or production-ready transport is claimed.
+server identities. No successful browser/native Copy flow or production-ready
+transport is claimed.
 
 The test container, its anonymous volume and image, synthetic share root,
 generated password, local runtime and disposable dependencies are removed after
 the run. The unused test tunnel is stopped. Private scripts and logs remain
 outside the repository; production services and owner libraries are unchanged.
+
+### Normal-service credential and recovery check
+
+The owner explicitly authorizes saved-credential access for disposable tests.
+macOS approves the scoped Keychain request. The credential is retrieved only for
+the mounted service/account and held in memory, including transfer to test child
+processes through a socket inside a user-private temporary directory. It is not
+written to a file, environment variable, log or command argument.
+
+The same **12 prototype tests pass in 205.85 seconds** against the normal NAS SMB
+service, with encrypted/signed SMB3 required, the existing account and unchanged
+share permissions. This run needs neither the separate test service nor its
+forced-root mapping. It covers metadata/later-edit Undo, journal boundaries,
+independent-process recovery, an unlinked destination and an arriving-file race.
+The disposable share root, credential-transfer socket, local runtime and temporary
+dependencies are removed. No original library, production service or installed
+application is modified.
+
+This qualifies the prototype against the ordinary service in this bounded run.
+It does not establish an application credential lifecycle, safe automatic mount
+mapping, versioned receipt compatibility or UI behavior. The proposed application
+boundary is [ADR-0034](adr/0034-mounted-smb-copy-publication.md); test-only permission
+does not authorize ongoing application use of the saved login.
 
 ## Clients and gates
 

@@ -59,9 +59,18 @@ Native mount inode values differ from server observations. Production work needs
 versioned recovery receipts, validated mount/share mapping and an authentication
 design; historical native receipts must retain their existing interpretation.
 The isolated service uses generated credentials and a root-forced synthetic share,
-so normal NAS authentication and permissions remain unqualified. Saved-credential
-access requires explicit owner authorization before further testing. No runtime
-dependency or native adapter is added. See the [experiment limits](nas-verification.md#direct-smb-feasibility-experiment).
+so that run alone does not qualify normal NAS authentication and permissions.
+With explicit owner approval for test-only saved-credential access, the same
+**12 tests pass against the normal NAS SMB service** in 205.85 seconds using the
+existing account and unmodified share settings. The credential stays in memory;
+disposable share fixtures and temporary credential-transfer resources are removed.
+No runtime dependency or native adapter is added. See the
+[experiment limits](nas-verification.md#direct-smb-feasibility-experiment).
+
+[ADR-0034](adr/0034-mounted-smb-copy-publication.md) proposes the application
+transport, credential boundary, mapping proof and versioned recovery requirements.
+Ongoing application access to the saved login is outside the test-only approval.
+Implementation, packaging and successful browser/native Copy remain incomplete.
 
 ## NAS and storage verification checkpoint
 

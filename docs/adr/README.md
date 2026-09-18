@@ -52,3 +52,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0031](0031-private-replica-recovery.md) | Coherent private backups and explicit device recovery | accepted |
 | [0032](0032-replica-discovery.md) | Private replica discovery and reviewed catalog identity | accepted |
 | [0033](0033-selective-native-file-drops.md) | Selective native file-drop capture | proposed; on hold during copy-only assessment |
+| [0034](0034-mounted-smb-copy-publication.md) | Mounted-SMB copy publication | proposed; application credential access awaits owner approval |
