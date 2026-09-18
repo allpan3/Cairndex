@@ -48,8 +48,9 @@ or public internet exposure.
 
 The tested Mac mount also refuses exclusive rename and cloning. Mac-hosted SMB
 copy compatibility remains blocked; an ordinary rename or final-name copy does
-not preserve safe publication. Use the NAS-hosted server for the verified path;
-see [publication capabilities](nas-verification.md#mounted-smb-copy-publication).
+not preserve safe publication. Mac-hosted SMB remains a required scenario;
+NAS-hosted serving is a separate option. See
+[publication capabilities](nas-verification.md#mounted-smb-copy-publication).
 
 **The server pulls a published image.**
 [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole

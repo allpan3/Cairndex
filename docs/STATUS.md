@@ -11,7 +11,7 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## SMB copy compatibility: blocked on publication capability
+## SMB copy compatibility: required and incomplete
 
 The approved follow-up from `d5965249` remains **incomplete**. No runtime
 fallback is implemented. On the actual Mac SMB mount, hard links,
@@ -24,10 +24,11 @@ and its collision refusal also pass.
 Disposable counterexamples show that check-then-rename overwrites an outsider
 arriving after the check, while exclusive-create copying exposes empty/partial
 final bytes. Neither is an acceptable fallback under the approved safety
-contract. [The capability matrix and choices](nas-verification.md#mounted-smb-copy-publication)
-record the blocker. Using the NAS-hosted server preserves the established
-contract; a separate storage transport requires a scoped design and verification,
-not an assumed safe mount fallback. No topology or safety change is adopted.
+contract. [The capability matrix](nas-verification.md#mounted-smb-copy-publication)
+records this blocker. The owner confirms that Mac-hosted access to mounted SMB
+storage remains required. NAS-hosted serving is a separate optional scenario,
+not the proposed fix. Investigation continues within the existing safety
+contract; no deployment or authentication change is adopted.
 
 Real loopback HTTP checks on synthetic mounted-SMB libraries confirm Copy and
 Replace still return 409, retain original bytes/catalog metadata, leave no
@@ -42,6 +43,25 @@ Full backend/frontend/desktop gates are not repeated for documentation-only work
 The task server shuts down cleanly; its registry and all disposable local/SMB
 fixtures are removed. Private scripts/logs/receipts remain outside tracked source.
 No production service, owner library, installed app or share setting is changed.
+
+### Direct-SMB feasibility experiment
+
+An external synthetic-only prototype passes **12 tests** against a separate
+encrypted SMB3 service: destination metadata and later-edit Undo, five journal
+interruption boundaries, three independent-process exits, an unlinked destination
+and an outsider arriving during publication. The Mac runs the backend and accesses
+fixtures through its mounted share; only publication and identity observations use
+the direct SMB connection. This is not application implementation or UI acceptance.
+
+The experiment requires a targeted mounted-path read after publication and a
+staging-only flush/timestamp stabilization before recording server observations.
+Native mount inode values differ from server observations. Production work needs
+versioned recovery receipts, validated mount/share mapping and an authentication
+design; historical native receipts must retain their existing interpretation.
+The isolated service uses generated credentials and a root-forced synthetic share,
+so normal NAS authentication and permissions remain unqualified. Saved-credential
+access requires explicit owner authorization before further testing. No runtime
+dependency or native adapter is added. See the [experiment limits](nas-verification.md#direct-smb-feasibility-experiment).
 
 ## NAS and storage verification checkpoint
 

@@ -36,6 +36,11 @@ The first product target is the computer-side web application. Android TV suppor
 11. **Explicit metadata authority.** Legacy libraries use their `library.db`; capable replicas use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
 12. **Progressive capability.** Direct playback, remux/transcoding, gated legacy file operations and mapped desktop host actions are implemented. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
 
+Mac-hosted Cairndex accessing files on mounted SMB storage is a required
+deployment scenario. NAS-hosted serving is a separate optional scenario, not a
+substitute for mounted-SMB compatibility. Copy-import compatibility on the tested
+Mac SMB mount remains incomplete; see [file operations](file-operations.md).
+
 ## Fixed product decisions
 
 Unless the product owner explicitly changes them, treat these as settled:

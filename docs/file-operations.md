@@ -117,5 +117,6 @@ The tested Mac SMB mount also rejects exclusive rename and file cloning for a
 vacant target. An occupied-target error alone does not prove either can publish
 a file. Ordinary rename can overwrite a concurrent arrival, and exclusive-create
 copying exposes partial final bytes; neither is a supported fallback. See the
-[capability matrix](nas-verification.md#mounted-smb-copy-publication). A NAS-hosted
-server accessing its local storage is the verified compatible topology.
+[capability matrix](nas-verification.md#mounted-smb-copy-publication). Mac-hosted
+SMB compatibility remains required. The verified NAS-hosted topology is a
+separate deployment scenario, not a substitute for this requirement.

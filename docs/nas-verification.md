@@ -91,16 +91,11 @@ The focused backend selection passes 191 tests, including existing cancellation,
 failed publication, outsider arrival and independent-process recovery cases.
 Those local regressions do not qualify successful SMB publication or recovery.
 
-The concrete choices are:
-
-1. **Preserve the current safety contract.** Use the NAS-hosted server with
-   NAS-local storage for copy imports, Replace and Undo; retain safe refusal
-   for the tested Mac-hosted SMB library. This is the recommended available path.
-2. **Keep Mac-hosted SMB as a requirement.** Scope a separate storage-transport
-   design that can issue and verify server-side no-overwrite publication, with
-   authentication, path mapping, identity and recovery boundaries. No such
-   transport is implemented or qualified here; it requires a separate architecture
-   decision and does not follow from an ordinary mounted-filesystem fallback.
+Mac-hosted access to mounted SMB storage remains a required deployment scenario.
+NAS-hosted serving is independently supported; changing deployment does not
+resolve the mounted-SMB requirement. A direct SMB publication path requires
+authentication, validated path mapping, stable recovery observations and
+coherent mounted reads. No such transport is implemented in the application.
 
 Weakening complete-file visibility or allowing overwrite races would change the
 approved product safety contract and is not recommended. Production topology,
@@ -109,6 +104,38 @@ There is no successful SMB browser/native picker path to qualify at this
 checkpoint, so those checks and unrelated full component gates are not repeated.
 The isolated server shuts down cleanly and its registry and disposable fixture
 roots are removed. Only private scripts, logs and receipts remain outside source.
+
+### Direct-SMB feasibility experiment
+
+A separate, unshipped Python `smbprotocol` 1.16.0 prototype uses an encrypted,
+signed SMB3 session to publish a mounted staging file through a server-side hard
+link. An external test bootstrap substitutes publication and observation functions;
+the application's runtime code and dependencies remain unchanged.
+
+The isolated service exposes only synthetic fixtures and uses generated test
+credentials. Its forced-root account mapping permits cross-service fixture access,
+so the result does not qualify normal NAS permissions or authentication. It is not
+a proposal to change production share settings or deployment.
+
+All **12 tests pass**: two destination-metadata/later-edit Undo cases, five journal
+interruption boundaries, three separate-process exits, an unlinked destination and
+an outsider arriving during publication. Native mount inode numbers differ from
+server file identities. A targeted read-open of the published destination refreshes
+the mounted observation; staging-only `fsync` and timestamp stabilization avoid a
+delayed timestamp change invalidating the receipt in these tests. Neither technique
+is yet qualified for mount loss, power loss or arbitrary concurrent mutation.
+
+Application integration requires versioned observations and recovery receipts,
+validated endpoint/share mapping, an authentication design and recovery when
+credentials are unavailable. Existing native receipts cannot be reinterpreted as
+server identities. Testing against the normal SMB service remains outstanding;
+saved-credential access requires explicit owner authorization. No successful
+browser/native Copy flow or production-ready transport is claimed.
+
+The test container, its anonymous volume and image, synthetic share root,
+generated password, local runtime and disposable dependencies are removed after
+the run. The unused test tunnel is stopped. Private scripts and logs remain
+outside the repository; production services and owner libraries are unchanged.
 
 ## Clients and gates
 

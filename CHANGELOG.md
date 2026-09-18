@@ -343,6 +343,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Clarify that Mac-hosted libraries on mounted SMB storage remain a required
+  deployment scenario; NAS-hosted serving is a separate option, not the fix for
+  incomplete mounted-SMB copy compatibility.
+- Record 12 passing synthetic direct-SMB prototype checks and the remaining
+  authentication, permissions, mounted-observation and recovery-design limits;
+  application copy compatibility remains incomplete.
+
 - Document the mounted-SMB copy-publication blocker: hard links, exclusive
   rename and cloning are unsupported on the tested Mac mount. Record unsafe
   fallback counterexamples, preserved refusal behavior and compatible local/NAS
