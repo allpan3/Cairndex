@@ -88,10 +88,10 @@ signed/encrypted direct-SMB publication and server-identity path. The integrated
 backend passes 12 normal-service recovery/collision cases and six HTTP
 Copy/Replace/Undo contracts on disposable mounted libraries. Local and historical
 receipt semantics remain unchanged. The final source tests, full backend gate,
-sidecar builds, bundled-module inspection and standard packaged smoke pass.
-Packaged/native SMB acceptance is still open because the fresh bundled sidecar
-reached its expected Keychain prompt and timed
-out without approval. NAS-hosted serving and paused desktop OS drag remain separate.
+sidecar builds, bundled-module inspection and standard packaged smoke pass. After
+scoped Keychain approval, the fresh frozen sidecar also passes Copy, Replace, Undo,
+credential reuse and clean supported shutdown against the normal mounted share.
+NAS-hosted serving and paused desktop OS drag remain separate.
 
 Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and
 authored metadata, while the prior bytes receive a bytes-only Trash receipt.

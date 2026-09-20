@@ -350,6 +350,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   receipts retain their existing native semantics.
 - Add `smbprotocol` 1.16.0 and its locked authentication/cryptography dependency
   chain to the server and packaged sidecar, including redistribution notices.
+- Qualify the fresh frozen sidecar against the normal mounted share for Copy,
+  Replace, Undo, saved-credential reuse and clean supported shutdown.
 
 - Clarify that Mac-hosted libraries on mounted SMB storage remain a required
   deployment scenario; NAS-hosted serving is a separate option, not the fix for

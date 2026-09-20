@@ -41,9 +41,11 @@ gate passes **1,724 tests with one intentional skip**. Ruff, format and Mypy pas
 The development and self-contained sidecars build with the new dependency; recursive
 archive inspection confirms the SMB/authentication/cryptography modules and runtime
 hook, and the standard packaged smoke test passes. A direct packaged-SMB request
-reached the expected Keychain authorization boundary but timed out without manual
-approval; it retained the pending synthetic upload for recovery, and that exact
-fixture root was removed. Fresh packaged/native SMB acceptance therefore remains open.
+first proved the bounded authorization failure. After the saved login was approved
+for ongoing access, the fresh frozen sidecar completed Copy, Replace and Undo, then
+exited cleanly through its supported termination path. A second run reused that
+authorization without another prompt. Packaged/native SMB acceptance passes for
+the tested topology.
 
 No owner library, production service, share setting or installed app is changed.
 All disposable share roots are removed. Power-loss, mount loss and broader SMB

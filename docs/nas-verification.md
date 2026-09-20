@@ -188,13 +188,15 @@ per-library shared-session closure. Both sidecar variants build; recursive archi
 inspection confirms the SMB/authentication/cryptography dependency chain and runtime
 hook, and the self-contained sidecar passes its standard HTTP/media smoke.
 
-A direct packaged-SMB request reaches the expected Keychain authorization boundary
-but times out when the fresh executable is not manually approved within the request
-window. Recovery retains the pending synthetic staging bytes; the exact disposable
-library is removed after the check.
-Fresh packaged/native SMB acceptance remains open; source/backend integration is
-qualified. Power loss, mount loss, arbitrary hostile mutation and other SMB
-servers remain outside this evidence.
+The first direct packaged-SMB request reaches the expected Keychain authorization
+boundary and safely times out while unapproved, retaining its pending synthetic
+staging bytes. After ongoing access is approved, the fresh frozen sidecar completes
+Copy, Replace and Undo against the normal mounted share and exits cleanly through
+its supported termination path. A second run reuses that authorization without
+another prompt. Every exact disposable library is removed after its check.
+Packaged/native SMB acceptance therefore passes for this topology. Power loss,
+mount loss, arbitrary hostile mutation and other SMB servers remain outside this
+evidence.
 
 ## Clients and gates
 
