@@ -104,6 +104,15 @@ Conflict copies and available recovery files are retained; file sync alone does
 not guarantee a complete recoverable SQLite generation or lossless resolution.
 Cloud reconciliation remains outside this lifecycle contract.
 
+On positively identified macOS SMB mounts, copy publication is the narrow
+exception to ordinary mounted filesystem access. The backend derives the
+server/share/account and mount root from `statfs`, retrieves that exact saved SMB
+login from Keychain on demand, and uses signed, encrypted SMB3 hard links for
+no-overwrite publication. Versioned journal observations use server file identity;
+native inode observations remain unchanged for local storage and old receipts.
+The SMB session closes when the last corresponding mounted library closes. See
+[ADR-0034](adr/0034-mounted-smb-copy-publication.md).
+
 Metadata-only operation protects source media. Browsing still requires writable
 `.cairndex` metadata, locks, progress and cache, plus writable server data and
 local plans. A wholly read-only library mount is unsupported and returns a

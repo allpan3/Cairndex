@@ -956,6 +956,20 @@ def test_staging_sweep_is_quiet_when_nothing_was_ever_imported(library_root: Pat
     assert imports.sweep_staging(library_root) == 0
 
 
+# Recovery evidence stays available while a pending operation awaits credentials or storage
+def test_staging_sweep_retains_pending_operation_bytes(library_root: Path) -> None:
+    staging = imports.staging_dir(library_root)
+    staging.mkdir(parents=True, exist_ok=True)
+    pending = staging / "pending.part"
+    abandoned = staging / "abandoned.part"
+    pending.write_bytes(b"recoverable")
+    abandoned.write_bytes(b"discardable")
+    removed = imports.sweep_staging(library_root, retained_names=frozenset({pending.name}))
+    assert removed == 1
+    assert pending.read_bytes() == b"recoverable"
+    assert not abandoned.exists()
+
+
 # --- review findings, each of which shipped and should not again -------------
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
 def test_a_partly_failed_delete_keeps_what_moved_reachable(

@@ -11,66 +11,43 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## SMB copy compatibility: required and incomplete
+## SMB copy compatibility: implemented and backend-qualified
 
-The approved follow-up from `d5965249` remains **incomplete**. No runtime
-fallback is implemented. On the actual Mac SMB mount, hard links,
-`renamex_np(RENAME_EXCL)`, `renameatx_np(RENAME_EXCL)` and `clonefile` all return
-`ENOTSUP` for a vacant destination. Existing-target checks return `EEXIST`,
-which alone does not establish usable publication. The same calls succeed on
-local storage and preserve an occupied target. NAS-local hard-link publication
-and its collision refusal also pass.
+[ADR-0034](adr/0034-mounted-smb-copy-publication.md) is accepted and implemented
+for positively identified macOS SMB mounts. Copy/Replace/Undo keep ordinary media,
+metadata and staging access on the mount, but use a separate signed, encrypted
+SMB3 connection for no-overwrite hard-link publication and server file identity.
+The endpoint, share, account and mount boundary come from macOS `statfs`; only the
+matching saved Keychain login is requested, and it remains in process memory.
+Sessions close when the last corresponding mounted library closes.
 
-Disposable counterexamples show that check-then-rename overwrites an outsider
-arriving after the check, while exclusive-create copying exposes empty/partial
-final bytes. Neither is an acceptable fallback under the approved safety
-contract. [The capability matrix](nas-verification.md#mounted-smb-copy-publication)
-records this blocker. The owner confirms that Mac-hosted access to mounted SMB
-storage remains required. NAS-hosted serving is a separate optional scenario,
-not the proposed fix. Investigation continues within the existing safety
-contract; no deployment or authentication change is adopted.
+Import protocol three binds recovery receipts to version-one server/share
+observations. Native mount inode values are never compared with server file IDs;
+local filesystems and historical protocol-two receipts retain native semantics.
+Completed staging is flushed and timestamp-stabilized before its server observation.
+Publication verifies the direct/mounted mapping, refuses an occupied target,
+refreshes the mounted destination and then removes only the staging name. Missing
+credentials, a remapped share, weaker transport or an unsupported server safely
+refuse the operation. Recovery never turns unavailable credentials into evidence
+that a file is absent, and its generic staging sweep preserves bytes referenced by
+pending operations. An unanswered Keychain prompt is bounded at 20 seconds.
 
-Real loopback HTTP checks on synthetic mounted-SMB libraries confirm Copy and
-Replace still return 409, retain original bytes/catalog metadata, leave no
-Trash displacement, pending operation or staging file, and keep library access
-usable. Local HTTP Copy/Replace/Undo pass with independent copy identity,
-retained destination identity and edits made after Replace surviving Undo.
-SQLite integrity passes for both. The focused import, replacement, file-operation
-and write-gate suite passes **191 tests**, including existing interruption/process
-regressions. Browser/native SMB success and SMB interrupted-publication recovery
-are not claimed: no compatible publication path exists in this checkpoint.
-Full backend/frontend/desktop gates are not repeated for documentation-only work.
-The task server shuts down cleanly; its registry and all disposable local/SMB
-fixtures are removed. Private scripts/logs/receipts remain outside tracked source.
-No production service, owner library, installed app or share setting is changed.
+Against the normal NAS SMB service and unchanged ordinary account permissions,
+the final integrated source passes **12** replacement/Undo, journal-boundary,
+independent-process and outsider-arrival cases in 35.00 seconds. Six existing HTTP
+Copy/Replace/Undo contracts also pass in 14.22 seconds on disposable mounted
+libraries. The final focused selection passes **141 tests**; the complete backend
+gate passes **1,724 tests with one intentional skip**. Ruff, format and Mypy pass.
+The development and self-contained sidecars build with the new dependency; recursive
+archive inspection confirms the SMB/authentication/cryptography modules and runtime
+hook, and the standard packaged smoke test passes. A direct packaged-SMB request
+reached the expected Keychain authorization boundary but timed out without manual
+approval; it retained the pending synthetic upload for recovery, and that exact
+fixture root was removed. Fresh packaged/native SMB acceptance therefore remains open.
 
-### Direct-SMB feasibility experiment
-
-An external synthetic-only prototype passes **12 tests** against a separate
-encrypted SMB3 service: destination metadata and later-edit Undo, five journal
-interruption boundaries, three independent-process exits, an unlinked destination
-and an outsider arriving during publication. The Mac runs the backend and accesses
-fixtures through its mounted share; only publication and identity observations use
-the direct SMB connection. This is not application implementation or UI acceptance.
-
-The experiment requires a targeted mounted-path read after publication and a
-staging-only flush/timestamp stabilization before recording server observations.
-Native mount inode values differ from server observations. Production work needs
-versioned recovery receipts, validated mount/share mapping and an authentication
-design; historical native receipts must retain their existing interpretation.
-The isolated service uses generated credentials and a root-forced synthetic share,
-so that run alone does not qualify normal NAS authentication and permissions.
-With explicit owner approval for test-only saved-credential access, the same
-**12 tests pass against the normal NAS SMB service** in 205.85 seconds using the
-existing account and unmodified share settings. The credential stays in memory;
-disposable share fixtures and temporary credential-transfer resources are removed.
-No runtime dependency or native adapter is added. See the
-[experiment limits](nas-verification.md#direct-smb-feasibility-experiment).
-
-[ADR-0034](adr/0034-mounted-smb-copy-publication.md) proposes the application
-transport, credential boundary, mapping proof and versioned recovery requirements.
-Ongoing application access to the saved login is outside the test-only approval.
-Implementation, packaging and successful browser/native Copy remain incomplete.
+No owner library, production service, share setting or installed app is changed.
+All disposable share roots are removed. Power-loss, mount loss and broader SMB
+server qualification remain outside the process-exit evidence.
 
 ## NAS and storage verification checkpoint
 

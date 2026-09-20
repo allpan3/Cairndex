@@ -113,10 +113,14 @@ mounts, cross-device recovery, hostile concurrent filesystem mutation and
 power-loss durability remain unqualified. Copy-import publication requires
 filesystem hard-link support.
 
-The tested Mac SMB mount also rejects exclusive rename and file cloning for a
-vacant target. An occupied-target error alone does not prove either can publish
-a file. Ordinary rename can overwrite a concurrent arrival, and exclusive-create
-copying exposes partial final bytes; neither is a supported fallback. See the
-[capability matrix](nas-verification.md#mounted-smb-copy-publication). Mac-hosted
-SMB compatibility remains required. The verified NAS-hosted topology is a
-separate deployment scenario, not a substitute for this requirement.
+The tested Mac SMB mount rejects native hard links, exclusive rename and cloning.
+For this positively identified topology, Copy/Replace/Undo use a separate signed,
+encrypted SMB3 connection for server-side no-overwrite publication and recovery
+identity while ordinary file access remains mounted. The endpoint, share and
+account come from the kernel's mount record; the password comes from the exact
+saved macOS Keychain item and stays in process memory. Version-three receipts bind
+recovery to the server/share file identity; older receipts keep native semantics.
+An unanswered Keychain prompt times out safely, and unresolved recovery retains
+its staged bytes for a later retry.
+See [ADR-0034](adr/0034-mounted-smb-copy-publication.md) and the
+[capability evidence](nas-verification.md#mounted-smb-copy-publication).

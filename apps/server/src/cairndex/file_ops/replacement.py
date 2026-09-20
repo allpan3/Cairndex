@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
-from cairndex.file_ops import journal, trash
+from cairndex.file_ops import journal, smb_transport, trash
 from cairndex.file_ops.paths import resolve_writable
 from cairndex.media.hls import close_source_sessions
 from cairndex.ownership.lifecycle import check_work_ownership
@@ -21,7 +21,15 @@ from cairndex.services.collections import touch_cover_collections_for_bundle
 
 
 # Identify a published upload without hashing a multi-gigabyte file on the request path
-def observation(path: Path) -> dict[str, int]:
+def observation(path: Path, *, allow_prompt: bool = False) -> dict[str, Any]:
+    direct = smb_transport.observation(path, allow_prompt=allow_prompt)
+    if direct is not None:
+        return direct
+    return native_observation(path)
+
+
+# Preserve protocol-two receipt semantics even when the path now has direct SMB support
+def native_observation(path: Path) -> dict[str, int]:
     stat = path.stat()
     return {
         "size": stat.st_size,
@@ -34,7 +42,11 @@ def observation(path: Path) -> dict[str, int]:
 # Filesystem observations are recovery evidence, never content-duplicate proof
 def matches(path: Path, expected: dict[str, Any]) -> bool:
     try:
-        return bool(expected) and observation(path) == expected
+        if expected.get("kind") == "smb3":
+            return smb_transport.matches(path, expected)
+        return bool(expected) and native_observation(path) == expected
+    except smb_transport.SmbTransportError:
+        raise
     except OSError:
         return False
 
@@ -220,6 +232,8 @@ def embedded_snapshot(session: Session, file_id: str | None) -> list[dict[str, A
 # Probe only staged bytes; interrupted probes remain in the swept staging directory
 def check_hard_links(staging: Path) -> None:
     check_work_ownership()
+    if smb_transport.check_hard_links(staging):
+        return
     probe = staging.with_suffix(".link")
     os.link(staging, probe)
     probe.unlink()
@@ -228,6 +242,8 @@ def check_hard_links(staging: Path) -> None:
 # Commit a staged regular file without an overwrite race against an external newcomer
 def publish(source: Path, destination: Path) -> None:
     check_work_ownership()
+    if smb_transport.publish(source, destination):
+        return
     os.link(source, destination)
     # If cleanup fails, both names hold the same bytes and recovery can finish safely
     source.unlink()

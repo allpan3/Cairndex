@@ -41,16 +41,20 @@ One hardened container serves the API and the built frontend on port `8000`.
 The [NAS verification checkpoint](nas-verification.md) covers an isolated Linux
 NAS production image, non-root/read-only-root permissions, clean shutdown,
 process recovery and Mac browser/native clients. NAS-local hard links succeed;
-the tested Mac SMB mount refuses them, so copy imports return a structured
-conflict before replacing existing bytes. Same-share Rename/Move/Trash/Undo pass.
+the tested Mac SMB mount refuses native hard links, so the macOS server uses the
+bounded direct-SMB publication path described below. Same-share
+Rename/Move/Trash/Undo pass through their ordinary mounted paths.
 This bounded topology is not a claim about all NAS/SMB configurations, power loss
 or public internet exposure.
 
-The tested Mac mount also refuses exclusive rename and cloning. Mac-hosted SMB
-copy compatibility remains blocked; an ordinary rename or final-name copy does
-not preserve safe publication. Mac-hosted SMB remains a required scenario;
-NAS-hosted serving is a separate option. See
-[publication capabilities](nas-verification.md#mounted-smb-copy-publication).
+The tested Mac mount refuses native hard links, exclusive rename and cloning.
+On macOS, Cairndex uses [ADR-0034](adr/0034-mounted-smb-copy-publication.md)'s
+signed, encrypted direct-SMB publication path for Copy/Replace/Undo while media
+and metadata remain mounted normally. The matching SMB login must already be
+saved in macOS Keychain for the kernel-reported server and account; the first use
+may show a Keychain access prompt. Missing or denied credentials safely refuse
+the operation. NAS-hosted serving remains a separate option. See
+[publication verification](nas-verification.md#mounted-smb-copy-publication).
 
 **The server pulls a published image.**
 [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole

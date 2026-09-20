@@ -530,6 +530,11 @@ The desktop app bundles the Python server so a local library folder opens with
 no server administration (plan 3 D6, ADR-0018 §5). It is packaged with
 PyInstaller one-dir (ADR-0019 §2).
 
+The sidecar also carries `smbprotocol` for ADR-0034's macOS mounted-SMB
+publication path. Its static import must remain visible to PyInstaller, and the
+packaged smoke gate must retain `cryptography`'s runtime hook. Source-level SMB
+tests do not prove that the frozen binary contains this dependency chain.
+
 ```bash
 cd apps/server
 uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see below)

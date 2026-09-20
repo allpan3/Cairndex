@@ -13,6 +13,7 @@ from cairndex.api.v1.router import router as api_v1_router
 from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.core.errors import LibraryLeaseError
+from cairndex.file_ops.smb_transport import close_sessions as close_smb_sessions
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.exports import shutdown_export_manager
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logging.getLogger(__name__).warning(
                     "Library did not close cleanly; lease retained for recovery"
                 )
+        close_smb_sessions()
         manager.stop()
 
 

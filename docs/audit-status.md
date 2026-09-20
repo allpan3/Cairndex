@@ -81,16 +81,17 @@ verified; it does not mean every deployment or scale is qualified.
 
 ## Replace identity disposition
 
-**Mounted-SMB copy compatibility remains blocked.** The approved follow-up
-demonstrates that the tested Mac mount rejects hard links, exclusive rename and
-cloning. No safe fallback is implemented, and safe HTTP 409 refusal is not
-compatibility completion. [Capability evidence](nas-verification.md#mounted-smb-copy-publication)
-records the required Mac-hosted scenario and a separate, unshipped direct-SMB
-prototype with 12 passing synthetic tests on both an isolated service and the
-normal NAS service. [ADR-0034](adr/0034-mounted-smb-copy-publication.md) proposes
-application integration; test-only credential access is approved, ongoing use is
-not. NAS-hosted serving is a separate option. Existing
-identity/Undo receipts and the paused desktop OS-drag scope remain unchanged.
+**Mounted-SMB copy compatibility is implemented and backend-qualified.** The
+tested Mac mount still rejects native hard links, exclusive rename and cloning;
+accepted [ADR-0034](adr/0034-mounted-smb-copy-publication.md) supplies a narrow
+signed/encrypted direct-SMB publication and server-identity path. The integrated
+backend passes 12 normal-service recovery/collision cases and six HTTP
+Copy/Replace/Undo contracts on disposable mounted libraries. Local and historical
+receipt semantics remain unchanged. The final source tests, full backend gate,
+sidecar builds, bundled-module inspection and standard packaged smoke pass.
+Packaged/native SMB acceptance is still open because the fresh bundled sidecar
+reached its expected Keychain prompt and timed
+out without approval. NAS-hosted serving and paused desktop OS drag remain separate.
 
 Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and
 authored metadata, while the prior bytes receive a bytes-only Trash receipt.

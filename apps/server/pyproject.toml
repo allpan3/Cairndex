@@ -19,6 +19,7 @@ dependencies = [
     # this process. Cairndex only ever decodes HEIC, so that encoder was 8.6 MB
     # of copyleft obligation buying nothing.
     "pi-heif>=1.4.0",
+    "smbprotocol==1.16.0",
 ]
 
 [dependency-groups]

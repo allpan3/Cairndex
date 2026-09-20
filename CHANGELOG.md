@@ -343,6 +343,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Add the accepted ADR-0034 mounted-SMB transport: macOS derives the direct
+  endpoint/share/account from `statfs`, retrieves the exact saved login from
+  Keychain, requires signed encrypted SMB3, and records versioned server file
+  identity for Copy/Replace/Undo recovery. Local publication and historical
+  receipts retain their existing native semantics.
+- Add `smbprotocol` 1.16.0 and its locked authentication/cryptography dependency
+  chain to the server and packaged sidecar, including redistribution notices.
+
 - Clarify that Mac-hosted libraries on mounted SMB storage remain a required
   deployment scenario; NAS-hosted serving is a separate option, not the fix for
   incomplete mounted-SMB copy compatibility.

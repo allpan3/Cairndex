@@ -906,7 +906,7 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
         )
 
     if operation.op is FileOpType.IMPORT:
-        if operation.payload.get("import_protocol") == 2 and operation.payload.get(
+        if operation.payload.get("import_protocol") in {2, 3} and operation.payload.get(
             "replaced_operation_id"
         ):
             updated = replacement.undo(session, root, operation)

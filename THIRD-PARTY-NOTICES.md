@@ -126,7 +126,9 @@ dependencies (PyInstaller one-dir; ADR-0019 §2), under
 the PSF License and the direct dependencies are permissive: FastAPI, SQLAlchemy,
 Pydantic, pydantic-settings and python-ulid are MIT, uvicorn is BSD-3-Clause,
 Pillow is MIT-CMU, and `pi-heif` is BSD-3-Clause (its bundled native libraries
-are covered separately below). The authoritative set is
+are covered separately below). `smbprotocol` and its `pyspnego` authentication
+dependency are MIT; `cryptography` is dual Apache-2.0/BSD-3-Clause, `cffi` is
+MIT, and `pycparser` is BSD-3-Clause. The authoritative set is
 `apps/server/pyproject.toml` plus its lockfile.
 
 ## HEIF decoding (`pi-heif`) — bundled in the macOS desktop app

@@ -51,8 +51,8 @@ hostile concurrent filesystem mutation remain unqualified.
 
 ## Mounted-SMB copy publication
 
-The copy-compatibility follow-up at `d5965249` is **blocked**, with runtime
-behavior unchanged. Direct calls on new disposable roots produce this matrix:
+The native-filesystem follow-up at `d5965249` established the original blocker.
+Direct calls on new disposable roots produce this matrix:
 
 | Primitive | Mac-mounted SMB, vacant target | Mac-local storage, vacant target | Existing target |
 | --- | --- | --- | --- |
@@ -93,9 +93,8 @@ Those local regressions do not qualify successful SMB publication or recovery.
 
 Mac-hosted access to mounted SMB storage remains a required deployment scenario.
 NAS-hosted serving is independently supported; changing deployment does not
-resolve the mounted-SMB requirement. A direct SMB publication path requires
-authentication, validated path mapping, stable recovery observations and
-coherent mounted reads. No such transport is implemented in the application.
+resolve the mounted-SMB requirement. This checkpoint precedes the direct-SMB
+application implementation recorded below.
 
 Weakening complete-file visibility or allowing overwrite races would change the
 approved product safety contract and is not recommended. Production topology,
@@ -155,9 +154,47 @@ application is modified.
 
 This qualifies the prototype against the ordinary service in this bounded run.
 It does not establish an application credential lifecycle, safe automatic mount
-mapping, versioned receipt compatibility or UI behavior. The proposed application
-boundary is [ADR-0034](adr/0034-mounted-smb-copy-publication.md); test-only permission
-does not authorize ongoing application use of the saved login.
+mapping, versioned receipt compatibility or UI behavior. Those boundaries are
+implemented and tested separately below.
+
+### Integrated mounted-SMB publication
+
+The owner accepted [ADR-0034](adr/0034-mounted-smb-copy-publication.md) and
+authorized application access to the saved SMB login. The implementation derives
+the mount point, server, share and account from macOS `statfs`, retrieves only the
+matching Keychain internet-password item, and requires signed encrypted SMB3.
+Passwords are not stored in configuration, registry/library databases,
+environment variables, subprocess arguments or logs. Sessions close after the
+last corresponding mounted library closes and at server shutdown.
+
+Version-three import receipts record server/share identity, size, timestamp,
+server file ID and volume serial. Local filesystems and historical receipts keep
+native observations. Before displacement, a server hard-link probe must appear
+through the expected mounted path and retain server identity. Publication refuses
+an occupied name, refreshes the exact mounted destination, then removes staging.
+Credential or mapping failures propagate as unavailable/conflict states; recovery
+does not treat them as a missing destination or sweep its referenced staging.
+Interactive Keychain access is bounded at 20 seconds so an unanswered prompt does
+not indefinitely block a request or server shutdown.
+
+The final integrated source passes the same **12 normal-service tests in 35.00
+seconds** with ordinary account permissions, plus **six HTTP Copy/Replace/Undo
+contracts in 14.22 seconds** against disposable mounted libraries. The focused
+selection passes **141 tests**, while the complete backend gate passes **1,724
+tests with one intentional skip**. Ruff, format and Mypy pass. Unit coverage checks
+mount parsing, path escape refusal, versioned observations, remapped-share refusal,
+collision preservation, mounted visibility, credential-unavailable recovery and
+per-library shared-session closure. Both sidecar variants build; recursive archive
+inspection confirms the SMB/authentication/cryptography dependency chain and runtime
+hook, and the self-contained sidecar passes its standard HTTP/media smoke.
+
+A direct packaged-SMB request reaches the expected Keychain authorization boundary
+but times out when the fresh executable is not manually approved within the request
+window. Recovery retains the pending synthetic staging bytes; the exact disposable
+library is removed after the check.
+Fresh packaged/native SMB acceptance remains open; source/backend integration is
+qualified. Power loss, mount loss, arbitrary hostile mutation and other SMB
+servers remain outside this evidence.
 
 ## Clients and gates
 

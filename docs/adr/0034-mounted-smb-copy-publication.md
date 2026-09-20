@@ -1,6 +1,6 @@
 # ADR-0034: Mounted-SMB copy publication
 
-- Status: proposed; application credential access awaits owner approval
+- Status: accepted (owner-ratified 2026-09-20)
 - Date: 2026-09-18
 - Branch: `fix/library-ownership-lifecycle`
 
@@ -15,10 +15,10 @@ An external prototype can issue an SMB3 hard-link request against the NAS servic
 while the backend, catalog and media access remain on the Mac and mounted paths.
 [Verification](../nas-verification.md#direct-smb-feasibility-experiment) records
 the evidence and limits. This is a separate authenticated SMB connection; it does
-not reuse the mounted filesystem's authenticated session. Test-only credential
-authorization does not authorize ongoing application credential access.
+not reuse the mounted filesystem's authenticated session. The owner authorized
+application access to the saved login on 2026-09-20.
 
-## Proposed decision
+## Decision
 
 Use direct SMB only for the publication and file-identity operations needed by
 Copy, copy Replace and their Undo/recovery paths on positively identified macOS
@@ -35,7 +35,8 @@ existing write-mode, ownership, path-validation and journal-before-write gates.
 - Separate interactive authorization from background recovery. A missing,
   locked, denied or expired credential produces a recoverable unavailable state;
   background work must not repeatedly prompt or reinterpret failed authentication
-  as evidence that a file is absent.
+  as evidence that a file is absent. Bound an unanswered Keychain prompt so a
+  request and server shutdown can recover.
 - Resolve endpoint, share and account from the actual mounted filesystem, never
   a client-provided URL or absolute path. Prove the mapped library is the same
   directory using a disposable staging challenge through both access paths.
@@ -67,7 +68,7 @@ existing write-mode, ownership, path-validation and journal-before-write gates.
   identity and authored metadata; Undo restores bytes while retaining later
   authored edits. No outside-source deletion is added.
 
-## Acceptance before completion
+## Acceptance
 
 1. Unit coverage for endpoint parsing, mapping proof, path escapes, server identity,
    credential denial, signed/encrypted transport and secret-free error handling.
@@ -89,7 +90,7 @@ Check-then-rename and final-name copy violate the established safety contract.
 The inspected mounted-session APIs provide no usable public SMB2 publication
 operation, so the direct connection adds authentication and mapping responsibilities.
 
-This proposal adds a narrow storage transport and dependency maintenance burden.
+This decision adds a narrow storage transport and dependency maintenance burden.
 It does not adopt the held desktop OS-drop adapter in ADR-0033. No production
-credential access, share-setting change or application installation is authorized
-by this proposed record.
+share-setting change or installed-application replacement is authorized by this
+record.

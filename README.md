@@ -98,6 +98,9 @@ matching the portable manifest UUID; mapped files gain safe reveal/default-app
 actions and native file drag-out. Incoming files use journaled HTML uploads when
 write mode is enabled. Desktop file integration is **incomplete and paused**:
 QSpace, multi-file OS drag delivery and app-origin self-return remain unqualified.
+Mac-hosted libraries on positively identified SMB mounts use an encrypted,
+signed SMB3 publication path for safe Copy/Replace/Undo; the saved login remains
+in macOS Keychain and native inode receipts are not mixed with server file IDs.
 [Copy-import Replace](docs/file-operations.md) keeps destination metadata and
 identity, retains old bytes in Trash, and refreshes derived media; Undo restores
 those bytes. Ordinary copies retain independent identities. Explicit Rename/Move

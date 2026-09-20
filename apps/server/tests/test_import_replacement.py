@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.errors import ConflictError
 from cairndex.core.time import utcnow
@@ -18,11 +18,13 @@ from cairndex.persistence.models import (
     AssetFile,
     BundleCursor,
     Collection,
+    FileOperation,
     Moment,
     PlaybackProgress,
     SubtitleTrack,
     Tag,
 )
+from cairndex.registry.library_engine import _reconcile_file_operations
 
 
 # Drive the production streaming path without HTTP or owner data
@@ -218,6 +220,85 @@ def test_unsupported_hard_links_refuse_copy_safely(
     assert operations.list_trash(session) == []
     assert list(imports.staging_dir(library_root).iterdir()) == []
     assert journal.list_operations(session, limit=1)[0].status is FileOpStatus.FAILED
+
+
+# Direct-SMB observations opt into versioned recovery without changing local publication
+def test_direct_smb_observation_selects_protocol_three(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def direct(path: Path, *, allow_prompt: bool = False):
+        stat = path.stat()
+        return {
+            "kind": "smb3",
+            "version": 1,
+            "server": "synthetic.local",
+            "share": "fixtures",
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "file_id": stat.st_ino,
+            "volume_serial": stat.st_dev,
+        }
+
+    monkeypatch.setattr(replacement.smb_transport, "observation", direct)
+    operation = upload(session, library_root, b"complete synthetic import", name="copy.mkv")
+    assert operation.payload["import_protocol"] == 3
+    assert operation.payload["published"]["kind"] == "smb3"
+
+
+# Historical receipts always compare native identities, even after SMB support is available
+def test_protocol_two_receipt_keeps_native_observation(
+    library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = library_root / "legacy.mkv"
+    source.write_bytes(b"legacy")
+    expected = replacement.native_observation(source)
+    monkeypatch.setattr(
+        replacement.smb_transport,
+        "observation",
+        lambda _path, allow_prompt=False: {
+            "kind": "smb3",
+            "version": 1,
+            "server": "synthetic.local",
+            "share": "fixtures",
+        },
+    )
+    assert replacement.matches(source, expected)
+
+
+# Missing recovery credentials retain both pending intent and completed staging bytes
+def test_recovery_credential_failure_retains_staging(
+    session: Session,
+    session_factory: sessionmaker[Session],
+    library_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operation = journal.begin(
+        session,
+        op=FileOpType.IMPORT,
+        payload={
+            "import_protocol": 3,
+            "destination": "clip.mkv",
+            "published": {"kind": "smb3", "version": 1},
+        },
+    )
+    staging = imports.staging_dir(library_root) / f"{operation.id}.part"
+    staging.parent.mkdir(parents=True, exist_ok=True)
+    staging.write_bytes(b"complete recoverable upload")
+
+    def unavailable(*_args, **_kwargs):
+        raise replacement.smb_transport.SmbTransportError(
+            13, "Synthetic saved credential unavailable"
+        )
+
+    monkeypatch.setattr(
+        replacement,
+        "matches",
+        unavailable,
+    )
+    _reconcile_file_operations(session_factory, library_root)
+    session.expire_all()
+    assert session.get(FileOperation, operation.id).status is FileOpStatus.PENDING
+    assert staging.read_bytes() == b"complete recoverable upload"
 
 
 # Simulate a process interruption without invoking normal exception cleanup

@@ -151,7 +151,7 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         return _settle_move(session, root, operation)
 
     if operation.op is FileOpType.IMPORT:
-        if operation.payload.get("import_protocol") == 2:
+        if operation.payload.get("import_protocol") in {2, 3}:
             return _settle_import(session, root, operation)
         # The destination existing is *not* enough to conclude the import
         # finished: a Replace-policy import whose upload died partway leaves the

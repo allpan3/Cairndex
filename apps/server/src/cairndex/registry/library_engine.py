@@ -84,6 +84,9 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
             return cached.sessionmaker
         if cached is not None:
             cached.engine.dispose()
+            from cairndex.file_ops.smb_transport import close_root
+
+            close_root(Path(cached.db_path).parent.parent)
         engine = create_app_engine(database_url=f"sqlite:///{db_path}", no_checkpoint_on_close=True)
 
         retired = threading.Event()
@@ -126,6 +129,9 @@ def _get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Sessio
         maker: sessionmaker[Session] = sessionmaker(
             bind=engine, class_=OwnedSession, expire_on_commit=False, future=True
         )
+        from cairndex.file_ops.smb_transport import register_root
+
+        register_root(Path(library.root_path))
         _reconcile_file_operations(maker, Path(library.root_path))
         _cache[library.id] = _Cached(
             db_path=db_path,
@@ -150,16 +156,23 @@ def _reconcile_file_operations(maker: sessionmaker[Session], root: Path) -> None
     moved-file repair remains available for exactly this state.
     """
     from cairndex.core.config import get_settings
+    from cairndex.domain.enums import FileOpType
+    from cairndex.file_ops import journal
     from cairndex.file_ops.imports import sweep_staging
     from cairndex.file_ops.reconcile import reconcile_pending
 
     try:
         with maker() as session:
             reconcile_pending(session, root)
+            retained = frozenset(
+                f"{operation.id}.part"
+                for operation in journal.pending_operations(session)
+                if operation.op is FileOpType.IMPORT
+            )
         # Partial uploads left by a crash (ADR-0013 §7). Swept here rather than
         # on a timer because they can be large, and because this is the first
         # moment we know nothing is still writing to them.
-        removed = sweep_staging(root)
+        removed = sweep_staging(root, retained_names=retained)
         if removed:
             logger.info("removed %d abandoned partial upload(s) from %s", removed, root)
         _sweep_expired_trash(maker, root, get_settings().trash_retention_days)
@@ -223,6 +236,9 @@ def dispose_library_engine(library_id: str, *, revert_journal_mode: bool = True)
         if clean:
             cached.retired.set()
         cached.engine.dispose()
+        from cairndex.file_ops.smb_transport import close_root
+
+        close_root(Path(cached.db_path).parent.parent)
 
 
 def maintain_library_engines(

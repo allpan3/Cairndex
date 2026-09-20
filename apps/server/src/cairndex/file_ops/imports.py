@@ -36,7 +36,7 @@ from cairndex.core.config import get_settings
 from cairndex.core.errors import ConflictError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.domain.enums import FileOpType
-from cairndex.file_ops import journal, operations, replacement
+from cairndex.file_ops import journal, operations, replacement, smb_transport
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, resolve_writable, validate_name
 from cairndex.ownership.lifecycle import check_work_ownership
@@ -64,7 +64,7 @@ def staging_dir(root: Path) -> Path:
     return pkg.marker_dir(root) / STAGING_DIR
 
 
-def sweep_staging(root: Path) -> int:
+def sweep_staging(root: Path, *, retained_names: frozenset[str] = frozenset()) -> int:
     """Delete leftover partial uploads. Returns how many were removed.
 
     Runs on library open next to the journal reconciler: a crash mid-upload
@@ -77,6 +77,8 @@ def sweep_staging(root: Path) -> int:
     except OSError:
         return 0
     for entry in entries:
+        if entry.name in retained_names:
+            continue
         try:
             entry.unlink()
             removed += 1
@@ -216,18 +218,30 @@ async def import_stream(
         if (old_stat.st_size, old_stat.st_mtime_ns) == (new_stat.st_size, new_stat.st_mtime_ns):
             os.utime(staging, ns=(new_stat.st_atime_ns, old_stat.st_mtime_ns + 1_000_000_000))
     retained = session.scalar(select(AssetFile).where(AssetFile.relative_path == target_relative))
-    journal.finish_payload(
-        session,
-        operation,
-        destination=target_relative,
-        published=replacement.observation(staging),
-        previous=replacement.observation(destination) if replacing else None,
-        retained_file_id=retained.id if replacing and retained else None,
-        previous_embedded_tracks=replacement.embedded_snapshot(
-            session, retained.id if replacing and retained else None
-        ),
-        size_bytes=written,
-    )
+    try:
+        published = await asyncio.to_thread(replacement.observation, staging, allow_prompt=True)
+        previous = (
+            await asyncio.to_thread(replacement.observation, destination, allow_prompt=True)
+            if replacing
+            else None
+        )
+        journal.finish_payload(
+            session,
+            operation,
+            destination=target_relative,
+            import_protocol=3 if published.get("kind") == "smb3" else 2,
+            published=published,
+            previous=previous,
+            retained_file_id=retained.id if replacing and retained else None,
+            previous_embedded_tracks=replacement.embedded_snapshot(
+                session, retained.id if replacing and retained else None
+            ),
+            size_bytes=written,
+        )
+    except smb_transport.SmbTransportError as error:
+        _discard(staging)
+        journal.fail(session, operation, _reason(error))
+        raise ConflictError(error.strerror or "The SMB publication path is unavailable") from error
     backup = None
     try:
         if replacing:
@@ -248,10 +262,14 @@ async def import_stream(
             replacement.restore_backup(session, root, backup)
         _discard(staging)
         journal.fail(session, operation, _reason(error))
+        if isinstance(error, smb_transport.SmbTransportError):
+            raise ConflictError(
+                error.strerror or "The SMB publication path is unavailable"
+            ) from error
         if isinstance(error, OSError) and error.errno in {errno.ENOTSUP, errno.EOPNOTSUPP}:
             raise ConflictError(
                 "This filesystem does not support the hard links required for safe copy imports. "
-                "Use a server with local access to storage that supports hard links."
+                "The mounted-SMB publication path is unavailable."
             ) from error
         raise ConflictError(f"Could not save {filename!r} into the library.") from error
 
