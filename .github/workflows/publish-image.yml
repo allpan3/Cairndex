@@ -61,7 +61,7 @@ jobs:
       # Non-GitHub-owned actions are pinned by commit SHA, as in release.yml:
       # this produces an artifact that machines pull and run unattended, so a
       # repointed tag must not be able to change what runs here.
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Compute tags
         id: meta
@@ -85,7 +85,7 @@ jobs:
       # it, because `load: true` only accepts one platform, so the arm64 image
       # would be published untested.
       - name: Build the candidate image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infra/docker/production.Dockerfile
