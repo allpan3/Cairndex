@@ -81,17 +81,16 @@ verified; it does not mean every deployment or scale is qualified.
 
 ## Replace identity disposition
 
-**Mounted-SMB copy compatibility is implemented and backend-qualified.** The
-tested Mac mount still rejects native hard links, exclusive rename and cloning;
-accepted [ADR-0034](adr/0034-mounted-smb-copy-publication.md) supplies a narrow
-signed/encrypted direct-SMB publication and server-identity path. The integrated
-backend passes 12 normal-service recovery/collision cases and six HTTP
-Copy/Replace/Undo contracts on disposable mounted libraries. Local and historical
-receipt semantics remain unchanged. The final source tests, full backend gate,
-sidecar builds, bundled-module inspection and standard packaged smoke pass. After
-scoped Keychain approval, the fresh frozen sidecar also passes Copy, Replace, Undo,
-credential reuse and clean supported shutdown against the normal mounted share.
-NAS-hosted serving and paused desktop OS drag remain separate.
+**Mounted-SMB Copy/Replace/Undo is implemented for the tested topology.**
+Accepted [ADR-0034](adr/0034-mounted-smb-copy-publication.md) supplies the narrow
+signed/encrypted direct transport. Review repairs distinguish unavailable identity
+from absence, isolate accounts, bind shares without redirects, prove directory
+mapping with fresh bytes and delete only identity-verified probe/publication
+handles. Repeated Undo uses server identity despite stale mounted entries.
+[Current repair evidence](nas-verification.md#mounted-smb-review-repair-verification)
+is separate from the earlier source and packaged receipts. Local and historical
+receipt semantics remain unchanged. Broader servers, mount loss and power loss
+remain unqualified. NAS-hosted serving and paused desktop OS drag remain separate.
 
 Copy-import Replace follows ADR-0013 §5: a linked destination keeps its ID and
 authored metadata, while the prior bytes receive a bytes-only Trash receipt.

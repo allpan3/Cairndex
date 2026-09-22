@@ -286,6 +286,10 @@ def _settle_import(session: Session, root: Path, operation: FileOperation) -> bo
         return True
     destination = resolve_writable(root, operation.payload["destination"])
     staging = imports.staging_dir(root) / f"{operation.id}.part"
+    if operation.payload.get("observation_pending"):
+        # No displacement or publication was attempted before this unavailable observation
+        published = replacement.observation(staging)
+        journal.finish_payload(session, operation, published=published, observation_pending=False)
     if replacement.matches(destination, operation.payload.get("published", {})):
         imports._discard(staging)
         updated = replacement.refresh_file(session, root, operation)

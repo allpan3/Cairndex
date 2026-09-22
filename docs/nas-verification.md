@@ -240,3 +240,56 @@ database is small relative to recoverable Trash and derived media. No purge,
 rescan, vacuum or source cleanup is implied. Exact prior per-file evidence is
 unavailable, so the earlier aggregate discrepancy cannot be reconstructed
 historically. Owner-specific inventories and numerical receipts remain private.
+
+
+### Mounted-SMB review repair verification
+
+Review baseline: `ea1fbee9` on `fix/library-ownership-lifecycle`. Independent
+synthetic probes reproduced discarded recovery staging after actual dependency
+access/share errors, implicit selection of another cached account, and deletion
+of a preexisting capability-probe name. The earlier integrated and packaged
+receipts above did not cover those failure paths.
+
+The repair normalizes both `SMBOSError` and raw SMB response errors, preserves
+pending imports on unavailable identity, and isolates pools by server/account.
+Explicit `TreeConnect`/`Open` requests use the maintained dependency's protocol
+structures without its automatic DFS/account selection. Directory ancestors are
+held against SMB replacement and reject reparse points. Disposable random bytes
+prove direct/mounted directory mapping. Version-two observations bind the account
+and server GUID; version-one observations and native receipts retain their meaning.
+Probe creation is exclusive, and cleanup verifies identity on an exclusive handle.
+
+Actual-share testing found smbfs per-name inode values unsuitable for proving
+hard-link identity and deferred native opens incompatible with immediate ordinary
+handle deletion. Mapping uses fresh challenge bytes, server identity and bounded
+mounted size/content samples. Exclusive cleanup releases deferred opens before
+marking the verified object for deletion. A stale mounted Trash entry after an
+interrupted Undo is resolved against the server without deleting a replacement.
+
+Verification on disposable synthetic libraries with the normal mounted share and
+unchanged account permissions:
+
+- **18 passed**: twelve source-level metadata, journal-boundary, independent-process
+  and outsider-arrival cases, plus six HTTP Copy/Replace/Undo contracts, in 45.60 s.
+- **10 passed**: real-backend browser copy, Skip, Keep Both, Replace, visible Undo,
+  Rename/Move identity and library Release/Reopen cases, in 16.7 s.
+- Full backend suite: **1,753 passed, one existing skip**, in 281.41 s. Subsequent
+  focused tests additionally cover replaced staging cleanup, repeated cleanup,
+  plaintext/wrong-account refusal and preserved bounded Keychain errors.
+- Ruff, formatting and Mypy pass. Development and self-contained frozen sidecars
+  build, and each passes the standard packaged HTTP/media smoke test.
+- Fresh frozen SMB acceptance currently returns a bounded **HTTP 409 Keychain
+  authorization timeout** and exits cleanly. Successful Copy/Replace/Undo and
+  authorization reuse for this binary await the owner's matching Keychain approval;
+  the earlier binary's successful receipt does not qualify this repair.
+- Linux container rerun is unavailable: the local Docker daemon is unavailable,
+  and the current NAS login cannot access its Docker socket or use noninteractive
+  sudo. No host permissions or production service are changed.
+
+Multi-account, access denial, expired sessions, redirects, reparse points and
+mapping mismatches use isolated synthetic fault injection; they are not live
+mount-loss or power-loss tests. Actual-share fixtures and frozen-sidecar runtime
+state are disposable. No owner library, installed app, NAS account, share setting,
+production container, global network/cache configuration or publication is changed.
+Broader SMB servers, arbitrary hostile filesystem mutation and power-loss behavior
+remain unqualified. Desktop OS drag integration remains **INCOMPLETE and paused**.

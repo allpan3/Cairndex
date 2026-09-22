@@ -151,7 +151,8 @@ def restore_backup(session: Session, root: Path, backup: FileOperation) -> None:
                     "The destination is occupied; the previous bytes remain in Trash."
                 )
             # A previous recovery can have linked the original before dropping its Trash name
-            stored.unlink()
+            if not smb_transport.remove_published_source(stored, backup.payload["original"]):
+                stored.unlink(missing_ok=True)
         else:
             check_work_ownership()
             publish(stored, destination)

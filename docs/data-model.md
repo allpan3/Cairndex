@@ -689,7 +689,13 @@ the metadata and derived-cache contract. Rename/Move replacement receipts carry
 committed before displacement. Their `moves` entries retain the source IDs and
 Undo progress; displaced rows retain their IDs in Trash. `undo_started` and a
 Trash receipt's `restore_started` allow an interrupted inverse to finish.
-Legacy receipts remain on their original interpreter.
+Legacy receipts remain on their original interpreter. Import protocol three uses
+SMB observations: version one records server/share, size, modification time, file
+ID and volume serial; version two additionally records the mounted account and
+server GUID. `observation_pending` retains complete staging when initial SMB
+identity is unavailable before any publication or displacement. Recovery clears
+that flag only after it can observe the staged object. No schema migration is
+required, and passwords are never journaled.
 
 Renaming updates `AssetFile.relative_path` (and the derived `directory_path`)
 in the same transaction, **preserving `AssetFile.id`**, which is what carries

@@ -184,6 +184,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Mounted-SMB identity failures retain pending imports and complete staging;
+  definite absence remains distinct from permissions, session and network errors.
+- SMB publication binds every request to the mounted account and explicit share,
+  rejects redirects/reparse paths, and verifies mapping through fresh challenge bytes.
+- Capability-probe collisions preserve existing files. Probe and publication cleanup
+  use verified exclusive handles; repeated Undo tolerates stale mounted directory entries.
+
+
 - Shared-server metadata edits work from private LAN HTTP browser origins,
   using cryptographic request IDs without requiring secure-context UUID APIs.
 - Cached library sessions retain a stable library ID across failed registry

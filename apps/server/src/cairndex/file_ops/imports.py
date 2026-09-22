@@ -239,8 +239,10 @@ async def import_stream(
             size_bytes=written,
         )
     except smb_transport.SmbTransportError as error:
-        _discard(staging)
-        journal.fail(session, operation, _reason(error))
+        # Keep complete bytes until recovery can distinguish absence from unavailable identity
+        journal.finish_payload(
+            session, operation, import_protocol=3, observation_pending=True, size_bytes=written
+        )
         raise ConflictError(error.strerror or "The SMB publication path is unavailable") from error
     backup = None
     try:
@@ -255,7 +257,14 @@ async def import_stream(
         check_work_ownership()
         replacement.publish(staging, destination)
     except (OSError, PathSafetyError, ConflictError) as error:
-        if replacement.matches(destination, operation.payload["published"]):
+        try:
+            was_published = replacement.matches(destination, operation.payload["published"])
+        except smb_transport.SmbTransportError as unavailable:
+            # A transport failure cannot authorize rollback, failure or staging cleanup
+            raise ConflictError(
+                unavailable.strerror or "The SMB publication path is unavailable"
+            ) from unavailable
+        if was_published:
             # Publication succeeded; leave the durable intent for recovery after cleanup failed
             raise ConflictError("The upload was saved but needs journal recovery.") from error
         if backup is not None:

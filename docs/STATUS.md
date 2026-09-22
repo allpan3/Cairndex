@@ -11,7 +11,30 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## SMB copy compatibility: implemented and backend-qualified
+## Mounted-SMB review repairs
+
+The three independent review findings are repaired on the cumulative
+`fix/library-ownership-lifecycle` branch: real dependency errors retain pending
+intent/staging, account-specific pools and explicit share handles bind requests,
+and collision-safe probe cleanup deletes only the verified open object.
+ADR-0034 remains accepted. Fresh challenge bytes prove directory mapping;
+redirects and reparse paths are refused. Version-two observations bind account and
+server GUID without reinterpreting old receipts. Copy Replace retains destination
+metadata; Rename/Move Replace retains source metadata; both preserve authored edits
+through Undo.
+
+The real-share source/HTTP suite passes 18 cases; the affected browser suite
+passes 10. The full backend suite passes 1,753 tests with one existing skip.
+Both frozen sidecars build and pass standard smoke. Successful SMB acceptance for
+the fresh frozen binary awaits its matching macOS Keychain authorization; the
+observed refusal is bounded HTTP 409 with clean shutdown. Linux container rerun
+is blocked by current Docker access. Prior packaged receipts are historical.
+Current verification and limits are recorded in
+[the repair receipt](nas-verification.md#mounted-smb-review-repair-verification).
+Desktop OS drag remains **INCOMPLETE and paused**. This repair does not authorize
+playback performance, cloud, folder pagination or held adapter work.
+
+## Historical SMB implementation checkpoint
 
 [ADR-0034](adr/0034-mounted-smb-copy-publication.md) is accepted and implemented
 for positively identified macOS SMB mounts. Copy/Replace/Undo keep ordinary media,

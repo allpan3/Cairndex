@@ -107,9 +107,9 @@ integration remains incomplete and paused.
 Filesystem identity observations are conservative recovery evidence, not full
 content verification. Cross-device moves use the existing copy/marker fallback;
 an interruption without sufficient identity/marker evidence needs review. The
-tested NAS-local filesystem supports hard links; the tested Mac SMB mount
-refuses copy imports safely while same-share Rename/Move/Trash/Undo work. Other
-mounts, cross-device recovery, hostile concurrent filesystem mutation and
+tested NAS-local filesystem supports hard links; the tested Mac SMB mount uses
+the direct transport below while same-share Rename/Move/Trash/Undo use mounted
+paths. Other mounts, cross-device recovery, hostile concurrent filesystem mutation and
 power-loss durability remain unqualified. Copy-import publication requires
 filesystem hard-link support.
 
@@ -118,9 +118,28 @@ For this positively identified topology, Copy/Replace/Undo use a separate signed
 encrypted SMB3 connection for server-side no-overwrite publication and recovery
 identity while ordinary file access remains mounted. The endpoint, share and
 account come from the kernel's mount record; the password comes from the exact
-saved macOS Keychain item and stays in process memory. Version-three receipts bind
-recovery to the server/share file identity; older receipts keep native semantics.
+saved macOS Keychain item and stays in process memory. Import protocol three uses
+server file identity. Version-two SMB observations
+also bind the mounted account and server GUID; version-one SMB observations and
+protocol-two native receipts retain their original interpretation.
 An unanswered Keychain prompt times out safely, and unresolved recovery retains
 its staged bytes for a later retry.
+Account-specific connection pools and explicit share handles prevent implicit
+account selection and DFS redirects. Ancestor handles reject reparse points and
+hold directories against SMB rename during the operation. A fresh 32-byte challenge
+proves each mapped directory; mounted size and bounded content samples verify
+published visibility without relying on smbfs per-name inode numbers or hashing
+large files. Server hard-link identity proves publication of the complete object.
+Probe collisions never trigger cleanup. Successful probes and completed publication
+sources are deleted only through identity-checked exclusive handles, which release
+deferred mounted opens before deletion. Mounted directory entries can remain stale
+briefly; repeated Undo uses server identity to finish cleanup idempotently.
+
+Only definite leaf absence after directory verification permits absence-based
+recovery. Permission, session, share, network, mapping and server-identity failures
+retain pending intent and complete staging. An unavailable initial observation is
+recorded as `observation_pending`; recovery obtains the observation when access
+returns and settles the unattempted publication before the owner retries the copy.
+
 See [ADR-0034](adr/0034-mounted-smb-copy-publication.md) and the
 [capability evidence](nas-verification.md#mounted-smb-copy-publication).
