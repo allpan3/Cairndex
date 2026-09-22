@@ -290,11 +290,33 @@ unchanged account permissions:
   dialogs, so prompt-free reuse is not independently instrumented. The inspected
   development and self-contained executables have distinct ad-hoc code-hash
   requirements; an earlier build's grant does not establish this build's access.
-- NAS container verification remains unavailable: the current SSH login cannot
-  access the Docker socket, and noninteractive sudo requires a password. The
-  access check performs no container operation. A macOS Docker run would be a
-  preliminary check and would not qualify actual NAS storage or permissions.
-  No NAS permissions or production service are changed.
+- NAS Linux x86_64 verification at `b8e6de05` passes the production image build,
+  synthetic canary exclusion, runtime residue/license inspection and standard
+  HTTP/media smoke: SPA/API, ffmpeg/ffprobe, scan/thumbnail, bounded video ranges,
+  copy-only HLS, graceful lease release, a non-WAL library DB after shutdown and
+  execution under an arbitrary non-root UID. Backup, restore and reopening pass
+  with the same candidate image. Metadata permission checks safely refuse wholly
+  read-only metadata and accept protected sources with writable metadata.
+- **258 passed** in 118.44 seconds: SMB transport/handle fault injection, file
+  operations, copy-import replacement, move replacement and file-operation HTTP
+  regressions. The container imports the production source and uses a separate
+  locked test environment, UID/GID `10001:10001`, a read-only root and no network.
+  Synthetic bind-mounted fixtures reside on the NAS's ext4 filesystem. These
+  Linux tests do not exercise macOS Keychain or live mounted-SMB publication;
+  the separate Mac acceptance runs above cover that topology.
+
+The first NAS regression attempt failed during shared fixture setup before test
+bodies ran because its disposable bind directory was not writable. The private
+harness correction sets an explicit writable directory mode inside its restricted
+parent and verifies write/read/delete from the actual non-root container before
+retrying. All 258 tests then pass; application and test sources are unchanged.
+The earlier successful production, recovery and metadata-permission checks remain
+valid. Both runs report no cleanup errors and unchanged lifecycle state for
+existing containers. Test containers, volumes, images and fixture roots are
+removed; isolated source packets and logs remain private, and shared Docker build
+caches are retained. Docker access uses the owner's authenticated session without
+changing NAS account permissions. Development Docker images, restoration from an
+earlier release image, power loss and broad scale are not qualified by this run.
 
 Multi-account, access denial, expired sessions, redirects, reparse points and
 mapping mismatches use isolated synthetic fault injection; they are not live

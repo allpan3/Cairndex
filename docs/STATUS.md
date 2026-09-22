@@ -31,14 +31,21 @@ passes mounted-SMB Copy, Replace and Undo in two separate synthetic runs using
 the unchanged executable, with verified restored bytes, clean exit and fixture
 removal. Independent focused review validation passes 174 tests. The inspected
 development and self-contained sidecars have different ad-hoc code identities;
-Keychain grants for another build do not qualify this executable. Linux container
-verification remains blocked: the NAS SSH account cannot access Docker, and
-noninteractive sudo requires a password. Prior container receipts are historical.
-All disposable SMB roots and test server processes are removed or stopped. The
-repair commit passes its scoped privacy gate; inherited cumulative private-content
-and volume findings still block publication. History is retained as instructed.
-The remaining deployment check is a NAS container rerun with authorized Docker
-access; unrelated playback work is not started.
+Keychain grants for another build do not qualify this executable; stable backend
+signing across rebuilds remains unimplemented.
+
+NAS Linux x86_64 verification at `b8e6de05` passes the production build, runtime
+image inspection, HTTP/media smoke, backup and restore with the same image, and
+metadata permission checks. The non-root storage regression suite passes **258
+tests** on disposable NAS ext4 fixtures. An initial fixture setup failure is
+resolved by correcting the private harness directory permissions; application
+source is unchanged. Test containers, volumes, images and fixture roots are
+removed, and existing container lifecycle state is unchanged. All disposable
+SMB roots and test server processes are removed or stopped. The repair commit
+passes its scoped privacy gate; inherited cumulative private-content and volume
+findings still block publication. History is retained as instructed.
+The scoped NAS container verification is complete; broader deployment/scale,
+power-loss behavior and unrelated playback work remain outside this receipt.
 Current verification and limits are recorded in
 [the repair receipt](nas-verification.md#mounted-smb-review-repair-verification).
 Desktop OS drag remains **INCOMPLETE and paused**. This repair does not authorize
