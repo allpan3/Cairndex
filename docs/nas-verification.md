@@ -244,7 +244,8 @@ historically. Owner-specific inventories and numerical receipts remain private.
 
 ### Mounted-SMB review repair verification
 
-Review baseline: `ea1fbee9` on `fix/library-ownership-lifecycle`. Independent
+Review baseline: `ea1fbee9`; repair: `f2b98a7f`, on
+`fix/library-ownership-lifecycle`. Independent
 synthetic probes reproduced discarded recovery staging after actual dependency
 access/share errors, implicit selection of another cached account, and deletion
 of a preexisting capability-probe name. The earlier integrated and packaged
@@ -274,7 +275,7 @@ unchanged account permissions:
 - **10 passed**: real-backend browser copy, Skip, Keep Both, Replace, visible Undo,
   Rename/Move identity and library Release/Reopen cases, in 16.7 s.
 - Full backend suite: **1,753 passed, one existing skip**, in 281.41 s. Subsequent
-  focused tests additionally cover replaced staging cleanup, repeated cleanup,
+  focused run passes **247 cases** and additionally covers replaced staging cleanup, repeated cleanup,
   plaintext/wrong-account refusal and preserved bounded Keychain errors.
 - Ruff, formatting and Mypy pass. Development and self-contained frozen sidecars
   build, and each passes the standard packaged HTTP/media smoke test.
@@ -288,8 +289,11 @@ unchanged account permissions:
 
 Multi-account, access denial, expired sessions, redirects, reparse points and
 mapping mismatches use isolated synthetic fault injection; they are not live
-mount-loss or power-loss tests. Actual-share fixtures and frozen-sidecar runtime
-state are disposable. No owner library, installed app, NAS account, share setting,
+mount-loss or power-loss tests. All actual-share fixture roots and frozen-sidecar runtime
+state are removed; test servers are stopped. The repair commit passes the local
+privacy range gate: 15 new UTF-8 source/documentation blobs, no binary artifacts.
+The inherited range still fails with 473 paths, 84,114 KiB of new blobs and 50
+private-content findings. History and the publication block remain intact. No owner library, installed app, NAS account, share setting,
 production container, global network/cache configuration or publication is changed.
 Broader SMB servers, arbitrary hostile filesystem mutation and power-loss behavior
 remain unqualified. Desktop OS drag integration remains **INCOMPLETE and paused**.
