@@ -26,15 +26,19 @@ through Undo.
 The real-share source/HTTP suite passes 18 cases; the affected browser suite
 passes 10. The full backend run passes 1,753 tests with one existing skip;
 final focused validation after the last changes passes 247 cases.
-Both frozen sidecars build and pass standard smoke. Successful SMB acceptance for
-the fresh frozen binary awaits its matching macOS Keychain authorization; the
-observed refusal is bounded HTTP 409 with clean shutdown. Linux container rerun
-is blocked by current Docker access. Prior packaged receipts are historical.
+Both frozen sidecars build and pass standard smoke. The self-contained sidecar
+passes mounted-SMB Copy, Replace and Undo in two separate synthetic runs using
+the unchanged executable, with verified restored bytes, clean exit and fixture
+removal. Independent focused review validation passes 174 tests. The inspected
+development and self-contained sidecars have different ad-hoc code identities;
+Keychain grants for another build do not qualify this executable. Linux container
+verification remains blocked: the NAS SSH account cannot access Docker, and
+noninteractive sudo requires a password. Prior container receipts are historical.
 All disposable SMB roots and test server processes are removed or stopped. The
 repair commit passes its scoped privacy gate; inherited cumulative private-content
 and volume findings still block publication. History is retained as instructed.
-Successful fresh packaged SMB acceptance is the next verification step once the
-matching Keychain prompt is approved; unrelated playback work is not started.
+The remaining deployment check is a NAS container rerun with authorized Docker
+access; unrelated playback work is not started.
 Current verification and limits are recorded in
 [the repair receipt](nas-verification.md#mounted-smb-review-repair-verification).
 Desktop OS drag remains **INCOMPLETE and paused**. This repair does not authorize

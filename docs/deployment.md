@@ -955,6 +955,14 @@ local-network prompt the shell already triggers when reaching a LAN server.
 Re-approving is expected under this model, not a sign of misconfiguration; a
 stable Developer ID signature is what removes it.
 
+Mounted-SMB Copy/Replace/Undo requests the saved SMB login through the packaged
+backend. Its ad-hoc designated requirement is a code hash, and development and
+self-contained builds have separate identities. A saved Keychain grant may not
+cover a rebuilt executable. Persistent authorization across updates requires
+a stable signing identity and identifier for the credential-reading backend.
+An unanswered request times out after 20 seconds and preserves recoverable
+intent for an explicit retry; background recovery does not prompt.
+
 ### If you install from the DMG: the `cairndex://` scheme has several claimants
 
 Installing creates a **second** copy of the app. The build directory keeps its own

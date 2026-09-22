@@ -279,13 +279,22 @@ unchanged account permissions:
   plaintext/wrong-account refusal and preserved bounded Keychain errors.
 - Ruff, formatting and Mypy pass. Development and self-contained frozen sidecars
   build, and each passes the standard packaged HTTP/media smoke test.
-- Fresh frozen SMB acceptance currently returns a bounded **HTTP 409 Keychain
-  authorization timeout** and exits cleanly. Successful Copy/Replace/Undo and
-  authorization reuse for this binary await the owner's matching Keychain approval;
-  the earlier binary's successful receipt does not qualify this repair.
-- Linux container rerun is unavailable: the local Docker daemon is unavailable,
-  and the current NAS login cannot access its Docker socket or use noninteractive
-  sudo. No host permissions or production service are changed.
+- The repaired self-contained sidecar passes mounted-SMB **Copy, Replace and
+  Undo twice** using the unchanged packaged executable. Each run verifies the
+  restored original bytes, clean exit status zero and synthetic fixture removal.
+  The harness uses an isolated working directory because a launch from the
+  repository root reads development `.env` settings and fails startup validation.
+- Independent review validation passes **174 focused tests** in 6.51 seconds.
+  The packaged tests use normal in-process Keychain retrieval without injected
+  credentials or ACL changes. Their API harness does not count macOS permission
+  dialogs, so prompt-free reuse is not independently instrumented. The inspected
+  development and self-contained executables have distinct ad-hoc code-hash
+  requirements; an earlier build's grant does not establish this build's access.
+- NAS container verification remains unavailable: the current SSH login cannot
+  access the Docker socket, and noninteractive sudo requires a password. The
+  access check performs no container operation. A macOS Docker run would be a
+  preliminary check and would not qualify actual NAS storage or permissions.
+  No NAS permissions or production service are changed.
 
 Multi-account, access denial, expired sessions, redirects, reparse points and
 mapping mismatches use isolated synthetic fault injection; they are not live
