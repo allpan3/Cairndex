@@ -11,6 +11,31 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Local Keychain signing
+
+Local macOS builds support explicit persistent sidecar signing with the stable
+`dev.cairndex.sidecar` identifier. Setup stores a non-exportable key in the user's
+Keychain and public configuration outside the checkout. Build and launcher checks
+refuse missing or changed configured identities; defaults and CI remain ad-hoc
+unless explicitly configured. This changes no library metadata, existing credential
+ACL or system trust setting. Developer ID/notarization remains separate.
+
+Native synthetic acceptance proves access across changed builds with interaction
+disabled and denial for other identifiers, other certificates and ad-hoc copies.
+Its temporary Keychain is removed and the original search list retained. Both
+self-contained and development sidecars build and pass packaged HTTP/media smoke
+using one disposable signer. A sealed copy of the production app preserves the
+backend signature, passes strict recursive signature verification and runs the
+bundled backend smoke successfully; that test copy is removed.
+
+The backend suite passes **1,777 tests with one existing skip**; Ruff, formatting,
+Mypy, desktop launcher regressions and workflow YAML parsing pass. The ordinary
+Tauri app builds and passes signature/license checks. No Rust or web application
+source changes, so their separate full test suites are not repeated. No library
+schema or API changes are involved. Workstation signer enrollment and acceptance
+with that persistent identity remain pending; no installed app is replaced.
+See [local build signing](development.md#local-server-sidecar-appsserverpackaging).
+
 ## Mounted-SMB review repairs
 
 The three independent review findings are repaired in `f2b98a7f` on the cumulative
@@ -31,8 +56,8 @@ passes mounted-SMB Copy, Replace and Undo in two separate synthetic runs using
 the unchanged executable, with verified restored bytes, clean exit and fixture
 removal. Independent focused review validation passes 174 tests. The inspected
 development and self-contained sidecars have different ad-hoc code identities;
-Keychain grants for another build do not qualify this executable; stable backend
-signing across rebuilds remains unimplemented.
+Keychain grants for another build do not qualify those historical executables.
+The optional persistent signing workflow and its activation status are recorded above.
 
 NAS Linux x86_64 verification at `b8e6de05` passes the production build, runtime
 image inspection, HTTP/media smoke, backup and restore with the same image, and

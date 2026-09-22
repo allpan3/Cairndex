@@ -530,6 +530,38 @@ The desktop app bundles the Python server so a local library folder opens with
 no server administration (plan 3 D6, ADR-0018 §5). It is packaged with
 PyInstaller one-dir (ADR-0019 §2).
 
+For local macOS builds, opt into a persistent sidecar signing identity once:
+
+```bash
+cd apps/server
+uv run python packaging/macos_signing.py create-local
+```
+
+The setup creates a non-exportable signing key in the user's default Keychain,
+grants only `codesign` access to that new key, and stores its public certificate
+fingerprint and Keychain location outside the checkout. It changes neither system
+trust nor existing password access rules. Repeating setup reuses the same identity;
+a missing key or invalid configuration stops the build instead of rotating it.
+Both development and self-contained builds use `dev.cairndex.sidecar` with that
+certificate. The first explicit SMB operation may require **Always Allow** for the
+new signer; grants can then survive rebuilt code. Merely choosing **Allow** grants
+one access, and a locked Keychain or changed certificate can still require action.
+
+`just bundled` detects stale signing even when source timestamps are unchanged,
+and the desktop bundle preflight refuses an incorrectly signed backend. The
+configuration is `~/Library/Application Support/Cairndex/build-signing.json`;
+`CAIRNDEX_SIDECAR_SIGNING_CONFIG` selects another explicit configuration. Neither
+configuration nor signing keys belong in the repository or build artifacts.
+CI ignores the workstation default. `APPLE_SIGNING_IDENTITY` takes precedence;
+`-` explicitly selects the existing ad-hoc path. A real Apple signing identity
+also signs PyInstaller's native libraries before the final stable backend identifier
+is applied; notarization still requires its separate release qualification.
+
+Run `uv run python packaging/keychain_signing_smoke.py` on macOS to verify changed
+binaries sharing one certificate, refusal of other certificates/identifiers and
+ad-hoc copies, and cleanup. It uses only a disposable Keychain and synthetic data;
+all credential reads disable user interaction. This gate also runs in macOS CI.
+
 The sidecar also carries `smbprotocol` for ADR-0034's macOS mounted-SMB
 publication path. Its static import must remain visible to PyInstaller, and the
 packaged smoke gate must retain `cryptography`'s runtime hook. Source-level SMB

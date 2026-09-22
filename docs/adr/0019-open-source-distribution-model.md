@@ -156,6 +156,23 @@ Corrected here rather than left standing.
   what changes is that ad-hoc signing is a build setting that must be present,
   not a property the toolchain supplies for free.
 
+  **Amendment (2026-09-22): stable local Keychain identity.** The owner requested
+  a fix for repeated saved-SMB-login approvals during local rebuilds. An explicit
+  one-time setup may create a self-signed certificate in the user's Keychain.
+  Local backend builds reuse that certificate with `dev.cairndex.sidecar`;
+  missing configuration or a missing signer must not silently generate a replacement
+  or fall back to ad-hoc signing. The new private key is non-exportable and grants
+  signing access only to `codesign`; existing credentials and trust settings are
+  untouched. The shell and public CI retain their default ad-hoc behavior.
+
+  Keychain tracks designated requirements and accepts a stable self-signed identity
+  without installing a trusted root; see [Apple TN2206](https://developer.apple.com/library/archive/technotes/tn2206/_index.html).
+  This solves local permission continuity after the owner grants the new signer
+  access. It does not confer Gatekeeper trust, notarization or a public release
+  identity. Private keys and workstation configuration never enter the source tree
+  or distributable artifacts. A disposable native acceptance test must prove reuse
+  across changed binaries and refusal of different signers with interaction disabled.
+
 - **ffmpeg pinning is greenlit** (owner, 2026-07-21). It was written up as an
   owner decision because it hardcodes a third-party trust choice into the repo,
   and because §3's GPL consequence follows from it. Both are now answered, so it

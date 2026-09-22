@@ -101,6 +101,8 @@ QSpace, multi-file OS drag delivery and app-origin self-return remain unqualifie
 Mac-hosted libraries on positively identified SMB mounts use an encrypted,
 signed SMB3 publication path for safe Copy/Replace/Undo; the saved login remains
 in macOS Keychain and native inode receipts are not mixed with server file IDs.
+Local source builds can [retain Keychain permission across backend rebuilds](docs/development.md#local-server-sidecar-appsserverpackaging)
+with an explicitly configured persistent signing certificate.
 [Copy-import Replace](docs/file-operations.md) keeps destination metadata and
 identity, retains old bytes in Trash, and refreshes derived media; Undo restores
 those bytes. Ordinary copies retain independent identities. Explicit Rename/Move

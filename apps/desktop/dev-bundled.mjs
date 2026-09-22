@@ -78,16 +78,36 @@ function mediaToolsReady() {
   });
 }
 
+// A newly configured signer must replace an otherwise current ad-hoc build.
+// Invalid or unavailable configuration stops the launch instead of falling back.
+const signature = spawnSync(
+  "uv",
+  ["run", "python", "packaging/macos_signing.py", "check", binary],
+  { cwd: serverDir, stdio: "inherit" },
+);
+if (signature.error || signature.status === null || signature.status > 1) {
+  console.error("• sidecar signing configuration could not be verified");
+  process.exit(2);
+}
+const signingStale = signature.status === 1;
 const force = process.argv.includes("--force");
 const mediaStale = !mediaToolsReady();
-if (force || mediaStale || !existsSync(binary) || sourceMtime > binaryMtime) {
+if (
+  force ||
+  mediaStale ||
+  signingStale ||
+  !existsSync(binary) ||
+  sourceMtime > binaryMtime
+) {
   const why = !existsSync(binary)
     ? "no build yet"
     : force
       ? "--force"
-      : mediaStale
-        ? "media cache changed"
-        : "apps/server changed";
+      : signingStale
+        ? "signing identity changed"
+        : mediaStale
+          ? "media cache changed"
+          : "apps/server changed";
   console.log(`• rebuilding the sidecar (${why})…`);
   execFileSync(
     "uv",

@@ -110,6 +110,10 @@ server/share/account and mount root from `statfs`, retrieves that exact saved SM
 login from Keychain on demand, and uses signed, encrypted SMB3 hard links for
 no-overwrite publication. Versioned journal observations use server file identity;
 native inode observations remain unchanged for local storage and old receipts.
+Local source builds can opt into a persistent certificate and the stable
+`dev.cairndex.sidecar` identifier for the credential reader. Builds verify the
+configured signer; Keychain's existing item access policy still decides whether
+to allow the request. Signing configuration stays outside the library and checkout.
 Each account has a private connection pool. Explicit tree and open-handle requests
 bypass implicit account selection and DFS redirects; held ancestor handles reject
 reparse points. Random disposable directory challenges are read through both

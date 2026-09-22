@@ -184,6 +184,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Local macOS backend builds can preserve saved SMB Keychain permission across
+  rebuilds with an opted-in persistent certificate and stable identifier.
+  Development launch and app bundling refuse a stale or unavailable configured
+  signer; one-time setup preserves existing credentials and system trust.
+
 - Mounted-SMB identity failures retain pending imports and complete staging;
   definite absence remains distinct from permissions, session and network errors.
 - SMB publication binds every request to the mounted account and explicit share,

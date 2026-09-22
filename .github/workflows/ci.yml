@@ -290,6 +290,9 @@ jobs:
       - name: Sync server dependencies
         run: uv sync --frozen
         working-directory: apps/server
+      - name: Verify Keychain access across changed builds
+        run: uv run python packaging/keychain_signing_smoke.py
+        working-directory: apps/server
       # Keyed on the manifest, so a re-pin re-downloads and everything else
       # reuses ~125 MB of binaries. The vendor directory is platform-scoped, so
       # this key and path name the same architecture the runner builds.

@@ -956,10 +956,15 @@ Re-approving is expected under this model, not a sign of misconfiguration; a
 stable Developer ID signature is what removes it.
 
 Mounted-SMB Copy/Replace/Undo requests the saved SMB login through the packaged
-backend. Its ad-hoc designated requirement is a code hash, and development and
-self-contained builds have separate identities. A saved Keychain grant may not
-cover a rebuilt executable. Persistent authorization across updates requires
-a stable signing identity and identifier for the credential-reading backend.
+backend. Ad-hoc builds use a code hash as their designated requirement, so saved
+Keychain grants may not cover a rebuilt executable. Local source builders can
+[configure a persistent sidecar certificate](development.md#local-server-sidecar-appsserverpackaging)
+with `uv run python packaging/macos_signing.py create-local` from `apps/server`.
+Both build variants then retain the same certificate and `dev.cairndex.sidecar`
+identifier. The first operation with the new signer can require **Always Allow**;
+subsequent builds satisfy that grant while the certificate is retained. This local
+identity changes neither system trust nor Gatekeeper/notarization requirements.
+It is not automatically created by a build or distributed as a signing key.
 An unanswered request times out after 20 seconds and preserves recoverable
 intent for an explicit retry; background recovery does not prompt.
 
@@ -1036,10 +1041,11 @@ elsewhere, so there is no free path to a distributable build.
 
 ### The signing pipeline (inert until configured)
 
-The build reads its signing configuration from the environment. **With these
-variables unset, the build behaves exactly as documented above** — ad-hoc signed,
-no notarization, no extra steps. Nothing needs to be re-plumbed when you decide to
-sign; you only set the variables.
+The build reads its release signing configuration from the environment.
+Without these variables or an opted-in local sidecar certificate, it uses ad-hoc
+signatures and no notarization. A local sidecar certificate preserves Keychain
+access but does not qualify a public release. The Developer ID path below still
+requires verification of the complete bundled dependency set and notarization.
 
 One-time setup, after enrolling in the Apple Developer Program:
 

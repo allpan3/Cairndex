@@ -29,6 +29,7 @@ from ffmpeg_manifest import (
     sha256,
     vendor_dir,
 )
+from macos_signing import configured_identity, sign_sidecar
 
 PACKAGING_DIR = Path(__file__).resolve().parent
 SERVER_DIR = PACKAGING_DIR.parent
@@ -212,6 +213,7 @@ def main() -> int:
     # under an Intel Python, not passing a flag.
     target_platform = args.platform or current_platform()
 
+    identity = configured_identity()
     print(f"building sidecar bundle for {target_platform}...", flush=True)
     dist = DIST / "development" if args.development else DIST
     bundle = dist / "cairndex-sidecar"
@@ -232,6 +234,8 @@ def main() -> int:
         except ManifestError as exc:
             print(exc, file=sys.stderr)
             return 1
+
+    sign_sidecar(bundle / "cairndex-sidecar", identity)
 
     size_mb = sum(
         p.stat().st_size for p in bundle.rglob("*") if p.is_file() and not p.is_symlink()

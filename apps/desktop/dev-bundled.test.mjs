@@ -48,12 +48,13 @@ test("development shares tools and never stages release resources", () => {
     for (const command of ["uv", "npx"]) {
       writeFileSync(
         join(bin, command),
-        `#!${process.execPath}\nrequire('node:fs').appendFileSync(process.env.TEST_LOG, JSON.stringify({command:${JSON.stringify(command)},args:process.argv.slice(2),binary:process.env.CAIRNDEX_SIDECAR_BIN})+'\\n');\n`,
+        `#!${process.execPath}\nrequire('node:fs').appendFileSync(process.env.TEST_LOG, JSON.stringify({command:${JSON.stringify(command)},args:process.argv.slice(2),binary:process.env.CAIRNDEX_SIDECAR_BIN})+'\\n'); if(process.argv.includes('packaging/macos_signing.py')) process.exit(Number(process.env.TEST_SIGNING_STATUS || 0));\n`,
       );
       chmodSync(join(bin, command), 0o755);
     }
     const log = join(root, "calls.jsonl");
-    const run = () => {
+    const run = (signingStatus = 0, expectedStatus = 0) => {
+      writeFileSync(log, "");
       const result = spawnSync(
         process.execPath,
         [join(desktop, "dev-bundled.mjs")],
@@ -62,23 +63,41 @@ test("development shares tools and never stages release resources", () => {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
             TEST_LOG: log,
+            TEST_SIGNING_STATUS: String(signingStatus),
           },
           encoding: "utf8",
         },
       );
-      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.status, expectedStatus, result.stderr);
       return readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
     };
     let calls = run();
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].command, "npx");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].command, "uv");
     assert.deepEqual(calls[0].args, [
+      "run",
+      "python",
+      "packaging/macos_signing.py",
+      "check",
+      join(bundle, "cairndex-sidecar"),
+    ]);
+    assert.equal(calls[1].command, "npx");
+    assert.deepEqual(calls[1].args, [
       "tauri",
       "dev",
       "--config",
       JSON.stringify({ bundle: { resources: null } }),
     ]);
-    assert.equal(calls[0].binary, join(bundle, "cairndex-sidecar"));
+    assert.equal(calls[1].binary, join(bundle, "cairndex-sidecar"));
+    calls = run(1);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[1].args[2], "packaging/build_sidecar.py");
+    calls = run(2, 2);
+    assert.equal(
+      calls.length,
+      1,
+      "invalid signing configuration must stop before build or launch",
+    );
     writeFileSync(join(cache, "ffmpeg"), "tampered");
     calls = run();
     assert.equal(calls[1].command, "uv");
