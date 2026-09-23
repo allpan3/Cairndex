@@ -45,13 +45,46 @@ synthetic recovery screenshot is visually checked. Compose configuration validat
 The macOS package build, strict signature verification, distribution license
 check, persistent backend signing check and packaged HTTP/media smoke test pass.
 The new production app opens the same library through a saved alias selected in
-the ownership message, including keyboard submission. The installed app is not
-replaced and is restored to its original saved NAS connection. No owner media or
-metadata is edited. The new app build is ready for installation.
+the ownership message, including keyboard submission. The verified build at
+`15a227dc` is installed. Installed files match the build, recursive signature
+verification passes, and only the installed copy is registered for app links.
+The saved connection and retained drafts survive installation.
 
 No backend API/schema or Rust source changes require their full suites. The NAS
 configuration is unchanged; Docker inspection requires administrator access that
 is unavailable to this session.
+
+## Installed desktop playback follow-up
+
+The installed client at `15a227dc` passes the bounded
+[desktop playback checkpoint](performance.md#installed-desktop-playback-checkpoint)
+with the matching source backend on loopback and a disposable library. A fresh
+300-second, 3840×2160, 10-bit HEVC source at about 24.2 Mbps plays directly.
+Its complete initial diagnostic sample reaches 86.533 seconds with no media
+error or post-start wait; 53 dropped frames are reported, so flawless smoothness
+is not claimed. A visible decoded frame and timed subtitle are checked.
+
+A full app restart restores the same server/library and seeks to the saved
+125.001-second position. Rapid paused seeks settle at their final target.
+External SRT cues follow the playhead and the subtitle toggle; one of two tracks
+is selected by the existing default/first-track rule. An external-language
+chooser is not implemented and is not qualified by these checks.
+
+A separate 1080p 10-bit HEVC source plays through native HLS remux for more than
+82 seconds with no media error, post-start wait or reported dropped frames.
+Forward/backward seeks preserve pause and caption timing. Selecting 720p retains
+pause near 60 seconds and produces a 1280×720 H.264 stream. Playback then reaches
+the full 300.019-second end with completed progress. The long diagnostic export
+exceeds the accessibility capture limit; a complete stall history for that final
+interval is not available.
+
+The 46 existing focused player, progress-reporter and HLS-session tests pass.
+No application source, schema or API changes are made. Full build, backend,
+frontend and Rust gates are not repeated for this verification/documentation slice.
+Temporary media, server state and the saved test connection are removed; its
+listener is closed. The original saved remote address is restored. Real-file
+failure attribution remains open because the reported source becomes unavailable
+during diagnosis. The production-server upgrade remains owner-deferred.
 
 ## Local Keychain signing
 

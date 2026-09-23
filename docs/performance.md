@@ -48,6 +48,41 @@ show responsiveness but their timing did not await search completion, so no
 search-latency claim is made. This checkpoint does not qualify multi-terabyte
 scale, every quality/device, broad concurrency or fully cold storage.
 
+## Installed desktop playback checkpoint
+
+The 2026-09-23 check uses the installed production client at `15a227dc`, the
+matching source backend on the same Mac, and fresh synthetic media in a temporary
+library. It does not use an alternate desktop shell. Source files are generated
+from ten-second `testsrc2`/sine seeds, encoded with VideoToolbox and stream-copied
+into 300-second MP4s. Both tested HEVC sources use Main 10, `hvc1`, 4:2:0 and AAC.
+External EN/FR SRT fixtures contain an eight-second numbered cue every ten seconds.
+The 1080p/30 source is about 230 MB at 6.1 Mbps; the 4K/60 source is about 908 MB
+at 24.2 Mbps. These are synthetic stress inputs, not representative scene-quality
+or multi-terabyte-library benchmarks. No operating-system cache is flushed.
+
+| Check | Observed result |
+| --- | --- |
+| 4K direct startup | First presented-frame event at 372 ms; decoded dimensions 3840×2160 |
+| 4K direct progression | 86.533 s at 87.510 s of journal time; no error or wait after startup; 53 dropped frames reported |
+| Restart resume | Persisted position 125.001 s; loaded metadata and completed seek report 125.001 s; first presented frame at 125.127 s |
+| Rapid paused seeks | Commands to approximately 240, 30 and 120 s settle at 120.001 s in 529 ms after the final seek event; pause remains set |
+| Subtitle timing | Visible cue matches the final 120–128 s interval; off/on and forward/backward seeks preserve one active default track |
+| 1080p HEVC native remux | 82.522 s at 83.385 s of journal time; no error, post-start wait or reported dropped frames |
+| Remux to 720p transcode | Replacement remains paused at 60.004 s and decodes at 1280×720; subtitles remain active |
+| Transcode completion | UI reaches 5:00/5:00; stored position and duration both 300.019271 s with completed=true |
+
+These are individual observations, not latency percentiles. Picture inspection
+is separate from frame counters. The final long diagnostic export is truncated
+by accessibility capture, so full-interval stall/frame counts are unavailable.
+No general smoothness, cold-cache, NAS bandwidth, provider, background-presentation
+or owner-media qualification follows. External subtitle language selection has
+no user-facing chooser; this check covers the default/first track and visibility.
+Embedded/advanced subtitle formats and output-audio quality are not tested.
+
+The temporary server, registry, library and generated media are removed. The
+saved test connection is removed and the previous remote address is restored.
+No production service, source media or authored owner metadata is changed.
+
 ## Tooling
 
 Two devtools for the query paths live under `apps/server` (`cairndex.devtools`);

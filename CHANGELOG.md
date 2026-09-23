@@ -361,6 +361,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record installed desktop playback checks for exact restart resume, default
+  subtitle timing, larger HEVC sources and native HLS resolution replacement.
+  Preserve the measured limits and unresolved source-failure attribution.
+
 - Add the accepted ADR-0034 mounted-SMB transport: macOS derives the direct
   endpoint/share/account from `statfs`, retrieves the exact saved login from
   Keychain, requires signed encrypted SMB3, and records versioned server file
