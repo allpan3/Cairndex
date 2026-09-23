@@ -11,6 +11,31 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Installed macOS verification
+
+The owner-installed app passes strict recursive signature verification. Its
+backend matches the recorded signed package bytes and the persistent certificate.
+The exact installed backend passes HTTP/media tests and saved-login SMB Copy,
+Replace and Undo on a disposable library. Restored bytes and clean exit are verified.
+System dialogs are not counted by the SMB test.
+
+Native UI checks pass for temporary local and mounted-SMB libraries: creation,
+discovery, direct H.264 playback, pause, keyboard seeking, continued playback and
+automatic next-file playback. A decoded test frame is visible. Normal shutdown
+releases both ownership leases. Restart restores the selected test library, and
+playback works again. Exact resume position, subtitles, heavy HEVC, sustained
+performance and a cold operating-system file cache are not verified by this test.
+Both test registrations and directories are removed. The original NAS connection
+is restored through its saved address. Owner media and metadata are not edited.
+
+**Open connection finding:** the ownership notice can advertise an address that
+is unavailable to the current client. Its Connect action fails, while selecting
+the saved address for the same NAS succeeds. Independent health requests confirm
+that the saved address responds and the advertised address closes without an
+HTTP response. The failure does not permit an ownership takeover. Next work is
+to check the advertised-address configuration and improve recovery from a failed
+ownership redirect. No production configuration is changed by this verification.
+
 ## Local Keychain signing
 
 Local macOS builds support explicit persistent sidecar signing with the stable
@@ -35,15 +60,15 @@ the native synthetic test separately proves access with dialogs disabled.
 The complete Tauri app builds and passes strict recursive signature verification
 and license checks. Its backend retains the exact signed bytes of the
 self-contained package and passes HTTP/media tests from inside the app bundle.
-No installed app is replaced.
+Installed-app verification is recorded above.
 
 The backend suite passes **1,777 tests with one existing skip**; Ruff, formatting,
 Mypy, desktop launcher regressions and workflow YAML parsing pass. The ordinary
 Tauri app builds and passes signature/license checks. No Rust or web application
 source changes, so their separate full test suites are not repeated. No library
 schema or API changes are involved. Signing activation and package verification
-are complete for this workstation. Installed-app replacement and Developer ID
-release verification remain outside this task.
+are complete for this workstation. The owner-installed build is verified above.
+Developer ID release verification remains separate.
 See [local build signing](development.md#local-server-sidecar-appsserverpackaging).
 
 ## Mounted-SMB review repairs
