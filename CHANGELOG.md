@@ -366,6 +366,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Image-viewer browser fixtures accept versioned content requests and assert
+  the source fingerprint used for cache invalidation.
+
 - Record installed desktop playback checks for exact restart resume, default
   subtitle timing, larger HEVC sources and native HLS resolution replacement.
   Preserve the measured limits and unresolved source-failure attribution.

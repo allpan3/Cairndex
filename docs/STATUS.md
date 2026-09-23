@@ -29,10 +29,9 @@ protocol from a disposable server response, verifies a visible notice and no
 metadata writes, plays a generated video, then restores the protocol and requires
 explicit scalar review before saving the retained draft. The synthetic screenshot
 is visually checked. The notice reserves page space and does not cover inspector
-controls; pending saves do not move the editor during a click. The wider browser
-suite passes 164 of 165 tests. Its remaining image-content fixture failure also
-occurs on the unchanged starting commit: the fixture omits the current cache-version
-query. This is shared client/HTTP evidence, not a test of a historical
+controls; pending saves do not move the editor during a click. All **165 frontend
+browser tests** pass. The image-content fixture accepts and checks the current
+cache-version query. This is shared client/HTTP evidence, not a test of a historical
 server executable or a new native package. No backend, API schema, Rust or deployment
 changes require their full gates. The installed app and production server are
 unchanged; installation and the production-server upgrade remain separate work.

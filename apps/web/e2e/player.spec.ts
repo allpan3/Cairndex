@@ -652,7 +652,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1|f2)\/stream$/, (r) =>
     fulfillMedia(r, options.hoverStreamFailure ? Buffer.from('not a video') : mp4),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content(?:\?.*)?$/, (r) => {
     options.onContent?.(r.request().url())
     return r.fulfill({ ...METADATA_REPLY, status: 200, contentType: 'image/png', body: png })
   })
@@ -1978,7 +1978,7 @@ test('navigates files without the inline filmstrip and shows the fallback card',
     .poll(() => contentRequests.some((url) => url.includes('/files/img1/content')))
     .toBe(true)
   await expect(image).toHaveAttribute('data-tier', 'original')
-  await expect(image).toHaveAttribute('src', /\/files\/img1\/content$/)
+  await expect(image).toHaveAttribute('src', /\/files\/img1\/content\?v=image-fingerprint$/)
 
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.media-fallback')).toContainText("isn't playable")
