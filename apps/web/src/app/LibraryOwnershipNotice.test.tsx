@@ -99,13 +99,11 @@ describe('a live holder', () => {
     expect(button).toBeDisabled()
   })
 
-  it('tells the user what to do instead when there is no reachable address', () => {
-    // A loopback holder URL is never offered by the server, so this is the case
-    // where the only useful instruction is "close it over there".
+  it('offers another address when the holder advertises none', () => {
     renderNotice(ownership({ redirect_url: null }))
 
     expect(screen.queryByRole('button', { name: /connect to/i })).not.toBeInTheDocument()
-    expect(screen.getByText(/close it on the-NAS first/i)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Server address' })).toBeVisible()
   })
 
   it('falls back to neutral wording when the holder has no name', () => {

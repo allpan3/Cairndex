@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import type { LibraryOwnership, LibraryRead } from '../api/client'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
+import { OwnershipConnectionControls } from './OwnershipConnectionControls'
 
 /**
  * What a user sees when this server may not serve a library (ADR-0018 §3).
@@ -103,6 +104,17 @@ export function LibraryOwnershipNotice({
     ownership.takeover?.observation_seconds ?? null,
   )
 
+  const connectionControls = (
+    <OwnershipConnectionControls
+      key={`${libraryId}:${ownership.holder?.server_uuid ?? ''}`}
+      holder={who}
+      advertisedUrl={ownership.redirect_url}
+      pending={connectPending}
+      error={connectError}
+      onConnectTo={onConnectTo}
+    />
+  )
+
   if (ownership.state === 'release_pending') {
     return (
       <LibraryAccessNotice
@@ -143,15 +155,7 @@ export function LibraryOwnershipNotice({
         <button className="lockscreen__submit" onClick={onReopen} disabled={reopenPending}>
           {reopenPending ? 'Reopening…' : 'Reopen'}
         </button>
-        {ownership.redirect_url && (
-          <button
-            className="lockscreen__submit"
-            onClick={() => onConnectTo(ownership.redirect_url!)}
-            disabled={connectPending}
-          >
-            {connectPending ? 'Connecting…' : `Connect to ${who}`}
-          </button>
-        )}
+        {connectionControls}
         {ownership.can_take_over && (
           <button className="lockscreen__submit" onClick={onTakeOver}>
             Confirm stale takeover
@@ -228,9 +232,8 @@ export function LibraryOwnershipNotice({
     )
   }
 
-  // A live holder. Offer the redirect only when the holder advertises an address
-  // another machine can actually reach — a loopback URL names the holder's own
-  // machine and would send this user to their own server.
+  // A live holder keeps ownership. Its advertised address is only a hint;
+  // the client can select an alternative that works on its current network.
   return (
     <LibraryAccessNotice
       libraries={libraries}
@@ -240,27 +243,10 @@ export function LibraryOwnershipNotice({
       message={
         ownership.redirect_url
           ? `Cairndex serves a library from one machine at a time. ${who} has it open at ${ownership.redirect_url}.`
-          : `Cairndex serves a library from one machine at a time. Close it on ${who} first, then try again.`
+          : `Cairndex serves a library from one machine at a time. Connect to ${who} using an address available from this device, or close the library there first.`
       }
     >
-      {ownership.redirect_url && (
-        <button
-          className="lockscreen__submit"
-          onClick={() => onConnectTo(ownership.redirect_url!)}
-          disabled={connectPending}
-        >
-          {connectPending ? 'Connecting…' : `Connect to ${who}`}
-        </button>
-      )}
-      {/* Following a redirect can fail — most often because the holder does not
-          answer this build's origin — and the failure used to be swallowed
-          whole, leaving a button that did nothing at all when pressed (owner,
-          2026-09-01). */}
-      {connectError && (
-        <p className="lockscreen__error" role="alert">
-          {connectError}
-        </p>
-      )}
+      {connectionControls}
     </LibraryAccessNotice>
   )
 }

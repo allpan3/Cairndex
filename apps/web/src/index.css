@@ -6515,6 +6515,11 @@ code {
   cursor: pointer;
   font-size: 13px;
 }
+.lockscreen__connection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .lockscreen__submit:disabled {
   opacity: 0.5;
   cursor: default;

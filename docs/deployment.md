@@ -459,7 +459,11 @@ What this means operationally:
   window and keeps the library, even though the user already confirmed.
 - **Set `CAIRNDEX_ADVERTISED_URL` on a NAS server.** Without it, another machine
   can only say "this library is served by *hostname*"; with it, it can offer to
-  connect to the right server instead.
+  connect to the right server instead. Use a DNS name or address
+  that the intended clients can resolve and reach. A hostname alias configured
+  on one client does not change the server's advertised address. Clients can use
+  **Use another address** in the ownership message when their network requires
+  a different address; the desktop can select an existing saved address.
 
 To inspect who holds a library, read the lease directly — it is plain JSON and
 safe to `cat`:

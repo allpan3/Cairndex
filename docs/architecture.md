@@ -180,6 +180,11 @@ and the persistent server controls can select or reconnect another destination.
 Registry recovery polls while a row is unavailable or a read has failed. Ownership
 and auth polling detect changes during a session; content remains behind their gates.
 
+Ownership connection controls accept the advertised address or an explicitly
+chosen alternative, including saved desktop addresses. Alternatives use the same
+connection preparation and portable library UUID check. They do not infer server
+identity from a display name, copy credentials, or change serving ownership.
+
 Desktop activation verifies compatibility before committing stored selection and
 transport. Preparation can be cancelled; the brief store/relay commit completes
 atomically from the client's perspective. Failed configuration preserves the old

@@ -184,6 +184,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Ownership messages accept another server address or a saved desktop address
+  when the advertised address is unavailable. Desktop verifies the target and
+  selects the same library before switching. Failed attempts preserve the
+  current connection and offer address recovery without a library takeover.
+
 - Local macOS backend builds can preserve saved SMB Keychain permission across
   rebuilds with an opted-in persistent certificate and stable identifier.
   Development launch and app bundling refuse a stale or unavailable configured

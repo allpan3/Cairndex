@@ -28,13 +28,30 @@ performance and a cold operating-system file cache are not verified by this test
 Both test registrations and directories are removed. The original NAS connection
 is restored through its saved address. Owner media and metadata are not edited.
 
-**Open connection finding:** the ownership notice can advertise an address that
-is unavailable to the current client. Its Connect action fails, while selecting
-the saved address for the same NAS succeeds. Independent health requests confirm
-that the saved address responds and the advertised address closes without an
-HTTP response. The failure does not permit an ownership takeover. Next work is
-to check the advertised-address configuration and improve recovery from a failed
-ownership redirect. No production configuration is changed by this verification.
+**Ownership address recovery:** the serving server can advertise an address
+that is unavailable to the current client, although a saved alias works. The
+ownership message offers **Use another address**, saved desktop addresses and
+manual HTTP(S) entry. A failed redirect shows the alternatives and its error.
+The desktop checks compatibility and finds the same portable library UUID before
+switching. Failed checks preserve the connection. No alias is inferred from a
+machine name, no credentials move between addresses, and no takeover is issued.
+
+The primary checkout retains the earlier signing implementation and both
+verification commits without source changes. The frontend gate passes **1,233
+tests**, lint, format, type checking and the production build. Three real-backend
+browser tests pass, including unavailable-address recovery, wrong-library refusal,
+same-library selection, restart persistence and explicit Release/Reopen. The
+synthetic recovery screenshot is visually checked. Compose configuration validates.
+The macOS package build, strict signature verification, distribution license
+check, persistent backend signing check and packaged HTTP/media smoke test pass.
+The new production app opens the same library through a saved alias selected in
+the ownership message, including keyboard submission. The installed app is not
+replaced and is restored to its original saved NAS connection. No owner media or
+metadata is edited. The new app build is ready for installation.
+
+No backend API/schema or Rust source changes require their full suites. The NAS
+configuration is unchanged; Docker inspection requires administrator access that
+is unavailable to this session.
 
 ## Local Keychain signing
 

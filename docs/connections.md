@@ -38,6 +38,21 @@ Ownership uncertainty and changed holders remain fenced by the existing Release/
 and explicit takeover rules. Authorization polling detects lost access; a revoked
 desktop grant can be forgotten for that server and paired again in Settings.
 
+## Ownership addresses
+
+The ownership message uses the address advertised by the serving server. That
+address can be unavailable on another network. **Use another address** accepts a
+client-side alias or another HTTP(S) address. Desktop also offers saved remote
+addresses. A failed redirect shows these controls with the connection error.
+
+The owner chooses the address explicitly. Cairndex does not infer equivalent
+servers from their names or move credentials between addresses. Desktop checks
+server compatibility and resolves the same portable library UUID on the selected
+server before it changes the connection. A failed check preserves the current
+connection. A successful choice and the selected library survive restart.
+Browser navigation carries the library UUID to the destination's own web app.
+Connecting to another address does not release or take over library ownership.
+
 ## Private state
 
 Pairing grants are bound to the issuing server and approved registry IDs. URL, grant
