@@ -81,6 +81,9 @@ Multiple clients of one server use [protected metadata edits](docs/shared-server
 disjoint fields and membership changes save independently, conflicting proposals stay
 available for review, and exact retries cannot duplicate committed operations. Current
 clients and servers are required for authored saves; older clients can still browse.
+The current client shows an update notice when its selected server cannot support
+safe metadata editing. Browsing and playback remain available, and drafts are kept
+for explicit review after compatibility is restored.
 
 Files display their current actual filename. The [file metadata API](docs/data-model.md#asset_files)
 returns saved notes and verbatim source/origin text, including non-HTTP origins.

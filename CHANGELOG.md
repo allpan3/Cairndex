@@ -184,6 +184,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Legacy library clients show an editing-compatibility notice before saving to
+  an older server. Browsing and playback remain available; blocked edits retain
+  drafts without repeated retry dialogs. Access failures have separate guidance,
+  and compatibility recovery never submits or changes a draft automatically.
+
 - Ownership messages accept another server address or a saved desktop address
   when the advertised address is unavailable. Desktop verifies the target and
   selects the same library before switching. Failed attempts preserve the

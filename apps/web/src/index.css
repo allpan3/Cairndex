@@ -7491,14 +7491,48 @@ code {
   font-size: 12px;
 }
 
-/* Scoped metadata drafts stay reachable without replacing the active editor */
+/* Compatibility notices reserve space instead of covering browsing controls. */
+.library-workspace {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.library-workspace > .app {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+}
+.metadata-status {
+  flex: 0 0 auto;
+  max-height: 35vh;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+.metadata-status:empty {
+  display: none;
+}
 .metadata-drafts {
   position: fixed;
   bottom: 12px;
   right: 16px;
   z-index: 180;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+.metadata-compatibility {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.metadata-compatibility p {
+  flex: 1 1 280px;
+  margin: 0;
 }
 .metadata-review {
   z-index: 10020;

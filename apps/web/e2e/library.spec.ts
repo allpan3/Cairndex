@@ -1,4 +1,4 @@
-import { METADATA_REPLY } from './mockMetadata'
+import { METADATA_REPLY, mockMetadataRevision } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // The scan job carries `?suggest_grouping=`, which "Scan new files" turns off
@@ -45,6 +45,7 @@ function bundleDetail(coverFileId: string | null) {
 }
 
 async function mockApi(page: Page, coverFileId: string | null = null) {
+  await mockMetadataRevision(page)
   const items = Array.from({ length: 40 }, (_, i) => bundle(i))
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({

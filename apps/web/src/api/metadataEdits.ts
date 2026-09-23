@@ -1,4 +1,9 @@
 import { hostFetch } from '../platform'
+import {
+  metadataEditingBlocked,
+  METADATA_UPGRADE_MESSAGE,
+  validMetadataBasis as validBasis,
+} from './metadataCompatibility'
 import { getActiveLibraryId, resolveApiUrl } from './client'
 import { rememberBasis, rememberVersionBases } from './editBasis'
 import { captureRequestScope, getConnectionScopeKey } from './requestScope'
@@ -35,8 +40,6 @@ let serial = 0
 const inFlight = new Map<string, Promise<unknown>>()
 const storageFailures = new Set<string>()
 export const editStorageWarning = () => storageFailures.has(storageKey())
-const validBasis = (value: unknown): value is string =>
-  typeof value === 'string' && /^[a-f0-9]{32}:\d+:[a-f0-9]{32}:\d+$/.test(value)
 
 // Cryptographic operation identities also work on private LAN HTTP origins
 function editId(): string {
@@ -252,6 +255,12 @@ async function runEdit<T>(initial: PendingEdit): Promise<T> {
   for (;;) {
     assertScope()
     publish(key, [...(retained.get(key) ?? []).filter((item) => item.id !== edit.id), edit])
+    if (metadataEditingBlocked()) {
+      edit = { ...edit, message: METADATA_UPGRADE_MESSAGE }
+      publish(key, [...(retained.get(key) ?? []).filter((item) => item.id !== edit.id), edit])
+      // Keep the request without opening the same unusable retry dialog after every action.
+      throw new MetadataEditError(edit.message)
+    }
     const headers: Record<string, string> = { 'X-Cairndex-Operation': edit.operation }
     if (edit.basis) headers['X-Cairndex-Basis'] = edit.basis
     if (edit.body !== undefined) headers['Content-Type'] = 'application/json'
@@ -267,7 +276,7 @@ async function runEdit<T>(initial: PendingEdit): Promise<T> {
         throw new MetadataEditError(
           recovery
             ? 'This retained draft has no safe opening version. Review every proposed field before saving.'
-            : 'This client needs a metadata read basis. Reload or upgrade the app and server; your draft is retained.',
+            : 'This edit has no safe opening version. Reopen the item before making a new edit. Your draft is kept. If this continues, check that the app and server are up to date.',
         )
       }
       const response = await hostFetch(resolveApiUrl(edit.url), {

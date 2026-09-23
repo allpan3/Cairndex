@@ -1,4 +1,4 @@
-import { METADATA_REPLY } from './mockMetadata'
+import { METADATA_REPLY, mockMetadataRevision } from './mockMetadata'
 import { apiPost, proxyApi } from './realBackend'
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -466,6 +466,7 @@ interface MockApiOptions {
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
 async function mockApi(page: Page, options: MockApiOptions = {}) {
+  await mockMetadataRevision(page)
   const mp4 = generatedMp4 ?? Buffer.from([])
   const storyboardStatus = options.storyboardStatus ?? 200
   const imageName = options.nonNativeImage ? 'poster.heic' : 'poster.png'

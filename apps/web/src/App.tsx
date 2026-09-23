@@ -757,7 +757,7 @@ function LibraryApp() {
   }
 
   return (
-    <>
+    <div className="library-workspace">
       <MetadataReview key={`edits:${libraryId}`} libraryId={libraryId} />
       <Workspace
         key={libraryId}
@@ -773,7 +773,7 @@ function LibraryApp() {
       />
       {libraryDialog}
       {settingsDialog}
-    </>
+    </div>
   )
 }
 

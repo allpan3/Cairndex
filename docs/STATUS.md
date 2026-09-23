@@ -11,6 +11,32 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Client editing compatibility
+
+The shared client checks legacy editing support through the revision poll.
+Unsupported servers show an update notice while browsing and playback remain
+available. Blocked authored requests retain their proposals without repeated
+retry dialogs. Structured unavailable-library errors, ownership/auth failures
+and outages receive separate guidance. An outage preserves a confirmed block;
+a compatible read clears it and refreshes content without changing draft bases
+or submitting drafts. Connection/library switches reject late probe results.
+Replica editing and journaled source operations retain their existing contracts.
+
+The frontend gate passes **1,249 tests**, lint, formatting, type checking and the
+production web build. Twelve real-backend browser tests pass across metadata
+editing, connections and ownership. The compatibility test removes the newer
+protocol from a disposable server response, verifies a visible notice and no
+metadata writes, plays a generated video, then restores the protocol and requires
+explicit scalar review before saving the retained draft. The synthetic screenshot
+is visually checked. The notice reserves page space and does not cover inspector
+controls; pending saves do not move the editor during a click. The wider browser
+suite passes 164 of 165 tests. Its remaining image-content fixture failure also
+occurs on the unchanged starting commit: the fixture omits the current cache-version
+query. This is shared client/HTTP evidence, not a test of a historical
+server executable or a new native package. No backend, API schema, Rust or deployment
+changes require their full gates. The installed app and production server are
+unchanged; installation and the production-server upgrade remain separate work.
+
 ## Installed macOS verification
 
 The owner-installed app passes strict recursive signature verification. Its

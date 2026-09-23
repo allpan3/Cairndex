@@ -21,6 +21,7 @@ import {
 } from './editBasis'
 import { isMetadataWrite, sendMetadata, retireMetadataRequests } from './metadataEdits'
 import type { components } from './schema'
+import { setMetadataCompatibility, validMetadataBasis } from './metadataCompatibility'
 
 export type HealthStatus = components['schemas']['HealthStatus']
 export type BundleSummary = components['schemas']['BundleSummary']
@@ -194,8 +195,17 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     // show a friendly reason (e.g. "library is currently unavailable") instead
     // of a bare HTTP status.
     let detail = ''
+    let code: string | undefined
     try {
-      detail = apiErrorDetail(await response.json())
+      const payload: unknown = await response.json()
+      detail = apiErrorDetail(payload)
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'code' in payload &&
+        typeof payload.code === 'string'
+      )
+        code = payload.code
     } catch {
       /* non-JSON body */
     }
@@ -205,6 +215,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     throw new HttpError(
       response.status,
       detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
+      code,
     )
   }
   const result = (await response.json()) as T
@@ -307,10 +318,12 @@ export function isNotFoundError(error: unknown): boolean {
 
 export class HttpError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly code: string | undefined
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'HttpError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -1607,8 +1620,30 @@ export async function fetchHealth(signal?: AbortSignal, baseUrl?: string): Promi
 }
 
 // One small revision read drives refresh and supplies context for new independent objects
-export const fetchMetadataRevision = (signal?: AbortSignal) =>
-  getJson<{ basis: string }>(`${lib()}/metadata`, signal)
+export async function fetchMetadataRevision(signal?: AbortSignal): Promise<{ basis: string }> {
+  const assertScope = captureRequestScope()
+  let revision: { basis: string }
+  try {
+    revision = await getJson<{ basis: string }>(`${lib()}/metadata`, signal)
+  } catch (error) {
+    assertScope()
+    if (!signal?.aborted)
+      setMetadataCompatibility(
+        error instanceof HttpError && !error.code && [404, 405].includes(error.status)
+          ? 'unsupported'
+          : 'unavailable',
+      )
+    throw error
+  }
+  assertScope()
+  // Both the clock and its readable header are needed by the shared editing protocol.
+  if (!validMetadataBasis(revision?.basis) || basisOf(revision) !== revision.basis) {
+    setMetadataCompatibility('unsupported')
+    throw new Error('The server does not provide compatible metadata edit information.')
+  }
+  setMetadataCompatibility('supported')
+  return revision
+}
 
 // Bulk authored overwrites and metadata deletion commit atomically across the selection
 export const batchEditBundles = (ids: string[], patch: BundlePatch) =>

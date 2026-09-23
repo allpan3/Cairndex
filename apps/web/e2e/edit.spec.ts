@@ -1,4 +1,4 @@
-import { METADATA_REPLY } from './mockMetadata'
+import { METADATA_REPLY, mockMetadataRevision } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic, stateful mock so editing flows (rating, tag assignment, multi-
@@ -38,6 +38,7 @@ function bundleDetail(id: string, title: string) {
 }
 
 async function mockApi(page: Page, initialTitle = 'Movie 0') {
+  await mockMetadataRevision(page)
   const state = {
     bundle: bundleDetail('b0', initialTitle),
     bundleB1: bundleDetail('b1', 'Movie 1'),

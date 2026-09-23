@@ -13,6 +13,12 @@ import {
   type PendingEdit,
 } from '../api/metadataEdits'
 import { useModalDialog } from './useModalDialog'
+import {
+  metadataCompatibility,
+  metadataEditingBlocked,
+  METADATA_UPGRADE_MESSAGE,
+  subscribeMetadataCompatibility,
+} from '../api/metadataCompatibility'
 import { observeEditClient, currentDisplayedBasis, holdEditBasis } from '../api/editBasis'
 
 // Refresh existing queries only when the small library clock changes or a save needs reconciliation
@@ -40,7 +46,9 @@ function MetadataRefresh({ libraryId }: { libraryId: string }) {
       document.removeEventListener('drop', end, true)
     }
   }, [])
+  const compatibility = useSyncExternalStore(subscribeMetadataCompatibility, metadataCompatibility)
   const previous = useRef<string | null>(null)
+  const needsRefresh = useRef(false)
   const clock = useQuery({
     queryKey: ['metadata-revision', libraryId],
     queryFn: ({ signal }) => fetchMetadataRevision(signal),
@@ -72,12 +80,28 @@ function MetadataRefresh({ libraryId }: { libraryId: string }) {
   }, [client])
   useEffect(() => {
     const basis = clock.data?.basis
-    if (!basis) return
-    if (previous.current && previous.current !== basis)
+    if (!basis || compatibility !== 'supported') return
+    if (needsRefresh.current || (previous.current && previous.current !== basis))
       window.dispatchEvent(new Event('cairndex:metadata-refresh'))
     previous.current = basis
-  }, [clock.data?.basis])
-  return null
+    needsRefresh.current = false
+  }, [clock.data?.basis, clock.dataUpdatedAt, compatibility])
+  useEffect(() => {
+    if (compatibility === 'unsupported') needsRefresh.current = true
+  }, [compatibility])
+  if (compatibility !== 'unsupported' && compatibility !== 'unavailable') return null
+  return (
+    <section className="metadata-compatibility" role="status" aria-label="Metadata editing status">
+      <p>
+        {compatibility === 'unsupported'
+          ? METADATA_UPGRADE_MESSAGE
+          : 'Cannot check metadata editing right now. Check the connection and library access, then try again. Your drafts are kept.'}
+      </p>
+      <button className="btn" disabled={clock.isFetching} onClick={() => void clock.refetch()}>
+        {clock.isFetching ? 'Checking…' : 'Check again'}
+      </button>
+    </section>
+  )
 }
 
 // Render literal values safely, preserving every ordered note and line break
@@ -120,6 +144,8 @@ function ReviewValue({ value, field }: { value: unknown; field: string }) {
 function ReviewDialog({ edit }: { edit: PendingEdit }) {
   const keep = () => void chooseEdit(edit, 'keep')
   const { ref, close } = useModalDialog(keep)
+  useSyncExternalStore(subscribeMetadataCompatibility, metadataCompatibility)
+  const blocked = metadataEditingBlocked()
   const values = edit.conflict ?? edit.recovery
   const field = edit.conflict?.unit.split('/').at(-1) ?? ''
   return createPortal(
@@ -138,7 +164,13 @@ function ReviewDialog({ edit }: { edit: PendingEdit }) {
             ×
           </button>
         </div>
-        <p role="alert">{edit.message}</p>
+        <p role="alert">
+          {blocked
+            ? METADATA_UPGRADE_MESSAGE
+            : edit.message === METADATA_UPGRADE_MESSAGE
+              ? 'This draft was kept while metadata editing was unavailable. Retry to check whether it can now be saved safely.'
+              : edit.message}
+        </p>
         {values ? (
           <>
             <div className="metadata-review__values">
@@ -171,12 +203,12 @@ function ReviewDialog({ edit }: { edit: PendingEdit }) {
           <button className="btn" onClick={keep}>
             Keep draft
           </button>
-          {(edit.conflict?.reviewable || edit.recovery) && (
+          {!blocked && (edit.conflict?.reviewable || edit.recovery) && (
             <button className="btn btn--primary" onClick={() => void chooseEdit(edit, 'reviewed')}>
               Use my value
             </button>
           )}
-          {!values && (
+          {!blocked && !values && (
             <button className="btn btn--primary" onClick={() => void chooseEdit(edit, 'retry')}>
               Retry save
             </button>
@@ -195,13 +227,15 @@ export function MetadataReview({ libraryId }: { libraryId: string }) {
   const edit = shownEdit()
   return (
     <>
-      <MetadataRefresh libraryId={libraryId} />
+      <div className="metadata-status">
+        <MetadataRefresh libraryId={libraryId} />
+      </div>
       {editStorageWarning() && (
         <p role="alert" className="metadata-drafts">
           Pending edits are kept in this session only. Browser storage is unavailable.
         </p>
       )}
-      {pending.length > 0 && (
+      {pending.some((item) => item.message) && (
         <div className="metadata-drafts" aria-label="Unsaved metadata edits">
           {pending
             .filter((item) => item.message)

@@ -403,3 +403,105 @@ test('stale file reorders retain the proposal without changing the new arrangeme
     await f.cleanup()
   }
 })
+
+// A disposable server supplies real content; the proxy removes only the newer edit contract.
+test('an older server keeps browsing and playback available and recovers after upgrade @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const f = await fixture()
+  let legacy = true
+  const mutations: string[] = []
+  try {
+    execFileSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=160x90:rate=10:duration=5',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      join(f.root, 'synthetic-clip.mp4'),
+    ])
+    await apiPost(f.base, `/bundles/${f.bundle.id}/files`, {
+      relative_path: 'synthetic-clip.mp4',
+      role: 'primary_video',
+      media_kind: 'video',
+      mime_type: 'video/mp4',
+    })
+    await proxyApi(page, f.baseUrl)
+    await page.route('**/api/v1/libraries/**', async (route) => {
+      const req = route.request()
+      const url = new URL(req.url())
+      if (req.method() !== 'GET' && /\/bundles\/[^/]+$/.test(url.pathname))
+        mutations.push(req.method())
+      if (!legacy) {
+        await route.fallback()
+        return
+      }
+      if (url.pathname.endsWith('/metadata')) {
+        await route.fulfill({ status: 404, json: { detail: 'Not Found' } })
+        return
+      }
+      if (req.method() === 'GET' && !/\/(content|stream|thumbnail|preview)$/.test(url.pathname)) {
+        const response = await route.fetch({ url: `${f.baseUrl}${url.pathname}${url.search}` })
+        const headers = response.headers()
+        delete headers['x-cairndex-basis']
+        await route.fulfill({ response, headers })
+        return
+      }
+      await route.fallback()
+    })
+    await page.goto('/')
+    const notice = page.getByRole('status', { name: 'Metadata editing status' })
+    await expect(notice).toContainText('Update the server')
+    const noticeBounds = await notice.boundingBox()
+    const workspaceBounds = await page.locator('.app').boundingBox()
+    expect(noticeBounds).not.toBeNull()
+    expect(workspaceBounds).not.toBeNull()
+    expect(noticeBounds!.y + noticeBounds!.height).toBeLessThanOrEqual(workspaceBounds!.y)
+    await page.locator('.card').filter({ hasText: 'Amber' }).click()
+    const title = page.getByLabel('Title', { exact: true })
+    await title.fill('Retained before upgrade')
+    await title.press('Enter')
+    await expect(page.getByRole('button', { name: 'Review unsaved edit 1' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: 'Review metadata edit' })).toHaveCount(0)
+    expect(mutations).toEqual([])
+    await page.getByRole('button', { name: 'Review unsaved edit 1' }).click()
+    const review = page.getByRole('dialog', { name: 'Review metadata edit' })
+    await expect(review).toContainText('Update the server')
+    await expect(review.getByRole('button', { name: 'Retry save' })).toHaveCount(0)
+    await review.getByRole('button', { name: 'Keep draft' }).click()
+    await page.screenshot({ path: '/tmp/cairndex-metadata-compatibility.png' })
+    await page.locator('.card').filter({ hasText: 'Amber' }).dblclick()
+    const video = page.getByTestId('media-video')
+    await expect(video).toBeVisible()
+    await expect
+      .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+      .toBeGreaterThan(0.2)
+    await page.keyboard.press('Escape')
+    legacy = false
+    await notice.getByRole('button', { name: 'Check again' }).click()
+    await expect(notice).toHaveCount(0)
+    expect(mutations).toEqual([])
+    await page.getByRole('button', { name: 'Review unsaved edit 1' }).click()
+    await review.getByRole('button', { name: 'Retry save' }).click()
+    await expect(review).toContainText('Review every proposed field')
+    await expect(review).toContainText('Retained before upgrade')
+    expect(mutations).toEqual([])
+    await review.getByRole('button', { name: 'Use my value' }).click()
+    await expect(review).toHaveCount(0)
+    await expect
+      .poll(async () => (await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).title)
+      .toBe('Retained before upgrade')
+    expect(mutations).toEqual(['PATCH'])
+  } finally {
+    await f.cleanup()
+  }
+})

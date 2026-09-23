@@ -76,6 +76,22 @@ compatibility data, not an authored playback cursor.
 
 ## Client behavior and recovery
 
+The visible legacy library checks editing compatibility through its existing
+revision poll. A missing revision endpoint or an invalid/missing read-basis header
+shows an update notice before a save is attempted. The notice occupies its own
+space above the library, without covering browsing controls. Browsing and playback
+remain available. Auth, ownership, library-availability and network failures show a
+separate retry notice. Structured library errors do not imply an outdated server.
+
+Confirmed incompatibility blocks authored metadata requests, including retained
+requests with a basis. Attempted changes remain private drafts without repeated
+retry dialogs. Draft review still offers Keep and Discard, but save/review acceptance
+is unavailable until a compatible read succeeds. An outage does not erase a
+previously confirmed block. **Check again**, focus and periodic checks can detect
+recovery and refresh displayed content; no draft is submitted or assigned a new
+basis automatically. Compatibility state is isolated by connection and library.
+Replica packages and journaled source operations retain their separate contracts.
+
 Text fields retain their opening value/basis through background reads. Notes are one
 ordered list. Menus/dialogs and drag operations retain opening context; asynchronous
 preparation binds subsequent requests to that context. Checkbox/paste assignments
