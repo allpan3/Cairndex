@@ -20,20 +20,30 @@ refuse missing or changed configured identities; defaults and CI remain ad-hoc
 unless explicitly configured. This changes no library metadata, existing credential
 ACL or system trust setting. Developer ID/notarization remains separate.
 
-Native synthetic acceptance proves access across changed builds with interaction
-disabled and denial for other identifiers, other certificates and ad-hoc copies.
-Its temporary Keychain is removed and the original search list retained. Both
-self-contained and development sidecars build and pass packaged HTTP/media smoke
-using one disposable signer. A sealed copy of the production app preserves the
-backend signature, passes strict recursive signature verification and runs the
-bundled backend smoke successfully; that test copy is removed.
+The persistent workstation signing identity is configured. Repeated setup uses
+the same identity. Two different native builds read a synthetic credential with
+user interaction disabled. Different identifiers and ad-hoc copies cannot read
+it. The disposable test Keychain is removed, and the original search list is
+unchanged. Earlier disposable-signer tests also verify denial for other certificates.
+
+Both self-contained and development sidecars use the persistent identity and pass
+packaged HTTP/media tests. Each completes Copy, Replace and Undo on a disposable
+SMB library through the saved login. The tests verify restored bytes, clean
+shutdown and removal of their files. These SMB tests do not count system dialogs;
+the native synthetic test separately proves access with dialogs disabled.
+
+The complete Tauri app builds and passes strict recursive signature verification
+and license checks. Its backend retains the exact signed bytes of the
+self-contained package and passes HTTP/media tests from inside the app bundle.
+No installed app is replaced.
 
 The backend suite passes **1,777 tests with one existing skip**; Ruff, formatting,
 Mypy, desktop launcher regressions and workflow YAML parsing pass. The ordinary
 Tauri app builds and passes signature/license checks. No Rust or web application
 source changes, so their separate full test suites are not repeated. No library
-schema or API changes are involved. Workstation signer enrollment and acceptance
-with that persistent identity remain pending; no installed app is replaced.
+schema or API changes are involved. Signing activation and package verification
+are complete for this workstation. Installed-app replacement and Developer ID
+release verification remain outside this task.
 See [local build signing](development.md#local-server-sidecar-appsserverpackaging).
 
 ## Mounted-SMB review repairs
