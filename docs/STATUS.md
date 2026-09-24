@@ -36,9 +36,31 @@ server executable. No backend, API schema, Rust or deployment changes require th
 full gates. Native package installation is recorded below; the production-server
 upgrade remains owner-deferred.
 
-## Installed compatibility update
+## Installed note editing update
 
-The production macOS app built from `afa21007` is installed. All 117 payload files
+The production macOS app built from `8b8ae18e` is installed at
+`/Applications/Cairndex.app`. All 117 payload files and the complete bundle
+entry list match the freshly built candidate. The distribution license check,
+strict recursive code-signature check, persistent sidecar identity check and
+packaged-backend HTTP/media smoke test pass. The packaged smoke ran from
+`apps/server`. The compiled app contains the source commit identifier. No
+signing identity or Keychain grant was created or reset.
+
+In the ordinary installed app, a disposable local library with one generated
+image accepted a first note and then a second note without conflict review.
+Both notes appeared in the inspector and persisted in the disposable library
+database. Its registration and files were removed. The saved settings and
+signing configuration match their pre-install bytes. The app relaunches with
+the previous selected server and its existing missing-library condition. The
+installed app resolves `cairndex://` links; build and DMG app claims were
+unregistered. The previous app remains in a private rollback directory.
+NAS deployment, the missing-library condition and owner media playback remain
+deferred.
+
+## Earlier installed compatibility update
+
+The production macOS app built from `afa21007` was installed for that
+compatibility verification. All 117 payload files
 and links match the verified build. Strict recursive signature, bundled license
 and packaged-backend HTTP/media checks pass. The bundled backend bytes match the
 previously installed persistent-signed backend. This verification does not create
@@ -53,7 +75,7 @@ review offers Keep/Discard without Retry. Generated H.264 video has a visible
 decoded frame and advances to a paused 19-second position. The draft survives a
 full app restart. Restoring the test server protocol clears the notice without
 saving; explicit review shows both title values and produces exactly one PATCH.
-The installed copy reopens the same saved synthetic title with no compatibility
+That installed copy reopened the same saved synthetic title with no compatibility
 notice. These are bounded native UI/HTTP checks, not historical-server, NAS,
 large-library or cloud-provider qualification.
 
@@ -75,9 +97,8 @@ cover these cases. The frontend lint, format, type and build gates pass; all
 app with a distinct identifier saved two notes in order without review. Both
 values were visible in the native inspector and stored in its disposable library
 database. Its library registration and temporary fixture were removed. The
-owner's installed app and saved settings were not changed; the installed app
-does not contain this local fix. This test does not qualify NAS deployment or
-other deferred work.
+owner's installed app and saved settings were not changed during that source
+test. This test does not qualify NAS deployment or other deferred work.
 
 ## Earlier installed macOS verification
 
