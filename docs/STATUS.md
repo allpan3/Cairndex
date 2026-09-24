@@ -32,11 +32,47 @@ is visually checked. The notice reserves page space and does not cover inspector
 controls; pending saves do not move the editor during a click. All **165 frontend
 browser tests** pass. The image-content fixture accepts and checks the current
 cache-version query. This is shared client/HTTP evidence, not a test of a historical
-server executable or a new native package. No backend, API schema, Rust or deployment
-changes require their full gates. The installed app and production server are
-unchanged; installation and the production-server upgrade remain separate work.
+server executable. No backend, API schema, Rust or deployment changes require their
+full gates. Native package installation is recorded below; the production-server
+upgrade remains owner-deferred.
 
-## Installed macOS verification
+## Installed compatibility update
+
+The production macOS app built from `afa21007` is installed. All 117 payload files
+and links match the verified build. Strict recursive signature, bundled license
+and packaged-backend HTTP/media checks pass. The bundled backend bytes match the
+previously installed persistent-signed backend. This verification does not create
+or change a Keychain identity or credential grant. The initial packaged test ran
+from the repository root and read Docker-only environment fields; the documented
+server working directory passes without a source or configuration change.
+
+Native controls in the ordinary production app verify the early compatibility
+notice against a disposable loopback server with the newer edit protocol hidden.
+A title edit remains a private draft, no authored request reaches the server, and
+review offers Keep/Discard without Retry. Generated H.264 video has a visible
+decoded frame and advances to a paused 19-second position. The draft survives a
+full app restart. Restoring the test server protocol clears the notice without
+saving; explicit review shows both title values and produces exactly one PATCH.
+The installed copy reopens the same saved synthetic title with no compatibility
+notice. These are bounded native UI/HTTP checks, not historical-server, NAS,
+large-library or cloud-provider qualification.
+
+The original saved settings are restored exactly and remain equal after the
+installed app reopens. The installed copy is the only registered app-link handler.
+The previous app remains in a private temporary backup. The test server is stopped
+and its generated library/runtime data are removed. The original remote selection
+still shows its existing missing-library state; no production registration or
+source content is changed.
+
+**Next recommended fix: continuing note drafts after an acknowledged save.** In
+the installed app, editing the first note, selecting Add note and then saving the
+second note produces a conflict review against the same client's first saved note.
+No other client writes in this fixture. Both values remain visible, and explicit
+review preserves both notes. The click itself succeeds. This unnecessary review
+remains unresolved; repair must preserve newer local input and genuine concurrent
+edit protection. Installation acceptance does not close this editing follow-up.
+
+## Earlier installed macOS verification
 
 The owner-installed app passes strict recursive signature verification. Its
 backend matches the recorded signed package bytes and the persistent certificate.

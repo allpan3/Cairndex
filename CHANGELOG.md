@@ -366,6 +366,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record production macOS installation and native compatibility/draft-recovery
+  verification with disposable data. Track the remaining single-client note-list
+  conflict review separately from installation acceptance.
+
 - Image-viewer browser fixtures accept versioned content requests and assert
   the source fingerprint used for cache invalidation.
 
