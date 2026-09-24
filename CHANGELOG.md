@@ -8,6 +8,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Consecutive note-list saves in one client use the first save's acknowledged
+  basis. A second note edited while the first save is pending remains in the
+  draft and saves in order. Changes from another client still require review.
+
 ### Changed
 
 - Pointer-opened View options and Settings dialogs return focus to their

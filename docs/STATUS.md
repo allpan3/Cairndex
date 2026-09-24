@@ -64,13 +64,20 @@ and its generated library/runtime data are removed. The original remote selectio
 still shows its existing missing-library state; no production registration or
 source content is changed.
 
-**Next recommended fix: continuing note drafts after an acknowledged save.** In
-the installed app, editing the first note, selecting Add note and then saving the
-second note produces a conflict review against the same client's first saved note.
-No other client writes in this fixture. Both values remain visible, and explicit
-review preserves both notes. The click itself succeeds. This unnecessary review
-remains unresolved; repair must preserve newer local input and genuine concurrent
-edit protection. Installation acceptance does not close this editing follow-up.
+**Continued note-list editing after an acknowledged save is fixed in the local
+branch.** The editor takes the next field basis from its own successful response.
+It retains newer draft input and an empty note field while a save is pending.
+Note saves started during that wait run after the acknowledged save. Background
+reads do not advance an existing draft; a second client's note change still
+opens explicit conflict review. Three new disposable real-server browser tests
+cover these cases. The frontend lint, format, type and build gates pass; all
+1,249 unit tests and 208 browser tests pass. A separate production macOS test
+app with a distinct identifier saved two notes in order without review. Both
+values were visible in the native inspector and stored in its disposable library
+database. Its library registration and temporary fixture were removed. The
+owner's installed app and saved settings were not changed; the installed app
+does not contain this local fix. This test does not qualify NAS deployment or
+other deferred work.
 
 ## Earlier installed macOS verification
 

@@ -301,6 +301,7 @@ function BundleEditor({
   // blur that lands in the same tick as the last keystroke still commits the
   // latest text (a plain render-closure could be one edit stale).
   const notesRef = useRef(notes)
+  const noteSave = useRef({ bundleId, inFlight: false, queued: false })
   useEffect(() => {
     notesRef.current = notes
   }, [notes])
@@ -338,15 +339,14 @@ function BundleEditor({
 
   const commitTitle = (value: string) => {
     if (value === (bundle.title ?? '')) {
-      draft.saved({ title: value }, bundle.version)
+      draft.saved({ title: value })
       return
     }
     const patch = { title: value === '' ? null : value }
     update.mutate(draft.bind(patch, 'title'), {
-      onSuccess: (saved) => draft.saved({ title: value }, saved.version),
+      onSuccess: (saved) => draft.saved({ title: value }, saved),
       onError: (error) => {
-        if (error instanceof MetadataEditError && error.discarded)
-          draft.saved({ title: value }, bundle.version)
+        if (error instanceof MetadataEditError && error.discarded) draft.saved({ title: value })
       },
     })
   }
@@ -354,16 +354,35 @@ function BundleEditor({
   // Notes edit as a whole-list replace. Blank/whitespace-only blocks (an
   // untouched draft box) are dropped, and compared out here so blurring an empty
   // box never fires a redundant PATCH.
-  const commitNotes = () => {
+  const commitNotes = (previousSaved?: string[]) => {
+    if (noteSave.current.bundleId !== bundleId)
+      noteSave.current = { bundleId, inFlight: false, queued: false }
+    const state = noteSave.current
+    if (state.inFlight) {
+      state.queued = true
+      return
+    }
     const cleaned = notesRef.current.filter((n) => n.trim() !== '')
-    const prev = (bundle.notes ?? []).filter((n) => n.trim() !== '')
+    const prev = (previousSaved ?? bundle.notes ?? []).filter((n) => n.trim() !== '')
     if (cleaned.length === prev.length && cleaned.every((n, i) => n === prev[i])) return
     const original = notesRef.current
+    state.inFlight = true
     update.mutate(draft.bind({ notes: cleaned }, 'notes'), {
-      onSuccess: (saved) => draft.saved({ notes: original }, saved.version),
+      onSuccess: (saved) => {
+        draft.saved({ notes: original }, saved)
+        if (noteSave.current !== state) return
+        state.inFlight = false
+        if (state.queued) {
+          state.queued = false
+          queueMicrotask(() => commitNotes(saved.notes))
+        }
+      },
       onError: (error) => {
-        if (error instanceof MetadataEditError && error.discarded)
-          draft.saved({ notes: original }, bundle.version)
+        if (noteSave.current === state) {
+          state.inFlight = false
+          state.queued = false
+        }
+        if (error instanceof MetadataEditError && error.discarded) draft.saved({ notes: original })
       },
     })
   }
@@ -569,7 +588,7 @@ function BundleEditor({
               count={notes.length}
               height={heights[i] ?? null}
               onChange={(v) => changeNote(i, v)}
-              onCommit={commitNotes}
+              onCommit={() => commitNotes()}
               onRemove={() => removeNote(i)}
               onResize={(h) => setNoteHeight(i, h)}
               dragging={draggingNote === i}

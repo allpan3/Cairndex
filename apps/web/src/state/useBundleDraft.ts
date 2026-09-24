@@ -1,5 +1,5 @@
 import { basisOf, rememberBasis } from '../api/editBasis'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getActiveLibraryId, type BundlePatch, type BundleRead } from '../api/client'
 import { getConnectionScopeKey } from '../api/requestScope'
 
@@ -47,6 +47,26 @@ export function finishStoredBundleDraft(url: string, body: string | undefined): 
 // Keeps unsaved legacy title and notes with their original optimistic-concurrency version
 export function useBundleDraft(bundle: BundleRead) {
   const key = libraryStateKey(`cairndex.bundleDraft:${bundle.id}`)
+  const accepted = useRef<{
+    key: string
+    fields: Partial<Record<'title' | 'notes', string>>
+  }>({ key, fields: {} })
+
+  // Only this editor's acknowledged response can advance a draft already in progress.
+  // A later read can start a new edit, but it cannot rebase an existing draft.
+  function openingBasis(field: 'title' | 'notes'): string | undefined {
+    if (accepted.current.key !== key) accepted.current = { key, fields: {} }
+    const displayed = basisOf(bundle)
+    const own = accepted.current.fields[field]
+    if (!own || !displayed) return own ?? displayed
+    const readParts = displayed.split(':')
+    const ownParts = own.split(':')
+    if (readParts[0] !== ownParts[0] || readParts[2] !== ownParts[2]) return displayed
+    return Number(readParts[1]) >= Number(ownParts[1]) &&
+      Number(readParts[3]) >= Number(ownParts[3])
+      ? displayed
+      : own
+  }
   const [initial] = useState(() => {
     try {
       const raw = localStorage.getItem(key)
@@ -100,15 +120,24 @@ export function useBundleDraft(bundle: BundleRead) {
   }
 
   // A successful receipt clears only fields still equal to the submitted generation
-  function saved(patch: Draft['patch'], version: number) {
-    void version // Entity counters remain compatible with existing draft callers
+  function saved(patch: Draft['patch'], response?: BundleRead) {
+    if (accepted.current.key !== key) return
+    const basis = response && basisOf(response)
+    if (basis)
+      for (const field of ['title', 'notes'] as const)
+        if (field in patch) accepted.current.fields[field] = basis
     const current = retained.get(key)
     if (!current) return
     const remaining = { ...current.patch }
-    for (const field of ['title', 'notes'] as const)
-      if (field in patch && JSON.stringify(remaining[field]) === JSON.stringify(patch[field]))
+    const bases = { ...current.bases }
+    for (const field of ['title', 'notes'] as const) {
+      if (!(field in patch)) continue
+      if (JSON.stringify(remaining[field]) === JSON.stringify(patch[field])) {
         delete remaining[field]
-    store(Object.keys(remaining).length ? { ...current, patch: remaining } : null)
+        delete bases[field]
+      } else if (field in remaining && basis) bases[field] = basis
+    }
+    store(Object.keys(remaining).length ? { ...current, patch: remaining, bases } : null)
   }
 
   useEffect(() => {
@@ -131,13 +160,13 @@ export function useBundleDraft(bundle: BundleRead) {
         patch,
         field in (retained.get(key)?.patch ?? {})
           ? (retained.get(key)?.bases?.[field] ?? 'unversioned-draft')
-          : basisOf(bundle),
+          : openingBasis(field),
       ),
     update: (patch: Draft['patch']) => {
       const current = retained.get(key)
       const bases = { ...current?.bases }
       for (const field of ['title', 'notes'] as const)
-        if (field in patch && !(field in (current?.patch ?? {}))) bases[field] = basisOf(bundle)
+        if (field in patch && !(field in (current?.patch ?? {}))) bases[field] = openingBasis(field)
       store({
         version: current?.version ?? bundle.version,
         patch: { ...current?.patch, ...patch },

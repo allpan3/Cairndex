@@ -271,6 +271,111 @@ test('a dirty notes field survives another client title and safe membership chan
   }
 })
 
+test('one client saves the first note and then adds a second without conflict review @fullstack', async ({
+  page,
+}) => {
+  const f = await fixture()
+  try {
+    await open(page, f)
+    const notes = page.locator('.note-row textarea')
+    await notes.first().fill('Revised opening note')
+    const firstSave = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/bundles/${f.bundle.id}`) &&
+        response.request().method() === 'PATCH',
+    )
+    await page.getByRole('button', { name: 'Add note' }).click()
+    expect((await firstSave).status()).toBe(200)
+    await expect(notes).toHaveCount(2)
+    await expect(notes.nth(1)).toHaveValue('')
+    await notes.nth(1).fill('Second note')
+    await notes.nth(1).blur()
+    await expect
+      .poll(async () => (await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).notes)
+      .toEqual(['Revised opening note', 'Second note'])
+    await expect(page.getByRole('dialog', { name: 'Review metadata edit' })).toHaveCount(0)
+    await page.reload()
+    await page.locator('.card').filter({ hasText: 'Amber' }).first().click()
+    await expect(page.locator('.note-row textarea').first()).toHaveValue('Revised opening note')
+    await expect(page.locator('.note-row textarea').nth(1)).toHaveValue('Second note')
+  } finally {
+    await page.close()
+    await f.cleanup()
+  }
+})
+
+test('a later note stays editable while this client waits for its first save @fullstack', async ({
+  page,
+}) => {
+  const f = await fixture()
+  let releaseFirst!: () => void
+  let firstCommitted!: () => void
+  const hold = new Promise<void>((resolve) => (releaseFirst = resolve))
+  const committed = new Promise<void>((resolve) => (firstCommitted = resolve))
+  let patches = 0
+  try {
+    await open(page, f)
+    await page.route(`**/bundles/${f.bundle.id}`, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      patches += 1
+      if (patches !== 1) return route.fallback()
+      const response = await route.fetch({ url: `${f.base}/bundles/${f.bundle.id}` })
+      expect(response.status()).toBe(200)
+      firstCommitted()
+      await hold
+      await route.fulfill({ response })
+    })
+    const notes = page.locator('.note-row textarea')
+    await notes.first().fill('First save')
+    await page.getByRole('button', { name: 'Add note' }).click()
+    await committed
+    await notes.nth(1).fill('Typed while saving')
+    await notes.nth(1).blur()
+    await expect(notes.nth(1)).toHaveValue('Typed while saving')
+    expect(patches).toBe(1)
+    releaseFirst()
+    await expect
+      .poll(async () => (await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).notes)
+      .toEqual(['First save', 'Typed while saving'])
+    await expect(page.getByRole('dialog', { name: 'Review metadata edit' })).toHaveCount(0)
+    expect(patches).toBe(2)
+  } finally {
+    releaseFirst()
+    await page.close()
+    await f.cleanup()
+  }
+})
+
+test('a second client note change still requires review @fullstack', async ({ browser }) => {
+  const f = await fixture()
+  const first = await browser.newPage()
+  const second = await browser.newPage()
+  try {
+    await open(first, f)
+    await open(second, f)
+    await second.locator('.note-row textarea').first().fill('Second client draft')
+    await first.locator('.note-row textarea').first().fill('First client note')
+    await first.locator('.note-row textarea').first().blur()
+    await expect
+      .poll(async () => (await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).notes)
+      .toEqual(['First client note'])
+    await expect(second.locator('.note-row textarea').first()).toHaveValue('Second client draft')
+    await second.locator('.note-row textarea').first().blur()
+    const review = second.getByRole('dialog', { name: 'Review metadata edit' })
+    await expect(review).toContainText('First client note')
+    await expect(review).toContainText('Second client draft')
+    expect((await (await fetch(`${f.base}/bundles/${f.bundle.id}`)).json()).notes).toEqual([
+      'First client note',
+    ])
+    await review.getByRole('button', { name: 'Keep draft' }).click()
+    await expect(second.locator('.note-row textarea').first()).toHaveValue('Second client draft')
+  } finally {
+    await first.close()
+    await second.close()
+    await f.cleanup()
+  }
+})
+
 test('lost create response replays one receipt and historical drafts require review @fullstack', async ({
   page,
 }) => {

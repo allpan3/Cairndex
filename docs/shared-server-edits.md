@@ -99,6 +99,13 @@ send explicit additions/removals, preserving unrelated memberships. One visible
 library poll refreshes active queries every five seconds when the revision changes;
 focus/reconnect also refresh reads.
 
+An acknowledged save by the same editor advances that field's edit basis from its
+successful response. Input added while the save is pending stays in the private
+draft and uses that acknowledged basis for its next save. A later read or another
+client's change does not advance an existing draft. Note-list saves run in order;
+an edit committed during a pending note save waits for that result. Conflicting
+note lists still require explicit review.
+
 Grouping waits for its first read before generation. A review retains its first
 loaded plan basis; an acknowledged plan edit advances only the guarded plan clock,
 while the original content basis remains in force for apply-time checks. Background
