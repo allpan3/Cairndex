@@ -37,6 +37,12 @@ not whole-library snapshot selection, text merging or a general-purpose CRDT.
 
 ## Implemented synthetic capabilities
 
+An internal [empty-catalog creator](../proposals/unified-library-creation.md)
+allocates only fresh developer fixtures. It persists one private creation intent,
+validates the complete format-three seed independently and publishes the descriptor
+last. Retry never changes the library ID, epoch or genesis. Ordinary Create and
+real-library conversion remain outside this synthetic scope.
+
 The [production contract](../replica-migration.md) defines two explicit wire
 capabilities. Package/protocol version 1 retains `bundle_metadata_v1`. Version 2
 requires `authored_catalog_v1`, `linked_payload_v1` and `structural_choices_v1`,

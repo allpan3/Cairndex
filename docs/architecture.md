@@ -25,6 +25,12 @@ protected actions and the separate observation/source-operation boundaries.
 
 ## Private metadata replicas
 
+Empty format-three developer packages use a private creation intent, independent
+seed validation and descriptor-last publication. Completion retries retain the
+same package identity and refuse conflicting bytes. The
+[creation contract](proposals/unified-library-creation.md) remains restricted to
+fresh synthetic fixtures; ordinary library creation retains the legacy format.
+
 [ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases
 and immutable causal metadata transactions. Package version 1 supports bounded
 bundle metadata; version 2 supports the complete authored catalog through linked

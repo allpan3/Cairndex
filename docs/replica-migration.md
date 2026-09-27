@@ -14,6 +14,12 @@ Their Python fixture dataclass is a developer test boundary, not authentication
 or permission to convert an arbitrary library. A handwritten descriptor is not a
 conversion receipt.
 
+Fresh empty format-three catalogs also have an internal
+[synthetic creation workflow](proposals/unified-library-creation.md). Its private
+intent pins one identity before seed publication. It does not convert a legacy
+database, accept an existing root or change ordinary Create. Missing private
+intent requires inspection; directory names cannot reconstruct it.
+
 ## Storage and wire contract
 
 The package contains `.cairndex/manifest.json` and immutable objects under

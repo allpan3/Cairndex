@@ -11,6 +11,37 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Synthetic empty-library creation
+
+On `fix/library-ownership-lifecycle`, the owner-approved first creation scope
+builds an empty format-three catalog directly in a fresh developer fixture.
+Private intent retains the library ID, epoch, genesis and seed operation across
+retries. Independent validation precedes immutable object publication; the
+descriptor is published last. Conflicting bytes and changed directory identities
+stop creation without overwriting them. No legacy DB is created or converted.
+
+Ordinary Create retains `cairndex.library`; `CONVERSION_AVAILABLE = False`.
+No new endpoint, schema, API artifact or UI is introduced. The
+[creation contract](proposals/unified-library-creation.md) distinguishes this
+synthetic implementation from the proposed default. Provider/SMB publication,
+ordinary UI parity, access guards, source operations and real conversion remain
+open. The next scope is an ordinary UI integration proposal with an explicit
+capability inventory, before any change to the default creation format. Desktop
+OS drag and the other owner-deferred work remain paused.
+
+Verification includes **23 creation tests** and source-sidecar registration,
+Release, restart and Reopen on two package copies. Backend lint, formatting and
+type checking pass (255 source files). The initial full backend run exposed two
+discovery tests that assumed a review completed within one 50 ms worker tick.
+The separate test-only commit `d6e1fb1b` uses bounded progress loops and retains
+the exact outcome assertions. All 48 focused tests pass; three review cases also
+pass with one review phase per tick. The full backend rerun passes **1,800 tests**;
+one tone-mapping test is skipped because this ffmpeg has no `zscale` filter.
+
+Frontend, browser and native build gates do not apply to this backend fixture;
+there are no UI, API or Rust changes. Source-sidecar checks do not qualify packaged
+builds, providers, mounted storage or power loss.
+
 ## Client editing compatibility
 
 The shared client checks legacy editing support through the revision poll.

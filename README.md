@@ -18,6 +18,11 @@ agents working in this repository.
 
 ## Status
 
+An internal developer fixture creates an empty format-three catalog directly,
+with private creation intent and descriptor-last publication. Interruption retries
+retain its identity. [Synthetic creation](docs/proposals/unified-library-creation.md)
+does not change ordinary Create or enable existing-library conversion.
+
 Capable **synthetic** replica packages support library-wide authored metadata,
 concurrent offline edits, complete structural choices, retained history and private
 drafts. Cataloged local video and images open in the shared viewer with private

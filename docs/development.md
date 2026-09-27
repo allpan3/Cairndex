@@ -67,6 +67,27 @@ qualify real NAS/provider failures or power loss.
 
 ## Synthetic production replica workflows
 
+To create a fresh empty format-three package without legacy conversion:
+
+```python
+from cairndex.devtools.replica_creation_fixture import prepare_disposable
+from cairndex.replicas.catalog.creation import complete
+
+fixture = prepare_disposable()
+complete(fixture)
+print(fixture.root)
+```
+
+Keep the fixture's separate private directory for an interrupted creation retry.
+Repeat `complete(fixture)` with the same fixture; never prepare a second identity
+inside it. Only the completed package is registered or copied to another device.
+The helper accepts no existing-library root or user metadata. Missing private
+intent is not recoverable by guessing. See the
+[creation contract](proposals/unified-library-creation.md).
+`tests/test_replica_creation.py` covers publication, interruptions and independent
+stores. `tests/test_replica_creation_binary.py` opens, releases and reopens the
+package across actual sidecar restarts. These are synthetic local checks.
+
 From `apps/server`, `uv run python -m cairndex.devtools.replica_fixture` creates a
 bounded protocol-one package. For a complete protocol-two catalog, use:
 

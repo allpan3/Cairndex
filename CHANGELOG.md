@@ -372,6 +372,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Empty format-three catalog fixtures use private creation intent, complete seed
+  validation and descriptor-last publication. Exact retries preserve identity
+  after interruption and refuse changed directories or competing bytes. Ordinary
+  Create and real-library conversion retain their existing capability boundaries.
+
 - Record production macOS installation and native compatibility/draft-recovery
   verification with disposable data. Track the remaining single-client note-list
   conflict review separately from installation acceptance.
