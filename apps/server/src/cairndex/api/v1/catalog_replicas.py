@@ -7,6 +7,14 @@ from fastapi import APIRouter, Depends, Query, Response
 from cairndex.api.v1.replicas import replica_store
 from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.browse import CatalogBrowsePage, CatalogBrowseRequest, browse
+from cairndex.replicas.catalog.navigation import (
+    CatalogFacetRequest,
+    CatalogFacetResponse,
+    CatalogNavigationPage,
+    NavigationFamily,
+    facets,
+    navigation,
+)
 from cairndex.replicas.catalog.schemas import (
     CatalogDraftRequest,
     CatalogEntity,
@@ -138,3 +146,17 @@ def dismiss(
 def browse_bundles(payload: CatalogBrowseRequest, store: Catalog) -> CatalogBrowsePage:
     with store.connection(readonly=True) as db:
         return browse(db, payload)
+
+
+@router.get("/navigation/{family}", response_model=CatalogNavigationPage)
+def navigation_page(
+    family: NavigationFamily, store: Catalog, after: Cursor = "", limit: Limit = 50
+) -> CatalogNavigationPage:
+    with store.connection(readonly=True) as db:
+        return navigation(db, family, after, limit)
+
+
+@router.post("/bundles/facets", response_model=CatalogFacetResponse)
+def bundle_facets(payload: CatalogFacetRequest, store: Catalog) -> CatalogFacetResponse:
+    with store.connection(readonly=True) as db:
+        return facets(db, payload)

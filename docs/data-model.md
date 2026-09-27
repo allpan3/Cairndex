@@ -774,6 +774,11 @@ library DB, and writes progress/terminal state back to the registry row.
 
 ### File Browser entries
 
+Complete catalogs add optional `local_state` values: `observed`, `unavailable` or
+`unknown`. These are response observations, never authored catalog cells. The
+response can retain a cataloged row without local bytes. Library-relative paths
+and stable file/bundle IDs remain separate from filesystem size and timestamps.
+
 Read-only File Browser entries are produced by `services/file_browser.py` from the live
 filesystem under the active library root. They are response models rather than
 persistent rows. Each entry is derived from a library-relative path, path-safety

@@ -3,12 +3,15 @@
 import json
 import sqlite3
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
 from cairndex.domain.enums import GroupingState
+from cairndex.filters.ast import FilterExpression
+from cairndex.replicas.catalog.query import matching, saved_filter
 from cairndex.replicas.protocol import StrictModel
+from cairndex.scanning.media_types import HIDDEN_NAMES
 from cairndex.search import to_match_query
 
 
@@ -30,6 +33,11 @@ class CatalogBrowsePage(StrictModel):
 
 # Unsupported filters are refused by the strict request schema, never ignored.
 class CatalogBrowseRequest(StrictModel):
+    filter: FilterExpression | None = None
+    smart_collection_id: str | None = None
+    collection_id: str | None = None
+    include_descendants: bool = True
+    view: Literal["all", "uncategorized", "untagged", "recent"] = "all"
     q: str = Field(default="", max_length=1000)
     sort: Literal["title", "rating", "date_added"] = "title"
     order: Literal["asc", "desc"] = "asc"
@@ -121,10 +129,50 @@ AND (NOT EXISTS (SELECT 1 FROM catalog_rows f WHERE f.family='asset_files'
  AND json_extract(f.body,'$.relative_path') NOT LIKE '%/.%'))"""
 
 
+# Shared scanner exclusions apply to the complete eligible population.
+ELIGIBLE = (
+    ELIGIBLE[:-2]
+    + "".join(
+        f" AND instr('/'||json_extract(f.body,'$.relative_path')||'/','/{name}/')=0"
+        for name in sorted(HIDDEN_NAMES)
+    )
+    + "))"
+)
+
+
 def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrowsePage:
     """Search the complete eligible projection before SQL ordering and pagination."""
     where = ELIGIBLE
-    args: list[str | int] = []
+    args: list[Any] = []
+    expressions = [request.filter]
+    if request.smart_collection_id:
+        expressions.append(saved_filter(db, request.smart_collection_id))
+    if request.collection_id:
+        expressions.append(
+            FilterExpression.model_validate(
+                {
+                    "root": {
+                        "field": "collections",
+                        "operator": "contains_any",
+                        "value": [request.collection_id],
+                        "include_descendants": request.include_descendants,
+                    }
+                }
+            )
+        )
+    if request.view in ("uncategorized", "untagged"):
+        family = (
+            "asset_bundle_collections" if request.view == "uncategorized" else "asset_bundle_tags"
+        )
+        where += (
+            f" AND NOT EXISTS (SELECT 1 FROM catalog_rows e WHERE e.family='{family}' "
+            "AND json_extract(e.body,'$.bundle_id')=b.entity)"
+        )
+    for expression in expressions:
+        if expression is not None:
+            sql, values = matching(db, expression)
+            where += f" AND b.entity IN ({sql})"
+            args.extend(values)
     match = to_match_query(request.q)
     if match:
         where += " AND b.rowid IN (SELECT rowid FROM catalog_search WHERE catalog_search MATCH ?)"

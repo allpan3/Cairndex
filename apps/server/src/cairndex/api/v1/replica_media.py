@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
+from cairndex.api.schemas.file_browser import FileBrowserListingRead
 from cairndex.api.schemas.moments import MomentRead
 from cairndex.api.schemas.playback import PlayableVideo, PlaybackProgressRead
 from cairndex.core.errors import ValidationError
@@ -152,3 +153,10 @@ def cursor(bundle_id: str, payload: ReplicaCursorUpdate, media: Media) -> Respon
             "INSERT OR REPLACE INTO local_cursors VALUES (?, ?)", (bundle_id, payload.file_id)
         )
     return Response(status_code=204)
+
+
+@router.get("/directory", response_model=FileBrowserListingRead)
+def directory(media: Media, path: str = "") -> FileBrowserListingRead:
+    from cairndex.replicas.catalog.file_browser import list_directory
+
+    return list_directory(media, path)

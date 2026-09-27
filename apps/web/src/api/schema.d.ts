@@ -2712,6 +2712,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bundle Facets */
+        post: operations["bundle_facets_api_v1_libraries__library_id__replica_catalog_bundles_facets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
         parameters: {
             query?: never;
@@ -2896,6 +2913,23 @@ export interface paths {
         post?: never;
         /** Cancel */
         delete: operations["cancel_api_v1_libraries__library_id__replica_catalog_jobs__operation__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/navigation/{family}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Navigation Page */
+        get: operations["navigation_page_api_v1_libraries__library_id__replica_catalog_navigation__family__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3186,6 +3220,23 @@ export interface paths {
         get?: never;
         /** Cursor */
         put: operations["cursor_api_v1_libraries__library_id__replica_media_bundles__bundle_id__cursor_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/media/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Directory */
+        get: operations["directory_api_v1_libraries__library_id__replica_media_directory_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3870,6 +3921,14 @@ export interface components {
         };
         /** CatalogBrowseRequest */
         CatalogBrowseRequest: {
+            /** Collection Id */
+            collection_id?: string | null;
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /**
+             * Include Descendants
+             * @default true
+             */
+            include_descendants: boolean;
             /**
              * Limit
              * @default 50
@@ -3891,12 +3950,20 @@ export interface components {
              * @default
              */
             q: string;
+            /** Smart Collection Id */
+            smart_collection_id?: string | null;
             /**
              * Sort
              * @default title
              * @enum {string}
              */
             sort: "title" | "rating" | "date_added";
+            /**
+             * View
+             * @default all
+             * @enum {string}
+             */
+            view: "all" | "uncategorized" | "untagged" | "recent";
         };
         /** CatalogBundleSummary */
         CatalogBundleSummary: {
@@ -3949,6 +4016,76 @@ export interface components {
             };
             /** Parents */
             parents: string[];
+        };
+        /** CatalogFacetRequest */
+        CatalogFacetRequest: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /**
+             * Facets
+             * @default [
+             *       "tags",
+             *       "ratings"
+             *     ]
+             */
+            facets: ("tags" | "ratings")[];
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /**
+             * Include Descendants
+             * @default true
+             */
+            include_descendants: boolean;
+            /**
+             * Limit
+             * @default 50
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /** Smart Collection Id */
+            smart_collection_id?: string | null;
+            /**
+             * Sort
+             * @default title
+             * @enum {string}
+             */
+            sort: "title" | "rating" | "date_added";
+            /**
+             * Tag Include Descendants
+             * @default true
+             */
+            tag_include_descendants: boolean;
+            /**
+             * View
+             * @default all
+             * @enum {string}
+             */
+            view: "all" | "uncategorized" | "untagged" | "recent";
+        };
+        /** CatalogFacetResponse */
+        CatalogFacetResponse: {
+            /** Ratings */
+            ratings?: {
+                [key: string]: number;
+            };
+            /** Tags */
+            tags?: {
+                [key: string]: number;
+            };
         };
         /** CatalogField */
         CatalogField: {
@@ -4010,6 +4147,15 @@ export interface components {
             };
             /** Operation */
             operation: string;
+        };
+        /** CatalogNavigationPage */
+        CatalogNavigationPage: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** CatalogPage */
         CatalogPage: {
@@ -4620,6 +4766,8 @@ export interface components {
             kind: string;
             /** Linked */
             linked: boolean;
+            /** Local State */
+            local_state?: ("observed" | "unavailable" | "unknown") | null;
             /** Media Kind */
             media_kind: string | null;
             /** Mime Type */
@@ -4651,6 +4799,8 @@ export interface components {
         FileBrowserListingRead: {
             /** Entries */
             entries: components["schemas"]["FileBrowserEntryRead"][];
+            /** Local State */
+            local_state?: ("observed" | "unavailable" | "unknown") | null;
             /** Missing Files Updated */
             missing_files_updated: number;
             /** Path */
@@ -12731,6 +12881,45 @@ export interface operations {
             };
         };
     };
+    bundle_facets_api_v1_libraries__library_id__replica_catalog_bundles_facets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogFacetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFacetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     controls_api_v1_libraries__library_id__replica_catalog_controls__family__get: {
         parameters: {
             query?: never;
@@ -13217,6 +13406,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    navigation_page_api_v1_libraries__library_id__replica_catalog_navigation__family__get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                family: "collections" | "tags" | "tag_groups" | "tag_group_memberships" | "smart_folders";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogNavigationPage"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -13990,6 +14218,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    directory_api_v1_libraries__library_id__replica_media_directory_get: {
+        parameters: {
+            query?: {
+                path?: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileBrowserListingRead"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -26,11 +26,16 @@ merely by opening it. Tag/collection IDs inside predicates retain query-literal
 semantics rather than foreign-key lifetime guards: deleting a target does not
 rewrite the filter, and an absent target matches no direct membership.
 
-Ordinary replica browse supports free text and title/rating/date-added sorting.
-Structured filter and facet execution is not yet connected. The toolbar marks
-filters unavailable; the strict browse request rejects filter/view fields and
-unsupported sorts instead of applying a partial expression. Stored Smart Collection
-expressions remain available unchanged through Metadata review.
+Ordinary catalog browse executes the existing AST through the shared compiler over
+private committed rows. Collection descendants, nested expressions, Smart Collection
+execution, tag/rating facets and previews use the complete eligible population.
+Stored filter text stays exact. Preview errors do not replace the stored expression.
+
+Source size and missing state remain unknown for nonempty bundles in this query
+surface. NOT preserves unknown; it does not make an unobserved file present. Empty
+bundles have zero size and no missing member. Has-cover is true for an authored
+cover, false for an empty bundle without one, and otherwise unknown. No query scans
+or probes source media. File Browser and media opening make separate local checks.
 
 ## Goals
 

@@ -431,12 +431,20 @@ class CatalogStore(CatalogStorage):
         from cairndex.replicas.catalog.model import validate_cell
 
         validate_cell("asset_files", "relative_path", directory)
+        from cairndex.scanning.media_types import HIDDEN_NAMES, is_hidden_relative_path
+
+        if is_hidden_relative_path(directory):
+            raise ReplicaError("Hidden directories are unavailable")
+        visible = "path NOT LIKE '.%' AND path NOT LIKE '%/.%'" + "".join(
+            f" AND instr('/'||path||'/','/{name}/')=0" for name in sorted(HIDDEN_NAMES)
+        )
         with self.connection(readonly=True) as db:
             rows = db.execute(
                 "SELECT 'd:'||path AS cursor,path,'directory' AS kind,'' AS family,'' AS entity "
-                "FROM catalog_directories WHERE parent=? AND 'd:'||path>? UNION ALL "
+                f"FROM catalog_directories WHERE {visible} AND parent=? AND 'd:'||path>? UNION ALL "
                 "SELECT 'f:'||path AS cursor,path,'file' AS kind,family,entity FROM catalog_paths "
-                "WHERE parent=? AND family='asset_files' AND 'f:'||path>? ORDER BY cursor LIMIT ?",
+                f"WHERE {visible} AND parent=? AND family='asset_files' AND 'f:'||path>? "
+                "ORDER BY cursor LIMIT ?",
                 (directory, after, directory, after, limit + 1),
             ).fetchall()
             return {

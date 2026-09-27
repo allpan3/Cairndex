@@ -1343,6 +1343,32 @@
       "CatalogBrowseRequest": {
         "additionalProperties": false,
         "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_descendants": {
+            "default": true,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
           "limit": {
             "default": 50,
             "maximum": 100.0,
@@ -1371,6 +1397,17 @@
             "title": "Q",
             "type": "string"
           },
+          "smart_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Collection Id"
+          },
           "sort": {
             "default": "title",
             "enum": [
@@ -1379,6 +1416,17 @@
               "date_added"
             ],
             "title": "Sort",
+            "type": "string"
+          },
+          "view": {
+            "default": "all",
+            "enum": [
+              "all",
+              "uncategorized",
+              "untagged",
+              "recent"
+            ],
+            "title": "View",
             "type": "string"
           }
         },
@@ -1534,6 +1582,140 @@
           "parents"
         ],
         "title": "CatalogEntity",
+        "type": "object"
+      },
+      "CatalogFacetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "facets": {
+            "default": [
+              "tags",
+              "ratings"
+            ],
+            "items": {
+              "enum": [
+                "tags",
+                "ratings"
+              ],
+              "type": "string"
+            },
+            "title": "Facets",
+            "type": "array"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_descendants": {
+            "default": true,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          },
+          "smart_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Collection Id"
+          },
+          "sort": {
+            "default": "title",
+            "enum": [
+              "title",
+              "rating",
+              "date_added"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "tag_include_descendants": {
+            "default": true,
+            "title": "Tag Include Descendants",
+            "type": "boolean"
+          },
+          "view": {
+            "default": "all",
+            "enum": [
+              "all",
+              "uncategorized",
+              "untagged",
+              "recent"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "title": "CatalogFacetRequest",
+        "type": "object"
+      },
+      "CatalogFacetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ratings": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Ratings",
+            "type": "object"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Tags",
+            "type": "object"
+          }
+        },
+        "title": "CatalogFacetResponse",
         "type": "object"
       },
       "CatalogField": {
@@ -1734,6 +1916,36 @@
           "body"
         ],
         "title": "CatalogJobRequest",
+        "type": "object"
+      },
+      "CatalogNavigationPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CatalogNavigationPage",
         "type": "object"
       },
       "CatalogPage": {
@@ -3566,6 +3778,22 @@
             "title": "Linked",
             "type": "boolean"
           },
+          "local_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "observed",
+                  "unavailable",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local State"
+          },
           "media_kind": {
             "anyOf": [
               {
@@ -3716,6 +3944,22 @@
             },
             "title": "Entries",
             "type": "array"
+          },
+          "local_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "observed",
+                  "unavailable",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local State"
           },
           "missing_files_updated": {
             "title": "Missing Files Updated",
@@ -22289,6 +22533,90 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/facets": {
+      "post": {
+        "operationId": "bundle_facets_api_v1_libraries__library_id__replica_catalog_bundles_facets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogFacetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFacetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bundle Facets",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
       "get": {
         "operationId": "controls_api_v1_libraries__library_id__replica_catalog_controls__family__get",
@@ -23571,6 +23899,119 @@
           }
         },
         "summary": "Job",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/navigation/{family}": {
+      "get": {
+        "operationId": "navigation_page_api_v1_libraries__library_id__replica_catalog_navigation__family__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family",
+            "required": true,
+            "schema": {
+              "enum": [
+                "collections",
+                "tags",
+                "tag_groups",
+                "tag_group_memberships",
+                "smart_folders"
+              ],
+              "title": "Family",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 256,
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogNavigationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Navigation Page",
         "tags": [
           "replica-catalog"
         ]
@@ -25387,6 +25828,90 @@
           }
         },
         "summary": "Cursor",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/directory": {
+      "get": {
+        "operationId": "directory_api_v1_libraries__library_id__replica_media_directory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileBrowserListingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Directory",
         "tags": [
           "replica-media"
         ]

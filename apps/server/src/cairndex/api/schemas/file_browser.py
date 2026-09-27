@@ -1,11 +1,13 @@
 """Schemas for library-scoped File Browser queries"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 
 class FileBrowserEntryRead(BaseModel):
+    local_state: Literal["observed", "unavailable", "unknown"] | None = None
     name: str
     relative_path: str
     # "directory" or "file".
@@ -50,6 +52,7 @@ class FileBrowserEntryRead(BaseModel):
 
 
 class FileBrowserListingRead(BaseModel):
+    local_state: Literal["observed", "unavailable", "unknown"] | None = None
     # The relative directory listed ("" = the library root itself).
     path: str
     entries: list[FileBrowserEntryRead]
