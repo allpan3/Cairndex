@@ -11,7 +11,56 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## Ordinary browsing for synthetic portable libraries
+## Combined ordinary interface integration
+
+Implementation checkpoints: backend `df7ef89b` and interface `88a82a36` on
+`fix/library-ownership-lifecycle`.
+
+The implementation on `fix/library-ownership-lifecycle` connects all three
+approved groups: collection/tag navigation, existing structured queries and the
+ordinary File Browser. The shared sidebar and filters read the valid private
+projection. Saved rules remain exact. The direct-directory view retains unavailable
+catalog paths and uses the guarded shared viewer with folder order. Drafts retain
+causal bases and pending identities through navigation. The capability inventory
+in [replica-catalog](replica-catalog.md#ordinary-browse-and-edit-boundary) defines
+unknown observations and the indexed/local directory contracts.
+
+The full backend gate passes **1,812 tests**, with one tone-mapping test skipped
+because the available ffmpeg has no `zscale` filter. Backend lint, formatting,
+type checks and generated OpenAPI comparison pass. The frontend gate passes
+**1,255 tests**, lint, formatting, type checks and the production build.
+
+The final full browser run passed **208 tests** and had three failures. The
+combined test now shows the player controls and pauses before checking manual
+folder order; it passed three consecutive runs. All three catalog journeys also
+pass after the final Recent-order correction. The two other failures were a
+fetch error in the older-server test and a readiness timeout in the independent
+replica test; both passed unchanged in a focused rerun. Thus every one of the
+211 browser tests has a passing result, but there is no single clean full run.
+
+A separate production macOS app checked collection descendants, tag match rules,
+saved-filter previews, file search and keyboard media opening against a synthetic
+package. Native video time advanced, images displayed, and folder navigation
+worked. Locate in Bundle Browser restored the unsaved note. The File Browser
+retained its selection when media closed. Browser checks also cover unavailable
+bytes and matching inspector state. Synthetic screenshots were visually checked
+and remain outside Git. The test registration, fixture, app profile and browser
+cache were removed; the installed app and owner libraries were not changed.
+
+The packaged backend HTTP/media smoke test, license payload check and strict
+recursive code-signature check pass. No Rust source changed; Rust-only gates and
+Ubuntu builds were not run. These checks do not qualify providers, NAS or large
+libraries. No default activation, real conversion, provider qualification or
+source writes are enabled. The next coherent group is remaining
+ordinary inspector controls and cover/technical-fact presentation. Access guards,
+backup UI parity, upgrades and source-write synchronization remain separate.
+
+The task-local privacy range from `f1088023` through `88a82a36` passes: two
+commits and 36 new blobs. The changes contain source, tests, generated API
+artifacts and text documentation. No media or build output is committed.
+No push, PR, tag, release, history rewrite or installed-app replacement occurred.
+
+## Earlier ordinary browsing checkpoint
 
 Implementation checkpoint: `e910ccff` on `fix/library-ownership-lifecycle`.
 Existing complete synthetic packages open in the shared Bundle Browser. The private catalog adapter supplies complete
@@ -34,8 +83,8 @@ ordinary File Browser integration, covers, technical facts, multi-selection acti
 and the remaining inspector controls are incomplete. Existing all-family review,
 discovery and local media controls remain available. Default Create, real-library
 conversion, provider qualification and source writes are outside this scope.
-The next coherent group is collection/tag navigation and structured query
-integration; ordinary File Browser integration remains a separate group.
+These remaining integration items describe that earlier checkpoint. The combined
+implementation above follows the owner-approved three-group scope.
 
 A separate production macOS app with its own identifier opened a synthetic
 package through Manage libraries. Native search and selection worked. Two notes
