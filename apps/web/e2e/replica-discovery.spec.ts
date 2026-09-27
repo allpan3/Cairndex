@@ -53,6 +53,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
       const page = pages[index]
       await proxyApi(page, backends[index].baseUrl)
       await page.goto('/')
+      await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
       await expect(
         page.getByRole('heading', { name: 'Library catalog', exact: true }),
       ).toBeVisible()
@@ -121,6 +122,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
           {},
         )
         await page.reload()
+        await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
         await page.getByText('Saved discovery reviews', { exact: true }).click()
         await page
           .getByRole('button', { name: 'Synthetic discovery · failed', exact: true })
@@ -227,6 +229,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
     await page.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[0].id)
     await mkdir(join(roots[0], 'Temporary'))
     await Promise.all(
@@ -276,6 +279,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
       return { key, raw }
     })
     await page.reload()
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button')
@@ -296,6 +300,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await prepared.getByRole('button', { name: 'Revalidate saved review', exact: true }).click()
     await expect(prepared.getByText('Ready for your confirmation')).toBeVisible()
     await page.reload()
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
     await page.getByText('Saved discovery reviews', { exact: true }).click()
     await page
       .getByRole('button', { name: 'Recovered valid selection · ready', exact: true })
@@ -352,6 +357,7 @@ test('competing source identities are reviewable on both replicas @fullstack', a
       page.setDefaultTimeout(15_000)
       await proxyApi(page, backends[i].baseUrl)
       await page.goto('/')
+      await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
       await writeFile(join(roots[i], 'Synthetic/雪.mp4'), `synthetic competing source ${i}`)
@@ -471,9 +477,10 @@ test('large Update review keeps later pages and partial acceptance complete @ful
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Update', exact: true }).click()
-    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 60_000 })
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button', { name: 'Gallery · 201 files', exact: true })

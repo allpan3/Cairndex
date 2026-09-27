@@ -74,3 +74,28 @@ test('retains malformed nested draft bytes while allowing a new selection', () =
   act(() => result.current.update({ files: '["valid"]' }))
   expect(localStorage.getItem('synthetic-draft.unreadable')).toBe(raw)
 })
+
+// An acknowledged discard cannot remove input entered while its request was pending.
+test('discard preserves a newer draft generation', async () => {
+  let complete = () => {}
+  vi.mocked(catalog).mockImplementation(async (_library, _path, method) => {
+    if (method === 'DELETE')
+      return new Promise<void>((resolve) => {
+        complete = resolve
+      })
+    return { items: [] }
+  })
+  const { result } = setup()
+  act(() => result.current.update({ files: '["first"]' }))
+  let pending: Promise<void>
+  act(() => {
+    pending = result.current.discard()
+  })
+  act(() => result.current.update({ files: '["newer"]' }))
+  await act(async () => {
+    complete()
+    await pending
+  })
+  expect(result.current.body.files).toBe('["newer"]')
+  expect(localStorage.getItem('synthetic-draft')).toContain('newer')
+})

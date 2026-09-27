@@ -54,6 +54,7 @@ test('private backup activates a new device and preserves recoverable drafts @fu
     const a = await contexts[0].newPage()
     await proxyApi(a, first.baseUrl)
     await a.goto('/')
+    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
     const title = a.getByRole('textbox', { name: 'Title', exact: true })
     await a
       .getByRole('group', { name: 'Title', exact: true })
@@ -94,6 +95,7 @@ test('private backup activates a new device and preserves recoverable drafts @fu
     const b = await contexts[1].newPage()
     await proxyApi(b, second.baseUrl)
     await b.goto('/')
+    await b.getByRole('button', { name: 'Metadata review', exact: true }).click()
     await expect(b.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
       'Saved before recovery',
     )

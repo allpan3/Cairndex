@@ -24,6 +24,9 @@ export interface BrowserNavigation {
 }
 
 interface BrowserProps {
+  unavailableSize?: boolean
+  singleSelection?: boolean
+
   items: BundleSummary[]
   total: number
   layout: LayoutMode
@@ -392,18 +395,18 @@ export function Browser(props: BrowserProps) {
       ref={setScrollEl}
       role="listbox"
       aria-label="Bundles"
-      aria-multiselectable="true"
+      aria-multiselectable={!props.singleSelection}
       aria-activedescendant={props.activeId ? `bundle-option-${props.activeId}` : undefined}
       tabIndex={0}
       onMouseDownCapture={focusListing}
-      onMouseDown={onBackgroundMouseDown}
+      onMouseDown={props.singleSelection ? undefined : onBackgroundMouseDown}
       onMouseMove={onContainerMouseMove}
       onContextMenu={onRootContextMenu}
       onDragOver={onContainerDragOver}
       onDrop={onContainerDrop}
       onDragLeave={onContainerDragLeave}
     >
-      {props.hasNextPage && selectedIds.size > 0 && (
+      {!props.singleSelection && props.hasNextPage && selectedIds.size > 0 && (
         <div className="listing-selection-note" role="status">
           {selectedIds.size} selected · Select All includes {items.length} loaded bundles
         </div>
@@ -478,6 +481,7 @@ export function Browser(props: BrowserProps) {
                 {layout === 'list'
                   ? row.cards.map((c) => (
                       <ListRow
+                        unavailableSize={props.unavailableSize}
                         key={c.item.id}
                         item={c.item}
                         selected={selectedIds.has(c.item.id)}
@@ -564,6 +568,7 @@ function ListHeader({
 }
 
 function ListRow({
+  unavailableSize,
   item,
   selected,
   onSelect,
@@ -572,6 +577,7 @@ function ListRow({
   dragProps,
 }: {
   item: BundleSummary
+  unavailableSize?: boolean
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
@@ -607,7 +613,7 @@ function ListRow({
       <div className="list-row__title">{item.title ?? 'Untitled'}</div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
-      <span className="list-cell">{formatBytes(item.total_size)}</span>
+      <span className="list-cell">{unavailableSize ? '—' : formatBytes(item.total_size)}</span>
       <span className="list-cell">{formatDate(item.date_added)}</span>
     </div>
   )

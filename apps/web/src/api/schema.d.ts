@@ -2695,6 +2695,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Browse Bundles */
+        post: operations["browse_bundles_api_v1_libraries__library_id__replica_catalog_bundles_browse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
         parameters: {
             query?: never;
@@ -3839,6 +3856,64 @@ export interface components {
             revisions: string[];
             /** Value */
             value: string | number | string[] | null;
+        };
+        /** CatalogBrowsePage */
+        CatalogBrowsePage: {
+            /** Items */
+            items: components["schemas"]["CatalogBundleSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** CatalogBrowseRequest */
+        CatalogBrowseRequest: {
+            /**
+             * Limit
+             * @default 50
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /**
+             * Sort
+             * @default title
+             * @enum {string}
+             */
+            sort: "title" | "rating" | "date_added";
+        };
+        /** CatalogBundleSummary */
+        CatalogBundleSummary: {
+            /**
+             * Date Added
+             * Format: date-time
+             */
+            date_added: string;
+            /** File Count */
+            file_count: number;
+            grouping_state: components["schemas"]["GroupingState"];
+            /** Id */
+            id: string;
+            /** Rating */
+            rating: number | null;
+            /** Title */
+            title: string | null;
         };
         /** CatalogCandidate */
         CatalogCandidate: {
@@ -5829,6 +5904,8 @@ export interface components {
         ReplicaStatus: {
             /** Blocked */
             blocked: string | null;
+            /** Browse Version */
+            browse_version?: number | null;
             /** Catalog Version */
             catalog_version?: number | null;
             /** Discovery Version */
@@ -12602,6 +12679,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistoryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_bundles_api_v1_libraries__library_id__replica_catalog_bundles_browse_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogBrowseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBrowsePage"];
                 };
             };
             /** @description Validation Error */

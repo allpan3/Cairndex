@@ -16,6 +16,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Existing complete synthetic libraries open with the shared Bundle Browser,
+  full-catalog search and title, note and rating controls. Causal saves retain
+  newer drafts and exact retries across library switches. Conflicts use explicit
+  metadata review. Unsupported filters and technical facts have visible limits;
+  default Create, real conversion and source writes remain unchanged.
+
 - Pointer-opened View options and Settings dialogs return focus to their
   buttons in the macOS webview as well as the browser.
 - Narrow bundle and file lists preserve readable name columns while secondary

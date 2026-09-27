@@ -197,7 +197,11 @@ export function ReplicaWorkspace(props: {
       </main>
     )
   return status.data.catalog_version ? (
-    <CatalogWorkspace key={props.libraryId} {...props} />
+    <CatalogWorkspace
+      key={props.libraryId}
+      {...props}
+      ordinaryBrowse={status.data.browse_version === 1}
+    />
   ) : (
     <BoundedReplicaWorkspace {...props} />
   )

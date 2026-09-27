@@ -23,6 +23,11 @@ with private creation intent and descriptor-last publication. Interruption retri
 retain its identity. [Synthetic creation](docs/proposals/unified-library-creation.md)
 does not change ordinary Create or enable existing-library conversion.
 
+Existing complete **synthetic** packages open in the shared Bundle Browser, with
+full-catalog free-text search and title, note and rating editing. Other metadata
+and conflicts remain available through Metadata review. Structured filters and
+ordinary File Browser parity remain incomplete.
+
 Capable **synthetic** replica packages support library-wide authored metadata,
 concurrent offline edits, complete structural choices, retained history and private
 drafts. Cataloged local video and images open in the shared viewer with private

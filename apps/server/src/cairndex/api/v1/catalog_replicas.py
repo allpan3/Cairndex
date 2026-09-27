@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from cairndex.api.v1.replicas import replica_store
 from cairndex.replicas.catalog import jobs
+from cairndex.replicas.catalog.browse import CatalogBrowsePage, CatalogBrowseRequest, browse
 from cairndex.replicas.catalog.schemas import (
     CatalogDraftRequest,
     CatalogEntity,
@@ -131,3 +132,9 @@ def dismiss(
 ) -> Response:
     store.dismiss_draft(draft_id, revision)
     return Response(status_code=204)
+
+
+@router.post("/bundles/browse", response_model=CatalogBrowsePage)
+def browse_bundles(payload: CatalogBrowseRequest, store: Catalog) -> CatalogBrowsePage:
+    with store.connection(readonly=True) as db:
+        return browse(db, payload)

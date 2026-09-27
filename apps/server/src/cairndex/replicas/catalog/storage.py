@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cairndex.replicas.catalog import projection
+from cairndex.replicas.catalog.browse import install
 from cairndex.replicas.catalog.model import split_key, structural_targets, value_text
 from cairndex.replicas.catalog.protocol import CatalogDescriptor, Part, Root, UnitChange, decode
 from cairndex.replicas.protocol import ReplicaError, checksum
@@ -58,6 +59,7 @@ class CatalogStorage(PrivateStore):
             from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
 
             db.executescript(projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA)
+            install(db)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
                 db.execute(
                     "ALTER TABLE catalog_cohorts ADD COLUMN anchor INTEGER NOT NULL DEFAULT 1"
@@ -302,6 +304,7 @@ class CatalogStorage(PrivateStore):
             return {
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
+                "browse_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
                 "blocked": config.get("blocked"),

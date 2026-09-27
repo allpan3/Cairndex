@@ -11,6 +11,9 @@ import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
 
 interface ToolbarProps {
+  unavailableFilters?: string
+  allowCollectionSort?: boolean
+
   /** Leading controls before the title — the sidebar toggle and the
    *  Back/Forward history buttons. */
   leading?: ReactNode
@@ -56,6 +59,8 @@ const LAYOUTS: { value: LayoutMode; icon: ReactNode; label: string }[] = [
 // Keep browse actions in their established order with compact alternatives for narrow panes
 export function Toolbar({
   leading,
+  unavailableFilters,
+  allowCollectionSort = true,
   trailing,
   onReshuffle,
   title,
@@ -119,7 +124,8 @@ export function Toolbar({
           onClick={() => setFiltersOpen((o) => !o)}
           aria-label="Filters"
           aria-pressed={filtersOpen}
-          title="Filters"
+          title={unavailableFilters ?? 'Filters'}
+          disabled={Boolean(unavailableFilters)}
         >
           <IconFilter />
           {filtersActive && <span className="toolbar__filter-dot" />}
@@ -163,8 +169,8 @@ export function Toolbar({
                 ? BUNDLE_SORTS.filter((option) => allowedSorts.includes(option.value))
                 : BUNDLE_SORTS
             }
-            perCollection={perCollectionSort}
-            onPerCollection={onPerCollectionSort}
+            perCollection={allowCollectionSort ? perCollectionSort : undefined}
+            onPerCollection={allowCollectionSort ? onPerCollectionSort : undefined}
           />
         )}
 

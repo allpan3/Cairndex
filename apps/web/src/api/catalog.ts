@@ -1,3 +1,4 @@
+import { captureRequestScope } from './requestScope'
 // Exact value text and explicit observed bases shared by every catalog editor
 import { replicaRequest } from './replicas'
 
@@ -58,6 +59,8 @@ export function catalog<T>(library: string, path: string, method = 'GET', body?:
   return replicaRequest<T>(library, `/catalog${path}`, method, body)
 }
 
+export class CatalogJobError extends Error {}
+
 // A stable operation ID retries a completed save without producing a second authored event
 export async function runJob(
   library: string,
@@ -65,12 +68,16 @@ export async function runJob(
   body: unknown,
   operation: string,
 ): Promise<Job> {
+  const assertScope = captureRequestScope()
   let job = await catalog<Job>(library, '/jobs', 'POST', { action, body, operation })
   while (job.state === 'queued' || job.state === 'running') {
     await new Promise((resolve) => setTimeout(resolve, 250))
+    assertScope()
     job = await catalog<Job>(library, `/jobs/${operation}`)
   }
-  if (job.state !== 'succeeded') throw new Error(job.error ?? 'Catalog operation was cancelled')
+  assertScope()
+  if (job.state !== 'succeeded')
+    throw new CatalogJobError(job.error ?? 'Catalog operation was cancelled')
   return job
 }
 

@@ -1,3 +1,4 @@
+import { CatalogBundleBrowser } from './CatalogBundleBrowser'
 // Shared bundle-first navigation and creation across every authored catalog family
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -175,11 +176,13 @@ function CatalogCreate({
 
 // List and editor requests retain explicit library scope through navigation and retries
 export function CatalogWorkspace({
+  ordinaryBrowse = false,
   libraryId,
   libraries,
   onChangeLibrary,
   onManage,
 }: {
+  ordinaryBrowse?: boolean
   libraryId: string
   libraries: LibraryRead[]
   onChangeLibrary: (id: string) => void
@@ -187,6 +190,7 @@ export function CatalogWorkspace({
 }) {
   const [editor, setEditor] = useState<string | null>(null)
   useEffect(() => holdEditor(setEditor), [])
+  const [reviewMode, setReviewMode] = useState(!ordinaryBrowse)
   const [family, setFamily] = useState('asset_bundles')
   const [fileBrowser, setFileBrowser] = useState(false)
   const [showJobs, setShowJobs] = useState(false)
@@ -207,6 +211,7 @@ export function CatalogWorkspace({
         libraryId,
         `/entities/${family}?after=${encodeURIComponent(after)}&deleted=${deleted}`,
       ),
+    enabled: reviewMode,
     refetchInterval: 2000,
   })
   const identity = selected ?? page.data?.items[0]?.id
@@ -214,7 +219,7 @@ export function CatalogWorkspace({
   if (selected === null && identity) setSelected(identity)
   const detail = useQuery({
     queryKey: ['catalog-detail', libraryId, family, identity],
-    enabled: Boolean(identity),
+    enabled: reviewMode && Boolean(identity),
     queryFn: () => catalog<Entity>(libraryId, `/entities/${family}/${identity}`),
     refetchInterval: 2000,
   })
@@ -226,10 +231,16 @@ export function CatalogWorkspace({
   }
   const state = status.data
   return (
-    <main className="replica-workspace catalog-workspace">
+    <main
+      className={reviewMode ? 'replica-workspace catalog-workspace' : 'catalog-browser-workspace'}
+    >
       <header>
         <div>
-          <h1>Library catalog</h1>
+          <h1>
+            {reviewMode
+              ? 'Library catalog'
+              : (libraries.find((item) => item.id === libraryId)?.name ?? 'Library')}
+          </h1>
           <p>Authored metadata · private drafts stay on this device</p>
         </div>
         <label>
@@ -248,6 +259,22 @@ export function CatalogWorkspace({
         </label>
         <button onClick={onManage}>Manage libraries</button>
       </header>
+      <nav aria-label="Library views">
+        <button
+          disabled={!ordinaryBrowse}
+          aria-pressed={!reviewMode}
+          onClick={() => {
+            setReviewMode(false)
+            setFamily('asset_bundles')
+            setSelected(null)
+          }}
+        >
+          Bundle Browser
+        </button>
+        <button aria-pressed={reviewMode} onClick={() => setReviewMode(true)}>
+          Metadata review
+        </button>
+      </nav>
       <section aria-label="Metadata delivery status">
         <p role="status">
           {state?.blocked
@@ -272,7 +299,8 @@ export function CatalogWorkspace({
           refresh={refresh}
         />
       )}
-      {state?.media_version === 1 &&
+      {reviewMode &&
+        state?.media_version === 1 &&
         detail.data &&
         detail.data.fields.$alive?.value === 'true' &&
         ['asset_bundles', 'asset_files', 'moments', 'subtitle_tracks'].includes(family) && (
@@ -321,106 +349,134 @@ export function CatalogWorkspace({
         <CatalogFileBrowser
           library={libraryId}
           onOpen={(id) => {
+            setReviewMode(true)
             setFamily('asset_files')
             setSelected(id)
             setFileBrowser(false)
           }}
         />
       )}
-      <nav aria-label="Catalog families">
-        {Object.entries(FAMILIES).map(([name, label]) => (
-          <button
-            key={name}
-            aria-pressed={family === name}
-            onClick={() => {
-              setFamily(name)
-              setAfter('')
-              setSelected(null)
-              setCreating(false)
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <label>
-        <input
-          type="checkbox"
-          checked={deleted}
-          onChange={(event) => setDeleted(event.target.checked)}
+      {!reviewMode && state?.ready && editor && (
+        <CatalogBundleBrowser
+          library={libraryId}
+          editor={editor}
+          blocked={!state?.ready || Boolean(state?.blocked)}
+          selected={selected}
+          onSelect={setSelected}
+          onReview={() => {
+            setFamily('asset_bundles')
+            setReviewMode(true)
+          }}
+          onOpen={(id) => setMedia({ bundleId: id })}
         />
-        Include deleted objects and recovery history
-      </label>
-      <button disabled={!state?.ready || Boolean(state?.blocked)} onClick={() => setCreating(true)}>
-        Create {FAMILIES[family]}
-      </button>
-      {['tags', 'collections'].includes(family) && (
-        <button onClick={() => setSelected('_')}>Edit hierarchy and sibling order</button>
       )}
-      {page.error && <p role="alert">{page.error.message}</p>}
-      {page.isPending && <p>Loading catalog…</p>}
-      <div className="replica-layout">
-        <nav aria-label={FAMILIES[family]}>
-          {page.data?.items.map((item) => (
-            <button
-              key={item.id}
-              aria-pressed={identity === item.id}
-              onClick={() => {
-                setSelected(item.id)
-                setCreating(false)
-              }}
-            >
-              {entityLabel(item)}
-              {item.has_conflicts ? ' · Review conflict' : ''}
-            </button>
-          ))}
-          {page.data?.items.length === 0 && <p>No objects on this page.</p>}
-          {page.data?.next_cursor && (
-            <button
-              onClick={() => {
-                setAfter(page.data!.next_cursor!)
-                setSelected(null)
-              }}
-            >
-              Next objects
-            </button>
+      {!reviewMode && !state?.ready && (
+        <p role="status">
+          Waiting for complete library metadata. Retry status when the missing metadata is
+          available.
+        </p>
+      )}
+      {reviewMode && (
+        <>
+          <nav aria-label="Catalog families">
+            {Object.entries(FAMILIES).map(([name, label]) => (
+              <button
+                key={name}
+                aria-pressed={family === name}
+                onClick={() => {
+                  setFamily(name)
+                  setAfter('')
+                  setSelected(null)
+                  setCreating(false)
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <label>
+            <input
+              type="checkbox"
+              checked={deleted}
+              onChange={(event) => setDeleted(event.target.checked)}
+            />
+            Include deleted objects and recovery history
+          </label>
+          <button
+            disabled={!state?.ready || Boolean(state?.blocked)}
+            onClick={() => setCreating(true)}
+          >
+            Create {FAMILIES[family]}
+          </button>
+          {['tags', 'collections'].includes(family) && (
+            <button onClick={() => setSelected('_')}>Edit hierarchy and sibling order</button>
           )}
-          {after && (
-            <button
-              onClick={() => {
-                setAfter('')
-                setSelected(null)
-              }}
-            >
-              First objects
-            </button>
-          )}
-        </nav>
-        {creating && editor ? (
-          <CatalogCreate
-            key={`${libraryId}/${family}/${editor}`}
-            library={libraryId}
-            family={family}
-            editor={editor}
-            onDone={() => {
-              setCreating(false)
-              refresh()
-            }}
-          />
-        ) : detail.data && editor ? (
-          <CatalogEditor
-            key={`${libraryId}/${family}/${detail.data.id}/${editor}`}
-            library={libraryId}
-            entity={detail.data}
-            editor={editor}
-            blocked={!state?.ready || Boolean(state?.blocked)}
-            refresh={refresh}
-          />
-        ) : (
-          <p>Select an object to edit.</p>
-        )}
-      </div>
-      {detail.error && <p role="alert">{detail.error.message}</p>}
+          {page.error && <p role="alert">{page.error.message}</p>}
+          {page.isPending && <p>Loading catalog…</p>}
+          <div className="replica-layout">
+            <nav aria-label={FAMILIES[family]}>
+              {page.data?.items.map((item) => (
+                <button
+                  key={item.id}
+                  aria-pressed={identity === item.id}
+                  onClick={() => {
+                    setSelected(item.id)
+                    setCreating(false)
+                  }}
+                >
+                  {entityLabel(item)}
+                  {item.has_conflicts ? ' · Review conflict' : ''}
+                </button>
+              ))}
+              {page.data?.items.length === 0 && <p>No objects on this page.</p>}
+              {page.data?.next_cursor && (
+                <button
+                  onClick={() => {
+                    setAfter(page.data!.next_cursor!)
+                    setSelected(null)
+                  }}
+                >
+                  Next objects
+                </button>
+              )}
+              {after && (
+                <button
+                  onClick={() => {
+                    setAfter('')
+                    setSelected(null)
+                  }}
+                >
+                  First objects
+                </button>
+              )}
+            </nav>
+            {creating && editor ? (
+              <CatalogCreate
+                key={`${libraryId}/${family}/${editor}`}
+                library={libraryId}
+                family={family}
+                editor={editor}
+                onDone={() => {
+                  setCreating(false)
+                  refresh()
+                }}
+              />
+            ) : detail.data && editor ? (
+              <CatalogEditor
+                key={`${libraryId}/${family}/${detail.data.id}/${editor}`}
+                library={libraryId}
+                entity={detail.data}
+                editor={editor}
+                blocked={!state?.ready || Boolean(state?.blocked)}
+                refresh={refresh}
+              />
+            ) : (
+              <p>Select an object to edit.</p>
+            )}
+          </div>
+          {detail.error && <p role="alert">{detail.error.message}</p>}
+        </>
+      )}
     </main>
   )
 }

@@ -111,6 +111,48 @@ recovery. **Saved operations** recovers a prepared review after a lost response,
 reload or restart. The indexed File Browser shows cataloged paths beneath the active
 root; it does not browse arbitrary server paths or prove local media availability.
 
+## Ordinary browse and edit boundary
+
+Ordinary Open registers an existing complete synthetic package. A server with
+`browse_version: 1` opens the shared virtual Bundle Browser and shared title,
+ordered-note and star-rating controls. Save changes commits the retained causal
+request. Input remains editable while a save is pending. Its acknowledgement
+advances only saved fields; newer input and unrelated draft bases remain intact.
+An uncertain response keeps the exact operation for Retry save, including after a
+library switch. An already observed conflict requires explicit metadata review.
+
+| Surface | Current route and capability | Remaining integration |
+| --- | --- | --- |
+| Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse` | Covers, technical facts, other system views, multi-selection actions, albums and collection navigation |
+| Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
+| Sort and filters | Title, rating and date-added sorts; stable ID ties | Structured filters, facets and Smart Collection execution are visibly unavailable; unsupported request fields/sorts return 422 |
+| Inspector | Shared title, note boxes and half-star control; durable `/replica/catalog/jobs` saves | Tag/collection pickers, file details and the remaining inspector actions use metadata review |
+| Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
+| File Browser | Existing paginated `/replica/catalog/files` beneath the library root | Ordinary physical File Browser integration and local availability presentation |
+| Update/media | Existing discovery controls and shared viewer | Source writes, provider hydration and cross-device resume remain unavailable |
+
+Search has the same token-prefix AND contract as legacy bundle search. It includes
+bundle titles, ordered bundle notes, file notes and moment comments. Filenames,
+paths, origins, tags and collection names are excluded. Empty bundles are eligible;
+unconfirmed scan suggestions and bundles with only hidden files are excluded.
+The count, search and order apply before the bounded page. Competing values remain
+in review; search follows the valid local projection. No source file is inspected
+by a browse request. Unknown size and availability are not reported as measured facts.
+
+The query adapter reads the private projection; it does not open a legacy ORM
+session. The strict request accepts only `q`, `sort`, `order`, `offset` and `limit`.
+A private derived search index follows projection insert/delete operations in the
+same transaction. Older stores build the index in bounded startup batches;
+backup schema validation accepts the complete old or new schema. Recovery rebuilds
+it from the validated projection. The index never enters shared history.
+
+Single selection supports pointer, arrow keys, Home/End and Enter to open media.
+Notes retain exact list values; arrow keys on each reorder control move a note.
+Metadata review retains the all-family controls, saved jobs and deleted objects.
+Older servers without the browse capability keep those catalog controls. Legacy
+library queries and mutations retain their existing routes and behavior.
+
 ## Local media
 
 The server advertises `media_version: 1` for complete catalogs. **Open media on this

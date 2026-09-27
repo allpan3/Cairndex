@@ -83,7 +83,7 @@ function ConflictNotice({ error }: { error: unknown }) {
 }
 
 /** Bundle title textarea that grows with wrapped content and inspector width. */
-function BundleTitleEditor({
+export function BundleTitleEditor({
   value,
   onChange,
   onCommit,
@@ -649,7 +649,8 @@ const MIN_NOTE_HEIGHT = 34
  * resize grip; once a manual height is set (shared across all note boxes and
  * persisted) it becomes a fixed box with a scrollbar when the text overflows.
  * Double-clicking the grip returns to auto-fit. */
-function NoteBox({
+export function NoteBox({
+  keyboardReorderOnly = false,
   value,
   index,
   count,
@@ -665,6 +666,7 @@ function NoteBox({
   onDragEnd,
   onMoveBy,
 }: {
+  keyboardReorderOnly?: boolean
   value: string
   index: number
   count: number
@@ -832,7 +834,7 @@ function NoteBox({
         <button
           type="button"
           className="note-drag"
-          onPointerDown={startReorder}
+          onPointerDown={keyboardReorderOnly ? undefined : startReorder}
           onKeyDown={(event) => {
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
             event.preventDefault()
@@ -840,7 +842,7 @@ function NoteBox({
           }}
           aria-label={`Reorder note ${index + 1}`}
           aria-keyshortcuts="ArrowUp ArrowDown"
-          title="Drag to reorder"
+          title={keyboardReorderOnly ? 'Use arrow keys to reorder' : 'Drag to reorder'}
         >
           <IconGrip />
         </button>

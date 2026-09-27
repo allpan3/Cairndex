@@ -22,6 +22,7 @@ def schema(db: sqlite3.Connection) -> dict[str, str]:
 @lru_cache
 def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog import projection, storage
+    from cairndex.replicas.catalog.browse import INDEX_SCHEMA
     from cairndex.replicas.discovery_state import SCHEMA as discovery_schema
     from cairndex.replicas.media import SCHEMA as media_schema
     from cairndex.replicas.store import SCHEMA
@@ -53,6 +54,13 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
                     "ALTER TABLE catalog_cohorts ADD COLUMN cohort TEXT NOT NULL DEFAULT 'legacy'"
                 )
                 results.append(schema(expected))
+    if catalog:
+        with closing(sqlite3.connect(":memory:")) as expected:
+            expected.executescript(projection.SCHEMA)
+            before = schema(expected)
+            expected.executescript(INDEX_SCHEMA)
+            addition = {name: sql for name, sql in schema(expected).items() if name not in before}
+        results.extend([item | addition for item in results.copy()])
     return tuple(results)
 
 

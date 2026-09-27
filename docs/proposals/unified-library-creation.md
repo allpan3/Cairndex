@@ -56,8 +56,11 @@ root relocation, private-store recovery or historical-client qualification.
 
 ## Remaining product gates
 
-- Integrate ordinary Bundle Browser, search/filter and File Browser behavior;
-  retain the existing all-family conflict and discovery controls.
+- Complete ordinary collection navigation, structured filters, File Browser and
+  remaining inspector actions. Existing complete synthetic packages support the
+  shared Bundle Browser, full-catalog free text and title/note/rating controls; see
+  the [capability inventory](../replica-catalog.md#ordinary-browse-and-edit-boundary).
+  Retain the existing all-family conflict and discovery controls.
 - Define passphrase access for private stores, including protected legacy
   upgrades and explicit setup on each new server. Credentials must not enter
   synchronized content. An ADR-0010 amendment is required.

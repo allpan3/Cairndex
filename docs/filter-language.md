@@ -26,6 +26,12 @@ merely by opening it. Tag/collection IDs inside predicates retain query-literal
 semantics rather than foreign-key lifetime guards: deleting a target does not
 rewrite the filter, and an absent target matches no direct membership.
 
+Ordinary replica browse supports free text and title/rating/date-added sorting.
+Structured filter and facet execution is not yet connected. The toolbar marks
+filters unavailable; the strict browse request rejects filter/view fields and
+unsupported sorts instead of applying a partial expression. Stored Smart Collection
+expressions remain available unchanged through Metadata review.
+
 ## Goals
 
 - One canonical, versioned, JSON-serializable filter AST used by **both**

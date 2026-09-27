@@ -67,6 +67,12 @@ resume and cursors stay private, and source generations fence bytes, caches,
 subprocess inputs and progress. Playlist reads touch metadata only; selected-file
 probes are bounded. [Local media](replica-catalog.md#local-media) defines the limits.
 
+The ordinary browse adapter uses private FTS5 and indexed catalog rows, with SQL
+search/count/order before bounded pagination. It reuses the shared virtual browser
+and scalar inspector controls. Causal job receipts advance only acknowledged field
+bases; pending requests and newer drafts remain separate. Complete conflict review
+retains its existing controls. Legacy ORM mutation paths remain fenced.
+
 The API and shared app select the advertised capability. Replica packages never
 open legacy content/lease/source-write paths. The [catalog workflow](replica-catalog.md)
 and [migration contract](replica-migration.md) define wire limits, schema inventory,

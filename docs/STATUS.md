@@ -11,6 +11,57 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Ordinary browsing for synthetic portable libraries
+
+On `fix/library-ownership-lifecycle`, existing complete synthetic packages open
+in the shared Bundle Browser. The private catalog adapter supplies complete
+free-text search, SQL pagination, title/rating/date-added sorting and single
+selection. Shared title, ordered-note and rating controls save through causal
+jobs. Search includes bundle titles, bundle/file notes and moment comments.
+It excludes hidden-only bundles and unconfirmed scan suggestions, and includes
+empty bundles. No browse request inspects source files.
+
+Each pending save retains its exact request and operation ID. Lost responses and
+library switches preserve retry identity. A save receipt advances only its own
+fields; newer input and unrelated draft bases remain intact. An observed conflict
+requires explicit Metadata review. A pending save cannot be discarded or replaced
+by another retained draft until its result is known. Shared catalog polling checks
+the original request scope before each delayed request.
+
+The [capability inventory](replica-catalog.md#ordinary-browse-and-edit-boundary)
+records the remaining work. Structured filters, collection/tag navigation,
+ordinary File Browser integration, covers, technical facts, multi-selection actions
+and the remaining inspector controls are incomplete. Existing all-family review,
+discovery and local media controls remain available. Default Create, real-library
+conversion, provider qualification and source writes are outside this scope.
+The next coherent group is collection/tag navigation and structured query
+integration; ordinary File Browser integration remains a separate group.
+
+A separate production macOS app with its own identifier opened a synthetic
+package through Manage libraries. Native search and selection worked. Two notes
+saved in sequence survived restart. Title and rating changes also saved; the
+private database contained all four expected values. The compact toolbar and
+inspector were visually checked. The registration, fixture and separate app data
+were removed. The installed app and owner libraries were not changed.
+The packaged backend HTTP/media smoke test, license payload check and strict
+recursive code-signature check pass. No Rust source changed; full Rust-only gates
+were not run. This evidence does not qualify providers, NAS or large-library use.
+
+The separate test-only commits `4ef7f76f`, `3b10f10d` and `48c39056` remove fixed
+worker-step assumptions from discovery tests. They retain exact outcome, recovery,
+conflict and source-byte assertions. All **31 focused backend tests** pass. Backend
+lint, formatting, type checking and generated API comparison pass. The full run
+passed 1,805 tests and skipped one ffmpeg filter test; its remaining scan-timing
+failure is corrected and passes in the focused group.
+
+The frontend gate passes **1,253 tests**, lint, formatting, type checking and the
+production build. Both new real-server browser tests pass on the final code.
+The complete browser run passed 209 tests; the remaining large discovery test
+passes with a 60-second completion limit. Its 201-file partial-acceptance and
+source-byte assertions remain intact. Full backend and browser reruns are in
+progress for the final checkpoint. The synthetic browser screenshot is visually
+checked and remains outside Git.
+
 ## Synthetic empty-library creation
 
 On `fix/library-ownership-lifecycle`, the owner-approved first creation scope
@@ -21,12 +72,12 @@ descriptor is published last. Conflicting bytes and changed directory identities
 stop creation without overwriting them. No legacy DB is created or converted.
 
 Ordinary Create retains `cairndex.library`; `CONVERSION_AVAILABLE = False`.
-No new endpoint, schema, API artifact or UI is introduced. The
+This creator uses the developer fixture interface. The
 [creation contract](proposals/unified-library-creation.md) distinguishes this
 synthetic implementation from the proposed default. Provider/SMB publication,
 ordinary UI parity, access guards, source operations and real conversion remain
-open. The next scope is an ordinary UI integration proposal with an explicit
-capability inventory, before any change to the default creation format. Desktop
+open. The ordinary integration above supplies the first browse/edit scope and
+records the remaining capabilities before any default format change. Desktop
 OS drag and the other owner-deferred work remain paused.
 
 Verification includes **23 creation tests** and source-sidecar registration,

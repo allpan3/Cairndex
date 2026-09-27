@@ -1308,6 +1308,136 @@
         "title": "Candidate",
         "type": "object"
       },
+      "CatalogBrowsePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogBundleSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "CatalogBrowsePage",
+        "type": "object"
+      },
+      "CatalogBrowseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          },
+          "sort": {
+            "default": "title",
+            "enum": [
+              "title",
+              "rating",
+              "date_added"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        "title": "CatalogBrowseRequest",
+        "type": "object"
+      },
+      "CatalogBundleSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "date_added": {
+            "format": "date-time",
+            "title": "Date Added",
+            "type": "string"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "grouping_state": {
+            "$ref": "#/components/schemas/GroupingState"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rating",
+          "file_count",
+          "date_added",
+          "grouping_state"
+        ],
+        "title": "CatalogBundleSummary",
+        "type": "object"
+      },
       "CatalogCandidate": {
         "additionalProperties": false,
         "properties": {
@@ -7059,6 +7189,17 @@
               }
             ],
             "title": "Blocked"
+          },
+          "browse_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browse Version"
           },
           "catalog_version": {
             "anyOf": [
@@ -22061,6 +22202,90 @@
         "summary": "History",
         "tags": [
           "replicas"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/browse": {
+      "post": {
+        "operationId": "browse_bundles_api_v1_libraries__library_id__replica_catalog_bundles_browse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogBrowseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBrowsePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Bundles",
+        "tags": [
+          "replica-catalog"
         ]
       }
     },

@@ -110,6 +110,7 @@ test('replica media keeps local availability, playback and exchange independent 
     for (let index = 0; index < pages.length; index++) {
       await proxyApi(pages[index], backends[index].baseUrl)
       await pages[index].goto('/')
+      await pages[index].getByRole('button', { name: 'Metadata review', exact: true }).click()
       await expect(
         pages[index].getByRole('heading', { name: 'Library catalog', exact: true }),
       ).toBeVisible()

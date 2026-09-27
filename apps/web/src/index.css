@@ -7623,3 +7623,92 @@ code {
   font: inherit;
   color: var(--text-strong);
 }
+
+.catalog-bundle-browser {
+  display: flex;
+  flex: 1;
+  min-height: 400px;
+  height: 65vh;
+}
+.catalog-bundle-browser > .center {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-bundle-browser > .inspector {
+  width: 300px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.catalog-capabilities {
+  font-size: 12px;
+  padding: 0 12px;
+  color: var(--text-muted);
+}
+
+.catalog-browser-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  gap: 6px;
+}
+.catalog-browser-workspace > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.catalog-browser-workspace > header > div {
+  flex: 1;
+}
+.catalog-browser-workspace h1 {
+  font-size: 16px;
+  margin: 0;
+}
+.catalog-browser-workspace > header p {
+  display: none;
+}
+.catalog-browser-workspace > header label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.catalog-browser-workspace > section[aria-label='Metadata delivery status'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.catalog-browser-workspace > section[aria-label='Metadata delivery status'] p {
+  margin: 0;
+}
+.catalog-browser-workspace > :is(header, nav, section) button,
+.catalog-browser-workspace > button,
+.catalog-browser-workspace select {
+  background: var(--bg-raised);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.catalog-browser-workspace > button {
+  align-self: start;
+}
+.catalog-browser-workspace > nav {
+  display: flex;
+  gap: 6px;
+}
+.catalog-browser-workspace .catalog-bundle-browser {
+  flex: 1;
+  min-height: 300px;
+  height: auto;
+}
+.catalog-bundle-browser .inspector p {
+  margin: 8px 12px;
+}
+.catalog-bundle-browser .inspector > .btn {
+  margin: 4px 8px;
+}

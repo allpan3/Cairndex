@@ -94,9 +94,11 @@ export function useCatalogDraft<T extends object>(
   async function discard() {
     if (envelope)
       await catalog(library, `/drafts/${envelope.id}?revision=${envelope.revision}`, 'DELETE')
-    localStorage.removeItem(key)
-    latest.current = null
-    setEnvelope(null)
+    if (latest.current === envelope) {
+      localStorage.removeItem(key)
+      latest.current = null
+      setEnvelope(null)
+    }
     void copies.refetch()
   }
   useEffect(() => {

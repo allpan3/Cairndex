@@ -153,6 +153,12 @@ same HTTP/CLI acceptance against source sidecars or the executable selected by
 separate real server and browser and recovers received drafts through the shared
 app. All fixtures are disposable and use invented metadata.
 
+`tests/test_catalog_browse.py` checks full-catalog search, eligible populations,
+strict request limits, competing projections and index upgrade/rollback.
+`e2e/catalog-browse.spec.ts` uses independent real servers and same-server clients
+for ordinary browse/edit, continued input, delayed delivery, conflict choices,
+lost acknowledgements and library switching. The fixtures are disposable.
+
 ## Isolated cloud metadata prototype
 
 The disposable experiment under `apps/server/prototypes/cloud_metadata` is not

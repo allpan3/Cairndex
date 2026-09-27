@@ -14,6 +14,12 @@ version 1 uses private `events`, `revisions`, `bundles`, inbox/outbox receipts a
 drafts. Version 2 adds `catalog_units`, indexed active revisions, authored rows,
 placements, reverse references, unique keys, candidate/projected ownership claims,
 causal parent/frontier indexes, linked parts, conflict holds and durable jobs.
+The private derived `catalog_search` FTS5 index and `catalog_search_source` view
+serve complete bundle free text. Projection triggers maintain title, bundle/file
+notes and moment comments in the same transaction. Expression indexes support
+file ownership and moment lookup. These objects contain no additional authored
+authority and are reconstructed during private recovery.
+
 The complete seed plus immutable edits reconstruct authored metadata. Private
 materialization is transactional and readers retain the last committed valid view.
 
