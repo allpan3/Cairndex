@@ -8,6 +8,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Internal
+
+- Record production macOS inspector verification with isolated synthetic data,
+  controlled delayed acknowledgements and peer conflicts. Native video pixel
+  verification remains incomplete because the capture returned black frames.
+  Library creation and conversion gates remain unchanged.
+
 ### Fixed
 
 - The bundle metadata editor ignores obsolete draft responses during save or

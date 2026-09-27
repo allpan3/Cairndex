@@ -11,6 +11,81 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Production macOS inspector verification
+
+Verified source: `2c2291fc` on `fix/library-ownership-lifecycle`, including inspector
+implementation `f7874ce6`. The normal production app and an isolated app identifier
+were built from this source. The test app used the same production interface and
+packaged backend. No application source change was needed.
+
+Observed in the native app with disposable synthetic data:
+
+- Open, collection/tag navigation, a structured rating filter and bundle selection.
+- Explicit tag/collection Add and Remove reviews. Collection removal showed the
+  dependent cover clear before Apply. An independent store confirmed the clear.
+- Unsaved notes survived membership reviews, File Browser navigation and viewer
+  return. File selection survived closing the viewer.
+- A selected video cover survived app restart. The separate unsaved note remained
+  available through Recover private draft. Clearing the cover restored the expected
+  image thumbnail. The image also rendered in the guarded viewer.
+- Image dimensions and video dimensions/duration matched the generated media.
+  Missing bytes removed measured facts and showed an unavailable state. Retry
+  recovered after the same bytes returned; catalog identity remained intact.
+- A loopback test proxy held a successful packaged-backend save receipt while a
+  second note was entered. Releasing it showed Saved here with the newer draft
+  retained. The second save persisted both notes without a conflict.
+- An independent private store supplied a competing title. The native save required
+  Metadata review, which retained both values and applied an explicit choice.
+  A peer file deletion during a cover draft also required review; the valid cover
+  remained unset, notes survived and source bytes remained unchanged.
+
+Video time advanced and native diagnostics reported presented frames, with no media
+error. Captures showed black video pixels. Computer use also returned intermittent
+ScreenCaptureKit errors `-3811`, `-3812` and `noWindowsAvailable`; fresh accessibility
+reads permitted the remaining checks. This evidence does not establish continuous
+native video rendering or a source-code cause for the black capture. No owner-media
+playback diagnosis was attempted.
+
+The production web/app builds, strict recursive signatures, configured sidecar
+signature and distribution license checks pass. The packaged backend HTTP/media
+smoke test passes from the server directory. The disposable Keychain signing test
+passes and restores the original search list. Gatekeeper rejects the ad-hoc app,
+as expected for the documented distribution model. The focused backend run passes
+**30 tests**; the focused real-server browser run passes **4 tests**, with two
+workers and zero retries. These browser tests separately verify delayed receipts,
+peer conflict review, navigation and inspector behavior. The earlier full source
+gates below were not repeated: application source did not change. Rust-only gates,
+Ubuntu builds, DMG packaging and provider/storage qualification were not run.
+
+Test app registration, profile, packages and private stores were removed. The
+installed app was registered again after test URL-handler cleanup. All **123**
+baseline file hashes for the installed app, owner app state and signing configuration
+remain unchanged. Private receipts stay outside Git. No push, PR, tag, release,
+installed-app replacement or credential-grant change is part of this verification.
+
+Before normal new-library activation, the remaining work is:
+
+1. Complete or explicitly defer the ordinary interface gaps in the capability
+   inventory: multi-selection actions, other system views and albums.
+2. Define private-store access guards and provide normal backup/recovery controls.
+   Production creation must also cover directory adoption, retained creation intent
+   and recovery outside the disposable fixture entry point.
+3. Qualify the selected activation baseline with packaged acceptance, supported
+   historical clients, multi-server routing, private recovery, supported storage
+   publication and representative performance. Provider support needs its own
+   disposable-library tests.
+4. Retain explicit gates for legacy upgrades and source operations. Any required
+   parity needs implementation or an owner-approved deferral before activation;
+   existing libraries must not convert automatically.
+
+The next coherent implementation group is ordinary catalog selection and system
+views, with retained causal requests for any included metadata actions. Its exact
+action set needs scope approval. Albums, file note/source controls, cross-device
+resume and history compaction remain separate. OS drag and folder pagination stay
+owner-deferred. NAS upgrade/missing-library repair and owner-media playback diagnosis
+remain outside this work. Ordinary Create remains legacy; real conversion and
+source-write synchronization remain unavailable.
+
 ## Ordinary inspector controls and local file details
 
 Implementation checkpoint: `f7874ce6` on `fix/library-ownership-lifecycle`,
@@ -48,8 +123,9 @@ history retain Metadata review. File note/source controls remain deferred.
 Multi-selection, other system views, albums, access guards, backup UI parity,
 upgrades and source-write synchronization remain separate work. Default Create,
 real conversion, providers, NAS and large-library use are not qualified. Desktop
-file integration remains paused. No native build or installed-app replacement is
-part of this shared client/server scope. No publication is part of this task.
+file integration remains paused. Native verification is recorded above; the source
+implementation checkpoint did not include it. No installed-app replacement or
+publication is part of either scope.
 
 ## Earlier combined ordinary interface integration
 

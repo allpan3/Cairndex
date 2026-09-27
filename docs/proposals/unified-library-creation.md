@@ -56,9 +56,11 @@ root relocation, private-store recovery or historical-client qualification.
 
 ## Remaining product gates
 
-- Qualify ordinary collection navigation, structured filters, File Browser and
-  remaining inspector actions. Existing complete synthetic packages support the
-  shared Bundle Browser, full-catalog free text and title/note/rating controls; see
+- Complete or explicitly defer the remaining ordinary interface capabilities.
+  Existing complete synthetic packages support collection/tag navigation,
+  structured filters, File Browser, title/note/rating controls, membership reviews,
+  covers and local file details. Multi-selection actions, other system views and
+  albums remain separate work; see
   the [capability inventory](../replica-catalog.md#ordinary-browse-and-edit-boundary).
   Retain the existing all-family conflict and discovery controls.
 - Define passphrase access for private stores, including protected legacy
