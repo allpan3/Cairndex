@@ -344,7 +344,11 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
         builder = Preview(store, db)
         action = command.get("action")
         recover = command.get("recover", False)
-        if action == "membership":
+        if action == "bulk":
+            from cairndex.replicas.catalog.selection import bulk
+
+            recover = bulk(builder, command)
+        elif action == "membership":
             recover = builder.membership(command)
         elif action == "delete":
             builder.delete(command["family"], command["entity"])

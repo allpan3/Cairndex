@@ -8,6 +8,8 @@ import { Toolbar } from './Toolbar'
 import { DEFAULT_PREFS, type Selection } from './types'
 import { type AdHocFilters, adHocFiltersToExpression } from './adHocFilters'
 import { useCollections } from '../api/hooks'
+import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
+import { selectionRange, type SelectionModifiers } from './selection'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -16,11 +18,14 @@ const supportedSorts: BundleSort[] = ['title', 'rating', 'date_added']
 // The shared virtual listing and inspector controls receive catalog reads and causal saves.
 export function CatalogBundleBrowser({
   library,
+  locateRequest,
   selection,
   filters,
   onFilters,
   editor,
   inspectorEnabled,
+  selectionEnabled,
+  systemViewsEnabled,
   blocked,
   selected,
   onSelect,
@@ -29,10 +34,13 @@ export function CatalogBundleBrowser({
   onOpenFile,
 }: {
   library: string
+  locateRequest: number
   filters: AdHocFilters
   onFilters: (filters: AdHocFilters) => void
   selection: Selection
   editor: string
+  selectionEnabled: boolean
+  systemViewsEnabled: boolean
   inspectorEnabled: boolean
   blocked: boolean
   selected: string | null
@@ -60,6 +68,8 @@ export function CatalogBundleBrowser({
   const [order, setOrder] = useState<SortOrder>('asc')
   const activeSort = selection.view === 'recent' ? 'date_added' : sort
   const activeOrder = selection.view === 'recent' && sort !== 'date_added' ? 'desc' : order
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const navigation = useRef<BrowserNavigation>(null)
   useEffect(() => {
@@ -75,12 +85,14 @@ export function CatalogBundleBrowser({
       order,
       selection,
       includeDescendants,
+      seed,
       expression,
     ],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<Page>(library, '/bundles/browse', 'POST', {
         q: query,
+        ...(systemViewsEnabled ? { seed } : {}),
         view: selection.view,
         collection_id: selection.collectionId,
         include_descendants: includeDescendants,
@@ -131,10 +143,73 @@ export function CatalogBundleBrowser({
       ) ?? [],
     [browse.data],
   )
+  const scope = JSON.stringify([
+    library,
+    query,
+    sort,
+    order,
+    selection,
+    includeDescendants,
+    expression,
+    seed,
+  ])
+  const [picked, setPicked] = useState({
+    scope,
+    ids: new Set(selected ? [selected] : []),
+    active: selected,
+    anchor: selected,
+  })
+  const outgoing = useRef(selected)
+  const lastLocate = useRef(locateRequest)
+  if (picked.scope !== scope) setPicked({ scope, ids: new Set(), active: null, anchor: null })
+  useEffect(() => {
+    if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
+      lastLocate.current = locateRequest
+      outgoing.current = selected
+      setPicked((current) => ({
+        ...current,
+        ids: new Set(selected ? [selected] : []),
+        active: selected,
+        anchor: selected,
+      }))
+      setBulkOpen(false)
+    }
+  }, [selected, locateRequest])
+  const selectedIds = picked.scope === scope ? picked.ids : new Set<string>()
+  const active = picked.scope === scope ? picked.active : null
+  const single = selectedIds.size === 1 ? [...selectedIds][0]! : null
+  function select(id: string, modifiers: SelectionModifiers) {
+    let ids = new Set([id])
+    if (selectionEnabled && modifiers.shiftKey) {
+      ids = selectionRange(
+        items.map((item) => item.id),
+        picked.anchor,
+        id,
+        modifiers.metaKey || modifiers.ctrlKey ? selectedIds : undefined,
+      )
+    } else if (selectionEnabled && (modifiers.metaKey || modifiers.ctrlKey)) {
+      ids = new Set(selectedIds)
+      if (ids.has(id)) ids.delete(id)
+      else ids.add(id)
+    }
+    setPicked({ scope, ids, active: id, anchor: modifiers.shiftKey ? picked.anchor : id })
+    outgoing.current = id
+    onSelect(id)
+    setBulkOpen(ids.size > 1)
+  }
+  function many(ids: string[]) {
+    const active = ids.at(-1) ?? null
+    setPicked({ scope, ids: new Set(ids), active, anchor: active })
+    if (active) {
+      outgoing.current = active
+      onSelect(active)
+    }
+    setBulkOpen(ids.length > 1)
+  }
   const detail = useQuery({
-    queryKey: ['catalog-detail', library, 'asset_bundles', selected],
-    enabled: Boolean(selected),
-    queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${selected}`),
+    queryKey: ['catalog-detail', library, 'asset_bundles', single],
+    enabled: Boolean(single),
+    queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
     refetchInterval: 2000,
   })
   const changeSort = (next: BundleSort, direction: SortOrder) => {
@@ -155,19 +230,33 @@ export function CatalogBundleBrowser({
       className="catalog-bundle-browser"
       onKeyDown={(event) => {
         if (!(event.target as HTMLElement).closest('[role="listbox"]')) return
+        if (
+          selectionEnabled &&
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === 'a'
+        ) {
+          event.preventDefault()
+          many(items.map((item) => item.id))
+          setNotice('Selected loaded bundles. Load more bundles to extend the selection.')
+          return
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          many([])
+          return
+        }
         let next: string | null = null
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp')
-          next =
-            navigation.current?.step(selected, event.key === 'ArrowDown' ? 'down' : 'up') ?? null
+          next = navigation.current?.step(active, event.key === 'ArrowDown' ? 'down' : 'up') ?? null
         if (event.key === 'Home') next = items[0]?.id ?? null
         if (event.key === 'End') next = items.at(-1)?.id ?? null
-        if (event.key === 'Enter' && selected) {
+        if (event.key === 'Enter' && single) {
           event.preventDefault()
-          onOpen(selected)
+          onOpen(single)
         }
         if (next) {
           event.preventDefault()
-          onSelect(next)
+          select(next, event)
           navigation.current?.focus(next)
         }
       }}
@@ -189,7 +278,11 @@ export function CatalogBundleBrowser({
                     ? 'Uncategorized'
                     : selection.view === 'untagged'
                       ? 'Untagged'
-                      : 'Recently added'
+                      : selection.view === 'random'
+                        ? 'Random'
+                        : selection.view === 'missing'
+                          ? 'Missing Files'
+                          : 'Recently added'
           }
           total={browse.data?.pages[0]?.total ?? 0}
           search={search}
@@ -199,6 +292,11 @@ export function CatalogBundleBrowser({
           sort={activeSort}
           order={activeOrder}
           onSort={changeSort}
+          onReshuffle={
+            selection.view === 'random'
+              ? () => setSeed(Math.floor(Math.random() * 2147483647))
+              : undefined
+          }
           allowedSorts={selection.view === 'recent' ? ['date_added'] : supportedSorts}
           perCollectionSort={false}
           onPerCollectionSort={() =>
@@ -218,6 +316,20 @@ export function CatalogBundleBrowser({
           File size and availability are unknown in bundle filters. Open Files or media to check
           local bytes.
         </p>
+        {!selectionEnabled && (
+          <p>Update the server to use multiple selection and bulk metadata changes.</p>
+        )}
+        {selectionEnabled && (
+          <button className="btn catalog-bulk-open" onClick={() => setBulkOpen(true)}>
+            Bulk changes ({selectedIds.size})
+          </button>
+        )}
+        {selection.view === 'missing' && (
+          <p>
+            Last recorded local checks found unavailable files in these bundles. Unknown files are
+            excluded. Open file details to check again.
+          </p>
+        )}
         {selection.collectionId && (
           <label>
             <input
@@ -238,7 +350,7 @@ export function CatalogBundleBrowser({
         <Browser
           navigationRef={navigation}
           unavailableSize
-          singleSelection
+          singleSelection={!selectionEnabled}
           items={items}
           total={browse.data?.pages[0]?.total ?? 0}
           layout={prefs.layout}
@@ -246,12 +358,10 @@ export function CatalogBundleBrowser({
           sort={activeSort}
           order={activeOrder}
           onSort={changeSort}
-          selectedIds={new Set(selected ? [selected] : [])}
-          activeId={selected}
-          onSelect={(id) => onSelect(id)}
-          onMarqueeSelect={(ids) => {
-            if (ids[0]) onSelect(ids[0])
-          }}
+          selectedIds={selectedIds}
+          activeId={active}
+          onSelect={select}
+          onMarqueeSelect={many}
           onOpen={onOpen}
           onContextMenu={(_, event) => {
             event.preventDefault()
@@ -266,9 +376,19 @@ export function CatalogBundleBrowser({
           searchQuery={query}
         />
       </div>
-      {detail.data && detail.data.fields.$alive?.value === 'true' ? (
+      {bulkOpen && selectionEnabled ? (
+        <CatalogMultiBundleInspector
+          key={`${library}/${editor}`}
+          library={library}
+          editor={editor}
+          ids={[...selectedIds].sort()}
+          blocked={blocked}
+          onReview={onReview}
+          onClose={() => setBulkOpen(false)}
+        />
+      ) : detail.data && detail.data.fields.$alive?.value === 'true' ? (
         <CatalogBundleInspector
-          key={`${library}/${selected}/${editor}`}
+          key={`${library}/${single}/${editor}`}
           library={library}
           entity={detail.data}
           editor={editor}
@@ -284,7 +404,7 @@ export function CatalogBundleBrowser({
           <p>
             {detail.error
               ? 'Bundle details are unavailable.'
-              : selected
+              : single
                 ? 'Waiting for bundle details. Deleted objects remain in metadata review.'
                 : 'Select a bundle to see its details.'}
           </p>

@@ -67,6 +67,13 @@ resume and cursors stay private, and source generations fence bytes, caches,
 subprocess inputs and progress. Playlist reads touch metadata only; selected-file
 probes are bounded. [Local media](replica-catalog.md#local-media) defines the limits.
 
+Bulk catalog reads use explicit bounded bundle IDs and retain displayed field,
+lifetime and membership bases. Background previews prepare one causal transaction;
+the client retains its exact targets and retry identity until the receipt is known.
+Random ordering uses a seed with stable IDs. Missing Files reads recorded private
+unavailable observations. Unbundled reads authored provisional files with bounded
+pages. These query paths do not inspect source bytes or add shared local facts.
+
 The ordinary browse adapter uses private FTS5 and indexed catalog rows, with SQL
 search/count/order before bounded pagination. It reuses the shared virtual browser
 and scalar inspector controls. Causal job receipts advance only acknowledged field

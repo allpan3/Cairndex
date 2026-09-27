@@ -11,6 +11,29 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Ordinary catalog multi-selection and system views
+
+Branch: `fix/library-ownership-lifecycle`, based on `ff132e6b`.
+Complete synthetic catalogs provide reviewed bulk title/rating and tag/collection
+Add/Remove controls. Selection uses the shared pointer, keyboard and marquee
+behavior. Cmd/Ctrl+A selects loaded pages only; query changes clear active selection.
+Each retained review keeps its original IDs and causal bases. The server prepares
+one atomic metadata transaction for at most 100 bundles, with collection-cover
+clearing included. Lost responses retain exact retry identities; scalar drafts
+remain separate. Old servers keep the supported single-selection interface.
+
+Random has stable seeded order across pages and projection changes. Missing Files
+uses last recorded private unavailable observations; unobserved state stays unknown.
+Unbundled lists authored provisional scan files with bounded pages and path search.
+Replica Update candidates remain in their private grouping review until acceptance.
+These views do not inspect source bytes. Recently Used needs a separate private
+usage contract; Trash needs the deferred source-operation contract.
+
+Validation is in progress. Tests use disposable synthetic catalogs only. Native,
+provider, NAS and representative-scale qualification are not part of this change.
+Albums, file note/source controls, cross-device resume, normal replica creation,
+real conversion and source writes remain outside this implementation.
+
 ## Production macOS inspector verification
 
 Verified source: `2c2291fc` on `fix/library-ownership-lifecycle`, including inspector
@@ -66,7 +89,7 @@ installed-app replacement or credential-grant change is part of this verificatio
 Before normal new-library activation, the remaining work is:
 
 1. Complete or explicitly defer the ordinary interface gaps in the capability
-   inventory: multi-selection actions, other system views and albums.
+   inventory: albums and the documented Recently Used/Trash boundaries.
 2. Define private-store access guards and provide normal backup/recovery controls.
    Production creation must also cover directory adoption, retained creation intent
    and recovery outside the disposable fixture entry point.
@@ -78,9 +101,8 @@ Before normal new-library activation, the remaining work is:
    parity needs implementation or an owner-approved deferral before activation;
    existing libraries must not convert automatically.
 
-The next coherent implementation group is ordinary catalog selection and system
-views, with retained causal requests for any included metadata actions. Its exact
-action set needs scope approval. Albums, file note/source controls, cross-device
+Ordinary catalog selection and system views are described above.
+Albums, file note/source controls, cross-device
 resume and history compaction remain separate. OS drag and folder pagination stay
 owner-deferred. NAS upgrade/missing-library repair and owner-media playback diagnosis
 remain outside this work. Ordinary Create remains legacy; real conversion and

@@ -2729,6 +2729,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Selected Bundles */
+        post: operations["selected_bundles_api_v1_libraries__library_id__replica_catalog_bundles_selection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Selected Memberships */
+        post: operations["selected_memberships_api_v1_libraries__library_id__replica_catalog_bundles_selection_memberships_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/memberships/{family}": {
         parameters: {
             query?: never;
@@ -2876,6 +2910,23 @@ export interface paths {
         get: operations["files_api_v1_libraries__library_id__replica_catalog_files_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unbundled Files */
+        post: operations["unbundled_files_api_v1_libraries__library_id__replica_catalog_files_unbundled_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3967,6 +4018,11 @@ export interface components {
              * @default
              */
             q: string;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
             /** Smart Collection Id */
             smart_collection_id?: string | null;
             /**
@@ -3980,7 +4036,54 @@ export interface components {
              * @default all
              * @enum {string}
              */
-            view: "all" | "uncategorized" | "untagged" | "recent";
+            view: "all" | "uncategorized" | "untagged" | "recent" | "random" | "missing";
+        };
+        /** CatalogBulkMembershipChoice */
+        CatalogBulkMembershipChoice: {
+            /** Assigned Count */
+            assigned_count: number;
+            /** Held */
+            held: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+        };
+        /** CatalogBulkMembershipPage */
+        CatalogBulkMembershipPage: {
+            /** Items */
+            items: components["schemas"]["CatalogBulkMembershipChoice"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CatalogBulkMembershipRequest */
+        CatalogBulkMembershipRequest: {
+            /**
+             * After
+             * @default
+             */
+            after: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "tags" | "collections";
+            /** Ids */
+            ids: string[];
+            /**
+             * Limit
+             * @default 30
+             */
+            limit: number;
+            /**
+             * Q
+             * @default
+             */
+            q: string;
         };
         /** CatalogBundleSummary */
         CatalogBundleSummary: {
@@ -4077,6 +4180,11 @@ export interface components {
              * @default
              */
             q: string;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
             /** Smart Collection Id */
             smart_collection_id?: string | null;
             /**
@@ -4095,7 +4203,7 @@ export interface components {
              * @default all
              * @enum {string}
              */
-            view: "all" | "uncategorized" | "untagged" | "recent";
+            view: "all" | "uncategorized" | "untagged" | "recent" | "random" | "missing";
         };
         /** CatalogFacetResponse */
         CatalogFacetResponse: {
@@ -4210,6 +4318,69 @@ export interface components {
             items: components["schemas"]["CatalogEntity"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** CatalogSelectionItem */
+        CatalogSelectionItem: {
+            /** Held */
+            held: boolean;
+            /** Id */
+            id: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+            /** Rating */
+            rating: number | null;
+            /** Title */
+            title: string | null;
+        };
+        /** CatalogSelectionRead */
+        CatalogSelectionRead: {
+            /** Items */
+            items: components["schemas"]["CatalogSelectionItem"][];
+        };
+        /** CatalogSelectionRequest */
+        CatalogSelectionRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** CatalogUnbundledFile */
+        CatalogUnbundledFile: {
+            /** Bundle Id */
+            bundle_id: string;
+            /** Id */
+            id: string;
+            /** Relative Path */
+            relative_path: string;
+        };
+        /** CatalogUnbundledPage */
+        CatalogUnbundledPage: {
+            /** Items */
+            items: components["schemas"]["CatalogUnbundledFile"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** CatalogUnbundledRequest */
+        CatalogUnbundledRequest: {
+            /**
+             * Limit
+             * @default 50
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Q
+             * @default
+             */
+            q: string;
         };
         /** Change */
         Change: {
@@ -6124,6 +6295,10 @@ export interface components {
             peer_delivery: "unknown";
             /** Ready */
             ready: boolean;
+            /** Selection Version */
+            selection_version?: number | null;
+            /** System Views Version */
+            system_views_version?: number | null;
             /** Waiting */
             waiting: number;
         };
@@ -12969,6 +13144,84 @@ export interface operations {
             };
         };
     };
+    selected_bundles_api_v1_libraries__library_id__replica_catalog_bundles_selection_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSelectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    selected_memberships_api_v1_libraries__library_id__replica_catalog_bundles_selection_memberships_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogBulkMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBulkMembershipPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     membership_choices_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__memberships__family__get: {
         parameters: {
             query?: {
@@ -13308,6 +13561,45 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unbundled_files_api_v1_libraries__library_id__replica_catalog_files_unbundled_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogUnbundledRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogUnbundledPage"];
                 };
             };
             /** @description Validation Error */

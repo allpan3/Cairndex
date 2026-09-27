@@ -1397,6 +1397,13 @@
             "title": "Q",
             "type": "string"
           },
+          "seed": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
           "smart_collection_id": {
             "anyOf": [
               {
@@ -1424,13 +1431,132 @@
               "all",
               "uncategorized",
               "untagged",
-              "recent"
+              "recent",
+              "random",
+              "missing"
             ],
             "title": "View",
             "type": "string"
           }
         },
         "title": "CatalogBrowseRequest",
+        "type": "object"
+      },
+      "CatalogBulkMembershipChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "assigned_count": {
+            "title": "Assigned Count",
+            "type": "integer"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "assigned_count",
+          "observed",
+          "held"
+        ],
+        "title": "CatalogBulkMembershipChoice",
+        "type": "object"
+      },
+      "CatalogBulkMembershipPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogBulkMembershipChoice"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CatalogBulkMembershipPage",
+        "type": "object"
+      },
+      "CatalogBulkMembershipRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "default": "",
+            "maxLength": 256,
+            "title": "After",
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "tags",
+              "collections"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "limit": {
+            "default": 30,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ids",
+          "family"
+        ],
+        "title": "CatalogBulkMembershipRequest",
         "type": "object"
       },
       "CatalogBundleSummary": {
@@ -1678,6 +1804,13 @@
             "title": "Q",
             "type": "string"
           },
+          "seed": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
           "smart_collection_id": {
             "anyOf": [
               {
@@ -1710,7 +1843,9 @@
               "all",
               "uncategorized",
               "untagged",
-              "recent"
+              "recent",
+              "random",
+              "missing"
             ],
             "title": "View",
             "type": "string"
@@ -2086,6 +2221,179 @@
           "next_cursor"
         ],
         "title": "CatalogPage",
+        "type": "object"
+      },
+      "CatalogSelectionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "object"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rating",
+          "observed",
+          "held"
+        ],
+        "title": "CatalogSelectionItem",
+        "type": "object"
+      },
+      "CatalogSelectionRead": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSelectionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogSelectionRead",
+        "type": "object"
+      },
+      "CatalogSelectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "CatalogSelectionRequest",
+        "type": "object"
+      },
+      "CatalogUnbundledFile": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_id",
+          "relative_path"
+        ],
+        "title": "CatalogUnbundledFile",
+        "type": "object"
+      },
+      "CatalogUnbundledPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogUnbundledFile"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "CatalogUnbundledPage",
+        "type": "object"
+      },
+      "CatalogUnbundledRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          }
+        },
+        "title": "CatalogUnbundledRequest",
         "type": "object"
       },
       "Change": {
@@ -7627,6 +7935,28 @@
           "ready": {
             "title": "Ready",
             "type": "boolean"
+          },
+          "selection_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Version"
+          },
+          "system_views_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Views Version"
           },
           "waiting": {
             "title": "Waiting",
@@ -22739,6 +23069,174 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection": {
+      "post": {
+        "operationId": "selected_bundles_api_v1_libraries__library_id__replica_catalog_bundles_selection_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSelectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Selected Bundles",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/memberships": {
+      "post": {
+        "operationId": "selected_memberships_api_v1_libraries__library_id__replica_catalog_bundles_selection_memberships_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogBulkMembershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBulkMembershipPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Selected Memberships",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/memberships/{family}": {
       "get": {
         "operationId": "membership_choices_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__memberships__family__get",
@@ -23716,6 +24214,90 @@
           }
         },
         "summary": "Files",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled": {
+      "post": {
+        "operationId": "unbundled_files_api_v1_libraries__library_id__replica_catalog_files_unbundled_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogUnbundledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogUnbundledPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unbundled Files",
         "tags": [
           "replica-catalog"
         ]

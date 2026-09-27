@@ -30,8 +30,10 @@ existing structured filters and saved Smart Collections
 use the private catalog. The shared File Browser shows direct local entries and
 retains unavailable cataloged paths; cataloged media uses the shared viewer.
 The ordinary inspector provides tag/collection membership reviews, cover selection,
-paginated files and local file details. File order, structural changes, moments and
-history use Metadata review. Source writes and unlinked media opening remain unavailable.
+paginated files and local file details. Multi-selection supports reviewed bulk
+title, rating and membership changes. Random, recorded local Missing Files and a
+paginated Unbundled file list use the private catalog. File order, structural changes,
+moments and history use Metadata review. Source writes and unlinked media opening remain unavailable.
 
 Capable **synthetic** replica packages support library-wide authored metadata,
 concurrent offline edits, complete structural choices, retained history and private

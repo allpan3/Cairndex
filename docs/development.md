@@ -158,6 +158,12 @@ unknown observations and direct-directory safety. The combined browser journey
 checks collection/tag navigation, exact saved rules, retained drafts, local file
 search, keyboard playback and missing bytes on a disposable real server.
 
+`tests/test_catalog_selection.py` covers bounded bulk reads, mixed membership,
+cover clearing, stale bases, deletion, explicit restoration and exact job retries.
+`e2e/catalog-selection.spec.ts` covers multiple selection, retained reviews across
+navigation/reload, lost save responses, independent inspector drafts, system views
+and older-server capability checks against an isolated synthetic server.
+
 `tests/test_catalog_browse.py` checks full-catalog search, eligible populations,
 strict request limits, competing projections and index upgrade/rollback.
 `e2e/catalog-browse.spec.ts` uses independent real servers and same-server clients

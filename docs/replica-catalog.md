@@ -124,7 +124,9 @@ library switch. An already observed conflict requires explicit metadata review.
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
-| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Other system views, multi-selection actions and albums |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Albums; Recently Used requires a separate private usage contract |
+| Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
+| System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used and Trash remain outside the current catalog contract |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and date-added sorts; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; unsupported request fields/sorts return 422 |
 | Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
@@ -200,7 +202,39 @@ This boundary prevents a local absence or unmeasured size from becoming a shared
 fact. Title, notes, source, filename, extension, rating, file count, dates and
 membership use the established authored semantics.
 
-Single selection supports pointer, arrow keys, Home/End and Enter to open media.
+Servers with `selection_version: 1` support pointer toggles, Shift ranges, marquee
+selection, Up/Down, Home/End and Enter for one selected bundle. Cmd/Ctrl+A selects
+only the loaded bundle pages; Escape clears selection. Search, filter, sort,
+collection and system-view changes clear the active selection. Appending a page
+does not select its new rows automatically.
+
+The bulk inspector accepts 1–100 explicit bundle IDs for each reviewed title,
+rating, tag or collection change. Title and rating replace one field on all listed
+bundles; Add/Remove changes only the selected membership pair. Notes are not a bulk
+field. Membership counts show all/partial/absent assignment. Destination search
+covers the catalog before pagination. A retained draft keeps its original IDs and
+displayed bases even when the browser selection changes. Preview rejects stale or
+held bases, including changed lifetimes, without automatically refreshing them.
+Apply uses one causal transaction and includes dependent collection-cover clears.
+Later competing changes remain in Metadata review. An uncertain response keeps the
+exact operation and request for Retry; it cannot be discarded until its receipt is
+known. Scalar inspector drafts stay separate. Bulk fields remain disabled while
+a prepared review is pending. Malformed retained bytes remain available for recovery.
+
+Servers with `system_views_version: 1` also expose Random, Missing Files and
+Unbundled. Random uses a seed and stable bundle IDs before pagination; Reshuffle
+chooses a new seed. Missing Files lists eligible bundles with recorded unavailable
+local media observations. These are last recorded checks, which can be stale;
+unobserved files do not count as missing. Opening file details checks local bytes
+again. Structured missing-state filters retain their separate unknown semantics.
+Unbundled is a paginated file list over authored provisional scan suggestions,
+with full-population path search and hidden-path exclusion. New replica Update
+suggestions remain private grouping candidates until accepted; they are not
+published as provisional bundles. Recently Used and Trash are not implemented for
+catalog replicas. No system-view request scans or probes source files.
+
+Older servers keep single selection, scalar editing and their existing views.
+Unsupported bulk or system-view endpoints are not called.
 Notes retain exact list values; arrow keys on each reorder control move a note.
 Metadata review retains the all-family controls, saved jobs and deleted objects.
 Servers without browse version two keep the complete catalog controls. Legacy

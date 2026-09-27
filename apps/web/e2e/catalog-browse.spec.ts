@@ -176,9 +176,9 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await openBundle(a, 'Amber conflict')
     await expect(a.getByRole('listbox', { name: 'Bundles' })).toHaveAttribute(
       'aria-multiselectable',
-      'false',
+      'true',
     )
-    await expect(a.getByText(/Select All includes/)).toHaveCount(0)
+    await expect(a.getByText(/Select All includes/)).toBeVisible()
     await a.screenshot({ path: '/tmp/cairndex-catalog-browse.png' })
   } finally {
     await Promise.all(contexts.map((context) => context.close()))

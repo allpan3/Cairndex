@@ -34,8 +34,10 @@ Stored filter text stays exact. Preview errors do not replace the stored express
 Source size and missing state remain unknown for nonempty bundles in this query
 surface. NOT preserves unknown; it does not make an unobserved file present. Empty
 bundles have zero size and no missing member. Has-cover is true for an authored
-cover, false for an empty bundle without one, and otherwise unknown. No query scans
-or probes source media. File Browser and media opening make separate local checks.
+cover, false for an empty bundle without one, and otherwise unknown. The separate
+Missing Files system view uses last recorded private unavailable observations; it
+does not change these AST semantics. No query scans or probes source media.
+File Browser and media opening make separate local checks.
 
 ## Goals
 

@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from cairndex.api.v1.replicas import replica_store
 from cairndex.replicas.catalog import jobs
-from cairndex.replicas.catalog.browse import CatalogBrowsePage, CatalogBrowseRequest, browse
+from cairndex.replicas.catalog.browse import (
+    CatalogBrowsePage,
+    CatalogBrowseRequest,
+    CatalogUnbundledPage,
+    CatalogUnbundledRequest,
+    browse,
+    unbundled,
+)
 from cairndex.replicas.catalog.inspector import (
     CatalogMembershipPage,
     MembershipFamily,
@@ -28,6 +35,14 @@ from cairndex.replicas.catalog.schemas import (
     CatalogJobRequest,
     CatalogPage,
     Family,
+)
+from cairndex.replicas.catalog.selection import (
+    CatalogBulkMembershipPage,
+    CatalogBulkMembershipRequest,
+    CatalogSelectionRead,
+    CatalogSelectionRequest,
+    choices,
+    selection,
 )
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import ReplicaError, Token
@@ -178,3 +193,21 @@ def navigation_page(
 def bundle_facets(payload: CatalogFacetRequest, store: Catalog) -> CatalogFacetResponse:
     with store.connection(readonly=True) as db:
         return facets(db, payload)
+
+
+@router.post("/bundles/selection", response_model=CatalogSelectionRead)
+def selected_bundles(payload: CatalogSelectionRequest, store: Catalog) -> CatalogSelectionRead:
+    return selection(store, payload)
+
+
+@router.post("/bundles/selection/memberships", response_model=CatalogBulkMembershipPage)
+def selected_memberships(
+    payload: CatalogBulkMembershipRequest, store: Catalog
+) -> CatalogBulkMembershipPage:
+    return choices(store, payload)
+
+
+@router.post("/files/unbundled", response_model=CatalogUnbundledPage)
+def unbundled_files(payload: CatalogUnbundledRequest, store: Catalog) -> CatalogUnbundledPage:
+    with store.connection(readonly=True) as db:
+        return unbundled(db, payload)

@@ -1,5 +1,6 @@
 """Private indexed bundle reads for the shared browser; no legacy sessions or source reads."""
 
+import hashlib
 import json
 import sqlite3
 from datetime import datetime
@@ -39,7 +40,8 @@ class CatalogBrowseRequest(StrictModel):
     smart_collection_id: str | None = None
     collection_id: str | None = None
     include_descendants: bool = True
-    view: Literal["all", "uncategorized", "untagged", "recent"] = "all"
+    view: Literal["all", "uncategorized", "untagged", "recent", "random", "missing"] = "all"
+    seed: int = Field(default=0, ge=0, le=2_147_483_647)
     q: str = Field(default="", max_length=1000)
     sort: Literal["title", "rating", "date_added"] = "title"
     order: Literal["asc", "desc"] = "asc"
@@ -170,6 +172,12 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
             f" AND NOT EXISTS (SELECT 1 FROM catalog_rows e WHERE e.family='{family}' "
             "AND json_extract(e.body,'$.bundle_id')=b.entity)"
         )
+    if request.view == "missing":
+        where += (
+            " AND EXISTS (SELECT 1 FROM catalog_rows f JOIN local_media m ON m.file_id=f.entity "
+            "WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity "
+            "AND m.state='unavailable')"
+        )
     for expression in expressions:
         if expression is not None:
             sql, values = matching(db, expression)
@@ -185,6 +193,15 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
         "rating": "json_extract(b.body,'$.rating')",
         "date_added": "json_extract(b.body,'$.created_at')",
     }[request.sort]
+    if request.view == "random":
+        # Stable identities keep the order unchanged when projection rows are replaced.
+        db.create_function(
+            "catalog_shuffle",
+            1,
+            lambda identity: hashlib.sha256(f"{request.seed}/{identity}".encode()).hexdigest(),
+            deterministic=True,
+        )
+        column = "catalog_shuffle(b.entity)"
     rows = db.execute(
         f"SELECT b.entity,b.body FROM catalog_rows b WHERE {where} "
         f"ORDER BY {column} {request.order},b.entity ASC LIMIT ? OFFSET ?",
@@ -214,3 +231,56 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
             )
         )
     return CatalogBrowsePage(items=items, total=total, offset=request.offset, limit=request.limit)
+
+
+class CatalogUnbundledRequest(StrictModel):
+    q: str = Field(default="", max_length=1000)
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=100)
+
+
+class CatalogUnbundledFile(StrictModel):
+    id: str
+    bundle_id: str
+    relative_path: str
+
+
+class CatalogUnbundledPage(StrictModel):
+    items: list[CatalogUnbundledFile]
+    total: int
+    offset: int
+    limit: int
+
+
+def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> CatalogUnbundledPage:
+    """List staged files from the complete catalog without observing source bytes."""
+    where = (
+        "f.family='asset_files' AND b.family='asset_bundles' "
+        "AND json_extract(b.body,'$.grouping_state')='PROVISIONAL' "
+        "AND json_extract(b.body,'$.grouping_source')='SCAN_SUGGESTION' "
+        "AND json_extract(f.body,'$.relative_path') NOT LIKE '.%' "
+        "AND json_extract(f.body,'$.relative_path') NOT LIKE '%/.%' "
+        "AND instr(lower(json_extract(f.body,'$.relative_path')),lower(?))>0"
+    ) + "".join(
+        f" AND instr('/'||json_extract(f.body,'$.relative_path')||'/','/{name}/')=0"
+        for name in sorted(HIDDEN_NAMES)
+    )
+    source = (
+        "FROM catalog_rows f JOIN catalog_rows b "
+        "ON b.entity=json_extract(f.body,'$.bundle_id') WHERE " + where
+    )
+    total = db.execute("SELECT count(*) " + source, (request.q,)).fetchone()[0]
+    rows = db.execute(
+        "SELECT f.entity,json_extract(f.body,'$.bundle_id'),json_extract(f.body,'$.relative_path') "
+        + source
+        + " ORDER BY lower(json_extract(f.body,'$.relative_path')),f.entity LIMIT ? OFFSET ?",
+        (request.q, request.limit, request.offset),
+    )
+    return CatalogUnbundledPage(
+        items=[
+            CatalogUnbundledFile(id=row[0], bundle_id=row[1], relative_path=row[2]) for row in rows
+        ],
+        total=total,
+        offset=request.offset,
+        limit=request.limit,
+    )

@@ -7767,6 +7767,8 @@ code {
   display: grid;
   gap: 8px;
 }
+.catalog-bulk-inspector button,
+.catalog-unbundled button,
 .catalog-membership-picker button,
 .catalog-inspector-cover button,
 .catalog-inspector-file button,
@@ -7780,6 +7782,7 @@ code {
   font: inherit;
   cursor: pointer;
 }
+.catalog-bulk-inspector button:disabled,
 .catalog-membership-picker button:disabled,
 [aria-label='Files in bundle'] button:disabled {
   opacity: 0.5;
@@ -7826,4 +7829,70 @@ code {
 }
 .catalog-file-surface > .inspector {
   overflow-y: auto;
+}
+
+.catalog-bulk-open {
+  align-self: flex-start;
+  margin: 0 12px 8px;
+}
+.catalog-bulk-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.catalog-bulk-inspector h2,
+.catalog-bulk-inspector p {
+  margin: 0;
+}
+.catalog-bulk-inspector label,
+.catalog-bulk-inspector section,
+.catalog-unbundled label {
+  display: grid;
+  gap: 6px;
+}
+.catalog-bulk-inspector input,
+.catalog-bulk-inspector select,
+.catalog-unbundled input {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.catalog-bulk-inspector .catalog-membership-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.catalog-bulk-inspector .catalog-membership-row > span {
+  grid-column: 1 / -1;
+}
+.catalog-bulk-inspector ul {
+  max-height: 160px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-left: 20px;
+}
+.catalog-unbundled {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  overflow-y: auto;
+}
+.catalog-unbundled ul {
+  list-style: none;
+  padding: 0;
+}
+.catalog-unbundled li button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+  margin-bottom: 4px;
+}
+.catalog-unbundled button[aria-pressed='true'] {
+  outline: 2px solid var(--accent);
 }

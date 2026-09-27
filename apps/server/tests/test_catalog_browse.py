@@ -65,7 +65,7 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     for body in (
         {"filter": {"version": 1, "root": {"field": "codec", "operator": "equals", "value": "x"}}},
         {"sort": "size"},
-        {"view": "missing"},
+        {"view": "trash"},
         {"limit": 101},
     ):
         assert client.post(url, json=body).status_code == 422
@@ -126,3 +126,56 @@ def test_empty_created_catalog_has_a_valid_empty_browse(tmp_path):
     store = open_store(fixture.root, tmp_path / "author")
     assert store.status()["ready"]
     assert page(store).total == 0
+
+
+def test_random_pages_stable_after_projection_edit_and_local_missing(tmp_path):
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=65)).store
+    first = [item.id for item in page(store, view="random", seed=721, limit=100).items]
+    pages = [
+        item.id
+        for offset in (0, 20, 40, 60)
+        for item in page(store, view="random", seed=721, offset=offset, limit=20).items
+    ]
+    assert pages == first
+    assert len(set(pages)) == 65
+    save(store, edit(store, "asset_bundles", first[0], "title", "Changed title"), "title")
+    assert [item.id for item in page(store, view="random", seed=721, limit=100).items] == first
+    assert [item.id for item in page(store, view="random", seed=722, limit=100).items] != first
+    assert page(store, view="missing").total == 0
+    with store.connection() as db:
+        db.execute("INSERT INTO local_media VALUES ('file-video',NULL,'unavailable',NULL,NULL)")
+    assert [item.id for item in page(store, view="missing").items] == ["bundle-000000"]
+    assert page(store, view="missing", q="no-match").total == 0
+    with store.connection() as db:
+        db.execute("UPDATE local_media SET state='available'")
+    assert page(store, view="missing").total == 0
+
+
+def test_unbundled_file_population_search_and_hidden_paths(tmp_path):
+    import sqlite3
+
+    from cairndex.replicas.catalog.browse import CatalogUnbundledRequest, unbundled
+
+    fixture = create_disposable(parent=tmp_path, bundles=4)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        db.execute(
+            "UPDATE asset_bundles SET grouping_state='PROVISIONAL', "
+            "grouping_source='SCAN_SUGGESTION' WHERE id='bundle-000000'"
+        )
+    store = prepare_disposable(fixture).store
+    with store.connection(readonly=True) as db:
+        complete = unbundled(db, CatalogUnbundledRequest())
+        first = unbundled(db, CatalogUnbundledRequest(limit=1))
+        second = unbundled(db, CatalogUnbundledRequest(limit=1, offset=1))
+        assert complete.total >= 2
+        assert first.items[0].id != second.items[0].id
+        assert unbundled(db, CatalogUnbundledRequest(q=second.items[0].relative_path)).total == 1
+        assert all(item.bundle_id == "bundle-000000" for item in complete.items)
+    assert "bundle-000000" not in {item.id for item in page(store).items}
+    save(
+        store,
+        edit(store, "asset_files", complete.items[0].id, "relative_path", ".hidden/file"),
+        "hide",
+    )
+    with store.connection(readonly=True) as db:
+        assert unbundled(db, CatalogUnbundledRequest()).total == complete.total - 1

@@ -9,6 +9,7 @@ import { FileBrowser } from './FileBrowser'
 import { emptyAdHocFilters } from './adHocFilters'
 import { DEFAULT_PLAYER_PREFS, type AppMode, type Selection } from './types'
 import { visibleHierarchy } from './usePopover'
+import { CatalogUnbundledBrowser } from './CatalogUnbundledBrowser'
 import { CatalogFileDetails } from './CatalogFileDetails'
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
@@ -41,6 +42,8 @@ export function CatalogOrdinaryBrowser(props: {
   library: string
   libraries: LibraryRead[]
   editor: string
+  selectionEnabled: boolean
+  systemViewsEnabled: boolean
   inspectorEnabled: boolean
   blocked: boolean
   selected: string | null
@@ -55,6 +58,8 @@ export function CatalogOrdinaryBrowser(props: {
   const [mode, setMode] = useState<AppMode>('collection')
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [filters, setFilters] = useState(emptyAdHocFilters)
+  const [locateRequest, setLocateRequest] = useState(0)
+  const [unbundled, setUnbundled] = useState(false)
   const [path, setPath] = useState('')
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
   const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
@@ -65,9 +70,19 @@ export function CatalogOrdinaryBrowser(props: {
           library={props.library}
           libraries={props.libraries}
           mode={mode}
-          onMode={setMode}
+          onMode={(next) => {
+            setMode(next)
+            setUnbundled(false)
+          }}
+          systemViewsEnabled={props.systemViewsEnabled}
+          unbundled={unbundled}
+          onUnbundled={() => {
+            setUnbundled(true)
+            setMode('file')
+          }}
           selection={selection}
           onSelect={(next) => {
+            setUnbundled(false)
             setSelection(next)
             setMode('collection')
           }}
@@ -80,6 +95,7 @@ export function CatalogOrdinaryBrowser(props: {
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
             <CatalogBundleBrowser
               {...props}
+              locateRequest={locateRequest}
               selection={selection}
               filters={filters}
               onFilters={setFilters}
@@ -97,7 +113,10 @@ export function CatalogOrdinaryBrowser(props: {
               }}
             />
           )}
-          {mode === 'file' && (
+          {mode === 'file' && unbundled && (
+            <CatalogUnbundledBrowser library={props.library} onReview={props.onReview} />
+          )}
+          {mode === 'file' && !unbundled && (
             <div className="catalog-file-surface">
               <FileBrowser
                 catalogLibrary={props.library}
@@ -119,6 +138,7 @@ export function CatalogOrdinaryBrowser(props: {
                 onPlayerPrefs={setPlayer}
                 onLocateBundle={(id) => {
                   props.onSelect(id)
+                  setLocateRequest((value) => value + 1)
                   setMode('collection')
                 }}
               />
@@ -146,6 +166,7 @@ export function CatalogOrdinaryBrowser(props: {
                       <button
                         onClick={() => {
                           props.onSelect(file.bundle_id!)
+                          setLocateRequest((value) => value + 1)
                           setMode('collection')
                         }}
                       >

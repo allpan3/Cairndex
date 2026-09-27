@@ -27,6 +27,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Complete synthetic catalogs support pointer, keyboard and marquee multi-selection,
+  with reviewed title/rating and tag/collection changes for up to 100 bundles.
+  Reviews retain original targets, causal bases and exact retries across navigation
+  and reload. Collection-cover clearing is included; source files stay in place.
+- Catalog Random uses stable seeded pages. Missing Files uses recorded local
+  unavailable observations, while unknown files remain excluded. Unbundled provides
+  paginated authored scan files and full-population path search. Older servers retain
+  supported views and single selection through separate capability checks.
+
 - Complete synthetic catalogs expose cover selection, tag/collection membership
   reviews, paginated bundle files and local file details in the ordinary inspector.
   Prepared membership changes survive reload; scalar drafts stay separate.

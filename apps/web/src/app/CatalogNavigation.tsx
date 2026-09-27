@@ -5,6 +5,9 @@ import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
 
 export function CatalogNavigation({
+  systemViewsEnabled,
+  unbundled,
+  onUnbundled,
   library,
   libraries,
   selection,
@@ -16,6 +19,9 @@ export function CatalogNavigation({
   onReview,
   onReviewEntity,
 }: {
+  systemViewsEnabled: boolean
+  unbundled: boolean
+  onUnbundled: () => void
   library: string
   libraries: LibraryRead[]
   selection: Selection
@@ -41,7 +47,13 @@ export function CatalogNavigation({
     <>
       <Sidebar
         navigationOnly
-        availableViews={['all', 'uncategorized', 'untagged', 'recent']}
+        availableViews={
+          systemViewsEnabled
+            ? ['all', 'uncategorized', 'untagged', 'recent', 'random', 'missing', 'unbundled']
+            : ['all', 'uncategorized', 'untagged', 'recent']
+        }
+        fileScope={unbundled ? 'unbundled' : 'browse'}
+        onOpenUnbundled={onUnbundled}
         mode={mode}
         onMode={onMode}
         libraries={libraries}
