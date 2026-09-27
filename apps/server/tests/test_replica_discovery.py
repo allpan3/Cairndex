@@ -362,16 +362,24 @@ def test_api_backup_restore_requires_revalidation(specimen, tmp_path, raw_client
     identity = response.json()["id"]
     base = f"/api/v1/libraries/{identity}"
     raw_client.get(base + "/replica/status")
-    for _ in range(20):
+    for _ in range(100):
         service.exchange(identity)
+        ready = raw_client.get(base + "/replica/status").json()
+        if ready["ready"]:
+            break
+    assert ready["ready"]
     assert (
         raw_client.post(
             base + "/replica/discovery/runs", json={"operation": "recovery-scan"}
         ).status_code
         == 202
     )
-    for _ in range(20):
+    for _ in range(100):
         service.exchange(identity)
+        completed = raw_client.get(base + "/replica/discovery/status").json()
+        if completed["state"] != "running":
+            break
+    assert completed["state"] == "succeeded", completed
     candidate = raw_client.get(base + "/replica/discovery/candidates").json()["items"][0]
     assert (
         raw_client.post(
