@@ -51,16 +51,24 @@ def scan(store, root):
     pytest.fail("Discovery did not finish its bounded work")
 
 
+# Reviews can need more than one bounded worker tick under load.
+def advance_review(store, root, operation):
+    for _ in range(100):
+        discovery.tick(store, root)
+        result = state.review(store, operation)
+        if result["state"] not in {"queued", "apply_queued"}:
+            return result
+    pytest.fail("Review did not finish its bounded work")
+
+
 # A review never authors until its exact prepared receipt is accepted
 def confirm(store, root, candidate, **overrides):
     operation = uuid4().hex
     state.prepare(store, operation, {"candidate": candidate["id"], **overrides})
-    discovery.tick(store, root)
-    prepared = state.review(store, operation)
+    prepared = advance_review(store, root, operation)
     assert prepared["state"] == "ready", prepared["error"]
     state.accept(store, operation, prepared["receipt"])
-    discovery.tick(store, root)
-    result = state.review(store, operation)
+    result = advance_review(store, root, operation)
     assert result["state"] == "applied", result
     return result
 
@@ -470,18 +478,16 @@ def test_competing_grouping_acceptance_retains_valid_arrangement(replicas, arriv
             "competing-review",
             {"candidate": candidate["id"], "target": f"bundle-{index:06}"},
         )
-        discovery.tick(store, root)
-        assert state.review(store, "competing-review")["state"] == "ready"
+        assert advance_review(store, root, "competing-review")["state"] == "ready"
     a, root_a, _ = replicas[0]
     state.accept(a, "competing-review", state.review(a, "competing-review")["receipt"])
-    discovery.tick(a, root_a)
+    assert advance_review(a, root_a, "competing-review")["state"] == "applied"
     if arrives_before:
         exchange(replicas)
     b, root_b, _ = replicas[1]
     prepared = state.review(b, "competing-review")["prepared"]
     state.accept(b, "competing-review", state.review(b, "competing-review")["receipt"])
-    discovery.tick(b, root_b)
-    assert state.review(b, "competing-review")["state"] == (
+    assert advance_review(b, root_b, "competing-review")["state"] == (
         "failed" if arrives_before else "applied"
     )
     assert state.review(b, "competing-review")["prepared"] == prepared
