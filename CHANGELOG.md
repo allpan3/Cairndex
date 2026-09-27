@@ -386,6 +386,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Browser copy-import tests wait for the selected inspector before a file drop.
+  The large discovery test stops its backend child during cleanup.
+
 - Empty format-three catalog fixtures use private creation intent, complete seed
   validation and descriptor-last publication. Exact retries preserve identity
   after interruption and refuse changed directories or competing bytes. Ordinary

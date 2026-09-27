@@ -538,7 +538,10 @@ test('large Update review keeps later pages and partial acceptance complete @ful
       )
   } finally {
     await context.close()
-    await stopBackend(backend)
+    await stopBackend(backend.child)
+    await expect
+      .poll(() => backend.child.exitCode !== null || backend.child.signalCode !== null)
+      .toBe(true)
     await rm(scratch, { recursive: true, force: true })
   }
 })

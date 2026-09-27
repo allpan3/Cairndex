@@ -267,6 +267,12 @@ for (const surface of ['card', 'inspector'] as const)
       await page.goto('/')
       const card = page.locator(`[data-bundle-id="${f.target.id}"]`).first()
       await card.click()
+      if (surface === 'inspector') {
+        // The loading inspector has no drop handler; wait for the selected editor.
+        await expect(
+          page.locator('aside.inspector').getByRole('textbox', { name: 'Title', exact: true }),
+        ).toHaveValue('Target bundle')
+      }
       await htmlDrop(surface === 'card' ? card : page.locator('aside.inspector'), f.paths)
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByRole('heading', { name: 'Copy 2 files into…' })).toBeVisible()
