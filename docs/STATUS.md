@@ -13,7 +13,8 @@ patches, volume-based Move and source deletion remain on hold.
 
 ## Ordinary inspector controls and local file details
 
-This scope follows `1b4eaff3` on `fix/library-ownership-lifecycle`.
+Implementation checkpoint: `f7874ce6` on `fix/library-ownership-lifecycle`,
+following `1b4eaff3`.
 Complete synthetic catalogs use ordinary inspector controls for tag and collection
 membership, cover selection, paginated bundle files and selected-file details.
 Membership search covers all destinations before pagination. Each Add or Remove
@@ -37,8 +38,10 @@ membership removal/restoration, stale choices, collection-cover clearing, cover
 draft recovery, guarded thumbnails, image dimensions, unavailable files and the
 older-server capability response. The generated OpenAPI matches the server.
 Synthetic inspector screenshots were visually checked and remain outside Git.
-The staged privacy check passes; all additions are source, tests, generated API
-artifacts or text documentation. No media or build output is committed.
+The staged privacy check and range from `1b4eaff3` through `f7874ce6` pass:
+one implementation commit and 27 new blobs. All additions are source, tests,
+generated API artifacts or text documentation. No media or build output is
+committed. No test backend or browser server remains after cleanup.
 
 No content migration is required. File ordering, structural changes, moments and
 history retain Metadata review. File note/source controls remain deferred.
