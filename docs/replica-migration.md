@@ -62,7 +62,10 @@ retain the last good local display and every candidate. Resolution consumes exac
 the current reviewed field basis and retains rejected revisions. History is paged
 in stable hash order, not chronological order. Restoring a value is an explicit new
 save. Private drafts retain their original basis; delayed draft writes cannot
-resurrect a dismissed revision. Browser drafts are connection/library/editor scoped.
+resurrect a dismissed revision. The bundle metadata editor ignores pending draft
+responses when save or discard starts dismissal. These responses cannot replace
+the completed save status or report obsolete errors. Browser drafts are
+connection/library/editor scoped.
 
 Exchange discovers at most 32 directory entries per tick, then imports, publishes
 and checks missing authored artifacts in separate batches of at most 32. Indexed

@@ -55,6 +55,7 @@ export function ReplicaEditor({
   const [error, setError] = useState(initial.error)
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const cancelDraftDelivery = useRef(() => {})
   const [review, setReview] = useState<{
     field: FieldName
     value: Value
@@ -115,10 +116,12 @@ export function ReplicaEditor({
           if (current) setError(reason.message)
         })
     }, 250)
-    return () => {
+    const cancel = () => {
       current = false
       clearTimeout(timer)
     }
+    cancelDraftDelivery.current = cancel
+    return cancel
   }, [base, draft, libraryId])
 
   // Cache each keystroke before requesting a server-side draft save
@@ -143,6 +146,8 @@ export function ReplicaEditor({
 
   // Saving or explicit discard dismisses only this exact draft generation
   async function clearDraft() {
+    // Invalidate draft callbacks before dismissal; effect cleanup can follow the save receipt.
+    cancelDraftDelivery.current()
     if (draft)
       await replicaRequest<void>(
         libraryId,

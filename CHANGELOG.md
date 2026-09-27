@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- The bundle metadata editor ignores obsolete draft responses during save or
+  discard. A late draft receipt cannot replace a completed save status or show
+  an obsolete delivery error.
+
 - Consecutive note-list saves in one client use the first save's acknowledged
   basis. A second note edited while the first save is pending remains in the
   draft and saves in order. Changes from another client still require review.
