@@ -5,29 +5,41 @@ import { InspectorSection } from './InspectorSection'
 import { StarRating } from './Stars'
 import { IconPlus } from './icons'
 import { useCatalogBundleDraft } from './useCatalogBundleDraft'
+import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
+import { CatalogMembershipPicker } from './CatalogMembershipPicker'
+import { CatalogBundleFiles } from './CatalogBundleFiles'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
   library,
   entity,
   editor,
+  inspectorEnabled,
   blocked,
   refresh,
   onReview,
   onOpen,
+  onOpenFile,
 }: {
   library: string
   entity: Entity
   editor: string
+  inspectorEnabled: boolean
   blocked: boolean
   refresh: () => void
   onReview: () => void
   onOpen: () => void
+  onOpenFile: (file: string) => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
   const title = JSON.parse(draft.read('title')) as string | null
   const rating = JSON.parse(draft.read('rating')) as number | null
+  const cover = JSON.parse(draft.read('cover_file_id')) as string | null
+  const [coverFailed, setCoverFailed] = useState('')
+  const coverUrl = cover
+    ? fileThumbnailUrl(entity.id, cover, cover)
+    : thumbnailUrl(entity.id, entity.fields.cover_file_id?.basis.join(':'))
   const notesText = JSON.parse(draft.read('notes')) as string | null
   const savedNotes = (notesText ? JSON.parse(notesText) : []) as string[] | null
   const notes = savedNotes?.length ? savedNotes : ['']
@@ -41,6 +53,18 @@ export function CatalogBundleInspector({
   }
   return (
     <aside className="inspector" aria-label="Bundle inspector">
+      <div className="catalog-inspector-cover">
+        {inspectorEnabled &&
+          (coverFailed !== coverUrl ? (
+            <img src={coverUrl} alt="Bundle cover" onError={() => setCoverFailed(coverUrl)} />
+          ) : (
+            <p>Cover unavailable on this device.</p>
+          ))}
+        <button onClick={onOpen}>Open media on this device</button>
+        {inspectorEnabled && coverFailed === coverUrl && (
+          <button onClick={() => setCoverFailed('')}>Retry cover</button>
+        )}
+      </div>
       <p role="status">{draft.message}</p>
       {draft.error && <p role="alert">{draft.error}</p>}
       {entity.has_conflicts && <p role="alert">Competing metadata requires review.</p>}
@@ -126,14 +150,39 @@ export function CatalogBundleInspector({
           Recover private draft {copy.revision}
         </button>
       ))}
-      <button className="btn" onClick={onOpen}>
-        Open media on this device
-      </button>
+
+      {inspectorEnabled &&
+        (['tags', 'collections'] as const).map((family) => (
+          <CatalogMembershipPicker
+            key={family}
+            library={library}
+            bundle={entity.id}
+            editor={editor}
+            family={family}
+            blocked={blocked}
+            onReview={onReview}
+          />
+        ))}
+      {inspectorEnabled && (
+        <CatalogBundleFiles
+          library={library}
+          bundle={entity.id}
+          cover={cover}
+          blocked={blocked || draft.busy}
+          onCover={(file, reference) =>
+            draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
+          }
+          onOpen={onOpenFile}
+        />
+      )}
+      {!inspectorEnabled && (
+        <p>Additional inspector controls require a server update. Use Metadata review.</p>
+      )}
       <button className="btn" onClick={onReview}>
         Review metadata and conflicts
       </button>
       <p>
-        Tags, collections, membership and history use metadata review. Source file operations are
+        File order, structural changes and history use metadata review. Source file operations are
         unavailable.
       </p>
     </aside>

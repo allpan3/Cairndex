@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from cairndex.api.deps import (
     IfMatchVersion,
-    LibraryAccessDep,
     LibrarySession,
     Pagination,
     WriteModeRequired,
@@ -547,7 +546,7 @@ def change_collections(
 
 # --- Thumbnails (generated lazily and cached) --------------------------------
 @router.get("/{bundle_id}/thumbnail")
-async def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileResponse:
+async def get_bundle_thumbnail(bundle_id: str, access: MediaAccessDep) -> FileResponse:
     """Serve the bundle's cover thumbnail (generated on first request).
 
     404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
@@ -559,7 +558,15 @@ async def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> File
 
     # Resolve and build inside one bounded worker without occupying the pool while queued
     def generate() -> Path | None:
+        if access.replica is not None:
+            from cairndex.replicas.catalog.inspector import cover
+            from cairndex.replicas.media_cache import thumbnail
+
+            with access.replica.store.connection(readonly=True) as db:
+                selected = cover(db, bundle_id)
+            return thumbnail(access.replica, selected["id"]) if selected else None
         with access.session() as db:
+            assert isinstance(db, Session)
             return thumbnails.generate_for_bundle(db, bundle_id)
 
     try:
@@ -568,6 +575,8 @@ async def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> File
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
+    if access.replica is not None:
+        return FileResponse(path, headers={"Cache-Control": "private, no-store"})
     return _thumbnail_response(path)
 
 

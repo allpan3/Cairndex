@@ -11,7 +11,44 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
-## Combined ordinary interface integration
+## Ordinary inspector controls and local file details
+
+This scope follows `1b4eaff3` on `fix/library-ownership-lifecycle`.
+Complete synthetic catalogs use ordinary inspector controls for tag and collection
+membership, cover selection, paginated bundle files and selected-file details.
+Membership search covers all destinations before pagination. Each Add or Remove
+prepares a review with the displayed membership and object lifetime bases.
+Apply retains the exact request across reload and response loss. Collection-cover
+clearing is part of the review. Membership saves preserve unrelated scalar drafts.
+
+Cover changes use the retained scalar draft and check the selected file's lifetime.
+Automatic covers use image-before-video order. Cover derivatives remain in the
+private cache. Selecting a file reads local video facts or image dimensions;
+unavailable bytes remain explicit and Retry checks the file again. These facts
+do not enter authored history. Servers without `inspector_version: 1` retain
+scalar editing and Metadata review with a visible update notice.
+
+The full backend gate passes **1,816 tests**, with one tone-mapping test skipped
+because ffmpeg has no `zscale` filter. Backend lint, formatting and type checks
+pass. The frontend gate passes **1,259 tests**, lint, formatting, type checks and
+the production build. All **212 browser tests** pass with two workers, zero
+retries and no skipped tests, in 5.1 minutes. Focused synthetic tests cover
+membership removal/restoration, stale choices, collection-cover clearing, cover
+draft recovery, guarded thumbnails, image dimensions, unavailable files and the
+older-server capability response. The generated OpenAPI matches the server.
+Synthetic inspector screenshots were visually checked and remain outside Git.
+The staged privacy check passes; all additions are source, tests, generated API
+artifacts or text documentation. No media or build output is committed.
+
+No content migration is required. File ordering, structural changes, moments and
+history retain Metadata review. File note/source controls remain deferred.
+Multi-selection, other system views, albums, access guards, backup UI parity,
+upgrades and source-write synchronization remain separate work. Default Create,
+real conversion, providers, NAS and large-library use are not qualified. Desktop
+file integration remains paused. No native build or installed-app replacement is
+part of this shared client/server scope. No publication is part of this task.
+
+## Earlier combined ordinary interface integration
 
 Implementation checkpoints: backend `df7ef89b` and interface `88a82a36` on
 `fix/library-ownership-lifecycle`.
@@ -58,8 +95,8 @@ The packaged backend HTTP/media smoke test, license payload check and strict
 recursive code-signature check pass. No Rust source changed; Rust-only gates and
 Ubuntu builds were not run. These checks do not qualify providers, NAS or large
 libraries. No default activation, real conversion, provider qualification or
-source writes are enabled. The next coherent group is remaining
-ordinary inspector controls and cover/technical-fact presentation. Access guards,
+source writes are enabled. The ordinary inspector scope above supplies
+membership controls and cover/technical-fact presentation. Access guards,
 backup UI parity, upgrades and source-write synchronization remain separate.
 
 The task-local privacy range from `f1088023` through `88a82a36` passes: two

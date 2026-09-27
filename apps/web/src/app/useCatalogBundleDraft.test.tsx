@@ -12,19 +12,23 @@ vi.mock('../api/catalog', async (importOriginal) => ({
 const unit = (field: string) => `asset_bundles/bundle/${field}`
 function entity(revision = 'seed'): Entity {
   const fields = Object.fromEntries(
-    Object.entries({ title: '"Original"', notes: '"[]"', rating: 'null', $alive: 'true' }).map(
-      ([field, value]) => [
-        field,
-        {
-          unit: unit(field),
-          value,
-          basis: [revision],
-          candidates: [{ value, revisions: [revision] }],
-          held: null,
-          components: {},
-        },
-      ],
-    ),
+    Object.entries({
+      title: '"Original"',
+      notes: '"[]"',
+      rating: 'null',
+      cover_file_id: 'null',
+      $alive: 'true',
+    }).map(([field, value]) => [
+      field,
+      {
+        unit: unit(field),
+        value,
+        basis: [revision],
+        candidates: [{ value, revisions: [revision] }],
+        held: null,
+        components: {},
+      },
+    ]),
   )
   return {
     family: 'asset_bundles',
@@ -114,4 +118,45 @@ test('ordinary save cannot consume an already observed conflict', async () => {
   expect(runJob).not.toHaveBeenCalled()
   expect(result.current.error).toContain('Review the competing values')
   expect(result.current.read('title')).toBe('"Replacement"')
+})
+
+test('cover retry retains the selected file lifetime and exact operation after reload', async () => {
+  const file: Entity = {
+    ...entity(),
+    family: 'asset_files',
+    id: 'picture',
+    fields: {
+      $alive: {
+        ...entity().fields.$alive!,
+        unit: 'asset_files/picture/$alive',
+        basis: ['file-seed'],
+      },
+    },
+    parents: ['file-seed'],
+  }
+  vi.mocked(runJob).mockRejectedValue(new Error('Connection lost'))
+  const first = setup()
+  act(() => first.result.current.change('cover_file_id', '"picture"', [file]))
+  await act(() => first.result.current.save())
+  const request = vi.mocked(runJob).mock.calls[0]!
+  expect(request[2]).toMatchObject({
+    changes: expect.arrayContaining([
+      { unit: unit('cover_file_id'), value: '"picture"', basis: ['seed'] },
+      { unit: 'asset_files/picture/$alive', value: 'true', basis: ['file-seed'] },
+    ]),
+  })
+  first.unmount()
+  const restored = setup()
+  expect(restored.result.current.read('cover_file_id')).toBe('"picture"')
+  await act(() => restored.result.current.save())
+  expect(vi.mocked(runJob).mock.calls[1]).toEqual(request)
+})
+
+test('cover selection refuses an observed deleted file', () => {
+  const file = entity()
+  file.fields.$alive!.value = 'false'
+  const { result } = setup()
+  act(() => result.current.change('cover_file_id', '"picture"', [file]))
+  expect(result.current.read('cover_file_id')).toBe('null')
+  expect(result.current.error).toContain('unavailable')
 })

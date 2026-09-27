@@ -22,6 +22,8 @@ class CatalogBundleSummary(StrictModel):
     file_count: int
     date_added: datetime
     grouping_state: GroupingState
+    cover_file_id: str | None = None
+    cover_key: str | None = None
 
 
 class CatalogBrowsePage(StrictModel):
@@ -190,7 +192,10 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
     )
     items = []
     for row in rows:
+        from cairndex.replicas.catalog.inspector import cover
+
         value = json.loads(row["body"])
+        artwork = cover(db, row["entity"])
         count = db.execute(
             "SELECT count(*) FROM catalog_rows WHERE family='asset_files' "
             "AND json_extract(body,'$.bundle_id')=?",
@@ -204,6 +209,8 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
                 file_count=count,
                 date_added=datetime.fromisoformat(value["created_at"]),
                 grouping_state=GroupingState[value["grouping_state"]],
+                cover_file_id=artwork["id"] if artwork else None,
+                cover_key=f"{artwork['id']}:{artwork['cover_time']}" if artwork else None,
             )
         )
     return CatalogBrowsePage(items=items, total=total, offset=request.offset, limit=request.limit)

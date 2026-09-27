@@ -20,6 +20,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Complete synthetic catalogs expose cover selection, tag/collection membership
+  reviews, paginated bundle files and local file details in the ordinary inspector.
+  Prepared membership changes survive reload; scalar drafts stay separate.
+  Covers use guarded private derivatives. Selected videos show local probe facts,
+  and images show locally read dimensions. Source files remain unchanged.
+
 - Complete synthetic catalogs use the shared collection sidebar, tag/rating
   controls, structured filter execution and Smart Collection previews. Queries
   evaluate the complete eligible catalog and retain exact saved expressions.

@@ -17,10 +17,12 @@ function decode(data: string, identity: string): Draft {
   const revisions = (input: unknown): input is string[] =>
     Array.isArray(input) && input.every((item) => typeof item === 'string')
   const cell = (unit: string, raw: unknown, guard = false): boolean => {
+    if (guard && /^asset_files\/[A-Za-z0-9_-]+\/\$alive$/.test(unit)) return raw === 'true'
     if (!unit.startsWith(`asset_bundles/${identity}/`) || typeof raw !== 'string') return false
     const decoded: unknown = JSON.parse(raw)
     switch (unit.split('/')[2]) {
       case 'title':
+      case 'cover_file_id':
         return decoded === null || typeof decoded === 'string'
       case 'rating':
         return (
@@ -113,13 +115,21 @@ export function useCatalogBundleDraft(
     latest.current = next
     storage.update({ data: JSON.stringify(next) })
   }
-  function change(field: string, raw: string) {
+  function change(field: string, raw: string, references: Entity[] = []) {
     const current = latest.current
     const unit = entity.fields[field]!.unit
     const continuing = Object.keys(current.inputs).length > 0 || current.pending !== null
     const bases = continuing ? current.observed : entity.observed
     const observed = { ...bases }
     if (!(unit in current.inputs)) observed[unit] = entity.fields[field]!.basis
+    for (const reference of references) {
+      const alive = reference.fields.$alive!
+      if (alive.value !== 'true' || alive.held) {
+        setError('The selected file is unavailable or requires metadata review.')
+        return
+      }
+      observed[alive.unit] = alive.basis
+    }
     if (acknowledged)
       for (const saved of acknowledged.request.changes) {
         if (JSON.stringify(entity.observed[saved.unit]) === JSON.stringify(saved.basis))
@@ -132,6 +142,7 @@ export function useCatalogBundleDraft(
       parents: [
         ...new Set([
           ...(continuing ? current.parents : entity.parents),
+          ...references.flatMap((reference) => reference.parents),
           ...(acknowledgedEvent.current ? [acknowledgedEvent.current] : []),
         ]),
       ],
@@ -157,6 +168,13 @@ export function useCatalogBundleDraft(
           throw new Error('Review the competing values before replacing this metadata.')
         const alive = entity.fields.$alive!.unit
         const values = { ...current.inputs, [alive]: 'true' }
+        const cover = values[`asset_bundles/${entity.id}/cover_file_id`]
+        if (cover && cover !== 'null') {
+          const reference = `asset_files/${JSON.parse(cover)}/$alive`
+          if (!current.observed[reference]?.length)
+            throw new Error('Select the cover file again to read its current metadata.')
+          values[reference] = 'true'
+        }
         const request: Save = {
           changes: Object.entries(values).map(([unit, value]) => ({
             unit,

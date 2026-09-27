@@ -371,6 +371,7 @@ export function CatalogWorkspace({
           }}
           library={libraryId}
           editor={editor}
+          inspectorEnabled={state.inspector_version === 1}
           blocked={!state?.ready || Boolean(state?.blocked)}
           selected={selected}
           onSelect={setSelected}
@@ -379,6 +380,7 @@ export function CatalogWorkspace({
             setReviewMode(true)
           }}
           onOpen={(id) => setMedia({ bundleId: id })}
+          onOpenFile={(bundleId, fileId) => setMedia({ bundleId, fileId })}
         />
       )}
       {!reviewMode && !state?.ready && (

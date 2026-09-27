@@ -9,6 +9,7 @@ import { FileBrowser } from './FileBrowser'
 import { emptyAdHocFilters } from './adHocFilters'
 import { DEFAULT_PLAYER_PREFS, type AppMode, type Selection } from './types'
 import { visibleHierarchy } from './usePopover'
+import { CatalogFileDetails } from './CatalogFileDetails'
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   const tags = useTags()
@@ -40,12 +41,14 @@ export function CatalogOrdinaryBrowser(props: {
   library: string
   libraries: LibraryRead[]
   editor: string
+  inspectorEnabled: boolean
   blocked: boolean
   selected: string | null
   onSelect: (id: string) => void
   onReviewEntity: (family: string, id: string) => void
   onReview: () => void
   onOpen: (id: string) => void
+  onOpenFile: (bundle: string, file: string) => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
 }) {
@@ -124,6 +127,13 @@ export function CatalogOrdinaryBrowser(props: {
                   <>
                     <h2>{file.name}</h2>
                     <p>{file.relative_path}</p>
+                    {props.inspectorEnabled && file.file_id && (
+                      <CatalogFileDetails
+                        key={file.file_id}
+                        library={props.library}
+                        file={file.file_id}
+                      />
+                    )}
                     <p>
                       {file.linked ? 'Cataloged' : 'Unlinked'} ·{' '}
                       {file.local_state === 'observed'

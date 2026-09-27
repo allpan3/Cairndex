@@ -238,6 +238,54 @@ class Preview:
                 + [{field: row[field] for field in ("id", "parent_id", "sort_order")}],
             )
 
+    def membership(self, command: dict[str, Any]) -> bool:
+        """Prepare one explicit edge change; retain cascades and refuse stale choices."""
+        from cairndex.replicas.catalog.inspector import EDGES
+
+        family = command["family"]
+        if family not in EDGES or type(command.get("assigned")) is not bool:
+            raise ReplicaError("Unsupported membership choice")
+        bundle, target = command["bundle"], command["target"]
+        edge = EDGES[family]
+        identity = f"{bundle}~{target}"
+        unit = key(edge, identity, "$alive")
+        expected = {
+            unit,
+            key("asset_bundles", bundle, "$alive"),
+            key(family, target, "$alive"),
+        }
+        observed = command["observed"]
+        if set(observed) != expected or any(
+            set(observed[item]) != {tip["event"] for tip in self.store.tips(self.db, item)}
+            or self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (item,)).fetchone()
+            for item in expected
+        ):
+            raise ReplicaError("Membership changed or requires conflict review; refresh choices")
+        if (
+            read_row(self.db, "asset_bundles", bundle) is None
+            or read_row(self.db, family, target) is None
+        ):
+            raise ReplicaError("Membership target is unavailable")
+        existing = self.db.execute(
+            "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+        ).fetchone()
+        if not command["assigned"]:
+            if not existing or existing[0] != "true":
+                raise ReplicaError("Membership is already absent; refresh choices")
+            self.delete(edge, identity)
+            return False
+        if existing:
+            if existing[0] != "false":
+                raise ReplicaError("Membership is already present; refresh choices")
+            # Explicit Add restores only this stable pair, never either referenced object.
+            self.put(unit, True)
+            return True
+        row = {"bundle_id": bundle, "tag_id" if family == "tags" else "collection_id": target}
+        if family == "collections":
+            row["sort_order"] = 0
+        self.create(edge, row)
+        return False
+
     # Conflict choices always show the full dependency scope and preserve rejected branches
     def choose(self, unit: str, choices: dict[str, str], observed: dict[str, list[str]]) -> None:
         scope = self.store.scope(self.db, [unit])
@@ -295,7 +343,10 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
     with store.connection() as db:
         builder = Preview(store, db)
         action = command.get("action")
-        if action == "delete":
+        recover = command.get("recover", False)
+        if action == "membership":
+            recover = builder.membership(command)
+        elif action == "delete":
             builder.delete(command["family"], command["entity"])
         elif action == "transfer":
             builder.transfer(command["source"], command["target"], command["members"])
@@ -330,7 +381,7 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             builder.choose(command["unit"], command["choices"], command["observed"])
         else:
             raise ReplicaError("Unsupported catalog command")
-        receipt = builder.receipt(resolve=action == "choose", recover=command.get("recover", False))
+        receipt = builder.receipt(resolve=action == "choose", recover=recover)
         validate_preview(store, db, receipt)
         return receipt
 

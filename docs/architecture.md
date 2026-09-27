@@ -73,6 +73,12 @@ and scalar inspector controls. Causal job receipts advance only acknowledged fie
 bases; pending requests and newer drafts remain separate. Complete conflict review
 retains its existing controls. Legacy ORM mutation paths remain fenced.
 
+Ordinary inspector membership choices use paginated projection reads and retained
+preview jobs. Explicit Apply preserves edge/lifetime bases and collection-cover
+clearing. Cover drafts retain the selected file's lifetime basis. Guarded cover
+derivatives and selected-file facts use the private media adapter; these local
+observations never enter authored history. No content schema migration is required.
+
 The API and shared app select the advertised capability. Replica packages never
 open legacy content/lease/source-write paths. The [catalog workflow](replica-catalog.md)
 and [migration contract](replica-migration.md) define wire limits, schema inventory,

@@ -7749,3 +7749,81 @@ code {
 .catalog-bundle-surface > .catalog-bundle-browser {
   height: 100%;
 }
+
+.catalog-inspector-cover {
+  margin: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.catalog-inspector-cover img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  background: var(--bg-raised);
+  border-radius: 6px;
+}
+.catalog-membership-picker {
+  display: grid;
+  gap: 8px;
+}
+.catalog-membership-picker button,
+.catalog-inspector-cover button,
+.catalog-inspector-file button,
+.catalog-file-details > button,
+[aria-label='Files in bundle'] > button {
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.catalog-membership-picker button:disabled,
+[aria-label='Files in bundle'] button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.catalog-membership-picker input[type='search'] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.catalog-membership-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.catalog-membership-row > span,
+.catalog-inspector-file > button {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.catalog-membership-path {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.catalog-inspector-file {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.catalog-inspector-file > button {
+  width: 100%;
+  text-align: left;
+}
+.catalog-inspector-file > div {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.catalog-file-details > .inspector {
+  width: auto;
+  border: 0;
+  padding: 0;
+}
+.catalog-file-surface > .inspector {
+  overflow-y: auto;
+}

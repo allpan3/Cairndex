@@ -39,6 +39,7 @@ class DraftRequest(StrictModel):
 # Provider publication is distinguishable from an unavailable peer receipt
 class ReplicaStatus(StrictModel):
     browse_version: int | None = None
+    inspector_version: int | None = None
     catalog_version: int | None = None
     media_version: int | None = None
     discovery_version: int | None = None

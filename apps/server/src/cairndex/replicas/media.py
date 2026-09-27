@@ -143,6 +143,30 @@ class ReplicaMedia:
             if (
                 probe
                 and kind is not None
+                and kind[0] == MediaKind.IMAGE
+                and state == "available"
+                and not metadata
+            ):
+                from PIL import Image, UnidentifiedImageError
+
+                try:
+                    with open_source(self.root, row["relative_path"]) as handle:
+                        if generation(row["relative_path"], os.fstat(handle)) != token:
+                            raise ReplicaError("Local image changed; retry inspection")
+                        with os.fdopen(os.dup(handle), "rb") as source, Image.open(source) as image:
+                            metadata = {"width": image.width, "height": image.height}
+                    self.validate(identity, token)
+                except (
+                    OSError,
+                    UnidentifiedImageError,
+                    Image.DecompressionBombError,
+                    ReplicaError,
+                ):
+                    metadata = None
+                    error = "Local image details are unavailable; retry when it is readable"
+            if (
+                probe
+                and kind is not None
                 and kind[0] == MediaKind.VIDEO
                 and state == "available"
                 and (not metadata or metadata.get("probe_version") != PROBE_VERSION)

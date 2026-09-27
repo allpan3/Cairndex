@@ -124,10 +124,10 @@ library switch. An already observed conflict requires explicit metadata review.
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
-| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse` | Covers, technical facts, other system views, multi-selection actions, albums and additional inspector actions |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Other system views, multi-selection actions and albums |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and date-added sorts; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; unsupported request fields/sorts return 422 |
-| Inspector | Shared title, note boxes and half-star control; durable `/replica/catalog/jobs` saves | Tag/collection pickers, file details and the remaining inspector actions use metadata review |
+| Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
 | File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening, source writes and provider hydration |
 | Update/media | Existing discovery controls and shared viewer | Source writes, provider hydration and cross-device resume remain unavailable |
@@ -154,8 +154,26 @@ The shared sidebar supplies the collection hierarchy, descendant counts, saved
 Smart Collections and Tags. Empty collections remain visible. Tag selection uses
 the shared Any/All/Equal rules, exclusions and descendant toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.
-Saved expression text is never rewritten by browsing or preview. Related membership
-and hierarchy edits remain in Metadata review and use existing causal commands.
+Saved expression text is never rewritten by browsing or preview. The inspector's
+tag and collection pickers search the complete destination population before
+pagination. Add/Remove prepares one stable pair for explicit Apply. The preview
+retains the displayed edge and lifetime bases, refuses stale or held choices and
+shows any collection-cover clearing. Explicit Add can restore a removed pair but
+cannot restore a deleted bundle or destination. Prepared reviews and exact commit
+identities survive reload and response loss. Membership saves leave scalar drafts
+intact. Hierarchy edits remain in Metadata review.
+
+Cover selection uses the retained inspector draft and observed file lifetime.
+These controls require `inspector_version: 1`; older servers retain scalar editing
+and Metadata review without calls to unsupported inspector routes.
+Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
+local derivatives in the private cache; missing artwork leaves metadata usable.
+File pages retain catalog order. Selecting one file checks its local bytes and
+shows the shared file inspector. Video facts use a bounded probe; image dimensions
+use a guarded header read. Unknown or unavailable facts do not become zero-size or
+shared availability claims. Retry checks the selected file again. The shared File
+Browser uses the same details for cataloged files. Cover choice does not change
+the playback cursor or file order.
 
 File Browser merges one direct local directory listing with retained catalog paths.
 It shows observed local entries, unlinked files and unavailable cataloged entries.

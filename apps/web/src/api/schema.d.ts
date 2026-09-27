@@ -2729,6 +2729,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/memberships/{family}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Membership Choices */
+        get: operations["membership_choices_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__memberships__family__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
         parameters: {
             query?: never;
@@ -3967,6 +3984,10 @@ export interface components {
         };
         /** CatalogBundleSummary */
         CatalogBundleSummary: {
+            /** Cover File Id */
+            cover_file_id?: string | null;
+            /** Cover Key */
+            cover_key?: string | null;
             /**
              * Date Added
              * Format: date-time
@@ -4147,6 +4168,32 @@ export interface components {
             };
             /** Operation */
             operation: string;
+        };
+        /** CatalogMembershipChoice */
+        CatalogMembershipChoice: {
+            /** Assigned */
+            assigned: boolean;
+            /** Held */
+            held: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+            /** Parent Id */
+            parent_id: string | null;
+            /** Path */
+            path: string[];
+        };
+        /** CatalogMembershipPage */
+        CatalogMembershipPage: {
+            /** Items */
+            items: components["schemas"]["CatalogMembershipChoice"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** CatalogNavigationPage */
         CatalogNavigationPage: {
@@ -6062,6 +6109,8 @@ export interface components {
             discovery_version?: number | null;
             /** Exchange Error */
             exchange_error?: string | null;
+            /** Inspector Version */
+            inspector_version?: number | null;
             /** Invalid */
             invalid: number;
             /** Media Version */
@@ -12907,6 +12956,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogFacetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    membership_choices_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__memberships__family__get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+                q?: string;
+                assigned?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                family: "tags" | "collections";
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogMembershipPage"];
                 };
             };
             /** @description Validation Error */

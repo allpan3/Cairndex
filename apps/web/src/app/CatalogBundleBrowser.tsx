@@ -20,22 +20,26 @@ export function CatalogBundleBrowser({
   filters,
   onFilters,
   editor,
+  inspectorEnabled,
   blocked,
   selected,
   onSelect,
   onReview,
   onOpen,
+  onOpenFile,
 }: {
   library: string
   filters: AdHocFilters
   onFilters: (filters: AdHocFilters) => void
   selection: Selection
   editor: string
+  inspectorEnabled: boolean
   blocked: boolean
   selected: string | null
   onSelect: (id: string) => void
   onReview: () => void
   onOpen: (id: string) => void
+  onOpenFile: (bundle: string, file: string) => void
 }) {
   const collections = useCollections()
   const [includeDescendants, setIncludeDescendants] = useState(true)
@@ -100,9 +104,9 @@ export function CatalogBundleBrowser({
               ...item,
               total_size: 0,
               has_missing: false,
-              has_cover: false,
+              has_cover: Boolean(item.cover_file_id),
               openable: item.file_count > 0,
-              cover_key: null,
+              cover_key: item.cover_key ?? null,
               cover_width: null,
               cover_height: null,
               primary_relative_path: null,
@@ -268,10 +272,12 @@ export function CatalogBundleBrowser({
           library={library}
           entity={detail.data}
           editor={editor}
+          inspectorEnabled={inspectorEnabled}
           blocked={blocked}
           refresh={refresh}
           onReview={onReview}
           onOpen={() => onOpen(detail.data.id)}
+          onOpenFile={(file) => onOpenFile(detail.data.id, file)}
         />
       ) : (
         <aside className="inspector">

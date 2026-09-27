@@ -343,6 +343,7 @@ test('ordinary collection filters and File Browser share one library journey @fu
     const legacyRequests: string[] = []
     page.on('request', (request) => {
       const url = new URL(request.url())
+      if (request.method() === 'GET' && /\/bundles\/[^/]+\/thumbnail$/.test(url.pathname)) return
       // The shared thumbnail route validates catalog identity and local generation.
       if (
         request.method() === 'GET' &&
