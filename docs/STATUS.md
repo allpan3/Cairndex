@@ -13,8 +13,8 @@ patches, volume-based Move and source deletion remain on hold.
 
 ## Ordinary browsing for synthetic portable libraries
 
-On `fix/library-ownership-lifecycle`, existing complete synthetic packages open
-in the shared Bundle Browser. The private catalog adapter supplies complete
+Implementation checkpoint: `e910ccff` on `fix/library-ownership-lifecycle`.
+Existing complete synthetic packages open in the shared Bundle Browser. The private catalog adapter supplies complete
 free-text search, SQL pagination, title/rating/date-added sorting and single
 selection. Shared title, ordered-note and rating controls save through causal
 jobs. Search includes bundle titles, bundle/file notes and moment comments.
@@ -50,17 +50,21 @@ were not run. This evidence does not qualify providers, NAS or large-library use
 The separate test-only commits `4ef7f76f`, `3b10f10d` and `48c39056` remove fixed
 worker-step assumptions from discovery tests. They retain exact outcome, recovery,
 conflict and source-byte assertions. All **31 focused backend tests** pass. Backend
-lint, formatting, type checking and generated API comparison pass. The full run
-passed 1,805 tests and skipped one ffmpeg filter test; its remaining scan-timing
-failure is corrected and passes in the focused group.
+lint, formatting, type checking and generated API comparison pass. The final full
+backend run passes **1,806 tests**; one tone-mapping test is skipped because the
+available ffmpeg has no `zscale` filter. Earlier fixed-step timing failures are
+corrected and pass in this complete run.
 
 The frontend gate passes **1,253 tests**, lint, formatting, type checking and the
-production build. Both new real-server browser tests pass on the final code.
-The complete browser run passed 209 tests; the remaining large discovery test
-passes with a 60-second completion limit. Its 201-file partial-acceptance and
-source-byte assertions remain intact. Full backend and browser reruns are in
-progress for the final checkpoint. The synthetic browser screenshot is visually
-checked and remains outside Git.
+production build. All **210 browser tests** pass, including both new real-server
+catalog tests. The large discovery test uses a 60-second completion limit; its
+201-file partial-acceptance and source-byte assertions remain intact. The synthetic
+browser screenshot is visually checked and remains outside Git.
+
+The task-local privacy range from `8f3ea283` through `e910ccff` passes: four commits
+and 39 new blobs. All reviewed additions are source, tests, API artifacts or
+text documentation. No build output or test media is committed. No push, PR,
+tag, release or installed-app replacement is part of this checkpoint.
 
 ## Synthetic empty-library creation
 
