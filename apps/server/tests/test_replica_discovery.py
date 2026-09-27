@@ -163,13 +163,11 @@ def test_replacement_review_and_revalidation(replicas):
     assert candidate["body"]["kind"] == "replacement"
     operation = uuid4().hex
     state.prepare(store, operation, {"candidate": candidate["id"], "use_replacement": True})
-    discovery.tick(store, root)
-    prepared = state.review(store, operation)
+    prepared = advance_review(store, root, operation)
     assert prepared["state"] == "ready", prepared
     file.write_bytes(b"changed after review")
     state.accept(store, operation, prepared["receipt"])
-    discovery.tick(store, root)
-    assert state.review(store, operation)["state"] == "failed"
+    assert advance_review(store, root, operation)["state"] == "failed"
     assert "$content" not in store.entity("asset_files", "file-video")["fields"]
 
 
@@ -382,8 +380,11 @@ def test_api_backup_restore_requires_revalidation(specimen, tmp_path, raw_client
         ).status_code
         == 202
     )
-    service.exchange(identity)
-    prepared = raw_client.get(base + "/replica/discovery/reviews/recovery-review").json()
+    for _ in range(100):
+        service.exchange(identity)
+        prepared = raw_client.get(base + "/replica/discovery/reviews/recovery-review").json()
+        if prepared["state"] != "queued":
+            break
     assert prepared["state"] == "ready"
     private = get_settings().data_dir.resolve()
     report = recovery.backup(root, private, tmp_path / "backup")
@@ -451,8 +452,7 @@ def test_addition_and_unrelated_authored_edit(replicas):
             parents=receipt["parents"],
         )
     state.accept(store, "addition", prepared["receipt"])
-    discovery.tick(store, root)
-    assert state.review(store, "addition")["state"] == "applied"
+    assert advance_review(store, root, "addition")["state"] == "applied"
     after = store.entity("asset_bundles", "bundle-000000")["fields"]
     assert after["notes"]["value"] == json.dumps('["edited while reviewing"]')
     assert after["cover_file_id"]["value"] == before["cover_file_id"]["value"]
@@ -531,7 +531,7 @@ def test_abrupt_process_exit_during_review_commit(replicas):
     scan(store, root)
     candidate = state.candidates(store)["items"][0]
     state.prepare(store, "crash-review", {"candidate": candidate["id"]})
-    discovery.tick(store, root)
+    advance_review(store, root, "crash-review")
     state.accept(store, "crash-review", state.review(store, "crash-review")["receipt"])
     code = """
 import os,sys
@@ -542,15 +542,15 @@ from cairndex.replicas.discovery import tick
 root=Path(sys.argv[1])
 store=CatalogStore(Path(sys.argv[2]),read_manifest(root).replica,
  fault=lambda point: os._exit(73) if point=='discovery_before_commit' else None)
-tick(store,root)
+for _ in range(100):
+    tick(store,root)
 """
     result = subprocess.run(
         [sys.executable, "-c", code, str(root), str(store.path.parent)], check=False
     )
     assert result.returncode == 73
     assert state.review(store, "crash-review")["state"] == "apply_queued"
-    discovery.tick(store, root)
-    assert state.review(store, "crash-review")["state"] == "applied"
+    assert advance_review(store, root, "crash-review")["state"] == "applied"
     with store.connection(readonly=True) as db:
         assert (
             db.execute("SELECT COUNT(*) FROM catalog_paths WHERE path='crash.png'").fetchone()[0]
@@ -568,7 +568,7 @@ def test_superseded_candidates_and_exact_review_retry(replicas):
     candidate = state.candidates(store)["items"][0]
     intent = {"candidate": candidate["id"]}
     state.prepare(store, "retained", intent)
-    discovery.tick(store, root)
+    advance_review(store, root, "retained")
     prepared = state.review(store, "retained")["prepared"]
     file.write_bytes(b"second synthetic choice")
     scan(store, root)
@@ -583,11 +583,9 @@ def test_superseded_candidates_and_exact_review_retry(replicas):
 
         assert display(db, row)["body"] == candidate["body"]
     state.accept(store, "retained", state.review(store, "retained")["receipt"])
-    discovery.tick(store, root)
-    assert state.review(store, "retained")["state"] == "failed"
+    assert advance_review(store, root, "retained")["state"] == "failed"
     state.prepare(store, "retained", intent)
-    discovery.tick(store, root)
-    assert state.review(store, "retained")["state"] == "failed"
+    assert advance_review(store, root, "retained")["state"] == "failed"
     assert state.review(store, "retained")["prepared"] == prepared
     confirm(store, root, current[0])
 
@@ -632,7 +630,7 @@ def test_recovery_rejects_invalid_discovery_state(replicas, damage):
     scan(store, root)
     candidate = state.candidates(store)["items"][0]
     state.prepare(store, "validation-review", {"candidate": candidate["id"]})
-    discovery.tick(store, root)
+    advance_review(store, root, "validation-review")
     with store.connection() as db:
         validate(db, store)
         if damage == "identity":
