@@ -438,8 +438,7 @@ def test_addition_and_unrelated_authored_edit(replicas):
     candidate = state.candidates(store)["items"][0]
     assert candidate["body"]["target"] == "bundle-000000"
     state.prepare(store, "addition", {"candidate": candidate["id"]})
-    discovery.tick(store, root)
-    prepared = state.review(store, "addition")
+    prepared = advance_review(store, root, "addition")
     assert prepared["state"] == "ready", prepared["error"]
     with store.connection() as db:
         builder = Preview(store, db)
