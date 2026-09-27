@@ -13,7 +13,8 @@ patches, volume-based Move and source deletion remain on hold.
 
 ## Ordinary catalog multi-selection and system views
 
-Branch: `fix/library-ownership-lifecycle`, based on `ff132e6b`.
+Implementation checkpoint: `089e7df0` on `fix/library-ownership-lifecycle`,
+based on `ff132e6b`. Test-fixture shutdown repair: `84edb71e`.
 Complete synthetic catalogs provide reviewed bulk title/rating and tag/collection
 Add/Remove controls. Selection uses the shared pointer, keyboard and marquee
 behavior. Cmd/Ctrl+A selects loaded pages only; query changes clear active selection.
@@ -29,10 +30,32 @@ Replica Update candidates remain in their private grouping review until acceptan
 These views do not inspect source bytes. Recently Used needs a separate private
 usage contract; Trash needs the deferred source-operation contract.
 
-Validation is in progress. Tests use disposable synthetic catalogs only. Native,
-provider, NAS and representative-scale qualification are not part of this change.
-Albums, file note/source controls, cross-device resume, normal replica creation,
-real conversion and source writes remain outside this implementation.
+The full backend suite passes **1,829 tests**, with one tone-mapping test skipped
+because ffmpeg has no `zscale` filter. Backend lint, formatting and type checks
+pass. All **1,260 frontend unit tests** pass with two workers; frontend lint,
+formatting, type checks and the production web build pass. All **214 browser
+tests** pass with two workers, zero retries and no skipped tests, in 10.4 minutes.
+The generated OpenAPI matches the server. Staged, commit-message and task-range
+privacy checks pass; all new blobs are text source, tests, API types or docs.
+
+Focused tests cover mixed and absent memberships, restoration, stale bases,
+deleted targets, collection-cover clearing and exact job retries. Browser checks
+cover retained targets across navigation, lost responses and reload, scalar-draft
+isolation, loaded-page selection, keyboard ranges, older servers and populated
+Unbundled pagination/search. Synthetic screenshots of the bulk inspector and
+Unbundled list were visually checked and remain outside Git. Test servers and
+runners stopped; temporary fixture libraries were removed.
+
+Tests use disposable synthetic catalogs only. Native packaging, Docker deployment,
+provider, NAS and representative-scale qualification were not run; no Rust,
+packaging or deployment files changed. Albums, file note/source controls,
+cross-device resume, normal replica creation, real conversion and source writes
+remain outside this implementation. No push, PR, tag, release or installed-app
+replacement is part of this work.
+
+The next recommended ordinary-interface task is bundle albums. Private-store
+access guards, normal backup/recovery controls and production library creation
+retain their separate design and qualification gates.
 
 ## Production macOS inspector verification
 
