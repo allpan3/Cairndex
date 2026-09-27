@@ -28,15 +28,22 @@ unknown observations and the indexed/local directory contracts.
 The full backend gate passes **1,812 tests**, with one tone-mapping test skipped
 because the available ffmpeg has no `zscale` filter. Backend lint, formatting,
 type checks and generated OpenAPI comparison pass. The frontend gate passes
-**1,255 tests**, lint, formatting, type checks and the production build.
+**1,257 tests**, lint, formatting, type checks and the production build.
 
-The final full browser run passed **208 tests** and had three failures. The
-combined test now shows the player controls and pauses before checking manual
-folder order; it passed three consecutive runs. All three catalog journeys also
-pass after the final Recent-order correction. The two other failures were a
-fetch error in the older-server test and a readiness timeout in the independent
-replica test; both passed unchanged in a focused rerun. Thus every one of the
-211 browser tests has a passing result, but there is no single clean full run.
+The final complete browser run at `4104bf34` passes **211 tests** with two
+workers, zero retries and no skipped tests, in 5.4 minutes. All three combined
+catalog journeys, copy-import targets, discovery, replica recovery and media
+tests pass in this run. No test backend or browser server remains after cleanup.
+
+Test commits `2d3718bd` and `737dd2c5` wait for the loaded inspector and replica
+baseline before editing. Cleanup closes the older-server page before its backend
+and stops the actual backend child in the large discovery test. Outcome,
+identity, journal and source-byte assertions remain intact. Earlier full runs
+also exposed a delayed private draft response that replaced a successful save
+status. Fix `4104bf34` cancels draft status callbacks before dismissal starts.
+Both response-order regression tests fail without the fix and pass with it.
+The original browser save-confirmation assertion remains unchanged. Backend and
+native checks were not repeated for this frontend and test follow-up.
 
 A separate production macOS app checked collection descendants, tag match rules,
 saved-filter previews, file search and keyboard media opening against a synthetic
@@ -58,6 +65,8 @@ backup UI parity, upgrades and source-write synchronization remain separate.
 The task-local privacy range from `f1088023` through `88a82a36` passes: two
 commits and 36 new blobs. The changes contain source, tests, generated API
 artifacts and text documentation. No media or build output is committed.
+The follow-up range from `c3dd7c36` through `4104bf34` also passes: three
+commits and 11 new blobs, all test/application source or text documentation.
 No push, PR, tag, release, history rewrite or installed-app replacement occurred.
 
 ## Earlier ordinary browsing checkpoint
