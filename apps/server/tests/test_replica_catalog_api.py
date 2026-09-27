@@ -43,7 +43,7 @@ def api(tmp_path):
         for _ in range(8):
             service.exchange(library)
         yield client, base, store
-        service.close(library)
+    service.close(library)
     engine.dispose()
 
 
