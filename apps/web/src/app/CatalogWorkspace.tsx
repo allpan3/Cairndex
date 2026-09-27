@@ -1,4 +1,4 @@
-import { CatalogBundleBrowser } from './CatalogBundleBrowser'
+import { CatalogOrdinaryBrowser } from './CatalogOrdinaryBrowser'
 // Shared bundle-first navigation and creation across every authored catalog family
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -234,31 +234,33 @@ export function CatalogWorkspace({
     <main
       className={reviewMode ? 'replica-workspace catalog-workspace' : 'catalog-browser-workspace'}
     >
-      <header>
-        <div>
-          <h1>
-            {reviewMode
-              ? 'Library catalog'
-              : (libraries.find((item) => item.id === libraryId)?.name ?? 'Library')}
-          </h1>
-          <p>Authored metadata · private drafts stay on this device</p>
-        </div>
-        <label>
-          Library
-          <select
-            aria-label="Library"
-            value={libraryId}
-            onChange={(event) => onChangeLibrary(event.target.value)}
-          >
-            {libraries.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button onClick={onManage}>Manage libraries</button>
-      </header>
+      {reviewMode && (
+        <header>
+          <div>
+            <h1>
+              {reviewMode
+                ? 'Library catalog'
+                : (libraries.find((item) => item.id === libraryId)?.name ?? 'Library')}
+            </h1>
+            <p>Authored metadata · private drafts stay on this device</p>
+          </div>
+          <label>
+            Library
+            <select
+              aria-label="Library"
+              value={libraryId}
+              onChange={(event) => onChangeLibrary(event.target.value)}
+            >
+              {libraries.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={onManage}>Manage libraries</button>
+        </header>
+      )}
       <nav aria-label="Library views">
         <button
           disabled={!ordinaryBrowse}
@@ -344,8 +346,8 @@ export function CatalogWorkspace({
           onSaved={refresh}
         />
       )}
-      <button onClick={() => setFileBrowser(!fileBrowser)}>File Browser</button>
-      {fileBrowser && (
+      {reviewMode && <button onClick={() => setFileBrowser(!fileBrowser)}>File Browser</button>}
+      {reviewMode && fileBrowser && (
         <CatalogFileBrowser
           library={libraryId}
           onOpen={(id) => {
@@ -357,7 +359,16 @@ export function CatalogWorkspace({
         />
       )}
       {!reviewMode && state?.ready && editor && (
-        <CatalogBundleBrowser
+        <CatalogOrdinaryBrowser
+          key={libraryId}
+          libraries={libraries}
+          onChangeLibrary={onChangeLibrary}
+          onManage={onManage}
+          onReviewEntity={(family, id) => {
+            setFamily(family)
+            setSelected(id)
+            setReviewMode(true)
+          }}
           library={libraryId}
           editor={editor}
           blocked={!state?.ready || Boolean(state?.blocked)}

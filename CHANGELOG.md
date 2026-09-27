@@ -16,6 +16,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Complete synthetic catalogs use the shared collection sidebar, tag/rating
+  controls, structured filter execution and Smart Collection previews. Queries
+  evaluate the complete eligible catalog and retain exact saved expressions.
+- The shared File Browser shows direct local entries and unavailable cataloged
+  paths. Cataloged media opens with keyboard controls and folder order; bundle
+  drafts and file selection survive navigation. Source observations remain private.
+  Default Create, real conversion, providers and source writes remain unavailable.
+
 - Existing complete synthetic libraries open with the shared Bundle Browser,
   full-catalog search and title, note and rating controls. Causal saves retain
   newer drafts and exact retries across library switches. Conflicts use explicit

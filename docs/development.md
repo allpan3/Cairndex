@@ -153,6 +153,11 @@ same HTTP/CLI acceptance against source sidecars or the executable selected by
 separate real server and browser and recovers received drafts through the shared
 app. All fixtures are disposable and use invented metadata.
 
+`tests/test_catalog_query.py` covers descendants, compound/saved filters, counts,
+unknown observations and direct-directory safety. The combined browser journey
+checks collection/tag navigation, exact saved rules, retained drafts, local file
+search, keyboard playback and missing bytes on a disposable real server.
+
 `tests/test_catalog_browse.py` checks full-catalog search, eligible populations,
 strict request limits, competing projections and index upgrade/rollback.
 `e2e/catalog-browse.spec.ts` uses independent real servers and same-server clients

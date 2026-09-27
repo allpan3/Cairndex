@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../../api/replicas'
-import { resolveAssetUrl } from '../../api/client'
+import { resolveAssetUrl, type FileBrowserEntry } from '../../api/client'
 import { getConnectionScopeKey } from '../../api/requestScope'
 import type { components } from '../../api/schema'
 import { usePersistentState } from '../../state/usePersistentState'
 import { DEFAULT_PLAYER_PREFS, type PlayerPrefs } from '../types'
 import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
-import { viewerItemFromFile } from './viewerItem'
+import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
@@ -24,7 +24,9 @@ export function ReplicaViewer({
   library,
   target,
   onClose,
+  folder,
 }: {
+  folder?: { entries: FileBrowserEntry[]; title: string }
   library: string
   target: ReplicaOpen
   onClose: () => void
@@ -36,7 +38,7 @@ export function ReplicaViewer({
   )
   const initial = useQuery({
     queryKey: ['replica-media', library, 'initial', target.fileId],
-    enabled: Boolean(target.fileId),
+    enabled: !folder && Boolean(target.fileId),
     queryFn: ({ signal }) =>
       replicaRequest<LocalMedia>(
         library,
@@ -50,7 +52,7 @@ export function ReplicaViewer({
   const bundleId = target.bundleId ?? initial.data?.file.bundle_id
   const pages = useInfiniteQuery({
     queryKey: ['replica-media', library, 'playlist', bundleId],
-    enabled: Boolean(bundleId),
+    enabled: !folder && Boolean(bundleId),
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       replicaRequest<Playlist>(
@@ -69,27 +71,28 @@ export function ReplicaViewer({
     () => playlistFor(files, first?.directories ?? [], target.fileId),
     [files, first?.directories, target.fileId],
   )
+  const sequence = folder
+    ? folder.entries.map((file) => file.file_id!)
+    : playlist.map((file) => file.id)
   const preferred = target.fileId ?? first?.cursor
   const waitingForPreferred =
-    !picked && preferred && !playlist.some((file) => file.id === preferred) && pages.hasNextPage
+    !picked && preferred && !sequence.includes(preferred ?? '') && pages.hasNextPage
   const selected = waitingForPreferred
     ? undefined
-    : (picked ??
-      (playlist.some((file) => file.id === preferred) ? preferred : null) ??
-      playlist[0]?.id)
-  const index = playlist.findIndex((file) => file.id === selected)
+    : (picked ?? (sequence.includes(preferred ?? '') ? preferred : null) ?? sequence[0])
+  const index = sequence.indexOf(selected ?? '')
   // Fetch the next metadata page ahead of the ordered transition; this never reads media bytes
   useEffect(() => {
     if (
+      !folder &&
       pages.hasNextPage &&
       !pages.isFetchingNextPage &&
       !pages.isFetchNextPageError &&
-      (index >= playlist.length - 3 ||
-        (preferred && !playlist.some((file) => file.id === preferred)))
+      (index >= playlist.length - 3 || (preferred && !sequence.includes(preferred ?? '')))
     ) {
       void pages.fetchNextPage()
     }
-  }, [index, playlist, preferred, pages])
+  }, [index, playlist, preferred, pages, folder, sequence])
   const local = useQuery({
     queryKey: ['replica-media', library, 'file', selected],
     enabled: Boolean(selected),
@@ -101,32 +104,36 @@ export function ReplicaViewer({
   })
   const observation = local.isFetchedAfterMount ? local.data : undefined
   useEffect(() => {
-    if (!bundleId || !selected) return
-    void replicaRequest(library, `/media/bundles/${bundleId}/cursor`, 'PUT', {
+    const owner = folder ? observation?.file.bundle_id : bundleId
+    if (!owner || !selected) return
+    void replicaRequest(library, `/media/bundles/${owner}/cursor`, 'PUT', {
       file_id: selected,
     }).catch(() => undefined)
-  }, [bundleId, library, selected])
+  }, [bundleId, library, selected, folder, observation?.file.bundle_id])
   const items = useMemo(
     () =>
-      playlist.map((file) => {
-        const value = file.id === observation?.file.id ? observation : null
-        const item = viewerItemFromFile(value?.file ?? file)
-        const token = value?.generation
-        return {
-          ...item,
-          key: `${file.id}:${token ?? 'unobserved'}`,
-          sourceGeneration: token,
-          canSetCover: false,
-          contentUrl: token ? `${item.contentUrl}?source_generation=${token}` : item.contentUrl,
-          imageTiers: item.imageTiers.map((tier) => ({
-            ...tier,
-            src: token
-              ? `${tier.src}${tier.src.includes('?') ? '&' : '?'}source_generation=${token}`
-              : tier.src,
-          })),
-        }
-      }),
-    [playlist, observation],
+      (folder ? folder.entries.map(viewerItemFromEntry) : playlist.map(viewerItemFromFile)).map(
+        (baseItem) => {
+          const id = baseItem.fileId
+          const value = id === observation?.file.id ? observation : null
+          const item = value ? viewerItemFromFile(value.file) : baseItem
+          const token = value?.generation
+          return {
+            ...item,
+            key: `${id}:${token ?? 'unobserved'}`,
+            sourceGeneration: token,
+            canSetCover: false,
+            contentUrl: token ? `${item.contentUrl}?source_generation=${token}` : item.contentUrl,
+            imageTiers: item.imageTiers.map((tier) => ({
+              ...tier,
+              src: token
+                ? `${tier.src}${tier.src.includes('?') ? '&' : '?'}source_generation=${token}`
+                : tier.src,
+            })),
+          }
+        },
+      ),
+    [playlist, observation, folder],
   )
   const playable = useMemo(() => {
     const value = observation?.playback
@@ -142,32 +149,31 @@ export function ReplicaViewer({
       : null
   }, [observation?.playback])
   const retry = useCallback(async () => {
-    if (!bundleId && target.fileId) await initial.refetch()
-    await pages.refetch()
+    if (!folder && !bundleId && target.fileId) await initial.refetch()
+    if (!folder) await pages.refetch()
     if (selected) await local.refetch()
-  }, [bundleId, initial, local, pages, selected, target.fileId])
+  }, [bundleId, initial, local, pages, selected, target.fileId, folder])
   const mediaError =
     local.data?.state === 'available' && local.data.message ? new Error(local.data.message) : null
   return (
     <ViewerShell
       items={items}
       index={index}
-      onIndex={(next) => setPicked(playlist[next]?.id ?? null)}
+      onIndex={(next) => setPicked(sequence[next] ?? null)}
       playable={playable}
-      title={first?.title ?? 'Local replica media'}
+      title={folder?.title ?? first?.title ?? 'Local media'}
       artworkUrl=""
       playerPrefs={prefs}
       onPlayerPrefs={setPrefs}
       onClose={onClose}
       loading={
-        (!bundleId && initial.isPending) ||
-        pages.isPending ||
+        (!folder && ((!bundleId && initial.isPending) || pages.isPending)) ||
         Boolean(waitingForPreferred) ||
         (Boolean(selected) && !local.isFetchedAfterMount)
       }
       error={initial.error ?? pages.error ?? local.error ?? mediaError}
       emptyMessage={
-        !pages.isPending && !playlist.length
+        !(folder ? false : pages.isPending) && !sequence.length
           ? 'This bundle has no previewable media outside its folder members. Open a cataloged file to view that folder.'
           : null
       }

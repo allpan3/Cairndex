@@ -5,8 +5,9 @@ import type { components } from '../api/schema'
 import type { BundleSort, SortOrder, BundleSummary } from '../api/client'
 import { Browser, type BrowserNavigation } from './Browser'
 import { Toolbar } from './Toolbar'
-import { DEFAULT_PREFS } from './types'
-import { emptyAdHocFilters } from './adHocFilters'
+import { DEFAULT_PREFS, type Selection } from './types'
+import { type AdHocFilters, adHocFiltersToExpression } from './adHocFilters'
+import { useCollections } from '../api/hooks'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -15,6 +16,9 @@ const supportedSorts: BundleSort[] = ['title', 'rating', 'date_added']
 // The shared virtual listing and inspector controls receive catalog reads and causal saves.
 export function CatalogBundleBrowser({
   library,
+  selection,
+  filters,
+  onFilters,
   editor,
   blocked,
   selected,
@@ -23,6 +27,9 @@ export function CatalogBundleBrowser({
   onOpen,
 }: {
   library: string
+  filters: AdHocFilters
+  onFilters: (filters: AdHocFilters) => void
+  selection: Selection
   editor: string
   blocked: boolean
   selected: string | null
@@ -30,11 +37,25 @@ export function CatalogBundleBrowser({
   onReview: () => void
   onOpen: (id: string) => void
 }) {
+  const collections = useCollections()
+  const [includeDescendants, setIncludeDescendants] = useState(true)
+  const expression = adHocFiltersToExpression(filters)
+  const smart = useQuery({
+    queryKey: ['catalog-detail', library, 'smart_folders', selection.smartCollectionId],
+    enabled: Boolean(selection.smartCollectionId),
+    queryFn: () =>
+      catalog<Entity>(library, `/entities/smart_folders/${selection.smartCollectionId}`),
+    refetchInterval: 2000,
+  })
+  const smartValue = smart.data?.fields.$filter?.value
+  const smartFilter = smartValue ? JSON.parse(JSON.parse(smartValue).filter_json) : null
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [prefs, setPrefs] = useState(DEFAULT_PREFS)
   const [sort, setSort] = useState<BundleSort>('title')
   const [order, setOrder] = useState<SortOrder>('asc')
+  const activeSort = selection.view === 'recent' ? 'date_added' : sort
+  const activeOrder = selection.view === 'recent' && sort !== 'date_added' ? 'desc' : order
   const [notice, setNotice] = useState('')
   const navigation = useRef<BrowserNavigation>(null)
   useEffect(() => {
@@ -42,13 +63,27 @@ export function CatalogBundleBrowser({
     return () => clearTimeout(timer)
   }, [search])
   const browse = useInfiniteQuery({
-    queryKey: ['catalog-browse', library, query, sort, order],
+    queryKey: [
+      'catalog-browse',
+      library,
+      query,
+      sort,
+      order,
+      selection,
+      includeDescendants,
+      expression,
+    ],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<Page>(library, '/bundles/browse', 'POST', {
         q: query,
-        sort,
-        order,
+        view: selection.view,
+        collection_id: selection.collectionId,
+        include_descendants: includeDescendants,
+        smart_collection_id: selection.smartCollectionId ?? null,
+        filter: expression,
+        sort: activeSort,
+        order: activeOrder,
         offset: pageParam,
         limit: 50,
       }),
@@ -136,35 +171,60 @@ export function CatalogBundleBrowser({
       <div className="center">
         <Toolbar
           allowCollectionSort={false}
-          title="All bundles"
+          title={
+            selection.collectionId
+              ? (collections.data?.find((item) => item.id === selection.collectionId)?.name ??
+                'Collection')
+              : selection.smartCollectionId
+                ? smart.data?.fields.name?.value
+                  ? JSON.parse(smart.data.fields.name.value)
+                  : 'Smart Collection'
+                : selection.view === 'all'
+                  ? 'All bundles'
+                  : selection.view === 'uncategorized'
+                    ? 'Uncategorized'
+                    : selection.view === 'untagged'
+                      ? 'Untagged'
+                      : 'Recently added'
+          }
           total={browse.data?.pages[0]?.total ?? 0}
           search={search}
           onSearch={setSearch}
           prefs={prefs}
           onPrefs={setPrefs}
-          sort={sort}
-          order={order}
+          sort={activeSort}
+          order={activeOrder}
           onSort={changeSort}
-          allowedSorts={supportedSorts}
+          allowedSorts={selection.view === 'recent' ? ['date_added'] : supportedSorts}
           perCollectionSort={false}
           onPerCollectionSort={() =>
             setNotice('Collection sorting is not available for this library.')
           }
-          adHocFilters={emptyAdHocFilters()}
-          onAdHocFilters={() => {}}
+          adHocFilters={filters}
+          onAdHocFilters={onFilters}
           facetContext={{
-            view: 'all',
-            collectionId: null,
-            includeDescendants: true,
+            view: selection.view,
+            collectionId: selection.collectionId,
+            includeDescendants,
             q: query,
-            smartFilter: null,
+            smartFilter,
           }}
-          unavailableFilters="Structured filters are not available for this library."
         />
         <p className="catalog-capabilities">
-          Search covers bundle names, notes, file notes and moment comments. Structured filters,
-          cover previews and file sizes are not yet available here.
+          File size and availability are unknown in bundle filters. Open Files or media to check
+          local bytes.
         </p>
+        {selection.collectionId && (
+          <label>
+            <input
+              type="checkbox"
+              checked={includeDescendants}
+              onChange={(event) => setIncludeDescendants(event.target.checked)}
+            />
+            Show subcollection contents
+          </label>
+        )}
+        {smart.error && <p role="alert">Saved conditions are unavailable.</p>}
         {notice && <p role="alert">{notice}</p>}
         {browse.error && (
           <button className="btn" onClick={() => void browse.refetch()}>
@@ -179,8 +239,8 @@ export function CatalogBundleBrowser({
           total={browse.data?.pages[0]?.total ?? 0}
           layout={prefs.layout}
           zoom={prefs.zoom}
-          sort={sort}
-          order={order}
+          sort={activeSort}
+          order={activeOrder}
           onSort={changeSort}
           selectedIds={new Set(selected ? [selected] : [])}
           activeId={selected}

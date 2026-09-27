@@ -25,8 +25,11 @@ does not change ordinary Create or enable existing-library conversion.
 
 Existing complete **synthetic** packages open in the shared Bundle Browser, with
 full-catalog free-text search and title, note and rating editing. Other metadata
-and conflicts remain available through Metadata review. Structured filters and
-ordinary File Browser parity remain incomplete.
+and conflicts remain available through Metadata review. Collection/tag navigation,
+existing structured filters and saved Smart Collections
+use the private catalog. The shared File Browser shows direct local entries and
+retains unavailable cataloged paths; cataloged media uses the shared viewer.
+Source writes, unlinked media opening and further inspector controls remain unavailable.
 
 Capable **synthetic** replica packages support library-wide authored metadata,
 concurrent offline edits, complete structural choices, retained history and private

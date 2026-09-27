@@ -1,3 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
+import { replicaRequest } from '../api/replicas'
+import type { components } from '../api/schema'
+import { ReplicaViewer } from './viewer/ReplicaViewer'
 import { ViewOptions } from './ViewOptions'
 import { libraryStateKey } from '../state/useBundleDraft'
 import {
@@ -94,6 +98,7 @@ const FILE_SORTS: SortOption<FileSort>[] = [
 ]
 
 interface FileBrowserProps {
+  catalogLibrary?: string
   /** Leading header controls — the sidebar toggle and Back/Forward buttons. */
   headerLeading?: ReactNode
   /** Trailing toolbar controls — the inspector toggle. */
@@ -149,7 +154,7 @@ function crumbs(path: string): { label: string; path: string }[] {
  * directories) has neither and keeps its icon.
  */
 function thumbnailFor(entry: FileBrowserEntry): string | null {
-  if (entry.kind === 'directory') return null
+  if (entry.kind === 'directory' || entry.local_state != null) return null
   if (entry.file_id && entry.bundle_id)
     return fileThumbnailUrl(
       entry.bundle_id,
@@ -302,10 +307,62 @@ function FileBrowserControls(props: FileBrowserProps) {
     search: criteria.search,
     setSearch: (search: string) => setCriteria({ path: props.path, search }),
   }
-  return props.scope === 'unbundled' ? (
+  return props.catalogLibrary ? (
+    <CatalogBrowseScope {...props} {...controls} />
+  ) : props.scope === 'unbundled' ? (
     <UnbundledScope {...props} {...controls} />
   ) : (
     <BrowseScope {...props} {...controls} />
+  )
+}
+
+function CatalogBrowseScope(props: FileScopeProps) {
+  const query = useQuery({
+    queryKey: ['catalog-local-directory', props.catalogLibrary, props.path],
+    queryFn: () =>
+      replicaRequest<components['schemas']['FileBrowserListingRead']>(
+        props.catalogLibrary!,
+        `/media/directory?path=${encodeURIComponent(props.path)}`,
+      ),
+    refetchInterval: 4000,
+  })
+  return (
+    <div className="file-browser">
+      <p className="catalog-capabilities">
+        Files are checked on this device. Unavailable catalog paths remain listed. Unlinked files
+        must be cataloged before they can open here.
+      </p>
+      {query.data?.local_state === 'unavailable' && (
+        <p role="status">This directory is unavailable on this device. Showing cataloged paths.</p>
+      )}
+      <FileList
+        {...props}
+        key={`${props.catalogLibrary}/${props.path}`}
+        header={
+          <nav className="file-browser__crumbs" aria-label="Breadcrumb">
+            <button className="crumb" onClick={() => props.onNavigate('')}>
+              {props.libraryName}
+            </button>
+            {crumbs(props.path).map((crumb) => (
+              <button
+                className="crumb"
+                key={crumb.path}
+                onClick={() => props.onNavigate(crumb.path)}
+              >
+                {crumb.label}
+              </button>
+            ))}
+          </nav>
+        }
+        entries={query.data?.entries ?? []}
+        isLoading={query.isLoading}
+        isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError}
+        onRetry={() => void query.refetch()}
+        errorText={query.error?.message}
+        emptyText="This folder is empty."
+      />
+    </div>
   )
 }
 
@@ -430,6 +487,7 @@ interface FileListProps extends FileScopeProps {
  * inspector); double click navigates into a folder or opens a file. Only files
  * participate in the bundling context menu and drag-select. */
 function FileList({
+  catalogLibrary,
   prefs,
   setPrefs,
   search,
@@ -517,7 +575,7 @@ function FileList({
     )
   // Keep the inspector and host actions on the refreshed path of the selected indexed file
   const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry) => {
-    if (selectedPath !== entry.relative_path) onSelectEntry(entry)
+    if (catalogLibrary || selectedPath !== entry.relative_path) onSelectEntry(entry)
   })
   useEffect(() => {
     if (selectedEntry && !stale) refreshSelectedEntry(selectedEntry)
@@ -697,16 +755,17 @@ function FileList({
       }
     }
     if (items.length > 0) items.push(null)
-    items.push(
-      {
-        label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
-        onClick: () => onCreateBundle(targets),
-      },
-      {
-        label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
-        onClick: () => onAddToBundle(targets),
-      },
-    )
+    if (!catalogLibrary)
+      items.push(
+        {
+          label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
+          onClick: () => onCreateBundle(targets),
+        },
+        {
+          label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
+          onClick: () => onAddToBundle(targets),
+        },
+      )
     if (n === 1) {
       const owningBundleId = entry.bundle_id
       if (onLocateBundle && owningBundleId && !entry.unbundled) {
@@ -722,7 +781,7 @@ function FileList({
       onClick: () => copyPath(entry.relative_path),
     })
     // An unindexed video has no file row for the server to cut a sheet from
-    if (n === 1 && entry.media_kind === 'video' && entry.file_id) {
+    if (!catalogLibrary && n === 1 && entry.media_kind === 'video' && entry.file_id) {
       items.push(
         null,
         contactSheetMenuItem(
@@ -872,6 +931,12 @@ function FileList({
       if (direction) {
         event.preventDefault()
         moveSelection(direction, event)
+      } else if (catalogLibrary && event.key === 'Enter' && !command) {
+        const entry = visible.find((item) => item.relative_path === focusedPath)
+        if (entry) {
+          event.preventDefault()
+          openEntry(entry)
+        }
       } else if (event.key === 'Escape') {
         event.preventDefault()
         setSelected(new Set())
@@ -1124,7 +1189,7 @@ function FileList({
         // entries. Path-based affordances below (drop, New Folder, the
         // background menu) stay live — they key off `path`, which is already the
         // folder being navigated to, so they are correct throughout.
-        onMouseDown={stale ? undefined : onBackgroundMouseDown}
+        onMouseDown={stale || openKey !== null ? undefined : onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={stale ? undefined : listKeyDown}
         onDragOver={canCreateFolder ? onDragOverFiles : undefined}
@@ -1303,7 +1368,15 @@ function FileList({
           />
         )}
 
-        {openIndex >= 0 && (
+        {openIndex >= 0 && catalogLibrary && openable[openIndex]?.file_id && (
+          <ReplicaViewer
+            library={catalogLibrary}
+            folder={{ entries: openable, title: viewerTitle }}
+            target={{ fileId: openable[openIndex]!.file_id! }}
+            onClose={() => setOpenKey(null)}
+          />
+        )}
+        {openIndex >= 0 && !catalogLibrary && (
           <FileEntryViewer
             files={openable}
             index={openIndex}
@@ -1378,7 +1451,20 @@ function FileRow({
             onCancel={onCancelRename}
           />
         ) : (
-          <span className="file-row__text">{label}</span>
+          <span className="file-row__text">
+            {label}
+            {entry.local_state && (
+              <small>
+                {' '}
+                · {entry.linked ? 'Cataloged' : 'Unlinked'} ·{' '}
+                {entry.local_state === 'observed'
+                  ? 'Observed here'
+                  : entry.local_state === 'unavailable'
+                    ? 'Unavailable here'
+                    : 'Availability unknown'}
+              </small>
+            )}
+          </span>
         )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
@@ -1433,22 +1519,25 @@ function FileCard({
   const isDir = entry.kind === 'directory'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
-      entry.media_kind === 'video' && entry.file_id && entry.duration
-        ? {
-            mediaKind: 'video',
-            fileId: entry.file_id,
-            mimeType: entry.mime_type,
-            relativePath: entry.relative_path,
-            container: entry.container,
-            videoCodec: entry.video_codec,
-            videoCodecTag: entry.video_codec_tag,
-            bitDepth: entry.bit_depth,
-            audioCodec: entry.audio_codec,
-            duration: entry.duration,
-            startTime: entry.resume_position,
-          }
-        : null,
+      entry.local_state != null
+        ? null
+        : entry.media_kind === 'video' && entry.file_id && entry.duration
+          ? {
+              mediaKind: 'video',
+              fileId: entry.file_id,
+              mimeType: entry.mime_type,
+              relativePath: entry.relative_path,
+              container: entry.container,
+              videoCodec: entry.video_codec,
+              videoCodecTag: entry.video_codec_tag,
+              bitDepth: entry.bit_depth,
+              audioCodec: entry.audio_codec,
+              duration: entry.duration,
+              startTime: entry.resume_position,
+            }
+          : null,
     [
+      entry.local_state,
       entry.audio_codec,
       entry.bit_depth,
       entry.container,

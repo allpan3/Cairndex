@@ -1,3 +1,6 @@
+import { useContext } from 'react'
+import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
+import { catalog } from './catalog'
 import {
   changeBundleTags,
   changeBundleCollections,
@@ -365,18 +368,38 @@ export function useViewCounts() {
 /** Faceted counts for a toolbar filter popover, scoped to the current browse
  * context. Keyed by the full params so it refetches when the scope changes. */
 export function useFacets(params: FacetParams, enabled = true) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['facets', params],
-    queryFn: ({ signal }) => fetchFacets(params, signal),
+    queryKey: ['facets', library, params],
+    queryFn: ({ signal }) =>
+      library
+        ? catalog<Awaited<ReturnType<typeof fetchFacets>>>(library, '/bundles/facets', 'POST', {
+            view: params.view,
+            collection_id: params.collectionId ?? null,
+            include_descendants: params.includeDescendants ?? false,
+            q: params.q ?? '',
+            filter: params.filter ?? null,
+            facets: params.facets,
+            tag_include_descendants: params.tagIncludeDescendants ?? true,
+          })
+        : fetchFacets(params, signal),
     enabled,
   })
 }
 
 /** Live match-count for a draft filter, debounced by query key (the AST). */
 export function useFilterPreview(filter: FilterExpression | null) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['filter-preview', filter],
-    queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
+    queryKey: ['filter-preview', library, filter],
+    queryFn: ({ signal }) =>
+      library && filter
+        ? catalog<{ total: number }>(library, '/bundles/browse', 'POST', { filter, limit: 1 }).then(
+            (page) => page.total,
+          )
+        : filter
+          ? previewFilter(filter, signal)
+          : Promise.resolve(0),
     enabled: filter !== null,
   })
 }
@@ -1317,9 +1340,17 @@ export function useFileBrowser(path: string | null, enabled = true, keepPrevious
 }
 
 export function useCollections() {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['collections'],
-    queryFn: ({ signal }) => fetchAllCollections(signal),
+    queryKey: library ? ['catalog-navigation', library, 'collections'] : ['collections'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchAllCollections>>[number]>(
+            library,
+            'collections',
+          )
+        : fetchAllCollections(signal),
+    refetchInterval: library ? 2000 : false,
   })
 }
 
@@ -1331,7 +1362,15 @@ export function useCollectionCounts() {
 }
 
 export function useTags() {
-  return useQuery({ queryKey: ['tags'], queryFn: ({ signal }) => fetchTags(signal) })
+  const library = useContext(CatalogQueryContext)
+  return useQuery({
+    queryKey: library ? ['catalog-navigation', library, 'tags'] : ['tags'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchTags>>[number]>(library, 'tags')
+        : fetchTags(signal),
+    refetchInterval: library ? 2000 : false,
+  })
 }
 
 /** Create a tag inline from a picker's search box (no matches → "Create …"). */
@@ -1454,7 +1493,18 @@ export function useTagMutations() {
 }
 
 export function useTagGroups() {
-  return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
+  const library = useContext(CatalogQueryContext)
+  return useQuery({
+    queryKey: library ? ['catalog-navigation', library, 'tag_groups'] : ['tag-groups'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchTagGroups>>[number]>(
+            library,
+            'tag_groups',
+          )
+        : fetchTagGroups(signal),
+    refetchInterval: library ? 2000 : false,
+  })
 }
 
 export function useTagCounts() {
@@ -1501,12 +1551,23 @@ export function useTagGroupMutations() {
 
 /** Map of tag-group id → its member tag ids, for the tag picker's group tabs. */
 export function useTagGroupMemberships() {
+  const library = useContext(CatalogQueryContext)
   const groups = useTagGroups()
   const ids = (groups.data ?? []).map((g) => g.id)
   return useQuery({
-    queryKey: ['tag-group-memberships', ids],
+    queryKey: ['tag-group-memberships', library, ids],
     enabled: groups.data !== undefined,
     queryFn: async () => {
+      if (library) {
+        const rows = await catalogNavigation<{ group_id: string; tag_id: string }>(
+          library,
+          'tag_group_memberships',
+        )
+        const result: Record<string, string[]> = {}
+        for (const row of rows) (result[row.group_id] ??= []).push(row.tag_id)
+        return result
+      }
+
       const entries = await Promise.all(
         (groups.data ?? []).map(async (g) => [g.id, await fetchTagGroupTags(g.id)] as const),
       )

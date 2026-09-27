@@ -1,5 +1,7 @@
 // Explicit replacement conditions leave arbitrary existing filter AST text untouched
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { catalog } from '../api/catalog'
 import { CatalogReference } from './CatalogControls'
 import { FIELDS, OP_LABELS } from './filterModel'
 
@@ -31,6 +33,15 @@ export function CatalogFilter({
   raw: string
   onChange: (raw: string) => void
 }) {
+  const preview = useQuery({
+    queryKey: ['catalog-filter-preview', library, raw],
+    queryFn: () =>
+      catalog<{ total: number }>(library, '/bundles/browse', 'POST', {
+        filter: JSON.parse(JSON.parse(raw)),
+        limit: 1,
+      }),
+    retry: false,
+  })
   const [rows, setRows] = useState<Condition[]>([condition()])
   const [match, setMatch] = useState('and')
   const [building, setBuilding] = useState(false)
@@ -51,6 +62,13 @@ export function CatalogFilter({
   }
   return (
     <section aria-label="Saved filter conditions">
+      {preview.isPending && <p role="status">Checking matching bundles…</p>}
+      {preview.data && <p role="status">{preview.data.total} matching bundles</p>}
+      {preview.error && (
+        <p role="alert">
+          Filter preview is unavailable. Check the expression. {preview.error.message}
+        </p>
+      )}
       <label>
         Exact filter AST
         <textarea

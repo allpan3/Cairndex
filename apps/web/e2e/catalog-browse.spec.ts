@@ -54,7 +54,7 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     }
     const [a, b] = pages as [Page, Page]
     const inspector = a.getByRole('complementary', { name: 'Bundle inspector' })
-    await expect(a.getByRole('button', { name: 'Filters', exact: true })).toBeDisabled()
+    await expect(a.getByRole('button', { name: 'Filters', exact: true })).toBeEnabled()
     await a.getByRole('searchbox', { name: 'Search', exact: true }).fill('64')
     await expect(
       a.getByRole('listbox', { name: 'Bundles', exact: true }).getByRole('option'),
@@ -299,6 +299,156 @@ test('catalog saves retain retry identity across switching and same-server clien
     ).toBeVisible()
   } finally {
     await Promise.all(contexts.map((context) => context.close()))
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+// One journey combines hierarchy, saved queries, drafts, local files and media.
+test('ordinary collection filters and File Browser share one library journey @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-navigation-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=20))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await fetch(`${backend.baseUrl}/api/v1/libraries/${library.id}/replica/status`)
+            ).json()
+          ).ready,
+      )
+      .toBe(true)
+    const before = await (await fetch(`${base}/entities/smart_folders/filter-one`)).json()
+    const legacyRequests: string[] = []
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      // The shared thumbnail route validates catalog identity and local generation.
+      if (
+        request.method() === 'GET' &&
+        /\/bundles\/[^/]+\/files\/[^/]+\/thumbnail$/.test(url.pathname) &&
+        url.searchParams.has('source_generation')
+      )
+        return
+      if (
+        /\/api\/v1\/libraries\/[^/]+\/(bundles|tags|collections|filters|file-browser)/.test(
+          request.url(),
+        )
+      )
+        legacyRequests.push(request.url())
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page
+      .getByRole('treeitem', { name: /Synthetic root/ })
+      .first()
+      .click()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
+    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).check()
+    await page.getByRole('button', { name: 'All Tags', exact: true }).click()
+    await page
+      .getByRole('region', { name: 'Tags', exact: true })
+      .getByRole('button', { name: 'Synthetic root', exact: true })
+      .click()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Filter by tags', exact: true }).click()
+    await expect(page.getByRole('group', { name: 'Tag match rule' })).toBeVisible()
+    await page.getByRole('button', { name: 'Equal', exact: true }).click()
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Clear all', exact: true }).click()
+    await page
+      .getByRole('button', { name: 'Synthetic name Edit Synthetic name', exact: true })
+      .first()
+      .click()
+    await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
+    const after = await (await fetch(`${base}/entities/smart_folders/filter-one`)).json()
+    expect(after.fields.$filter.value).toBe(before.fields.$filter.value)
+    const recentRequest = page.waitForRequest(
+      (request) =>
+        request.url().endsWith('/replica/catalog/bundles/browse') &&
+        request.postDataJSON()?.view === 'recent',
+    )
+    await page.getByRole('button', { name: 'Recent', exact: true }).click()
+    expect((await recentRequest).postDataJSON()).toMatchObject({
+      sort: 'date_added',
+      order: 'desc',
+    })
+    await page.getByRole('button', { name: 'All', exact: true }).click()
+    await openBundle(page, 'Synthetic playback')
+    const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
+    await inspector
+      .getByRole('textbox', { name: 'Note', exact: true })
+      .fill('Retained navigation note')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    await page.getByRole('row').filter({ hasText: 'Playback' }).dblclick()
+    await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('movie')
+    const movie = page.getByRole('row').filter({ hasText: 'movie.mp4' })
+    await expect(movie).toContainText('Observed here')
+    await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('')
+    await movie.click()
+    await page.getByRole('grid', { name: 'Files', exact: true }).press('Enter')
+    await expect(page.locator('video')).toBeVisible()
+    await expect
+      .poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime), {
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0.5)
+    // Pointer movement shows the player controls; pause before checking manual order.
+    await page.mouse.move(300, 250)
+    await page.getByRole('button', { name: 'Pause', exact: true }).click()
+    await page.getByRole('button', { name: 'Next file', exact: true }).click()
+    await expect(page.locator('img.mv-image')).toBeVisible()
+    await expect(page.locator('.media-viewer')).toContainText('picture.png')
+    await page.getByRole('button', { name: 'Next file', exact: true }).click()
+    await expect(page.locator('img.mv-image')).toBeVisible()
+    await expect(page.locator('.media-viewer')).toContainText('preview.tiff')
+    await page.getByRole('button', { name: 'Previous file', exact: true }).click()
+    await expect(page.locator('.media-viewer')).toContainText('picture.png')
+    await page.getByRole('button', { name: 'Previous file', exact: true }).click()
+    await expect(page.locator('video')).toBeVisible()
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
+    await page
+      .getByRole('complementary', { name: 'File inspector' })
+      .getByRole('button', { name: 'Locate in Bundle Browser' })
+      .click()
+    await expect(inspector.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
+      'Retained navigation note',
+    )
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    await rm(join(root, 'Playback/movie.mp4'))
+    await expect(page.getByRole('row').filter({ hasText: 'movie.mp4' })).toContainText(
+      'Unavailable here',
+    )
+    await expect(page.getByRole('complementary', { name: 'File inspector' })).toContainText(
+      'Unavailable on this device',
+    )
+    expect(legacyRequests).toEqual([])
+    await page.screenshot({ path: '/tmp/cairndex-catalog-integration.png' })
+  } finally {
+    await page.close()
     await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })
   }

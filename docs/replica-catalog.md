@@ -114,7 +114,7 @@ root; it does not browse arbitrary server paths or prove local media availabilit
 ## Ordinary browse and edit boundary
 
 Ordinary Open registers an existing complete synthetic package. A server with
-`browse_version: 1` opens the shared virtual Bundle Browser and shared title,
+`browse_version: 2` opens the shared virtual Bundle Browser and shared title,
 ordered-note and star-rating controls. Save changes commits the retained causal
 request. Input remains editable while a save is pending. Its acknowledgement
 advances only saved fields; newer input and unrelated draft bases remain intact.
@@ -124,12 +124,12 @@ library switch. An already observed conflict requires explicit metadata review.
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
-| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse` | Covers, technical facts, other system views, multi-selection actions, albums and collection navigation |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse` | Covers, technical facts, other system views, multi-selection actions, albums and additional inspector actions |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
-| Sort and filters | Title, rating and date-added sorts; stable ID ties | Structured filters, facets and Smart Collection execution are visibly unavailable; unsupported request fields/sorts return 422 |
+| Sort and filters | Title, rating and date-added sorts; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; unsupported request fields/sorts return 422 |
 | Inspector | Shared title, note boxes and half-star control; durable `/replica/catalog/jobs` saves | Tag/collection pickers, file details and the remaining inspector actions use metadata review |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
-| File Browser | Existing paginated `/replica/catalog/files` beneath the library root | Ordinary physical File Browser integration and local availability presentation |
+| File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening, source writes and provider hydration |
 | Update/media | Existing discovery controls and shared viewer | Source writes, provider hydration and cross-device resume remain unavailable |
 
 Search has the same token-prefix AND contract as legacy bundle search. It includes
@@ -141,16 +141,51 @@ in review; search follows the valid local projection. No source file is inspecte
 by a browse request. Unknown size and availability are not reported as measured facts.
 
 The query adapter reads the private projection; it does not open a legacy ORM
-session. The strict request accepts only `q`, `sort`, `order`, `offset` and `limit`.
+session. The strict request accepts search, sorting, collection descendants, a version-one
+filter AST, a Smart Collection ID and bounded pagination. Query-local SQL relations
+map committed catalog rows to the existing allowlisted filter compiler. No legacy
+ORM session or second mutable content projection is used.
 A private derived search index follows projection insert/delete operations in the
 same transaction. Older stores build the index in bounded startup batches;
 backup schema validation accepts the complete old or new schema. Recovery rebuilds
 it from the validated projection. The index never enters shared history.
 
+The shared sidebar supplies the collection hierarchy, descendant counts, saved
+Smart Collections and Tags. Empty collections remain visible. Tag selection uses
+the shared Any/All/Equal rules, exclusions and descendant toggle. Queries, facet
+counts and previews apply to the complete eligible population before pagination.
+Saved expression text is never rewritten by browsing or preview. Related membership
+and hierarchy edits remain in Metadata review and use existing causal commands.
+
+File Browser merges one direct local directory listing with retained catalog paths.
+It shows observed local entries, unlinked files and unavailable cataloged entries.
+An unavailable directory retains catalog paths with an explicit notice. Presence
+means an observation at listing time; opening media revalidates bytes. It does not
+claim provider hydration, repair identity, discover recursively or change metadata.
+Filename search and sorting cover the complete direct directory. This preserves
+the existing unpaginated physical-directory contract; indexed catalog browsing
+retains its cursor pages. Folder pagination redesign remains deferred.
+
+No-follow directory descriptors prevent symlink escapes. Hidden paths follow the
+scanner exclusions. Absolute and traversal paths are rejected. Cataloged video
+and images open through the guarded shared viewer. File Browser playback follows
+the visible folder order; bundle playback follows bundle order. Unlinked files
+must be cataloged before media opening. Source-write and export controls
+are not offered. A retained bundle draft survives Files/Tags navigation, and closing
+the viewer retains file selection.
+
+Bundle query size and missing-state predicates use SQL unknown for nonempty
+bundles because these requests do not inspect local bytes. Negation preserves
+unknown. Empty bundles have zero bytes and no missing member. Has-cover is true
+for an authored cover, false for an empty bundle without one, and otherwise unknown.
+This boundary prevents a local absence or unmeasured size from becoming a shared
+fact. Title, notes, source, filename, extension, rating, file count, dates and
+membership use the established authored semantics.
+
 Single selection supports pointer, arrow keys, Home/End and Enter to open media.
 Notes retain exact list values; arrow keys on each reorder control move a note.
 Metadata review retains the all-family controls, saved jobs and deleted objects.
-Older servers without the browse capability keep those catalog controls. Legacy
+Servers without browse version two keep the complete catalog controls. Legacy
 library queries and mutations retain their existing routes and behavior.
 
 ## Local media

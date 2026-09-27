@@ -1062,7 +1062,18 @@ bundle_search WHERE bundle_search MATCH ?)`), so it stacks with views,
 collections, filters, sort, and pagination. Results keep the active sort;
 relevance ranking is future work.
 
+Complete catalogs use the same AST compiler through query-local relations over
+private committed rows. Counts, previews and sorting precede pagination. These
+relations do not create a legacy content database. Unknown device observations
+retain SQL unknown semantics; source reads remain separate from bundle queries.
+
 ## 10. File Browser
+
+Complete catalogs connect the shared File Browser to a no-follow, root-scoped
+direct-directory read. Local entries and catalog paths remain distinct; absent
+bytes cannot remove metadata. The physical list keeps its unpaginated directory
+contract. The indexed catalog endpoint keeps cursor pagination. See the
+[catalog boundary](replica-catalog.md#ordinary-browse-and-edit-boundary).
 
 The Unbundled queue uses
 `GET /api/v1/libraries/{library_id}/manual-bundling/unbundled-files` with `q`,
