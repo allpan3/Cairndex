@@ -607,6 +607,7 @@ test('an older server keeps browsing and playback available and recovers after u
       .toBe('Retained before upgrade')
     expect(mutations).toEqual(['PATCH'])
   } finally {
+    await page.close()
     await f.cleanup()
   }
 })

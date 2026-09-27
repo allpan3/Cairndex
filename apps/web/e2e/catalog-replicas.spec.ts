@@ -46,6 +46,10 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     for (let index = 0; index < pages.length; index++) {
       await proxyApi(pages[index], backends[index].baseUrl)
       await pages[index].goto('/')
+      // Baseline import is asynchronous; the editor is checked after readiness.
+      await expect(
+        pages[index].getByRole('region', { name: 'Metadata delivery status' }),
+      ).toContainText('Saved here · available metadata published', { timeout: 30_000 })
       await pages[index].getByRole('button', { name: 'Metadata review', exact: true }).click()
       await expect(
         pages[index].getByRole('heading', { name: 'Library catalog', exact: true }),

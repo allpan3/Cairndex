@@ -56,6 +56,9 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
     for (let i = 0; i < 2; i++) {
       await proxyApi(pages[i], backends[i].baseUrl)
       await pages[i].goto('/')
+      await expect(
+        pages[i].getByRole('region', { name: 'Metadata delivery status' }),
+      ).toContainText('Saved here · available metadata published', { timeout: 30_000 })
       await expect(pages[i].getByLabel('Bundle title')).toBeVisible()
     }
     await a.getByLabel('Bundle title').fill('Amber title')
