@@ -1,8 +1,9 @@
 # Project status
 
-## Portable source operations: group 4 local verification
+## Portable source operations: group 4 implemented and locally verified
 
-Implementation is on `fix/library-ownership-lifecycle`, based on `b6e0d49a`.
+Implementation commit: `13b652de` on `fix/library-ownership-lifecycle`, based on
+`b6e0d49a`. Independent album-test repairs are `5fae4b25` and `a2774662`.
 File and bounded directory Copy, Rename, Move, Replace, Trash and conditional Undo
 use exact private journals, independent retained versions and strict receipts.
 File Browser provides write permission, preparation, collision choices, picker
@@ -20,15 +21,21 @@ purge is available. Reviews have limits of 128 entries and catalog identities pe
 affected tree, 4,096 metadata units and bounded receipt bytes.
 
 Backend lint, formatting and type checks pass. The full backend run passes 1,882
-tests with one ffmpeg skip; the final focused source/API run passes 62 tests.
+tests with one ffmpeg skip. The final focused source/API run passes 62 tests,
+including three storage-budget cases added after full-suite collection and the
+final storage accounting and unresolved-path checks.
 Frontend lint, formatting and type checks pass. The final unit run passes 1,250
 tests, including background operation polling and same-action draft discard.
-Final browser verification is in progress. The album test waits for each loaded
-page and wakes hidden viewer controls before pointer navigation.
+All 33 browser tests pass in a clean two-worker run without retries. The album
+test waits for each loaded page and wakes hidden viewer controls before pointer
+navigation. Earlier loaded-host runs had timing failures; no test timeout was
+increased. The synthetic browser screenshot was inspected.
 
 The production macOS build, strict signature verification and distribution-license
-check pass. Packaged-sidecar smoke covers normal creation, reviewed discovery,
-image pixels, HEIC preview, source Copy/Move/Trash/Undo and shutdown. One earlier
+check pass. Native functional checks precede the final toolbar wrapping adjustment;
+the final browser run covers that layout. Packaged-sidecar smoke covers normal
+creation, reviewed discovery, image pixels, HEIC preview, source
+Copy/Move/Trash/Undo and shutdown. The exact final app bundle passes that smoke. One earlier
 packaged queue request failed without a recorded response body; the repeat with
 response diagnostics passes. This initial failure is not attributed to a cause.
 
@@ -45,7 +52,10 @@ application and owner profile match all 117 and four baseline hashes respectivel
 No provider, NAS or owner-library data was used. OS drag remains paused. Group 5
 retains provider/storage/Docker qualification; group 6 retains installation and
 owner acceptance. External in-place writes, final directory-rename races,
-power loss and representative scale remain unqualified. No publication occurs.
+power loss and representative scale remain unqualified. Linux no-replace storage
+and Docker runtime qualification belong to group 5. Rust sources are unchanged;
+Rust lint/unit gates were not repeated. OpenAPI matches the generated contract.
+The local staged and commit-range privacy gates pass. No publication occurs.
 
 The sections below retain earlier implementation checkpoints. Their capability
 limits and test counts apply to the recorded work, not to the current result above.
