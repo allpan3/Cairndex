@@ -343,6 +343,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/auth/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Configure Access
+         * @description Change only this server's guard, with current-passphrase reauthentication.
+         */
+        put: operations["configure_access_api_v1_libraries__library_id__auth_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/auth/status": {
         parameters: {
             query?: never;
@@ -2527,10 +2547,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Ownership
-         * @description Who owns this library, and can this server serve it?
-         */
+        /** Get Ownership */
         get: operations["get_ownership_api_v1_libraries__library_id__ownership_get"];
         put?: never;
         post?: never;
@@ -2549,10 +2566,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Release Library
-         * @description Release this server's library, retaining registration and all content
-         */
+        /** Release Library */
         post: operations["release_library_api_v1_libraries__library_id__ownership_release_post"];
         delete?: never;
         options?: never;
@@ -2569,10 +2583,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Reopen Library
-         * @description Deliberately reopen under normal ownership checks, never forced takeover
-         */
+        /** Reopen Library */
         post: operations["reopen_library_api_v1_libraries__library_id__ownership_reopen_post"];
         delete?: never;
         options?: never;
@@ -2589,21 +2600,77 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Take Over
-         * @description Confirm that the recorded holder is gone and serve this library here.
-         *
-         *     Accepted, not completed: before taking a lease this server watches it for
-         *     longer than a heartbeat period, so a holder that is actually alive gets the
-         *     chance to prove it. Poll ``GET …/ownership`` until ``takeover.running`` is
-         *     false.
-         *
-         *     Refuses outright while a *live* lease is in place. The confirmation means "I
-         *     know that machine is gone", which is not a claim anyone can truthfully make
-         *     about a server that heartbeat seconds ago — so this is a 422 rather than a
-         *     forced takeover.
-         */
+        /** Take Over */
         post: operations["take_over_api_v1_libraries__library_id__ownership_takeover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/private-recovery/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks */
+        get: operations["tasks_api_v1_libraries__library_id__private_recovery_tasks_get"];
+        put?: never;
+        /** Start */
+        post: operations["start_api_v1_libraries__library_id__private_recovery_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/private-recovery/tasks/{identity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Task */
+        get: operations["task_api_v1_libraries__library_id__private_recovery_tasks__identity__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/private-recovery/tasks/{identity}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retry_api_v1_libraries__library_id__private_recovery_tasks__identity__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/private-recovery/tasks/{identity}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop */
+        post: operations["stop_api_v1_libraries__library_id__private_recovery_tasks__identity__stop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3593,6 +3660,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessSettingsRequest */
+        AccessSettingsRequest: {
+            /** Current Passphrase */
+            current_passphrase?: string | null;
+            /** Passphrase */
+            passphrase: string | null;
+        };
         /** AddFilesRequest */
         AddFilesRequest: {
             /** File Ids */
@@ -3687,6 +3761,16 @@ export interface components {
          * @description Lock state of a library for the current session (ADR-0010).
          */
         AuthStatus: {
+            /**
+             * Access Settings Version
+             * @default 0
+             */
+            access_settings_version: number;
+            /**
+             * Private Recovery Version
+             * @default 0
+             */
+            private_recovery_version: number;
             /** Protected */
             protected: boolean;
             /** Unlocked */
@@ -6256,6 +6340,64 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
+        /** RecoveryRequest */
+        RecoveryRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "backup" | "verify" | "prepare" | "review" | "inspect" | "activate" | "cancel" | "retry_job";
+            /**
+             * After
+             * @default
+             */
+            after: string;
+            /** Backup */
+            backup?: string | null;
+            /** Job */
+            job?: string | null;
+            /** Kind */
+            kind?: ("drafts" | "jobs" | "events" | "catalog" | "bundles") | null;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            /** Operation */
+            operation: string;
+            /** Receipt */
+            receipt?: string | null;
+            /** Recovery */
+            recovery?: string | null;
+            /**
+             * Source
+             * @default prepared
+             * @enum {string}
+             */
+            source: "prepared" | "previous";
+        };
+        /** RecoveryTaskPage */
+        RecoveryTaskPage: {
+            /** Items */
+            items: components["schemas"]["RecoveryTaskRead"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** RecoveryTaskRead */
+        RecoveryTaskRead: {
+            /** Action */
+            action: string;
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** State */
+            state: string;
+        };
         /**
          * RenameRequest
          * @description Rename one file or directory in place.
@@ -6745,7 +6887,9 @@ export interface operations {
     list_devices_api_v1_auth_devices_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 cairndex_session?: string | null;
@@ -6776,7 +6920,9 @@ export interface operations {
     revoke_device_api_v1_auth_devices__device_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 device_id: string;
             };
@@ -6807,7 +6953,9 @@ export interface operations {
     approve_pairing_api_v1_auth_pair_approve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 cairndex_session?: string | null;
@@ -7259,7 +7407,9 @@ export interface operations {
     lock_api_v1_libraries__library_id__auth_lock_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -7268,6 +7418,45 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    configure_access_api_v1_libraries__library_id__auth_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessSettingsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7327,7 +7516,9 @@ export interface operations {
     unlock_api_v1_libraries__library_id__auth_unlock_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -12828,11 +13019,15 @@ export interface operations {
     release_library_api_v1_libraries__library_id__ownership_release_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -12859,11 +13054,15 @@ export interface operations {
     reopen_library_api_v1_libraries__library_id__ownership_reopen_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -12905,6 +13104,191 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryOwnershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tasks_api_v1_libraries__library_id__private_recovery_tasks_get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryTaskPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_v1_libraries__library_id__private_recovery_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_api_v1_libraries__library_id__private_recovery_tasks__identity__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                identity: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_api_v1_libraries__library_id__private_recovery_tasks__identity__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                identity: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_api_v1_libraries__library_id__private_recovery_tasks__identity__stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                identity: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryTaskRead"];
                 };
             };
             /** @description Validation Error */

@@ -13,11 +13,13 @@ function BoundedReplicaWorkspace({
   libraries,
   onChangeLibrary,
   onManage,
+  onSettings,
 }: {
   libraryId: string
   libraries: LibraryRead[]
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings?: () => void
 }) {
   const [editor, setEditor] = useState<string | null>(null)
   useEffect(() => holdEditor(setEditor), [])
@@ -85,6 +87,7 @@ function BoundedReplicaWorkspace({
           </select>
         </label>
         <button onClick={onManage}>Manage libraries</button>
+        {onSettings && <button onClick={onSettings}>Settings</button>}
       </header>
       <section className="replica-status" aria-label="Metadata delivery status">
         {status.isPending && <p>Opening private metadata…</p>}
@@ -174,6 +177,7 @@ export function ReplicaWorkspace(props: {
   libraries: LibraryRead[]
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings?: () => void
 }) {
   const status = useQuery({
     queryKey: ['replica-capability', props.libraryId],

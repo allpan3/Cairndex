@@ -1,5 +1,32 @@
 # Private replica backup and device recovery
 
+## Normal controls
+
+Open **Manage libraries → Access and backups**. Unlock the library if needed.
+Choose **Create private snapshot**, then **Use this snapshot** and **Verify snapshot**.
+Choose **Release library**, **Prepare separate recovery**, and **Review this recovery**.
+Inspect received drafts, saved jobs and history. After review, select
+**I reviewed this recovery**, then **Activate reviewed recovery**. Choose **Reopen**
+to serve the selected generation. Original stores and snapshots remain intact.
+
+Snapshots default to a sibling of `CAIRNDEX_DATA_DIR` named with a `-backups`
+suffix. Set `CAIRNDEX_PRIVATE_BACKUP_DIR` for separate storage. Both locations must
+stay outside library folders and must not use linked paths. Keep a protected copy
+on separate storage. The API accepts managed operation IDs, never storage paths.
+
+The registry stores durable `recovery_tasks` with exact request bodies, descriptor
+identity, results and state. Lists are paginated. The worker performs slow backup,
+verification, preparation and inspection outside request handlers. Stop applies to
+queued operations; running operations must finish. After restart, queued and
+running operations become interrupted. Retry is explicit. Complete retained
+receipts can be adopted; incomplete directories remain for inspection and require
+a new operation. One recovery operation per library runs at a time.
+
+Access settings, device tokens and browser grants are not restored from snapshots.
+The destination server keeps its protection. Credentials and server configuration,
+source media, shared history and unreceived browser text need separate backups.
+
+
 This local administrative workflow supports existing `cairndex.replica-library`
 packages, including complete synthetic catalogs. Real-library conversion remains
 disabled. It never moves or modifies source media. A backup protects one serving

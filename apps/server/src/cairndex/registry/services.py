@@ -39,13 +39,12 @@ def _normalize_root(raw: str) -> Path:
 
 
 def _probe_status(root: Path) -> LibraryStatus:
-    """Probe the package generation while preserving legacy locked-manifest handling"""
+    """Report availability only for a supported portable package"""
     try:
         manifest = pkg.read_manifest(root)
-        ok = root.is_dir() and (manifest.replica is not None or pkg.db_path(root).is_file())
+        ok = root.is_dir() and manifest.replica is not None
     except ValidationError:
-        # Legacy auth treats unreadable metadata as locked before any content access
-        ok = root.is_dir() and pkg.manifest_path(root).is_file() and pkg.db_path(root).is_file()
+        ok = False
     except (DomainError, OSError, UnicodeError):
         ok = False
     return LibraryStatus.AVAILABLE if ok else LibraryStatus.UNAVAILABLE
@@ -88,10 +87,16 @@ def create_library(
     elif not root.is_dir():
         raise ValidationError(f"root path {root.as_posix()!r} is not a directory")
 
-    if pkg.detect(root) is not None:
-        raise ConflictError(f"{root.as_posix()!r} is already a Cairndex library")
+    from cairndex.core.config import get_settings
+    from cairndex.replicas.catalog.creation import create
 
-    manifest = pkg.create_package(root, name)
+    create(root, get_settings().data_dir.resolve(), name)
+    manifest = pkg.read_manifest(root)
+    existing = session.scalar(
+        select(RegisteredLibrary).where(RegisteredLibrary.library_uuid == manifest.library_uuid)
+    )
+    if existing:
+        return existing
     return _insert(session, manifest=manifest, root=root)
 
 
@@ -104,8 +109,10 @@ def register_existing_library(session: Session, *, root_path: str) -> Registered
     manifest = pkg.detect(root)  # raises ValidationError if the marker is broken
     if manifest is None:
         raise ValidationError(f"{root.as_posix()!r} is not a Cairndex library (no marker found)")
-    if manifest.replica is None and not pkg.db_path(root).is_file():
-        raise ValidationError(f"library at {root.as_posix()!r} is missing its {pkg.DB_NAME}")
+    if manifest.replica is None:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
 
     return _insert(session, manifest=manifest, root=root)
 
@@ -145,6 +152,10 @@ def probe_path(session: Session, root_path: str) -> PathProbe:
     """
     root = _normalize_root(root_path)
     manifest = pkg.detect(root) if root.is_dir() else None
+    if manifest is not None and manifest.replica is None:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
     registered = session.scalars(
         select(RegisteredLibrary).where(RegisteredLibrary.root_path == root.as_posix())
     ).first()
@@ -168,6 +179,10 @@ def get_library(session: Session, library_id: str) -> RegisteredLibrary:
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
+    if library.package_format == pkg.FORMAT:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
     if pkg.manifest_path(Path(library.root_path)).exists():
         try:
             manifest = pkg.read_manifest(Path(library.root_path))

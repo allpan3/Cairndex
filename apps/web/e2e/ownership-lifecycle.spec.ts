@@ -24,7 +24,7 @@ test('release and reopen through the real server without automatic reacquisition
     await expect(page.getByText('Library released on this server', { exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByText('Library released on this server', { exact: true })).toBeVisible()
-    const browse = `${backend.baseUrl}/api/v1/libraries/${library.id}/bundles/browse`
+    const browse = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/status`
     expect((await fetch(browse)).status).toBe(409)
     await page.getByRole('button', { name: 'Reopen', exact: true }).click()
     await expect(
@@ -36,6 +36,7 @@ test('release and reopen through the real server without automatic reacquisition
     const status = await fetch(`${backend.baseUrl}/api/v1/libraries/${library.id}/ownership`)
     expect((await status.json()).state).toBe('own')
   } finally {
+    await page.close()
     await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })
   }

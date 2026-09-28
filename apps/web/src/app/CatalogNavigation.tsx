@@ -16,6 +16,7 @@ export function CatalogNavigation({
   onSelect,
   onChangeLibrary,
   onManage,
+  onSettings,
   onReview,
   onReviewEntity,
 }: {
@@ -30,6 +31,7 @@ export function CatalogNavigation({
   onSelect: (selection: Selection) => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings?: () => void
   onReviewEntity: (family: string, id: string) => void
   onReview: () => void
 }) {
@@ -60,7 +62,7 @@ export function CatalogNavigation({
         libraryId={library}
         onChangeLibrary={onChangeLibrary}
         onManageLibraries={onManage}
-        onOpenSettings={onManage}
+        onOpenSettings={onSettings ?? onManage}
         onUpdateLibrary={onReview}
         onScanFiles={onReview}
         onProbe={onReview}

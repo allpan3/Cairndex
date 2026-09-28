@@ -1,32 +1,29 @@
 # Unified library creation
 
-Status: proposed product rollout; the empty-catalog synthetic implementation scope
-is owner-approved. Ordinary Create still produces `cairndex.library` packages.
-Real-library conversion remains unavailable. No provider readiness is implied.
+Status: accepted normal creation contract; see [ADR-0035](../adr/0035-portable-library-format.md).
 
-## Target contract
+## Current contract
 
-Use the complete format-three catalog as the portable representation for new
-libraries after the capability and qualification gates below pass. Keep one
-Create/Open workflow. Do not detect cloud folders or ask the owner to select a
-library type. Open existing legacy packages without conversion.
+Normal Create makes a complete format-three portable library. Open rejects
+`cairndex.library`. Conversion is separate and never automatic. One Create/Open
+workflow serves all supported storage locations.
 
-The package carries the library ID, history epoch, complete seed and immutable
-authored history. SQLite, drafts, credentials, jobs, caches and process ownership
-remain private to the serving instance. Independent copies can author concurrently.
-Clients of one server use that server's store and observed edit bases. Retain the
-current connection-scoped library selection, credentials and query caches.
-Independent private stores can use the same mounted transport folder only after
-its publication primitive is qualified. A synchronized lease is not a lock across
-independent copies. Legacy ownership and ADR-0030 remain unchanged.
+The package contains the library ID, history epoch, seed and immutable authored
+history. SQLite, drafts, credentials, jobs, caches and process ownership remain
+private. Existing source files are preserved. A private creation intent under
+`CAIRNDEX_DATA_DIR/library-creations` records exact identities. Retry uses that
+intent and refuses changed directories, names or metadata.
+
+Independent copies use separate private stores. Passphrases are independent per
+library and serving instance. Backups and recovery use the normal library manager.
+Provider and NAS publication still require separate qualification.
 
 ## Implemented synthetic creation boundary
 
 `devtools.replica_creation_fixture.prepare_disposable()` allocates a fresh
 temporary tree. It accepts only an optional parent directory, never an existing
 library. The package and private state are separate children of that tree.
-`replicas.catalog.creation.complete()` accepts that developer fixture. Neither
-function is an application endpoint or an owner-library creation command. The
+`replicas.catalog.creation.complete()` accepts that developer fixture. Normal Create uses the same completion procedure after recording its own intent. The
 fixture dataclass is not an authentication or authorization boundary.
 
 Preparation creates empty package directories and commits a private creation
@@ -43,7 +40,7 @@ stops publication; it is never overwritten. Temporary files from interruption
 remain ignored. Directory replacement and linked paths require review.
 
 Before a complete descriptor exists, ordinary registration refuses the package.
-Ordinary creation refuses its existing metadata directory. When a peer receives
+Normal creation resumes only a matching private intent. When a peer receives
 the descriptor before its objects, the existing importer waits for the complete
 seed. A copied package opens with a separate private author. Clients of the same
 server use one private store; Release/Reopen and restart retain that lifecycle.
@@ -54,50 +51,13 @@ Do not guess its identity. A missing creation receipt does not authorize reuse o
 the directory. This implementation does not supply production directory adoption,
 root relocation, private-store recovery or historical-client qualification.
 
-## Remaining product gates
+## Qualification limits
 
-- Complete or explicitly defer the remaining ordinary interface capabilities.
-  Existing complete synthetic packages support collection/tag navigation,
-  structured filters, File Browser, title/note/rating controls, membership reviews,
-  covers, local file details, paginated bundle albums and reviewed bulk metadata
-  changes. Random, recorded local Missing Files and paginated Unbundled views are
-  available.
-  Recently Used and source-operation views remain separate work; see
-  the [capability inventory](../replica-catalog.md#ordinary-browse-and-edit-boundary).
-  Retain the existing all-family conflict and discovery controls.
-- Define passphrase access for private stores, including protected legacy
-  upgrades and explicit setup on each new server. Credentials must not enter
-  synchronized content. An ADR-0010 amendment is required.
-- Provide normal backup controls with separate coverage for private drafts,
-  unexchanged edits, credentials, source media and portable history. Browser-only
-  text is not included in a server snapshot.
-- Design copy imports and journaled Rename/Move/Replace/Trash/Undo separately.
-  Retain content versions, stable IDs, competing-operation review and conditional
-  Undo. An imported metadata event must not replay a physical operation on every
-  device. Preserve the distinct Copy Replace and Rename/Move Replace contracts.
-- Implement deliberate per-library upgrade under the complete migration contract.
-  Collect known writers, retain private drafts and recovery data, drain work, verify
-  exact round trips and require reviewed activation. Unknown durable state blocks
-  upgrade. Offline old copies require separate reconciliation; a descriptor cannot
-  revoke their writers. No bulk or second-device automatic conversion is implied.
-- Qualify metadata publication on supported storage. Current publication requires
-  hard links and POSIX directory descriptors. Existing SMB source publication does
-  not qualify metadata transport. Cross-device resume and history compaction remain
-  separate scopes.
+Use disposable synthetic libraries for creation, editing, conflicting values,
+complete reconstruction, interruption, duplicate delivery, storage failure,
+publication collisions and Release/Reopen tests. Provider, NAS, power-loss,
+historical-client and representative-scale qualification remain separate.
 
-## Verification sequence
-
-Use synthetic packages and independent private stores first. Test empty-catalog
-editing, conflicting values, complete reconstruction, incomplete and duplicate
-delivery, conflict filenames, exact retries, process exits, storage failures,
-publication collisions and Release/Reopen. Check that ordinary creation and the
-conversion gate retain their contracts. Use full backend static and test gates.
-
-Before default activation, add ordinary UI/browser and packaged acceptance,
-mixed-version tests with supported historical executables, private recovery,
-multi-server routing, mounted storage and representative performance checks.
-Then qualify each provider with disposable libraries: offline edits, delayed
-delivery, missing objects, conflict filenames, placeholders, hydration and restart.
-Local process-exit tests do not establish provider or power-loss safety. Tests must
-not use owner libraries. Capability gaps need implementation or an explicit owner
-decision before the ordinary creation default changes.
+Source operations need a portable journal and competing-operation contract.
+Recently Used, cross-device resume and history compaction remain separate work.
+The application does not supply owner-library conversion.

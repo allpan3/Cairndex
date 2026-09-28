@@ -22,6 +22,7 @@ interface Props {
   libraries: LibraryRead[]
   libraryId: string
   onChangeLibrary: (id: string) => void
+  onManage?: () => void
   onRetryRelease?: () => void
   onReopen?: () => void
   reopenPending?: boolean
@@ -88,6 +89,7 @@ export function LibraryOwnershipNotice({
   onTakeOver,
   onReopen,
   onRetryRelease,
+  onManage,
   reopenPending = false,
   reopenError = null,
   onConnectTo,
@@ -150,12 +152,17 @@ export function LibraryOwnershipNotice({
             ? 'Library released on this server'
             : 'Library ownership changed'
         }
-        message="This server stopped serving the library. Your files, metadata and registration remain. Reopen deliberately when you want this server to serve it again; normal ownership checks still apply."
+        message="This server stopped serving the library. Your files, metadata and registration remain. Reopen deliberately when you want this server to serve it again; the private store must be available."
       >
         <button className="lockscreen__submit" onClick={onReopen} disabled={reopenPending}>
           {reopenPending ? 'Reopening…' : 'Reopen'}
         </button>
-        {connectionControls}
+        {onManage && (
+          <button className="btn" onClick={onManage}>
+            Manage libraries
+          </button>
+        )}
+        {ownership.state !== 'locally_released' && connectionControls}
         {ownership.can_take_over && (
           <button className="lockscreen__submit" onClick={onTakeOver}>
             Confirm stale takeover

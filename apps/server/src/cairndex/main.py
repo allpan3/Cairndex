@@ -1,4 +1,3 @@
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,82 +11,40 @@ from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
 from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
-from cairndex.core.errors import LibraryLeaseError
 from cairndex.file_ops.smb_transport import close_sessions as close_smb_sessions
-from cairndex.jobs.registry import build_registry
-from cairndex.jobs.worker import Worker
 from cairndex.media.exports import shutdown_export_manager
 from cairndex.media.hls import shutdown_session_manager
-from cairndex.ownership import get_lease_manager
-from cairndex.ownership.lifecycle import lifecycle
 from cairndex.persistence.engine import discard_all_plans
-from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
+from cairndex.replicas.recovery_tasks import RecoveryWorker
 from cairndex.replicas.service import ReplicaWorker
 from cairndex.version import APP_VERSION
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Start/stop the background worker and lease heartbeat; reap HLS sessions.
-
-    Interactive HLS sessions (ADR-0014) hold live ffmpeg processes and ephemeral
-    transcode dirs; tearing them down on shutdown avoids orphaned encoders.
-
-    Releasing every ownership lease on the way out (ADR-0018 §3) is what keeps
-    the takeover prompt rare: a cleanly stopped server leaves its libraries
-    marked released, so the next machine to open one acquires it silently. Only
-    a crash leaves a lease to age into staleness and require a confirmation.
-    """
+    """Run private catalog exchange and recovery; close media processes on stop."""
     settings = get_settings()
     # Before anything can open a library: a grouping plan lasts as long as the server
     # that made it (ADR-0022), so whatever the previous run left goes now.
     discard_all_plans()
     replicas = ReplicaWorker()
     replicas.start()
-    worker: Worker | None = None
+    recovery_worker: RecoveryWorker | None = None
     if settings.worker_enabled:
-        worker = Worker(get_registry_sessionmaker(), build_registry())
-        worker.start()
-        app.state.worker = worker
-    if settings.lease_heartbeat_enabled:
-        get_lease_manager().start()
-
-    maintenance: SqliteMaintenance | None = None
-    if settings.sqlite_maintenance_enabled:
-        maintenance = SqliteMaintenance(
-            owned_library_ids=lambda: get_lease_manager().held_library_id_set(),
-            interval=settings.sqlite_maintenance_interval,
-            idle_after=settings.sqlite_idle_checkpoint_after,
-            snapshot_interval=settings.sqlite_snapshot_interval,
-        )
-        maintenance.start()
+        recovery_worker = RecoveryWorker(get_registry_sessionmaker())
+        recovery_worker.start()
     try:
         yield
     finally:
-        # Order matters on the way out. Stop producing writes first (the worker,
-        # then maintenance), fold each library's WAL back in and close it, and
-        # only then release the leases — so every library is left as a single
-        # consistent file *before* another machine is invited to pick it up.
+        if recovery_worker is not None:
+            recovery_worker.stop()
         replicas.stop()
-        if worker is not None:
-            worker.stop()
-        if maintenance is not None:
-            maintenance.stop()
         shutdown_session_manager()
         # Export artifacts are throwaway state under the data dir, so they go
         # with the process that made them rather than outliving it as orphans.
         shutdown_export_manager()
-        manager = get_lease_manager()
-        for library_id in manager.held_library_ids():
-            try:
-                lifecycle.close(library_id)
-            except LibraryLeaseError:
-                logging.getLogger(__name__).warning(
-                    "Library did not close cleanly; lease retained for recovery"
-                )
         close_smb_sessions()
-        manager.stop()
 
 
 def create_app() -> FastAPI:

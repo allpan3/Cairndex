@@ -1,5 +1,22 @@
 # Development guide
 
+## Portable library storage
+
+[ADR-0035](adr/0035-portable-library-format.md) defines the supported application
+format. Normal Create produces a complete portable catalog. Open refuses the old
+`cairndex.library` format. No automatic conversion or source mutation occurs.
+Working databases, drafts, jobs and caches are private to the serving instance;
+the library folder contains its descriptor and immutable metadata history.
+Shared ORM and media utilities also support synthetic conversion fixtures. They
+do not enable legacy library admission.
+
+Optional access settings are independent per library and server. Hashes live in
+`CAIRNDEX_DATA_DIR/library-access/<library_uuid>.json`, outside recovery generations.
+Recovery keeps these destination settings. Manage libraries provides access and
+private backup controls. See [private recovery](replica-recovery.md) for coverage,
+Release, review, activation and explicit retry.
+
+
 ## Prerequisites
 
 | Tool                       | Why                                            | Notes                                                                                                |
@@ -22,14 +39,9 @@ uv sync                 # creates .venv, installs locked deps + Python 3.12
 uv run uvicorn cairndex.main:app --reload --port 8000
 ```
 
-`just dev` starts this server and Vite together. Stop it with Ctrl-C: the
-recipe signals the Uvicorn reloader itself and waits for FastAPI's lifespan
-shutdown before returning, so every mounted library's ownership lease is
-released. Do not replace that targeted shutdown with a process-group kill;
-terminating the reloader and its worker simultaneously can skip lifespan
-shutdown and leave the next server waiting for a stale-lease takeover.
-`just dev-smoke` exercises that exact shutdown against a generated scratch
-library and fails if Ctrl-C leaves its lease active.
+`just dev` starts this server and Vite together. Ctrl-C waits for application
+shutdown to drain work and close private stores. `dev-smoke` creates a portable library and verifies that shutdown releases the
+private process lock without writing SQLite into the library.
 
 Checks (run from `apps/server`):
 
@@ -300,12 +312,9 @@ Tauri invocation disables bundle resources so Cargo does not copy release
 sidecars into `target/debug`. The development bundle is checkout-local;
 `just build-desktop` produces the self-contained release bundle separately.
 
-Reach for the sidecar only when you specifically want to exercise the
-self-contained bundling (or the packaged `.app`, see the README); use the
-standalone `:8000` server for everything else. Two servers opening the *same*
-library folder is refused by the ownership lease, so do not run the sidecar
-against a library your `:8000` server already has open — that is the
-"open on `<this machine>`" message.
+Use the packaged sidecar to verify the self-contained application. Independent
+servers can open the same portable library with separate private data directories.
+A private binding lock prevents two processes from using the same private store.
 
 The first-run screen stores a verified server URL in the Tauri store. Bootstrap
 also requires the health response to advertise the pairing and progress
@@ -696,7 +705,7 @@ bundle missing a dynamically resolved import — that only surfaces when the cod
 path first runs. The smoke test drives the real binary through the paths where
 that actually happens: SQLAlchemy's sqlite dialect, the job worker, Pillow
 thumbnails, a HEIC preview (`media/previews.py` imports `pi_heif` inside a
-function), and SIGTERM releasing the ownership lease. CI runs it on every push.
+function), and shutdown releasing the private process lock. CI runs it on every push.
 
 `hiddenimports` in `cairndex-sidecar.spec` is **empty, and that was measured**.
 An initial version listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries;
@@ -771,16 +780,12 @@ CAIRNDEX_SIDECAR_BIN=$PWD/../../server/packaging/dist/cairndex-sidecar/cairndex-
 
 ## Databases and local state
 
-Cairndex now uses the ADR-0008 per-library model:
-
-- the server-local registry DB lives under `CAIRNDEX_DATA_DIR` as
-  `registry.db` and tracks registered libraries plus the runtime `job_queue`;
-- each library is a directory with `.cairndex/manifest.json`,
-  `.cairndex/library.db`, and `.cairndex/cache/`;
-- content tables are created in each `library.db` via the current SQLAlchemy
-  metadata bootstrap for this pre-1.0 phase;
-- there is no current global content DB, no `storage_roots` content table, and no
-  `asset_files.storage_root_id`.
+The private registry is `CAIRNDEX_DATA_DIR/registry.db`. Portable library folders
+hold descriptors and immutable history. Working databases, drafts, jobs and
+caches live below private `replicas`; access settings live under `library-access`.
+The content schema is reused by catalog projection and synthetic model tests.
+Model-fixture tests do not qualify public old-format admission. Use real portable
+API fixtures for admission, authorization, isolation and serving lifecycle checks.
 
 ### Adding a library
 
@@ -804,7 +809,7 @@ same trust level as each other: they read absolute server paths the owner typed
 and are unrelated to File Browser path safety, which stays library-relative.
 
 **Removal is metadata-only.** `DELETE /api/v1/libraries/{id}` drops the registry
-row, releases that library's ownership lease, and disposes its content engine.
+row after draining the private store.
 It never deletes a folder, a `.cairndex/` package, or a media file — re-adding
 the folder restores the library, because nothing authoritative lives in the
 registry (ADR-0018 §1). Any change here must preserve that.
@@ -1016,10 +1021,10 @@ The Docker job also runs the recovery acceptance path:
 ./infra/docker/backup-restore-smoke.sh cairndex:candidate ghcr.io/example/previous:tag
 ```
 
-The first form creates, backs up, removes, restores, and reopens synthetic state
-with one candidate. The second creates and backs up with the older source image,
-then restores and opens with the candidate; use it before release when a real
-previous image exists.
+The first form creates a portable library, snapshots private state and verifies
+Release, review, activation and Reopen. The second uses a compatible portable
+source image and a candidate image. Original stores remain intact. This test
+does not convert the old library format.
 
 See [deployment.md](deployment.md) for the deployment itself, including building
 an amd64 image for the NAS from an Apple Silicon Mac.
@@ -1110,20 +1115,12 @@ Every third-party workflow action outside GitHub's own `actions/*` and
 version comment beside each pin, and let Dependabot propose reviewed updates;
 do not replace a pin with a moving major, tag, or branch.
 
-## Ownership lifecycle validation
+## Serving lifecycle validation
 
-Use disposable libraries and distinct lease identities. `/ownership/release`
-drains the serving library without removing registration; `/ownership/reopen`
-is the explicit acquisition path. Client disconnects never invoke release.
-The lifecycle tests cover checked-out sessions, requests, jobs, maintenance,
-clock gaps, lost owners, storage uncertainty and exact benchmark refusal effects.
-
-Query benchmarks and search reindexing are ownership-checked maintenance, not
-mutation-free inspection. Release the serving library first. SQLite journal
-mode, schema/index initialization and server-local plan files can change; source
-media are not modified. Maintenance uses an independent ephemeral identity so
-sharing a data directory cannot impersonate a running server.
-
+Use disposable portable libraries. Release drains serving work without removing
+registration. Reopen permits serving again. Client disconnects do not invoke
+Release. Current API tests cover authorization, persistent Release and recovery
+process exclusion. Retained lease/ORM tests exercise internal primitives only.
 
 ## Connection switching validation
 

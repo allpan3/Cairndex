@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Synthetic package and Docker smoke checks use portable creation and private
+  recovery. Production compose mounts private snapshots separately from runtime
+  databases. Retired legacy-workspace browser suites no longer qualify current
+  behavior; shared model tests retain an explicit synthetic harness.
+
 - Record production macOS inspector verification with isolated synthetic data,
   controlled delayed acknowledgements and peer conflicts. Native video pixel
   verification remains incomplete because the capture returned black frames.
@@ -25,7 +30,22 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   basis. A second note edited while the first save is pending remains in the
   draft and saves in order. Changes from another client still require review.
 
+### Removed
+
+- Application support for the old `cairndex.library` format, its workspace,
+  shared-folder ownership and source-write controls. Conversion is external;
+  existing source files and old library packages are not modified.
+
 ### Changed
+
+- Normal Create produces a portable format-three catalog, preserves source files,
+  and supports exact retries through a private creation intent.
+
+- Libraries provides private access settings, snapshots and reviewed recovery
+  controls. Passphrases remain on the serving instance. Private snapshots cover
+  received drafts and unpublished metadata; source media, credentials and
+  unreceived browser text require separate protection. Activation preserves
+  original stores and requires Release and an exact review.
 
 - Complete synthetic catalogs provide paginated, virtualized bundle albums with
   file and directory-member selection, guarded thumbnails and media opening.

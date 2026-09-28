@@ -27,6 +27,15 @@ async function mockApi(
   } = {},
 ) {
   const libraries: Array<Record<string, unknown>> = [...(options.startingLibraries ?? [])]
+  await page.route('**/replica/**', (route) => {
+    const path = new URL(route.request().url()).pathname
+    const json = path.endsWith('/status')
+      ? { ready: true, blocked: 0, waiting: 0, invalid: 0, catalog_version: 2, browse_version: 2 }
+      : path.endsWith('/facets')
+        ? { counts: {}, all: 0, untagged: 0, uncategorized: 0, missing: 0 }
+        : { items: [], next_cursor: null, total: 0, offset: 0, limit: 100, frontier: [] }
+    return route.fulfill({ ...METADATA_REPLY, json })
+  })
   // A root listing is long enough to fill the menu to its maximum height, which
   // is when it stops fitting inside the dialog — the real reported case.
   const long = 'abcdefghijkl'
@@ -206,8 +215,8 @@ test.describe('the suggestion menu stays on screen', () => {
       await mockApi(page, {
         manySuggestions: true,
         startingLibraries: [
-          registered('01H', 'lex', '/Volumes/media/library'),
-          registered('01J', 'Demo', '/Users/owner/DemoLibrary'),
+          registered('01H', 'Example', '/fixtures/library'),
+          registered('01J', 'Demo', '/fixtures/demo'),
         ],
       })
       await page.goto('/')
@@ -357,72 +366,8 @@ test('an unavailable library recovers in place without mounting content early', 
   api.libraries[0].status = 'available'
   await page.getByRole('button', { name: 'Retry' }).click()
 
-  await expect(page.getByText('Nothing here yet.')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toBeVisible()
   expect(scopedRequests).toBeGreaterThan(0)
-})
-
-test('switching libraries replaces the browser shell without a reload', async ({ page }) => {
-  const libraries = [
-    { id: 'lib1', name: 'Library One', root_path: '/srv/one', status: 'available' },
-    { id: 'lib2', name: 'Library Two', root_path: '/srv/two', status: 'available' },
-  ]
-  const item = (libraryId: string) => ({
-    id: `${libraryId}-bundle`,
-    title: libraryId === 'lib1' ? 'First Library Movie' : 'Second Library Movie',
-    rating: null,
-    file_count: 1,
-    total_size: 100,
-    has_missing: false,
-    has_cover: false,
-    media_kind: 'video',
-    width: 1920,
-    height: 1080,
-    duration: 60,
-    extension: 'mp4',
-    date_added: '2026-07-10T00:00:00Z',
-  })
-  const libraryFrom = (url: string) => (url.includes('/lib2/') ? 'lib2' : 'lib1')
-
-  await page.route('**/api/v1/libraries', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: libraries }),
-  )
-  await page.route('**/auth/status', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
-  )
-  await page.route('**/ownership', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
-  )
-  await page.route('**/bundles/counts**', (route) =>
-    route.fulfill({
-      ...METADATA_REPLY,
-      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 },
-    }),
-  )
-  await page.route('**/collections/counts**', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
-  )
-  await page.route('**/collections?*', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/smart-collections', (route) =>
-    route.fulfill({ ...METADATA_REPLY, json: [] }),
-  )
-  await page.route('**/bundles/browse**', (route) => {
-    const libraryId = libraryFrom(route.request().url())
-    route.fulfill({
-      ...METADATA_REPLY,
-      json: { items: [item(libraryId)], total: 1, offset: 0, limit: 100 },
-    })
-  })
-
-  await page.addInitScript(() => localStorage.removeItem('cairndex.libraryId'))
-  await page.goto('/')
-  await expect(page.getByText('First Library Movie')).toBeVisible()
-
-  await page.getByRole('combobox', { name: 'Library' }).selectOption('lib2')
-  await expect(page.getByRole('combobox', { name: 'Library' })).toHaveValue('lib2')
-  await expect(page.getByText('Second Library Movie')).toBeVisible()
-  await expect(page.getByText('First Library Movie')).toHaveCount(0)
 })
 
 // Keyboard users can leave a recovery screen without losing their intended library

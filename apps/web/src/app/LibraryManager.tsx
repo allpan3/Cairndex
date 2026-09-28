@@ -1,20 +1,16 @@
-import { captureRequestScope } from '../api/requestScope'
-import { useModalDialog } from './useModalDialog'
+import { usePersistentState } from '../state/usePersistentState'
+import { getConnectionScopeKey } from '../api/requestScope'
 import { useEffect, useRef, useState } from 'react'
+import { captureRequestScope } from '../api/requestScope'
+import { LibraryPrivateControls } from './LibraryPrivateControls'
+import { useModalDialog } from './useModalDialog'
 
+import { type LibraryRead, type PathSuggestion, fetchPathSuggestions } from '../api/client'
 import {
-  type LibraryRead,
-  type PathSuggestion,
-  PassphraseRequiredError,
-  fetchPathSuggestions,
-} from '../api/client'
-import {
-  useDeploymentWriteMode,
   useLibraries,
   useLibraryMutations,
   useLibraryOwnership,
   useLibraryServing,
-  useWriteModeMutation,
 } from '../api/hooks'
 import {
   activeConnectionLabel,
@@ -61,7 +57,6 @@ export function LibraryManager({
 }) {
   const libraries = useLibraries()
   const { create, register, probe, remove } = useLibraryMutations()
-  const writeModeAllowed = useDeploymentWriteMode()
 
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
@@ -311,7 +306,6 @@ export function LibraryManager({
               key={library.id}
               library={library}
               busy={busy}
-              writeModeAllowed={writeModeAllowed}
               onRemove={() => removeLibrary(library.id)}
               onSelect={() => {
                 onSelect?.(library.id)
@@ -416,8 +410,8 @@ export function LibraryManager({
 
           {isDesktopHost() && (
             <p className="lib-add__hint">
-              Browse selects a folder on This Computer. Adding it uses the local server. If another
-              server owns it, connect to that server; a mounted folder does not transfer ownership.
+              Browse selects a folder on This Computer. Adding it uses this computer’s private
+              metadata store and access settings.
             </p>
           )}
           {error && <div className="modal__error">{error}</div>}
@@ -558,24 +552,36 @@ export function NewLibraryDialog({
 function LibraryRow({
   library,
   busy,
-  writeModeAllowed,
   onRemove,
   onSelect,
 }: {
   library: LibraryRead
   busy: boolean
-  /** The deployment master switch (ADR-0013 §1); false forces read-only. */
-  writeModeAllowed: boolean
   onRemove: () => void
   onSelect: () => void
 }) {
   // At most one of the two confirmations is open, because they ask about the
   // same row and both replace it.
-  const [asking, setAsking] = useState<'remove' | 'write-mode' | null>(null)
+  const [asking, setAsking] = useState<'remove' | null>(null)
+  const [privatePanel, setPrivatePanel] = usePersistentState(
+    `cairndex.libraryControls:${getConnectionScopeKey() ?? 'web'}:${library.id}`,
+    false,
+  )
   const available = library.status === 'available'
   const ownership = useLibraryOwnership(library.id)
   const serving = useLibraryServing(library.id)
   const released = ownership.data?.state === 'locally_released'
+
+  if (privatePanel)
+    return (
+      <div className="library-private-panel">
+        <button className="btn" onClick={() => setPrivatePanel(false)}>
+          Back to libraries
+        </button>
+        <h2>{library.name}</h2>
+        <LibraryPrivateControls libraryId={library.id} released={released} />
+      </div>
+    )
 
   if (asking === 'remove') {
     return (
@@ -597,10 +603,6 @@ function LibraryRow({
         </button>
       </div>
     )
-  }
-
-  if (asking === 'write-mode') {
-    return <EnableWriteMode library={library} onDone={() => setAsking(null)} />
   }
 
   return (
@@ -629,15 +631,11 @@ function LibraryRow({
         {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
       </button>
       {released && <span className="lib-row__note">Released on this server</span>}
+      <button className="btn btn--sm" disabled={busy} onClick={() => setPrivatePanel(true)}>
+        Access and backups
+      </button>
       {serving.error && <span role="alert">{serving.error.message}</span>}
-      {library.package_format !== 'cairndex.replica-library' && (
-        <WriteModeToggle
-          library={library}
-          busy={busy}
-          allowed={writeModeAllowed}
-          onEnable={() => setAsking('write-mode')}
-        />
-      )}
+
       <button
         className="btn btn--sm"
         onClick={() => setAsking('remove')}
@@ -650,132 +648,6 @@ function LibraryRow({
   )
 }
 
-const WRITE_MODE_BLOCKED_HINT =
-  'This server is configured read-only (CAIRNDEX_WRITE_MODE=disabled), so write mode cannot be turned on here.'
-
-/**
- * The write-mode switch for one library (ADR-0013 §1).
- *
- * Turning it **off** is immediate: giving up a capability needs no
- * confirmation. Turning it **on** goes through `EnableWriteMode`, which says
- * what it unlocks and collects the passphrase when the library has one.
- *
- * When the deployment forbids write mode the control is disabled and explains
- * why rather than disappearing — a missing switch reads as a missing feature,
- * and the owner would go looking for it in the wrong place.
- */
-function WriteModeToggle({
-  library,
-  busy,
-  allowed,
-  onEnable,
-}: {
-  library: LibraryRead
-  busy: boolean
-  allowed: boolean
-  onEnable: () => void
-}) {
-  const writeMode = useWriteModeMutation()
-  const enabled = library.write_mode_enabled
-  const blocked = !allowed && !enabled
-
-  return (
-    <button
-      className={`btn btn--sm${enabled && allowed ? ' btn--active' : ''}`}
-      onClick={() =>
-        enabled ? writeMode.mutate({ libraryId: library.id, enabled: false }) : onEnable()
-      }
-      disabled={busy || writeMode.isPending || blocked}
-      aria-pressed={enabled}
-      title={blocked ? WRITE_MODE_BLOCKED_HINT : undefined}
-      aria-label={`Write mode for ${library.name}`}
-    >
-      {/* An enabled flag the deployment is overriding is stated as exactly
-          that, rather than silently rendered as off. */}
-      Write mode: {enabled ? (allowed ? 'on' : 'on (blocked)') : 'off'}
-    </button>
-  )
-}
-
-/**
- * The enable step: what write mode unlocks, and the passphrase when required.
- *
- * The passphrase field appears only after the server asks for it, so an
- * unprotected library is one click and a protected one is never guessed at.
- * The same 401 covers a wrong passphrase, which is why the field stays open
- * with a message instead of collapsing the step.
- */
-function EnableWriteMode({ library, onDone }: { library: LibraryRead; onDone: () => void }) {
-  const writeMode = useWriteModeMutation()
-  const [passphrase, setPassphrase] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const enable = () => {
-    setError(null)
-    writeMode.mutate(
-      { libraryId: library.id, enabled: true, passphrase: passphrase ?? undefined },
-      {
-        onSuccess: onDone,
-        onError: (failure) => {
-          if (failure instanceof PassphraseRequiredError) {
-            setError(
-              passphrase === null
-                ? null // First ask: the field's own label is the explanation.
-                : 'That passphrase was not accepted.',
-            )
-            setPassphrase(passphrase ?? '')
-            return
-          }
-          setError(messageOf(failure))
-        },
-      },
-    )
-  }
-
-  return (
-    <form
-      className="lib-row lib-row--confirm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        enable()
-      }}
-    >
-      <div className="lib-row__main">
-        <span className="lib-row__name">Turn on write mode for “{library.name}”?</span>
-        <span className="lib-row__note">
-          Cairndex will be able to create, rename, move, and trash files inside this folder. Every
-          operation is recorded and can be undone, and deleted files go to the library’s trash
-          rather than disappearing.
-        </span>
-        {passphrase !== null && (
-          <input
-            className="edit"
-            type="password"
-            value={passphrase}
-            onChange={(event) => setPassphrase(event.target.value)}
-            aria-label={`Passphrase for ${library.name}`}
-            placeholder="Library passphrase"
-            autoFocus
-            autoComplete="current-password"
-          />
-        )}
-        {error && <span className="lib-row__note">{error}</span>}
-      </div>
-      <button type="button" className="btn btn--sm" onClick={onDone} disabled={writeMode.isPending}>
-        Cancel
-      </button>
-      <button
-        className="btn btn--sm btn--primary"
-        disabled={writeMode.isPending || passphrase === ''}
-      >
-        Turn on
-      </button>
-    </form>
-  )
-}
-
-// Mirrors `.path-input__menu`'s max-height, plus its offset from the field. Used
-// only to decide which side has room; the menu's real size stays CSS's business.
 const MENU_MAX_HEIGHT = 226
 
 // The longest prefix every suggestion shares, for Tab completion. Empty when the

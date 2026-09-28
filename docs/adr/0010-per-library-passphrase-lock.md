@@ -75,3 +75,36 @@ one they want.
 - ADR-0008 (per-library metadata and registry) — the manifest and library-scoped
   content routes this builds on.
 - `AGENTS.md` security/privacy rules; `docs/deployment.md` exposure notes.
+
+## Private-store amendment
+
+Status: accepted by the owner for the current completion group.
+
+A portable library has a separate optional passphrase on each serving instance.
+The configuration is private to that server, keyed by library authority, outside
+both the library folder and recoverable working generations. It protects HTTP
+metadata, media, mutations and private recovery controls. It does not encrypt
+files or constrain someone who possesses the folder. Another server needs its
+own setup; copying metadata never copies credentials or silently changes another
+server's protection. Each library has an independent setting, even when the owner
+chooses the same passphrase.
+
+The ordinary interface can set, change and remove this server's protection.
+Changing a configured passphrase requires the current passphrase. Every change
+revokes existing browser grants and paired tokens scoped to the library. The
+requesting browser receives a new grant. A paired remote desktop must pair again.
+The sidecar grants its verified local owner session access only after successful
+passphrase verification. This grant remains in memory, applies to the local media
+relay and expires under the existing session policy. Lock clears that grant;
+restart clears all browser and local owner grants. Remote paired tokens retain
+the existing explicit library scope and revocation behavior.
+
+Private snapshots exclude access settings, registry state and credentials.
+Recovery changes only the working-generation binding; the destination server's
+protection remains in place. Access configuration needs a separate server backup.
+Missing or corrupt existing configuration must not be repaired by copying another
+server's credentials. Direct public exposure remains unsupported.
+
+The owner also requested removal of legacy library-format support in this task.
+That separate implementation changes normal creation/opening and is not permission
+to convert, overwrite or remove existing folders automatically.

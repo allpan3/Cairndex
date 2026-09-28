@@ -81,7 +81,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh /app/infra/restor
 
 # Writable app-data dir (SQLite DB + derived-media cache) — a mounted volume in
 # production, owned by the non-root user. Kept outside any storage root.
-RUN mkdir -p /data && chown -R app:app /data
+RUN mkdir -p /data /backups && chown -R app:app /data /backups
 VOLUME ["/data"]
 
 # The root every library mount hangs under: /libraries/main, /libraries/archive.

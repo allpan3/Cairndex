@@ -215,7 +215,7 @@ describe('escape hatches', () => {
 })
 
 describe('explicit release and uncertain ownership', () => {
-  it('waits for deliberate reopen and offers the current holder', () => {
+  it('waits for deliberate reopen without a shared-folder holder', () => {
     const props = renderNotice(
       ownership({ state: 'locally_released', redirect_url: 'http://synthetic-server:8000' }),
     )
@@ -223,8 +223,8 @@ describe('explicit release and uncertain ownership', () => {
     expect(props.onReopen).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Reopen' }))
     expect(props.onReopen).toHaveBeenCalledOnce()
-    fireEvent.click(screen.getByRole('button', { name: /Connect to/ }))
-    expect(props.onConnectTo).toHaveBeenCalledWith('http://synthetic-server:8000')
+    expect(screen.queryByRole('button', { name: /Connect to/ })).not.toBeInTheDocument()
+    expect(props.onConnectTo).not.toHaveBeenCalled()
   })
 
   it('explains uncertainty without offering acquisition', () => {

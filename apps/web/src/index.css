@@ -7908,3 +7908,32 @@ code {
 .catalog-album-browser-return[hidden] {
   display: none;
 }
+
+.library-private-panel {
+  width: 100%;
+}
+.library-private {
+  display: grid;
+  gap: 1rem;
+}
+.library-private form,
+.library-private label {
+  display: grid;
+  gap: 0.5rem;
+}
+.library-private input {
+  max-width: 26rem;
+}
+.library-private .btn {
+  margin: 0.25rem;
+}
+.library-private__actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+.library-private__record {
+  max-height: 15rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

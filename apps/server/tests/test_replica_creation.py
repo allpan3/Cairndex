@@ -198,11 +198,11 @@ def test_incomplete_creation_cannot_register_or_become_legacy(tmp_path, registry
     assert library.package_format == "cairndex.replica-library"
     ordinary = tmp_path / "ordinary"
     ordinary.mkdir()
-    legacy = services.create_library(
+    ordinary_library = services.create_library(
         registry_session, root_path=str(ordinary), display_name="Normal"
     )
-    assert legacy.package_format == "cairndex.library"
-    assert (ordinary / ".cairndex/library.db").is_file()
+    assert ordinary_library.package_format == "cairndex.replica-library"
+    assert not (ordinary / ".cairndex/library.db").exists()
 
 
 def test_partial_and_conflict_filename_delivery_waits_for_complete_seed(tmp_path):

@@ -53,3 +53,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0032](0032-replica-discovery.md) | Private replica discovery and reviewed catalog identity | accepted |
 | [0033](0033-selective-native-file-drops.md) | Selective native file-drop capture | proposed; on hold during copy-only assessment |
 | [0034](0034-mounted-smb-copy-publication.md) | Mounted-SMB copy publication | accepted |
+| [0035](0035-portable-library-format.md) | One portable library format | accepted |

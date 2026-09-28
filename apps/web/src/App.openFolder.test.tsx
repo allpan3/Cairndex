@@ -293,3 +293,14 @@ test('the shell is told which libraries this server already has', async () => {
 
   await waitFor(() => expect(host.openLibraryFolder).toHaveBeenCalled())
 })
+
+// These tests cover admission and connection routing; catalog UI has its own tests.
+vi.mock('./app/ReplicaWorkspace', () => ({
+  ReplicaWorkspace: ({ onManage }: { onManage: () => void }) => (
+    <div>
+      <span>Cairndex</span>
+      <span>Nothing here yet.</span>
+      <button onClick={onManage}>Manage libraries</button>
+    </div>
+  ),
+}))

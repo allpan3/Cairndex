@@ -163,7 +163,7 @@ test('pairs, lists, and revokes a real bearer token from Settings Devices @fulls
     )
     expect(delivered.status).toBe('approved')
     const allowed = await fetch(
-      `${backend.baseUrl}/api/v1/libraries/${library.id}/bundles/browse`,
+      `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/status`,
       { headers: { Authorization: `Bearer ${delivered.token}` } },
     )
     expect(allowed.status).toBe(200)
@@ -174,12 +174,13 @@ test('pairs, lists, and revokes a real bearer token from Settings Devices @fulls
     await expect(page.getByText('revoked')).toBeVisible()
 
     const revoked = await fetch(
-      `${backend.baseUrl}/api/v1/libraries/${library.id}/bundles/browse`,
+      `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/status`,
       { headers: { Authorization: `Bearer ${delivered.token}` } },
     )
     expect(revoked.status).toBe(401)
     expect(await revoked.json()).toMatchObject({ code: 'invalid_device_token' })
   } finally {
+    await page.close()
     if (backend) await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })
   }

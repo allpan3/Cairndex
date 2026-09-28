@@ -10,6 +10,10 @@ fi
 
 BACKUP_PATH="$2"
 DB_PATH="$3"
+if [[ "$(basename "$DB_PATH")" == "library.db" ]]; then
+    echo "error: legacy library format is unsupported" >&2
+    exit 1
+fi
 
 if [[ ! -f "$BACKUP_PATH" ]]; then
     echo "error: backup not found at $BACKUP_PATH" >&2

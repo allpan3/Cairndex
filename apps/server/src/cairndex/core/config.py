@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # entirely separate from any library (AGENTS.md §11/§12). Per-library content
     # and its derived cache live in each library's own ``.cairndex/`` instead.
     data_dir: Path = _DEFAULT_DATA_DIR
+    # Private snapshots use a separate server-managed directory, never client paths.
+    private_backup_dir: Path | None = None
 
     # Loopback owner token for the desktop local-server sidecar (ADR-0018 §5).
     # When set, every API request must present it as a bearer token. Unset for

@@ -158,12 +158,43 @@ def registry_session(registry_session_factory: sessionmaker[Session]) -> Iterato
 
 
 @pytest.fixture
-def library_id(registry_session: Session, library_root: Path) -> str:
-    """Register the test library in the registry and return its id."""
-    library = registry_service.register_existing_library(
-        registry_session, root_path=str(library_root)
+def library_id(
+    registry_session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Bind the retained legacy model fixture without enabling public registration.
+
+    These dependency-overridden service tests also cover conversion inputs.
+    Current-format admission is tested separately through the real API.
+    """
+    library = registry_service._insert(
+        registry_session, manifest=pkg.read_manifest(library_root), root=library_root
     )
     registry_session.commit()
+    # This is an internal ORM/handler harness, not public package admission. The
+    # portable catalog reuses these models and media helpers. Integration tests
+    # create portable packages through the API and do not request this fixture.
+    # Retain the old model tests without enabling its format in the application.
+    from cairndex.auth import private_auth
+    from cairndex.domain.enums import LibraryStatus
+
+    get_library = registry_service.get_library
+    read_auth = private_auth.read
+
+    def model_library(session: Session, identity: str):
+        if identity == library.id:
+            row = session.get(type(library), identity)
+            if row is not None:
+                row.status = LibraryStatus.AVAILABLE
+                return row
+        return get_library(session, identity)
+
+    def model_auth(root: Path, library_uuid: str | None = None):
+        if root == library_root and pkg.read_manifest(root).replica is None:
+            return None
+        return read_auth(root, library_uuid)
+
+    monkeypatch.setattr(registry_service, "get_library", model_library)
+    monkeypatch.setattr(private_auth, "read", model_auth)
     return library.id
 
 

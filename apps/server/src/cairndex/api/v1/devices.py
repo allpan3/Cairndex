@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
 from sqlalchemy import select
 
 from cairndex.api.deps import RegistryDbSession
@@ -17,6 +17,7 @@ from cairndex.api.schemas.devices import (
 )
 from cairndex.auth import SESSION_COOKIE, is_protected, requires_unlock, session_store
 from cairndex.auth.device_tokens import pairing_store
+from cairndex.auth.local_token import owner_session
 from cairndex.core.errors import AuthRequiredError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.registry import device_tokens as token_service
@@ -31,18 +32,24 @@ def _owner_session_authorized(registry: RegistryDbSession, session_cookie: str |
     libraries = list(registry.scalars(select(RegisteredLibrary)))
     unlocked_ids = session_store.unlocked_library_ids(session_cookie)
     for library in libraries:
-        if library.id in unlocked_ids and is_protected(Path(library.root_path)):
+        if library.id in unlocked_ids and is_protected(
+            Path(library.root_path), library_uuid=library.library_uuid
+        ):
             return
     for library in libraries:
-        if library.id not in unlocked_ids and is_protected(Path(library.root_path)):
+        if library.id not in unlocked_ids and is_protected(
+            Path(library.root_path), library_uuid=library.library_uuid
+        ):
             raise AuthRequiredError("Unlock a protected library before managing devices")
 
 
 def require_owner_session(
     registry: RegistryDbSession,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
     """FastAPI dependency for global device-list and revocation operations."""
+    session_cookie = owner_session(authorization, session_cookie)
     _owner_session_authorized(registry, session_cookie)
 
 
@@ -83,8 +90,10 @@ def approve_pairing(
     registry: RegistryDbSession,
     response: Response,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
     """Approve explicit library scopes from an authorized browser session."""
+    session_cookie = owner_session(authorization, session_cookie)
     _owner_session_authorized(registry, session_cookie)
     for library_id in payload.library_ids:
         library = registry_service.get_library(registry, library_id)

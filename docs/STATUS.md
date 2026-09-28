@@ -1,12 +1,72 @@
 # Project status
 
+## Portable library access and private recovery
+
+Implementation is on `fix/library-ownership-lifecycle`, based on `b609c9a0`.
+Normal Create produces a format-three catalog through a private creation intent.
+Create preserves source bytes. Open and all public library access refuse the old
+`cairndex.library` format. Old registrations can be removed without disk changes.
+Conversion is external; `CONVERSION_AVAILABLE = False` remains in place.
+
+Each library has independent optional protection on each serving instance. Private
+access records remain outside shared history and recovery generations. Changes
+require the current passphrase and revoke paired tokens and browser grants.
+Private recovery tasks provide snapshots, verification, separate preparation,
+review, bounded inspection, activation, cancellation and exact job retry.
+Preparation and activation use private process exclusion after Release. A failed
+drain cannot be bypassed with the persisted Release flag.
+
+Production macOS verification used an isolated app identifier, profile and synthetic
+folder. Observable native checks covered normal Create, snapshot/verification,
+Release, preparation, retained review after restart, activation, Reopen, Lock,
+Unlock and Settings access. Recovery kept the destination guard. Native checks
+found and corrected background task-status refresh and authentication before the
+released-library screen. Passphrase setup/change UI is covered by the browser
+suite; the native fixture guard was configured through local administration.
+The installed app and owner configuration matched all 122 baseline file hashes.
+The isolated profile and copied app were removed and test registrations cleared.
+
+Backend lint, formatting and type checks pass. The full backend run passes
+1,822 tests, with one ffmpeg `zscale` skip. A separate 13-test private-controls
+run includes the final concurrent-claim cancellation regression and passes.
+Frontend lint, formatting and type checks pass; 1,248 unit tests and all 31
+current browser tests pass. The final production macOS build passes.
+Packaged-sidecar smoke verifies normal creation, reviewed Update,
+actual image pixels, HEIC preview and private-lock release on shutdown. Development
+Ctrl-C smoke passes. OpenAPI and TypeScript contracts are regenerated.
+
+Native checks preceded the final conditional queued-task cancellation repair.
+The final build and packaged-sidecar smoke include that repair. Native UI did
+not exercise cancellation of a claimed task.
+
+Both production compose files provide separate private snapshot storage. Compose
+validation and shell syntax checks pass. Docker runtime/build/context checks are
+not run: the local Docker daemon socket is unavailable. The portable image and
+backup/recovery smoke scripts require execution before deployment qualification.
+NAS/provider, power-loss, representative-scale, historical-client and owner-library
+qualification remain outside this change. No installation or publication occurs.
+
+### Test boundary during format removal
+
+The legacy Workspace and source-write workflows have no portable fallback. Their
+browser suites are retired with those workflows. Current browser coverage uses
+real portable catalogs for browsing, search, navigation, filters, inspector edits,
+bulk reviews, albums, Update, media, connection switching, access and recovery.
+Library-manager layout and keyboard checks retain mocks for that shell only.
+
+Shared ORM, media, source-journal and handler unit tests retain an explicit
+synthetic model fixture. That fixture bypasses public format admission only for
+its own model row. These tests are internal regression checks, not evidence of
+legacy application support. Separate real-API tests refuse old registrations
+on content, media, access, ownership, write-mode and recovery routes without
+changing source or metadata bytes.
+
 ## Current audit disposition
 
 The [audit status ledger](audit-status.md) is the current I01–I29 disposition for
 `fix/library-ownership-lifecycle`, reconciled against `51e05546` and subsequent
-owner decisions. Completed bounded fixes retain their qualification limits. Cloud
-replica conversion/new-library readiness, providers and broader deployment/scale
-qualification remain incomplete. Folder pagination is owner-deferred.
+owner decisions. Completed bounded fixes retain their qualification limits. Real conversion, providers and broader deployment/scale qualification remain
+incomplete. Normal portable creation is implemented under ADR-0035. Folder pagination is owner-deferred.
 **Desktop file integration is INCOMPLETE and paused**; QSpace, multi-file OS
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.

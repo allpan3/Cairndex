@@ -1,13 +1,25 @@
 # Data model
 
-> Status: current through the scan grouping review workflow. Logical "folders"
-> are now **collections**. The core content schema is implemented in
-> `apps/server/src/cairndex/persistence/models.py` and created per library via
-> `create_all` (ADR-0008). Decisions are recorded in ADR-0002 (core
-> schema/identity), ADR-0003 (subtitle tracks), ADR-0006 (scanner identity and
-> moved-file repair), ADR-0008 (per-library metadata + registry), and ADR-0009
-> (suggestion-based grouping). ADR-0004 (Eagle import) is superseded history; the
-> importer is removed.
+## Portable library storage
+
+[ADR-0035](adr/0035-portable-library-format.md) defines the supported application
+format. Normal Create produces a complete portable catalog. Open refuses the old
+`cairndex.library` format. No automatic conversion or source mutation occurs.
+Working databases, drafts, jobs and caches are private to the serving instance;
+the library folder contains its descriptor and immutable metadata history.
+Shared ORM and media utilities also support synthetic conversion fixtures. They
+do not enable legacy library admission.
+
+Optional access settings are independent per library and server. Hashes live in
+`CAIRNDEX_DATA_DIR/library-access/<library_uuid>.json`, outside recovery generations.
+Recovery keeps these destination settings. Manage libraries provides access and
+private backup controls. See [private recovery](replica-recovery.md) for coverage,
+Release, review, activation and explicit retry.
+
+
+The private catalog maps the retained domain schema into authored rows and causal
+units. SQLAlchemy models also support internal synthetic fixtures. They do not
+provide public admission for an old library.
 
 The legacy SQLAlchemy schema below belongs to `cairndex.library`. Replica package
 version 1 uses private `events`, `revisions`, `bundles`, inbox/outbox receipts and
@@ -90,10 +102,11 @@ observations remain in the separate recovery archive.
   compatibility counters. See [shared-server edits](shared-server-edits.md) for the
   field/edge/structure inventory, storage schema and recovery behavior.
 
-## Per-library content database
+## Authored catalog schema
 
-Each Cairndex library is a directory with a `.cairndex/` package. The content
-schema below lives in `<library-root>/.cairndex/library.db`. There is no content
+The authored catalog maps the fields below into private projected rows and
+immutable authored units. The retained SQLAlchemy schema is also used by internal
+synthetic fixtures. The application does not open a folder `library.db`. There is no content
 `storage_roots` table and no `asset_files.storage_root_id`: the library DB is the
 storage scope, and `asset_files.relative_path` is relative to the library root.
 
@@ -723,12 +736,8 @@ runtime state. It is not portable library metadata and has its own
 `schema_version`, `write_mode_enabled`, timestamps, `last_opened_at`. One row per
 known `<root>/.cairndex/` library package.
 
-`write_mode_enabled` (default false) is the owner's per-library opt-in to
-guarded file operations (ADR-0013). It lives here rather than in the portable
-manifest **on purpose**: a library copied to another server must arrive
-read-only, never carrying write permission with it. `CAIRNDEX_WRITE_MODE=disabled`
-overrides it deployment-wide. Registries created before ADR-0013 gain the column
-additively, defaulting to off.
+`write_mode_enabled` is a retained registry column. Portable libraries refuse
+source-write changes regardless of its value.
 
 ### `job_queue`
 
@@ -746,29 +755,23 @@ owner audit. This is registry/runtime state, not portable library metadata.
 
 ### `server_identity`
 
-This install's stable identity (ADR-0018 §2): `id`, `server_uuid` (unique),
-`machine_name`, `created_at`. Exactly one row, created on first use. Every
-ownership lease this server writes carries the `server_uuid`, so it must survive
-restarts — a regenerated identity would make a crashed server fail to recognize
-its own lease and demand a takeover confirmation on every start. `machine_name`
-is refreshed from the host (or `CAIRNDEX_MACHINE_NAME`) on read, so renaming a
-machine shows up in the next lease write without minting a new identity.
+Retained server identity fields are `id`, `server_uuid`, `machine_name` and
+`created_at`. They do not select an owner of a shared library. Private binding
+locks exclude processes from the same server-local store.
 
-Server-local infrastructure, not library state, so it does not conflict with the
-ADR-0018 §1 portability invariant: nothing here is authoritative for a library,
-and a fresh install simply mints a new identity.
+### Private serving binding (not a table)
 
-### Ownership lease (not a table)
+`replica-bindings/<library_uuid>.json` selects a private store generation.
+The matching OS lock excludes concurrent processes. The library has no mutable
+shared-folder lease. Access settings live in private `library-access`, outside
+the bound generation, and are not part of recovery snapshots.
 
-The active-owner lease is a JSON file *inside each library* at
-`.cairndex/locks/active-owner.json`, not a registry row — deliberately, since two
-conflicting servers cannot see each other's registries and a synced library copy
-has no server at all. See `docs/architecture.md` §4.1 and ADR-0018.
+### `recovery_tasks`
 
-The in-process worker consumes this registry queue. Each job names a library;
-the worker opens that library's `library.db`, runs scan/probe/thumbnail/storyboard
-handlers against the library root, commits durable content results into the
-library DB, and writes progress/terminal state back to the registry row.
+Durable private operations contain the library ID, descriptor, action, exact body,
+state, result, error and creation time. Only one queued or running operation per
+library is permitted by a partial unique index. Completed results can contain
+private draft metadata and require library authorization.
 
 ## Non-table model surfaces
 

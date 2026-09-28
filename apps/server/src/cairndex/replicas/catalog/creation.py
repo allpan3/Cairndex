@@ -1,19 +1,16 @@
-"""Private creation intent and descriptor-last publication for disposable catalogs.
+"""Private creation intent and descriptor-last publication for complete catalogs."""
 
-No application route or ordinary creation command calls this module. Its fixture
-boundary does not authorize creation in an owner-selected directory.
-"""
-
+import hashlib
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal
+from typing import Literal, Protocol
 from uuid import uuid4
 
 from pydantic import Field, ValidationError
 
-from cairndex.devtools.replica_creation_fixture import DisposableCreation
 from cairndex.replicas.binding import BindingLock, read_json, sync_directory, write_json
 from cairndex.replicas.catalog.protocol import (
     DISCOVERY_CAPABILITIES,
@@ -25,6 +22,25 @@ from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import PACKAGE_FORMAT, ReplicaError, StrictModel, Token, canonical
 from cairndex.replicas.store import no_fault
 from cairndex.replicas.transport import Transport, directory, read_file
+
+
+class CreationPaths(Protocol):
+    @property
+    def root(self) -> Path: ...
+    @property
+    def private(self) -> Path: ...
+    @property
+    def directory(self) -> Path: ...
+
+
+@dataclass(frozen=True)
+class CreationTarget:
+    root: Path
+    private: Path
+
+    @property
+    def directory(self) -> Path:
+        return self.root.parent
 
 
 class CreationIntent(StrictModel):
@@ -62,13 +78,21 @@ def _seed(library: str, epoch: str, replica: str, operation: str) -> list[tuple[
     )
 
 
-def prepare(fixture: DisposableCreation) -> None:
+def prepare(
+    fixture: CreationPaths,
+    *,
+    display_name: str = "Synthetic library",
+    allow_source_files: bool = False,
+) -> None:
     """Record one identity only in a newly allocated empty developer fixture."""
     root_identity = _identity(fixture.root)
     metadata_identity = _identity(fixture.root / ".cairndex")
     _identity(fixture.private)
     if (
-        {entry.name for entry in fixture.root.iterdir()} != {".cairndex"}
+        (
+            not allow_source_files
+            and {entry.name for entry in fixture.root.iterdir()} != {".cairndex"}
+        )
         or any((fixture.root / ".cairndex").iterdir())
         or any(fixture.private.iterdir())
     ):
@@ -84,7 +108,7 @@ def prepare(fixture: DisposableCreation) -> None:
             minimum_reader=3,
             capabilities=DISCOVERY_CAPABILITIES,
             library_uuid=library,
-            display_name="Synthetic library",
+            display_name=display_name,
             epoch=epoch,
             genesis=artifacts[-1][0],
         ),
@@ -98,7 +122,7 @@ def prepare(fixture: DisposableCreation) -> None:
     write_json(fixture.private / "creation.json", intent.model_dump(mode="json"))
 
 
-def _check(fixture: DisposableCreation, intent: CreationIntent) -> None:
+def _check(fixture: CreationPaths, intent: CreationIntent) -> None:
     if (
         _identity(fixture.root) != intent.root_identity
         or _identity(fixture.root / ".cairndex") != intent.metadata_identity
@@ -123,7 +147,7 @@ def _manifest(fd: int, expected: bytes) -> bool:
 
 
 def complete(
-    fixture: DisposableCreation, *, fault: Callable[[str], None] = no_fault
+    fixture: CreationPaths, *, fault: Callable[[str], None] = no_fault
 ) -> CatalogDescriptor:
     """Validate and publish the same seed and descriptor on every explicit retry.
 
@@ -201,3 +225,24 @@ def complete(
     finally:
         guard.close()
     return descriptor
+
+
+def create(root: Path, base: Path, display_name: str) -> CatalogDescriptor:
+    """Create or explicitly resume one library without adopting existing metadata."""
+    from cairndex.replicas.binding import private_path
+
+    key = hashlib.sha256(root.as_posix().encode()).hexdigest()
+    private = private_path(base / "library-creations" / key, root)
+    target = CreationTarget(root, private)
+    marker = root / ".cairndex"
+    if private.exists():
+        intent = CreationIntent.model_validate(read_json(private / "creation.json"))
+        if intent.descriptor.display_name != display_name:
+            raise ReplicaError("Creation name changed; use the original name to resume")
+    else:
+        if marker.exists() or marker.is_symlink():
+            raise ReplicaError("Existing library metadata cannot be overwritten")
+        private.mkdir(parents=True, mode=0o700)
+        marker.mkdir(mode=0o700)
+        prepare(target, display_name=display_name, allow_source_files=True)
+    return complete(target)

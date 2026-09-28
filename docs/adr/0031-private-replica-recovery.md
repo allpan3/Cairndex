@@ -87,3 +87,25 @@ and synthetic abrupt-exit tests do not establish provider or power-loss safety.
 - Automatic replay of recovered jobs/drafts: grants stale intent new authority
 - Copying server credentials and machine observations to a new device: violates
   private identity and source-generation boundaries
+
+## Ordinary controls
+
+Libraries provides authorized private snapshot and recovery controls. The HTTP
+surface accepts only server-managed operation identities, never filesystem paths.
+Snapshots use `CAIRNDEX_PRIVATE_BACKUP_DIR`, or a separate sibling of the server
+data directory. Storage must be outside library and sync trees; the application
+cannot identify every provider directory. Administrators retain the local command
+for explicit paths and moving verified sets to another server.
+
+One registry-backed worker performs snapshot validation, preparation, inspection
+and activation. Lists and inspection pages are bounded. Queued operations can be
+cancelled. Running operations finish at the service's safe boundary; the UI does
+not report them cancelled. Restart marks pending operations interrupted. Explicit
+retry retains the operation identity, adopts only a complete verified result, and
+never overwrites an incomplete set. A new preparation retains the incomplete set.
+
+Preparation through the interface requires Release. Review binds the exact
+candidate and original state. Activation requires that receipt and process
+exclusion; Reopen is a separate action. The interface reports received drafts,
+unpublished events and saved jobs, and identifies the separate backup needs for
+source media, portable metadata, credentials and unreceived browser text.

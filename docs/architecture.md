@@ -1,5 +1,22 @@
 # Architecture
 
+## Portable library storage
+
+[ADR-0035](adr/0035-portable-library-format.md) defines the supported application
+format. Normal Create produces a complete portable catalog. Open refuses the old
+`cairndex.library` format. No automatic conversion or source mutation occurs.
+Working databases, drafts, jobs and caches are private to the serving instance;
+the library folder contains its descriptor and immutable metadata history.
+Shared ORM and media utilities also support synthetic conversion fixtures. They
+do not enable legacy library admission.
+
+Optional access settings are independent per library and server. Hashes live in
+`CAIRNDEX_DATA_DIR/library-access/<library_uuid>.json`, outside recovery generations.
+Recovery keeps these destination settings. Manage libraries provides access and
+private backup controls. See [private recovery](replica-recovery.md) for coverage,
+Release, review, activation and explicit retry.
+
+
 This reference describes implemented storage, serving, media and desktop boundaries.
 The [product brief](product-brief.md) defines product intent;
 [Project status](STATUS.md) separates current audit dispositions from historical
@@ -25,11 +42,11 @@ protected actions and the separate observation/source-operation boundaries.
 
 ## Private metadata replicas
 
-Empty format-three developer packages use a private creation intent, independent
+Normal format-three creation uses a private creation intent, independent
 seed validation and descriptor-last publication. Completion retries retain the
 same package identity and refuse conflicting bytes. The
 [creation contract](proposals/unified-library-creation.md) remains restricted to
-fresh synthetic fixtures; ordinary library creation retains the legacy format.
+new roots that can contain source files.
 
 [ADR-0029](adr/0029-cloud-metadata-replicas.md) defines private working databases
 and immutable causal metadata transactions. Package version 1 supports bounded
@@ -89,98 +106,28 @@ observations never enter authored history. No content schema migration is requir
 The API and shared app select the advertised capability. Replica packages never
 open legacy content/lease/source-write paths. The [catalog workflow](replica-catalog.md)
 and [migration contract](replica-migration.md) define wire limits, schema inventory,
-synthetic conversion/rollback and unavailable real conversion. The legacy serving
-architecture below applies to `cairndex.library`.
+synthetic conversion/rollback and unavailable real conversion.
 
 ## Library release and recovery
 
-A server retains library ownership while it is awake, including UI idle time,
-blank displays and lid closure that does not suspend the server. Closing or
-sleeping a remote client does not release the server's library. There is no idle
-release and no automatic stale takeover.
+Release stops new library requests and drains admitted work before closing the
+private store, exchange handles and media sessions. The registry retains Release
+intent across restart. Reopen permits serving again. Client disconnects do not
+release a library. A failed drain keeps admission closed; retry Release.
 
-**Libraries → Release** stops this server serving that library to every client,
-while retaining its registration, content and metadata. The server refuses new
-work, drains admitted requests, sessions, jobs and maintenance, stops local HLS
-encoders, then checkpoints and closes SQLite before releasing its lease.
-**Reopen** is deliberate and uses normal ownership checks. Release intent is
-server-local registry state and survives restart; polling, jobs and a remembered
-selection cannot reopen it. Removing registration is a separate action.
-
-A drain timeout or failed checkpoint keeps admission closed and ownership
-retained; retry Release to finish. An unavailable or changed ownership record
-never permits a journal-mode rewrite or a release-record overwrite. A failed
-close may leave WAL recovery files and a stale lease, requiring explicit
-recovery rather than a clean-handoff claim.
-
-SQL statements/commits and filesystem publication boundaries check the cached
-ownership validation time. At a gap of one heartbeat interval, on a backward
-wall-clock adjustment, or after an I/O failure, they verify the exact lease
-nonce before proceeding. Both monotonic and wall clocks are checked because
-monotonic time may exclude suspension. This also covers work that resumes
-before the heartbeat thread. Unknown ownership pauses work; a changed/missing
-record fences it and never triggers reacquisition. The ordinary path performs
-clock reads rather than a filesystem read per statement.
-
-A file lease is cooperative, not a distributed fencing token. An already-issued
-OS operation cannot be revoked, and disconnected cloud replicas cannot observe
-one another. Expiration is evidence of staleness, not evidence of a closed DB.
-Conflict copies and available recovery files are retained; file sync alone does
-not guarantee a complete recoverable SQLite generation or lossless resolution.
-Cloud reconciliation remains outside this lifecycle contract.
-
-On positively identified macOS SMB mounts, copy publication is the narrow
-exception to ordinary mounted filesystem access. The backend derives the
-server/share/account and mount root from `statfs`, retrieves that exact saved SMB
-login from Keychain on demand, and uses signed, encrypted SMB3 hard links for
-no-overwrite publication. Versioned journal observations use server file identity;
-native inode observations remain unchanged for local storage and old receipts.
-Local source builds can opt into a persistent certificate and the stable
-`dev.cairndex.sidecar` identifier for the credential reader. Builds verify the
-configured signer; Keychain's existing item access policy still decides whether
-to allow the request. Signing configuration stays outside the library and checkout.
-Each account has a private connection pool. Explicit tree and open-handle requests
-bypass implicit account selection and DFS redirects; held ancestor handles reject
-reparse points. Random disposable directory challenges are read through both
-access paths. Cleanup verifies the held server identity before deletion; native
-mount inode values are not hard-link identity evidence. The SMB session closes
-when that account's last corresponding mounted library closes. See
-[ADR-0034](adr/0034-mounted-smb-copy-publication.md).
-
-Metadata-only operation protects source media. Browsing still requires writable
-`.cairndex` metadata, locks, progress and cache, plus writable server data and
-local plans. A wholly read-only library mount is unsupported and returns a
-structured permissions error. A read-only container root is compatible with
-separate writable data/metadata mounts. Existing source media may remain
-read-only when the metadata package is writable.
+Private recovery preparation and activation require Release and acquire the
+private binding lock. A persisted Release flag alone does not prove drain is
+complete. Recovery creates a separate candidate and leaves original stores intact.
+The owner reviews the candidate before activation. Snapshots exclude source media,
+credentials, server settings and browser text that has not reached the server.
 
 ## 1. System overview
 
-Cairndex is a single-owner, self-hosted application. A FastAPI backend runs
-on the server/NAS that can see the media library path; a React/Vite frontend runs
-in a browser or inside the Tauri 2 desktop host. Content metadata is **per library**, not server-global: each
-library is a directory with a `.cairndex/` package containing its portable
-manifest, content database, and derived-media cache. A separate server-local
-registry tracks which libraries are known and owns the runtime job queue.
-
-```text
-┌──────────────┐       HTTP/JSON, /api/v1/*        ┌─────────────────────┐
-│  apps/web    │ ─────────────────────────────────▶ │  apps/server        │
-│  React/Vite  │ ◀───────────────────────────────── │  FastAPI            │
-└──────┬───────┘                                     │  API + worker       │
-       │ selected server/library                   └──────────┬──────────┘
-       │                                                        │
-       │                         ┌──────────────────────────────┼──────────────────────────┐
-       │                         ▼                              ▼                          ▼
-       │              registry.db (server-local)       library root on disk       ffmpeg/ffprobe
-       │              registered_libraries            ┌────────────────────┐     derived media
-       │              job_queue                       │ media files         │
-       │                                              │ .cairndex/         │
-       │                                              │   manifest.json     │
-       │                                              │   library.db        │
-       │                                              │   cache/            │
-       │                                              └────────────────────┘
-```
+Cairndex is a single-owner application. FastAPI serves one or more registered
+portable libraries. React runs in a browser or the Tauri desktop host. Each root
+contains source media and immutable authored metadata under `.cairndex`. Private
+SQLite, credentials, jobs and media caches stay in server storage. A registry maps
+stable library IDs to mounted roots. ffmpeg and ffprobe process selected media.
 
 `apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
 development URL and production build. It owns first-run server configuration,
@@ -249,50 +196,10 @@ thread through the cross-platform `drag` crate — the engine behind
 (the plugin's only surface is a JS command that takes them); the sole OS edge is
 the window handle.
 
-The shipping window sets `dragDropEnabled: false`, preserving internal HTML
-drag-and-drop. Incoming OS files use HTML `File` uploads through `useWebImports`
-and the journaled import endpoint when deployment and library gates permit
-writing. File Browser targets its current directory; bundle/inspector targets
-ask for a destination before importing and linking. The window prevents default
-file navigation and explains unhandled drops. A native navigation policy also
-restricts the webview to the bundled app origin, or the exact configured Vite
-origin during development. Files, external pages and other document schemes
-cannot replace the renderer even when a drop escapes the HTML handlers. This
-policy does not restrict media subresources or validated native Open/Reveal.
-
-The native path-based route remains present but inactive: `reverse_map_paths`
-classifies files against the mapped root, and `importer.rs` refuses uploads of
-paths absent from the shell's last OS drop. Its grouping and deterministic
-self-drop protections do not cover the shipping HTML route. HTML file contents
-cannot prove their original library-relative location. That identity is not
-needed for the copy-only file-manager import option under assessment, including
-copying from another directory of the same library. Reliable app-origin
-self-return discrimination remains unresolved; see
-[plan 3](plans/03-macos-desktop-app.md#6-drag-out--drag-in) and proposed
-[ADR-0033](adr/0033-selective-native-file-drops.md) for the framework API boundary,
-held extension proposal and its separate implementation decision.
-
-Copy-import Replace retains the cataloged destination identity and authored
-relationships under ADR-0013 §5. Its journal references a bytes-only Trash backup
-before moving the original; Undo stashes the replacement bytes and restores the
-original without moving metadata to a new row. Byte observations distinguish
-interrupted publication from an untouched destination. Derived media and running
-encoders are invalidated when bytes change. Ordinary copies remain independent;
-explicit Rename/Move instead carries source identity and metadata, retaining
-both displaced bytes and metadata in Trash. Its parent/backup intent and inverse
-receipts support recovery without merging identities. See
-[Replace and Undo](file-operations.md).
-
-An import selection remains a **client-owned sequential batch**, not a registry
-job: the bytes live in a browser `File` or a desktop file handle, so putting an
-entry in `job_queue` would move neither the upload nor its cancellation to the
-server. Browser uploads carry an `AbortSignal`. Desktop uploads cross IPC inside
-a batch-scoped cancellation token; stopping makes the Rust reader feeding
-`reqwest` return `Interrupted`, which closes the in-flight HTTP request body.
-Starlette then raises `ClientDisconnect` from `Request.stream()`, and the normal
-ADR-0013 failure path removes `.cairndex/tmp/<operation-id>.part` and marks that
-file's journal operation failed. Files whose individual requests already
-finished stay imported, with their own journal entries and Undo operations.
+The desktop window prevents file drops from navigating away from the application.
+Portable libraries do not support source imports or other source-write operations.
+Retained native import and journal utilities are not an application workflow.
+Native mapping and drag integration have separate qualification limits in STATUS.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
@@ -307,13 +214,8 @@ custom-protocol origins by default; `tauri dev` requires an explicit exact
 Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
 library metadata is stored in the shell.
 
-Normal Cairndex operations are metadata-only: scanning, grouping, playback, and
-thumbnailing never move, rename, delete, or rewrite source files. Source media
-changes **only** through an explicit, journaled write-mode operation (ADR-0013)
-— rename, New Folder, delete-to-trash, restore, and import — which requires both
-the owner's per-library opt-in and the deployment switch. Everything else that
-touches the disk is owner-initiated library package creation and generated cache
-files under `.cairndex/cache/`.
+Normal operations preserve source media. Metadata publication writes immutable
+objects to `.cairndex`; generated derivatives stay in private server storage.
 
 ## 2. Backend (`apps/server`)
 
@@ -339,34 +241,15 @@ file_ops/     ADR-0013 write mode: gate, path validator, journal, operations,
               trash, and streamed imports
 ```
 
-Content endpoints are scoped to one library:
+Current content endpoints are scoped under `/api/v1/libraries/{library_id}/replica`:
+`catalog` serves authored metadata, `media` serves local files and derivatives,
+and `discovery` manages Update. Private administration uses `auth`, `ownership`
+and `private-recovery`. Registry routes create, register and remove registrations.
 
-- `GET /api/v1/libraries`, `POST /libraries/create`, `POST /libraries/register`,
-  `GET /libraries/{id}` are registry endpoints.
-- `/api/v1/libraries/{library_id}/bundles`, `/collections`, `/tags`,
-  `/tag-groups`, `/smart-collections`, `/filters`, `/file-browser`, `/fast-add`,
-  `/grouping`, `/jobs`, `/files`, and playback/subtitle routes operate on the
-  selected library's `library.db` and library root.
-- `/api/v1/libraries/{library_id}/bundles/{bundle_id}/moments` is
-  bundle-scoped and metadata-only (plan 7). Its own router module rather than
-  more of `bundles.py`: the two share a URL prefix and nothing else.
-- `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
-  queue.
-- `GET|PUT /api/v1/libraries/{id}/write-mode` is registry-level too (ADR-0013):
-  it changes a server-side flag and reads the manifest, but never opens
-  `library.db`. Endpoints that *use* the capability declare the
-  `require_write_mode` dependency, which answers 403 `write_mode_disabled` when
-  either the library's flag or `CAIRNDEX_WRITE_MODE` says no.
-- `/api/v1/libraries/{id}/file-ops/…` are the guarded write operations
-  themselves — `rename`, `mkdir`, `{op}/undo`, and the journal listing. All but
-  the listing declare the gate; the listing does not, because turning the
-  capability off must not hide what it did while it was on.
-
-A `LibrarySession` dependency resolves `{library_id}` through the registry,
-refuses unknown/unavailable libraries, opens the matching `.cairndex/library.db`,
-and associates the filesystem root with the session. Services that touch files
-resolve paths from this session; clients never send unrestricted absolute paths
-for content operations.
+Old ORM route definitions and source-journal utilities remain for internal tests.
+Public admission refuses the old format, and portable packages cannot open a
+folder SQLite database through those routes. They are not supported application
+workflows. Current OpenAPI documents the available route definitions.
 
 ## 3. Frontend (`apps/web`)
 
@@ -457,125 +340,26 @@ what Update is for.
 
 ## 4. Library package and registry
 
-A Cairndex library is a directory with this package:
+The descriptor and immutable history in `.cairndex/` are portable. The complete
+seed and retained transactions reconstruct authored metadata. The private indexed
+SQLite projection serves queries; there is no working database in the library.
+Normal Create records exact private intent and publishes the descriptor last.
+Old-format admission is refused before content, ownership or source operations.
 
-```text
-<library-root>/
-  media files...
-  .cairndex/
-    manifest.json
-    library.db
-    cache/
-      thumbnails/
-      subtitles/
-      storyboards/
-    library.db.bak
-    locks/
-      active-owner.json
-```
+The private registry tracks registered roots, serving intent, device tokens and
+`recovery_tasks`. Each recovery task stores its immutable request, library and
+descriptor, state and result. A partial unique index permits one queued/running
+task per library. The worker claims queued work with a conditional update.
 
-The manifest stores the portable library identity and display name. `library.db`
-holds all content metadata for that library. The cache holds reproducible derived
-artifacts and is ignored by scanning/grouping. `locks/active-owner.json` is the
-ownership lease (§4.1) and `library.db.bak` its sync-heal snapshot (§4.2).
+`BindingLock` excludes a second process from the same private store. Release stops
+new requests, drains admitted work and closes the binding. Recovery activation
+requires the exact review receipt and process exclusion. Independent servers use
+independent stores and never share a mutable SQLite database or a lease file.
 
-The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
-
-- `registered_libraries`: known library roots, manifest paths, availability,
-  schema version, last-opened timestamps, and the per-library write-mode opt-in
-  (ADR-0013 — registry state precisely so a copied library arrives read-only);
-- `job_queue`: scan/probe/thumbnail jobs, progress, cancellation, terminal state,
-  and result payloads;
-- `server_identity`: this install's persistent `server_uuid` and machine name,
-  which every lease it writes is stamped with.
-
-The registry is runtime/server state, not portable content metadata. Moving a
-library folder should keep its `.cairndex/library.db` and cache with it; the
-server may need to register the new root path.
-
-**Portability invariant (ADR-0018 §1):** everything a user would miss lives in
-`.cairndex/`, and everything in the registry must be reconstructible from
-nothing. This is what makes a cloud-synced library open correctly on a second
-machine that has no server state at all. Any future feature that puts
-authoritative library state in `registry.db` breaks that and needs a superseding
-ADR — worth checking on registry schema changes.
-
-### 4.1 Ownership lease
-
-A server may serve a library only while it holds that library's lease at
-`.cairndex/locks/active-owner.json` (ADR-0018). Enforcement lives in the library
-folder rather than in any server's registry for a simple reason: the two servers
-in a conflict cannot see each other, and a cloud-synced copy of a library has no
-server at all. The folder is the one thing every would-be server can observe.
-
-The lease records the holding `server_uuid`, a human-readable `machine_name`, an
-optional `advertised_url`, `acquired_at`/`heartbeat_at`, and a `nonce`
-regenerated on every write. A server reading it classifies one of five states:
-
-| State        | Meaning                                        | Action                                     |
-| ------------ | ---------------------------------------------- | ------------------------------------------ |
-| `released`   | No lease, or `released_at` set                 | Acquire silently                           |
-| `own`        | Our own `server_uuid` (we crashed)             | Re-acquire silently, however stale         |
-| `fresh`      | Foreign, heartbeat within TTL                  | Refuse; offer a redirect to the holder     |
-| `stale`      | Foreign, heartbeat older than TTL              | Offer a user-confirmed takeover            |
-| `unreadable` | A lease exists but could not be parsed         | Offer a user-confirmed takeover            |
-
-`unreadable` is deliberately not folded into `released`: "we could not find out"
-must never become "nobody holds it", or a corrupt file turns into a silent second
-writer.
-
-Because no atomic compare-and-swap exists on a synced folder or an SMB share,
-acquisition is **write-then-verify** — exclusive-create when no file exists,
-otherwise write our nonce, pause, and re-read to confirm it survived. Before a
-*stale* takeover the server additionally watches the lease for longer than a
-heartbeat period: a live holder writing to the same disk visibly touches the file
-during the window, which catches the two-servers-one-NAS-export case without
-trusting cross-machine clocks at all. Timestamps only ever suggest staleness;
-the observation is what establishes it. Takeover **always** requires explicit user
-confirmation — there is no auto-takeover after any TTL.
-
-Holding is a heartbeat that doubles as a watchdog: every interval the server
-re-reads the lease *before* rewriting it. A foreign `server_uuid`, or our own
-under a nonce we did not write, means ownership moved. The response is fixed: never
-fight for it back, stop writing, cancel that library's jobs, and unmount. Heartbeats
-continue while a library is idle, because going quiet would make a healthy NAS
-server's libraries look abandoned from every other machine.
-
-**Reads need the lease too.** Browsing already writes — bundle cursors,
-missing-file reconciliation — and reading a SQLite DB another machine is writing
-through a share or a sync engine is exactly what ADR-0008 rejected. There is no
-leaseless read-only mount.
-
-The mount gate (`api/deps.py`) covers both the content-session and the streaming
-`LibraryAccess` dependency, and costs a dictionary lookup for a library already
-held, so it adds no filesystem I/O to the request path. Long jobs re-verify at
-start and at every batch boundary. `GET /api/v1/libraries/{id}/ownership` sits
-outside the gate on purpose — it is the endpoint a client calls *because* a mount
-was refused; `POST .../ownership/takeover` returns 202 and runs the observation
-window in the background.
-
-### 4.2 SQLite sync hygiene
-
-A library in WAL mode is up to three files, and a cloud-sync engine uploads
-whatever it finds whenever it looks. `persistence/checkpoint.py` plus a
-`SqliteMaintenance` timer thread keep the at-rest state coherent (ADR-0018 §6):
-
-- a library idle past a threshold gets `wal_checkpoint(TRUNCATE)` — `TRUNCATE`
-  rather than `PASSIVE`, which would leave the WAL at its high-water mark and
-  keep the sync engine shipping a large file carrying nothing;
-- a periodic consistent snapshot goes to `.cairndex/library.db.bak` via SQLite's
-  online backup API, written temp-then-renamed. The backup API is required
-  rather than preferred: a file copy taken while a WAL is outstanding silently
-  misses everything the WAL holds;
-- clean shutdown checkpoints and disposes every library engine *before* releasing
-  the leases, so each library is left as a single consistent file before another
-  machine is invited to pick it up.
-
-Maintenance only ever touches libraries whose lease this server holds; the set is
-supplied to `SqliteMaintenance` as a callable, so `persistence` stays unaware of
-the ownership layer. It runs on its own thread rather than sharing the lease
-heartbeat's: a slow checkpoint on a sluggish mount must not be able to delay a
-heartbeat into looking stale to other machines.
+Access hashes are stored outside store generations, under private `library-access`.
+A protection change revokes device tokens and browser grants for that library.
+Unreadable access records refuse access even if a browser previously unlocked it.
+Recovery does not restore credentials or change destination access settings.
 
 ## 5. Storage and path safety
 
@@ -1122,67 +906,21 @@ Raw preview bytes for File Browser entries are served by
 constraints.
 
 File Browser selection is independent of Bundle Browser/bundle selection, and the
-right pane shows `FileInspector` rather than the bundle inspector. Legacy libraries
-offer rename, move, new folder, trash/restore and copy imports behind both write
-gates, with journaled intent (ADR-0013). Replica source writes remain unavailable.
+right pane shows file details. Source writes are unavailable.
 Directory listing currently returns the complete directory; pagination is
 owner-deferred. Unbundled uses the separate paginated SQL path above.
 
 ## 11. Background jobs
 
-The registry-owned `job_queue` backs a lightweight in-process worker. The worker
-claims the oldest queued job, resolves its library, opens the library DB, runs the
-registered handler with a `JobContext`, commits durable content work into the
-library DB, and records progress/result/error back into the registry row.
+The replica worker performs bounded exchange, catalog jobs and Update work for
+opened private stores. Durable catalog jobs retain exact operation identities.
+A separate single worker runs registry-backed private backup and recovery tasks.
+Only one queued or running recovery task is allowed per library. Startup marks
+interrupted recovery tasks for explicit retry. Running recovery operations finish;
+queued recovery tasks can be stopped.
 
-Implemented job types:
-
-- scan: discovery, repair, provisional staging, grouping-plan generation;
-- probe: ffprobe technical metadata collection;
-- thumbnail: library-wide thumbnail generation/reuse.
-
-Progress is observable: each job row carries a coarse `phase` and optional
-`message` plus processed/total counts, a terminal `result` summary, and a
-sanitized `error`. `JobContext.set_phase(...)` flushes phase transitions
-immediately, while `checkpoint(...)` throttles the registry progress write
-(≤ one commit per 0.5s) so a huge scan does not commit the registry per batch;
-cancellation is still polled every checkpoint. Stored errors are redacted
-(`jobs/errors.py`) to keep private filenames/paths out of the API/UI.
-
-Stopping a job takes three paths, because a checkpoint is not always close
-enough to be the answer. A **queued** job is closed out where it is cancelled —
-nothing is running it, so flagging it and leaving it queued would only let a
-worker start work already refused. A **running** job sees the flag at its next
-checkpoint. Work that spends minutes inside a single external call sees it
-sooner: `core/abort` holds a cooperative abort signal in a context variable, the
-worker binds it to the job for the duration of the handler, and `run_ffmpeg`
-waits in short slices so it can stop the process where it stands rather than a
-whole file later. `OperationAborted` sits deliberately outside the error types
-callers treat as a failed derivative, so a stop is recorded as CANCELLED rather
-than as work that failed — and a handler building into a temp directory must
-clean up in a `finally`, since a stop does not pass through its failure path.
-
-A job whose process dies leaves its row RUNNING with nobody left to finish it.
-The registry is server-local and its worker runs in-process, so any RUNNING row
-a worker finds while taking over the queue is by definition abandoned; it closes
-them out as FAILED ("interrupted"). That is what stops a dead job occupying the
-sidebar forever, absorbing cancels no one observes, and blocking the dedupe that
-matches QUEUED. Recovery is a rerun: the library-wide jobs all skip work that is
-already current, so it costs only what was lost.
-
-Client import batches reuse the **presentation**, not the execution model: each
-active batch is another stoppable row in `sidebar__foot` beside every active job.
-The row names the current file and its position in the original selection;
-collision resolution is a waiting state, and a stop becomes a disabled
-"Stopping import…" control while the in-flight request unwinds. Imports and jobs
-render as one list, so an upload never replaces or hides concurrent maintenance
-work. A stopped batch is reported as a partial success — completed imports,
-skips, the interrupted file, and files never attempted — rather than as a failed
-job or an implied rollback of the files already copied.
-
-The worker is intentionally single-process/single-worker for the SQLite MVP.
-Scaling should start with profiling, better scheduling, and bounded concurrency,
-not Redis/Celery.
+The old registry `job_queue` and worker utilities remain for synthetic model
+checks. The application does not start that worker. No Redis or Celery is used.
 
 ## 12. Eagle migration/import
 

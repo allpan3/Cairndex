@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from cairndex.auth import SESSION_COOKIE, requires_unlock
-from cairndex.auth.local_token import is_local_owner_token
+from cairndex.auth.local_token import is_local_owner_token, owner_session
 from cairndex.core.errors import (
     AuthRequiredError,
     InvalidDeviceTokenError,
@@ -100,7 +100,7 @@ def authorize_library(
             # but unlike a paired device token it does **not** stand in for a
             # library's passphrase: it is minted with no owner approval, so a
             # locked library stays locked until someone actually unlocks it.
-            if requires_unlock(root, session_cookie, library_id):
+            if requires_unlock(root, owner_session(authorization, session_cookie), library_id):
                 raise AuthRequiredError(f"library {library_id!r} is locked")
             return
         token_service.authenticate_device_token(

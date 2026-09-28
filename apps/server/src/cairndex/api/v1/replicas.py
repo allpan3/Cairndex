@@ -8,6 +8,8 @@ from fastapi import APIRouter, Cookie, Depends, Header, Query, Response
 
 from cairndex.api.deps import RegistryDbSession, authorize_library
 from cairndex.auth import SESSION_COOKIE
+from cairndex.core.errors import NotFoundError
+from cairndex.domain.enums import LibraryStatus
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import services as registry_service
 from cairndex.replicas import service
@@ -35,6 +37,8 @@ def replica_store(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Iterator[Store | CatalogStore]:
     library = registry_service.get_library(registry, library_id)
+    if library.status != LibraryStatus.AVAILABLE:
+        raise NotFoundError("Library storage is unavailable; restore its mount and retry")
     authorize_library(
         registry,
         library_id=library_id,

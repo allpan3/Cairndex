@@ -181,12 +181,14 @@ export function CatalogWorkspace({
   libraries,
   onChangeLibrary,
   onManage,
+  onSettings,
 }: {
   ordinaryBrowse?: boolean
   libraryId: string
   libraries: LibraryRead[]
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings?: () => void
 }) {
   const [editor, setEditor] = useState<string | null>(null)
   useEffect(() => holdEditor(setEditor), [])
@@ -259,6 +261,7 @@ export function CatalogWorkspace({
             </select>
           </label>
           <button onClick={onManage}>Manage libraries</button>
+          {onSettings && <button onClick={onSettings}>Settings</button>}
         </header>
       )}
       <nav aria-label="Library views">
@@ -364,6 +367,7 @@ export function CatalogWorkspace({
           libraries={libraries}
           onChangeLibrary={onChangeLibrary}
           onManage={onManage}
+          onSettings={onSettings}
           onReviewEntity={(family, id) => {
             setFamily(family)
             setSelected(id)

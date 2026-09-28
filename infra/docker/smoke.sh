@@ -131,7 +131,7 @@ step "creating a library on the mounted volume"
 library_id=$(post_json /libraries/create \
     '{"display_name":"Smoke","root_path":"/libraries/main"}' \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-in_library test -f /libraries/main/.cairndex/library.db \
+in_library test -f /libraries/main/.cairndex/manifest.json \
     || fail "library package was not written to the mounted volume"
 
 step "generating a real video and scanning it"
@@ -140,29 +140,44 @@ step "generating a real video and scanning it"
 docker exec "$CONTAINER" ffmpeg -v error \
     -f lavfi -i testsrc=size=160x120:rate=10:duration=2 \
     -pix_fmt yuv420p /libraries/main/smoke.mp4 || fail "could not write into library mount"
-post_json "/libraries/${library_id}/jobs/scan" '{}' >/dev/null
-
-step "waiting for the scan to surface a bundle"
-for _ in $(seq 1 60); do
-    total=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"view":"unbundled"}' \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin)["total"])')
-    [ "$total" -gt 0 ] && break
-    sleep 1
-done
-[ "${total:-0}" -gt 0 ] || fail "scan produced no bundles"
-
-# has_cover proves ffprobe ran and a thumbnail was generated into the library's
-# .cairndex/cache/ — i.e. the media pipeline works, not just the web layer.
-has_cover=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"view":"unbundled"}' \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["has_cover"])')
-[ "$has_cover" = "True" ] || fail "scanned video produced no cover (media pipeline broken)"
+step "Update and accept the synthetic video"
+python3 - "$PORT" "$library_id" <<'PYTHON'
+import json
+import sys
+import time
+import urllib.request
+port, library = sys.argv[1:]
+base = f"http://127.0.0.1:{port}/api/v1/libraries/{library}/replica"
+def request(path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.load(response)
+def wait(path, field, value):
+    for _ in range(120):
+        result = request(path)
+        if result.get(field) == value:
+            return result
+        if result.get("state") in {"failed", "cancelled"}:
+            raise SystemExit("Synthetic portable operation failed")
+        time.sleep(0.5)
+    raise SystemExit("Synthetic portable operation timed out")
+wait("/status", "ready", True)
+request("/discovery/runs", {"operation": "smoke-update"})
+wait("/discovery/status", "state", "succeeded")
+candidate = request("/discovery/candidates")["items"][0]
+request("/discovery/reviews", {"operation": "smoke-review", "candidate": candidate["id"]})
+review = wait("/discovery/reviews/smoke-review", "state", "ready")
+request("/discovery/reviews/smoke-review/accept", {"receipt": review["receipt"]})
+wait("/discovery/reviews/smoke-review", "state", "applied")
+PYTHON
 
 step "direct video supports bounded byte ranges"
-bundle_id=$(post_json "/libraries/${library_id}/bundles/browse" \
-    '{"limit":10,"view":"unbundled"}' \
+bundle_id=$(api "/libraries/${library_id}/replica/catalog/entities/asset_bundles?limit=10" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])')
-stream_path=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["stream_url"])')
+file_id=$(api "/libraries/${library_id}/replica/media/bundles/${bundle_id}" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["files"][0]["id"])')
+stream_path="/api/v1/libraries/${library_id}/files/${file_id}/content"
 RANGE_HEADERS=$(mktemp)
 RANGE_BODY=$(mktemp)
 range_status=$(curl -fsS -D "$RANGE_HEADERS" -o "$RANGE_BODY" -w '%{http_code}' \
@@ -181,8 +196,6 @@ RANGE_HEADERS=""
 RANGE_BODY=""
 
 step "production playback preference serves copy-only HLS"
-file_id=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["file_id"])')
 hls_decision=$(post_json "/libraries/${library_id}/files/${file_id}/playback-decision" \
     '{"caps":{"protocols":["progressive","hls"],"containers":["mp4"],"video_codecs":["h264"],"audio_codecs":["aac"]}}')
 hls_method=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["method"])' <<<"$hls_decision")
@@ -196,34 +209,12 @@ api "${session_path#/api/v1}/init.mp4" >/dev/null || fail "preferred HLS init wa
 api "${session_path#/api/v1}/0.m4s" >/dev/null || fail "preferred HLS segment was unavailable"
 api "${session_path#/api/v1}" -X DELETE >/dev/null || fail "preferred HLS session teardown failed"
 
-step "graceful stop releases the ownership lease"
+step "graceful stop preserves the portable package"
 docker stop --timeout 30 "$CONTAINER" >/dev/null
-lease_json=$(in_library cat /libraries/main/.cairndex/locks/active-owner.json 2>/dev/null) \
-    || fail "no ownership lease was ever written"
-python3 -c "
-import json, sys
-lease = json.load(sys.stdin)
-if not lease.get('released_at'):
-    sys.exit('lease was not released on shutdown: %r' % lease)
-" <<<"$lease_json" || fail "lease not released — a restart would be blocked until it ages out"
-
-# A clean shutdown folds the WAL back in, so the library should be one file.
-if in_library test -f /libraries/main/.cairndex/library.db-wal; then
-    fail "WAL left behind after clean shutdown (checkpoint did not run)"
-fi
-
-# …and the file must no longer be *flagged* as WAL, which is a different claim
-# and the one that bit in production (ADR-0021). Byte 18 of the SQLite header is
-# the write format version: 2 means WAL, 1 means a rollback journal. A library
-# left at 2 cannot be opened over SMB or NFS at all, so this container would have
-# locked every other machine out of the share it serves.
-in_library python3 -c "
-import sys
-with open('/libraries/main/.cairndex/library.db', 'rb') as f:
-    version = f.read(19)[18]
-if version != 1:
-    sys.exit('library.db is still flagged WAL (header write version %d) after a clean stop' % version)
-" || fail "library left in WAL journal mode — unopenable from any machine using SMB or NFS"
+in_library python3 -c '
+from pathlib import Path
+assert not list(Path("/libraries/main/.cairndex").rglob("*.db*")), "mutable database in portable package"
+' || fail "mutable database found inside the portable package"
 
 # --- The image under somebody else's uid -------------------------------------
 #
@@ -262,8 +253,8 @@ curl -fsS "http://127.0.0.1:${ALT_PORT}/api/v1/libraries/create" \
     -d '{"display_name":"AltUid","root_path":"/libraries/main"}' >/dev/null \
     || fail "could not create a library as uid $(id -u)"
 # Readable from the host without a container, which is the whole point.
-[ -f "${ALT_LIBRARY_DIR}/.cairndex/library.db" ] \
+[ -f "${ALT_LIBRARY_DIR}/.cairndex/manifest.json" ] \
     || fail "library package not written, or not readable by the invoking user"
 docker stop --timeout 30 "$ALT_CONTAINER" >/dev/null
 
-echo "SMOKE OK: $IMAGE serves, scans, shuts down cleanly, and runs as any uid"
+echo "SMOKE OK: $IMAGE serves portable catalogs, shuts down cleanly, and runs as any uid"

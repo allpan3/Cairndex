@@ -246,7 +246,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(
       page.getByRole('region', { name: 'Library Update' }).getByRole('alert'),
-    ).toContainText('manifest.json')
+    ).toContainText('unavailable')
     await rename(parked, roots[0])
     await writeFile(join(roots[0], 'new.png'), 'synthetic retry image')
     await page.getByRole('button', { name: 'Update', exact: true }).click()

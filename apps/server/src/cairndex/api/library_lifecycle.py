@@ -20,7 +20,7 @@ class LibraryLifecycleMiddleware:
             scope["type"] != "http"
             or parts[:3] != ["api", "v1", "libraries"]
             or len(parts) < 5
-            or parts[4] == "ownership"
+            or parts[4] in {"ownership", "auth", "private-recovery"}
         ):
             await self.app(scope, receive, send)
             return

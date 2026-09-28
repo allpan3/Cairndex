@@ -521,9 +521,9 @@ def test_cached_legacy_connection_is_fenced(library_root, registry_session):
 
     from cairndex.core.errors import LibraryOwnershipUncertainError
     from cairndex.registry.library_engine import get_library_sessionmaker
-    from cairndex.registry.services import register_existing_library
+    from cairndex.registry.services import _insert
 
-    library = register_existing_library(registry_session, root_path=str(library_root))
+    library = _insert(registry_session, manifest=pkg.read_manifest(library_root), root=library_root)
     maker = get_library_sessionmaker(library)
     marker = pkg.manifest_path(library_root)
     with maker() as session:
@@ -583,9 +583,9 @@ def test_aliases_and_unsafe_artifacts(pair, tmp_path):
 @pytest.mark.parametrize("action", ["heartbeat", "release"])
 def test_legacy_background_lease_fence(library_root, registry_session, action):
     from cairndex.ownership import get_lease_manager
-    from cairndex.registry.services import register_existing_library
+    from cairndex.registry.services import _insert
 
-    library = register_existing_library(registry_session, root_path=str(library_root))
+    library = _insert(registry_session, manifest=pkg.read_manifest(library_root), root=library_root)
     manager = get_lease_manager()
     manager.acquire(library_id=library.id, root=library_root)
     lease = pkg.lease_path(library_root)

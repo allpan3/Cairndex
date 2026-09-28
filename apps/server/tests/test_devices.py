@@ -13,7 +13,6 @@ from cairndex.auth import set_passphrase
 from cairndex.auth.device_tokens import PairingStore
 from cairndex.core.errors import CapacityError
 from cairndex.registry import device_tokens as token_service
-from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
 from cairndex.registry.engine import create_registry_engine
 from cairndex.registry.models import DeviceToken, JobQueueEntry, RegisteredLibrary
@@ -29,8 +28,7 @@ def _make_library(
     """Create and register a test library with an optional owner lock."""
     root = tmp_path / name
     root.mkdir()
-    pkg.create_package(root, name)
-    library = registry_service.register_existing_library(registry, root_path=str(root))
+    library = registry_service.create_library(registry, root_path=str(root), display_name=name)
     if passphrase is not None:
         set_passphrase(root, passphrase, registry=registry)
     registry.commit()
@@ -85,7 +83,7 @@ def test_pairing_round_trip_delivers_token_once_and_stores_only_hash(
     assert token not in device.token_hash
     assert device.library_ids == [library_id]
     allowed = isolated_client.get(
-        f"/api/v1/libraries/{library_id}/bundles/browse",
+        f"/api/v1/libraries/{library_id}/replica/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert allowed.status_code == 200
@@ -214,7 +212,7 @@ def test_unavailable_library_does_not_block_device_revocation(
     assert isolated_client.get("/api/v1/auth/devices").status_code == 200
     assert isolated_client.delete(f"/api/v1/auth/devices/{device_id}").status_code == 204
     denied = isolated_client.get(
-        f"/api/v1/libraries/{library_id}/bundles/browse",
+        f"/api/v1/libraries/{library_id}/replica/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert denied.status_code == 401
@@ -231,7 +229,7 @@ def test_setting_passphrase_revokes_tokens_minted_while_unprotected(
     token = _poll(isolated_client, started["poll_key"])["token"]
     assert (
         isolated_client.get(
-            f"/api/v1/libraries/{library_id}/bundles/browse",
+            f"/api/v1/libraries/{library_id}/replica/status",
             headers={"Authorization": f"Bearer {token}"},
         ).status_code
         == 200
@@ -243,7 +241,7 @@ def test_setting_passphrase_revokes_tokens_minted_while_unprotected(
     device = registry_session.query(DeviceToken).one()
     assert device.revoked_at is not None
     denied = isolated_client.get(
-        f"/api/v1/libraries/{library_id}/bundles/browse",
+        f"/api/v1/libraries/{library_id}/replica/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert denied.status_code == 401
@@ -264,7 +262,7 @@ def test_protected_library_requires_cookie_approval_and_bearer_scope(
     )
     assert locked.status_code == 401
     assert locked.json()["code"] == "auth_required"
-    assert isolated_client.get(f"/api/v1/libraries/{allowed_id}/bundles/browse").status_code == 401
+    assert isolated_client.get(f"/api/v1/libraries/{allowed_id}/replica/status").status_code == 401
 
     isolated_client.post(
         f"/api/v1/libraries/{allowed_id}/auth/unlock",
@@ -275,13 +273,13 @@ def test_protected_library_requires_cookie_approval_and_bearer_scope(
 
     assert (
         isolated_client.get(
-            f"/api/v1/libraries/{allowed_id}/bundles/browse",
+            f"/api/v1/libraries/{allowed_id}/replica/status",
             headers={"Authorization": f"Bearer {token}"},
         ).status_code
         == 200
     )
     denied = isolated_client.get(
-        f"/api/v1/libraries/{denied_id}/bundles/browse",
+        f"/api/v1/libraries/{denied_id}/replica/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert denied.status_code == 403
@@ -305,7 +303,12 @@ def test_auth_status_accepts_valid_scoped_bearer_for_protected_library(
     )
 
     assert status_response.status_code == 200
-    assert status_response.json() == {"protected": True, "unlocked": True}
+    assert status_response.json() == {
+        "protected": True,
+        "unlocked": True,
+        "access_settings_version": 1,
+        "private_recovery_version": 1,
+    }
 
 
 def test_auth_status_rejects_invalid_or_out_of_scope_bearer(
@@ -349,7 +352,7 @@ def test_revoked_and_unknown_tokens_return_structured_401(
     revoked = isolated_client.delete(f"/api/v1/auth/devices/{device_id}")
     assert revoked.status_code == 204
     response = isolated_client.get(
-        f"/api/v1/libraries/{library_id}/bundles/browse",
+        f"/api/v1/libraries/{library_id}/replica/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 401
@@ -359,7 +362,7 @@ def test_revoked_and_unknown_tokens_return_structured_401(
     }
 
     unknown = isolated_client.get(
-        f"/api/v1/libraries/{library_id}/bundles/browse",
+        f"/api/v1/libraries/{library_id}/replica/status",
         headers={"Authorization": "Bearer not-a-device-token"},
     )
     assert unknown.status_code == 401

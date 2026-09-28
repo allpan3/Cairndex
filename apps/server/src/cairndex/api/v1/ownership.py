@@ -1,173 +1,85 @@
-"""Library ownership-lease endpoints (ADR-0018).
-
-These are the two routes a client needs when a mount is refused: one to find out
-who holds the library, and one to say "that machine is gone, serve it here".
-Neither goes through the library mount gate — they have to work precisely when
-the gate is closed.
-"""
+"""Serving lifecycle for private stores; portable folders carry no global lease."""
 
 from pathlib import Path
-from urllib.parse import urlsplit
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Cookie, Header
 
-from cairndex.api.deps import RegistryDbSession
-from cairndex.api.schemas.ownership import LeaseHolderRead, LibraryOwnershipRead, TakeoverRead
-from cairndex.core.errors import NotFoundError, ValidationError
+from cairndex.api.deps import RegistryDbSession, authorize_library
+from cairndex.api.schemas.ownership import LibraryOwnershipRead
+from cairndex.auth import SESSION_COOKIE
+from cairndex.core.errors import NotFoundError
 from cairndex.domain.enums import LibraryStatus
-from cairndex.ownership import get_lease_manager
-from cairndex.ownership.lease import LeaseRecord, LeaseState
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import services as registry_service
-from cairndex.registry.library_package import read_manifest, require_legacy
+from cairndex.replicas import recovery
+from cairndex.replicas.protocol import ReplicaError
 
 router = APIRouter(prefix="/libraries/{library_id}/ownership", tags=["ownership"])
 
-# States in which offering a takeover is the right thing to do. A live holder is
-# excluded on purpose: the useful action there is to connect to that server, and
-# offering a takeover would invite the user to create the dual-writer the lease
-# exists to prevent.
-_TAKEOVER_STATES = (LeaseState.STALE, LeaseState.UNREADABLE)
-
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
-
-
-def _redirect_url(record: LeaseRecord | None) -> str | None:
-    """The holder's URL, but only when it could actually mean something here.
-
-    A loopback URL identifies the holder's *own* machine, so echoing it to a
-    different client would send them to their own server (ADR-0018 §2).
-    """
-    if record is None or not record.advertised_url:
-        return None
-    host = urlsplit(record.advertised_url).hostname
-    if host is None or host.lower() in _LOOPBACK_HOSTS:
-        return None
-    return record.advertised_url
-
-
-def _holder_read(record: LeaseRecord | None) -> LeaseHolderRead | None:
-    if record is None:
-        return None
-    return LeaseHolderRead(
-        server_uuid=record.server_uuid,
-        machine_name=record.machine_name or None,
-        advertised_url=record.advertised_url,
-        heartbeat_at=record.heartbeat_at.isoformat(),
-    )
-
 
 def _describe(library_id: str, root: Path, *, released: bool = False) -> LibraryOwnershipRead:
-    if read_manifest(root).replica is not None:
-        return LibraryOwnershipRead(
-            library_id=library_id,
-            state="locally_released" if released else "own",
-            mountable=not released and not lifecycle.blocked(library_id),
-            can_take_over=False,
-            redirect_url=None,
-            holder=None,
-            takeover=None,
-        )
-    manager = get_lease_manager()
-    state, record = manager.describe(library_id=library_id, root=root)
-    progress = manager.takeover_progress(library_id)
-    uncertain = manager.holds(library_id) and state is LeaseState.UNREADABLE
-    if released:
-        local_state = "release_pending" if manager.holds(library_id) else "locally_released"
-    elif uncertain:
-        local_state = "ownership_uncertain"
-    elif lifecycle.blocked(library_id):
-        local_state = "ownership_lost"
-    else:
-        local_state = state.value
+    recovery.descriptor_at(root)
     return LibraryOwnershipRead(
         library_id=library_id,
-        state=local_state,
-        mountable=not released
-        and not lifecycle.blocked(library_id)
-        and state in (LeaseState.OWN, LeaseState.RELEASED),
-        can_take_over=not uncertain and state in _TAKEOVER_STATES,
-        redirect_url=_redirect_url(record),
-        holder=_holder_read(record),
-        takeover=(
-            TakeoverRead(
-                running=progress.running,
-                error_code=progress.error_code,
-                error_message=progress.error_message,
-                started_at=progress.started_at.isoformat() if progress.started_at else None,
-                observation_seconds=progress.observation_seconds,
-            )
-            if progress is not None
-            else None
-        ),
+        state="locally_released" if released else "own",
+        mountable=not released and not lifecycle.blocked(library_id),
+        can_take_over=False,
+        redirect_url=None,
+        holder=None,
+        takeover=None,
     )
 
 
 @router.get("", response_model=LibraryOwnershipRead)
 def get_ownership(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
-    """Who owns this library, and can this server serve it?"""
     library = registry_service.get_library(db, library_id)
     return _describe(library_id, Path(library.root_path), released=library.serving_released)
 
 
-@router.post("/takeover", response_model=LibraryOwnershipRead, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/takeover", response_model=LibraryOwnershipRead, status_code=202)
 def take_over(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
-    """Confirm that the recorded holder is gone and serve this library here.
-
-    Accepted, not completed: before taking a lease this server watches it for
-    longer than a heartbeat period, so a holder that is actually alive gets the
-    chance to prove it. Poll ``GET …/ownership`` until ``takeover.running`` is
-    false.
-
-    Refuses outright while a *live* lease is in place. The confirmation means "I
-    know that machine is gone", which is not a claim anyone can truthfully make
-    about a server that heartbeat seconds ago — so this is a 422 rather than a
-    forced takeover.
-    """
-    library = registry_service.get_library(db, library_id)
-    root = Path(library.root_path)
-    require_legacy(root)
-
-    manager = get_lease_manager()
-    state, record = manager.describe(library_id=library_id, root=root)
-    if state is LeaseState.FRESH:
-        raise ValidationError(
-            f"this library is actively served by {record.machine_name or 'another server'}"
-            if record is not None
-            else "this library is actively served by another server"
-        )
-    if state in _TAKEOVER_STATES:
-        lifecycle.close(library_id)
-        lifecycle.reopen(library_id)
-        library.serving_released = False
-        db.commit()
-        manager.start_takeover(library_id=library_id, root=root)
-    return _describe(library_id, root)
+    registry_service.get_library(db, library_id)
+    raise ReplicaError(
+        "Private stores use Release and Reopen; shared-folder takeover is unsupported"
+    )
 
 
 @router.post("/release", response_model=LibraryOwnershipRead)
-def release_library(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
-    """Release this server's library, retaining registration and all content"""
+def release_library(
+    library_id: str,
+    db: RegistryDbSession,
+    session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> LibraryOwnershipRead:
     library = registry_service.get_library(db, library_id)
-    # Persist intent before draining so restart or polling cannot reacquire
+    root = Path(library.root_path)
+    recovery.descriptor_at(root)
+    authorize_library(
+        db, library_id=library_id, root=root, session_cookie=session, authorization=authorization
+    )
     library.serving_released = True
     db.commit()
     lifecycle.close(library_id)
-    return _describe(library_id, Path(library.root_path), released=True)
+    return _describe(library_id, root, released=True)
 
 
 @router.post("/reopen", response_model=LibraryOwnershipRead)
-def reopen_library(library_id: str, db: RegistryDbSession) -> LibraryOwnershipRead:
-    """Deliberately reopen under normal ownership checks, never forced takeover"""
+def reopen_library(
+    library_id: str,
+    db: RegistryDbSession,
+    session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> LibraryOwnershipRead:
     library = registry_service.get_library(db, library_id)
     root = Path(library.root_path)
+    recovery.descriptor_at(root)
+    authorize_library(
+        db, library_id=library_id, root=root, session_cookie=session, authorization=authorization
+    )
     if library.status != LibraryStatus.AVAILABLE:
         raise NotFoundError("Library storage is unavailable; restore its mount before reopening")
-    # Finish a previous failed drain before admitting a new engine generation
     lifecycle.close(library_id)
-    if read_manifest(root).replica is None:
-        manager = get_lease_manager()
-        manager.acquire(library_id=library_id, root=root)
     lifecycle.reopen(library_id)
     library.serving_released = False
     db.commit()

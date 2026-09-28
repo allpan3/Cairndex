@@ -1,5 +1,11 @@
 # Complete authored replica catalog
 
+Normal Create and Open use the portable workflow (ADR-0035). Old library-format
+admission and the legacy workspace are unavailable. Manage libraries provides
+per-server access settings and reviewed private backup/recovery controls.
+Source operations, Recently Used and provider/NAS qualification remain separate.
+
+
 The shared app/API serves complete **synthetic** metadata catalogs under
 [ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion, provider
 qualification and physical source operations remain unavailable for replica

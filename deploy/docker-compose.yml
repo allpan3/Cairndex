@@ -20,7 +20,7 @@
 #
 #   docker compose up -d                          # start
 #   docker compose pull && docker compose up -d   # update
-#   docker compose down                           # stop (releases library leases)
+#   docker compose down                           # stop (closes private stores)
 #
 # To run an unpublished branch instead, build from a checkout with
 # docker-compose.prod.yml at the repository root.
@@ -64,26 +64,14 @@ services:
       # Baked into the image; override only if you remap the volumes below.
       CAIRNDEX_STATIC_DIR: /app/web
       CAIRNDEX_DATA_DIR: /data
-      # ADR-0018: recorded in each library's ownership lease, and shown to
-      # anyone whose other machine finds this server holding a library. Unset,
-      # it defaults to the container's hostname — a hex id naming nothing.
-      CAIRNDEX_MACHINE_NAME: ${CAIRNDEX_MACHINE_NAME:-cairndex-server}
-      # Where other machines can reach this server. Set it, and a machine that
-      # finds this one holding a library can offer "connect there instead"
-      # rather than only naming a host. Only non-loopback URLs are ever offered.
-      CAIRNDEX_ADVERTISED_URL: ${CAIRNDEX_ADVERTISED_URL:-}
-      # ADR-0013 deployment master switch for guarded file operations.
-      # `allowed` lets each library's own opt-in (off by default) decide;
-      # `disabled` forces every library read-only and makes the per-library
-      # toggle un-flippable.
-      CAIRNDEX_WRITE_MODE: ${CAIRNDEX_WRITE_MODE:-allowed}
+      CAIRNDEX_PRIVATE_BACKUP_DIR: /backups
       # A remote browser can starve on many short progressive Range requests
       # even when the NAS is fast. HLS copies the source codecs into bounded
       # segments; set false only when direct playback is proven reliable.
       CAIRNDEX_PREFER_HLS: ${CAIRNDEX_PREFER_HLS:-true}
     volumes:
-      # Server-local runtime state: registry.db, transcode scratch, backups.
-      # Per-library content metadata lives in each library's own .cairndex/.
+      # Private registry, working databases, credentials, jobs and caches.
+      # Snapshots use a separate volume. Immutable history stays in the library.
       #
       # A named volume, which Docker creates already owned by the image's uid
       # 10001 — so it works with no setup at all, but ONLY while the container
@@ -91,12 +79,14 @@ services:
       # host path you own and create it yourself first:
       #
       #   - /volume1/docker/cairndex/data:/data
+      #   - /volume1/docker/cairndex/backups:/backups
       #
       # (and delete the `volumes:` block at the end of this file). Docker would
       # otherwise create a missing host path as root, which your id then cannot
       # write either. A host path also puts registry.db somewhere your backups
       # can see it, which a named volume does not.
       - cairndex-data:/data
+      - cairndex-backups:/backups
       # >>> EDIT: the host path of your media, before the colon. <<<
       #
       # Everything Cairndex can see, it sees because you mounted it here. Each
@@ -155,3 +145,4 @@ services:
 
 volumes:
   cairndex-data:
+  cairndex-backups:

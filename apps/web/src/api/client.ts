@@ -185,7 +185,7 @@ function apiErrorDetail(payload: unknown): string {
   return ''
 }
 
-async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
   const assertScope = captureRequestScope(/\/libraries\/[^/?]+\//.test(url))
   const response = await hostFetch(resolvedUrl, { signal })
@@ -238,7 +238,7 @@ export class ConflictError extends Error {
   }
 }
 
-async function send<T>(
+export async function send<T>(
   url: string,
   method: string,
   body?: unknown,
@@ -1650,3 +1650,13 @@ export const batchEditBundles = (ids: string[], patch: BundlePatch) =>
   send<BundleRead[]>(`${lib()}/bundles/batch-edit`, 'POST', { bundle_ids: ids, patch })
 export const batchDeleteBundles = (ids: string[]) =>
   send<void>(`${lib()}/bundles/batch-delete`, 'POST', { bundle_ids: ids })
+
+export const configureLibraryAccess = (
+  libraryId: string,
+  passphrase: string | null,
+  current: string,
+) =>
+  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/settings`, 'PUT', {
+    passphrase,
+    current_passphrase: current || null,
+  })

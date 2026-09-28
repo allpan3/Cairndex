@@ -1,14 +1,28 @@
 # Deployment
 
-> Status: production packaging exists, and ADR-0008 has moved runtime/content
-> state to a server-local registry plus portable per-library packages. See
-> [ADR-0005](adr/0005-packaging-and-deployment.md) for the original packaging
-> rationale and [ADR-0008](adr/0008-per-library-metadata-and-registry.md) for the
-> current metadata model.
+## Portable library storage
+
+[ADR-0035](adr/0035-portable-library-format.md) defines the supported application
+format. Normal Create produces a complete portable catalog. Open refuses the old
+`cairndex.library` format. No automatic conversion or source mutation occurs.
+Working databases, drafts, jobs and caches are private to the serving instance;
+the library folder contains its descriptor and immutable metadata history.
+Shared ORM and media utilities also support synthetic conversion fixtures. They
+do not enable legacy library admission.
+
+Optional access settings are independent per library and server. Hashes live in
+`CAIRNDEX_DATA_DIR/library-access/<library_uuid>.json`, outside recovery generations.
+Recovery keeps these destination settings. Manage libraries provides access and
+private backup controls. See [private recovery](replica-recovery.md) for coverage,
+Release, review, activation and explicit retry.
+
+
+Production packaging is defined by [ADR-0005](adr/0005-packaging-and-deployment.md).
+[ADR-0035](adr/0035-portable-library-format.md) defines the supported library format.
 
 ## Replica storage boundary
 
-The synthetic capable workflow keeps SQLite, WAL, drafts and unsent events under
+The application keeps SQLite, WAL, drafts and unsent events under
 `CAIRNDEX_DATA_DIR/replicas`, outside provider folders. Back up this private state
 consistently in addition to immutable package artifacts; copying the package alone
 cannot recover unpublished edits or drafts. Protocol-two preview/save/recovery jobs
@@ -167,23 +181,11 @@ The paths you type in the app are container paths (`/libraries/main/films`), not
 host paths. Typing the host path gives "root path does not exist", which is the
 app being accurate from where it is standing.
 
-Each library root holds its own portable package:
-
-```text
-/libraries/main/films/
-  media files...
-  .cairndex/
-    manifest.json
-    library.db
-    cache/
-```
-
-A library mount must be writable because Cairndex creates and updates
-`.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache files.
-Source media is a separate question: it is untouched by every ordinary flow
-(scanning, grouping, playback, thumbnails), and changes only through an explicit
-write-mode operation, which is **off by default per library** and can be disabled
-deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
+Each library root contains source media and `.cairndex/manifest.json` plus
+immutable seed and metadata objects. Private SQLite databases, drafts, jobs and
+caches stay under `CAIRNDEX_DATA_DIR`. Metadata publication requires a writable
+package. Source media can remain read-only. Source Copy, Rename, Move, Replace,
+Trash and Undo are unavailable for portable libraries.
 
 ### Topology
 
@@ -204,33 +206,35 @@ deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   library's `.cairndex/` package. On Linux that id is literal in both
   directions: a bind mount preserves real uids, so everything Cairndex creates
   in the library is owned by `10001:10001` **on the host too**, and your own
-  account may not be able to read all of it — the ownership lease is mode `0600`.
+  account may not be able to read all of it because private files use restricted permissions.
   Plan for it in [Backups](#backups): share a group with `10001`, or read the
   package from inside a container. Docker Desktop for macOS remaps ownership to
   whoever invoked it, so a trial on a Mac will not show you any of this.
 - **Writable app data**: the `cairndex-data` named volume at `/data` holds the
-  server-local `registry.db`, job state, and backups. It is not portable content
-  metadata.
+  server-local registry, private working databases, credentials, jobs and caches.
+  Both production compose files mount `/backups` separately and set
+  `CAIRNDEX_PRIVATE_BACKUP_DIR=/backups`. The default sibling of `/data`
+  is unsuitable for a read-only container root without this configuration.
 - **Writable library mounts**: `CAIRNDEX_LIBRARY_PATH` is mounted at
   `/libraries/main`, and further shares mount beside it under `/libraries`. The
-  app writes each library's `.cairndex/` package and generated cache; it writes
-  source media only through the opt-in write mode described below (ADR-0013).
+  app publishes immutable metadata into each library's `.cairndex/` package.
+  Generated caches stay in private server storage. Source media remains unchanged.
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
 - **Startup preflight**: the entrypoint refuses to start if `CAIRNDEX_DATA_DIR`
   is not writable by uid 10001. It warns, without refusing, when nothing is
   mounted under `/libraries` at all, and for each mount that is not writable. A
   wholly read-only library mount is unsupported: browsing needs writable
-  metadata, locks, progress and cache under `.cairndex`. Protected source media
+  metadata publication under `.cairndex`. Protected source media
   with a writable metadata package is supported. An unwritable `/data` is not,
   and without the check it surfaces much later as an
   opaque SQLite "unable to open database file" from whichever request happened
   to touch the registry first. This is the most common NAS misconfiguration,
   because a bind-mounted host directory arrives with the host's ownership.
-- **Graceful stop matters**: `stop_grace_period` is 30s, above Docker's 10s
-  default. Shutdown releases each library's ownership lease and checkpoints its
-  WAL (see [One server per library](#one-server-per-library)); being SIGKILLed
-  part-way through strands the lease until it ages out.
+- **Graceful stop matters**: `stop_grace_period` is 30s. Shutdown drains private
+  work and closes serving bindings. A forced stop can interrupt operations;
+  inspect retained recovery tasks before an explicit retry.
+
 - **Bounded logs**: `json-file` with `max-size: 10m`, `max-file: 3`. Unbounded
   container logs are a slow way to fill a NAS volume.
 
@@ -265,18 +269,10 @@ prefer building there when you can.
 just docker-smoke
 ```
 
-With no argument, builds a fresh commit-specific production image, starts it
-against a throwaway library, waits for health,
-checks the SPA is served and ffmpeg/ffprobe are present, creates a library
-through the API, generates a video and scans it, asserts a cover was produced
-(which is what proves the media pipeline, not just the web layer), then stops
-the container and asserts the ownership lease was released and the WAL folded
-back in. The temporary image is removed at exit. To smoke an already-built
-publication candidate without rebuilding it, pass that image tag explicitly:
-
-```bash
-./infra/docker/smoke.sh cairndex:candidate
-```
+The smoke script creates a disposable portable library, accepts a synthetic
+Update review, checks media ranges and HLS, and verifies that the package has no
+mutable database after shutdown. It also checks a separate container under the
+invoking user ID. Building an image alone does not verify runtime behavior.
 
 CI first runs `infra/docker/build-and-check.sh`. That gate creates synthetic
 private-data canaries in every ignored runtime, environment, dependency, and
@@ -333,62 +329,10 @@ owner: a library with a passphrase stays locked until it is actually unlocked,
 unlike a paired device token, because the local token is minted with no approval
 ceremony.
 
-**Write mode** (ADR-0013): Cairndex may create, rename, move, and trash files
-inside a library root only when **two** switches agree. `CAIRNDEX_WRITE_MODE`
-(default `allowed`) is yours; setting it to `disabled` forces every library
-read-only and makes the per-library toggle un-flippable, which is what a shared
-or hardened deployment wants. The second switch is the owner's per-library
-opt-in, stored in the **registry** and off by default — deliberately not in the
-portable library package, so copying a library to another server never carries
-write permission with it, and a library that arrives on a new server arrives
-read-only. Enabling a library that has an ADR-0010 passphrase re-prompts for it.
-Nothing outside this path writes to a library's files.
-
-**Who can flip the per-library switch.** An **unprotected** library has no
-credential in front of it, so anything that can reach the API can turn its write
-mode on — the same posture as everything else about an unprotected library
-(setting its passphrase in the first place included). That is fine on the single
--owner LAN Cairndex is built for, and it is exactly the reason the product
-refuses to call direct internet exposure supported. If a server is reachable by
-anyone you would not hand a delete key to, use one of the two guards that do
-exist: set an ADR-0010 passphrase on the library, which makes enabling write mode
-require it, or set `CAIRNDEX_WRITE_MODE=disabled`, which takes the decision away
-from the API entirely. The passphrase check here is not rate-limited, matching
-the unlock endpoint; argon2's cost is the only brake on guessing, which is
-another reason a shared deployment wants the master switch rather than the
-per-library one.
-
-**Importing files** (ADR-0013 §7): with write mode on, files can be copied into
-a library over the API — the one way outside bytes ever enter one. The upload is
-streamed to `.cairndex/tmp/` and linked into a vacant destination before staging
-cleanup, so a large import needs
-**free space inside the library volume**, not on the server's app-data disk, and
-a crash leaves a `.part` file that the next library open removes.
-`CAIRNDEX_IMPORT_MAX_BYTES` caps a single file; it defaults to `0` (no limit),
-because the legitimate case here is a whole video and any cap generous enough
-never to reject one would not be protecting anything on a single-owner LAN. Set
-it on a deployment whose API is reachable by anyone whose disk usage you would
-not want to underwrite.
-
-**Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
-short hostname) is the human-readable name another machine shows when it asks
-whether to take a library over, so it is worth setting to something recognizable
-on a NAS. `CAIRNDEX_ADVERTISED_URL` (unset by default) is the URL clients can
-reach this server at; when set to a **non-loopback** address, another machine
-that finds this server holding a library can offer "connect there instead" rather
-than only naming a host. Leave it unset for a laptop or a desktop sidecar — a
-loopback URL means nothing to a different machine and is never offered as a
-redirect. `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL` (default `60`) and
-`CAIRNDEX_LEASE_TTL` (default `300`, 5× the interval so a couple of missed beats
-never look like a dead server) tune the lease timing; the defaults are fine
-unless a very slow mount proves otherwise. `CAIRNDEX_LEASE_OBSERVATION_MARGIN`
-(default `20`) is the extra time a confirmed takeover watches a lease *on top of*
-one full heartbeat interval — so the wait is ~80 s by default. The full interval
-is not configurable and should not be: a takeover starts at an arbitrary point in
-the holder's cycle, so only after a whole interval is a live holder guaranteed to
-have written. Raise the margin for a cloud-synced library on a slow link, where
-the holder's write has to propagate before this machine can see it. `CAIRNDEX_LEASE_HEARTBEAT_ENABLED`
-(default `true`) exists for tests.
+**Source operations:** portable libraries refuse Copy, Rename, Move, Replace,
+Trash, Undo and write-mode changes. Retained configuration fields and synthetic
+model tests do not enable those operations. Serving instances use independent
+private stores; they do not use shared-folder ownership or takeover settings.
 
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before
@@ -435,183 +379,16 @@ otherwise restore the pre-upgrade database set first. Never run two image
 versions against one library to test a rollback — the one-owner rule still
 applies.
 
-### One server per library
+### Private serving instances
 
-A library may be served by exactly one Cairndex server at a time (ADR-0018). Each
-server writes an ownership lease inside the library at
-`.cairndex/locks/active-owner.json` and refreshes it every minute; a second server
-pointed at the same folder — over SMB, over NFS, or through a cloud-synced copy —
-refuses to open it and names the machine that holds it instead.
+Clients can use one central server. Independent servers require separate private
+data directories. Never share a working database or clone one to create another
+author. Portable history can be delivered by a provider, but provider/NAS delivery
+and metadata publication require separate qualification.
 
-What this means operationally:
-
-- **A clean shutdown releases every lease.** Stopping the container, quitting a
-  desktop sidecar, or unregistering a library all mark it released, so the next
-  server to open it acquires silently. This is the everyday path and it never
-  prompts.
-- **A crash leaves the lease behind.** It ages out after
-  `CAIRNDEX_LEASE_TTL` and the next server offers a takeover — but only with
-  explicit confirmation, showing the holding machine and its last heartbeat.
-  There is no automatic takeover after any timeout, deliberately: the case that
-  looks identical to a crash is a machine whose sync is merely paused.
-- **Before taking a stale lease, the server watches it** for longer than a
-  heartbeat period. A holder that is actually alive touches the file during that
-  window and keeps the library, even though the user already confirmed.
-- **Set `CAIRNDEX_ADVERTISED_URL` on a NAS server.** Without it, another machine
-  can only say "this library is served by *hostname*"; with it, it can offer to
-  connect to the right server instead. Use a DNS name or address
-  that the intended clients can resolve and reach. A hostname alias configured
-  on one client does not change the server's advertised address. Clients can use
-  **Use another address** in the ownership message when their network requires
-  a different address; the desktop can select an existing saved address.
-
-To inspect who holds a library, read the lease directly — it is plain JSON and
-safe to `cat`:
-
-```bash
-cat /libraries/main/.cairndex/locks/active-owner.json
-```
-
-Or ask a server: `GET /api/v1/libraries/{library_id}/ownership` answers even when
-the library will not mount, which is exactly when you need it.
-
-**Cloud-synced libraries** (Dropbox, iCloud Drive, Syncthing, OneDrive) are
-supported with **one-active-machine** semantics: use the library on one machine
-at a time and quit cleanly before opening it elsewhere. If both sides ever write
-while the sync is partitioned, the sync engine leaves a conflict copy next to the
-lease; the server logs that loudly and never resolves or deletes it, because that
-artifact is the only evidence the library may have diverged. No folder-based lease
-can prevent a partitioned dual write — it provides cooperative detection, not
-distributed fencing or a guarantee of lossless recovery (ADR-0018 lifecycle amendment).
-
-### Explicit release, sleep and storage permissions
-
-**Libraries → Release** drains this server's work, closes SQLite under ownership,
-and then releases. Registration remains; **Reopen** is deliberate and checks
-ownership. Release intent survives restart. Timeout or checkpoint failure keeps
-admission closed and does not advertise a clean handoff; retry Release.
-
-Awake idle servers retain ownership. Closing or sleeping an individual client,
-blanking a display, or closing a lid while the server remains awake never releases
-it. After an actual suspension, long heartbeat gap or storage I/O failure, resumed
-work revalidates ownership before proceeding. Uncertainty pauses writes; a
-changed record stops work without reacquisition or journal rewriting.
-
-Keep `.cairndex` metadata, locks, progress and cache writable, together with
-server `/data` and `/tmp`. A read-only container root and protected source media
-are compatible with those writable mounts; a wholly read-only metadata package
-is not. Run `python3 infra/docker/ownership_smoke.py --image <local-image>` for
-isolated UID 10001 and read-only bind-mount checks. See
-[architecture](architecture.md#library-release-and-recovery) for the bounded
-clock checks and cooperative file-lease limits.
-
-### Keeping a synced library's files consistent
-
-A SQLite database in WAL mode is up to three files — `library.db`, `-wal`, and
-`-shm` — and a sync engine uploads whatever it happens to find. Two mechanisms
-keep what it finds coherent (ADR-0018 §6):
-
-- **Idle checkpoint.** A library untouched for `CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER`
-  seconds gets `wal_checkpoint(TRUNCATE)`, folding the WAL back into
-  `library.db` and truncating it to zero. SQLite's own automatic checkpoint only
-  fires around 1000 pages, which a browsing session may not reach for a long
-  time. At rest you should therefore see a complete `library.db` and an empty
-  `-wal`; after a clean shutdown, `library.db` alone.
-- **Periodic snapshot.** Every `CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` seconds
-  (default 24 h; `0` disables) a consistent copy is written to
-  `.cairndex/library.db.bak` through SQLite's online backup API — which captures
-  a transactionally consistent view including anything still in the WAL, unlike a
-  file copy. It is written to a temp name and renamed into place, so the snapshot
-  itself is never observed half-written. This is the heal path if a machine's
-  last sync ever did ship a torn state and that machine never syncs again.
-
-Both only ever run against libraries this server currently holds the lease for.
-Tuning knobs: `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED` (default `true`),
-`CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL` (default `60`),
-`CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER` (default `120`), and
-`CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` (default `86400`).
-
-The snapshot is a convenience, **not a backup** — it lives inside the library it
-copies, so it is lost with the folder. Keep the real backups below.
-
-### Journal mode and network filesystems
-
-Read this if a library is served by the container **and** also reached from
-another machine over SMB, NFS or a cloud-synced folder. It is the one
-configuration where a hard stop of the container can lock the other machine out
-of the library.
-
-**A SQLite database in WAL mode cannot be opened over a network filesystem at
-all.** WAL needs a `-shm` index that every connection memory-maps, and mmap
-coherence is not available over SMB or NFS. SQLite refuses with `unable to open
-database file` — even for a read-only connection, on a file that reads fine, in
-a writable directory. And WAL is recorded in the *file header*, not on a
-connection, so it travels with the library folder like everything else in it.
-
-Cairndex therefore uses WAL only while it has a library open, and converts it
-back on a clean close (ADR-0021):
-
-- **Starting to serve a library** puts it into WAL, unless it sits on a
-  filesystem that cannot host WAL, in which case it is left in rollback mode.
-- **A clean shutdown converts it back** — `wal_checkpoint(TRUNCATE)` then
-  `journal_mode=DELETE` — so a library at rest is a single `library.db` that any
-  machine can open. `docker stop` reaches this path; so does unregistering a
-  library.
-- **An unclean stop does not.** `docker kill`, a power cut, the OOM killer, or a
-  `docker stop` that exceeds its timeout and is escalated to `SIGKILL` all leave
-  the file flagged WAL. This is the residual risk, accepted deliberately for the
-  performance WAL buys while a library is in use. **Stop the container with
-  `docker stop`, and give it a timeout it can meet** — the compose files already
-  do.
-**It is always recoverable, and no data is at risk** — the committed contents of
-an abandoned `-wal` are replayed by the next server that opens the library, which
-is ordinary SQLite crash recovery. What is lost is only the ability to open the
-library from a machine that reaches it over a share, and only until one of these
-runs. Both must happen on a machine with **local** access to the storage; the
-locked-out machine cannot repair it, because it cannot open the file at all.
-
-- **Restart the crashed server and stop it cleanly.** `docker start` then
-  `docker stop` is the whole procedure: the restart replays the WAL, and the
-  clean stop converts the file back. This is the easy path and it is usually
-  available, since the machine that crashed is by definition one with local
-  access.
-- **Or convert it by hand**, with nothing holding the library open — the command
-  is below.
-
-There is also an automatic heal, but it is narrower than it sounds and should
-not be relied on: a server converts a library it finds in WAL only when it has
-*decided that library should not be in WAL*, i.e. when the library is on a
-network filesystem and the open nevertheless succeeded. That covers a mount that
-tolerates WAL, or one Cairndex identifies as network conservatively. It does not
-rescue the ordinary SMB lockout, where the open never gets that far.
-
-**If a library is already locked out**, the symptom is HTTP 409 with code
-`library_database_unopenable` and reason `wal_on_network_filesystem`; the error
-message carries the command. Run it from a machine with **local** access to the
-storage — by definition not the machine that cannot open it:
-
-```bash
-sqlite3 /libraries/main/.cairndex/library.db 'PRAGMA journal_mode=DELETE;'
-```
-
-Nothing may have the library open while this runs; stop the server first. If
-there is no `sqlite3` on the box, the Cairndex image has Python:
-
-```bash
-docker run --rm -v /path/to/library:/lib ghcr.io/allpan3/cairndex \
-    python3 -c "import sqlite3; sqlite3.connect('/lib/.cairndex/library.db').execute('PRAGMA journal_mode=DELETE')"
-```
-
-To check a library without opening it, read byte 18 of the header — `2` is WAL,
-`1` is a rollback journal:
-
-```bash
-python3 -c "print(open('/libraries/main/.cairndex/library.db','rb').read(19)[18])"
-```
-
-The server's own `registry.db` is deliberately exempt from all of this and stays
-in WAL: it lives on the server's disk under `CAIRNDEX_DATA_DIR`, is never
-reached over a share, and never travels with a library.
+Release drains current work and closes the private binding. Reopen resumes local
+serving. A browser disconnect does not release a server. The old shared-folder
+lease, takeover and portable SQLite journal workflow are unsupported.
 
 ### Libraries that span more than one filesystem
 
@@ -641,99 +418,16 @@ deleting a file that sits on a *different* mount from the package is a copy too.
 
 ### Backups
 
-For capable replica packages, use [private replica backup and recovery](replica-recovery.md).
-The scripts below address legacy library and registry SQLite files; copying a
-replica DB through a generic restore script does not create a valid new author
-incarnation or activate a reviewed generation.
+Use **Manage libraries → Access and backups** for private snapshots and reviewed
+recovery. Set `CAIRNDEX_PRIVATE_BACKUP_DIR` to place snapshots on separate private
+storage. The default is a sibling of the server data directory with a `-backups`
+suffix. See [private recovery](replica-recovery.md).
 
-ADR-0008 split persistent state across multiple SQLite DBs:
-
-- registry DB: `/data/registry.db` inside the container;
-- each library DB: `<library-root>/.cairndex/library.db`, for example
-  `/libraries/main/.cairndex/library.db`.
-
-Back up the registry plus every library DB you care about. Generated cache files
-under `.cairndex/cache/` are reproducible and can usually be regenerated, and
-`.cairndex/library.db.bak` is the in-library sync-heal snapshot described above —
-it is not a substitute for an off-box backup, since it travels with (and dies
-with) the library folder.
-
-**`.cairndex/trash/` holds real user data** (ADR-0013 §3.2) — deleted files that
-have not been permanently removed yet. It is not derived and cannot be
-regenerated, so a backup that skips it can turn "I can still get that back" into
-"it is gone". Two consequences worth planning for:
-
-Copy-import Replace also stores the previous bytes here, while retaining the
-active destination's catalog identity and metadata. Empty Trash discards that
-backup and makes its Undo unavailable; it does not remove the active replacement.
-See [Replace and Undo](file-operations.md).
-
-- **It grows.** A deletion is a rename, so the bytes stay in the library until
-  someone empties the trash; a library's on-disk size does not drop when files
-  are deleted. The Trash view shows the total, and Empty Trash is what actually
-  reclaims the space.
-- **It inflates incremental backups**, because a deleted file *moves* rather
-  than disappearing, and most backup tools will treat that as new data at the
-  new path. If that matters more to you than recoverability, exclude
-  `.cairndex/trash/` deliberately — and know that you are choosing to lose
-  whatever is in it at restore time.
-
-`CAIRNDEX_TRASH_RETENTION_DAYS` bounds that growth by emptying trashed
-operations older than the given number of days when a library opens. It is `0`
-(keep forever) by default on purpose: the trash is what makes deleting
-recoverable, so it expires only once you have said how long "long enough" is.
-Setting it does not replace a backup — it is a one-way door on a timer, and it
-runs against whatever the library holds at open, so a library nobody opens is
-never swept.
-
-`infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
-online backup API and integrity-checks it. Registry backups are named
-`registry-…`; library backups include the portable library UUID, so two
-different `library.db` files cannot overwrite each other even when backed up in
-the same second. `mktemp` adds a final unique suffix for concurrent runs:
-
-```bash
-# Back up server-local registry state.
-docker exec <container> /app/infra/backup.sh /data/registry.db /data/backups
-
-# Back up a mounted library's portable content metadata.
-docker exec <container> /app/infra/backup.sh /libraries/main/.cairndex/library.db /data/backups
-
-# Pull the copies off the box.
-docker cp <container>:/data/backups ./backups
-```
-
-Restore is deliberately guarded and atomic. Stop the app first, make the backup
-files available read-only at `/restore`, then restore the registry and/or each
-library database through the image helper:
-
-```bash
-docker compose down
-
-docker compose run --rm --no-deps \
-  -v "$PWD/backups:/restore:ro" \
-  --entrypoint /app/infra/restore.sh app \
-  --stopped /restore/<registry-backup> /data/registry.db
-
-docker compose run --rm --no-deps \
-  -v "$PWD/backups:/restore:ro" \
-  --entrypoint /app/infra/restore.sh app \
-  --stopped /restore/<library-backup> /libraries/main/.cairndex/library.db
-
-docker compose up -d
-```
-
-The explicit `--stopped` is an acknowledgement, not process detection. The
-helper refuses a destination with `-wal`/`-shm` sidecars, integrity-checks a
-fresh temporary copy, fsyncs it, and atomically replaces the destination. If a
-destination existed, its exact previous bytes remain beside it as
-`*.pre-restore-*` until you remove them after verifying the recovery.
-
-`infra/docker/backup-restore-smoke.sh <candidate> [source]` automates the full
-acceptance path with synthetic state. With one image it proves hot backup,
-destructive-loss simulation, restore, and reopen. Passing an older source image
-creates the state and backups there, then restores and opens them with the
-candidate — the pre-release upgrade rehearsal.
+Back up source media and immutable `.cairndex/` history separately. Preserve the
+server registry and private access settings as protected administrative state.
+Use a stopped-server copy or a coherent SQLite backup for the registry. Never copy
+a live working database in place. Received drafts and unpublished edits require a
+private snapshot; text still held in a browser is not included.
 
 ### Remote access and security
 
@@ -745,17 +439,18 @@ Tailscale, or front it with a reverse proxy that adds authentication.
 
 An **optional per-library owner passphrase lock** (ADR-0010) is available as a
 lightweight guardrail. Each library independently chooses no lock or a passphrase;
-enable one with:
+configure it in **Manage libraries → Access and backups**. For local
+administration, stop the server before this command and restart afterwards:
 
 ```bash
 uv run python -m cairndex.devtools.set_passphrase --library-root /path/to/library
 # remove it later with --clear
 ```
 
-Only a PBKDF2 hash is stored (in the library's portable manifest); unlocking is a
+Only a PBKDF2 hash is stored in this server's private access settings; unlocking is a
 server-side session bound to an opaque HTTP-only cookie and scoped to that one
 library (unlocking one protected library never unlocks another). Sessions are
-in-memory, so a restart re-locks everything. Setting or replacing a passphrase
+in-memory, so a restart re-locks everything. Setting, replacing or removing a passphrase
 also revokes every existing device token scoped to that library; affected
 devices must pair again after the library is unlocked.
 

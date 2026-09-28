@@ -7,142 +7,49 @@ cross-platform Tauri desktop shell.
 
 In **Bundle Browser**, the primary object is an **Asset Bundle** (cover + video
 parts + alternate versions + subtitles + screenshots + attachments), not a
-single file. Cairndex links existing files in place by default. Legacy libraries
-can opt into journaled rename, move, trash and copy imports when the deployment
-permits write mode (ADR-0013). A separate **File Browser** browses the underlying directories and files inside the active
-Cairndex library.
+single file. Cairndex links existing files in place. A separate **File Browser**
+shows directories and files inside the active library root.
 
-See [docs/product-brief.md](docs/product-brief.md) for the product model and
-[AGENTS.md](AGENTS.md) for the canonical engineering rules that govern coding
-agents working in this repository.
+See [the product brief](docs/product-brief.md) and [the project status](docs/STATUS.md).
 
-## Status
+## Current behavior
 
-An internal developer fixture creates an empty format-three catalog directly,
-with private creation intent and descriptor-last publication. Interruption retries
-retain its identity. [Synthetic creation](docs/proposals/unified-library-creation.md)
-does not change ordinary Create or enable existing-library conversion.
+Create makes a complete portable library. Its `.cairndex/manifest.json` identifies
+immutable authored history under `.cairndex/replica/`. Working SQLite databases,
+drafts, jobs, credentials and caches stay in private server storage. Existing
+source files remain unchanged. Interrupted creation can resume its exact private
+intent; unrelated metadata cannot be overwritten.
 
-Existing complete **synthetic** packages open in the shared Bundle Browser, with
-full-catalog free-text search and title, note and rating editing. Other metadata
-and conflicts remain available through Metadata review. Collection/tag navigation,
-existing structured filters and saved Smart Collections
-use the private catalog. The shared File Browser shows direct local entries and
-retains unavailable cataloged paths; cataloged media uses the shared viewer.
-The ordinary inspector provides tag/collection membership reviews, cover selection,
-paginated files and local file details. Multi-selection supports reviewed bulk
-title, rating and membership changes. Random, recorded local Missing Files and a
-paginated Unbundled file list use the private catalog. File order, structural changes,
-moments and history use Metadata review. Source writes and unlinked media opening remain unavailable.
+Open accepts portable packages. The old `cairndex.library` format is unsupported.
+Convert it separately before opening. There is no automatic conversion. See
+[ADR-0035](docs/adr/0035-portable-library-format.md).
 
-Capable **synthetic** replica packages support library-wide authored metadata,
-concurrent offline edits, complete structural choices, retained history and private
-drafts. Cataloged local video and images open in the shared viewer with private
-availability, probes, caches and resume state. Reversible conversion tests create disposable legacy catalogs, preserve
-private recovery state and verify exact round trips. Real-library conversion and
-provider qualification remain unavailable; existing libraries retain their DB and
-ownership rules. See the [catalog workflow](docs/replica-catalog.md), accepted
-[architecture](docs/adr/0029-cloud-metadata-replicas.md) and
-[migration contract](docs/replica-migration.md). NAS and cloud folders are storage
-scenarios, not required application modes.
+Bundle Browser supports full-catalog search, collection/tag navigation, structured
+filters, Smart Collections, title/note/rating edits, membership reviews, covers,
+bulk metadata changes and paginated albums. Random, recorded local Missing Files
+and Unbundled use the private catalog. File Browser stays within the selected root.
+Cataloged images and video use the shared media viewer and private resume state.
+Structural choices, file order, moments, conflicts and history use Metadata review.
+Manual Update discovers files and prepares grouping and identity choices for review.
 
-**Manual Update** in new format-three synthetic packages discovers local files,
-repairs verified external moves and prepares private grouping/identity choices for
-explicit acceptance. Confirmed changes preserve IDs and use causal catalog
-transactions. Complete directory/collection review supports existing placement
-and partial acceptance; explicit cancellable full verification establishes large-file
-identity. See [replica Update](docs/replica-discovery.md).
+**Manage libraries → Access and backups** provides independent optional passphrases
+for each library on each server. The same passphrase can be selected for several
+libraries, but settings are independent. It protects server access, not file bytes.
+A new server requires separate setup. Changing protection revokes paired access
+for that library. Direct public internet exposure is unsupported.
 
-[Private replica recovery](docs/replica-recovery.md) provides coherent backups,
-verified preparation, inspectable reviews and explicit activation into a separate
-private generation. Restores preserve unexchanged work and received drafts, use
-fresh author incarnations and keep the original stores and backups intact.
+The same panel creates and verifies private snapshots, prepares a separate
+recovery after Release, shows the exact review, and activates it explicitly.
+Original stores and snapshots remain intact. Destination access settings remain
+in force. Back up source media, shared history, credentials and server settings
+separately. Text that has not reached the server is excluded. See
+[private recovery](docs/replica-recovery.md).
 
-Complete synthetic catalogs also provide paginated bundle albums with shared
-file tiles, directory members and guarded media opening. Album selection, scroll
-position and bundle drafts survive viewer return. This does not enable ordinary
-replica creation, real-library conversion or source writes.
-
-Cairndex is past the project-foundation phase. It provides an Eagle-inspired
-desktop web browser over asset bundles: portable per-library metadata,
-hierarchical **Collections**, a physical **File Browser** that is read-only by
-default, hierarchical tags + tag groups, filtering and Smart Collections,
-scan/probe/thumbnail/
-storyboard jobs with high-confidence moved-file repair, and a hardened
-single-container production deployment. [Media playback](docs/playback.md) runs in
-a unified custom **media viewer** — a hand-built video player (auto-hiding controls,
-keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
-tracks, **seek-bar storyboard trickplay** and chapter ticks, **watch
-progress / resume**, and **moments**: saved frames and spans inside a video,
-tagged and commented in the Bundle Inspector, drawn on the seek track, and
-loopable with the **range loop** — plus a **zoom/pan image viewer** with progressive
-preview tiers and server-side WebP derivatives that make HEIC/TIFF/BMP
-openable in the browser. Bundle file sequence is the media playlist order, and
-one remembered bundle cursor keeps card hover and double-click open aligned
-without coupling either behavior to the selected cover artwork.
-
-Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
-each library is a directory carrying its own `.cairndex/` metadata
-(`manifest.json`, `library.db`, `cache/`), and a separate server-side
-**registry** tracks registered libraries and the job queue. All content APIs are
-scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
-intended library on one selected server at a time. The normal maintenance flow is
-**Update**: scan the library, persist a reviewable grouping plan, refresh the UI, and open grouping
-review when suggestions exist. An incomplete or unavailable walk asks for a retry
-without staging replacement identities. Partial grouping acceptance preserves the
-remaining review, and exact retries recover committed results without duplicating
-bundles; unconfirmed plans still disappear when the server restarts.
-Technical metadata continues in the background;
-missing or stale storyboard generation follows it because storyboard eligibility
-uses the probed duration. Individual scan, grouping suggestion, metadata
-collection, and storyboard-generation actions remain available in the
-maintenance menu. There are no global storage-root content APIs in the current
-model.
-
-Multiple clients of one server use [protected metadata edits](docs/shared-server-edits.md):
-disjoint fields and membership changes save independently, conflicting proposals stay
-available for review, and exact retries cannot duplicate committed operations. Current
-clients and servers are required for authored saves; older clients can still browse.
-The current client shows an update notice when its selected server cannot support
-safe metadata editing. Browsing and playback remain available, and drafts are kept
-for explicit review after compatibility is restored.
-
-Files display their current actual filename. The [file metadata API](docs/data-model.md#asset_files)
-returns saved notes and verbatim source/origin text, including non-HTTP origins.
-Custom file names are unsupported; legacy stored title values remain preserved.
-
-The app is still pre-1.0 and should not be exposed directly to the public
-internet. Optional passphrase/cookie auth and owner-approved device bearer
-tokens provide a private-network, single-owner guardrail; the desktop shell can
-pair, retain its server-bound token, and browse/play a protected scoped library
-without a browser cookie. Its bearer is sent only for libraries in that grant;
-unscoped unprotected libraries retain anonymous access, while unscoped protected
-libraries offer pairing instead of an unusable cross-origin passphrase form. A
-desktop-only Settings page maps each server library to its local/SMB mount after
-matching the portable manifest UUID; mapped files gain safe reveal/default-app
-actions and native file drag-out. Incoming files use journaled HTML uploads when
-write mode is enabled. Desktop file integration is **incomplete and paused**:
-QSpace, multi-file OS drag delivery and app-origin self-return remain unqualified.
-Mac-hosted libraries on positively identified SMB mounts use an encrypted,
-signed SMB3 publication path for safe Copy/Replace/Undo; the saved login remains
-in macOS Keychain and native inode receipts are not mixed with server file IDs.
-Local source builds can [retain Keychain permission across backend rebuilds](docs/development.md#local-server-sidecar-appsserverpackaging)
-with an explicitly configured persistent signing certificate.
-[Copy-import Replace](docs/file-operations.md) keeps destination metadata and
-identity, retains old bytes in Trash, and refreshes derived media; Undo restores
-those bytes. Ordinary copies retain independent identities. Explicit Rename/Move
-Replace keeps the source's identity and metadata at its new path, preserves the
-displaced file and its metadata in Trash, and returns both on Undo.
-Copy-only imports do not require native reverse-mapping; ADR-0033 and its adapter,
-framework patch and volume-based Move proposals remain on hold.
-Important follow-ups include cross-filesystem repair candidates and token
-rotation/expiry policy. Bundle/container reclassification and File Browser
-write-mode drag-in copy are implemented. Job progress bars, large-library browse
-indexing, whole-library indexed bundle-name/note/moment search (SQLite FTS5), media
-fallback/transcoding, and pinyin matching in local tag/collection and file
-pickers are implemented.
-See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
-recommended next tasks.
+Source Copy, Rename, Move, Replace, Trash and Undo are unavailable in the portable
+workflow. Recently Used, cross-device resume and desktop file integration remain
+incomplete. Local synthetic verification does not qualify provider folders, NAS,
+power-loss recovery or representative library scale. See the
+[capability inventory](docs/replica-catalog.md).
 
 ## Install (macOS desktop app)
 
@@ -226,9 +133,9 @@ keep technical facts and full paths under **More details**. See
 
 Open **Libraries** and choose **Release** to stop this server serving a library
 while preserving its registration and content. **Reopen** deliberately checks
-ownership before serving it again. Idle time and remote client disconnects never
-release the server's ownership. Browsing needs writable `.cairndex` metadata,
-locks, progress and cache even when source media are protected.
+the private binding before serving it again. Idle time and remote client disconnects
+do not release the library. SQLite, locks, progress and caches stay in private
+server storage. Metadata publication writes immutable objects to `.cairndex`.
 
 ## Repository layout
 
@@ -297,7 +204,7 @@ that trips people up.** Three ways to run it, fastest to most production-like:
 
 Rule of thumb: **run `:8000` for the web app and for a live-code desktop; build
 the desktop server (sidecar or packaged app) only to test the self-contained
-product.** Full detail — CORS, the sidecar freshness trap, the single-owner lease
+product.** Full detail — CORS, the sidecar freshness trap, private serving bindings
 — is in [docs/development.md](docs/development.md#desktop-appsdesktop).
 
 ### Rebuilding and reinstalling the desktop app

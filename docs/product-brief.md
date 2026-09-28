@@ -25,16 +25,16 @@ The first product target is the computer-side web application. Android TV suppor
 
 1. **Bundle Browser is bundle-first.** In Bundle Browser, the visible item is an Asset Bundle, not a file.
 2. **File Browser is filesystem-first.** In File Browser, the visible items are physical directories and files under the active library root. File Browser is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
-3. **Libraries are the storage scope.** Legacy packages use `.cairndex/{manifest.json,library.db,cache/}`; capable replicas exchange immutable metadata and keep their working DB privately outside provider folders (ADR-0029). The server-local registry tracks known libraries and jobs.
+3. **Libraries are the storage scope.** Portable packages exchange immutable metadata and keep their working DB privately outside the library folder (ADR-0035). The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-6. **Metadata-only and non-destructive first.** File Browser is read-only by default. Legacy libraries support explicit journaled rename/move/trash and copy imports when both library and deployment write gates permit them (ADR-0013). Replica source operations remain unavailable.
+6. **Metadata-only and non-destructive first.** File Browser is read-only. Portable libraries do not support source Copy, Rename, Move, Replace, Trash or Undo.
 7. **Logical organization must survive filesystem moves.** If a linked path changes externally, preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata by repairing the existing file row when confidence is high.
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
 9. **Local-first and self-hosted.** The desktop app can serve local libraries through its bundled server, or connect to an authoritative private server. Docker on a NAS/server is optional; neither NAS nor cloud storage defines a required operating mode.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
-11. **Explicit metadata authority.** Legacy libraries use their `library.db`; capable replicas use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
-12. **Progressive capability.** Direct playback, remux/transcoding, gated legacy file operations and mapped desktop host actions are implemented. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
+11. **Explicit metadata authority.** Portable libraries use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
+12. **Progressive capability.** Direct playback, remux/transcoding, mapped desktop host actions are implemented; portable source operations remain deferred. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
 
 Mac-hosted Cairndex accessing files on mounted SMB storage is a required
 deployment scenario. NAS-hosted serving is a separate optional scenario, not a
@@ -71,7 +71,7 @@ Unless the product owner explicitly changes them, treat these as settled:
 - File Browser remains scoped to library roots and read-only unless explicit write gates permit a journaled operation.
 - The desktop shell supports Open in Default App and Reveal through manifest-validated local mappings; cross-application drag qualification remains incomplete and paused.
 - Open-with-default-app must not be implemented as arbitrary command execution from a remote browser. It needs an explicit local desktop/native helper, Tauri shell, or similarly safe host-integration design.
-- Metadata-only removal remains distinct from physical rename/move/trash under explicit write mode. Collections never move source files.
+- Metadata-only removal does not modify source files. Collections never move source files.
 - Move repair is automatic during scan/rescan/reconciliation when confidence is high. Do not require a separate normal user workflow for repair.
 - Duplicate detection is deferred. If a still-present file is also found at another path, treat that as an unresolved duplicate/copy candidate later, not as an automatic bundle merge.
 - Bundles remain flexible logical objects. A bundle does not require a canonical physical folder and may contain files from different directories.
@@ -108,41 +108,32 @@ backups remain intact. Unreceived browser-only work is outside a server snapshot
 
 Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until intentionally migrated or retained as historical table names.
 
-Ownership is server-level: an awake server keeps serving while clients idle or
-disconnect. Explicit release drains work and preserves registration; deliberate
-reopening checks ownership. Metadata-only browsing still requires writable library
-metadata, locks, progress and cache. Protected source media are compatible with
-that requirement; an entirely read-only library package is not.
+Serving is instance-local. An awake server keeps its private store open while
+clients idle or disconnect. Release drains active requests, jobs, exchange and
+media, then closes the private store. Reopen permits access again. Independent
+servers use separate private stores; no shared-folder lease selects one winner.
 
 ### Library
 
-A `Library` is the content and storage boundary. It is a server-visible root directory that carries its own Cairndex package:
+A library is a server-visible root with source files and this portable package:
 
 ```text
 <library-root>/
   media files...
   .cairndex/
     manifest.json
-    library.db
-    cache/
-      thumbnails/
-      subtitles/
-      storyboards/
+    replica/objects/
 ```
 
-Required concepts:
+The descriptor carries its stable library UUID, name, epoch, seed and capabilities.
+Immutable history is the authored metadata authority. Each server stores its
+working projection, received drafts, jobs, access settings and caches privately.
+The registry records root paths, availability and serving intent. Working databases
+never reside in provider folders. Private state requires a separate backup.
 
-- stable portable library UUID in the manifest;
-- display name;
-- canonical server path recorded in the registry;
-- availability/status;
-- schema version;
-- portable content DB at `.cairndex/library.db`;
-- reproducible derived cache under `.cairndex/cache/`.
-
-Store file locations as library-relative paths. Do not reintroduce a content `storage_roots` table or `asset_files.storage_root_id` unless a new ADR explicitly changes the per-library model. Never expose arbitrary unrestricted server paths through content APIs. File Browser must browse through the active library abstraction, not through unrestricted absolute server paths.
-
-The server-local registry DB at `{CAIRNDEX_DATA_DIR}/registry.db` tracks registered libraries and owns `job_queue`. It is runtime state, not portable library metadata.
+File locations are library-relative. File Browser cannot browse arbitrary server
+paths. Normal Create preserves existing files and publishes the descriptor last.
+Open refuses the old `cairndex.library` format. Conversion is external and explicit.
 
 ### Asset bundle
 
@@ -568,7 +559,7 @@ Inside a collection, show breadcrumb/title, direct subcollection selector/count,
 
 ### File Browser
 
-Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances unless the library and deployment permit write mode. Replica packages retain their separate physical-operation capability limits. Entering a directory may reconcile only the linked direct children expected there; it must not trigger a whole-library scan or guess moved-file identity from an unlinked path.
+Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only controls. Source operations require a separate portable operation contract. Entering a directory may reconcile only the linked direct children expected there; it must not trigger a whole-library scan or guess moved-file identity from an unlinked path.
 
 File Browser is not a replacement for Bundle Browser. It is a filesystem browser and linking/diagnostic surface. Bundle Browser remains the primary organization and browsing surface.
 

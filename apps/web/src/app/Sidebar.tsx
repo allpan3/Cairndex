@@ -973,21 +973,19 @@ export function Sidebar({
             {maintenanceError}
           </div>
         )}
-        {!navigationOnly && (
-          <button
-            className="nav-item sidebar__settings"
-            onClick={(event) => {
-              // Preserve the dialog return target after WebKit pointer activation
-              event.currentTarget.focus({ preventScroll: true })
-              onOpenSettings()
-            }}
-          >
-            <span className="nav-item__icon">
-              <IconSettings />
-            </span>
-            <span className="nav-item__label">Settings</span>
-          </button>
-        )}
+        <button
+          className="nav-item sidebar__settings"
+          onClick={(event) => {
+            // Preserve the dialog return target after WebKit pointer activation
+            event.currentTarget.focus({ preventScroll: true })
+            onOpenSettings()
+          }}
+        >
+          <span className="nav-item__icon">
+            <IconSettings />
+          </span>
+          <span className="nav-item__label">Settings</span>
+        </button>
       </div>
 
       {collectionDraft && (

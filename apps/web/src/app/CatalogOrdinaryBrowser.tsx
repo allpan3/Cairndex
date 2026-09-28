@@ -55,6 +55,7 @@ export function CatalogOrdinaryBrowser(props: {
   onOpenFile: (bundle: string, file: string) => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings?: () => void
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
@@ -89,6 +90,7 @@ export function CatalogOrdinaryBrowser(props: {
           }}
           onChangeLibrary={props.onChangeLibrary}
           onManage={props.onManage}
+          onSettings={props.onSettings}
           onReview={props.onReview}
           onReviewEntity={props.onReviewEntity}
         />

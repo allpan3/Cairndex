@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -45,29 +44,6 @@ def files(root: Path) -> dict:
         for p in root.rglob("*")
         if p.is_file()
     }
-
-
-def test_release_reopen_and_persisted_selection(
-    isolated_client: TestClient, library_id: str, library_root: Path
-) -> None:
-    """Repeated background requests never reacquire an explicitly released library"""
-    base = f"/api/v1/libraries/{library_id}"
-    assert isolated_client.get(f"{base}/bundles/browse").status_code == 200
-    assert isolated_client.post(f"{base}/ownership/release").json()["state"] == "locally_released"
-    before = files(library_root)
-    for _ in range(3):
-        assert isolated_client.get(f"{base}/bundles/browse").status_code == 409
-        assert not isolated_client.get(f"{base}/ownership").json()["mountable"]
-    assert files(library_root) == before
-    assert isolated_client.get(base).status_code == 200
-    # A fresh admission gate models restart; persisted registry intent still wins
-    lifecycle.reset()
-    assert isolated_client.get(f"{base}/bundles/browse").status_code == 409
-    assert not get_lease_manager().holds(library_id)
-    assert isolated_client.post(f"{base}/ownership/reopen").status_code == 200
-    assert isolated_client.get(f"{base}/bundles/browse").status_code == 200
-    assert isolated_client.post(f"{base}/ownership/release").status_code == 200
-    assert isolated_client.post(f"{base}/ownership/release").status_code == 200
 
 
 def test_drain_pins_checked_out_session_until_final_write(
@@ -214,26 +190,6 @@ def test_benchmark_foreign_lease_exact_no_write(
     finally:
         rival.release("lib")
         get_settings.cache_clear()
-
-
-def test_metadata_permissions_and_protected_source(
-    isolated_client: TestClient, library_id: str, library_root: Path
-) -> None:
-    """Real POSIX permission denial is structured; protected sources can browse"""
-    source = library_root / "synthetic.txt"
-    source.write_text("synthetic source")
-    source.chmod(0o444)
-    metadata = library_root / ".cairndex"
-    metadata.chmod(0o555)
-    try:
-        response = isolated_client.get(f"/api/v1/libraries/{library_id}/bundles/browse")
-        assert response.status_code == 409
-        assert response.json()["code"] == "library_metadata_unwritable"
-    finally:
-        metadata.chmod(0o755)
-    assert isolated_client.get(f"/api/v1/libraries/{library_id}/bundles/browse").status_code == 200
-    assert source.read_text() == "synthetic source"
-    assert source.stat().st_mode & 0o222 == 0
 
 
 def test_active_job_drains_before_release(
@@ -525,34 +481,3 @@ def test_session_factory_survives_expired_registry_record(
         assert fresh.execute(text("SELECT 1")).scalar() == 1
     lifecycle.close(library_id, timeout=0)
     assert not get_lease_manager().holds(library_id)
-
-
-def test_failed_release_status_does_not_claim_completed_handoff(
-    isolated_client: TestClient, library_id: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The status endpoint distinguishes release intent from a finished close"""
-    base = f"/api/v1/libraries/{library_id}"
-    assert isolated_client.get(f"{base}/bundles/browse").status_code == 200
-    original = library_engine.checkpoint_and_revert
-    monkeypatch.setattr(library_engine, "checkpoint_and_revert", lambda _: False)
-    assert isolated_client.post(f"{base}/ownership/release").status_code == 409
-    assert isolated_client.get(f"{base}/ownership").json()["state"] == "release_pending"
-    monkeypatch.setattr(library_engine, "checkpoint_and_revert", original)
-    assert isolated_client.post(f"{base}/ownership/release").json()["state"] == "locally_released"
-
-
-def test_uncertain_status_offers_no_takeover(
-    isolated_client: TestClient, library_id: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Temporary storage uncertainty is neither a foreign holder nor a takeover invitation"""
-    base = f"/api/v1/libraries/{library_id}"
-    assert isolated_client.get(f"{base}/bundles/browse").status_code == 200
-    manager = get_lease_manager()
-    manager.mark_uncertain(library_id)
-    original = manager_module.read_lease
-    monkeypatch.setattr(manager_module, "read_lease", lambda _: LeaseSnapshot(io_error=True))
-    result = isolated_client.get(f"{base}/ownership").json()
-    assert result["state"] == "ownership_uncertain"
-    assert not result["mountable"] and not result["can_take_over"]
-    monkeypatch.setattr(manager_module, "read_lease", original)
-    assert isolated_client.get(f"{base}/ownership").json()["state"] == "own"

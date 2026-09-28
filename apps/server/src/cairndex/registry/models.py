@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cairndex.domain.enums import JobStatus, JobType, LibraryStatus
@@ -126,3 +126,28 @@ class DeviceToken(RegistryBase):
     created_at: Mapped[CreatedAt]
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class RecoveryTask(RegistryBase):
+    """Private administrative operations; never copied into portable metadata."""
+
+    __tablename__ = "recovery_tasks"
+    __table_args__ = (
+        Index("ix_recovery_tasks_library_id", "library_id", "id"),
+        Index("ix_recovery_tasks_state", "state", "created_at", "id"),
+        Index(
+            "uq_recovery_tasks_active",
+            "library_id",
+            unique=True,
+            sqlite_where=text("state IN ('queued', 'running')"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    library_id: Mapped[str] = mapped_column(String(26))
+    action: Mapped[str] = mapped_column(String(20))
+    state: Mapped[str] = mapped_column(String(20))
+    body: Mapped[dict[str, Any]] = mapped_column(JSON)
+    descriptor: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[CreatedAt]

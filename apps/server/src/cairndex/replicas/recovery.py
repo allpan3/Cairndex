@@ -272,11 +272,14 @@ def prepare(
     backup_path: Path | None = None,
     *,
     fault: Callable[[str], None] = no_fault,
+    recovery_id: str | None = None,
 ) -> dict[str, Any]:
     descriptor = descriptor_at(root)
     base = private_path(base, root)
     source, binding = location(base, descriptor)
-    recovery_id = uuid4().hex
+    recovery_id = recovery_id or uuid4().hex
+    if not re.fullmatch(r"[a-f0-9]{32}", recovery_id):
+        raise ReplicaError("Invalid private recovery identity")
     directory = new_directory(base / "replica-recoveries" / recovery_id, root)
     original = previous_state(source, directory / "previous.db", descriptor)
     candidate = new_directory(directory / "candidate", root)
