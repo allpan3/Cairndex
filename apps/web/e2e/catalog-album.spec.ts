@@ -76,6 +76,8 @@ test('catalog album pages, folders, selection, missing media and draft return @f
       .toBeGreaterThan(0)
     await expect(page.getByRole('button', { name: 'Next file', exact: true })).toBeDisabled()
     await expect(page.locator('.media-viewer')).toContainText('frame124.png')
+    // Wake auto-hidden controls before pointer hit testing on a loaded host.
+    await page.locator('.media-viewer').hover({ position: { x: 200, y: 200 } })
     await page.getByRole('button', { name: 'Previous file', exact: true }).click()
     await expect(page.locator('.media-viewer')).toContainText('frame123.png')
     await page.locator('.media-viewer').press('Escape')
