@@ -45,8 +45,10 @@ in force. Back up source media, shared history, credentials and server settings
 separately. Text that has not reached the server is excluded. See
 [private recovery](docs/replica-recovery.md).
 
-Source Copy, Rename, Move, Replace, Trash and Undo are unavailable in the portable
-workflow. Recently Used, cross-device resume and desktop file integration remain
+File Browser provides reviewed file and directory Copy, Rename, Move, Replace, Trash
+and Undo with an explicit write permission. Retained content versions support
+conditional recovery. Directory reviews have bounded entry and metadata limits. See
+[source operations](docs/file-operations.md). Recently Used, cross-device resume and desktop file integration remain
 incomplete. Local synthetic verification does not qualify provider folders, NAS,
 power-loss recovery or representative library scale. See the
 [capability inventory](docs/replica-catalog.md).

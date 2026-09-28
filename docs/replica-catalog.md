@@ -3,15 +3,14 @@
 Normal Create and Open use the portable workflow (ADR-0035). Old library-format
 admission and the legacy workspace are unavailable. Manage libraries provides
 per-server access settings and reviewed private backup/recovery controls.
-Source operations, Recently Used and provider/NAS qualification remain separate.
+Reviewed source operations use the separate source journal described below.
+Recently Used and provider/NAS qualification remain incomplete.
 
 
 The shared app/API serves complete **synthetic** metadata catalogs under
-[ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion, provider
-qualification and physical source operations remain unavailable for replica
-packages. Format-three packages support [manual discovery](replica-discovery.md).
+[ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion and provider qualification remain unavailable. Format-three packages support [manual discovery](replica-discovery.md).
 Complete catalogs support local media through
-the shared production viewer. Legacy libraries retain their existing workflows.
+the shared production viewer. Legacy library admission is unavailable.
 
 ## Compatibility and transport
 
@@ -129,17 +128,17 @@ library switch. An already observed conflict requires explicit metadata review.
 
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
-| Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
+| Open | Existing `/libraries/register`; capability read at `/replica/status` | Create makes a complete portable library; real conversion and provider qualification remain unavailable |
 | Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Recently Used requires a separate private usage contract |
-| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages | Source writes, file note/source controls and OS drag remain unavailable |
+| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages | Source operations use File Browser; file note/source controls and OS drag remain separate |
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
-| System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used and Trash remain outside the current catalog contract |
+| System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used remains incomplete; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and date-added sorts; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; unsupported request fields/sorts return 422 |
 | Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
-| File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening, source writes and provider hydration |
-| Update/media | Existing discovery controls and shared viewer | Source writes, provider hydration and cross-device resume remain unavailable |
+| File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening and provider hydration |
+| Update/media | Existing discovery controls and shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
 Search has the same token-prefix AND contract as legacy bundle search. It includes
 bundle titles, ordered bundle notes, file notes and moment comments. Filenames,
@@ -339,3 +338,12 @@ browser tests use independent HTTP servers and controlled local artifact deliver
 Provider delivery, power loss, Windows and representative NAS/large-library
 performance remain unqualified. Current gate results are in
 [STATUS](STATUS.md).
+
+## Source-operation capability
+
+`source_operations_version: 1` advertises reviewed file and bounded directory source operations
+under `/api/v1/libraries/{id}/source-operations`. The ordinary File Browser exposes
+these controls when the server advertises the capability. Source events use
+`catalog_source_edit`, with the same bounded payload structure and causal bases.
+Strict older readers refuse this event kind. Metadata, content receipts and source
+bytes can arrive separately. See [source operations](file-operations.md).

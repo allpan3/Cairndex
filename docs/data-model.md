@@ -736,8 +736,9 @@ runtime state. It is not portable library metadata and has its own
 `schema_version`, `write_mode_enabled`, timestamps, `last_opened_at`. One row per
 known `<root>/.cairndex/` library package.
 
-`write_mode_enabled` is a retained registry column. Portable libraries refuse
-source-write changes regardless of its value.
+`write_mode_enabled` is the serving instance's per-library source-write opt-in.
+The deployment switch must also permit writes. Portable library copies do not
+carry this permission.
 
 ### `job_queue`
 
@@ -793,7 +794,7 @@ are openable through the server preview pipeline.
 
 Native handoff uses server-scoped desktop mappings and manifest/path validation.
 Legacy file writes use the registry write-mode flag and `file_operations` journal
-described above (ADR-0013); replica source writes remain unavailable. Directory
+described above (ADR-0013); portable source writes use the separate private journal below. Directory
 entries are currently unpaginated; that redesign is owner-deferred.
 
 ### Derived media cache
@@ -843,3 +844,17 @@ manual cover choice is never overwritten. These values are portable metadata in
 An additive registry bootstrap adds it to existing installations. It records the
 owner's explicit release intent across restart; it does not travel with library
 metadata and does not change source-file permissions or write-mode opt-in.
+
+## Portable source journal
+
+`source_operations` stores exact intent, state, prepared review, result, phase,
+progress, error and monotonic sequence. `source_uploads` stores upload identity,
+size, state and verified evidence. `source_receipts` stores immutable completed or
+received receipts and dependency state. These tables live in private storage and
+participate in private snapshot validation.
+
+Receipts reference `catalog_source_edit` events, conditional inverse metadata and
+content versions under `.cairndex/source-operations/`. Independent snapshots retain
+bytes before capture. Copy Replace retains destination identity; Move Replace
+retains source identity and records displaced destination recovery. See
+[source operations](file-operations.md) for limits.

@@ -197,7 +197,8 @@ thread through the cross-platform `drag` crate — the engine behind
 the window handle.
 
 The desktop window prevents file drops from navigating away from the application.
-Portable libraries do not support source imports or other source-write operations.
+Portable libraries support reviewed file-picker Copy and bounded source operations
+through the private journal described below. Incoming OS drag remains paused.
 Retained native import and journal utilities are not an application workflow.
 Native mapping and drag integration have separate qualification limits in STATUS.
 
@@ -981,3 +982,21 @@ Lost-owner disposal therefore retains the database and WAL recovery bytes withou
 folding them into the main file. Clean handoff explicitly checkpoints through a
 fresh connection after draining; an old session factory cannot revive a retired
 engine after reopening.
+
+## Portable source-operation workers
+
+`replicas/source_journal.py` retains exact private intent and review state.
+`source_plan.py` prepares filesystem and catalog conditions. `source_execute.py`
+applies accepted reviews with durable capture and publication checkpoints.
+`source_files.py` supplies no-follow reads, independent versions and atomic
+no-replace relocation. `source_claims.py` binds shared recovery directories to
+private authors and exact intent. `source_undo.py` prepares conditional inverses. `source_trees.py` creates bounded
+directory versions and content indexes; `source_catalog.py` retains catalog
+identity across directory operations.
+
+A pool of two source workers uses library lifecycle admission and the per-library
+exchange lock. HTTP exchange does not execute source copies. Byte-block checks
+observe cancellation, Release, root identity and write permission. Source receipt
+exchange never executes a remote physical operation. `catalog_source_edit` roots
+make the changed semantics explicit to strict older readers. See
+[ADR-0036](adr/0036-portable-source-operations.md).

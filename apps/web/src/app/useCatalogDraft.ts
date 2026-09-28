@@ -92,9 +92,9 @@ export function useCatalogDraft<T extends object>(
   }
   // Explicit dismissal acknowledges the generation before clearing the browser copy
   async function discard() {
-    if (envelope)
-      await catalog(library, `/drafts/${envelope.id}?revision=${envelope.revision}`, 'DELETE')
-    if (latest.current === envelope) {
+    const target = latest.current
+    if (target) await catalog(library, `/drafts/${target.id}?revision=${target.revision}`, 'DELETE')
+    if (latest.current === target) {
       localStorage.removeItem(key)
       latest.current = null
       setEnvelope(null)

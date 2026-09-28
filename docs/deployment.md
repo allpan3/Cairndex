@@ -329,10 +329,13 @@ owner: a library with a passphrase stays locked until it is actually unlocked,
 unlike a paired device token, because the local token is minted with no approval
 ceremony.
 
-**Source operations:** portable libraries refuse Copy, Rename, Move, Replace,
-Trash, Undo and write-mode changes. Retained configuration fields and synthetic
-model tests do not enable those operations. Serving instances use independent
-private stores; they do not use shared-folder ownership or takeover settings.
+**Source operations:** the deployment switch and each serving instance's library
+write permission gate reviewed file and directory Copy, Rename, Move, Replace, Trash
+and Undo. Two source workers run byte copies outside HTTP handlers. Back up
+`.cairndex/source-operations/` with library source files; private snapshots contain
+the journal, not these retained bytes. No automatic purge is provided. Source
+operations require atomic no-replace relocation. Directory reviews have bounded entry and metadata limits. Provider/NAS
+qualification remains incomplete. See [source operations](file-operations.md).
 
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before

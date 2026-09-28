@@ -46,7 +46,7 @@ class CatalogDescriptor(PackageIdentity):
 # A root names the complete linked payload and count, never a partially usable seed
 class Root(StrictModel):
     protocol: Literal[2]
-    kind: Literal["catalog_seed", "catalog_edit"]
+    kind: Literal["catalog_seed", "catalog_edit", "catalog_source_edit"]
     library: Token
     epoch: Token
     replica: Token
@@ -137,6 +137,7 @@ def payload(
     replica: str,
     operation: str,
     seed: bool = False,
+    source: bool = False,
     resolve: bool = False,
     recover: bool = False,
     parents: list[str] | None = None,
@@ -186,7 +187,7 @@ def payload(
     yield envelope(
         Root(
             protocol=2,
-            kind="catalog_seed" if seed else "catalog_edit",
+            kind="catalog_seed" if seed else "catalog_source_edit" if source else "catalog_edit",
             library=library,
             epoch=epoch,
             replica=replica,

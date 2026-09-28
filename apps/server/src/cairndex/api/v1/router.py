@@ -25,6 +25,7 @@ from cairndex.api.v1 import (
     replica_media,
     replicas,
     smart_collections,
+    source_operations,
     tag_groups,
     tags,
     write_mode,
@@ -39,6 +40,7 @@ router.include_router(private_recovery.router)
 router.include_router(catalog_replicas.router)
 router.include_router(replica_media.router)
 router.include_router(replica_discovery.router)
+router.include_router(source_operations.router)
 router.include_router(jobs.router)
 # Per-library auth (reachable while locked — the way to unlock; not content-gated).
 router.include_router(auth.router)

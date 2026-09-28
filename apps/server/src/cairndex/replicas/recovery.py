@@ -195,6 +195,9 @@ def previous_gaps(previous: Path, prepared: Path) -> dict[str, int]:
             ("drafts", ("id",), ("id", "bundle", "revision", "body")),
             ("draft_receipts", ("id",), ("id", "revision")),
             ("catalog_jobs", ("id",), ("id", "intent", "result")),
+            ("source_operations", ("id",), ("id", "intent", "review", "result")),
+            ("source_receipts", ("id",), ("id", "raw")),
+            ("source_uploads", ("id",), ("id", "size", "evidence")),
             ("discovery_candidates", ("id",), ("id", "run", "path", "body")),
             ("discovery_identities", ("path", "evidence"), ("path", "evidence", "file_id")),
             ("discovery_reviews", ("id",), ("id", "intent", "prepared", "event")),
@@ -301,6 +304,11 @@ def prepare(
         author = uuid4().hex
         db.execute("UPDATE config SET value=? WHERE key='replica'", (author,))
         if isinstance(store, CatalogStore):
+            db.execute(
+                "UPDATE source_operations SET state='interrupted',"
+                "error='Recovered source intent requires explicit retry' "
+                "WHERE state IN ('queued','preparing','accepted','applying')"
+            )
             db.execute(
                 "UPDATE catalog_jobs SET state='failed',error='Recovered pending work; "
                 "review its exact intent and explicitly retry' WHERE state IN ('queued','running')"

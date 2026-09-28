@@ -81,7 +81,9 @@ class CatalogStore(CatalogStorage):
 
         while pending:
             unit = pending.pop()
-            more: set[str] = set()
+            from cairndex.replicas.catalog.source_conflicts import affected
+
+            more = affected(db, unit) if self.descriptor.format_version == 3 else set()
             # A complete cohort is expanded once per closure, even when every file references it
             for cohort in db.execute(
                 "SELECT c.event,c.cohort FROM catalog_cohorts c JOIN catalog_revisions r "
@@ -262,6 +264,15 @@ class CatalogStore(CatalogStorage):
             expected = self.scope(db, changed)
             if not expected.issubset(changed):
                 raise ReplicaError("Structural choice must include its complete reviewed scope")
+        # Source/reference conflict checks need the candidate event's ancestry
+        # during projection, within the same transaction as its revisions.
+        parents = set(root.parents)
+        for row in rows:
+            parents.update(json.loads(row["basis"]))
+        db.executemany(
+            "INSERT OR IGNORE INTO catalog_parents VALUES (?, ?)",
+            ((identity, parent) for parent in parents),
+        )
         prior_scopes = []
         pending_scopes = set(changed)
         while pending_scopes:
@@ -320,7 +331,14 @@ class CatalogStore(CatalogStorage):
             groups.append(group)
         for group in groups:
             reason = "Concurrent alternatives require a complete structural choice"
-            if all(len({tip["value"] for tip in self.tips(db, unit)}) == 1 for unit in group):
+            from cairndex.replicas.catalog.source_conflicts import concurrent_content
+
+            content_conflict = self.descriptor.format_version == 3 and any(
+                concurrent_content(db, unit) for unit in group
+            )
+            if not content_conflict and all(
+                len({tip["value"] for tip in self.tips(db, unit)}) == 1 for unit in group
+            ):
                 db.execute("SAVEPOINT projection")
                 try:
                     for unit in group:
@@ -374,6 +392,7 @@ class CatalogStore(CatalogStorage):
         parents: list[str],
         resolve: bool = False,
         recover: bool = False,
+        source: bool = False,
     ) -> str:
         intent = value_text(
             {
@@ -381,6 +400,7 @@ class CatalogStore(CatalogStorage):
                 "resolve": resolve,
                 "recover": recover,
                 "parents": parents,
+                **({"source": True} if source else {}),
             }
         )
         replica = db.execute("SELECT value FROM config WHERE key='replica'").fetchone()[0]
@@ -412,6 +432,7 @@ class CatalogStore(CatalogStorage):
             resolve=resolve,
             recover=recover,
             parents=parents,
+            source=source,
         ):
             _, body = decode(raw, self.descriptor)
             if self.accept(db, identity, body, raw, local=True, intent=intent) == "pending":

@@ -25,6 +25,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog.browse import INDEX_SCHEMA
     from cairndex.replicas.discovery_state import SCHEMA as discovery_schema
     from cairndex.replicas.media import SCHEMA as media_schema
+    from cairndex.replicas.source_journal import SCHEMA as source_schema
     from cairndex.replicas.store import SCHEMA
 
     results = []
@@ -38,7 +39,11 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
             expected.executescript(SCHEMA)
             if catalog:
                 expected.executescript(
-                    projection.SCHEMA + catalog_schema + media_schema + discovery_schema
+                    projection.SCHEMA
+                    + catalog_schema
+                    + media_schema
+                    + discovery_schema
+                    + source_schema
                 )
                 if legacy == 2:
                     expected.execute(
@@ -75,8 +80,16 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
     from cairndex.replicas.discovery_proposals import TABLES as PROPOSAL_TABLES
     from cairndex.replicas.discovery_state import BASE_TABLES
     from cairndex.replicas.discovery_verification import TABLES as VERIFICATION_TABLES
+    from cairndex.replicas.source_journal import TABLES as SOURCE_TABLES
 
-    groups = (BASE_TABLES, VERIFICATION_TABLES, PLAN_TABLES, PROPOSAL_TABLES, PREVIEW_TABLES)
+    groups = (
+        BASE_TABLES,
+        VERIFICATION_TABLES,
+        PLAN_TABLES,
+        PROPOSAL_TABLES,
+        PREVIEW_TABLES,
+        SOURCE_TABLES,
+    )
     if any(group & actual.keys() for group in groups[1:]) and not actual.keys() >= BASE_TABLES:
         raise ReplicaError("Private discovery schema is incomplete")
     for group in groups:

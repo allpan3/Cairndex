@@ -208,6 +208,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Reviewed portable file and bounded directory Copy, Rename, Move, Replace, Trash and conditional
+  Undo, with private durable intent, independent retained content versions, upload
+  staging and File Browser recovery controls. Source-event receipts travel
+  separately from bytes and never repeat physical operations on another copy.
+  Directory entry and metadata limits apply; provider qualification remains incomplete.
+
 - Private replica backup, verification, recovery review and explicit activation
   through a supported local command and packaged sidecar. Coherent snapshots
   preserve unpublished events, received drafts, conflicts, jobs, retry receipts

@@ -94,6 +94,7 @@ def recovered_intent(
                 "parents": root.parents,
                 "resolve": root.resolve,
                 "recover": root.recover,
+                **({"source": True} if root.kind == "catalog_source_edit" else {}),
             }
         ).decode()
     if not isinstance(descriptor, Descriptor):

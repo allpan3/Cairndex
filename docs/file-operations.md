@@ -1,145 +1,72 @@
-# File replacement and Undo
+# Portable source operations
 
-Imports copy uploaded bytes, including copies from another directory of the same
-library. The server does not read or remove a client source path. Library and
-deployment write gates apply to import, Trash and Undo.
+File Browser provides **Copy, Rename and Move** and **Trash and Undo**. Each opens file
+operations and recovery for the selected library. Enable file operations on that serving
+instance first. The deployment must permit writes. A protected library requires its
+passphrase when enabling writes.
 
-## Copy-import destination identity
+Select a regular file or directory and choose an action. Enter a library-relative
+destination for Copy, Rename or Move. **Copy files…** receives files through the file
+picker; the originals stay in place. Prepare the operation, inspect its saved review,
+then choose **Apply reviewed operation**. An occupied destination offers Replace, Skip
+or Keep Both. Keep Both selects a vacant suffix during preparation and checks that
+absence again during application. It cannot overwrite a new arrival.
 
-Ordinary copies and Keep Both use independent catalog identities and do not
-inherit the source's bundle membership. Skip writes nothing. An explicit
-copy-import Replace of a regular file retains the cataloged **destination's**
-`AssetFile.id`, bundle, ordering, file note/origin, bundle notes/rating/tags/
-collections, cover/primary selections, external subtitle links, moments and
-playback position/cursor. This also applies when source and destination are the
-same path, and when the import does not request cataloging.
+Saved operations have stable identities. A retry uses the same paths, collision choice
+and review. Changed input requires a new operation. Interrupted operations retain their
+intent, independent content versions and any captured originals. Completed versions from
+interrupted work also support a separate recovery copy. Retry is explicit. Cancellation
+stops preparation and application before capture; after capture, recovery must finish
+the saved operation. Release and write-mode revocation stop admission and are checked
+between byte blocks.
 
-Replace preserves the destination's authored metadata; it does not transfer
-metadata from a separately cataloged source. Moment coordinates, cover-frame
-selection and playback position are retained without attempting to retime them
-for a different edit of the media. An unlinked destination has no metadata to
-retain. Uploads cannot replace directories or symlink entries.
+## Identity and recovery
 
-## Copy-import bytes and derived media
+| Action | Catalog identity |
+| --- | --- |
+| Copy to a vacant path | New file and provisional bundle |
+| Copy Replace | Destination file ID and authored metadata remain |
+| Rename or Move | Source file ID remains |
+| Move Replace | Source ID moves; displaced bytes and metadata remain recoverable |
+| Trash | Source is retained outside browsing; authored deletion history remains |
+| Undo | Conditional inverse; unrelated later metadata remains |
+| Restore copy | Independent file and provisional bundle at a vacant path |
 
-The complete upload is staged before the original moves. Publication uses a
-same-filesystem hard link followed by staging cleanup, so a newcomer at the
-destination cannot be overwritten. Replace probes hard-link support using staged
-bytes before moving the original. Unsupported storage returns a structured
-refusal and leaves the original in place. A later publication or rollback failure
-can still leave the original recoverable in Trash. The journal
-references a separate Trash operation before the backup move. That Trash entry
-holds the old bytes with no catalog-file ownership; the active destination retains its row.
-Empty Trash removes the backup, disables its Undo, and does not delete the active
-file or its metadata. Put back refuses an occupied path. If the active file is
-moved elsewhere first, Put back restores the backup bytes as an unlinked file.
+Completed versions appear under **Trash and retained versions**. Undo requires the
+recorded output bytes, affected metadata revisions and destination conditions. Later
+changes to those conditions stop Undo. A separate recovery copy can be made at a vacant
+path. Source versions have no automatic expiry or permanent-delete UI. Storage grows
+with retained operations. Back up `.cairndex/source-operations/` along with source files
+and `.cairndex/replica/`.
 
-Replace and Undo refresh size, timestamp, filesystem observation and quick
-fingerprint. They clear full-hash/probe/MIME results; thumbnails, previews,
-contact sheets, storyboards, moment derivatives and converted external subtitles
-validate their source fingerprint. Browser cover/image URLs change with the
-source generation. Existing HLS sessions using the replaced video or burned
-subtitle are closed so new playback cannot reuse old encoded segments.
-Embedded subtitle stream records are regenerated for the new container. Undo
-restores the original embedded track IDs and labels from the journal.
+## Delivery and limits
 
-## Copy-import cancellation, recovery and Undo
+Immutable receipts name the exact catalog event and retained versions. Metadata,
+receipts and media can arrive separately. Incomplete delivery waits. A received receipt
+never repeats the physical rename, replacement or deletion. Concurrent content and
+reference edits require Metadata review. `catalog_source_edit` events require a source-
+operation-aware reader; an older strict reader refuses them.
 
-Cancellation or disconnection during upload discards partial staging and leaves
-the destination untouched. A publication failure restores the original when the
-path remains vacant and filesystem permissions allow it. Interrupted imports use
-the committed staging observation to distinguish published bytes from an untouched
-old destination; interrupted Undo resumes its journaled inverse. Ambiguous external changes are refused
-rather than overwritten or assigned a guessed identity.
+Private journals and uploads are included in private recovery validation. Source
+versions stay in the library and are not included in private database snapshots.
+Recovered unfinished operations require exact Retry after Reopen.
 
-Undo stashes the replacement bytes in recoverable Trash, restores the original
-bytes and keeps retained destination metadata, including edits made after Replace.
-For an originally unlinked destination, a row created for the incoming copy moves
-with that copy to Trash; the original bytes return unlinked. Newer replacements
-must be undone first. A completed Undo cannot execute twice.
-Pre-existing import receipts retain their original Undo semantics; there is no
-catalog migration or API schema change.
+The current implementation accepts regular files and directories with at most 128
+visible entries and 128 catalog identities per affected tree. A review also has a
+4,096-unit and bounded-byte metadata limit. Nested and empty directories are retained.
+Larger operations require smaller source selections. Symlinks, hidden paths, cross-
+filesystem operations and unsupported no-replace storage primitives are refused. The
+destination parent directory must exist. Replace requires matching file or directory
+types. Source and destination trees must not overlap. The default operation budget is
+128 GiB, counting independent versions, captured originals, output copies and retained
+uploads. Insufficient storage stops work without discarding retained originals. Two
+source workers serve the process; source copying does not run in HTTP exchange handlers.
 
-## Rename/Move Replace
+Namespace changes by an external process can race with path checks. Parent identity
+checks detect observed changes, but cannot exclude an external rename between the final
+check and a filesystem call. External processes must not move library directories during
+application. An already-open file can still be changed after capture; its independent
+version remains the recovery source. Local synthetic tests do not qualify NAS storage,
+providers or power-loss behavior.
 
-Explicit in-app Rename/Move carries the source file's ID, bundle membership,
-notes/origin, rating, covers, subtitle references, moments and playback references
-with it. Replacing a destination never transfers or merges its metadata into the
-source. The displaced destination retains its own ID, metadata and bytes in
-recoverable Trash. An unlinked source stays unlinked; it does not inherit the
-linked destination's bundle. Directory replacement moves the whole directory,
-including its cataloged children; it does not merge directory contents.
-
-For example, moving a mountain photo over a beach photo keeps the mountain
-photo in its original bundle with its original rating and notes. The beach
-photo and its metadata are recoverable from Trash. Undo returns both photos to
-their original paths, retaining subsequent metadata edits. Put back requires a
-vacant original path; Empty Trash permanently removes the displaced file and
-its catalog row, and disables the corresponding Replace Undo.
-
-New replacement moves record `relocation_protocol: 1`. Parent intent and linked
-Trash receipts commit together before displacement. Recovery finishes an observed
-move, or restores the displaced file when the source never moved and the target
-remains vacant. A batch retains successful moves and reports failed paths. Undo
-and Put back record their inverse intent before moving bytes; a restart or retry
-can finish a partially applied inverse. Changed or occupied paths are refused,
-not overwritten or assigned guessed identities. Older receipts keep their
-historical recovery and Undo semantics; there is no journal migration.
-
-Unchanged bytes retain their identity-bound derived caches and subtitle records.
-Path-bound HLS sessions close before either file moves so an encoder cannot reuse
-the vacated path for a different source. Skip, Keep Both and cancellation retain
-their existing behavior. File-manager imports remain copy-only.
-
-## Boundary and verification
-
-Synthetic backend tests cover metadata, cancellation, failed publication,
-interruption/restart, repeated/out-of-order Undo, Trash emptying and derivative
-refresh. Real-backend browser tests cover copy, Skip, Keep Both, same-path Replace,
-changed-image Replace, explicit Rename/Move collisions and the visible Undo
-button. Rename/Move regressions cover both metadata sets, linked/unlinked
-combinations, directory replacement, partial batches, occupied paths, direct
-Put back and separate-process exits during displacement, movement and Undo. These
-are supplemented by [bounded real NAS and Mac SMB checks](nas-verification.md).
-They do not establish power-loss durability or OS drag delivery. Desktop OS
-integration remains incomplete and paused.
-
-Filesystem identity observations are conservative recovery evidence, not full
-content verification. Cross-device moves use the existing copy/marker fallback;
-an interruption without sufficient identity/marker evidence needs review. The
-tested NAS-local filesystem supports hard links; the tested Mac SMB mount uses
-the direct transport below while same-share Rename/Move/Trash/Undo use mounted
-paths. Other mounts, cross-device recovery, hostile concurrent filesystem mutation and
-power-loss durability remain unqualified. Copy-import publication requires
-filesystem hard-link support.
-
-The tested Mac SMB mount rejects native hard links, exclusive rename and cloning.
-For this positively identified topology, Copy/Replace/Undo use a separate signed,
-encrypted SMB3 connection for server-side no-overwrite publication and recovery
-identity while ordinary file access remains mounted. The endpoint, share and
-account come from the kernel's mount record; the password comes from the exact
-saved macOS Keychain item and stays in process memory. Import protocol three uses
-server file identity. Version-two SMB observations
-also bind the mounted account and server GUID; version-one SMB observations and
-protocol-two native receipts retain their original interpretation.
-An unanswered Keychain prompt times out safely, and unresolved recovery retains
-its staged bytes for a later retry.
-Account-specific connection pools and explicit share handles prevent implicit
-account selection and DFS redirects. Ancestor handles reject reparse points and
-hold directories against SMB rename during the operation. A fresh 32-byte challenge
-proves each mapped directory; mounted size and bounded content samples verify
-published visibility without relying on smbfs per-name inode numbers or hashing
-large files. Server hard-link identity proves publication of the complete object.
-Probe collisions never trigger cleanup. Successful probes and completed publication
-sources are deleted only through identity-checked exclusive handles, which release
-deferred mounted opens before deletion. Mounted directory entries can remain stale
-briefly; repeated Undo uses server identity to finish cleanup idempotently.
-
-Only definite leaf absence after directory verification permits absence-based
-recovery. Permission, session, share, network, mapping and server-identity failures
-retain pending intent and complete staging. An unavailable initial observation is
-recorded as `observation_pending`; recovery obtains the observation when access
-returns and settles the unattempted publication before the owner retries the copy.
-
-See [ADR-0034](adr/0034-mounted-smb-copy-publication.md) and the
-[capability evidence](nas-verification.md#mounted-smb-copy-publication).
+See [ADR-0036](adr/0036-portable-source-operations.md) and [current status](STATUS.md).

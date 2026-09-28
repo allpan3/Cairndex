@@ -377,6 +377,7 @@ export function CatalogWorkspace({
           editor={editor}
           albumEnabled={state.album_version === 1}
           inspectorEnabled={state.inspector_version === 1}
+          sourceOperationsEnabled={state.source_operations_version === 1}
           selectionEnabled={state.selection_version === 1}
           systemViewsEnabled={state.system_views_version === 1}
           blocked={!state?.ready || Boolean(state?.blocked)}

@@ -1185,3 +1185,16 @@ servers. File metadata tests invoke the shipped API client inside the browser an
 exercise the existing inspector and conflict/retry controls; there is no file
 note/source editor. They verify reload, retained request bytes/bases/identities,
 disjoint fields, conflict choices, lost responses and unchanged synthetic sources.
+
+## Portable source-operation verification
+
+Run `tests/test_portable_source_files.py`, `tests/test_portable_source_operations.py`
+and `tests/test_portable_source_api.py` from `apps/server`. Tests use disposable
+portable creation and synthetic data. They cover exact retries, collision identity,
+retained versions, conditional Undo, namespace claims, upload gates and process
+exits between capture, publication and catalog commit.
+
+`e2e/source-operations.spec.ts` uses normal portable Create and a real isolated
+server. It checks a lost queue response across reload, Replace, directory Rename,
+Trash, Undo, picker Copy and keyboard dismissal. The packaged smoke test exercises
+source Copy, Move, Trash and Undo through the frozen worker. Provider/NAS and final installation acceptance are separate gates.

@@ -24,7 +24,10 @@ a new operation. One recovery operation per library runs at a time.
 
 Access settings, device tokens and browser grants are not restored from snapshots.
 The destination server keeps its protection. Credentials and server configuration,
-source media, shared history and unreceived browser text need separate backups.
+source media, shared history, retained `.cairndex/source-operations/` content
+versions and unreceived browser text need separate backups. Private snapshots
+include source-operation intent, receipt and upload records. Recovered unfinished
+source operations require explicit Retry; recovery activation does not move bytes.
 
 
 This local administrative workflow supports existing `cairndex.replica-library`

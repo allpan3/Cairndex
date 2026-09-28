@@ -1,4 +1,4 @@
-"""Portable libraries never enable legacy source operations."""
+"""Portable write permission does not enable the removed legacy operation API."""
 
 from pathlib import Path
 
@@ -10,13 +10,13 @@ from cairndex.registry.engine import create_registry_engine
 from tests.test_library_scoped import create
 
 
-def test_portable_source_operations_are_refused(isolated_client, tmp_path):
+def test_portable_permission_does_not_enable_legacy_operations(isolated_client, tmp_path):
     root = tmp_path / "library"
     identity, _ = create(isolated_client, root)
     source = root / "example.txt"
     source.write_bytes(b"Synthetic source")
     base = f"/api/v1/libraries/{identity}"
-    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 409
+    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 200
     for operation, body in (
         ("rename", {"path": "example.txt", "new_name": "changed.txt"}),
         ("mkdir", {"path": "New directory"}),

@@ -10,6 +10,7 @@ imports are resolved dynamically:
 
 - portable creation and private SQLite/FTS materialization;
 - Update, reviewed catalog admission, and JPEG/HEIC derivatives;
+- reviewed source Copy, Move, Trash and conditional Undo;
 - process shutdown and release of private binding exclusion.
 
     python packaging/smoke_test.py [--bundle path/to/cairndex-sidecar]
@@ -232,6 +233,50 @@ def check(port: int, library_root: Path) -> None:
             raise SmokeFailure("thumbnail pixels differ from the synthetic source")
 
     check_heic_preview(port, library_id)
+    check_source_operations(port, library_id, library_root)
+
+
+def check_source_operations(port: int, library_id: str, root: Path) -> None:
+    """Exercise dynamic source-operation imports through the frozen worker."""
+    base = f"/api/v1/libraries/{library_id}"
+    status, _ = request(port, base + "/write-mode", method="PUT", body={"enabled": True})
+    if status != 200:
+        raise SmokeFailure("could not enable synthetic source operations")
+    path = base + "/source-operations"
+    intents = [
+        {
+            "operation": "smoke-copy",
+            "action": "copy",
+            "source": "photo.jpg",
+            "destination": "copy.jpg",
+        },
+        {
+            "operation": "smoke-move",
+            "action": "move",
+            "source": "copy.jpg",
+            "destination": "moved.jpg",
+        },
+        {"operation": "smoke-trash", "action": "trash", "source": "moved.jpg"},
+        {"operation": "smoke-undo", "action": "undo", "prior": "smoke-trash"},
+    ]
+    for intent in intents:
+        status, response = request(port, path, method="POST", body=intent)
+        if status != 202:
+            raise SmokeFailure(
+                f"could not queue synthetic source operation: HTTP {status} {response}"
+            )
+        target = path + "/" + intent["operation"]
+        review = await_state(port, target, "prepared")
+        status, _ = request(
+            port, target + "/accept", method="POST", body={"receipt": review["receipt"]}
+        )
+        if status != 202:
+            raise SmokeFailure("could not accept synthetic source review")
+        await_state(port, target, "succeeded")
+    if (root / "moved.jpg").read_bytes() != (root / "photo.jpg").read_bytes():
+        raise SmokeFailure("source Undo did not restore the synthetic image")
+    if (root / "copy.jpg").exists():
+        raise SmokeFailure("source Move retained its original visible path")
 
 
 def find_file_by_suffix(

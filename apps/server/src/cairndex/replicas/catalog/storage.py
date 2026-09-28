@@ -57,8 +57,11 @@ class CatalogStorage(PrivateStore):
         with self.connection() as db:
             from cairndex.replicas.discovery_state import SCHEMA as DISCOVERY_SCHEMA
             from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
+            from cairndex.replicas.source_journal import SCHEMA as SOURCE_SCHEMA
 
-            db.executescript(projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA)
+            db.executescript(
+                projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA + SOURCE_SCHEMA
+            )
             install(db)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
                 db.execute(
@@ -69,6 +72,12 @@ class CatalogStorage(PrivateStore):
                     "ALTER TABLE catalog_cohorts ADD COLUMN cohort TEXT NOT NULL DEFAULT 'legacy'"
                 )
             db.execute("UPDATE catalog_jobs SET state='queued' WHERE state='running'")
+            db.execute(
+                "UPDATE source_operations SET state='interrupted',"
+                "error='Retry interrupted source intent' "
+                "WHERE state IN ('preparing','applying')"
+            )
+            db.execute("UPDATE source_uploads SET state='interrupted' WHERE state='receiving'")
             db.execute(
                 "UPDATE discovery_runs SET phase='walk',cursor='',observed=0 WHERE state='running'"
             )
@@ -235,7 +244,7 @@ class CatalogStorage(PrivateStore):
         if not self.stage(db, body):
             return "pending"
         if len(body.parents) != len(set(body.parents)) or (
-            bool(body.parents) != (body.kind == "catalog_edit")
+            bool(body.parents) != (body.kind != "catalog_seed")
         ):
             raise ReplicaError("Catalog operation requires its complete observed frontier")
         for parent in body.parents:
@@ -285,7 +294,8 @@ class CatalogStorage(PrivateStore):
         for (basis,) in db.execute("SELECT basis FROM catalog_staging"):
             parents.update(json.loads(basis))
         db.executemany(
-            "INSERT INTO catalog_parents VALUES (?, ?)", ((identity, parent) for parent in parents)
+            "INSERT OR IGNORE INTO catalog_parents VALUES (?, ?)",
+            ((identity, parent) for parent in parents),
         )
         db.executemany(
             "DELETE FROM catalog_frontier WHERE event=?", ((parent,) for parent in parents)
@@ -310,6 +320,7 @@ class CatalogStorage(PrivateStore):
                 "selection_version": 1,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
+                "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(

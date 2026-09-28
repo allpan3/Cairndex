@@ -99,3 +99,19 @@ test('discard preserves a newer draft generation', async () => {
   expect(result.current.body.files).toBe('["newer"]')
   expect(localStorage.getItem('synthetic-draft')).toContain('newer')
 })
+
+// A source request can be saved and queued before React renders its new envelope.
+test('discard acknowledges input saved in the same action', async () => {
+  const { result } = setup()
+  await act(async () => {
+    result.current.update({ files: '["queued"]' })
+    await result.current.discard()
+  })
+  expect(catalog).toHaveBeenCalledWith(
+    'library',
+    '/drafts/synthetic-operation?revision=1',
+    'DELETE',
+  )
+  expect(result.current.body.files).toBe('[]')
+  expect(localStorage.getItem('synthetic-draft')).toBeNull()
+})

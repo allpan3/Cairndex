@@ -34,7 +34,7 @@ The first product target is the computer-side web application. Android TV suppor
 9. **Local-first and self-hosted.** The desktop app can serve local libraries through its bundled server, or connect to an authoritative private server. Docker on a NAS/server is optional; neither NAS nor cloud storage defines a required operating mode.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
 11. **Explicit metadata authority.** Portable libraries use retained causal history with a private DB projection. The registry DB is server-local runtime state. NAS and cloud folders are usage scenarios, not operating modes; real-library conversion remains gated by complete round-trip/conflict support.
-12. **Progressive capability.** Direct playback, remux/transcoding, mapped desktop host actions are implemented; portable source operations remain deferred. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
+12. **Progressive capability.** Direct playback, remux/transcoding, mapped desktop host actions are implemented; reviewed portable file and bounded directory operations require explicit write permission. Broader client support and multi-user behavior remain deferred; implemented capabilities still require their own platform and deployment qualification.
 
 Mac-hosted Cairndex accessing files on mounted SMB storage is a required
 deployment scenario. NAS-hosted serving is a separate optional scenario, not a
@@ -94,8 +94,8 @@ Format-three synthetic packages support [manual Update](replica-discovery.md):
 private discovery, conservative external-move repair and explicit grouping or
 ambiguous-identity review, complete directory/collection grouping, existing placement
 and explicit full-content verification. Confirmed groupings and file IDs remain stable; local
-absence never removes shared metadata. Physical source operations remain
-unavailable. Legacy libraries retain their existing ownership and media workflows. Real-library conversion and provider qualification
+absence never removes shared metadata. Reviewed file and bounded directory operations use explicit write permission and
+independent retained content versions. Legacy library admission is unavailable. Real-library conversion and provider qualification
 require separate approval and evidence.
 
 Private backups preserve this replica's unexchanged metadata and server-received

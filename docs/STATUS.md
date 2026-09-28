@@ -1,5 +1,55 @@
 # Project status
 
+## Portable source operations: group 4 local verification
+
+Implementation is on `fix/library-ownership-lifecycle`, based on `b6e0d49a`.
+File and bounded directory Copy, Rename, Move, Replace, Trash and conditional Undo
+use exact private journals, independent retained versions and strict receipts.
+File Browser provides write permission, preparation, collision choices, picker
+Copy, saved jobs, retained metadata links and recovery controls. Incoming receipts
+never repeat physical operations. Source edits use `catalog_source_edit`; older
+strict readers refuse this event kind. Conversion remains disabled.
+
+Recovery checks cover file and directory process exits around capture, output
+publication and catalog commit; partial-copy retry; new arrivals; independent
+peer moves, deletions, edits and path collisions; ordered Undo; full catalog
+references; later unrelated notes; and private snapshot validation. Simulated
+read-only and full-disk errors retain originals. Move and Rename budget checks
+include independent versions, captured originals and output copies. No automatic
+purge is available. Reviews have limits of 128 entries and catalog identities per
+affected tree, 4,096 metadata units and bounded receipt bytes.
+
+Backend lint, formatting and type checks pass. The full backend run passes 1,882
+tests with one ffmpeg skip; the final focused source/API run passes 62 tests.
+Frontend lint, formatting and type checks pass. The final unit run passes 1,250
+tests, including background operation polling and same-action draft discard.
+Final browser verification is in progress. The album test waits for each loaded
+page and wakes hidden viewer controls before pointer navigation.
+
+The production macOS build, strict signature verification and distribution-license
+check pass. Packaged-sidecar smoke covers normal creation, reviewed discovery,
+image pixels, HEIC preview, source Copy/Move/Trash/Undo and shutdown. One earlier
+packaged queue request failed without a recorded response body; the repeat with
+response diagnostics passes. This initial failure is not attributed to a cause.
+
+Native checks use a separate application identity, profile and disposable library.
+Observed checks cover normal Create, write permission, directory Rename, Trash,
+Undo, retained review after restart and picker Copy. Restored bytes and empty
+directories match the synthetic inputs. Background status polling is verified
+in the native window and a component test. The UI automation tool timed out after
+picker selection; the private journal showed complete upload and prepared review.
+Restart restored UI access, and applying that exact review completed Copy.
+
+The isolated app profile, caches and registration are removed. The installed
+application and owner profile match all 117 and four baseline hashes respectively.
+No provider, NAS or owner-library data was used. OS drag remains paused. Group 5
+retains provider/storage/Docker qualification; group 6 retains installation and
+owner acceptance. External in-place writes, final directory-rename races,
+power loss and representative scale remain unqualified. No publication occurs.
+
+The sections below retain earlier implementation checkpoints. Their capability
+limits and test counts apply to the recorded work, not to the current result above.
+
 ## Portable library access and private recovery
 
 Implementation is on `fix/library-ownership-lifecycle`, based on `b609c9a0`.

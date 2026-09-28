@@ -136,13 +136,14 @@ def validate_intent(db: sqlite3.Connection, store: Replica, row: sqlite3.Row) ->
         return
     if isinstance(store, CatalogStore):
         _, body = catalog_decode(row["raw"], store.descriptor)
-        if not isinstance(body, Root) or body.kind != "catalog_edit":
+        if not isinstance(body, Root) or body.kind not in {"catalog_edit", "catalog_source_edit"}:
             raise ReplicaError("Private retry receipt names an unsupported event")
         expected = {
             "changes": [item.model_dump() for item in store.payload_records(db, body)],
             "parents": body.parents,
             "resolve": body.resolve,
             "recover": body.recover,
+            **({"source": True} if body.kind == "catalog_source_edit" else {}),
         }
     else:
         _, edit = decode(row["raw"], store.descriptor)
@@ -418,6 +419,11 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
         from cairndex.replicas.discovery_validation import validate as validate_discovery
 
         validate_discovery(db, store)
+
+    if "source_operations" in media_tables:
+        from cairndex.replicas.source_receipts import validate_private
+
+        validate_private(db, store)
 
     for row in db.execute("SELECT * FROM catalog_jobs"):
         intent = json.loads(row["intent"])
