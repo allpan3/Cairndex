@@ -141,6 +141,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
       const response = await fetch(backend.baseUrl + new URL(route.request().url()).pathname)
       const body = await response.json()
       delete body.selection_version
+      delete body.album_version
       delete body.system_views_version
       await route.fulfill({
         status: 200,
@@ -152,6 +153,9 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(
       page.getByText('Update the server to use multiple selection and bulk metadata changes.'),
     ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Browse bundle files', exact: true }),
+    ).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Random', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /^Bulk changes/ })).toHaveCount(0)
   } finally {

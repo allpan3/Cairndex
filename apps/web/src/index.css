@@ -7896,3 +7896,15 @@ code {
 .catalog-unbundled button[aria-pressed='true'] {
   outline: 2px solid var(--accent);
 }
+
+.catalog-album-page,
+.catalog-album-browser-return {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.catalog-album-page[hidden],
+.catalog-album-browser-return[hidden] {
+  display: none;
+}

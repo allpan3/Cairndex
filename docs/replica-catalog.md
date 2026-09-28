@@ -124,7 +124,8 @@ library switch. An already observed conflict requires explicit metadata review.
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status` | Default Create, real conversion and provider qualification remain unavailable |
-| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Albums; Recently Used requires a separate private usage contract |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails | Recently Used requires a separate private usage contract |
+| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages | Source writes, file note/source controls and OS drag remain unavailable |
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
 | System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used and Trash remain outside the current catalog contract |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
@@ -239,6 +240,43 @@ Notes retain exact list values; arrow keys on each reorder control move a note.
 Metadata review retains the all-family controls, saved jobs and deleted objects.
 Servers without browse version two keep the complete catalog controls. Legacy
 library queries and mutations retain their existing routes and behavior.
+
+## Bundle albums
+
+Servers with `album_version: 1` open bundle contents from the Bundle Browser or
+**Browse bundle files** in the inspector. The shared album tiles and rows support
+grid/list layout, item size, pointer toggles, Shift ranges, marquee selection,
+arrows, Home/End and Enter. Command/Ctrl+A selects loaded album items only.
+Escape clears selection, then returns to the parent view. Bundle metadata drafts
+remain separate from file selection. Bulk bundle controls belong to the Bundle
+Browser, not the file selection inside an album.
+
+The album endpoint accepts stable bundle and optional directory-member IDs, with
+at most 100 items per page. The interface requests 50. Loose files and directory
+members share sequence order with stable ID ties. Opening a directory member
+lists only this bundle's cataloged files in its subtree. Hidden scanner paths
+are excluded before counts and pagination. Empty, loading, failed and unavailable
+states remain distinct. No directory scan, source probe or authored mutation is
+part of the listing. Visible thumbnails use the existing guarded private cache;
+selecting a file requests its local facts. Catalog presence alone does not prove
+that source bytes are available.
+
+Each continuation retains the committed causal frontier. A changed frontier
+requires Reload album rather than combining pages from different projections.
+Successful refresh retains stable selected IDs; a complete result can remove
+selections that no longer exist. Closing media retains the album's selection,
+scroll position and bundle draft. Files/Tags navigation retains the mounted bundle
+surface; a new library or connection has its own state. Late responses cannot
+replace a different album. Locate in Bundle Browser closes the prior album before
+selecting its destination. Older servers retain direct media opening.
+
+A selected late-page file determines its folder-member playlist before playback
+starts. A failed continuation exposes the error and Retry rather than waiting
+indefinitely for an unloaded cursor. Parent-bundle playback excludes
+directory-member files. Missing bytes remain retryable through the guarded shared viewer. A removed or transferred
+selected file reports an error instead of opening another file. Recently Used
+remains unavailable: private cursors and progress do not define a usage timestamp
+or an ordering contract. Trash requires the separate source-operation contract.
 
 ## Local media
 

@@ -53,33 +53,38 @@ export function ReplicaViewer({
   const pages = useInfiniteQuery({
     queryKey: ['replica-media', library, 'playlist', bundleId],
     enabled: !folder && Boolean(bundleId),
-    initialPageParam: 0,
+    initialPageParam: { offset: 0, revision: '' },
     queryFn: ({ pageParam, signal }) =>
       replicaRequest<Playlist>(
         library,
-        `/media/bundles/${bundleId}?offset=${pageParam}`,
+        `/media/bundles/${bundleId}?offset=${pageParam.offset}${pageParam.revision ? `&expected_revision=${pageParam.revision}` : ''}`,
         'GET',
         undefined,
         signal,
       ),
-    getNextPageParam: (last) => last.next_offset ?? undefined,
+    getNextPageParam: (last) =>
+      last.next_offset == null
+        ? undefined
+        : { offset: last.next_offset, revision: last.revision ?? '' },
     retry: false,
   })
   const first = pages.data?.pages[0]
   const files = useMemo(() => pages.data?.pages.flatMap((page) => page.files) ?? [], [pages.data])
   const playlist = useMemo(
-    () => playlistFor(files, first?.directories ?? [], target.fileId),
-    [files, first?.directories, target.fileId],
+    () => playlistFor(files, first?.directories ?? [], target.fileId, initial.data?.file),
+    [files, first?.directories, target.fileId, initial.data?.file],
   )
   const sequence = folder
     ? folder.entries.map((file) => file.file_id!)
     : playlist.map((file) => file.id)
-  const preferred = target.fileId ?? first?.cursor
+  const requested = picked ?? target.fileId
+  const preferred = requested ?? first?.cursor
   const waitingForPreferred =
-    !picked && preferred && !sequence.includes(preferred ?? '') && pages.hasNextPage
+    !pages.isError && preferred && !sequence.includes(preferred ?? '') && pages.hasNextPage
   const selected = waitingForPreferred
     ? undefined
-    : (picked ?? (sequence.includes(preferred ?? '') ? preferred : null) ?? sequence[0])
+    : ((sequence.includes(preferred ?? '') ? preferred : null) ??
+      (requested ? undefined : sequence[0]))
   const index = sequence.indexOf(selected ?? '')
   // Fetch the next metadata page ahead of the ordered transition; this never reads media bytes
   useEffect(() => {
@@ -171,7 +176,17 @@ export function ReplicaViewer({
         Boolean(waitingForPreferred) ||
         (Boolean(selected) && !local.isFetchedAfterMount)
       }
-      error={initial.error ?? pages.error ?? local.error ?? mediaError}
+      error={
+        initial.error ??
+        pages.error ??
+        local.error ??
+        mediaError ??
+        (requested && !pages.hasNextPage && pages.isSuccess && !sequence.includes(requested)
+          ? new Error(
+              'Selected file is no longer in this playlist. Close the viewer and reload the album.',
+            )
+          : null)
+      }
       emptyMessage={
         !(folder ? false : pages.isPending) && !sequence.length
           ? 'This bundle has no previewable media outside its folder members. Open a cataloged file to view that folder.'

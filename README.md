@@ -58,6 +58,11 @@ verified preparation, inspectable reviews and explicit activation into a separat
 private generation. Restores preserve unexchanged work and received drafts, use
 fresh author incarnations and keep the original stores and backups intact.
 
+Complete synthetic catalogs also provide paginated bundle albums with shared
+file tiles, directory members and guarded media opening. Album selection, scroll
+position and bundle drafts survive viewer return. This does not enable ordinary
+replica creation, real-library conversion or source writes.
+
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
 hierarchical **Collections**, a physical **File Browser** that is read-only by

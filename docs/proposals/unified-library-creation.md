@@ -59,8 +59,9 @@ root relocation, private-store recovery or historical-client qualification.
 - Complete or explicitly defer the remaining ordinary interface capabilities.
   Existing complete synthetic packages support collection/tag navigation,
   structured filters, File Browser, title/note/rating controls, membership reviews,
-  covers, local file details and reviewed bulk metadata changes. Random, recorded
-  local Missing Files and paginated Unbundled views are available. Albums,
+  covers, local file details, paginated bundle albums and reviewed bulk metadata
+  changes. Random, recorded local Missing Files and paginated Unbundled views are
+  available.
   Recently Used and source-operation views remain separate work; see
   the [capability inventory](../replica-catalog.md#ordinary-browse-and-edit-boundary).
   Retain the existing all-family conflict and discovery controls.

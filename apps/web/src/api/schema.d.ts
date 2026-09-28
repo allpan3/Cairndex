@@ -3278,6 +3278,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}/album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Page */
+        get: operations["album_page_api_v1_libraries__library_id__replica_media_bundles__bundle_id__album_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}/cursor": {
         parameters: {
             query?: never;
@@ -3975,6 +3992,33 @@ export interface components {
             revisions: string[];
             /** Value */
             value: string | number | string[] | null;
+        };
+        /** CatalogAlbumItem */
+        CatalogAlbumItem: {
+            directory?: components["schemas"]["DirectoryMemberRead"] | null;
+            file?: components["schemas"]["FileRead"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "file" | "directory";
+        };
+        /** CatalogAlbumPage */
+        CatalogAlbumPage: {
+            /** Directory Path */
+            directory_path: string | null;
+            /** Items */
+            items: components["schemas"]["CatalogAlbumItem"][];
+            /** Next Offset */
+            next_offset: number | null;
+            /** Revision */
+            revision: string;
+            /** Title */
+            title: string;
+            /** Total */
+            total: number;
         };
         /** CatalogBrowsePage */
         CatalogBrowsePage: {
@@ -6265,11 +6309,15 @@ export interface components {
             moments: components["schemas"]["MomentRead"][];
             /** Next Offset */
             next_offset: number | null;
+            /** Revision */
+            revision?: string | null;
             /** Title */
             title: string;
         };
         /** ReplicaStatus */
         ReplicaStatus: {
+            /** Album Version */
+            album_version?: number | null;
             /** Blocked */
             blocked: string | null;
             /** Browse Version */
@@ -14541,6 +14589,7 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
+                expected_revision?: string | null;
             };
             header?: {
                 authorization?: string | null;
@@ -14562,6 +14611,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplicaPlaylist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_page_api_v1_libraries__library_id__replica_media_bundles__bundle_id__album_get: {
+        parameters: {
+            query?: {
+                directory_id?: string | null;
+                offset?: number;
+                limit?: number;
+                expected_revision?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogAlbumPage"];
                 };
             };
             /** @description Validation Error */

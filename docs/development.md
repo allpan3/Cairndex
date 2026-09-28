@@ -158,6 +158,12 @@ unknown observations and direct-directory safety. The combined browser journey
 checks collection/tag navigation, exact saved rules, retained drafts, local file
 search, keyboard playback and missing bytes on a disposable real server.
 
+`devtools.album_fixture.create_album()` creates a disposable paginated album with
+generated images and video. `tests/test_catalog_album.py` checks stable order,
+directory-member scope, hidden paths, continuation bases and source-read exclusion.
+`e2e/catalog-album.spec.ts` checks late-page playback, missing bytes, selection,
+scroll/draft return, changed pages and obsolete responses against a real server.
+
 `tests/test_catalog_selection.py` covers bounded bulk reads, mixed membership,
 cover clearing, stale bases, deletion, explicit restoration and exact job retries.
 `e2e/catalog-selection.spec.ts` covers multiple selection, retained reviews across

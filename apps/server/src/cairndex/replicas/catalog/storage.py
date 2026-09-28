@@ -305,6 +305,7 @@ class CatalogStorage(PrivateStore):
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
                 "browse_version": 2,
+                "album_version": 1,
                 "inspector_version": 1,
                 "selection_version": 1,
                 "system_views_version": 1,

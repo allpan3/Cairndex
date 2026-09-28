@@ -103,11 +103,15 @@ export function playlistFor(
   files: FileRead[],
   members: DirectoryMember[],
   initialFileId?: string | null,
+  initialFile?: Pick<FileRead, 'id' | 'relative_path'> | null,
 ): FileRead[] {
   const playable = files.filter(
     (file) => file.supported && (file.media_kind === 'image' || file.media_kind === 'video'),
   )
-  const opened = initialFileId ? playable.find((file) => file.id === initialFileId) : undefined
+  const opened = initialFileId
+    ? (playable.find((file) => file.id === initialFileId) ??
+      (initialFile?.id === initialFileId ? initialFile : undefined))
+    : undefined
   const inside = opened ? memberCovering(opened, members) : null
   if (inside) return playable.filter((file) => isInside(file, inside))
   return playable.filter((file) => memberCovering(file, members) === null)

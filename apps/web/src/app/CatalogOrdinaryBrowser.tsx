@@ -44,6 +44,7 @@ export function CatalogOrdinaryBrowser(props: {
   editor: string
   selectionEnabled: boolean
   systemViewsEnabled: boolean
+  albumEnabled: boolean
   inspectorEnabled: boolean
   blocked: boolean
   selected: string | null

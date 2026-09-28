@@ -27,6 +27,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Complete synthetic catalogs provide paginated, virtualized bundle albums with
+  file and directory-member selection, guarded thumbnails and media opening.
+  Late-page files retain folder playback boundaries; viewer return preserves
+  album selection, scroll position and bundle drafts. Changed continuation pages
+  require reload. Older servers retain direct media opening. Source writes and
+  ordinary creation/conversion gates remain unchanged.
+
 - Complete synthetic catalogs support pointer, keyboard and marquee multi-selection,
   with reviewed title/rating and tag/collection changes for up to 100 bundles.
   Reviews retain original targets, causal bases and exact retries across navigation

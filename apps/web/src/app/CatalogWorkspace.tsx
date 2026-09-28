@@ -371,6 +371,7 @@ export function CatalogWorkspace({
           }}
           library={libraryId}
           editor={editor}
+          albumEnabled={state.album_version === 1}
           inspectorEnabled={state.inspector_version === 1}
           selectionEnabled={state.selection_version === 1}
           systemViewsEnabled={state.system_views_version === 1}

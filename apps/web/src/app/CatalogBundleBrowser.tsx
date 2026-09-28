@@ -10,6 +10,7 @@ import { type AdHocFilters, adHocFiltersToExpression } from './adHocFilters'
 import { useCollections } from '../api/hooks'
 import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
 import { selectionRange, type SelectionModifiers } from './selection'
+import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -24,6 +25,7 @@ export function CatalogBundleBrowser({
   onFilters,
   editor,
   inspectorEnabled,
+  albumEnabled,
   selectionEnabled,
   systemViewsEnabled,
   blocked,
@@ -41,6 +43,7 @@ export function CatalogBundleBrowser({
   editor: string
   selectionEnabled: boolean
   systemViewsEnabled: boolean
+  albumEnabled: boolean
   inspectorEnabled: boolean
   blocked: boolean
   selected: string | null
@@ -69,6 +72,8 @@ export function CatalogBundleBrowser({
   const activeSort = selection.view === 'recent' ? 'date_added' : sort
   const activeOrder = selection.view === 'recent' && sort !== 'date_added' ? 'desc' : order
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
+  const [album, setAlbum] = useState<{ id: string; scope: string } | null>(null)
+  const [albumFile, setAlbumFile] = useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const navigation = useRef<BrowserNavigation>(null)
@@ -161,7 +166,11 @@ export function CatalogBundleBrowser({
   })
   const outgoing = useRef(selected)
   const lastLocate = useRef(locateRequest)
-  if (picked.scope !== scope) setPicked({ scope, ids: new Set(), active: null, anchor: null })
+  if (picked.scope !== scope) {
+    setPicked({ scope, ids: new Set(), active: null, anchor: null })
+    setAlbum(null)
+    setAlbumFile(null)
+  }
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
       lastLocate.current = locateRequest
@@ -173,11 +182,23 @@ export function CatalogBundleBrowser({
         anchor: selected,
       }))
       setBulkOpen(false)
+      setAlbum(null)
+      setAlbumFile(null)
     }
   }, [selected, locateRequest])
   const selectedIds = picked.scope === scope ? picked.ids : new Set<string>()
   const active = picked.scope === scope ? picked.active : null
-  const single = selectedIds.size === 1 ? [...selectedIds][0]! : null
+  const albumId = album?.scope === scope ? album.id : null
+  const single = albumId ?? (selectedIds.size === 1 ? [...selectedIds][0]! : null)
+  const openAlbum = (id: string) => {
+    if (!albumEnabled) {
+      onOpen(id)
+      return
+    }
+    setAlbum({ id, scope })
+    setAlbumFile(null)
+    setBulkOpen(false)
+  }
   function select(id: string, modifiers: SelectionModifiers) {
     let ids = new Set([id])
     if (selectionEnabled && modifiers.shiftKey) {
@@ -252,7 +273,7 @@ export function CatalogBundleBrowser({
         if (event.key === 'End') next = items.at(-1)?.id ?? null
         if (event.key === 'Enter' && single) {
           event.preventDefault()
-          onOpen(single)
+          openAlbum(single)
         }
         if (next) {
           event.preventDefault()
@@ -319,7 +340,7 @@ export function CatalogBundleBrowser({
         {!selectionEnabled && (
           <p>Update the server to use multiple selection and bulk metadata changes.</p>
         )}
-        {selectionEnabled && (
+        {selectionEnabled && !albumId && (
           <button className="btn catalog-bulk-open" onClick={() => setBulkOpen(true)}>
             Bulk changes ({selectedIds.size})
           </button>
@@ -347,34 +368,51 @@ export function CatalogBundleBrowser({
             Retry bundles
           </button>
         )}
-        <Browser
-          navigationRef={navigation}
-          unavailableSize
-          singleSelection={!selectionEnabled}
-          items={items}
-          total={browse.data?.pages[0]?.total ?? 0}
-          layout={prefs.layout}
-          zoom={prefs.zoom}
-          sort={activeSort}
-          order={activeOrder}
-          onSort={changeSort}
-          selectedIds={selectedIds}
-          activeId={active}
-          onSelect={select}
-          onMarqueeSelect={many}
-          onOpen={onOpen}
-          onContextMenu={(_, event) => {
-            event.preventDefault()
-            setNotice('Use the inspector to edit metadata or open conflict review.')
-          }}
-          isLoading={browse.isPending}
-          isError={browse.isError}
-          error={browse.error}
-          hasNextPage={browse.hasNextPage}
-          isFetchingNextPage={browse.isFetchingNextPage}
-          fetchNextPage={() => void browse.fetchNextPage()}
-          searchQuery={query}
-        />
+        <div hidden={Boolean(albumId)} className="catalog-album-browser-return">
+          <Browser
+            navigationRef={navigation}
+            unavailableSize
+            singleSelection={!selectionEnabled}
+            items={items}
+            total={browse.data?.pages[0]?.total ?? 0}
+            layout={prefs.layout}
+            zoom={prefs.zoom}
+            sort={activeSort}
+            order={activeOrder}
+            onSort={changeSort}
+            selectedIds={selectedIds}
+            activeId={active}
+            onSelect={select}
+            onMarqueeSelect={many}
+            onOpen={openAlbum}
+            onContextMenu={(_, event) => {
+              event.preventDefault()
+              setNotice('Use the inspector to edit metadata or open conflict review.')
+            }}
+            isLoading={browse.isPending}
+            isError={browse.isError}
+            error={browse.error}
+            hasNextPage={browse.hasNextPage}
+            isFetchingNextPage={browse.isFetchingNextPage}
+            fetchNextPage={() => void browse.fetchNextPage()}
+            searchQuery={query}
+          />
+        </div>
+        {albumId && (
+          <CatalogBundleAlbum
+            key={albumId}
+            library={library}
+            bundle={albumId}
+            layout={prefs.layout}
+            zoom={prefs.zoom}
+            onBack={() => {
+              setAlbum(null)
+              setAlbumFile(null)
+            }}
+            onOpen={(file) => onOpenFile(albumId, file)}
+            onSelectFile={setAlbumFile}
+          />
+        )}
       </div>
       {bulkOpen && selectionEnabled ? (
         <CatalogMultiBundleInspector
@@ -396,6 +434,8 @@ export function CatalogBundleBrowser({
           blocked={blocked}
           refresh={refresh}
           onReview={onReview}
+          albumFile={albumId ? albumFile : null}
+          onAlbum={albumEnabled ? () => openAlbum(detail.data.id) : undefined}
           onOpen={() => onOpen(detail.data.id)}
           onOpenFile={(file) => onOpenFile(detail.data.id, file)}
         />

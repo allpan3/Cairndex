@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { type FileRead, fileThumbnailUrl } from '../api/client'
+import { type FileRead } from '../api/client'
 import {
   useBundle,
   useBundleFiles,
@@ -9,17 +9,14 @@ import {
   useFileOperations,
   useForgetMissingFiles,
 } from '../api/hooks'
-import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { ContextMenu } from './ContextMenu'
-import { type FileDragProps, fileDragProps } from './dragOut'
+import { fileDragProps } from './dragOut'
 import { bundleFileMenuEntries } from './bundleFileMenu'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import type { ContactSheetTarget } from './contactSheetExport'
-import { HoverPreview } from './HoverPreview'
-import type { HoverPreviewSource } from './hoverPreviewState'
-import { factsFromBundleFile } from './fileFacts'
-import { listRowHeight } from './layout'
+import { AlbumItems } from './AlbumItems'
+import { AlbumRow, AlbumTile } from './AlbumItem'
 import { selectionTargets } from './selection'
 import { useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -81,7 +78,7 @@ export function BundleAlbum({
   // Dropping the record of a file that is gone; see `useForgetMissingFiles`.
   const forgetMissing = useForgetMissingFiles()
   const fileOps = useFileOperations()
-  const [viewing, setViewing] = useState<number | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string | null>(null)
   const menu = useContextMenu()
@@ -138,7 +135,7 @@ export function BundleAlbum({
     setAnchor(file.id)
   }
 
-  const openFile = (index: number) => setViewing(index)
+  const openFile = (id: string) => setViewing(id)
 
   // Drag-out targets: the whole selection when dragging a selected tile within a
   // multi-selection, otherwise just this file (mirrors the context-menu rule).
@@ -247,17 +244,7 @@ export function BundleAlbum({
           // The shell's zoom slider, on the shell's own curves — tiles share the
           // bundle-card ramp, rows share the File Browser's row height (owner,
           // 2026-07-27: the one control must actually drive this surface too).
-          style={
-            listLayout
-              ? ({
-                  position: 'relative',
-                  ['--file-row-h' as string]: `${listRowHeight(zoom)}px`,
-                } as React.CSSProperties)
-              : {
-                  position: 'relative',
-                  gridTemplateColumns: `repeat(auto-fill, minmax(${Math.round(zoom * 0.75)}px, 1fr))`,
-                }
-          }
+          style={{ position: 'relative', display: 'block' }}
         >
           {marqueeRect && (
             <div
@@ -276,30 +263,36 @@ export function BundleAlbum({
           {!isLoading && files.length === 0 && (
             <div className="state">This bundle has no files.</div>
           )}
-          {files.map((f, i) =>
-            listLayout ? (
-              <AlbumRow
-                key={f.id}
-                file={f}
-                selected={selected.has(f.id)}
-                onSelect={(e) => clickTile(f, e)}
-                onOpen={() => openFile(i)}
-                onContextMenu={(e) => contextTile(f, e)}
-                dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
-              />
-            ) : (
-              <AlbumTile
-                key={f.id}
-                file={f}
-                selected={selected.has(f.id)}
-                onSelect={(e) => clickTile(f, e)}
-                onOpen={() => openFile(i)}
-                onContextMenu={(e) => contextTile(f, e)}
-                previewDisabled={marqueeRect !== null || menu.state !== null}
-                dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
-              />
-            ),
-          )}
+          <AlbumItems
+            items={files}
+            scrollRef={scrollRef}
+            layout={layout}
+            zoom={zoom}
+            render={(f) =>
+              listLayout ? (
+                <AlbumRow
+                  key={f.id}
+                  file={f}
+                  selected={selected.has(f.id)}
+                  onSelect={(e) => clickTile(f, e)}
+                  onOpen={() => openFile(f.id)}
+                  onContextMenu={(e) => contextTile(f, e)}
+                  dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
+                />
+              ) : (
+                <AlbumTile
+                  key={f.id}
+                  file={f}
+                  selected={selected.has(f.id)}
+                  onSelect={(e) => clickTile(f, e)}
+                  onOpen={() => openFile(f.id)}
+                  onContextMenu={(e) => contextTile(f, e)}
+                  previewDisabled={marqueeRect !== null || menu.state !== null}
+                  dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
+                />
+              )
+            }
+          />
         </div>
       </div>
 
@@ -315,171 +308,12 @@ export function BundleAlbum({
       {viewing !== null && (
         <MediaViewer
           bundleId={bundleId}
-          initialFileId={files[viewing]?.id}
+          initialFileId={viewing}
           playerPrefs={playerPrefs}
           onPlayerPrefs={onPlayerPrefs}
           onClose={() => setViewing(null)}
         />
       )}
-    </div>
-  )
-}
-
-function AlbumTile({
-  file,
-  selected,
-  onSelect,
-  onOpen,
-  onContextMenu,
-  previewDisabled,
-  dragProps,
-}: {
-  file: FileRead
-  selected: boolean
-  onSelect: (e: React.MouseEvent | React.KeyboardEvent) => void
-  onOpen: () => void
-  onContextMenu: (e: React.MouseEvent) => void
-  previewDisabled: boolean
-  dragProps: FileDragProps
-}) {
-  const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
-  const dims = formatDimensions(meta.width as number, meta.height as number)
-  const dur = formatDuration(meta.duration as number)
-  const thumbnailable =
-    file.availability === 'available' &&
-    (file.media_kind === 'image' || file.media_kind === 'video')
-  const duration = typeof meta.duration === 'number' ? meta.duration : 0
-  const container = typeof meta.container === 'string' ? meta.container : null
-  const videoCodec = typeof meta.video_codec === 'string' ? meta.video_codec : null
-  const audioCodec = typeof meta.audio_codec === 'string' ? meta.audio_codec : null
-  const previewSource = useMemo<HoverPreviewSource | null>(
-    () =>
-      file.availability === 'available' && file.media_kind === 'video' && duration > 0
-        ? {
-            mediaKind: 'video',
-            fileId: file.id,
-            mimeType: file.mime_type,
-            relativePath: file.relative_path,
-            container,
-            videoCodec,
-            audioCodec,
-            duration,
-            startTime: file.resume_position,
-          }
-        : null,
-    [
-      audioCodec,
-      container,
-      duration,
-      file.availability,
-      file.id,
-      file.media_kind,
-      file.mime_type,
-      file.relative_path,
-      file.resume_position,
-      videoCodec,
-    ],
-  )
-
-  return (
-    <div
-      className={`album-tile${selected ? ' album-tile--selected' : ''}`}
-      onClick={(event) => onSelect(event)}
-      onDoubleClick={onOpen}
-      onContextMenu={onContextMenu}
-      onKeyDown={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        onSelect(event)
-      }}
-      role="button"
-      aria-pressed={selected}
-      tabIndex={0}
-      title={file.display_title}
-      data-file-id={file.id}
-      {...dragProps}
-    >
-      <HoverPreview
-        source={previewSource}
-        disabled={previewDisabled}
-        className="album-tile__thumb"
-        style={
-          thumbnailable
-            ? {
-                backgroundImage: `url(${fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)})`,
-              }
-            : undefined
-        }
-      >
-        {!thumbnailable && <span className="album-tile__placeholder">▦</span>}
-        {file.availability !== 'available' && (
-          <span className="card__badge card__badge--missing">missing</span>
-        )}
-        {file.media_kind === 'video' && meta.duration != null && (
-          <span className="card__dur">{dur}</span>
-        )}
-      </HoverPreview>
-      <div className="album-tile__name">{file.display_title}</div>
-      <div className="album-tile__sub">
-        {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
-      </div>
-    </div>
-  )
-}
-
-/** One file as a row, matching the File Browser's list layout. */
-function AlbumRow({
-  file,
-  selected,
-  onSelect,
-  onOpen,
-  onContextMenu,
-  dragProps,
-}: {
-  file: FileRead
-  selected: boolean
-  onSelect: (e: React.MouseEvent) => void
-  onOpen: () => void
-  onContextMenu: (e: React.MouseEvent) => void
-  dragProps: FileDragProps
-}) {
-  const facts = factsFromBundleFile(file)
-  return (
-    <div
-      className={`file-row${selected ? ' file-row--selected' : ''}`}
-      data-file-id={file.id}
-      role="row"
-      aria-selected={selected}
-      onClick={onSelect}
-      onDoubleClick={onOpen}
-      onContextMenu={onContextMenu}
-      {...dragProps}
-    >
-      <span className="file-row__name">
-        <span className="file-row__icon">
-          <span className="file-row__thumb-holder">
-            {file.media_kind === 'image' || file.media_kind === 'video' ? (
-              <img
-                className="file-row__thumb"
-                src={fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)}
-                alt=""
-                loading="lazy"
-              />
-            ) : (
-              <span aria-hidden="true">📄</span>
-            )}
-          </span>
-        </span>
-        <span className="file-row__text">{file.display_title}</span>
-        {!file.supported && <span className="badge">unsupported</span>}
-        {file.availability !== 'available' && <span className="badge badge--warn">missing</span>}
-      </span>
-      <span className="file-row__type">{facts.extension ?? 'file'}</span>
-      <span className="file-table__num">{formatBytes(file.size_bytes)}</span>
-      <span className="file-row__added">
-        {facts.duration ? formatDuration(facts.duration) : ''}
-      </span>
-      <span className="file-row__modified">{formatDimensions(facts.width, facts.height)}</span>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { IconPlus } from './icons'
 import { useCatalogBundleDraft } from './useCatalogBundleDraft'
 import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
 import { CatalogMembershipPicker } from './CatalogMembershipPicker'
+import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
@@ -20,6 +21,8 @@ export function CatalogBundleInspector({
   onReview,
   onOpen,
   onOpenFile,
+  onAlbum,
+  albumFile,
 }: {
   library: string
   entity: Entity
@@ -30,6 +33,8 @@ export function CatalogBundleInspector({
   onReview: () => void
   onOpen: () => void
   onOpenFile: (file: string) => void
+  onAlbum?: () => void
+  albumFile?: string | null
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
@@ -65,6 +70,8 @@ export function CatalogBundleInspector({
           <button onClick={() => setCoverFailed('')}>Retry cover</button>
         )}
       </div>
+      {onAlbum && <button onClick={onAlbum}>Browse bundle files</button>}
+      {albumFile && <CatalogFileDetails key={albumFile} library={library} file={albumFile} />}
       <p role="status">{draft.message}</p>
       {draft.error && <p role="alert">{draft.error}</p>}
       {entity.has_conflicts && <p role="alert">Competing metadata requires review.</p>}

@@ -1,7 +1,7 @@
 """Catalog playlist reads and local retry/cursor state for the shared media viewer"""
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
@@ -11,9 +11,11 @@ from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
 from cairndex.api.schemas.file_browser import FileBrowserListingRead
 from cairndex.api.schemas.moments import MomentRead
 from cairndex.api.schemas.playback import PlayableVideo, PlaybackProgressRead
-from cairndex.core.errors import ValidationError
+from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.playback import assess_playability
+from cairndex.replicas.catalog.album import CatalogAlbumPage, album, revision, visible
+from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.media import ReplicaMedia
 from cairndex.replicas.protocol import ReplicaError
 
@@ -48,6 +50,7 @@ class ReplicaPlaylist(BaseModel):
     directories: list[DirectoryMemberRead]
     moments: list[MomentRead]
     next_offset: int | None
+    revision: str | None = None
 
 
 # Resolve only this selected bundle's catalog rows, preserving folder-member playlist semantics
@@ -57,16 +60,23 @@ def playlist(
     media: Media,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    expected_revision: str | None = None,
 ) -> ReplicaPlaylist:
-    bundle = media.row("asset_bundles", bundle_id)
     with media.store.connection(readonly=True) as db:
+        bundle = read_row(db, "asset_bundles", bundle_id)
+        if bundle is None:
+            raise NotFoundError("Bundle is unavailable")
+        current = revision(db)
+        if expected_revision is not None and current != expected_revision:
+            raise ConflictError("Playlist changed. Retry local media to reload it.")
         ids = [
             row[0]
             for row in db.execute(
                 "SELECT c.entity FROM catalog_placements p JOIN catalog_rows c "
                 "ON p.family=c.family AND p.entity=c.entity "
-                "WHERE p.owner=? AND c.family='asset_files' "
-                "ORDER BY CAST(json_extract(p.body,'$.sequence') AS INTEGER),c.entity "
+                "WHERE p.owner=? AND c.family='asset_files' AND "
+                + visible("json_extract(c.body,'$.relative_path')")
+                + " ORDER BY CAST(json_extract(p.body,'$.sequence') AS INTEGER),c.entity "
                 "LIMIT ? OFFSET ?",
                 (f"asset_bundles/{bundle_id}/$members", limit + 1, offset),
             )
@@ -74,21 +84,45 @@ def playlist(
         cursor = db.execute(
             "SELECT file_id FROM local_cursors WHERE bundle_id=?", (bundle_id,)
         ).fetchone()
-    return ReplicaPlaylist(
-        bundle_id=bundle_id,
-        title=bundle["title"] or "Media",
-        cursor=cursor[0] if cursor else None,
-        files=[FileRead.model_validate(media.file(identity)) for identity in ids[:limit]],
-        directories=[
-            DirectoryMemberRead.model_validate(row)
-            for row in media.related("bundle_directory_members", f"asset_bundles/{bundle_id}")
-        ],
-        moments=[
-            MomentRead.model_validate(row)
-            for row in media.related("moments", f"asset_bundles/{bundle_id}")
-        ],
-        next_offset=offset + limit if len(ids) > limit else None,
-    )
+
+        def related(family: str) -> list[dict[str, Any]]:
+            return [
+                json.loads(row[0])
+                for row in db.execute(
+                    "SELECT c.body FROM catalog_references r JOIN catalog_rows c "
+                    "ON r.source=c.family || '/' || c.entity WHERE r.target=? AND c.family=?",
+                    (f"asset_bundles/{bundle_id}", family),
+                )
+            ]
+
+        return ReplicaPlaylist(
+            bundle_id=bundle_id,
+            title=bundle["title"] or "Media",
+            cursor=cursor[0] if cursor else None,
+            files=[
+                FileRead.model_validate(media.catalog_file(db, identity))
+                for identity in ids[:limit]
+            ],
+            directories=[
+                DirectoryMemberRead.model_validate(row)
+                for row in related("bundle_directory_members")
+            ],
+            moments=[MomentRead.model_validate(row) for row in related("moments")],
+            next_offset=offset + limit if len(ids) > limit else None,
+            revision=current,
+        )
+
+
+@router.get("/bundles/{bundle_id}/album", response_model=CatalogAlbumPage)
+def album_page(
+    bundle_id: str,
+    media: Media,
+    directory_id: str | None = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    expected_revision: str | None = None,
+) -> CatalogAlbumPage:
+    return album(media, bundle_id, directory_id, offset, limit, expected_revision)
 
 
 # A retry checks this single file and performs one bounded probe only when its generation changed

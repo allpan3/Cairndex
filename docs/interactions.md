@@ -99,3 +99,16 @@ pages and failed refreshes cannot establish that an item is gone.
 
 Folder playback includes that folder's files. A parent's playlist retains its
 loose-file boundary; expanding a disclosure does not add child files to it.
+
+## Portable-library bundle albums
+
+Open a bundle to browse loose files and directory members. Open a directory member
+to browse that bundle's files inside the directory. Load more items extends the
+current list; selection shortcuts apply to loaded items only. Enter opens a selected
+image or video. Folder playback stays inside that directory member; parent-bundle
+playback excludes its contents.
+
+Closing media retains album selection, scroll position and unsaved bundle notes.
+Select one file to check its local details. A missing preview does not remove the
+catalog entry. Opening media checks the bytes again and offers Retry when they are
+unavailable. Reload album recovers a failed page or a changed catalog projection.
