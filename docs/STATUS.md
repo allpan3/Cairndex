@@ -11,6 +11,48 @@ qualification remain incomplete. Folder pagination is owner-deferred.
 dragging and app-origin self-return remain open. ADR-0033, native adapters/framework
 patches, volume-based Move and source deletion remain on hold.
 
+## Portable-library bundle albums
+
+Implementation checkpoint: `fa0f0b58` on `fix/library-ownership-lifecycle`,
+based on `df72b2cc`. The shared album tiles/rows and virtualized layout serve
+catalog files and directory members. Reads use stable IDs, bounded pages and one committed
+metadata snapshot. Continuations retain their causal frontier and reject changed
+projections. Hidden paths are excluded before pagination. Source scans, album-wide
+probes and source mutations are not part of browsing.
+
+The catalog viewer resolves late-page directory membership before selecting media.
+Folder-member playback stays inside that member; parent-bundle playback excludes
+it. Album selection, scroll position and bundle drafts survive viewer return.
+The ordinary inspector retains its causal saves and reviews. Older servers retain
+direct media opening. Legacy album Enter selection remains unchanged.
+
+The full backend gate passes 1,835 tests, with one ffmpeg `zscale` skip.
+Backend lint, formatting and type checks pass. The full frontend gate passes
+1,262 unit tests, lint, formatting, type checks and the production build.
+All 216 browser tests pass with two workers, zero retries and no skipped tests
+in 5.3 minutes. The generated OpenAPI matches the server. Staged, commit-message
+and task-range privacy checks pass; new blobs are text source, tests, API
+definitions or documentation. Browser test servers stopped and disposable album
+fixtures were removed.
+
+A rebuilt production macOS app with its packaged server passed synthetic checks
+for three-page directory albums, final-file selection, rendered image and video pixels, viewer return, retained notes, list
+layout, loaded-bundle selection, Random, Missing Files and Unbundled. Deep strict
+signature verification, distribution-license checks and the packaged-server smoke
+test pass. The disposable profile, cache, WebKit data and native fixture were
+removed. The test app registration was removed and the installed app registered
+again. All 122 baseline hashes for the installed app, owner profile and signing
+configuration match. Rust-specific checks and Ubuntu CI were not run because
+no Rust or desktop host code changed. Docker, provider, NAS and representative
+large-library qualification were not run. No publication or installed-app
+replacement is part of this task.
+
+Recently Used still lacks a private usage-time contract; cursors and progress alone
+are insufficient. Trash requires the separate source-operation contract.
+File note/source controls, OS drag and physical-folder pagination remain deferred. Ordinary Create remains
+legacy, conversion stays disabled, and provider/NAS qualification is unchanged.
+The next approved group is private-store access and backup/recovery controls.
+
 ## Ordinary catalog multi-selection and system views
 
 Implementation checkpoint: `089e7df0` on `fix/library-ownership-lifecycle`,
