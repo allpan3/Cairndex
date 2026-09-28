@@ -56,6 +56,7 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await expect(page.getByRole('button', { name: 'Back to bundle', exact: true })).toBeVisible()
     await expect(listing.locator('[data-file-id="gallery-000"]')).toBeVisible()
     await page.getByRole('button', { name: 'Load more album items' }).click()
+    await expect(page.getByText('100 of 125 items', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Load more album items' }).click()
     await expect(page.getByRole('button', { name: 'Load more album items' })).toHaveCount(0)
     await expect(page.getByText('125 of 125 items', { exact: true })).toBeVisible()
