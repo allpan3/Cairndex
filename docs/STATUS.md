@@ -2,7 +2,8 @@
 
 ## Group 5: bounded storage qualification; completion blocked
 
-Source baseline: `ace91dff` on `fix/library-ownership-lifecycle`. See the
+Qualification implementation: `f91ae57b`, based on `ace91dff`, on
+`fix/library-ownership-lifecycle`. See the
 [qualification matrix](storage-qualification.md) for actual environments,
 artifact hashes, repeatable checks and remaining proof. Group 5 is **incomplete**;
 group 6 installation and final owner acceptance are not ready.
@@ -30,7 +31,12 @@ Qualification repairs:
 Full backend verification passes **1,888 tests**, with one existing ffmpeg skip.
 Linux ARM64 passes **308 focused tests** with locked dependencies and no network.
 Frontend verification passes **1,250 unit tests**. All **33 browser tests** pass
-with two workers and no retries. Backend/frontend lint, formatting, type checks
+with two workers and no retries. An earlier run passed 32 and failed the loaded-
+selection check because a second page arrived before Select All. The independent
+test repair uses a fresh page and holds later browse responses until the exact
+50-loaded-bundle assertion passes. It retains the assertion and test timeout.
+The focused two-test run and final 33-test run pass.
+Backend/frontend lint, formatting, type checks
 and the frontend build pass. OpenAPI is unchanged. The final isolated macOS app
 build, strict signature/license checks and its exact packaged-server smoke pass.
 Rust source is unchanged; Rust unit/Clippy gates are not repeated.

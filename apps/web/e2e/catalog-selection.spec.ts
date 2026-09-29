@@ -26,6 +26,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     .trim()
   const backend = await startBackend(join(scratch, 'private'))
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } })
+  let releaseNextPage: (() => void) | undefined
   try {
     const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
       root_path: root,
@@ -112,32 +113,49 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
     await expect.poll(async () => (await entity('bundle-000002')).fields.rating.value).toBe('3.5')
     await bulk.getByRole('button', { name: 'Close bulk editor' }).click()
-    await page.getByRole('button', { name: 'List', exact: true }).click()
-    await bundles.focus()
-    await page.keyboard.press('Home')
-    await page.keyboard.press('Shift+ArrowDown')
-    await expect(bulk.getByRole('heading', { name: '2 bundles selected' })).toBeVisible()
-    await page.screenshot({ path: '/tmp/cairndex-selection-proof.png' })
-    await page.keyboard.press('Escape')
-    await expect(bundles.locator('[aria-selected="true"]')).toHaveCount(0)
-    await bundles.focus()
-    await page.keyboard.press('ControlOrMeta+a')
-    await expect(bulk.getByRole('heading', { name: '50 bundles selected' })).toBeVisible()
-    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('64')
-    await expect(bulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
-    await expect(bundles.getByRole('option')).toHaveCount(1)
-    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
-    await page.getByRole('button', { name: 'Random', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Reshuffle' })).toBeVisible()
-    await page.getByRole('button', { name: 'Reshuffle' }).click()
-    await page.getByRole('button', { name: 'Missing Files', exact: true }).click()
-    await expect(page.getByText(/Last recorded local checks/)).toBeVisible()
-    await page.getByRole('button', { name: 'Unbundled', exact: true }).click()
-    await expect(page.getByRole('region', { name: 'Unbundled files' })).toBeVisible()
-    await expect(page.getByText('No unbundled files match this search.')).toBeVisible()
-    await page.screenshot({ path: join(scratch, 'unbundled.png') })
+    await page.close()
+    const keyboardPage = await context.newPage()
+    await proxyApi(keyboardPage, backend.baseUrl)
+    // Select-all applies to loaded pages. Hold later pages to fix the tested boundary.
+    const nextPage = new Promise<void>((resolve) => {
+      releaseNextPage = resolve
+    })
+    await keyboardPage.route('**/replica/catalog/bundles/browse', async (route) => {
+      if (route.request().postDataJSON().offset > 0) await nextPage
+      await route.fallback()
+    })
+    await keyboardPage.goto('/')
+    const keyboardBundles = keyboardPage.getByRole('listbox', { name: 'Bundles', exact: true })
+    const keyboardBulk = keyboardPage.getByRole('complementary', {
+      name: 'Selected bundles inspector',
+    })
+    await keyboardPage.getByRole('button', { name: 'List', exact: true }).click()
+    await keyboardBundles.focus()
+    await keyboardPage.keyboard.press('Home')
+    await keyboardPage.keyboard.press('Shift+ArrowDown')
+    await expect(keyboardBulk.getByRole('heading', { name: '2 bundles selected' })).toBeVisible()
+    await keyboardPage.screenshot({ path: '/tmp/cairndex-selection-proof.png' })
+    await keyboardPage.keyboard.press('Escape')
+    await expect(keyboardBundles.locator('[aria-selected="true"]')).toHaveCount(0)
+    await keyboardBundles.focus()
+    await keyboardPage.keyboard.press('ControlOrMeta+a')
+    await expect(keyboardBulk.getByRole('heading', { name: '50 bundles selected' })).toBeVisible()
+    releaseNextPage?.()
+    await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('64')
+    await expect(keyboardBulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
+    await expect(keyboardBundles.getByRole('option')).toHaveCount(1)
+    await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
+    await keyboardPage.getByRole('button', { name: 'Random', exact: true }).click()
+    await expect(keyboardPage.getByRole('button', { name: 'Reshuffle' })).toBeVisible()
+    await keyboardPage.getByRole('button', { name: 'Reshuffle' }).click()
+    await keyboardPage.getByRole('button', { name: 'Missing Files', exact: true }).click()
+    await expect(keyboardPage.getByText(/Last recorded local checks/)).toBeVisible()
+    await keyboardPage.getByRole('button', { name: 'Unbundled', exact: true }).click()
+    await expect(keyboardPage.getByRole('region', { name: 'Unbundled files' })).toBeVisible()
+    await expect(keyboardPage.getByText('No unbundled files match this search.')).toBeVisible()
+    await keyboardPage.screenshot({ path: join(scratch, 'unbundled.png') })
     // Older servers do not receive the new reads or view requests.
-    await page.route('**/replica/status', async (route) => {
+    await keyboardPage.route('**/replica/status', async (route) => {
       const response = await fetch(backend.baseUrl + new URL(route.request().url()).pathname)
       const body = await response.json()
       delete body.selection_version
@@ -149,16 +167,19 @@ test('catalog selection retains exact bulk reviews across navigation, response l
         body: JSON.stringify(body),
       })
     })
-    await page.reload()
+    await keyboardPage.reload()
     await expect(
-      page.getByText('Update the server to use multiple selection and bulk metadata changes.'),
+      keyboardPage.getByText(
+        'Update the server to use multiple selection and bulk metadata changes.',
+      ),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: 'Browse bundle files', exact: true }),
+      keyboardPage.getByRole('button', { name: 'Browse bundle files', exact: true }),
     ).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Random', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Bulk changes/ })).toHaveCount(0)
+    await expect(keyboardPage.getByRole('button', { name: 'Random', exact: true })).toHaveCount(0)
+    await expect(keyboardPage.getByRole('button', { name: /^Bulk changes/ })).toHaveCount(0)
   } finally {
+    releaseNextPage?.()
     await context.close()
     await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })

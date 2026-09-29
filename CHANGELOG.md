@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- The catalog selection browser test controls later-page delivery so its exact
+  loaded-bundle assertion is independent of request timing.
+
 - Add a joined portable-container qualification check for reviewed Update,
   conflicting metadata, source operations, access, backup/recovery and restart.
   Docker context checks use the selected compose project's image names. Record
