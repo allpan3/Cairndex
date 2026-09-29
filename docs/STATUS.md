@@ -1,5 +1,76 @@
 # Project status
 
+## Group 5: bounded storage qualification; completion blocked
+
+Source baseline: `ace91dff` on `fix/library-ownership-lifecycle`. See the
+[qualification matrix](storage-qualification.md) for actual environments,
+artifact hashes, repeatable checks and remaining proof. Group 5 is **incomplete**;
+group 6 installation and final owner acceptance are not ready.
+
+The local production image passes on Linux ARM64 with non-root/read-only-root
+execution, separate private database and snapshot volumes, context canaries and
+runtime source/license inspection. Media smoke verifies generated video ranges
+and HLS. Repository compose passes a joined Create, Update, metadata conflict
+review, source Copy/Rename/Move/Replace/Trash/Undo, access, backup, Release,
+reviewed recovery and Reopen workflow. Clean restart and forced process exit
+preserve protection, private drafts, operation receipts and restored bytes.
+No mutable database enters the portable package; eight retained content versions
+have independent file links. Forced exit does not qualify power-loss recovery.
+
+Qualification repairs:
+
+- Normal Create reports a structured error for unsupported publication, denied
+  access or full storage. It preserves source bytes and incomplete metadata.
+  Tests retain the exact private-intent retry contract after publication faults.
+- Docker playback smoke supplies the observed source generation required by
+  portable media. Docker context checks resolve images for the chosen compose
+  project. Deployment comments describe private working state and current drain.
+- A reusable HTTP harness checks the joined workflow and restart receipts.
+
+Full backend verification passes **1,888 tests**, with one existing ffmpeg skip.
+Linux ARM64 passes **308 focused tests** with locked dependencies and no network.
+Frontend verification passes **1,250 unit tests**. All **33 browser tests** pass
+with two workers and no retries. Backend/frontend lint, formatting, type checks
+and the frontend build pass. OpenAPI is unchanged. The final isolated macOS app
+build, strict signature/license checks and its exact packaged-server smoke pass.
+Rust source is unchanged; Rust unit/Clippy gates are not repeated.
+
+Local APFS passes the storage and source-operation checks. Native NAS Btrfs
+passes hard-link, exclusive file/directory relocation and occupied-target checks.
+The NAS application image is not tested: source transfer remains approval-blocked.
+Mounted macOS SMB rejects the required native primitives; portable Create fails
+before descriptor publication. The old direct-SMB adapter does not qualify this
+portable workflow. A repair needs both metadata publication and no-replace source
+relocation with authenticated mounted/direct identity and recovery checks.
+
+Local iCloud Create and storage primitives pass. The first source Move safely
+stops on a changed generation; the source and independent recovery copy survive.
+A fresh review completes Move/Replace/Trash/Undo. No second syncing endpoint is
+available, so this does not prove provider delivery, hydration or remote conflicts.
+A real historical packaged reader opens format three, then blocks new source
+operation events with upgrade required and preserves the source bytes.
+
+Current native UI verification is unavailable. Computer-use app lookup times out
+or rejects the exact isolated identifier. Finder starts the approved test build,
+but a fresh control session still cannot inspect it. The test process is stopped
+and its generated cache, WebKit state and registration are removed. The build and
+packaged HTTP checks do not replace native interaction evidence. No native
+screenshot is published.
+The 10,000-bundle metadata benchmark is recorded in [performance](performance.md);
+it is not multi-terabyte, large-media or provider-backlog qualification.
+
+Disposable storage roots, test containers, volumes, images, app copy, cache and
+registrations are removed. Docker Desktop returns to its original stopped state;
+shared build caches remain. Existing NAS container states are unchanged. All 117
+installed-app and four owner-profile file hashes match the baseline. The final
+isolated build and private text receipts remain local. No production deployment,
+owner-library test, permission change, push, PR, tag or release occurs.
+
+Next: complete the NAS image checks after source-transfer approval, repair portable
+mounted-SMB support, obtain an independently syncing provider endpoint, and restore
+native automation for cross-client acceptance. Keep conversion disabled, the
+bounded source-review limits, retained versions and deferred features unchanged.
+
 ## Portable source operations: group 4 implemented and locally verified
 
 Implementation commit: `13b652de` on `fix/library-ownership-lifecycle`, based on

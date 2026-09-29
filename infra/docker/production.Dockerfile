@@ -45,8 +45,9 @@ RUN apt-get update \
 
 # Non-root user (AGENTS.md §12). A fixed high UID/GID plays well with NAS volume
 # permissions, and is the id the mounted volumes must grant write access to: /data
-# always, and the library root too, since a library keeps its .cairndex/ package
-# (manifest, library.db, cache) inside it. Source *media* is still never written
+# always, and the library root too, since a library keeps its .cairndex/ descriptor
+# and immutable history inside it. Working databases and caches stay in /data.
+# Source *media* is still never written
 # outside an ADR-0013 write-mode operation — a writable mount is not write mode.
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --home /app app

@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Add a joined portable-container qualification check for reviewed Update,
+  conflicting metadata, source operations, access, backup/recovery and restart.
+  Docker context checks use the selected compose project's image names. Record
+  the current provider, mounted-storage, historical-reader and scale limits.
+
 - Synthetic package and Docker smoke checks use portable creation and private
   recovery. Production compose mounts private snapshots separately from runtime
   databases. Retired legacy-workspace browser suites no longer qualify current
@@ -21,6 +26,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Library creation and conversion gates remain unchanged.
 
 ### Fixed
+
+- Library creation reports structured storage errors when exclusive publication,
+  free space or access is unavailable. Existing source files remain unchanged.
+  A saved creation intent can resume after the storage fault is removed.
+- Docker video smoke requests include the observed portable source generation.
 
 - The bundle metadata editor ignores obsolete draft responses during save or
   discard. A late draft receipt cannot replace a completed save status or show

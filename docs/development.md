@@ -1198,3 +1198,17 @@ exits between capture, publication and catalog commit.
 server. It checks a lost queue response across reload, Replace, directory Rename,
 Trash, Undo, picker Copy and keyboard dismissal. The packaged smoke test exercises
 source Copy, Move, Trash and Undo through the frozen worker. Provider/NAS and final installation acceptance are separate gates.
+
+## Portable storage qualification
+
+The [storage matrix](storage-qualification.md) records current environments and
+remaining gates. Run the production media and private-recovery smoke scripts
+against one explicit local image. `infra/docker/portable_smoke.py` adds the joined
+Create/Update/edit/conflict/source/backup/Release/recovery workflow and checks
+persisted state after clean restart or forced process exit. Use only a fresh
+disposable mount, isolated compose project and unused loopback endpoint.
+
+Creation storage faults return structured errors without exposing operating-system
+path details. Incomplete metadata remains for review. A saved private creation
+intent can resume on an exact retry after the storage fault is corrected; a
+missing intent cannot be reconstructed by guessing a new package identity.

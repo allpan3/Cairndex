@@ -7,6 +7,7 @@ library's content metadata lives in its own ``library.db`` and is never
 modified here — deregistering removes the row and nothing on disk.
 """
 
+import errno
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,7 +91,18 @@ def create_library(
     from cairndex.core.config import get_settings
     from cairndex.replicas.catalog.creation import create
 
-    create(root, get_settings().data_dir.resolve(), name)
+    try:
+        create(root, get_settings().data_dir.resolve(), name)
+    except OSError as exc:
+        if exc.errno in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}:
+            raise ValidationError(
+                "Library storage does not support exclusive metadata publication. "
+                "Creation is incomplete; source files remain unchanged."
+            ) from exc
+        raise ValidationError(
+            "Library storage could not complete creation. Check storage availability, "
+            "permissions and free space. Incomplete metadata is retained for review."
+        ) from exc
     manifest = pkg.read_manifest(root)
     existing = session.scalar(
         select(RegisteredLibrary).where(RegisteredLibrary.library_uuid == manifest.library_uuid)

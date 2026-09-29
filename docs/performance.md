@@ -8,6 +8,28 @@ measurements justify — targeted indexes and one query rewrite for the query
 paths, keyframe sampling for storyboard generation. Re-run the tools after
 schema, query, or media-pipeline changes and update the numbers.
 
+## Portable catalog synthetic checkpoint
+
+On local macOS APFS, a complete synthetic catalog contains 10,000 bundles.
+These measurements use current private catalog queries, 20 repetitions per query,
+and warm/uncontrolled OS caches. They are in-process query timings, not HTTP or
+end-user latency guarantees. The generated catalog has no playable-media claim.
+
+| Check | Median | Maximum |
+| --- | ---: | ---: |
+| First browse page | 22.19 ms | 29.49 ms |
+| Full-catalog text search, one match | 1.68 ms | 1.87 ms |
+| Collection filter, one match | 12.14 ms | 20.79 ms |
+| Last browse page | 33.45 ms | 37.19 ms |
+
+Synthetic seed preparation takes 12.39 seconds; private store reopen takes 8.25 ms.
+One hundred sequential authored edits take 0.42 seconds. Controlled reverse-order
+in-process delivery of their retained artifacts settles the final causal edit in
+7.33 seconds. The private database is about 195 MiB. This measures bounded metadata
+cardinality, not provider transport, network backlog, cold startup or large media.
+The [storage matrix](storage-qualification.md) records independent generated-media
+and source-operation evidence and the remaining scale limits.
+
 ## NAS playback checkpoint
 
 The [2026-09-16 NAS checkpoint](nas-verification.md) uses a non-root Linux

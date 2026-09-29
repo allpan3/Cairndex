@@ -196,8 +196,16 @@ RANGE_HEADERS=""
 RANGE_BODY=""
 
 step "production playback preference serves copy-only HLS"
+source_generation=$(api "/libraries/${library_id}/replica/media/files/${file_id}" \
+    | python3 -c 'import json,sys; value=json.load(sys.stdin); assert value["state"] == "available"; print(value["generation"])')
+playback_request=$(python3 -c '
+import json, sys
+print(json.dumps({"source_generation": sys.argv[1], "caps": {
+    "protocols": ["progressive", "hls"], "containers": ["mp4"],
+    "video_codecs": ["h264"], "audio_codecs": ["aac"]}}))
+' "$source_generation")
 hls_decision=$(post_json "/libraries/${library_id}/files/${file_id}/playback-decision" \
-    '{"caps":{"protocols":["progressive","hls"],"containers":["mp4"],"video_codecs":["h264"],"audio_codecs":["aac"]}}')
+    "$playback_request")
 hls_method=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["method"])' <<<"$hls_decision")
 [ "$hls_method" = "remux" ] || fail "HLS preference returned $hls_method instead of remux"
 playlist_path=$(python3 -c \

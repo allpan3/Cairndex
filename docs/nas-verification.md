@@ -1,5 +1,17 @@
 # NAS verification
 
+## Portable-format qualification boundary
+
+The current group-5 [storage matrix](storage-qualification.md) supersedes the
+older deployment claims below for portable libraries. Native NAS Btrfs passes
+exclusive hard-link and file/directory no-replace primitive checks. The current
+NAS application image is not tested; source transfer remains approval-blocked.
+The current macOS SMB mount rejects both required primitives and portable Create
+stops before descriptor publication. The older direct-SMB source adapter does
+not qualify portable metadata or ADR-0036 source operations.
+
+The checkpoints below are historical evidence for their recorded source revisions.
+
 The 2026-09-16 checkpoint qualifies a bounded deployment on a Linux NAS and a
 Mac client. Runtime changes are `0d6a4b2f` and `ab8fed9b` on
 `fix/library-ownership-lifecycle`. It does not qualify every NAS, SMB server,

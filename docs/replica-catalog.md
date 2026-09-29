@@ -12,6 +12,10 @@ The shared app/API serves complete **synthetic** metadata catalogs under
 Complete catalogs support local media through
 the shared production viewer. Legacy library admission is unavailable.
 
+See the current [storage qualification matrix](storage-qualification.md) for actual
+provider, mounted-storage, container and client evidence. Local provider-folder
+checks do not establish delivery to another device.
+
 ## Compatibility and transport
 
 | Package | Wire | Capability |

@@ -28,7 +28,7 @@ The first product target is the computer-side web application. Android TV suppor
 3. **Libraries are the storage scope.** Portable packages exchange immutable metadata and keep their working DB privately outside the library folder (ADR-0035). The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-6. **Metadata-only and non-destructive first.** File Browser is read-only. Portable libraries do not support source Copy, Rename, Move, Replace, Trash or Undo.
+6. **Metadata-only and non-destructive first.** Source files remain unchanged by default. Reviewed portable Copy, Rename, Move, Replace, Trash and Undo require per-library and deployment write permission, supported storage primitives, journals and retained versions (ADR-0036).
 7. **Logical organization must survive filesystem moves.** If a linked path changes externally, preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata by repairing the existing file row when confidence is high.
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
 9. **Local-first and self-hosted.** The desktop app can serve local libraries through its bundled server, or connect to an authoritative private server. Docker on a NAS/server is optional; neither NAS nor cloud storage defines a required operating mode.

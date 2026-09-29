@@ -271,3 +271,37 @@ def test_changed_seed_before_descriptor_is_not_activated(tmp_path):
     with pytest.raises(ReplicaError, match="seed changed"):
         complete(fixture, fault=damage)
     assert not (fixture.root / ".cairndex/manifest.json").exists()
+
+
+@pytest.mark.parametrize("error_number", [errno.ENOTSUP, errno.ENOSPC, errno.EACCES])
+def test_http_creation_storage_failure_preserves_exact_retry(
+    tmp_path, isolated_client, monkeypatch, error_number
+):
+    root = tmp_path / "synthetic-storage"
+    root.mkdir()
+    source = root / "original.txt"
+    source.write_bytes(b"Synthetic source remains unchanged")
+    original = os.link
+
+    def refused(*args, **kwargs):
+        if kwargs.get("src_dir_fd") is not None:
+            raise OSError(error_number, "Synthetic private storage detail")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(os, "link", refused)
+    body = {"root_path": str(root), "display_name": "Synthetic storage"}
+    response = isolated_client.post("/api/v1/libraries/create", json=body)
+    assert response.status_code == 422, response.text
+    message = response.json()["message"]
+    assert "Synthetic private storage detail" not in message
+    assert str(root) not in message
+    if error_number == errno.ENOTSUP:
+        assert "exclusive metadata publication" in message
+    else:
+        assert "Incomplete metadata is retained for review" in message
+    assert source.read_bytes() == b"Synthetic source remains unchanged"
+    assert not (root / ".cairndex/manifest.json").exists()
+    monkeypatch.setattr(os, "link", original)
+    response = isolated_client.post("/api/v1/libraries/create", json=body)
+    assert response.status_code == 201, response.text
+    assert source.read_bytes() == b"Synthetic source remains unchanged"

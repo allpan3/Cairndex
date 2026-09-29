@@ -109,8 +109,8 @@ services:
       # It must be writable by whoever the container runs as — uid 10001 by
       # default, or your own id if you set `user:` above, in which case a share
       # you already own needs nothing done to it. Cairndex keeps each library's
-      # portable package at
-      # <library>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
+      # descriptor and immutable history at
+      # <library>/.cairndex/. Working databases and caches remain in /data.
       # Your media files are not moved, renamed, deleted, or rewritten by any
       # ordinary flow — only by an explicit write-mode operation (ADR-0013),
       # which is off by default per library.
@@ -122,10 +122,9 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    # Shutdown releases each library's ownership lease and checkpoints its WAL
-    # back into library.db (ADR-0018 §6). A SIGKILL part-way through strands the
-    # lease until it ages out (5 minutes), during which nothing else — including
-    # your desktop app — opens that library without a confirmed takeover.
+    # Shutdown drains admitted work and closes private databases and locks.
+    # A forced exit leaves interrupted source and recovery work for review;
+    # it does not establish power-loss safety.
     # Docker's default grace period is 10s; this buys room for a large or
     # network-mounted library.
     stop_grace_period: 30s

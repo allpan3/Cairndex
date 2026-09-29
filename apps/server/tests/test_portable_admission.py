@@ -3,6 +3,7 @@
 import pytest
 
 from cairndex.core.config import get_settings
+from cairndex.core.errors import ValidationError
 from cairndex.registry import library_package as pkg
 from cairndex.registry import services
 from cairndex.replicas.catalog import creation
@@ -38,8 +39,11 @@ def test_normal_creation_resumes_exact_intent_after_interruption(
         return complete(target, fault=fault)
 
     monkeypatch.setattr(creation, "complete", interrupted)
-    with pytest.raises(OSError):
+    with pytest.raises(
+        ValidationError, match="Library storage could not complete creation"
+    ) as error:
         services.create_library(registry_session, root_path=str(root), display_name="Example")
+    assert isinstance(error.value.__cause__, OSError)
     intents = list((get_settings().data_dir / "library-creations").glob("*/creation.json"))
     intent = next(
         path
