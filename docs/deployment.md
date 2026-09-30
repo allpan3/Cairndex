@@ -3,9 +3,9 @@
 ## Current storage qualification
 
 See the [storage qualification matrix](storage-qualification.md) before deployment.
-Local Linux ARM64 containers have passing synthetic evidence. Current mounted-SMB
-portable creation, NAS application qualification, real provider delivery and current
-native client acceptance remain incomplete. Earlier NAS/SMB checkpoints below
+Local Linux ARM64 and Linux x86_64 NAS containers have passing synthetic evidence.
+Current mounted-SMB portable creation, real provider delivery and current native
+client acceptance remain incomplete. Earlier NAS/SMB checkpoints below
 apply only to their recorded revisions.
 
 ## Portable library storage

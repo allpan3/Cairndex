@@ -4,8 +4,14 @@
 
 The current group-5 [storage matrix](storage-qualification.md) supersedes the
 older deployment claims below for portable libraries. Native NAS Btrfs passes
-exclusive hard-link and file/directory no-replace primitive checks. The current
-NAS application image is not tested; source transfer remains approval-blocked.
+exclusive hard-link and file/directory no-replace primitive checks. The Linux x86_64
+production image at `1f296083` passes the synthetic joined application, clean
+restart, forced-exit restart, video range/HLS and separate private-recovery checks.
+The isolated compose service has two CPUs, 2 GiB memory, a read-only root, the
+host-user override, separate private mounts and loopback-only ports. Media smoke
+also verifies default UID 10001. All 273 runtime source files match the commit;
+image inspection finds no private data. All 12 existing container identities,
+images and states are unchanged after test cleanup.
 The current macOS SMB mount rejects both required primitives and portable Create
 stops before descriptor publication. The older direct-SMB source adapter does
 not qualify portable metadata or ADR-0036 source operations.

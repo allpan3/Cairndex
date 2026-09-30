@@ -3,7 +3,7 @@
 ## Group 5: bounded storage qualification; completion blocked
 
 Qualification implementation: `f91ae57b`, based on `ace91dff`, on
-`fix/library-ownership-lifecycle`. See the
+`fix/library-ownership-lifecycle`. NAS recovery repair: `1f296083`. See the
 [qualification matrix](storage-qualification.md) for actual environments,
 artifact hashes, repeatable checks and remaining proof. Group 5 is **incomplete**;
 group 6 installation and final owner acceptance are not ready.
@@ -28,9 +28,10 @@ Qualification repairs:
   project. Deployment comments describe private working state and current drain.
 - A reusable HTTP harness checks the joined workflow and restart receipts.
 
-Full backend verification passes **1,888 tests**, with one existing ffmpeg skip.
-Linux ARM64 passes **308 focused tests** with locked dependencies and no network.
-Frontend verification passes **1,250 unit tests**. All **33 browser tests** pass
+Full backend verification passes **1,889 tests**, with one existing ffmpeg skip.
+The preceding Linux ARM64 checkpoint passes **308 focused tests** with locked
+dependencies and no network. Frontend verification passes **1,250 unit tests**.
+The preceding full browser run passes **33 tests**
 with two workers and no retries. An earlier run passed 32 and failed the loaded-
 selection check because a second page arrived before Select All. The independent
 test repair uses a fresh page and holds later browse responses until the exact
@@ -48,7 +49,17 @@ media checks. Its separate recovery check exposed a response-before-commit race:
 a status request could not find a newly accepted task. Recovery queue, stop and
 retry handlers now commit before success. A deterministic response-boundary
 regression and all 14 private-control tests pass, as do backend static checks.
-The repaired NAS image and full regression run are pending.
+The repaired NAS image at `1f296083` passes the full joined workflow, both restart
+checks, media smoke and the separate private-recovery smoke without retrying
+failed HTTP requests. The original failure remains recorded in private receipts.
+All 273 runtime source files match the commit; the image contains no private
+findings. Compose uses the host user, two CPUs, 2 GiB memory, a read-only root,
+loopback-only ports and separate synthetic mounts. Default UID 10001 also passes
+media smoke. Seven private databases and one snapshot database remain outside
+the library; eight retained source files are independent. The three affected
+browser tests pass without retries. OpenAPI is unchanged. The full backend run
+passes 1,889 tests with one existing ffmpeg skip. The earlier ARM64 image and macOS
+package precede this repair and are not rebuilt in this NAS checkpoint.
 Mounted macOS SMB rejects the required native primitives; portable Create fails
 before descriptor publication. The old direct-SMB adapter does not qualify this
 portable workflow. A repair needs both metadata publication and no-replace source
@@ -77,9 +88,8 @@ installed-app and four owner-profile file hashes match the baseline. The final
 isolated build and private text receipts remain local. No production deployment,
 owner-library test, permission change, push, PR, tag or release occurs.
 
-Next: complete the NAS image checks after source-transfer approval, repair portable
-mounted-SMB support, obtain an independently syncing provider endpoint, and restore
-native automation for cross-client acceptance. Keep conversion disabled, the
+Next: repair portable mounted-SMB support, obtain an independently syncing
+provider endpoint, and restore native automation for cross-client acceptance. Keep conversion disabled, the
 bounded source-review limits, retained versions and deferred features unchanged.
 
 ## Portable source operations: group 4 implemented and locally verified

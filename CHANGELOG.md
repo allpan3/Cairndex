@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record bounded Linux x86_64 NAS production qualification with synthetic source
+  operations, media, private recovery, restart and image-content checks.
+
 - The catalog selection browser test controls later-page delivery so its exact
   loaded-bundle assertion is independent of request timing.
 
