@@ -52,7 +52,12 @@ def inverse_metadata(
     if metadata is None:
         return None, {}, {}
     builder = Preview(store, db)
-    created = set()
+    created = {
+        (family, identity)
+        for change in metadata["changes"]
+        for family, identity, field in [split_key(change["unit"])]
+        if field == "$alive" and prior["before"][change["unit"]] is None
+    }
     restores = {}
     for change in metadata["changes"]:
         unit, value = change["unit"], change["value"]
@@ -72,6 +77,10 @@ def inverse_metadata(
         if old is None and field == "$alive":
             created.add((family, identity))
         elif old is None and field == "$content":
+            # Undo deletes identities introduced by this operation. Such files
+            # have no pre-operation bytes in the displaced directory version.
+            if (family, identity) in created:
+                continue
             path = (
                 prior["destination"] if prior["action"] in ("copy", "restore") else prior["source"]
             )

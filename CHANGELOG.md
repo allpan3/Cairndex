@@ -33,6 +33,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Undo of a directory replacement removes newly created file identities without
+  requiring them to exist in the displaced content version.
+
 - Private recovery queue, stop and retry requests commit their state before
   returning success. Immediate status requests can read the accepted task.
 
