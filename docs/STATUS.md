@@ -28,7 +28,7 @@ Qualification repairs:
   project. Deployment comments describe private working state and current drain.
 - A reusable HTTP harness checks the joined workflow and restart receipts.
 
-Full backend verification passes **1,889 tests**, with one existing ffmpeg skip.
+Final backend verification passes **1,911 tests**, with one existing ffmpeg skip.
 The preceding Linux ARM64 checkpoint passes **308 focused tests** with locked
 dependencies and no network. Frontend verification passes **1,250 unit tests**.
 The preceding full browser run passes **33 tests**
@@ -60,10 +60,16 @@ the library; eight retained source files are independent. The three affected
 browser tests pass without retries. OpenAPI is unchanged. The full backend run
 passes 1,889 tests with one existing ffmpeg skip. The earlier ARM64 image and macOS
 package precede this repair and are not rebuilt in this NAS checkpoint.
-Mounted macOS SMB rejects the required native primitives; portable Create fails
-before descriptor publication. The old direct-SMB adapter does not qualify this
-portable workflow. A repair needs both metadata publication and no-replace source
-relocation with authenticated mounted/direct identity and recovery checks.
+The source server passes mounted-SMB Create and the joined file HTTP workflow,
+including clean and forced-exit restart. Nested and empty directory Copy, Rename,
+Move, Replace, Undo, Trash and Undo pass with strict identity and byte checks. ADR-0037 defines the direct publication,
+server identity, staging timestamp and mounted-cache checks. The signed sidecar
+passes its normal local smoke but SMB Create reports saved-login/connection
+unavailable. A diagnostic with the same signing certificate and sidecar identifier
+confirms Keychain read denial before connection. Credential authorization remains
+pending. Source-server success does not qualify packaged SMB access.
+The independent directory Undo repair is `63fb45e8`: newly created identities do
+not require content in the displaced directory. Its Copy/Move regressions pass.
 
 Local iCloud Create and storage primitives pass. The first source Move safely
 stops on a changed generation; the source and independent recovery copy survive.
@@ -72,24 +78,29 @@ available, so this does not prove provider delivery, hydration or remote conflic
 A real historical packaged reader opens format three, then blocks new source
 operation events with upgrade required and preserves the source bytes.
 
-Current native UI verification is unavailable. Computer-use app lookup times out
-or rejects the exact isolated identifier. Finder starts the approved test build,
-but a fresh control session still cannot inspect it. The test process is stopped
-and its generated cache, WebKit state and registration are removed. The build and
-packaged HTTP checks do not replace native interaction evidence. No native
-screenshot is published.
+The rebuilt isolated native app passes Create, reviewed Update, title/rating/note
+edits, image pixel verification, file Copy/Undo and snapshot verification. Native
+Release, separate recovery review/activation and Reopen preserve metadata.
+Library switching preserves an unsaved draft and shows the second library's own
+empty catalog. A separate local test server is reachable through native Servers.
+The peer library requires Refresh catalog status for its initial baseline. Return
+to This Computer preserves the original draft. Quit/restart retains saved
+metadata; Recover private draft restores the received unsaved title explicitly.
+The app uses a separate identifier, profile and URL scheme. No native screenshot
+is published. Native credential and provider checks remain separate.
 The 10,000-bundle metadata benchmark is recorded in [performance](performance.md);
 it is not multi-terabyte, large-media or provider-backlog qualification.
 
-Disposable storage roots, test containers, volumes, images, app copy, cache and
-registrations are removed. Docker Desktop returns to its original stopped state;
-shared build caches remain. Existing NAS container states are unchanged. All 117
-installed-app and four owner-profile file hashes match the baseline. The final
-isolated build and private text receipts remain local. No production deployment,
+The earlier container and NAS test resources are removed; shared build caches
+remain. Existing NAS container states are unchanged. All 46 mounted-SMB and
+native disposable data directories are removed. The native app, managed sidecar
+and peer server are stopped. All 117 installed-app and four owner-profile file
+hashes match the baseline, with no added files. The final isolated build and
+private text receipts remain local. No production deployment,
 owner-library test, permission change, push, PR, tag or release occurs.
 
-Next: repair portable mounted-SMB support, obtain an independently syncing
-provider endpoint, and restore native automation for cross-client acceptance. Keep conversion disabled, the
+Next: resolve the packaged SMB access failure, finish native cross-client
+acceptance, and obtain an independently syncing provider endpoint. Keep conversion disabled, the
 bounded source-review limits, retained versions and deferred features unchanged.
 
 ## Portable source operations: group 4 implemented and locally verified

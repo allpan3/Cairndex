@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import DomainError, LibraryReleasedError
+from cairndex.file_ops import smb_transport
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.library_package import read_manifest
 from cairndex.registry.models import RegisteredLibrary
@@ -32,6 +33,7 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
     if library.serving_released or lifecycle.blocked(library.id):
         raise LibraryReleasedError("Library released; choose Reopen")
     root = Path(library.root_path)
+    smb_transport._mount(root)
     manifest = read_manifest(root)
     if manifest.replica is None:
         raise PackageFormatError("This library uses the existing central metadata workflow")
@@ -48,7 +50,10 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
         if base.is_relative_to(root.resolve()):
             raise ReplicaError("Replica data directory must be private and outside the library")
         guard = BindingLock(base, manifest.replica)
+        registered = False
         try:
+            smb_transport.register_root(root)
+            registered = True
             target, revision = location(base, manifest.replica)
             if revision != "unbound" and not (target / "replica.db").is_file():
                 raise ReplicaError("Private database is missing; use explicit replica recovery")
@@ -63,6 +68,8 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
             if isinstance(store, CatalogStore):
                 _source_transports[library.id] = SourceTransport(root, store)
         except BaseException:
+            if registered:
+                smb_transport.close_root(root)
             guard.close()
             raise
         return store
@@ -139,6 +146,7 @@ def close(library_id: str) -> None:
         handle[1].close()
         handle[0].retire()
         handle[4].close()
+        smb_transport.close_root(handle[1].root)
 
 
 # Poll only replicas opened by this server, with bounded work per replica

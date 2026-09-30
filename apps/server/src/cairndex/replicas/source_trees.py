@@ -1,5 +1,6 @@
 """Bounded directory versions with independent files and an immutable content index."""
 
+import errno
 import hashlib
 import json
 import os
@@ -9,6 +10,8 @@ from contextlib import contextmanager, suppress
 from typing import Any
 
 from cairndex.file_ops.exclusive import relocate
+from cairndex.file_ops.smb_portable import finish_staging, refresh
+from cairndex.file_ops.smb_portable import identity as physical_identity
 from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.replicas.transport import read_file
@@ -45,21 +48,31 @@ def entries(handle: int) -> list[dict[str, Any]]:
                     raise ReplicaError("Directory operation exceeds the 128-entry review limit")
                 if child.name.startswith("."):
                     raise ReplicaError("Directory operation contains hidden entries")
-                info = child.stat(follow_symlinks=False)
-                is_directory = stat.S_ISDIR(info.st_mode)
-                if (not is_directory and not stat.S_ISREG(info.st_mode)) or info.st_dev != device:
-                    raise ReplicaError("Directory operation contains linked or unsupported entries")
-                path = prefix + child.name
-                from cairndex.replicas.source_files import source_path
+                try:
+                    refresh(parent, child.name)
+                    info = child.stat(follow_symlinks=False)
+                    is_directory = stat.S_ISDIR(info.st_mode)
+                    if (
+                        not is_directory and not stat.S_ISREG(info.st_mode)
+                    ) or info.st_dev != device:
+                        raise ReplicaError(
+                            "Directory operation contains linked or unsupported entries"
+                        )
+                    path = prefix + child.name
+                    from cairndex.replicas.source_files import source_path
 
-                source_path(path)
-                result.append(
-                    {
-                        "path": path,
-                        "directory": is_directory,
-                        "identity": [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns],
-                    }
-                )
+                    source_path(path)
+                    result.append(
+                        {
+                            "path": path,
+                            "directory": is_directory,
+                            "identity": physical_identity(parent, child.name),
+                        }
+                    )
+                except FileNotFoundError as error:
+                    raise OSError(
+                        errno.EAGAIN, "Directory contents changed during observation"
+                    ) from error
                 if is_directory:
                     with descend(parent, child.name) as nested:
                         visit(nested, path + "/", depth + 1)
@@ -69,11 +82,11 @@ def entries(handle: int) -> list[dict[str, Any]]:
 
 
 def identity(handle: int) -> tuple[list[Any], int]:
-    info = os.fstat(handle)
+    observed = physical_identity(handle)
     rows = entries(handle)
     total = sum(row["identity"][2] for row in rows if not row["directory"])
     digest = hashlib.sha256(value_text(rows).encode()).hexdigest()
-    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, digest], total
+    return [*observed, digest], total
 
 
 def copy_tree(
@@ -106,8 +119,7 @@ def copy_tree(
                 continue
             incoming = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=origin)
             try:
-                info = os.fstat(incoming)
-                if [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns] != row["identity"]:
+                if physical_identity(origin, name, held=incoming) != row["identity"]:
                     raise ReplicaError("Directory contents changed before copying")
                 outgoing = os.open(
                     name,
@@ -128,8 +140,11 @@ def copy_tree(
                         progress=report,
                         limit=limit,
                     )
+                    staged_info = os.fstat(outgoing)
                 finally:
                     os.close(outgoing)
+                if not complete:
+                    finish_staging(destination, name, staged_info)
             finally:
                 os.close(incoming)
             processed += evidence["size"]

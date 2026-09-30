@@ -7,6 +7,7 @@ from collections.abc import Generator
 from pathlib import Path
 from uuid import uuid4
 
+from cairndex.file_ops.exclusive import link
 from cairndex.replicas.catalog.model import TOKEN, value_text
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.media import generation, open_source
@@ -38,13 +39,7 @@ def publish(root: Path, operation: str, raw: str) -> None:
         finally:
             os.close(output)
         try:
-            os.link(
-                temporary,
-                "receipt.json",
-                src_dir_fd=handle,
-                dst_dir_fd=handle,
-                follow_symlinks=False,
-            )
+            link(handle, temporary, "receipt.json")
         except FileExistsError:
             if read_file(handle, "receipt.json") != encoded:
                 raise ReplicaError("Concurrent source receipt publication differs") from None

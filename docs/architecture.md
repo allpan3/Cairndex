@@ -7,6 +7,10 @@ format. Normal Create produces a complete portable catalog. Open refuses the old
 `cairndex.library` format. No automatic conversion or source mutation occurs.
 Working databases, drafts, jobs and caches are private to the serving instance;
 the library folder contains its descriptor and immutable metadata history.
+[ADR-0037](adr/0037-portable-mounted-smb.md) defines authenticated mounted-SMB
+publication, private server identity and bounded mounted-cache checks. Local
+filesystems retain native primitives. Source permission and exact recovery
+journals apply independently of metadata publication capability.
 Shared ORM and media utilities also support synthetic conversion fixtures. They
 do not enable legacy library admission.
 

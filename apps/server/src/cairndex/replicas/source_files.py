@@ -1,8 +1,10 @@
 """Pinned source paths and independent recovery copies for portable operations."""
 
+import errno
 import hashlib
 import os
 import stat
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -11,6 +13,9 @@ from typing import Any
 from cairndex.core.paths import normalize_relative_path
 from cairndex.file_ops.exclusive import relocate
 from cairndex.file_ops.paths import validate_name
+from cairndex.file_ops.smb_portable import finish_staging, refresh
+from cairndex.file_ops.smb_portable import identity as physical_identity
+from cairndex.file_ops.smb_transport import _FileAbsent
 from cairndex.replicas.discovery_sources import directory
 from cairndex.replicas.media import generation
 from cairndex.replicas.protocol import ReplicaError
@@ -55,27 +60,34 @@ def observation(root: Path, path: str) -> dict[str, Any] | None:
     """Capture a bounded precondition; hashing belongs to the operation worker."""
     with parent(root, path) as (handle, name):
         try:
-            info = os.stat(name, dir_fd=handle, follow_symlinks=False)
+            refresh(handle, name)
+            source = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=handle)
         except FileNotFoundError:
             return None
-        if stat.S_ISDIR(info.st_mode):
-            from cairndex.replicas.source_trees import descend, identity
+        try:
+            # Opening refreshes mounted attributes that a pathname stat can cache.
+            info = os.fstat(source)
+            if stat.S_ISDIR(info.st_mode):
+                from cairndex.replicas.source_trees import identity
 
-            with descend(handle, name) as folder:
-                observed, size = identity(folder)
+                observed, size = identity(source)
+                return {
+                    "generation": generation(path, info) + ":" + observed[-1],
+                    "size": size,
+                    "identity": observed,
+                    "kind": "directory",
+                }
+            if not stat.S_ISREG(info.st_mode):
+                raise ReplicaError("Source operation requires a regular file")
             return {
-                "generation": generation(path, info) + ":" + observed[-1],
-                "size": size,
-                "identity": observed,
-                "kind": "directory",
+                "generation": generation(path, info),
+                "size": info.st_size,
+                "identity": physical_identity(handle, name, held=source),
             }
-        if not stat.S_ISREG(info.st_mode):
-            raise ReplicaError("Source operation requires a regular file")
-        return {
-            "generation": generation(path, info),
-            "size": info.st_size,
-            "identity": [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns],
-        }
+        except _FileAbsent:
+            return None
+        finally:
+            os.close(source)
 
 
 def assert_observation(root: Path, path: str, expected: dict[str, Any] | None) -> None:
@@ -206,8 +218,11 @@ def snapshot(
                 )
             try:
                 evidence = copy_stream(source, target, progress=progress, limit=limit)
+                staged_info = os.fstat(target)
             finally:
                 os.close(target)
+            if not complete:
+                finish_staging(target_parent, name + ".partial", staged_info)
             assert_observation(root, path, expected)
             if not complete:
                 relocate(target_parent, name + ".partial", target_parent, name)
@@ -235,7 +250,7 @@ def capture(root: Path, path: str, operation: str, name: str, expected: dict[str
         info = os.stat(name, dir_fd=target_parent, follow_symlinks=False)
         # Rename changes ctime on some hosts. Preserve the complete pre-rename
         # descriptor observation separately when the worker records its intent.
-        actual = [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+        actual = physical_identity(target_parent, name)
         if stat.S_ISDIR(info.st_mode):
             from cairndex.replicas.source_trees import descend, identity
 
@@ -262,18 +277,24 @@ def artifact_identity(root: Path, operation: str, name: str) -> list[Any] | None
         raise ReplicaError("Unsupported source artifact")
     with operation_directory(root, operation) as handle:
         try:
-            info = os.stat(name, dir_fd=handle, follow_symlinks=False)
+            refresh(handle, name)
+            held = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=handle)
         except FileNotFoundError:
             return None
-        if stat.S_ISDIR(info.st_mode):
-            from cairndex.replicas.source_trees import descend, identity
+        try:
+            info = os.fstat(held)
+            if stat.S_ISDIR(info.st_mode):
+                from cairndex.replicas.source_trees import identity
 
-            with descend(handle, name) as folder:
-                result, _ = identity(folder)
+                result, _ = identity(held)
                 return result
-        if not stat.S_ISREG(info.st_mode):
-            raise ReplicaError("Recovery artifact is not a regular file")
-        return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+            if not stat.S_ISREG(info.st_mode):
+                raise ReplicaError("Recovery artifact is not a regular file")
+            return physical_identity(handle, name, held=held)
+        except _FileAbsent:
+            return None
+        finally:
+            os.close(held)
 
 
 def stage_output(
@@ -324,10 +345,10 @@ def stage_output(
                 evidence = copy_stream(source, target, progress=progress, limit=limit)
                 if evidence != expected:
                     raise ReplicaError("Recovery bytes differ from the recorded content version")
-                info = os.fstat(target)
-                return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+                staged_info = os.fstat(target)
             finally:
                 os.close(target)
+            return finish_staging(target_parent, name, staged_info)
         finally:
             os.close(source)
 
@@ -354,6 +375,26 @@ def publish_output(
     ):
         validate_parent(root, destination, target_parent)
         relocate(source_parent, stage, target_parent, name)
-    visible = observation(root, destination)
+    if len(expected) == 5 and isinstance(expected[0], str) and expected[0].startswith("smb3-v1:"):
+        # Replaced SMB directories can retain an obsolete child listing. Wait
+        # only while the server still identifies the exact published directory.
+        deadline = time.monotonic() + 30.0
+        while True:
+            with parent(root, destination) as (target_parent, name):
+                if physical_identity(target_parent, name) != expected[:4]:
+                    raise ReplicaError("Published directory changed; recovery review is required")
+            try:
+                visible = observation(root, destination)
+            except OSError as error:
+                if error.errno != errno.EAGAIN:
+                    raise
+                visible = None
+            if visible is not None and visible["identity"] == expected:
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.025)
+    else:
+        visible = observation(root, destination)
     if visible is None or visible["identity"] != expected:
         raise ReplicaError("Published output changed; recovery review is required")

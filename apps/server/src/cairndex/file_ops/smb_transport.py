@@ -71,6 +71,7 @@ _keychain_lock = threading.Lock()
 _connected: dict[tuple[str, str], Any] = {}
 _connections: dict[tuple[str, str], dict[str, Any]] = {}
 _roots: dict[Path, Mount] = {}
+_root_users: dict[Path, int] = {}
 _KEYCHAIN_TIMEOUT = 20.0
 
 
@@ -304,7 +305,10 @@ def register_root(root: Path) -> None:
     if mount is None:
         return
     with _lock:
+        if root in _roots and _roots[root] != mount:
+            raise SmbTransportError(errno.EXDEV, "The SMB library mount changed")
         _roots[root] = mount
+        _root_users[root] = _root_users.get(root, 0) + 1
 
 
 # Convert a validated mounted path to the same share's UNC path
@@ -564,11 +568,16 @@ def close_sessions() -> None:
         for key in list(_connections):
             _release(key)
         _roots.clear()
+        _root_users.clear()
 
 
 # Release only this account after its last registered library closes
 def close_root(root: Path) -> None:
     with _lock:
+        if _root_users.get(root, 0) > 1:
+            _root_users[root] -= 1
+            return
+        _root_users.pop(root, None)
         removed = _roots.pop(root, None)
         if removed is None:
             return

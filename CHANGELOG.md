@@ -36,6 +36,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Undo of a directory replacement removes newly created file identities without
   requiring them to exist in the displaced content version.
 
+- Portable creation and metadata exchange support exclusive publication on
+  positively identified macOS SMB mounts. Reviewed source operations use atomic
+  server relocation, private server identity and bounded mounted visibility.
+  Missing credentials or changed identity retain exact retry and recovery files.
+  Platform and packaged qualification limits remain explicit.
+
 - Private recovery queue, stop and retry requests commit their state before
   returning success. Immediate status requests can read the accepted task.
 

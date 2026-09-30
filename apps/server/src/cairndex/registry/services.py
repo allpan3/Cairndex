@@ -89,11 +89,18 @@ def create_library(
         raise ValidationError(f"root path {root.as_posix()!r} is not a directory")
 
     from cairndex.core.config import get_settings
+    from cairndex.file_ops.smb_transport import SmbTransportError
     from cairndex.replicas.catalog.creation import create
 
     try:
         create(root, get_settings().data_dir.resolve(), name)
     except OSError as exc:
+        if isinstance(exc, SmbTransportError) and exc.errno == errno.EACCES:
+            raise ValidationError(
+                "SMB saved-login access or the authenticated connection is unavailable. "
+                "Check this application's saved-login access and server permissions, "
+                "then retry creation. Incomplete metadata is retained."
+            ) from exc
         if exc.errno in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}:
             raise ValidationError(
                 "Library storage does not support exclusive metadata publication. "

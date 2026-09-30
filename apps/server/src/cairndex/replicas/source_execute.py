@@ -1,6 +1,7 @@
 """Journaled filesystem phases with exact receipts and conservative restart checks."""
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -183,14 +184,17 @@ def apply(
             identity = path_identity(db, path)
             seen = observation(root, path)
             if identity and seen:
-                info = seen["identity"]
+                from cairndex.replicas.source_files import parent
+
+                with parent(root, path) as (parent_fd, name):
+                    info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
                 baseline = {
                     "path": path,
                     "generation": seen["generation"],
                     "evidence": evidence,
-                    "device": info[0],
-                    "inode": info[1],
-                    "mtime": info[3],
+                    "device": info.st_dev,
+                    "inode": info.st_ino,
+                    "mtime": info.st_mtime_ns,
                 }
                 db.execute(
                     "INSERT OR REPLACE INTO discovery_baselines VALUES (?,?)",

@@ -69,4 +69,13 @@ application. An already-open file can still be changed after capture; its indepe
 version remains the recovery source. Local synthetic tests do not qualify NAS storage,
 providers or power-loss behavior.
 
+On positively identified macOS SMB mounts, portable publication uses signed,
+encrypted SMB3 and the corresponding saved login without an interactive prompt.
+No-replace requests preserve occupied names. Private server identity supports
+capture and exact retry when mounted inode numbers change. Delayed mounted
+visibility stops after a bounded wait and retains the operation for Retry. Source
+and retained-version timestamps are preserved; only owned incomplete staging can
+receive an explicit timestamp. See [ADR-0037](adr/0037-portable-mounted-smb.md) and
+[storage qualification](storage-qualification.md) for current evidence and limits.
+
 See [ADR-0036](adr/0036-portable-source-operations.md) and [current status](STATUS.md).

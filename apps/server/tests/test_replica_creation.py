@@ -273,9 +273,12 @@ def test_changed_seed_before_descriptor_is_not_activated(tmp_path):
     assert not (fixture.root / ".cairndex/manifest.json").exists()
 
 
-@pytest.mark.parametrize("error_number", [errno.ENOTSUP, errno.ENOSPC, errno.EACCES])
+@pytest.mark.parametrize(
+    "error_number,smb_login",
+    [(errno.ENOTSUP, False), (errno.ENOSPC, False), (errno.EACCES, False), (errno.EACCES, True)],
+)
 def test_http_creation_storage_failure_preserves_exact_retry(
-    tmp_path, isolated_client, monkeypatch, error_number
+    tmp_path, isolated_client, monkeypatch, error_number, smb_login
 ):
     root = tmp_path / "synthetic-storage"
     root.mkdir()
@@ -285,7 +288,10 @@ def test_http_creation_storage_failure_preserves_exact_retry(
 
     def refused(*args, **kwargs):
         if kwargs.get("src_dir_fd") is not None:
-            raise OSError(error_number, "Synthetic private storage detail")
+            from cairndex.file_ops.smb_transport import SmbTransportError
+
+            failure = SmbTransportError if smb_login else OSError
+            raise failure(error_number, "Synthetic private storage detail")
         return original(*args, **kwargs)
 
     monkeypatch.setattr(os, "link", refused)
@@ -295,7 +301,9 @@ def test_http_creation_storage_failure_preserves_exact_retry(
     message = response.json()["message"]
     assert "Synthetic private storage detail" not in message
     assert str(root) not in message
-    if error_number == errno.ENOTSUP:
+    if smb_login:
+        assert "SMB saved-login access" in message
+    elif error_number == errno.ENOTSUP:
         assert "exclusive metadata publication" in message
     else:
         assert "Incomplete metadata is retained for review" in message

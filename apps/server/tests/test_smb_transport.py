@@ -23,10 +23,12 @@ def clear_sessions():
     smb_transport._connected.clear()
     smb_transport._connections.clear()
     smb_transport._roots.clear()
+    smb_transport._root_users.clear()
     yield
     smb_transport._connected.clear()
     smb_transport._connections.clear()
     smb_transport._roots.clear()
+    smb_transport._root_users.clear()
 
 
 # Model open-object identity and deletion separately from replaceable pathnames

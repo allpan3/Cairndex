@@ -615,10 +615,13 @@ binaries sharing one certificate, refusal of other certificates/identifiers and
 ad-hoc copies, and cleanup. It uses only a disposable Keychain and synthetic data;
 all credential reads disable user interaction. This gate also runs in macOS CI.
 
-The sidecar also carries `smbprotocol` for ADR-0034's macOS mounted-SMB
+The sidecar also carries `smbprotocol` for ADR-0034 and ADR-0037's macOS mounted-SMB
 publication path. Its static import must remain visible to PyInstaller, and the
 packaged smoke gate must retain `cryptography`'s runtime hook. Source-level SMB
-tests do not prove that the frozen binary contains this dependency chain.
+tests do not prove that the frozen binary contains this dependency chain or can
+access the saved login. Portable background work never requests a Keychain prompt.
+A packaged saved-login refusal must be resolved for that application before its
+mounted-SMB workflow can be qualified.
 
 ```bash
 cd apps/server

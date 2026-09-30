@@ -4,9 +4,12 @@
 
 Group 5 is incomplete. Local Linux ARM64 containers, Linux x86_64 NAS containers,
 local APFS, deterministic metadata delivery and browser workflows have passing
-synthetic evidence. Mounted macOS SMB cannot create the portable format with the current publication implementation.
-Actual cross-device provider delivery and current native desktop interactions
-remain unqualified. Group 6 installation and final owner acceptance must not treat these gaps as passed.
+synthetic evidence. The source server passes portable Create, the joined file HTTP
+workflow and complete directory operations on mounted macOS SMB. The signed
+package cannot read the saved SMB login from Keychain; its normal local smoke
+passes. Native Create, metadata editing, image viewing, Copy/Undo and private
+recovery pass with an isolated profile. Actual cross-device provider delivery
+remains unqualified. Group 6 installation and final owner acceptance must not treat these gaps as passed.
 
 The local host uses macOS 27.0; Docker Desktop serves Linux ARM64 with engine
 29.5.3. The NAS runs Linux x86_64 with engine 29.6.2 and native Btrfs.
@@ -25,13 +28,13 @@ identify image and executable hashes, test roots and process results. They are n
 | Production HTTP | Create, reviewed Update, metadata edit/conflict review, source identity, occupied-target protection, access guards, private snapshots, Release/recovery/Reopen | Joined acceptance uses `infra/docker/portable_smoke.py`. Separate media smoke checks generated video ranges and copy-only HLS. |
 | Linux ARM64 regressions | 308 source, creation, recovery, access, catalog, transport and discovery cases | Passed with two CPUs, 2 GiB memory, non-root UID, read-only root and no network. Tests use the runtime source before the NAS recovery response repair, with locked development dependencies. |
 | NAS Linux x86_64, native Btrfs | Production image, repository compose, joined HTTP workflow, clean/forced-exit restart, media and separate recovery smoke; storage primitives | Passed with fresh synthetic state. Compose uses the host user, two CPUs, 2 GiB, a read-only root and loopback-only ports. Media smoke also verifies default UID 10001 and host-user override. No owner-library or power-loss claim. |
-| macOS mounted SMB | Same primitives and portable Create | Hard links and exclusive relocation return unsupported. Create stops before publishing a descriptor. Source-operation qualification cannot proceed on this path. |
+| macOS mounted SMB, source server | Authenticated exclusive publication, Create, joined file HTTP workflow, nested/empty directory operations and restart | Passed with synthetic data. Direct SMB avoids unsupported native primitives. File cache discard and bounded directory visibility preserve strict identity and byte checks. Packaged SMB remains separate. |
 | Local iCloud Drive folder | Primitives, Create, source operations and retained versions | Primitives and Create pass. Copy/Rename pass; the first Move stops on a changed generation before capture. Device/inode/size/mtime and source bytes remain unchanged. A fresh explicit review completes Move/Replace/Trash/Undo. The first refusal remains part of the result. |
 | iCloud cross-device delivery | Independent syncing endpoints and private stores | Not tested: no second accessible endpoint is supplied. Local folder writes and deterministic delivery are not remote-delivery proof. |
 | Historical packaged server | Real executable opens format three, then receives `catalog_source_edit` | It retains the valid projection, reports unsupported catalog schema/upgrade required, and leaves source bytes unchanged. This is refusal evidence, not old-client support. |
 | Browser | All 33 existing browser cases, two workers, no retries | Passed against isolated real servers and synthetic fixtures. Includes independent stores, scoped drafts, conflicts, access/recovery, media and source operations. |
 | Packaged server | Frozen worker Create, Update, image/HEIC preview, Copy/Move/Trash/Undo and shutdown | Passed. The isolated macOS app builds and passes signature/license checks. |
-| Current native UI | Production app with separate identifier/profile/scheme | Not verified. Finder starts the approved isolated build, but computer use rejects its exact identifier even in a fresh session. Earlier app lookups timed out. The test process and generated state are removed. Launch, build and server checks do not prove native interaction. |
+| Current native UI | Production app with separate identifier/profile/scheme | Passed bounded synthetic Create, reviewed Update, title/rating/note edits, image pixels, Copy/Undo, snapshot/verification, Release, separate recovery review/activation and Reopen. Library switching preserves an unsaved draft. Native server switching and restart results are recorded separately below. No owner profile or library is used. |
 
 ## Artifact identity
 
@@ -54,29 +57,61 @@ containers, networks, images and disposable directories are removed; existing
 container identities, images and states match all 12 baseline entries. Existing
 images, volumes and networks remain. Shared build caches remain.
 
-The ARM64 image and macOS package below precede the recovery response-commit
-repair; they are not rebuilt by the NAS checkpoint.
+The ARM64 image precedes the recovery response-commit repair. The final macOS
+package includes that repair, mounted-SMB support and the directory Undo repair.
 
 The historical sidecar SHA-256 is
 `9952dafd31848ab250997669a395a8e4749a5f0726e4fac3e6116af37be78b38`.
 It reports version 0.2.1 without a build commit, so its digest identifies the
 executable evidence. Its isolated private state is separate from the installed
 application profile. The final qualification sidecar SHA-256 is
-`d371cec922f997d36df0b47b130e8f7c4c400f75007d8852aef89a1f41146c19`.
+`602f178f5a9034a71f6e54e6e87e84b271ceabd7cef06f569a34309ed7661064`.
+
+## Native and regression evidence
+
+The isolated native build uses a separate identifier, profile and URL scheme.
+Create, reviewed Update, title/rating/note edits and actual image pixels pass.
+File Copy preserves the original bytes; Undo removes the copied path. Snapshot,
+verification, Release, separate preparation, review, draft inspection, activation
+and Reopen pass. Saved metadata remains visible after recovery.
+
+A second library has its own empty catalog. Switching back restores the first
+library's unsaved draft. Native Servers connects to a separate loopback server
+and creates its own library; its first baseline requires Refresh catalog status.
+Returning to This Computer restores the original draft. After Quit and restart,
+the saved title, rating and note remain. Recover private draft explicitly restores
+the received unsaved title. No native passphrase is entered. Browser and HTTP
+access checks do not constitute native credential qualification.
+
+The final runtime passes 1,911 backend tests with one existing ffmpeg skip. Ruff,
+formatting and mypy pass; generated OpenAPI is unchanged. Three affected browser
+cases pass with two workers and no retries. The prior 33-case browser run remains
+separate evidence. The final sidecar and isolated native build pass packaging;
+the normal packaged smoke passes. No Rust source changes occur.
 
 ## Storage limits
 
 Portable metadata uses complete temporary files and exclusive hard-link publication.
-Source operations also require atomic no-replace relocation. The older direct-SMB
-source-copy adapter does not supply either contract to the portable workflow.
-NAS-hosted serving is a separate deployment; it does not fix mounted-SMB access.
+Source operations require atomic no-replace relocation. On a positively identified
+macOS SMB mount, ADR-0037 binds direct requests to the mounted endpoint and saved
+account. Local storage retains native primitives. NAS-hosted serving is a separate
+deployment.
 
-Mounted-SMB support requires an implementation and review of authenticated,
-conflict-safe metadata publication and file/directory no-replace relocation,
-including mounted/direct identity checks, disconnect recovery and packaged
-credential behavior. Reuse of the existing direct-SMB dependency is an option;
-a check-then-rename fallback is not. Until that work passes, keep the current
-refusal. Removing mounted-SMB from the product requirements needs an owner decision.
+Private SMB observations use stable server file identity because mounted inode
+numbers change after direct relocation. Staging is observed after writer close.
+Only incomplete owned staging receives an explicit timestamp. Mounted file pages
+are discarded before source observation: the tested mount can return old bytes
+with new attributes after replacement. The worker waits at most five seconds for
+namespace visibility and thirty seconds for a replaced directory's child listing,
+while requiring the exact server directory identity. Missing children never imply
+that their directory is absent. Changed bytes and occupied targets remain refusals.
+
+The signed package's SMB Create returns the structured saved-login/connection
+unavailable error without an interactive prompt. Signature validation succeeds and
+the normal packaged smoke passes. A diagnostic signed with the same certificate
+and sidecar identifier confirms Keychain read denial before connection. Credential
+authorization remains pending; no grant is changed. Source-server success does
+not qualify packaged SMB access.
 
 The iCloud generation refusal is consistent with a ctime change; this run does
 not identify the actor that changed it. Do not weaken the generation check to
@@ -111,15 +146,25 @@ receipts, restored bytes and the received private draft. The harness never stops
 containers itself and does not accept an existing populated root for its initial
 phase.
 
+## Cleanup
+
+The isolated native app, managed sidecar and peer server are stopped. All 46
+mounted-SMB and native disposable data directories are removed, including the
+isolated profile, cache and WebKit state. All 117 installed-app and four owner-
+profile file hashes match the original baseline; no extra files are present.
+The final isolated build and private text receipts remain local. No credential
+grant, owner-library operation or publication occurs.
+
 ## Remaining qualification
 
-- Repair and qualify the portable mounted-SMB contracts described above.
+- Obtain the required Keychain authorization and qualify
+  the packaged mounted-SMB workflow without changing owner library data.
 - Use two already-configured iCloud endpoints. Record byte and metadata receipts
   at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
   Test controllable hydration without changing owner synchronization settings.
-- Restore working native automation and exercise normal desktop/server/library
-  switching, scoped credentials/drafts and the complete joined workflow.
+- Complete native cross-client acceptance and scoped credential checks. Current
+  synthetic native evidence does not qualify mounted-SMB credential access.
 
 Other providers, representative owner media, arbitrary large trees, host power
 loss, conversion, OS drag and the deferred product features are not qualified.

@@ -10,6 +10,7 @@ from smbprotocol.file_info import (  # type: ignore[import-untyped]
     FileFsVolumeInformation,
     FileInternalInformation,
     FileLinkInformation,
+    FileRenameInformation,
     FileStandardInformation,
 )
 from smbprotocol.open import (  # type: ignore[import-untyped]
@@ -141,6 +142,13 @@ class Share:
     # Link complete bytes exclusively on this tree without reopening the source
     def link(self, handle: Any, destination: str) -> None:
         info = FileLinkInformation()
+        info["replace_if_exists"] = False
+        info["file_name"] = destination
+        _set(handle, info)
+
+    def rename(self, handle: Any, destination: str) -> None:
+        """Move the held file or directory without replacing an occupied name."""
+        info = FileRenameInformation()
         info["replace_if_exists"] = False
         info["file_name"] = destination
         _set(handle, info)

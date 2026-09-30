@@ -48,7 +48,11 @@ separately. Text that has not reached the server is excluded. See
 File Browser provides reviewed file and directory Copy, Rename, Move, Replace, Trash
 and Undo with an explicit write permission. Retained content versions support
 conditional recovery. Directory reviews have bounded entry and metadata limits. See
-[source operations](docs/file-operations.md). Recently Used, cross-device resume and desktop file integration remain
+[source operations](docs/file-operations.md). Mounted macOS SMB uses authenticated
+exclusive publication and private server observations. Its current source-server,
+packaged and native test results are separate in
+[storage qualification](docs/storage-qualification.md).
+Recently Used, cross-device resume and desktop file integration remain
 incomplete. Local synthetic verification does not qualify provider folders, NAS,
 power-loss recovery or representative library scale. See the
 [capability inventory](docs/replica-catalog.md).

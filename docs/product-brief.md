@@ -38,10 +38,11 @@ The first product target is the computer-side web application. Android TV suppor
 
 Mac-hosted Cairndex accessing files on mounted SMB storage is a required
 deployment scenario. NAS-hosted serving is a separate optional scenario, not a
-substitute for mounted-SMB compatibility. Copy/Replace/Undo on positively identified
-macOS SMB mounts use the accepted direct-SMB publication path, qualified on the
-tested share. Missing credentials or unverifiable mapping retain recoverable
-intent; broader servers, mount-loss and power-loss behavior remain unqualified.
+substitute for mounted-SMB compatibility. Portable metadata publication and
+reviewed file/directory operations use authenticated direct SMB on positively
+identified macOS mounts (ADR-0037). Missing credentials, changed identity or
+unverifiable mapping retain recoverable intent. Current platform and packaged
+qualification limits are recorded in [storage qualification](storage-qualification.md).
 See [file operations](file-operations.md).
 
 ## Fixed product decisions

@@ -858,3 +858,10 @@ content versions under `.cairndex/source-operations/`. Independent snapshots ret
 bytes before capture. Copy Replace retains destination identity; Move Replace
 retains source identity and records displaced destination recovery. See
 [source operations](file-operations.md) for limits.
+
+Mounted-SMB source journals use the private `smb3-v1` authority digest and server
+file identity, size and last-write time. Directory observations include a subtree
+digest. Historical native observations retain their native interpretation; they
+are not converted into server identity. Shared receipts omit these private
+observations. Discovery baselines and media generations retain native quantities.
+See [ADR-0037](adr/0037-portable-mounted-smb.md).

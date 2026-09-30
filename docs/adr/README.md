@@ -54,3 +54,5 @@ design, subtitle modeling, and similar structural choices called out in
 | [0033](0033-selective-native-file-drops.md) | Selective native file-drop capture | proposed; on hold during copy-only assessment |
 | [0034](0034-mounted-smb-copy-publication.md) | Mounted-SMB copy publication | accepted |
 | [0035](0035-portable-library-format.md) | One portable library format | accepted |
+| [0036](0036-portable-source-operations.md) | Portable source operations and retained content versions | accepted |
+| [0037](0037-portable-mounted-smb.md) | Portable publication on mounted SMB | accepted; qualification incomplete |
