@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Cross-device iCloud qualification is deferred by the owner. Local-folder tests
+  do not qualify provider delivery, hydration or remote conflicts.
+
 - Record bounded Linux x86_64 NAS production qualification with synthetic source
   operations, media, private recovery, restart and image-content checks.
 

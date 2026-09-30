@@ -66,15 +66,18 @@ Move, Replace, Undo, Trash and Undo pass with strict identity and byte checks. A
 server identity, staging timestamp and mounted-cache checks. The signed sidecar
 passes its normal local smoke but SMB Create reports saved-login/connection
 unavailable. A diagnostic with the same signing certificate and sidecar identifier
-confirms Keychain read denial before connection. Credential authorization remains
-pending. Source-server success does not qualify packaged SMB access.
+confirms Keychain read denial before connection. Owner-approved interactive
+access establishes a signed, encrypted SMB connection. Fresh no-prompt reads
+and packaged Create still fail. Persistent authorization remains unverified.
+Source-server success does not qualify packaged SMB access.
 The independent directory Undo repair is `63fb45e8`: newly created identities do
 not require content in the displaced directory. Its Copy/Move regressions pass.
 
 Local iCloud Create and storage primitives pass. The first source Move safely
 stops on a changed generation; the source and independent recovery copy survive.
-A fresh review completes Move/Replace/Trash/Undo. No second syncing endpoint is
-available, so this does not prove provider delivery, hydration or remote conflicts.
+A fresh review completes Move/Replace/Trash/Undo. The owner deferred cross-device
+iCloud qualification on 2026-09-30. No second syncing endpoint is available.
+Provider delivery, hydration and remote conflicts remain untested.
 A real historical packaged reader opens format three, then blocks new source
 operation events with upgrade required and preserves the source bytes.
 
@@ -96,12 +99,16 @@ remain. Existing NAS container states are unchanged. All 46 mounted-SMB and
 native disposable data directories are removed. The native app, managed sidecar
 and peer server are stopped. All 117 installed-app and four owner-profile file
 hashes match the baseline, with no added files. The final isolated build and
-private text receipts remain local. No production deployment,
-owner-library test, permission change, push, PR, tag or release occurs.
+private text receipts remain local. Four additional directories from packaged
+retries after interactive Keychain authorization are removed. Owner state still
+matches its baseline. Interactive credential access is owner-approved; persistent
+access is unverified. No production deployment, owner-library test, push, PR,
+tag or release occurs.
 
 Next: resolve the packaged SMB access failure, finish native cross-client
-acceptance, and obtain an independently syncing provider endpoint. Keep conversion disabled, the
-bounded source-review limits, retained versions and deferred features unchanged.
+acceptance. Cross-device iCloud testing is deferred by the owner. Keep conversion
+disabled, the bounded source-review limits, retained versions and deferred
+features unchanged.
 
 ## Portable source operations: group 4 implemented and locally verified
 

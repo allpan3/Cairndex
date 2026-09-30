@@ -8,8 +8,9 @@ synthetic evidence. The source server passes portable Create, the joined file HT
 workflow and complete directory operations on mounted macOS SMB. The signed
 package cannot read the saved SMB login from Keychain; its normal local smoke
 passes. Native Create, metadata editing, image viewing, Copy/Undo and private
-recovery pass with an isolated profile. Actual cross-device provider delivery
-remains unqualified. Group 6 installation and final owner acceptance must not treat these gaps as passed.
+recovery pass with an isolated profile. Cross-device iCloud qualification is
+deferred by the owner. It remains untested and must not be treated as passed.
+Group 6 installation and final owner acceptance must retain these limits.
 
 The local host uses macOS 27.0; Docker Desktop serves Linux ARM64 with engine
 29.5.3. The NAS runs Linux x86_64 with engine 29.6.2 and native Btrfs.
@@ -30,7 +31,7 @@ identify image and executable hashes, test roots and process results. They are n
 | NAS Linux x86_64, native Btrfs | Production image, repository compose, joined HTTP workflow, clean/forced-exit restart, media and separate recovery smoke; storage primitives | Passed with fresh synthetic state. Compose uses the host user, two CPUs, 2 GiB, a read-only root and loopback-only ports. Media smoke also verifies default UID 10001 and host-user override. No owner-library or power-loss claim. |
 | macOS mounted SMB, source server | Authenticated exclusive publication, Create, joined file HTTP workflow, nested/empty directory operations and restart | Passed with synthetic data. Direct SMB avoids unsupported native primitives. File cache discard and bounded directory visibility preserve strict identity and byte checks. Packaged SMB remains separate. |
 | Local iCloud Drive folder | Primitives, Create, source operations and retained versions | Primitives and Create pass. Copy/Rename pass; the first Move stops on a changed generation before capture. Device/inode/size/mtime and source bytes remain unchanged. A fresh explicit review completes Move/Replace/Trash/Undo. The first refusal remains part of the result. |
-| iCloud cross-device delivery | Independent syncing endpoints and private stores | Not tested: no second accessible endpoint is supplied. Local folder writes and deterministic delivery are not remote-delivery proof. |
+| iCloud cross-device delivery | Independent syncing endpoints and private stores | Deferred by the owner on 2026-09-30. No second accessible endpoint is supplied. Local folder writes and deterministic delivery are not remote-delivery proof. |
 | Historical packaged server | Real executable opens format three, then receives `catalog_source_edit` | It retains the valid projection, reports unsupported catalog schema/upgrade required, and leaves source bytes unchanged. This is refusal evidence, not old-client support. |
 | Browser | All 33 existing browser cases, two workers, no retries | Passed against isolated real servers and synthetic fixtures. Includes independent stores, scoped drafts, conflicts, access/recovery, media and source operations. |
 | Packaged server | Frozen worker Create, Update, image/HEIC preview, Copy/Move/Trash/Undo and shutdown | Passed. The isolated macOS app builds and passes signature/license checks. |
@@ -109,9 +110,11 @@ that their directory is absent. Changed bytes and occupied targets remain refusa
 The signed package's SMB Create returns the structured saved-login/connection
 unavailable error without an interactive prompt. Signature validation succeeds and
 the normal packaged smoke passes. A diagnostic signed with the same certificate
-and sidecar identifier confirms Keychain read denial before connection. Credential
-authorization remains pending; no grant is changed. Source-server success does
-not qualify packaged SMB access.
+and sidecar identifier confirms Keychain read denial before connection. Owner-
+approved interactive access succeeds and establishes a signed, encrypted SMB
+connection. A fresh process with prompts disabled still receives access denied;
+the exact packaged server also refuses Create. Persistent authorization is not
+verified. Source-server success does not qualify packaged SMB access.
 
 The iCloud generation refusal is consistent with a ctime change; this run does
 not identify the actor that changed it. Do not weaken the generation check to
@@ -152,15 +155,18 @@ The isolated native app, managed sidecar and peer server are stopped. All 46
 mounted-SMB and native disposable data directories are removed, including the
 isolated profile, cache and WebKit state. All 117 installed-app and four owner-
 profile file hashes match the original baseline; no extra files are present.
-The final isolated build and private text receipts remain local. No credential
-grant, owner-library operation or publication occurs.
+The two packaged retries after interactive authorization use four additional
+disposable directories; these are also removed. The installed app and owner
+profile still match their baseline. The final isolated build and private text
+receipts remain local. Interactive Keychain access is owner-approved; persistent
+access is unverified. No owner-library operation or publication occurs.
 
 ## Remaining qualification
 
 - Obtain the required Keychain authorization and qualify
   the packaged mounted-SMB workflow without changing owner library data.
-- Use two already-configured iCloud endpoints. Record byte and metadata receipts
-  at both ends for compatible and conflicting edits, delayed/partial/duplicate/
+- Deferred by the owner: use two already-configured iCloud endpoints. Record
+  byte and metadata receipts at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
   Test controllable hydration without changing owner synchronization settings.
 - Complete native cross-client acceptance and scoped credential checks. Current
