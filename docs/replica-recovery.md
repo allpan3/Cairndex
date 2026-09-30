@@ -1,5 +1,9 @@
 # Private replica backup and device recovery
 
+Successful queue, stop and retry responses confirm that the registry transaction
+is committed. Clients can read the accepted task immediately. Completion of the
+background recovery operation remains a separate task state.
+
 ## Normal controls
 
 Open **Manage libraries → Access and backups**. Unlock the library if needed.

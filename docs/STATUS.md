@@ -43,7 +43,12 @@ Rust source is unchanged; Rust unit/Clippy gates are not repeated.
 
 Local APFS passes the storage and source-operation checks. Native NAS Btrfs
 passes hard-link, exclusive file/directory relocation and occupied-target checks.
-The NAS application image is not tested: source transfer remains approval-blocked.
+The approved Linux x86_64 NAS image run passes the joined workflow, restart and
+media checks. Its separate recovery check exposed a response-before-commit race:
+a status request could not find a newly accepted task. Recovery queue, stop and
+retry handlers now commit before success. A deterministic response-boundary
+regression and all 14 private-control tests pass, as do backend static checks.
+The repaired NAS image and full regression run are pending.
 Mounted macOS SMB rejects the required native primitives; portable Create fails
 before descriptor publication. The old direct-SMB adapter does not qualify this
 portable workflow. A repair needs both metadata publication and no-replace source

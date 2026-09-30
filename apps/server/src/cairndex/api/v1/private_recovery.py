@@ -113,7 +113,10 @@ def tasks(
 @router.post("/tasks", response_model=RecoveryTaskRead, status_code=202)
 def start(payload: RecoveryRequest, library: Library, registry: RegistryDbSession) -> RecoveryTask:
     body = payload.model_dump(exclude={"operation", "action"}, exclude_none=True)
-    return recovery_tasks.enqueue(registry, library, payload.operation, payload.action, body)
+    row = recovery_tasks.enqueue(registry, library, payload.operation, payload.action, body)
+    # Clients can poll as soon as headers arrive, before dependency cleanup commits.
+    registry.commit()
+    return row
 
 
 @router.get("/tasks/{identity}", response_model=RecoveryTaskRead)
@@ -138,6 +141,7 @@ def stop(identity: Identity, library: Library, registry: RegistryDbSession) -> R
         raise ReplicaError(
             "This operation is running. Wait for its verified result; original stores are retained."
         )
+    registry.commit()
     return row
 
 
@@ -159,4 +163,5 @@ def retry(identity: Identity, library: Library, registry: RegistryDbSession) -> 
     except IntegrityError as error:
         registry.rollback()
         raise ReplicaError("Another operation is active; refresh and retry") from error
+    registry.commit()
     return row

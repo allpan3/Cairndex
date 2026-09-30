@@ -418,3 +418,38 @@ def test_stop_does_not_cancel_a_task_claimed_after_the_read(api):
         with pytest.raises(ReplicaError, match="operation is running"):
             stop(identity, library, stale_session)
         assert stale.state == "running"
+
+
+# A receipt must be readable before the response, not after dependency cleanup.
+def test_recovery_changes_are_committed_before_response_start(api, monkeypatch):
+    from cairndex.registry.models import RecoveryTask
+
+    client, base, _ = api
+    runner = worker(client)
+    identity = uuid4().hex
+    path = base + "/private-recovery/tasks"
+    original = client.app.middleware_stack
+    observed = []
+
+    async def inspect_response(scope, receive, send):
+        async def observe(message):
+            if message["type"] == "http.response.start" and scope["method"] == "POST":
+                with runner.factory() as reader:
+                    row = reader.get(RecoveryTask, identity)
+                    observed.append(None if row is None else row.state)
+            await send(message)
+
+        await original(scope, receive, observe)
+
+    monkeypatch.setattr(client.app, "middleware_stack", inspect_response)
+    response = client.post(path, json={"operation": identity, "action": "backup"})
+    assert response.status_code == 202, response.text
+    assert observed == ["queued"]
+    response = client.post(path + "/" + identity + "/stop")
+    assert response.status_code == 200, response.text
+    assert observed == ["queued", "cancelled"]
+    with runner.factory.begin() as session:
+        session.get(RecoveryTask, identity).state = "interrupted"
+    response = client.post(path + "/" + identity + "/retry")
+    assert response.status_code == 200, response.text
+    assert observed == ["queued", "cancelled", "queued"]

@@ -30,6 +30,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Private recovery queue, stop and retry requests commit their state before
+  returning success. Immediate status requests can read the accepted task.
+
 - Library creation reports structured storage errors when exclusive publication,
   free space or access is unavailable. Existing source files remain unchanged.
   A saved creation intent can resume after the storage fault is removed.
