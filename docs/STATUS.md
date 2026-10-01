@@ -1,5 +1,31 @@
 # Project status
 
+## Group 6: final regression and local installation in progress
+
+The primary checkout remains on `fix/library-ownership-lifecycle`. Preview
+repair `6ff24504` prevents a recovery read before the submitting queue request
+is acknowledged. Obsolete recovery responses cannot replace a newer preview.
+Current failures retain the private intent and stay visible. Seven focused
+component tests cover this boundary and restart recovery.
+
+Backend lint, formatting and mypy pass; 1,922 tests pass with one existing ffmpeg
+skip. Frontend lint, formatting, type checks and build pass. The bounded full
+unit suite passes all 1,254 tests. All 33 browser tests pass with two workers
+and zero retries on the host. Rust formatting, locked Clippy and all 135 tests pass with
+the staged real sidecar. The desktop Node test passes. The disposable Keychain
+check passes and restores its original search list. OpenAPI remains unchanged.
+The first unrestricted frontend run has four timeout failures under high
+parallel load. The bounded run preserves all assertions and timeout limits.
+The first browser launch is blocked by the process sandbox; host-process
+verification passes. The first Rust run has one obsolete legacy creation
+expectation; the corrected test checks exact retry identity and name refusal.
+
+The normal production build, native workflow and local installation remain in
+progress. All test data is synthetic. Owner data, NAS deployment, signing
+configuration and existing Keychain grants are outside the change scope.
+The complete branch privacy scan retains its historical findings. Local staged
+changes pass the gate; publication remains excluded by the owner.
+
 ## Group 5: active scope complete; iCloud deferred
 
 Qualification implementation: `f91ae57b`, based on `ace91dff`, on

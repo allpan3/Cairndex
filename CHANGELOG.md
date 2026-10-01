@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Desktop creation tests check exact portable retries and reject a changed
+  creation name. Local installation instructions include source identity,
+  rollback copies, payload verification and preserved signing configuration.
+
 - Record bounded native access, recovery and shared-server conflict qualification
   with isolated synthetic data. A regression test checks browser-grant and
   paired-token revocation after a passphrase change. Group 6 local checks can

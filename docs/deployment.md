@@ -580,29 +580,37 @@ or a malformed signature is a packaging bug, not the Gatekeeper prompt.
 cp -R apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
 ```
 
-**Updating after a rebuild — read this one.** `npm run tauri build` writes into
-`target/release/bundle/`. It does **not** touch `/Applications`. Nothing warns you
-that the installed copy is now older than the code you just built, and the app
-shows no version anywhere, so a stale install looks identical to a fresh one. This
-has already cost one debugging session: a fix was reported as "not working" while
-the copy under test predated it by 40 minutes.
+**Updating a local build.** The build writes into `target/release/bundle/`.
+Installation is a separate step. Settings → About shows the embedded desktop
+source commit and the selected server's build identity. Set
+`CAIRNDEX_BUILD_COMMIT` to the full source commit when building. Verify the exact
+app and bundled server before installation.
 
 ```bash
 cd apps/desktop
-npm run tauri build
+CAIRNDEX_BUILD_COMMIT="$(git rev-parse HEAD)" npm run tauri build -- --bundles app
 
 # Quit the running app first — replacing a running bundle leaves it in a
 # half-updated state until relaunch.
 osascript -e 'quit app "Cairndex"' 2>/dev/null || true
 
+# Keep a private rollback copy before replacing an existing installation.
+# Choose a new private backup directory for each installation.
+ditto /Applications/Cairndex.app /path/to/private-backup/Cairndex.app
 rm -rf /Applications/Cairndex.app
-cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
+ditto src-tauri/target/release/bundle/macos/Cairndex.app /Applications/Cairndex.app
 open /Applications/Cairndex.app
 ```
 
-**When in doubt, rebuild and reinstall.** It takes under a minute, and it is more
-reliable than trying to determine what you are running. There is no version string
-in the UI, so a stale install looks exactly like a current one.
+Keep the existing application profile and signing configuration. Do not reset
+Keychain grants during an update. A local certificate preserves the sidecar's
+signing requirement; saved-login access still needs qualification for the actual
+executable and share. A diagnostic credential grant is insufficient.
+
+Compare installed file bytes, modes and symlink targets with the verified
+candidate. Verify its signature and embedded source identity. Launch the
+installed copy and check a synthetic workflow through the normal interface.
+Keep rollback information in a private local receipt.
 
 If you do want to check, be precise about what the check proves:
 

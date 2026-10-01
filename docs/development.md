@@ -219,8 +219,9 @@ Checks (run from `apps/web`):
 ```bash
 npm run lint              # eslint
 npm run format:check      # prettier --check
-npm run typecheck         # tsc --noEmit
+npm run typecheck         # tsc -b
 npm run test              # vitest run
+npm run test -- --maxWorkers=2 # bounded unit-test concurrency
 npm run test:e2e          # playwright (boots its own dev server)
 npm run test:e2e:frontend # browser-only tests with intercepted APIs
 npm run test:e2e:fullstack # real-backend tests; requires uv sync + ffmpeg
@@ -229,6 +230,8 @@ npm run build             # production SPA build
 
 CI keeps the frontend job Node-only and runs `@fullstack` Playwright tests in a
 separate job that provisions the locked backend environment and ffmpeg.
+Use bounded unit-test concurrency when checking the full suite on a shared
+workstation. Test timeout limits and assertions remain the same.
 
 ### What CI runs, and when
 
