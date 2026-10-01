@@ -123,6 +123,10 @@ def main(argv: list[str] | None = None) -> int:
         from cairndex.replicas.recovery_cli import main as recovery_main
 
         return recovery_main(arguments[1:])
+    if arguments and arguments[0] == "authorize-smb":
+        from cairndex.file_ops.smb_authorization import main as authorize_smb
+
+        return authorize_smb(arguments[1:])
     parser = argparse.ArgumentParser(prog="cairndex-sidecar", description=__doc__)
     parser.add_argument(
         "--watch-parent",

@@ -623,6 +623,17 @@ access the saved login. Portable background work never requests a Keychain promp
 A packaged saved-login refusal must be resolved for that application before its
 mounted-SMB workflow can be qualified.
 
+Authorize the built sidecar explicitly with
+`packaging/dist/cairndex-sidecar/cairndex-sidecar authorize-smb <mounted-directory>`.
+The command selects the exact mounted server, account and share's saved login.
+The Keychain path is the share name, without an added leading slash. The command
+permits a bounded Keychain prompt and verifies signed, encrypted SMB3. It starts
+no HTTP server and writes no library files. The owner completes any Keychain
+approval. Authorization failure output includes only a numeric Security status or a timeout
+message; it excludes private paths and credential values. Background publication
+never prompts. A diagnostic executable's grant does not qualify access for the
+actual packaged sidecar.
+
 ```bash
 cd apps/server
 uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see below)

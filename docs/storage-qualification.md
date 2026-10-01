@@ -6,8 +6,10 @@ Group 5 is incomplete. Local Linux ARM64 containers, Linux x86_64 NAS containers
 local APFS, deterministic metadata delivery and browser workflows have passing
 synthetic evidence. The source server passes portable Create, the joined file HTTP
 workflow and complete directory operations on mounted macOS SMB. The signed
-package cannot read the saved SMB login from Keychain; its normal local smoke
-passes. Native Create, metadata editing, image viewing, Copy/Undo and private
+package passes the joined mounted-SMB workflow, clean restart and forced-exit
+restart with prompts disabled. The actual signed sidecar verifies saved-login
+access through its explicit authorization command. Native mounted-SMB Create
+and app restart pass. Native metadata editing, image viewing, Copy/Undo and private
 recovery pass with an isolated profile. Cross-device iCloud qualification is
 deferred by the owner. It remains untested and must not be treated as passed.
 Group 6 installation and final owner acceptance must retain these limits.
@@ -30,6 +32,8 @@ identify image and executable hashes, test roots and process results. They are n
 | Linux ARM64 regressions | 308 source, creation, recovery, access, catalog, transport and discovery cases | Passed with two CPUs, 2 GiB memory, non-root UID, read-only root and no network. Tests use the runtime source before the NAS recovery response repair, with locked development dependencies. |
 | NAS Linux x86_64, native Btrfs | Production image, repository compose, joined HTTP workflow, clean/forced-exit restart, media and separate recovery smoke; storage primitives | Passed with fresh synthetic state. Compose uses the host user, two CPUs, 2 GiB, a read-only root and loopback-only ports. Media smoke also verifies default UID 10001 and host-user override. No owner-library or power-loss claim. |
 | macOS mounted SMB, source server | Authenticated exclusive publication, Create, joined file HTTP workflow, nested/empty directory operations and restart | Passed with synthetic data. Direct SMB avoids unsupported native primitives. File cache discard and bounded directory visibility preserve strict identity and byte checks. Packaged SMB remains separate. |
+| macOS mounted SMB, signed package | Explicit saved-login authorization, joined workflow, clean/forced-exit restart | Passed against the actual signed sidecar with fresh synthetic roots. Workflow and restart disable prompts. Source bytes, access, recovery, receipts and drafts are preserved. |
+| macOS mounted SMB, native app | Managed sidecar Create, exact creation retry and app restart | Passed with the isolated app and synthetic root. The first Create reports a recoverable refusal; authorization with the actual bundled sidecar and retry complete the retained intent. Restart opens the library without a prompt. |
 | Local iCloud Drive folder | Primitives, Create, source operations and retained versions | Primitives and Create pass. Copy/Rename pass; the first Move stops on a changed generation before capture. Device/inode/size/mtime and source bytes remain unchanged. A fresh explicit review completes Move/Replace/Trash/Undo. The first refusal remains part of the result. |
 | iCloud cross-device delivery | Independent syncing endpoints and private stores | Deferred by the owner on 2026-09-30. No second accessible endpoint is supplied. Local folder writes and deterministic delivery are not remote-delivery proof. |
 | Historical packaged server | Real executable opens format three, then receives `catalog_source_edit` | It retains the valid projection, reports unsupported catalog schema/upgrade required, and leaves source bytes unchanged. This is refusal evidence, not old-client support. |
@@ -66,7 +70,9 @@ The historical sidecar SHA-256 is
 It reports version 0.2.1 without a build commit, so its digest identifies the
 executable evidence. Its isolated private state is separate from the installed
 application profile. The final qualification sidecar SHA-256 is
-`602f178f5a9034a71f6e54e6e87e84b271ceabd7cef06f569a34309ed7661064`.
+`db425dd3a7c17b14aae2170528de709b31922b248552067fb6a4f7e0d92aceab`.
+The isolated app contains the same executable bytes and passes strict signature,
+license and packaged-server smoke checks.
 
 ## Native and regression evidence
 
@@ -82,9 +88,14 @@ and creates its own library; its first baseline requires Refresh catalog status.
 Returning to This Computer restores the original draft. After Quit and restart,
 the saved title, rating and note remain. Recover private draft explicitly restores
 the received unsaved title. No native passphrase is entered. Browser and HTTP
-access checks do not constitute native credential qualification.
+access checks do not qualify native per-library passphrase entry. The current
+mounted-SMB credential result is recorded below.
 
-The final runtime passes 1,911 backend tests with one existing ffmpeg skip. Ruff,
+The final runtime passes 1,921 backend tests with one existing ffmpeg skip. The
+65 focused saved-login tests and 37 replica acceptance tests pass. The independent
+fixture repair at `6c33482f` selects an unused object-directory prefix before the
+symlink-confinement check. The preceding full run's fixture collision remains in
+private receipts. Ruff,
 formatting and mypy pass; generated OpenAPI is unchanged. Three affected browser
 cases pass with two workers and no retries. The prior 33-case browser run remains
 separate evidence. The final sidecar and isolated native build pass packaging;
@@ -107,17 +118,23 @@ namespace visibility and thirty seconds for a replaced directory's child listing
 while requiring the exact server directory identity. Missing children never imply
 that their directory is absent. Changed bytes and occupied targets remain refusals.
 
-The signed package's SMB Create returns the structured saved-login/connection
-unavailable error without an interactive prompt. Signature validation succeeds and
-the normal packaged smoke passes. A diagnostic signed with the same certificate
-and sidecar identifier confirms saved-login read denial before connection.
-Owner-approved interactive access establishes a signed, encrypted SMB connection.
-A later diagnostic process also succeeds with prompts disabled, but packaged
-Create still fails. The current mounted channel and DNS resolution use the same
-server address. Subsequent checks find no saved login for the mounted server and
-account, or for the current IP address and account. Restoring the saved login and
-qualifying the actual sidecar remain required. Source-server success does not
-qualify packaged SMB access.
+Earlier signed-package Create attempts return the structured saved-login/connection
+unavailable error without an interactive prompt. A diagnostic succeeds after
+authorization, but the package still fails. The current mounted channel and DNS
+resolution use the same server address. The exact Security framework lookup
+confirms that the saved login exists. The earlier missing-login conclusion was
+incorrect. Before authorization, its application access rules exclude the actual
+sidecar. The lookup
+now uses the exact mounted server, account and share name as the Keychain path,
+without an added leading slash. Owner-approved authorization through the actual
+signed sidecar verifies saved-login access and signed, encrypted SMB3. Its normal
+local smoke passes. The joined packaged workflow, clean restart and forced-exit
+restart pass with prompts disabled. Native Create first returns a recoverable
+refusal. Authorization with the actual bundled sidecar and the same creation
+retry complete the retained intent. App restart opens the library without a
+prompt. Existing failures remain in private receipts. A diagnostic grant alone
+does not qualify another executable, and this result does not prove authorization
+for future rebuilt binaries or other shares.
 
 The iCloud generation refusal is consistent with a ctime change; this run does
 not identify the actor that changed it. Do not weaken the generation check to
@@ -161,20 +178,27 @@ profile file hashes match the original baseline; no extra files are present.
 The three packaged retries after interactive authorization use six additional
 disposable directories; these are also removed. The installed app and owner
 profile still match their baseline. The final isolated build and private text
-receipts remain local. Interactive Keychain access is owner-approved; persistent
-access is unverified. No owner-library operation or publication occurs.
+receipts remain local. The saved-login repair removes six more disposable data,
+profile and cache directories. All 121 owner-state hashes match, with no extra
+files. Fresh packaged processes and native app restart verify saved-login access
+without prompts for the recorded executable and share. No owner-library operation
+or publication occurs.
+
+The complete branch range from `origin/main` fails the publication privacy gate
+because existing history exceeds the path/blob limits and has private-content
+findings. No publication is permitted until that history is inspected and
+sanitized. The fixture and saved-login repairs require separate staged and
+commit-range checks; they do not remove earlier objects.
 
 ## Remaining qualification
 
-- Restore the saved SMB login for the mounted server and account. Obtain
-  authorization for the actual signed sidecar and qualify its mounted-SMB
-  workflow without changing owner library data.
 - Deferred by the owner: use two already-configured iCloud endpoints. Record
   byte and metadata receipts at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
   Test controllable hydration without changing owner synchronization settings.
-- Complete native cross-client acceptance and scoped credential checks. Current
-  synthetic native evidence does not qualify mounted-SMB credential access.
+- Complete broader native cross-client acceptance and per-library access checks.
+  Mounted-SMB credential access is qualified for the recorded executable and
+  share; native per-library passphrase entry remains untested.
 
 Other providers, representative owner media, arbitrary large trees, host power
 loss, conversion, OS drag and the deferred product features are not qualified.

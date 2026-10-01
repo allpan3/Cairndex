@@ -73,7 +73,7 @@ The tested Mac mount refuses native hard links, exclusive rename and cloning.
 On macOS, Cairndex uses [ADR-0034](adr/0034-mounted-smb-copy-publication.md)'s
 signed, encrypted direct-SMB publication path for Copy/Replace/Undo while media
 and metadata remain mounted normally. The matching SMB login must already be
-saved in macOS Keychain for the kernel-reported server and account; the first use
+saved in macOS Keychain for the kernel-reported server, account and share; the first use
 may show a Keychain access prompt. Missing or denied credentials safely refuse
 the operation. NAS-hosted serving remains a separate option. See
 [publication verification](nas-verification.md#mounted-smb-copy-publication).
@@ -671,12 +671,21 @@ Keychain grants may not cover a rebuilt executable. Local source builders can
 [configure a persistent sidecar certificate](development.md#local-server-sidecar-appsserverpackaging)
 with `uv run python packaging/macos_signing.py create-local` from `apps/server`.
 Both build variants then retain the same certificate and `dev.cairndex.sidecar`
-identifier. The first operation with the new signer can require **Always Allow**;
-subsequent builds satisfy that grant while the certificate is retained. This local
+identifier. The first operation with the new signer can require **Always Allow**.
+Verify access in a fresh process after a rebuild; existing Keychain rules can
+require authorization for the new executable. This local
 identity changes neither system trust nor Gatekeeper/notarization requirements.
 It is not automatically created by a build or distributed as a signing key.
 An unanswered request times out after 20 seconds and preserves recoverable
 intent for an explicit retry; background recovery does not prompt.
+
+The signed backend supports `cairndex-sidecar authorize-smb <mounted-directory>`
+for explicit saved-login authorization. The command permits one bounded prompt
+and verifies signed, encrypted SMB3. It starts no HTTP server and changes no
+library files. Use the actual sidecar executable that will serve the library.
+Its lookup uses the mounted share name as the Keychain path, without an added
+leading slash, so another share's credential and application
+permissions cannot be selected by a pathless search.
 
 ### If you install from the DMG: the `cairndex://` scheme has several claimants
 

@@ -1,6 +1,6 @@
 # Project status
 
-## Group 5: bounded storage qualification; completion blocked
+## Group 5: bounded storage qualification; iCloud deferred
 
 Qualification implementation: `f91ae57b`, based on `ace91dff`, on
 `fix/library-ownership-lifecycle`. NAS recovery repair: `1f296083`. See the
@@ -28,7 +28,12 @@ Qualification repairs:
   project. Deployment comments describe private working state and current drain.
 - A reusable HTTP harness checks the joined workflow and restart receipts.
 
-Final backend verification passes **1,911 tests**, with one existing ffmpeg skip.
+Final backend verification passes **1,921 tests**, with one existing ffmpeg skip.
+The saved-login repair passes 65 focused tests. An independent fixture repair at
+`6c33482f` avoids a generated object-directory collision before the replica
+path-confinement assertion. Its 37 acceptance tests pass; the final full run
+includes the repair. The preceding full run's fixture failure remains in private
+receipts.
 The preceding Linux ARM64 checkpoint passes **308 focused tests** with locked
 dependencies and no network. Frontend verification passes **1,250 unit tests**.
 The preceding full browser run passes **33 tests**
@@ -63,15 +68,20 @@ package precede this repair and are not rebuilt in this NAS checkpoint.
 The source server passes mounted-SMB Create and the joined file HTTP workflow,
 including clean and forced-exit restart. Nested and empty directory Copy, Rename,
 Move, Replace, Undo, Trash and Undo pass with strict identity and byte checks. ADR-0037 defines the direct publication,
-server identity, staging timestamp and mounted-cache checks. The signed sidecar
-passes its normal local smoke but SMB Create reports saved-login/connection
-unavailable. A diagnostic with the same signing certificate and sidecar identifier
-confirms saved-login read denial before connection. Owner-approved interactive
-access and a later no-prompt diagnostic establish signed, encrypted SMB. Packaged
-Create still fails. The mounted channel and DNS resolution use the same server
-address. Current metadata checks find no saved login for the mounted server and
-account, or for the current IP address and account. Restore the saved login and
-qualify the actual sidecar. Source-server success does not qualify packaged SMB.
+server identity, staging timestamp and mounted-cache checks. Earlier packaged
+Create attempts report saved-login/connection unavailable. A diagnostic grant
+does not qualify the actual sidecar. The mounted channel and DNS resolution use
+the same server address. The exact Security framework lookup confirms that the
+saved login exists; the earlier missing-login conclusion was incorrect. Before
+authorization, its application access rules exclude the sidecar. The lookup now uses the
+mounted server, account and share name as the Keychain path, without an added
+leading slash. Owner-approved authorization through the actual signed sidecar
+verifies saved-login access and signed, encrypted SMB3. Its normal local smoke
+passes. The joined packaged SMB workflow, clean restart and forced-exit restart
+pass with prompts disabled. Native Create first returns a recoverable refusal.
+Authorization with the actual bundled sidecar and the same creation retry
+complete the retained intent. App restart opens the library without a prompt.
+This qualifies the recorded executable and share, not future builds or all shares.
 The independent directory Undo repair is `63fb45e8`: newly created identities do
 not require content in the displaced directory. Its Copy/Move regressions pass.
 
@@ -92,7 +102,8 @@ The peer library requires Refresh catalog status for its initial baseline. Retur
 to This Computer preserves the original draft. Quit/restart retains saved
 metadata; Recover private draft restores the received unsaved title explicitly.
 The app uses a separate identifier, profile and URL scheme. No native screenshot
-is published. Native credential and provider checks remain separate.
+is published. Native per-library passphrase entry and provider checks remain
+separate; the current mounted-SMB credential result is recorded above.
 The 10,000-bundle metadata benchmark is recorded in [performance](performance.md);
 it is not multi-terabyte, large-media or provider-backlog qualification.
 
@@ -103,12 +114,21 @@ and peer server are stopped. All 117 installed-app and four owner-profile file
 hashes match the baseline, with no added files. The final isolated build and
 private text receipts remain local. Six additional directories from packaged
 retries after interactive Keychain authorization are removed. Owner state still
-matches its baseline. Interactive credential access is owner-approved; persistent
-access is unverified. No production deployment, owner-library test, push, PR,
-tag or release occurs.
+matches its baseline. The saved-login repair removes six more disposable data,
+profile and cache directories. Fresh packaged processes and native app restart
+verify saved-login access without prompts for the recorded executable and share.
+All 121 owner-state hashes still match, with no added files. No production
+deployment, owner-library test, push, PR, tag or release occurs.
 
-Next: resolve the packaged SMB access failure, finish native cross-client
-acceptance. Cross-device iCloud testing is deferred by the owner. Keep conversion
+The complete branch range from `origin/main` fails the publication privacy gate:
+existing history exceeds the path/blob limits and has private-content findings.
+The independent fixture commit passes the range from `9a00cbc0`. This repair
+requires its own staged and commit-range checks. No publication is permitted
+until the complete history is inspected and sanitized.
+
+Next: finish broader native cross-client acceptance and per-library access
+checks. Inspect and sanitize branch history before publication. Cross-device
+iCloud testing is deferred by the owner. Keep conversion
 disabled, the bounded source-review limits, retained versions and deferred
 features unchanged.
 

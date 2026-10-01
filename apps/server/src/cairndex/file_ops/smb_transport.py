@@ -26,6 +26,7 @@ class SmbTransportError(OSError):
     """The direct SMB path is unavailable without weakening publication safety"""
 
     ntstatus: int | None = None
+    keychain_status: int | None = None
 
 
 class _FileAbsent(FileNotFoundError):
@@ -148,6 +149,9 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
     security.SecKeychainFindInternetPassword.restype = ctypes.c_int32
     security.SecKeychainItemFreeContent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     host, account = mount.server.encode(), mount.account.encode()
+    # macOS saves separate internet-password items for individual SMB shares.
+    # An unspecified path can select another share's item and its access rules.
+    share_path = mount.share.encode()
     length, data = ctypes.c_uint32(), ctypes.c_void_p()
     with _keychain_lock:
         security.SecKeychainSetUserInteractionAllowed(allow_prompt)
@@ -160,8 +164,8 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
                 None,
                 len(account),
                 account,
-                0,
-                None,
+                len(share_path),
+                share_path,
                 0,
                 int.from_bytes(b"smb ", "big"),
                 0,
@@ -174,10 +178,14 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
     if status != 0 or not data.value:
         if data.value:
             security.SecKeychainItemFreeContent(None, data)
-        raise SmbTransportError(
-            errno.EACCES,
-            "The saved SMB login is unavailable; allow Keychain access and retry",
+        message = (
+            "No saved SMB login matches the mounted server, account and share"
+            if status == -25300
+            else "The application cannot read the saved SMB login; authorize it and retry"
         )
+        error = SmbTransportError(errno.EACCES, message)
+        error.keychain_status = status
+        raise error
     try:
         return ctypes.string_at(data, length.value).decode("utf-8")
     finally:

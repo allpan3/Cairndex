@@ -39,6 +39,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- SMB saved-login lookup includes the mounted share path. Different shares on
+  the same server and account keep their own credential access rules. The signed
+  sidecar provides explicit `authorize-smb` access verification; background work
+  remains non-interactive.
+
 - Undo of a directory replacement removes newly created file identities without
   requiring them to exist in the displaced content version.
 

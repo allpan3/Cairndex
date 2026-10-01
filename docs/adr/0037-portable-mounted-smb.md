@@ -1,6 +1,6 @@
 # ADR-0037: Portable publication on mounted SMB
 
-- Status: accepted within the approved mounted-SMB repair scope; qualification incomplete
+- Status: accepted within the approved mounted-SMB repair scope; bounded synthetic qualification passes
 - Date: 2026-09-30
 - Amends: ADR-0034; complements ADR-0035 and ADR-0036
 
@@ -27,7 +27,12 @@ identity and canonical path. Require the same mounted endpoint, share and accoun
 for both parents. Hold direct SMB ancestors against deletion, reject reparse
 objects and referrals, and prove each mutation's parent mapping with temporary
 nonce bytes read through the mount. Recheck held parent paths after publication.
-Background work retrieves only the matching saved login with interaction disabled.
+Background work retrieves only the saved login for the exact mounted server,
+account and share path, with interaction disabled. The Keychain path is the
+mounted share name, without an added leading slash. A pathless lookup must not
+select another share's item or its application access rules. The signed sidecar's
+explicit `authorize-smb` command can request access and verify signed, encrypted
+SMB3 without opening a library or starting an HTTP server.
 Missing authorization is a recoverable unavailable state. Creation and serving
 register roots; the last use of an account releases its private SMB session.
 
