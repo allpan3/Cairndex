@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record final local regression, normal macOS installation and bounded native
+  verification with synthetic data. Decoded video pixels, conflict review,
+  private recovery, Copy/Undo and restart/draft recovery pass. Owner state is
+  restored and a verified rollback app remains local. Owner acceptance, rebuilt
+  sidecar SMB access and publication remain separate gates.
+
 - Desktop creation tests check exact portable retries and reject a changed
   creation name. Local installation instructions include source identity,
   rollback copies, payload verification and preserved signing configuration.

@@ -1,6 +1,6 @@
 # Project status
 
-## Group 6: final regression and local installation in progress
+## Group 6: local verification and installation complete; owner acceptance open
 
 The primary checkout remains on `fix/library-ownership-lifecycle`. Preview
 repair `6ff24504` prevents a recovery read before the submitting queue request
@@ -20,11 +20,47 @@ The first browser launch is blocked by the process sandbox; host-process
 verification passes. The first Rust run has one obsolete legacy creation
 expectation; the corrected test checks exact retry identity and name refusal.
 
-The normal production build, native workflow and local installation remain in
-progress. All test data is synthetic. Owner data, NAS deployment, signing
-configuration and existing Keychain grants are outside the change scope.
+The normal production macOS app is installed from runtime source
+`e44bc574abb18f6ed93dcd50c73dcba2f6b4982d`. This documentation follows that runtime
+commit. The build, strict deep signature check, distribution-license check and
+exact app-packaged server smoke pass. All 248 frozen Cairndex modules match the
+source. All 159 installed payload entries match the candidate, including file
+bytes, modes and symlink targets. The installed process and managed-server health
+report the expected runtime commit. The normal identifier and URL handler remain.
+
+The actual installed app passes bounded synthetic Create, reviewed Update,
+title/rating/note editing, decoded video playback, shared-server conflict review,
+Lock and incorrect/correct Unlock. Conflict preparation completes without the
+unavailable-job notice. Snapshot creation and verification, Release, separate
+recovery preparation/review/activation and Reopen preserve saved metadata and
+protection. Reviewed file Copy and Undo preserve original source hashes and exact
+bundle metadata. The destination is absent before Copy acceptance and remains
+present before Undo acceptance. File operations are disabled after this check.
+
+A second library has an empty catalog. A library switch retains the first
+library's unsaved note. Quit and restart require Unlock again and retain the saved
+title, rating and note. Recover private draft restores the received unsaved note
+without saving it. These are local APFS checks with synthetic data.
+
+The app and managed server are stopped. The fresh synthetic profile, caches,
+WebKit state, preferences, snapshots and test roots are removed. Held owner state
+is restored intact; its complete path inventory, hashes, modes and symlink targets
+match the stopped-app installation baseline. The settings bytes match the private
+original copy. A verified rollback app and private text receipts remain local.
+Signing configuration and existing Keychain grants are unchanged. No owner-library
+operation or NAS deployment occurs. The known missing remote registration remains
+outside this task.
+
 The complete branch privacy scan retains its historical findings. Local staged
-changes pass the gate; publication remains excluded by the owner.
+and task-range checks pass; publication remains excluded by the owner. No push,
+PR, tag, release or history rewrite occurs.
+
+Next: owner acceptance of the installed app. Mounted-SMB access remains qualified
+only for the prior recorded executable and share; this rebuilt sidecar has no new
+SMB qualification. Cross-device iCloud, OS drag, conversion, representative owner
+media, large-library and power-loss checks remain deferred. Conversion stays
+disabled. See [storage qualification](storage-qualification.md) for artifact
+identity and the bounded evidence.
 
 ## Group 5: active scope complete; iCloud deferred
 

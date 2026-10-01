@@ -12,7 +12,10 @@ access through its explicit authorization command. Native mounted-SMB Create
 and app restart pass. Native metadata editing, image viewing, Copy/Undo and private
 recovery pass with an isolated profile. Cross-device iCloud qualification is
 deferred by the owner. It remains untested and must not be treated as passed.
-Group 6 local regression and installation checks can start with these limits.
+Group 6 local regression and installation checks pass on local APFS with the
+normal installed app and synthetic state. The rebuilt sidecar has no new
+mounted-SMB credential qualification. The prior SMB result applies only to its
+recorded executable and share.
 Publication and final owner acceptance remain separate gates.
 
 The local host uses macOS 27.0; Docker Desktop serves Linux ARM64 with engine
@@ -40,7 +43,8 @@ identify image and executable hashes, test roots and process results. They are n
 | Historical packaged server | Real executable opens format three, then receives `catalog_source_edit` | It retains the valid projection, reports unsupported catalog schema/upgrade required, and leaves source bytes unchanged. This is refusal evidence, not old-client support. |
 | Browser | All 33 existing browser cases, two workers, no retries | Passed against isolated real servers and synthetic fixtures. Includes independent stores, scoped drafts, conflicts, access/recovery, media and source operations. |
 | Packaged server | Frozen worker Create, Update, image/HEIC preview, Copy/Move/Trash/Undo and shutdown | Passed. The isolated macOS app builds and passes signature/license checks. |
-| Current native UI | Production app with separate identifier/profile/scheme | Passed bounded synthetic Create, reviewed Update, title/rating/note edits, image pixels, Copy/Undo, snapshot/verification, Release, separate recovery review/activation and Reopen. Native access, shared-server conflicts, scoped drafts, server switching and restart pass as described below. No owner profile or library is used. |
+| Group 5 native UI | Production app with separate identifier/profile/scheme | Passed bounded synthetic Create, reviewed Update, title/rating/note edits, image pixels, Copy/Undo, snapshot/verification, Release, separate recovery review/activation and Reopen. Native access, shared-server conflicts, scoped drafts, server switching and restart pass as described below. No owner profile or library is used. |
+| Group 6 installed macOS app | Normal identifier and URL scheme; fresh synthetic profile on local APFS | Passed Create, reviewed Update, saved metadata, decoded video pixels, conflict review, Lock/Unlock, private recovery, Copy/Undo, library switching and restart/private-draft recovery. Owner state is restored after the checks. No new SMB or provider qualification. |
 
 ## Artifact identity
 
@@ -77,6 +81,19 @@ license and packaged-server smoke checks.
 The final native access and cross-client run uses runtime source `7b596e24`.
 Its test and documentation change does not change the runtime executable.
 
+The group 6 installed macOS app uses runtime source
+`e44bc574abb18f6ed93dcd50c73dcba2f6b4982d`. Later documentation commits do not
+identify a rebuilt runtime. The installed sidecar SHA-256 is
+`0e984d56730fd73b1311da0beb13cc448a2ed9aac39855e035c6b6805558ae12`.
+The desktop executable SHA-256 is
+`05ccaa60b598fa28257eb1780b23faa48fc0368183ac868d459928e13434eaa2`.
+All 248 frozen Cairndex modules match code compiled from that source. The 159
+installed payload entries match the candidate bytes, modes and symlink targets.
+Strict deep signatures, distribution licenses, staged sidecar smoke and the
+exact app-packaged server smoke pass. The actual installed process and managed
+health endpoint report the runtime commit. A verified previous app remains in
+local rollback storage. The normal app is the registered URL handler.
+
 ## Native and regression evidence
 
 The isolated native build uses a separate identifier, profile and URL scheme.
@@ -111,9 +128,9 @@ it. A second server with the same portable UUID retains independent original
 metadata and its own draft; explicit recovery restores only that draft after
 restart. Remote server and registered-library selection persist. These are
 shared-server and separate-store checks; no provider delivery is involved.
-Conflict preparation briefly displays an unavailable-job notice. The preview
-completes automatically without retrying the request; group 6 retains this
-display for regression review.
+The group 5 conflict preparation briefly displays an unavailable-job notice.
+Its preview completes automatically without retrying the request. Group 6
+repairs the early recovery read as described below.
 
 All 35 focused access, private-recovery and device tests pass. They verify that
 a passphrase change revokes an existing browser grant and paired token, while
@@ -133,6 +150,38 @@ formatting and mypy pass; generated OpenAPI is unchanged. Three affected browser
 cases pass with two workers and no retries. The prior 33-case browser run remains
 separate evidence. The final sidecar and isolated native build pass packaging;
 the normal packaged smoke passes. No Rust source changes occur.
+
+Group 6 passes 1,922 backend tests with one existing ffmpeg skip, 1,254 frontend
+tests, all 33 browser tests with two workers and no retries, 135 locked Rust tests
+with the staged real sidecar and one desktop Node test. Backend and frontend
+lint, formatting and type checks pass. Rust formatting and locked Clippy pass.
+OpenAPI is unchanged. The disposable Keychain signing check passes and restores
+the original search list. Initial sandbox failures and four frontend timeouts
+under unrestricted concurrency remain in private receipts. Bounded verification
+preserves all assertions and timeout limits. The desktop creation test checks
+the exact portable retry identity and changed-name refusal.
+
+The normal installed app uses fresh synthetic state. Native Create and reviewed
+Update pass. Title, rating and note saves pass. Generated video shows decoded
+test-pattern pixels and an advancing playback clock. A stale native title and a
+synthetic peer title retain both alternatives; explicit conflict preparation and
+application retain the selected title without an unavailable-job notice. Seven
+focused component tests verify delayed queue acknowledgement, recovery, obsolete
+responses and current failures. The submitting request owns the preview receipt
+until acknowledgement; current failures retain the private intent.
+
+Lock, incorrect/correct Unlock, snapshot creation and verification, Release,
+separate recovery preparation, review, draft inspection, activation and Reopen
+pass. Recovery preserves saved metadata and protection. Reviewed Copy and Undo
+preserve original source bytes and exact bundle metadata. The copy is absent
+before acceptance and remains present before Undo acceptance. File operations
+are disabled after verification.
+
+An empty second library has its own catalog. Switching back retains an unsaved
+note. Quit/restart requires Unlock again and preserves the saved title, rating
+and note. Explicit Recover private draft restores the received unsaved note
+without submitting it. These checks use local APFS. They do not qualify the
+rebuilt sidecar's SMB authorization or provider delivery.
 
 ## Storage limits
 
@@ -222,11 +271,24 @@ native app, managed sidecar and both peer servers are stopped. All 121
 installed-app and owner-profile hashes match, with no added files. The final
 synthetic UI image and text receipts remain local and are not committed.
 
+Group 6 stops the installed app and managed server. The fresh synthetic profile,
+cache, WebKit state, preferences, private snapshots and both test roots are
+removed. Held owner state is restored intact. Its full path inventory, hashes,
+modes and symlink targets match the stopped-app installation baseline; settings
+bytes match the private original copy. Signing configuration and existing
+Keychain grants are unchanged. The installed payload and signature still pass,
+and the normal URL handler remains. The previous app remains in local rollback
+storage. Private text receipts remain local. No owner-library operation, NAS
+deployment or publication occurs.
+
 The complete branch range from `origin/main` fails the publication privacy gate
 because existing history exceeds the path/blob limits and has private-content
 findings. No publication is permitted until that history is inspected and
 sanitized. The final qualification change passes staged and commit-range
 checks from `7b596e24`; it does not remove earlier objects.
+Group 6 local staged and task-range checks from `8605ee3b` pass. These checks do
+not make the complete branch history safe for publication. The owner excludes
+publication and history rewrites from this task.
 
 ## Remaining qualification
 
@@ -234,9 +296,9 @@ checks from `7b596e24`; it does not remove earlier objects.
   byte and metadata receipts at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
   Test controllable hydration without changing owner synchronization settings.
-- Group 6 can start local regression and installation checks. Mounted-SMB
-  credential access remains qualified only for the recorded executable and
-  share. Review the transient conflict-preparation notice during regression.
+- Final owner acceptance of the installed app remains open. Mounted-SMB
+  credential access remains qualified only for the prior recorded executable
+  and share. The group 6 rebuilt sidecar has no new SMB qualification.
 
 Other providers, representative owner media, arbitrary large trees, host power
 loss, conversion, OS drag and the deferred product features are not qualified.
