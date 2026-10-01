@@ -1,13 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { catalog, type Entity } from '../api/catalog'
+import { catalog, runJob, type Entity, type Job } from '../api/catalog'
 import { draftKey } from '../api/replicas'
 import { CatalogEditor } from './CatalogEditor'
 
 vi.mock('../api/catalog', async (original) => ({
   ...(await original<typeof import('../api/catalog')>()),
   catalog: vi.fn(),
+  runJob: vi.fn(),
 }))
 
 const owner = 'asset_bundles/synthetic-bundle'
@@ -56,9 +57,94 @@ function read(path: string) {
 
 beforeEach(() => {
   localStorage.clear()
+  vi.mocked(runJob).mockReset()
   vi.mocked(catalog)
     .mockReset()
     .mockImplementation(async (_library, path) => read(path))
+})
+
+const prepared: Job = {
+  id: 'prepared-operation',
+  action: 'preview',
+  state: 'succeeded',
+  result: {
+    changes: [{ unit: title, value: '"Reviewed title"', basis: ['opening-base'] }],
+    parents: ['opening-parent'],
+    resolve: true,
+    recover: false,
+  },
+  error: null,
+  receipt: 'prepared-receipt',
+}
+
+// Restart recovery reads the retained identity without submitting another operation.
+test('recovers a prepared preview from its retained private identity', async () => {
+  localStorage.setItem(
+    draftKey('synthetic-library', `preview/${owner}`, 'synthetic-editor'),
+    JSON.stringify({ id: 'retained-draft', revision: 1, body: { job: prepared.id } }),
+  )
+  vi.mocked(catalog).mockImplementation(async (_library, path) =>
+    path === `/jobs/${prepared.id}` ? prepared : read(path),
+  )
+  await setup()
+  expect(await screen.findByRole('button', { name: 'Apply reviewed operation' })).toBeEnabled()
+  expect(runJob).not.toHaveBeenCalled()
+})
+
+// The retained identity exists locally before the server accepts its queue request.
+test('waits for preview queue acknowledgement before reading its receipt', async () => {
+  let complete: (job: Job) => void = () => {}
+  vi.mocked(runJob).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve
+      }),
+  )
+  vi.mocked(catalog).mockImplementation(async (_library, path) => {
+    if (path.startsWith('/jobs/')) throw new Error('Catalog job is unavailable')
+    return read(path)
+  })
+  await setup()
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare metadata deletion' }))
+  await waitFor(() => expect(runJob).toHaveBeenCalledOnce())
+  expect(vi.mocked(catalog).mock.calls.some(([, path]) => path.startsWith('/jobs/'))).toBe(false)
+  await act(async () => complete(prepared))
+  expect(screen.getByRole('button', { name: 'Apply reviewed operation' })).toBeEnabled()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+// Recovery errors from an older receipt cannot replace a newly prepared review.
+test('ignores an obsolete recovered preview error after a new submission', async () => {
+  localStorage.setItem(
+    draftKey('synthetic-library', `preview/${owner}`, 'synthetic-editor'),
+    JSON.stringify({ id: 'old-draft', revision: 1, body: { job: 'old-operation' } }),
+  )
+  let rejectOld: (error: Error) => void = () => {}
+  vi.mocked(catalog).mockImplementation(async (_library, path) => {
+    if (path === '/jobs/old-operation')
+      return new Promise((_resolve, reject) => {
+        rejectOld = reject
+      })
+    return read(path)
+  })
+  vi.mocked(runJob).mockResolvedValue(prepared)
+  await setup()
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare metadata deletion' }))
+  await screen.findByRole('button', { name: 'Apply reviewed operation' })
+  await act(async () => rejectOld(new Error('Catalog job is unavailable')))
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Apply reviewed operation' })).toBeEnabled()
+})
+
+// A failure of the current submission remains visible and retains its retry identity.
+test('reports a current preview failure and retains the private operation', async () => {
+  vi.mocked(runJob).mockRejectedValue(new Error('Queue request failed'))
+  await setup()
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare metadata deletion' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Queue request failed')
+  const key = draftKey('synthetic-library', `preview/${owner}`, 'synthetic-editor')
+  expect(JSON.parse(localStorage.getItem(key)!).body.job).toBe(vi.mocked(runJob).mock.calls[0]![3])
+  expect(screen.queryByRole('button', { name: 'Apply reviewed operation' })).not.toBeInTheDocument()
 })
 
 // Older rejected deliveries cannot replace input or persist a warning after newer success

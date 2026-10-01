@@ -119,12 +119,25 @@ export function CatalogEditor({
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [prepared, setPrepared] = useState<Job | null>(null)
+  const submittedPreview = useRef('')
   const previewDraft = useCatalogDraft(library, `preview/${owner}`, editor, { job: '' })
   useEffect(() => {
-    if (previewDraft.body.job)
-      void catalog<Job>(library, `/jobs/${previewDraft.body.job}`)
-        .then(setPrepared)
-        .catch((reason: Error) => setError(reason.message))
+    const job = previewDraft.body.job
+    // The submitting request reads its own receipt after queue acknowledgement.
+    // Recovery must not read that identity before the queue request reaches the server.
+    if (!job || job === submittedPreview.current) return
+    const submission = submittedPreview.current
+    let current = true
+    void catalog<Job>(library, `/jobs/${job}`)
+      .then((result) => {
+        if (current && submittedPreview.current === submission) setPrepared(result)
+      })
+      .catch((reason: Error) => {
+        if (current && submittedPreview.current === submission) setError(reason.message)
+      })
+    return () => {
+      current = false
+    }
   }, [library, previewDraft.body.job])
   const [review, setReview] = useState<string | null>(null)
   const [history, setHistory] = useState<string | null>(null)
@@ -220,6 +233,7 @@ export function CatalogEditor({
     setPrepared(null)
     try {
       const operation = operationId()
+      submittedPreview.current = operation
       previewDraft.update({ job: operation })
       const result = await runJob(library, action, body, operation)
       setPrepared(result)

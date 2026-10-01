@@ -44,6 +44,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Metadata review does not read a newly submitted preview before its queue
+  request is accepted. Late responses for a recovered preview cannot replace a
+  newer review. Current request failures remain visible with the private intent.
+
 - SMB saved-login lookup includes the mounted share path. Different shares on
   the same server and account keep their own credential access rules. The signed
   sidecar provides explicit `authorize-smb` access verification; background work

@@ -95,6 +95,10 @@ Random ordering uses a seed with stable IDs. Missing Files reads recorded privat
 unavailable observations. Unbundled reads authored provisional files with bounded
 pages. These query paths do not inspect source bytes or add shared local facts.
 
+Catalog editors retain preview identities before queue acknowledgement. The
+submitting request reads its receipt after acknowledgement; recovery reads are
+separate and cannot replace a newer submission with an obsolete response.
+
 The ordinary browse adapter uses private FTS5 and indexed catalog rows, with SQL
 search/count/order before bounded pagination. It reuses the shared virtual browser
 and scalar inspector controls. Causal job receipts advance only acknowledged field
