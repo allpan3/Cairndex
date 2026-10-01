@@ -229,6 +229,56 @@ def test_credentials_stay_private_and_tokens_are_revoked(api, tmp_path, monkeypa
     assert not is_protected(root)
 
 
+def test_changed_guard_revokes_existing_browser_and_paired_grants(api):
+    from cairndex.auth import SESSION_COOKIE
+    from cairndex.registry import device_tokens
+
+    client, base, _ = api
+    runner = worker(client)
+    assert (
+        client.put(base + "/auth/settings", json={"passphrase": "Synthetic alpha"}).status_code
+        == 200
+    )
+    client.cookies.clear()
+    assert (
+        client.post(base + "/auth/unlock", json={"passphrase": "Synthetic alpha"}).status_code
+        == 200
+    )
+    peer_cookie = client.cookies.get(SESSION_COOKIE)
+    assert peer_cookie
+    peer = {"Cookie": f"{SESSION_COOKIE}={peer_cookie}"}
+    client.cookies.clear()
+    assert (
+        client.post(base + "/auth/unlock", json={"passphrase": "Synthetic alpha"}).status_code
+        == 200
+    )
+    with runner.factory() as session:
+        token = device_tokens.issue_device_token(
+            session, name="Synthetic paired client", library_ids=[base.split("/")[-1]]
+        )
+        session.commit()
+    paired = {"Authorization": "Bearer " + token}
+    content = base + "/replica/catalog/entities/asset_bundles"
+    assert client.get(content, headers=peer).status_code == 200
+    assert client.get(content, headers=paired).status_code == 200
+    changed = client.put(
+        base + "/auth/settings",
+        json={"passphrase": "Synthetic beta", "current_passphrase": "Synthetic alpha"},
+    )
+    assert changed.status_code == 200
+    assert client.get(content).status_code == 200
+    assert client.get(content, headers=peer).status_code == 401
+    assert client.get(content, headers=paired).status_code == 401
+    assert not client.get(base + "/auth/status", headers=peer).json()["unlocked"]
+    assert (
+        client.post(base + "/auth/unlock", json={"passphrase": "Synthetic alpha"}).status_code
+        == 401
+    )
+    assert (
+        client.post(base + "/auth/unlock", json={"passphrase": "Synthetic beta"}).status_code == 200
+    )
+
+
 def test_changed_original_blocks_reviewed_activation(api):
     from cairndex.replicas.recovery_validation import open_store
 

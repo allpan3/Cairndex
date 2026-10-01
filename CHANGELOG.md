@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record bounded native access, recovery and shared-server conflict qualification
+  with isolated synthetic data. A regression test checks browser-grant and
+  paired-token revocation after a passphrase change. Group 6 local checks can
+  start; cross-device iCloud and publication remain separate gates.
+
 - The replica path-confinement test selects an unused object-directory prefix,
   so generated metadata cannot prevent its symlink-escape check.
 

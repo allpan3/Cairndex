@@ -1,12 +1,14 @@
 # Project status
 
-## Group 5: bounded storage qualification; iCloud deferred
+## Group 5: active scope complete; iCloud deferred
 
 Qualification implementation: `f91ae57b`, based on `ace91dff`, on
 `fix/library-ownership-lifecycle`. NAS recovery repair: `1f296083`. See the
 [qualification matrix](storage-qualification.md) for actual environments,
-artifact hashes, repeatable checks and remaining proof. Group 5 is **incomplete**;
-group 6 installation and final owner acceptance are not ready.
+artifact hashes, repeatable checks and remaining proof. The active group 5 scope
+is complete with bounded synthetic evidence. Group 6 local regression and
+installation checks can start. Cross-device iCloud remains owner-deferred and
+unqualified. Publication and final owner acceptance remain separate gates.
 
 The local production image passes on Linux ARM64 with non-root/read-only-root
 execution, separate private database and snapshot volumes, context canaries and
@@ -101,9 +103,33 @@ empty catalog. A separate local test server is reachable through native Servers.
 The peer library requires Refresh catalog status for its initial baseline. Return
 to This Computer preserves the original draft. Quit/restart retains saved
 metadata; Recover private draft restores the received unsaved title explicitly.
-The app uses a separate identifier, profile and URL scheme. No native screenshot
-is published. Native per-library passphrase entry and provider checks remain
-separate; the current mounted-SMB credential result is recorded above.
+The final native access and cross-client checks use runtime source `7b596e24`
+and the recorded sidecar hash. Native tests use secure fields for passphrase
+setup and change, Lock, incorrect/correct Unlock and app restart. A snapshot precedes
+a further passphrase change; Release, separate recovery review/activation and
+Reopen retain the newer destination guard. The snapshot's older passphrase fails.
+Two local libraries retain independent protection and snapshot selection. The
+second library rejects the first library's passphrase and accepts its own.
+
+Native and web clients on one synthetic server retain compatible title and note
+edits. A stale title save requires review and shows both alternatives. Explicit
+preparation and application retain the selected title. A newer unsaved note
+survives review and server switching, then returns through explicit private-draft
+recovery after Quit/restart. A second server with the same portable library UUID
+has its own original metadata and private draft. Its draft also recovers after
+restart. This Computer retains its selected local library, which remains locked
+after restart. The remote selection and registered library also persist.
+Conflict preparation briefly shows an unavailable-job notice; its preview
+completes automatically without a request retry.
+
+All 35 focused access, recovery and device tests pass. They include revocation
+of an existing browser grant and paired token after a passphrase change, private
+server credentials and library token scope. All three focused browser access,
+creation and connection tests pass with one worker and no retries. Focused Ruff
+and formatting checks pass. Runtime code is unchanged; full suites and builds
+are not repeated for this test and documentation change. The app uses a
+separate identifier, profile and URL scheme. No native screenshot is published.
+Provider checks remain separate from these local results.
 The 10,000-bundle metadata benchmark is recorded in [performance](performance.md);
 it is not multi-terabyte, large-media or provider-backlog qualification.
 
@@ -119,16 +145,22 @@ profile and cache directories. Fresh packaged processes and native app restart
 verify saved-login access without prompts for the recorded executable and share.
 All 121 owner-state hashes still match, with no added files. No production
 deployment, owner-library test, push, PR, tag or release occurs.
+The final access/cross-client run removes four more disposable directories,
+including its fixture tree, isolated profile, cache and WebKit state. The native
+app, managed sidecar and both peer servers are stopped. All 121 owner-state file
+hashes still match, with no added files. Signing configuration and Keychain
+grants are unchanged.
 
 The complete branch range from `origin/main` fails the publication privacy gate:
 existing history exceeds the path/blob limits and has private-content findings.
-The independent fixture commit passes the range from `9a00cbc0`. This repair
-requires its own staged and commit-range checks. No publication is permitted
-until the complete history is inspected and sanitized.
+The independent fixture commit passes the range from `9a00cbc0`. The final
+qualification change passes staged and commit-range checks from `7b596e24`.
+No publication is permitted until the complete history is inspected and sanitized.
 
-Next: finish broader native cross-client acceptance and per-library access
-checks. Inspect and sanitize branch history before publication. Cross-device
-iCloud testing is deferred by the owner. Keep conversion
+Next: start group 6 local regression and installation checks. Include the
+transient conflict-preparation notice in that regression review. Inspect and
+sanitize branch history before publication. Cross-device iCloud testing is
+deferred by the owner. Keep conversion
 disabled, the bounded source-review limits, retained versions and deferred
 features unchanged.
 

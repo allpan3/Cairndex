@@ -2,8 +2,8 @@
 
 ## Current result
 
-Group 5 is incomplete. Local Linux ARM64 containers, Linux x86_64 NAS containers,
-local APFS, deterministic metadata delivery and browser workflows have passing
+The active group 5 scope is complete. Local Linux ARM64 containers, Linux x86_64
+NAS containers, local APFS, deterministic metadata delivery and browser workflows have passing
 synthetic evidence. The source server passes portable Create, the joined file HTTP
 workflow and complete directory operations on mounted macOS SMB. The signed
 package passes the joined mounted-SMB workflow, clean restart and forced-exit
@@ -12,7 +12,8 @@ access through its explicit authorization command. Native mounted-SMB Create
 and app restart pass. Native metadata editing, image viewing, Copy/Undo and private
 recovery pass with an isolated profile. Cross-device iCloud qualification is
 deferred by the owner. It remains untested and must not be treated as passed.
-Group 6 installation and final owner acceptance must retain these limits.
+Group 6 local regression and installation checks can start with these limits.
+Publication and final owner acceptance remain separate gates.
 
 The local host uses macOS 27.0; Docker Desktop serves Linux ARM64 with engine
 29.5.3. The NAS runs Linux x86_64 with engine 29.6.2 and native Btrfs.
@@ -39,7 +40,7 @@ identify image and executable hashes, test roots and process results. They are n
 | Historical packaged server | Real executable opens format three, then receives `catalog_source_edit` | It retains the valid projection, reports unsupported catalog schema/upgrade required, and leaves source bytes unchanged. This is refusal evidence, not old-client support. |
 | Browser | All 33 existing browser cases, two workers, no retries | Passed against isolated real servers and synthetic fixtures. Includes independent stores, scoped drafts, conflicts, access/recovery, media and source operations. |
 | Packaged server | Frozen worker Create, Update, image/HEIC preview, Copy/Move/Trash/Undo and shutdown | Passed. The isolated macOS app builds and passes signature/license checks. |
-| Current native UI | Production app with separate identifier/profile/scheme | Passed bounded synthetic Create, reviewed Update, title/rating/note edits, image pixels, Copy/Undo, snapshot/verification, Release, separate recovery review/activation and Reopen. Library switching preserves an unsaved draft. Native server switching and restart results are recorded separately below. No owner profile or library is used. |
+| Current native UI | Production app with separate identifier/profile/scheme | Passed bounded synthetic Create, reviewed Update, title/rating/note edits, image pixels, Copy/Undo, snapshot/verification, Release, separate recovery review/activation and Reopen. Native access, shared-server conflicts, scoped drafts, server switching and restart pass as described below. No owner profile or library is used. |
 
 ## Artifact identity
 
@@ -73,6 +74,8 @@ application profile. The final qualification sidecar SHA-256 is
 `db425dd3a7c17b14aae2170528de709b31922b248552067fb6a4f7e0d92aceab`.
 The isolated app contains the same executable bytes and passes strict signature,
 license and packaged-server smoke checks.
+The final native access and cross-client run uses runtime source `7b596e24`.
+Its test and documentation change does not change the runtime executable.
 
 ## Native and regression evidence
 
@@ -87,9 +90,39 @@ library's unsaved draft. Native Servers connects to a separate loopback server
 and creates its own library; its first baseline requires Refresh catalog status.
 Returning to This Computer restores the original draft. After Quit and restart,
 the saved title, rating and note remain. Recover private draft explicitly restores
-the received unsaved title. No native passphrase is entered. Browser and HTTP
-access checks do not qualify native per-library passphrase entry. The current
-mounted-SMB credential result is recorded below.
+the received unsaved title. The current mounted-SMB credential result is recorded
+below.
+
+Native tests use secure fields for passphrase setup and change, Lock, incorrect
+and correct Unlock, and app restart. A verified snapshot precedes a further
+passphrase change. Release, separate preparation/review/activation and Reopen
+retain the newer destination guard: the snapshot's older passphrase fails and
+the destination passphrase succeeds. A second local library has independent
+protection and no selected snapshot. It rejects the first library's passphrase
+and accepts its own. After remote switching and app restart, This Computer
+retains that selected library and requires its passphrase again.
+
+Native and web clients on the same synthetic server retain compatible title and
+note edits. A stale same-field title save requires explicit review with both
+alternatives visible. Preparation and application retain the selected title.
+A newer unsaved native note survives review and server switching. After app
+restart, explicit private-draft recovery restores that note without submitting
+it. A second server with the same portable UUID retains independent original
+metadata and its own draft; explicit recovery restores only that draft after
+restart. Remote server and registered-library selection persist. These are
+shared-server and separate-store checks; no provider delivery is involved.
+Conflict preparation briefly displays an unavailable-job notice. The preview
+completes automatically without retrying the request; group 6 retains this
+display for regression review.
+
+All 35 focused access, private-recovery and device tests pass. They verify that
+a passphrase change revokes an existing browser grant and paired token, while
+the changing caller remains authorized. Existing assertions cover private
+server credentials and library token scope. All three focused browser access,
+creation and connection tests pass with one worker and no retries. Focused Ruff
+and formatting checks pass. No new Keychain grant or signing change occurs.
+Runtime code is unchanged, so full suites and builds are not repeated for this
+test and documentation change.
 
 The final runtime passes 1,921 backend tests with one existing ffmpeg skip. The
 65 focused saved-login tests and 37 replica acceptance tests pass. The independent
@@ -183,12 +216,17 @@ profile and cache directories. All 121 owner-state hashes match, with no extra
 files. Fresh packaged processes and native app restart verify saved-login access
 without prompts for the recorded executable and share. No owner-library operation
 or publication occurs.
+The final native access/cross-client run removes four more disposable
+directories: its fixture tree, isolated profile, cache and WebKit state. The
+native app, managed sidecar and both peer servers are stopped. All 121
+installed-app and owner-profile hashes match, with no added files. The final
+synthetic UI image and text receipts remain local and are not committed.
 
 The complete branch range from `origin/main` fails the publication privacy gate
 because existing history exceeds the path/blob limits and has private-content
 findings. No publication is permitted until that history is inspected and
-sanitized. The fixture and saved-login repairs require separate staged and
-commit-range checks; they do not remove earlier objects.
+sanitized. The final qualification change passes staged and commit-range
+checks from `7b596e24`; it does not remove earlier objects.
 
 ## Remaining qualification
 
@@ -196,9 +234,9 @@ commit-range checks; they do not remove earlier objects.
   byte and metadata receipts at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
   Test controllable hydration without changing owner synchronization settings.
-- Complete broader native cross-client acceptance and per-library access checks.
-  Mounted-SMB credential access is qualified for the recorded executable and
-  share; native per-library passphrase entry remains untested.
+- Group 6 can start local regression and installation checks. Mounted-SMB
+  credential access remains qualified only for the recorded executable and
+  share. Review the transient conflict-preparation notice during regression.
 
 Other providers, representative owner media, arbitrary large trees, host power
 loss, conversion, OS drag and the deferred product features are not qualified.
