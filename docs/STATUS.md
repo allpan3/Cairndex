@@ -66,10 +66,12 @@ Move, Replace, Undo, Trash and Undo pass with strict identity and byte checks. A
 server identity, staging timestamp and mounted-cache checks. The signed sidecar
 passes its normal local smoke but SMB Create reports saved-login/connection
 unavailable. A diagnostic with the same signing certificate and sidecar identifier
-confirms Keychain read denial before connection. Owner-approved interactive
-access establishes a signed, encrypted SMB connection. Fresh no-prompt reads
-and packaged Create still fail. Persistent authorization remains unverified.
-Source-server success does not qualify packaged SMB access.
+confirms saved-login read denial before connection. Owner-approved interactive
+access and a later no-prompt diagnostic establish signed, encrypted SMB. Packaged
+Create still fails. The mounted channel and DNS resolution use the same server
+address. Current metadata checks find no saved login for the mounted server and
+account, or for the current IP address and account. Restore the saved login and
+qualify the actual sidecar. Source-server success does not qualify packaged SMB.
 The independent directory Undo repair is `63fb45e8`: newly created identities do
 not require content in the displaced directory. Its Copy/Move regressions pass.
 
@@ -99,7 +101,7 @@ remain. Existing NAS container states are unchanged. All 46 mounted-SMB and
 native disposable data directories are removed. The native app, managed sidecar
 and peer server are stopped. All 117 installed-app and four owner-profile file
 hashes match the baseline, with no added files. The final isolated build and
-private text receipts remain local. Four additional directories from packaged
+private text receipts remain local. Six additional directories from packaged
 retries after interactive Keychain authorization are removed. Owner state still
 matches its baseline. Interactive credential access is owner-approved; persistent
 access is unverified. No production deployment, owner-library test, push, PR,

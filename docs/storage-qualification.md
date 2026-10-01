@@ -110,11 +110,14 @@ that their directory is absent. Changed bytes and occupied targets remain refusa
 The signed package's SMB Create returns the structured saved-login/connection
 unavailable error without an interactive prompt. Signature validation succeeds and
 the normal packaged smoke passes. A diagnostic signed with the same certificate
-and sidecar identifier confirms Keychain read denial before connection. Owner-
-approved interactive access succeeds and establishes a signed, encrypted SMB
-connection. A fresh process with prompts disabled still receives access denied;
-the exact packaged server also refuses Create. Persistent authorization is not
-verified. Source-server success does not qualify packaged SMB access.
+and sidecar identifier confirms saved-login read denial before connection.
+Owner-approved interactive access establishes a signed, encrypted SMB connection.
+A later diagnostic process also succeeds with prompts disabled, but packaged
+Create still fails. The current mounted channel and DNS resolution use the same
+server address. Subsequent checks find no saved login for the mounted server and
+account, or for the current IP address and account. Restoring the saved login and
+qualifying the actual sidecar remain required. Source-server success does not
+qualify packaged SMB access.
 
 The iCloud generation refusal is consistent with a ctime change; this run does
 not identify the actor that changed it. Do not weaken the generation check to
@@ -155,7 +158,7 @@ The isolated native app, managed sidecar and peer server are stopped. All 46
 mounted-SMB and native disposable data directories are removed, including the
 isolated profile, cache and WebKit state. All 117 installed-app and four owner-
 profile file hashes match the original baseline; no extra files are present.
-The two packaged retries after interactive authorization use four additional
+The three packaged retries after interactive authorization use six additional
 disposable directories; these are also removed. The installed app and owner
 profile still match their baseline. The final isolated build and private text
 receipts remain local. Interactive Keychain access is owner-approved; persistent
@@ -163,8 +166,9 @@ access is unverified. No owner-library operation or publication occurs.
 
 ## Remaining qualification
 
-- Obtain the required Keychain authorization and qualify
-  the packaged mounted-SMB workflow without changing owner library data.
+- Restore the saved SMB login for the mounted server and account. Obtain
+  authorization for the actual signed sidecar and qualify its mounted-SMB
+  workflow without changing owner library data.
 - Deferred by the owner: use two already-configured iCloud endpoints. Record
   byte and metadata receipts at both ends for compatible and conflicting edits, delayed/partial/duplicate/
   out-of-order delivery, media/receipt ordering, restart and retained versions.
