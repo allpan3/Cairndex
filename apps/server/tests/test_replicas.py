@@ -177,10 +177,13 @@ def test_bounded_discovery_and_path_confinement(pair, tmp_path):
     assert ta._scan is not None
     outside = tmp_path / "outside"
     outside.mkdir()
-    (ta.root / ".cairndex/replica/objects/01").symlink_to(outside, target_is_directory=True)
+    objects = ta.root / ".cairndex/replica/objects"
+    # Generated objects can occupy any prefix; keep their directories intact.
+    prefix = next(f"{value:02x}" for value in range(256) if not (objects / f"{value:02x}").exists())
+    (objects / prefix).symlink_to(outside, target_is_directory=True)
     before = list(outside.iterdir())
     with pytest.raises(OSError):
-        ta.publish("01" + "a" * 62, b"synthetic")
+        ta.publish(prefix + "a" * 62, b"synthetic")
     assert list(outside.iterdir()) == before
 
 

@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- The replica path-confinement test selects an unused object-directory prefix,
+  so generated metadata cannot prevent its symlink-escape check.
+
 - Cross-device iCloud qualification is deferred by the owner. Local-folder tests
   do not qualify provider delivery, hydration or remote conflicts.
 
