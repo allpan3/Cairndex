@@ -134,3 +134,13 @@ compare the combined main result against the preserved reference tree, review
 shared-file hunks and record intentional omissions. Superseded legacy workspace
 fixes remain pending for review; they must not reintroduce the removed application.
 Deferred features in [audit status](audit-status.md) are not silently extracted.
+
+## Independent dependency repair
+
+The first PR CI run exposed advisories in dependencies inherited from main. A
+separate commit updates AnyIO 4.14.1 to 4.14.2, brace-expansion 5.0.9 to 5.0.12
+and undici 7.29.0 to 7.29.1. Python and npm audits pass. Backend lint, formatting,
+mypy and 1,398 tests pass with one skip. Frontend lint, formatting, types,
+1,152 unit tests, production build and 144 browser tests pass. This repair does
+not add audit features or change the migration boundary. CI must verify the new
+head before merge.

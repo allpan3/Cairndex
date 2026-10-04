@@ -8,6 +8,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Security
+
+- Update AnyIO, brace-expansion and undici to patch releases that resolve
+  the current dependency audit findings.
+
 ### Internal
 
 - Add a disposable format-three migration foundation with complete catalog
