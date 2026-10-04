@@ -144,3 +144,9 @@ mypy and 1,398 tests pass with one skip. Frontend lint, formatting, types,
 1,152 unit tests, production build and 144 browser tests pass. This repair does
 not add audit features or change the migration boundary. CI must verify the new
 head before merge.
+
+The subsequent Rust audit identifies RUSTSEC-2026-0285 in inherited rustls
+0.23.42. A separate patch commit updates rustls to 0.23.45 and rustls-webpki
+to 0.103.15. Local Rust formatting, locked Clippy and all 122 tests pass. The
+local cargo-audit command is unavailable; CI runs the authoritative Rust audit
+and the packaged macOS build. The installed app is unchanged.
