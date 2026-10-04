@@ -1,5 +1,12 @@
 # Cairndex
 
+## Offline migration preparation
+
+The internal [migration foundation](docs/replica-migration.md) prepares and tests
+format-three catalogs on disposable data. It has no owner conversion command or
+activation route. [ADR-0035](docs/adr/0035-portable-library-format.md) defines the
+portable application target; this extraction leaves the main application unchanged.
+
 Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
 self-hosted Docker app on a Linux NAS/server and is used from a browser or the
