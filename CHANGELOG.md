@@ -8,6 +8,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Internal
+
+- Add a disposable format-three migration foundation with complete catalog
+  reconstruction, private schema validation, retained recovery, durable intent,
+  interruption/retry checks and separate rollback exports. Owner conversion and
+  activation remain unavailable; application routes are unchanged.
+- Record audit extraction dependencies, reference coverage and inherited
+  publication blockers.
+
 ### Changed
 
 - **Both browsers' toolbars are one row of controls.** Every boxed control in a
