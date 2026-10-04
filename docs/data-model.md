@@ -1,5 +1,14 @@
 # Data model
 
+## Migration preparation schema
+
+The internal migration inventory classifies all modeled tables and columns as
+authored metadata, observations, private plans, resume or recovery records.
+Every category remains in the private checkpoint. Catalog projection retains
+stable IDs and complete relationship units. Private discovery/source layouts
+are retained for schema compatibility without their workflow workers. Known
+additive private upgrades do not change package format. See [migration](replica-migration.md).
+
 > Status: current through the scan grouping review workflow. Logical "folders"
 > are now **collections**. The core content schema is implemented in
 > `apps/server/src/cairndex/persistence/models.py` and created per library via

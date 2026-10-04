@@ -1,5 +1,13 @@
 # Architecture
 
+## Offline catalog preparation
+
+The migration foundation uses linked immutable seeds, causal catalog projection,
+exact structural choices and separate private SQLite. It preserves complete
+legacy checkpoints and exports rollback copies. Private schema layouts are
+independent of discovery/source workers. This extraction has no application API
+integration. See [migration](replica-migration.md) and [extraction](audit-extraction.md).
+
 > Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D4
 > (probe enrichment, the unified custom media viewer, storyboard trickplay,
 > watch progress/resume, image viewer v2 with preview derivatives, the
