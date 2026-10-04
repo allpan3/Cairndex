@@ -10,7 +10,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
-- Update AnyIO, brace-expansion and undici to patch releases that resolve
+- Update AnyIO, brace-expansion, undici, rustls and rustls-webpki to patch releases that resolve
   the current dependency audit findings.
 
 ### Internal
