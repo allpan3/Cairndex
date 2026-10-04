@@ -1,5 +1,14 @@
 # Development guide
 
+## Disposable migration qualification
+
+Run `uv run pytest tests/test_library_migration.py tests/test_replica_catalog.py`
+from `apps/server`. Tests generate complete synthetic catalogs and exercise
+format-three reconstruction, exact cell/relationship rollback, WAL checkpoints,
+interrupted work, retries, schema refusal, conflicts and retained recovery.
+The [procedure](replica-migration.md) accepts no owner path through an application
+command. Generated libraries and private receipts must not enter Git.
+
 ## Prerequisites
 
 | Tool                       | Why                                            | Notes                                                                                                |

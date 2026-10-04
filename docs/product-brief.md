@@ -1,5 +1,13 @@
 # Cairndex product brief
 
+## Portable-format decision and extraction boundary
+
+[ADR-0035](adr/0035-portable-library-format.md) is the accepted target: one ordinary
+portable library, private working databases, normal format-three creation and
+refusal of old packages. The offline migration foundation is a prerequisite.
+Current extraction state and remaining application integration are recorded in
+[STATUS](STATUS.md). No owner conversion is available.
+
 This document describes the Cairndex product model and long-term direction. Agent operating rules live in [`AGENTS.md`](../AGENTS.md); current implementation status lives in [`docs/STATUS.md`](STATUS.md); consequential architecture decisions live in [`docs/adr/`](adr/).
 
 ## Mission

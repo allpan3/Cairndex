@@ -1,5 +1,37 @@
 # Project status
 
+## Audit extraction: migration foundation
+
+Group 1 is on `feature/library-migration-foundation`, based on published main
+`a0ac750cb6b462648daa78eba58f79c08951776e`. The unrelated local development-tool
+commit remains on local main and is excluded from this group.
+
+The preserved audit reference is `fix/library-ownership-lifecycle` at
+`8c814e311726ff178b3ab0efca75cb42d4c63c9a`, tree
+`f78c202018b94501af4fa796163b9c584303ae0f`. The
+[extraction ledger](audit-extraction.md) records dependencies, coverage and tests.
+The [migration procedure](replica-migration.md) defines the disposable workflow,
+backup requirements and real-library prerequisites. Conversion and activation
+remain unavailable. Application routes are unchanged. No legacy support is
+restored. Group 1 requires no manual owner test.
+
+The owner authorized agent review and PR merge for internal groups, and explicitly
+approved the machine name that caused the historical privacy findings. Only that
+exact local pattern was removed. Hooks, home-path patterns and credential checks
+remain active. The publication gates must pass for the exact final ref and PR text.
+No published history was changed.
+
+Earlier full checks on the local-main base passed 1,400 backend tests with one
+skip, Ruff, formatting, mypy, 10 library browser tests, unchanged OpenAPI and
+isolated wheel preparation/retry/rollback. The rebased branch has fresh backend
+results in the ledger. Installed-app compatibility retained a synthetic note
+across restart and rollback; decoded-pixel playback was not verified. Owner state,
+installed app and signing configuration were restored unchanged. No real library
+or production NAS service was changed. Desktop and deployment sources are unchanged.
+
+Next: complete Group 1 publication checks and merge, then extract the portable
+application from refreshed main. User-visible groups require functional acceptance.
+
 > **Progressive-playback recovery hotfix validated (`0.2.1`, 2026-08-31).** A
 > production NAS deployment could open an ordinary direct-play video but either
 > advanced below real time after its first frames or froze immediately after a
@@ -5562,16 +5594,10 @@ Album tiles scale on the bundle-card ramp; album rows and collection rows follow
 file table had scoped its row-height rule to itself, which is why the album's
 identical rows ignored the slider.
 
-**"This library is open on AP3-M5Pro", diagnosed.** The lease on
-`/Volumes/media/library` was held by the _repo dev backend_ used for verification —
-its `server_uuid` matches `apps/server/var/registry.db`'s identity, not the
-desktop sidecar's — acquired 07:29:30 local, last heartbeat 07:30:09, holder
-killed rather than shut down. A dead holder cannot release, so the lease reads
-as live for `lease_ttl` (300s) after its last heartbeat; the owner hit the
-dialog inside that window. Recovery needs nothing manual: past the TTL the
-notice becomes "This library was left open elsewhere" with **Serve here
-anyway**. Operational rule recorded: verification dev servers are stopped when
-verification ends, and only the Demo library is used.
+**Library lease expiry.** A development backend that stops without releasing
+its lease can leave a live lease until `lease_ttl` (300 seconds) expires. After
+expiry, the application offers **Serve here anyway**. Stop verification servers
+when verification ends, and use only disposable synthetic libraries.
 
 ### Owner review round 8 (2026-07-27)
 
