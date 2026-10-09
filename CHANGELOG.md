@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Update source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q, denial of service through crafted
+  source-map offsets) and Mako to 1.4.3 (GHSA-5639-2j2p-m4mx, a Windows-only template path
+  traversal). Both are transitive dependencies: source-map-js of the web build tools, Mako of
+  Alembic.
 - Update AnyIO, brace-expansion, undici, rustls and rustls-webpki to patch releases that resolve
   the current dependency audit findings.
 
