@@ -8,6 +8,10 @@
 # filesystem leaves anything important unwritable. Those are exactly the ways
 # this image can rot while CI stays green, so they are what this checks.
 #
+# Libraries are portable format three (ADR-0035): the mounted root receives only
+# the descriptor and immutable history under .cairndex/, and every working
+# database, cache and process lock stays in the private /data volume.
+#
 #   ./infra/docker/smoke.sh                    # build fresh, test, remove image
 #   ./infra/docker/smoke.sh <image-tag>        # test an explicitly built image
 #
@@ -41,9 +45,10 @@ RANGE_BODY=""
 cleanup() {
     docker rm -f "$CONTAINER" "$ALT_CONTAINER" >/dev/null 2>&1 || true
     docker volume rm "${CONTAINER}-data" >/dev/null 2>&1 || true
-    # The .cairndex/ tree belongs to uid 10001 on the host as well (see
-    # in_library below), so this user cannot unlink it. Root in a container can.
-    in_library rm -rf /libraries/main/.cairndex >/dev/null 2>&1 || true
+    # The .cairndex/ tree and the generated video belong to uid 10001 on the host
+    # as well (see in_library below), so this user cannot unlink them. Root in a
+    # container can.
+    in_library rm -rf /libraries/main/.cairndex /libraries/main/smoke.mp4 >/dev/null 2>&1 || true
     rm -rf "$LIBRARY_DIR"
     # The alternate-uid run wrote as *this* user, so no container is needed.
     rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR"
@@ -76,6 +81,83 @@ in_library() {
 api() { curl -fsS "http://127.0.0.1:${PORT}/api/v1$1" "${@:2}"; }
 post_json() { api "$1" -X POST -H 'content-type: application/json' -d "$2"; }
 
+wait_healthy() {
+    for _ in $(seq 1 60); do
+        if api /health >/dev/null 2>&1; then return 0; fi
+        docker ps -q --filter "name=$CONTAINER" | grep -q . || fail "container exited during startup"
+        sleep 1
+    done
+    fail "server never became healthy"
+}
+
+# Run one portable workflow step against the first container. Statuses are
+# checked here so a failure names the step instead of a JSON traceback.
+portable() {
+    python3 - "$PORT" "$@" <<'PYTHON'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+port, action, library = sys.argv[1:4]
+base = f"http://127.0.0.1:{port}/api/v1/libraries/{library}"
+
+
+def request(path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        base + path, data=data, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            raw = response.read()
+            return json.loads(raw) if raw else None
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f"{path} returned HTTP {error.code}") from None
+
+
+def wait(path, field, value):
+    for _ in range(240):
+        result = request(path)
+        if result.get(field) == value:
+            return result
+        if result.get("state") in {"failed", "cancelled", "interrupted"}:
+            raise SystemExit(f"portable operation {path} ended as {result.get('state')}")
+        time.sleep(0.5)
+    raise SystemExit(f"portable operation {path} timed out")
+
+
+if action == "update":
+    # Update finds the generated video; an explicit reviewed accept admits it.
+    wait("/replica/status", "ready", True)
+    request("/replica/discovery/runs", {"operation": "smoke-update"})
+    wait("/replica/discovery/status", "state", "succeeded")
+    candidates = request("/replica/discovery/candidates")["items"]
+    if len(candidates) != 1:
+        raise SystemExit(f"Update found {len(candidates)} candidates, expected 1")
+    request(
+        "/replica/discovery/reviews",
+        {"operation": "smoke-review", "candidate": candidates[0]["id"]},
+    )
+    review = wait("/replica/discovery/reviews/smoke-review", "state", "ready")
+    request("/replica/discovery/reviews/smoke-review/accept", {"receipt": review["receipt"]})
+    wait("/replica/discovery/reviews/smoke-review", "state", "applied")
+elif action == "catalog":
+    # Print "<bundle id> <file id>" for the one admitted bundle and its video.
+    wait("/replica/status", "ready", True)
+    bundles = request("/replica/catalog/entities/asset_bundles?limit=10")["items"]
+    if len(bundles) != 1:
+        raise SystemExit(f"catalog has {len(bundles)} bundles, expected 1")
+    files = request(f"/replica/media/bundles/{bundles[0]['id']}")["files"]
+    if len(files) != 1 or not files[0]["relative_path"].endswith("smoke.mp4"):
+        raise SystemExit("the admitted bundle does not hold the generated video")
+    print(bundles[0]["id"], files[0]["id"])
+else:
+    raise SystemExit(f"unknown portable action {action}")
+PYTHON
+}
+
 if [[ "$BUILT_IMAGE" == true ]]; then
     step "building $IMAGE"
     docker build -f "$REPO_ROOT/infra/docker/production.Dockerfile" -t "$IMAGE" "$REPO_ROOT"
@@ -99,12 +181,7 @@ docker run -d --name "$CONTAINER" \
     "$IMAGE" >/dev/null
 
 step "waiting for health"
-for _ in $(seq 1 60); do
-    if api /health >/dev/null 2>&1; then break; fi
-    docker ps -q --filter "name=$CONTAINER" | grep -q . || fail "container exited during startup"
-    sleep 1
-done
-api /health >/dev/null 2>&1 || fail "server never became healthy"
+wait_healthy
 if [[ -n "${CAIRNDEX_EXPECTED_BUILD_COMMIT:-}" ]]; then
     health_json=$(api /health)
     python3 -c '
@@ -131,38 +208,42 @@ step "creating a library on the mounted volume"
 library_id=$(post_json /libraries/create \
     '{"display_name":"Smoke","root_path":"/libraries/main"}' \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-in_library test -f /libraries/main/.cairndex/library.db \
+in_library test -f /libraries/main/.cairndex/manifest.json \
     || fail "library package was not written to the mounted volume"
 
-step "generating a real video and scanning it"
+step "generating a real video and running a reviewed Update"
 # Generated inside the container so the host needs no ffmpeg, and so this also
 # exercises writing into the library mount as the non-root user.
 docker exec "$CONTAINER" ffmpeg -v error \
     -f lavfi -i testsrc=size=160x120:rate=10:duration=2 \
     -pix_fmt yuv420p /libraries/main/smoke.mp4 || fail "could not write into library mount"
-post_json "/libraries/${library_id}/jobs/scan" '{}' >/dev/null
+portable update "$library_id" || fail "reviewed Update did not admit the generated video"
+read -r bundle_id file_id < <(portable catalog "$library_id") \
+    || fail "the catalog does not hold the admitted video"
 
-step "waiting for the scan to surface a bundle"
-for _ in $(seq 1 60); do
-    total=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"view":"unbundled"}' \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin)["total"])')
-    [ "$total" -gt 0 ] && break
-    sleep 1
-done
-[ "${total:-0}" -gt 0 ] || fail "scan produced no bundles"
-
-# has_cover proves ffprobe ran and a thumbnail was generated into the library's
-# .cairndex/cache/ — i.e. the media pipeline works, not just the web layer.
-has_cover=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"view":"unbundled"}' \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["has_cover"])')
-[ "$has_cover" = "True" ] || fail "scanned video produced no cover (media pipeline broken)"
+# A decodable thumbnail proves ffmpeg ran and wrote its derivative into the
+# private /data cache — i.e. the media pipeline works, not just the web layer.
+step "the admitted video has a thumbnail"
+thumbnail_type=$(api "/libraries/${library_id}/bundles/${bundle_id}/files/${file_id}/thumbnail" \
+    | python3 -c '
+import sys
+# Read the whole body: an early exit would end curl with SIGPIPE.
+head = sys.stdin.buffer.read()[:12]
+print("jpeg" if head.startswith(b"\xff\xd8\xff") else "webp" if head[8:12] == b"WEBP" else "other")
+') || fail "thumbnail request failed (media pipeline broken)"
+[ "$thumbnail_type" != "other" ] || fail "thumbnail is not a JPEG or WebP image"
 
 step "direct video supports bounded byte ranges"
-bundle_id=$(post_json "/libraries/${library_id}/bundles/browse" \
-    '{"limit":10,"view":"unbundled"}' \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])')
-stream_path=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["stream_url"])')
+media_json=$(api "/libraries/${library_id}/replica/media/files/${file_id}") \
+    || fail "could not read the video's media state"
+stream_path=$(python3 -c '
+import json, sys
+media = json.load(sys.stdin)
+assert media["state"] == "available", media["state"]
+print(media["playback"]["stream_url"])
+' <<<"$media_json") || fail "the admitted video is not available for playback"
+source_generation=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["generation"])' \
+    <<<"$media_json")
 RANGE_HEADERS=$(mktemp)
 RANGE_BODY=$(mktemp)
 range_status=$(curl -fsS -D "$RANGE_HEADERS" -o "$RANGE_BODY" -w '%{http_code}' \
@@ -181,10 +262,8 @@ RANGE_HEADERS=""
 RANGE_BODY=""
 
 step "production playback preference serves copy-only HLS"
-file_id=$(api "/libraries/${library_id}/bundles/${bundle_id}/playback" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["videos"][0]["file_id"])')
 hls_decision=$(post_json "/libraries/${library_id}/files/${file_id}/playback-decision" \
-    '{"caps":{"protocols":["progressive","hls"],"containers":["mp4"],"video_codecs":["h264"],"audio_codecs":["aac"]}}')
+    "{\"source_generation\":\"${source_generation}\",\"caps\":{\"protocols\":[\"progressive\",\"hls\"],\"containers\":[\"mp4\"],\"video_codecs\":[\"h264\"],\"audio_codecs\":[\"aac\"]}}")
 hls_method=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["method"])' <<<"$hls_decision")
 [ "$hls_method" = "remux" ] || fail "HLS preference returned $hls_method instead of remux"
 playlist_path=$(python3 -c \
@@ -196,34 +275,46 @@ api "${session_path#/api/v1}/init.mp4" >/dev/null || fail "preferred HLS init wa
 api "${session_path#/api/v1}/0.m4s" >/dev/null || fail "preferred HLS segment was unavailable"
 api "${session_path#/api/v1}" -X DELETE >/dev/null || fail "preferred HLS session teardown failed"
 
-step "graceful stop releases the ownership lease"
+# The portable package must hold no mutable database: a database there is what
+# made the old format unsafe to open over SMB or NFS from more than one server
+# (ADR-0021, ADR-0035). The working stores belong in the private /data volume.
+package_has_no_database() {
+    in_library python3 -c '
+from pathlib import Path
+found = [p for p in Path("/libraries/main/.cairndex").rglob("*") if ".db" in p.name]
+raise SystemExit("mutable database in portable package" if found else 0)
+' || fail "mutable database found inside the portable package ($1)"
+}
+
+# The same container restarts with its volumes; the admitted bundle and its
+# file keep their IDs, which proves the private store survived the stop.
+restarted_catalog_is_intact() {
+    docker start "$CONTAINER" >/dev/null || fail "container did not restart ($1)"
+    wait_healthy
+    read -r restarted_bundle restarted_file < <(portable catalog "$library_id") \
+        || fail "the catalog was not readable after $1"
+    [ "$restarted_bundle $restarted_file" = "$bundle_id $file_id" ] \
+        || fail "bundle or file identity changed after $1"
+}
+
+step "graceful stop keeps the portable package free of databases"
 docker stop --timeout 30 "$CONTAINER" >/dev/null
-lease_json=$(in_library cat /libraries/main/.cairndex/locks/active-owner.json 2>/dev/null) \
-    || fail "no ownership lease was ever written"
-python3 -c "
-import json, sys
-lease = json.load(sys.stdin)
-if not lease.get('released_at'):
-    sys.exit('lease was not released on shutdown: %r' % lease)
-" <<<"$lease_json" || fail "lease not released — a restart would be blocked until it ages out"
+package_has_no_database "clean stop"
+docker run --rm --user 0:0 --entrypoint python3 -v "${CONTAINER}-data:/data" "$IMAGE" -c '
+from pathlib import Path
+raise SystemExit(0 if list(Path("/data/replica-bindings").glob("*.json")) else 1)
+' || fail "the private store binding is not in the /data volume"
+step "clean restart reopens the same catalog"
+restarted_catalog_is_intact "a clean restart"
 
-# A clean shutdown folds the WAL back in, so the library should be one file.
-if in_library test -f /libraries/main/.cairndex/library.db-wal; then
-    fail "WAL left behind after clean shutdown (checkpoint did not run)"
-fi
-
-# …and the file must no longer be *flagged* as WAL, which is a different claim
-# and the one that bit in production (ADR-0021). Byte 18 of the SQLite header is
-# the write format version: 2 means WAL, 1 means a rollback journal. A library
-# left at 2 cannot be opened over SMB or NFS at all, so this container would have
-# locked every other machine out of the share it serves.
-in_library python3 -c "
-import sys
-with open('/libraries/main/.cairndex/library.db', 'rb') as f:
-    version = f.read(19)[18]
-if version != 1:
-    sys.exit('library.db is still flagged WAL (header write version %d) after a clean stop' % version)
-" || fail "library left in WAL journal mode — unopenable from any machine using SMB or NFS"
+# A killed server gets no lifespan shutdown. Its private process lock must not
+# survive it, and the private store must reopen without a manual repair.
+step "forced process exit, then restart reopens the same catalog"
+docker kill --signal KILL "$CONTAINER" >/dev/null
+docker wait "$CONTAINER" >/dev/null
+package_has_no_database "forced exit"
+restarted_catalog_is_intact "a forced exit"
+docker stop --timeout 30 "$CONTAINER" >/dev/null
 
 # --- The image under somebody else's uid -------------------------------------
 #
@@ -262,8 +353,8 @@ curl -fsS "http://127.0.0.1:${ALT_PORT}/api/v1/libraries/create" \
     -d '{"display_name":"AltUid","root_path":"/libraries/main"}' >/dev/null \
     || fail "could not create a library as uid $(id -u)"
 # Readable from the host without a container, which is the whole point.
-[ -f "${ALT_LIBRARY_DIR}/.cairndex/library.db" ] \
+[ -f "${ALT_LIBRARY_DIR}/.cairndex/manifest.json" ] \
     || fail "library package not written, or not readable by the invoking user"
 docker stop --timeout 30 "$ALT_CONTAINER" >/dev/null
 
-echo "SMOKE OK: $IMAGE serves, scans, shuts down cleanly, and runs as any uid"
+echo "SMOKE OK: $IMAGE serves portable libraries, survives clean and forced restarts, and runs as any uid"

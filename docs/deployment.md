@@ -243,11 +243,15 @@ just docker-smoke
 
 With no argument, builds a fresh commit-specific production image, starts it
 against a throwaway library, waits for health,
-checks the SPA is served and ffmpeg/ffprobe are present, creates a library
-through the API, generates a video and scans it, asserts a cover was produced
-(which is what proves the media pipeline, not just the web layer), then stops
-the container and asserts the ownership lease was released and the WAL folded
-back in. The temporary image is removed at exit. To smoke an already-built
+checks the SPA is served and ffmpeg/ffprobe are present, creates a portable
+library through the API, generates a video, runs Update and accepts its reviewed
+discovery. It then requires a JPEG thumbnail (which is what proves the media
+pipeline, not just the web layer), a bounded direct range and copy-only HLS.
+After a clean stop it requires that the library's `.cairndex/` package holds no
+database and that the private store binding is in `/data`. The same container
+must then reopen the same bundle and file IDs after a clean restart and after a
+forced `SIGKILL`. A last run proves the image works under an arbitrary uid. The
+temporary image is removed at exit. To smoke an already-built
 publication candidate without rebuilding it, pass that image tag explicitly:
 
 ```bash
@@ -668,11 +672,18 @@ fresh temporary copy, fsyncs it, and atomically replaces the destination. If a
 destination existed, its exact previous bytes remain beside it as
 `*.pre-restore-*` until you remove them after verifying the recovery.
 
-`infra/docker/backup-restore-smoke.sh <candidate> [source]` automates the full
-acceptance path with synthetic state. With one image it proves hot backup,
-destructive-loss simulation, restore, and reopen. Passing an older source image
-creates the state and backups there, then restores and opens them with the
-candidate — the pre-release upgrade rehearsal.
+`infra/docker/backup-restore-smoke.sh <candidate> [source]` automates the
+acceptance path with synthetic state. It admits a generated video through
+Update, sets a library passphrase and takes a private snapshot into a separate
+volume. It takes a hot registry backup, removes the registry and damages the
+private store. It then restores the registry with `restore.sh`, verifies the
+snapshot, and runs Release, preparation, review, activation and Reopen through
+the private recovery API. The recovered catalog must have the same bundle and
+file IDs, the damaged original must be unchanged, and the passphrase must still
+protect the library. Passing an older source image creates the state there and
+recovers it with the candidate — the pre-release upgrade rehearsal. The source
+image must already create portable format-three libraries; the 0.2.x images do
+not.
 
 ### Remote access and security
 

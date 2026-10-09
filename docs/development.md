@@ -776,9 +776,11 @@ docker compose up --build --force-recreate
 
 `just docker-prod` runs the same single-container image the NAS runs — no source
 mount, no reload, SPA served by the backend. `just docker-smoke` starts it
-against a throwaway library, creates one through the API, scans a generated
-video, and checks that a graceful stop releases the lease; CI runs the same
-script. With no image argument the smoke script always builds a fresh,
+against a throwaway library, creates a portable library through the API, admits
+a generated video through a reviewed Update, and checks media ranges, HLS, a
+database-free `.cairndex/` package, and the same catalog after a clean restart
+and a forced exit; CI runs the same script. With no image argument the smoke
+script always builds a fresh,
 commit-specific image and removes it afterward. Pass an image tag only when you
 deliberately want to test an already-built candidate:
 
@@ -803,10 +805,11 @@ The Docker job also runs the recovery acceptance path:
 ./infra/docker/backup-restore-smoke.sh cairndex:candidate ghcr.io/example/previous:tag
 ```
 
-The first form creates, backs up, removes, restores, and reopens synthetic state
-with one candidate. The second creates and backs up with the older source image,
-then restores and opens with the candidate; use it before release when a real
-previous image exists.
+The first form creates synthetic state, takes a hot registry backup and a
+private snapshot, removes the registry, damages the private store, and recovers
+both with one candidate. The second creates the state with the older source
+image, then recovers it with the candidate; use it before release when a
+previous image that creates portable libraries exists.
 
 See [deployment.md](deployment.md) for the deployment itself, including building
 an amd64 image for the NAS from an Apple Silicon Mac.

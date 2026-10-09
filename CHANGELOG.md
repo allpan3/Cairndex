@@ -22,6 +22,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Repair the Docker smoke and backup-restore acceptance scripts for portable
+  format three. They no longer expect `.cairndex/library.db`, the scan route or
+  the shared ownership lease. The smoke admits a video through a reviewed
+  Update and checks the thumbnail, ranges, HLS, a database-free package, and the
+  same catalog after a clean restart and a forced exit. The recovery smoke keeps
+  the registry backup and adds a separate snapshot volume, recovery of a damaged
+  private store and a retained passphrase.
 - Make the HLS test for an init request during an immediate far-seek restart
   independent of machine speed. Its stub encoder wrote the first segment as soon
   as it started, so on a fast machine the first run was complete before the seek
