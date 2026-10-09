@@ -6,15 +6,19 @@ after privacy inspection. This does not approve their merge or real-data use.
 
 ## Preserved reference and base
 
+IDs below are current after the owner-approved history rewrite of 2026-10-09.
+The [history rewrite record](#history-rewrite-and-vm-qualification) explains it.
+
 - Reference branch: `fix/library-ownership-lifecycle`.
-- Reference commit: `8c814e311726ff178b3ab0efca75cb42d4c63c9a`.
-- Reference tree: `f78c202018b94501af4fa796163b9c584303ae0f`.
-- Original extraction base: local main `7e2e345967150441407cdb823721e78aaaebd206`.
-- Fetched origin/main: `a0ac750cb6b462648daa78eba58f79c08951776e`.
-- Local main includes one unpublished development-tool fix. It is preserved.
-- Publication base: origin/main `a0ac750cb6b462648daa78eba58f79c08951776e`.
+- Reference commit: `cd38493fcb306198ff4af00e19b5d78ada241ceb`.
+- Reference tree: `912a0e657005ade3fb3e3b089df7c2343305fb99`.
+- Original extraction base: local main, now `742461092aa6898b091a1f5b0b39c24d428bb0d1`.
+- Fetched origin/main: `cda8998b532d6d38f4ad401cc129654e375ab4bc`.
+- Local main included one unpublished development-tool fix. The reference keeps it.
+- Publication base: origin/main `cda8998b532d6d38f4ad401cc129654e375ab4bc`.
   The unrelated development-tool fix is excluded from the PR.
-- Installed runtime: `e44bc574abb18f6ed93dcd50c73dcba2f6b4982d`.
+- Installed runtime: built from the commit that is now
+  `395b6206c03311fb7e4c773112bba0756308c93e`.
   Desktop and sidecar hashes match the reference's storage qualification record.
 - The primary checkout was clean before extraction. The reference is unchanged.
 
@@ -157,15 +161,16 @@ and the packaged macOS build. The installed app is unchanged.
 
 ## Group 1 merge and Group 2 start
 
-PR #38 is merged as `b8d9e3b90658c1a4c9a6b18b2a9658a8a6a8f6cd`. All checks
-passed on `c1391134`, including dependency audit, backend, frontend/browser,
+PR #38 is merged as `a8c536e1709360a84034fc8185dcff55b4e8e812`. All checks
+passed on `2cfd171b`, including dependency audit, backend, frontend/browser,
 full-stack browser, packaged server, Docker, Ubuntu Rust, macOS app and privacy.
 The merge retains the migration commit and separate dependency repairs.
 
 Group 2 starts on `feature/portable-library-lifecycle` from that merged main.
-The unrelated prior local-main commit is retained on
-`preserve/local-main-media-tools`. The original audit branch and exact tree are
-unchanged. No force-push or published-history rewrite occurred.
+The unrelated prior local-main commit was retained on
+`preserve/local-main-media-tools`; the reference also keeps it. The original
+audit branch and exact tree were unchanged. No force-push or published-history
+rewrite occurred before the owner-approved rewrite of 2026-10-09.
 
 ## Approved application regrouping and qualification
 
@@ -189,3 +194,40 @@ acceptance and publication permission are not implied by testing delegation.
 Before merge, complete the missing platform/deployment checks and the exact
 publication privacy gates.
 The preserved reference and installed app remain unchanged.
+
+## History rewrite and VM qualification
+
+The public repository contained private NAS names in `docs/STATUS.md` and
+`docs/plans/05-network-library-latency.md`. On 2026-10-09 the owner approved a
+text replacement over all history and a force-push of `main` and all branches.
+Every commit from 2026-07-28 onward has a new ID. A tree comparison of the old and
+new `main`, application branch and reference shows changes in only those two files.
+The application source inventory is unchanged:
+`12f35cdb150161fc0e6a66a1ee4bbcaf7d651c4dc22b717f8fc648befc5ce655`.
+
+- The reference is now `cd38493fcb306198ff4af00e19b5d78ada241ceb`, tree
+  `912a0e657005ade3fb3e3b089df7c2343305fb99`. The tree change is the two
+  document replacements; no other reference content changed.
+- The published application branch is now `14dfb6a561df42ce6729167f2dba068def3727ef`.
+- The application checkpoint used for the earlier native checks never reached the
+  remote. It is not available after the rewrite. Its source inventory is equal.
+- A private local map relates old and new IDs. It stays outside Git. New records
+  use only current IDs.
+- The release tags `v0.2.0` and `v0.2.1` were deleted. Their releases are drafts.
+  This extraction does not create or publish a release.
+
+After the rewrite, `main` received two commits that the application branch lacked:
+`718f1820` updates source-map-js and Mako for security advisories, and PR #42
+(`7d5e50b6`) makes the privacy gate stop when Git ignores `rev-list --objects -z`.
+Git 2.43 printed newline-delimited output there, so a range scan passed with no
+blobs. The application branch is rebased onto that main before its PR.
+
+All tests now run in two VMPal guests: macOS 27.0.1 arm64 and Ubuntu 24.04.5
+arm64. The [handoff](audit-vm-handoff.md#current-test-environment-2026-10-09)
+records their tools and limits. The [validation record](portable-lifecycle-extraction.md#vm-results-on-2026-10-09)
+records the results. After the rebase, the macOS and Ubuntu gates, Docker
+section E, a 60-minute native session and the four functional rounds passed on
+synthetic data, after two test repairs and the Docker smoke repair. Three open
+observations in reference code need an owner decision: Update throughput,
+same-device recovery after an Update, and the recovery CLI `prepare` without
+Release. No owner library or production NAS service was used.

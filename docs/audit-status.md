@@ -1,6 +1,7 @@
 # Audit extraction status
 
-The preserved audit reference is `8c814e311726ff178b3ab0efca75cb42d4c63c9a`.
+The preserved audit reference is `cd38493fcb306198ff4af00e19b5d78ada241ceb`
+(ID after the history rewrite of 2026-10-09).
 The [extraction ledger](audit-extraction.md) governs current branch work.
 Historical test results apply only to their recorded commits and executables.
 They are not proof for an extracted branch.

@@ -17,25 +17,40 @@ agent PR/merge applies to internal groups with no user-testable function.
 
 ## Branches and exact state
 
+On 2026-10-09 the owner approved a history rewrite and a force-push of `main` and
+all branches. The rewrite removed private names from `docs/STATUS.md` and
+`docs/plans/05-network-library-latency.md`. Every commit from 2026-07-28 onward
+has a new ID. No other file changed. The table gives the current IDs.
+
+Do not write pre-rewrite commit IDs into new records. GitHub can serve those
+commits until the sensitive-data removal is complete. A private local map relates
+old and new IDs; it stays outside Git. The release tags `v0.2.0` and `v0.2.1` were
+deleted, and their releases are drafts. Do not create or publish a release.
+
 | Ref | Purpose | State |
 | --- | --- | --- |
-| `main` | Accepted migration foundation and dependency repairs | Group 1 merged through PR #38 at `b8d9e3b90658c1a4c9a6b18b2a9658a8a6a8f6cd` |
-| `feature/portable-library-lifecycle` | Application, tests and this handoff | Groups 2–5 combined with owner approval; local checks recorded; acceptance and merge pending |
-| `fix/library-ownership-lifecycle` | Preserved cumulative audit reference | Exact commit `8c814e311726ff178b3ab0efca75cb42d4c63c9a`, tree `f78c202018b94501af4fa796163b9c584303ae0f`; extraction source only |
+| `main` | Accepted migration foundation, dependency and privacy-gate repairs | PR #38 merge `a8c536e1709360a84034fc8185dcff55b4e8e812`; then `718f1820` (source-map-js and Mako advisories) and PR #42 merge `7d5e50b68861d2f8936f51ba63d774fdc3f18cfc` (privacy gate fails closed when Git ignores `rev-list -z`) |
+| `feature/portable-library-lifecycle` | Application, tests and this handoff | Groups 2–5 combined with owner approval; published at `14dfb6a561df42ce6729167f2dba068def3727ef` on the PR #38 merge; rebased onto current main for its PR; acceptance and merge pending |
+| `fix/library-ownership-lifecycle` | Preserved cumulative audit reference | Exact commit `cd38493fcb306198ff4af00e19b5d78ada241ceb`, tree `912a0e657005ade3fb3e3b089df7c2343305fb99`; extraction source only |
 
-Application source was tested at `4fea9d071cf76aba157133e5aace6974abd2b7a4`.
-The unpublished application commits are consolidated before transfer. The old
-checkpoint is a local evidence reference, not a required remote ref. Application
-and deployment source content is unchanged. Its source inventory SHA-256 is
+The earlier application checks used a local checkpoint that never reached the
+remote. That checkpoint is not available after the rewrite. Its application and
+deployment source content is equal to `14dfb6a5`. The source inventory SHA-256 is
 `12f35cdb150161fc0e6a66a1ee4bbcaf7d651c4dc22b717f8fc648befc5ce655`. Reproduce it with:
 
 ```bash
 git ls-tree -r HEAD -- apps infra deploy .github docker-compose.yml docker-compose.prod.yml | shasum -a 256
 ```
 
+The rebase onto current main adds the two main-only commits. Those commits change
+`infra/` and lockfiles, so the inventory hash of the rebased branch differs. The
+[validation record](portable-lifecycle-extraction.md) gives the new value.
+
 Record the actual checked-out HEAD and executable hashes on the new machine. A rebuilt executable needs its own
 native result; the old machine's executable hash is not a build reproducibility
-claim. The installed runtime on the original machine remains `e44bc574`, unchanged.
+claim. The installed runtime on the original machine is unchanged. It was built
+from the commit that is now `395b6206c03311fb7e4c773112bba0756308c93e`; the
+binary embeds the pre-rewrite ID of that commit.
 
 Do not merge the reference branch. It includes unaccepted later groups, older
 dependencies and superseded intermediate commits. Historical group numbers in its
@@ -43,10 +58,11 @@ documents differ from the extraction groups in this plan. The source snapshot is
 preserved exactly; current accepted ADRs and extraction records take precedence
 over its older implementation summaries.
 
-The unrelated development-tool commit `7e2e345967150441407cdb823721e78aaaebd206`
-is preserved locally on `preserve/local-main-media-tools` and is also reachable
-from the reference. It is not part of the application PR. Old local feature,
-archive and merge-helper branch names are not required for this handoff.
+The unrelated development-tool commit is now
+`742461092aa6898b091a1f5b0b39c24d428bb0d1`. It is reachable from the reference.
+The former local branch `preserve/local-main-media-tools` is not present in the
+current primary checkout. The commit is not part of the application PR. Old local
+feature, archive and merge-helper branch names are not required for this handoff.
 
 ## Clone and verify
 
@@ -74,7 +90,7 @@ For a new agent, use this initial instruction:
 
 > Read AGENTS.md and docs/audit-vm-handoff.md. Continue the audit extraction from
 > feature/portable-library-lifecycle in this primary checkout. Verify refs first.
-> Run the remaining synthetic application tests inside this guest. Preserve the
+> Run the remaining synthetic application tests inside the test guests. Preserve the
 > cumulative reference. Do not use owner libraries or production NAS services.
 > Record results and stop at the application acceptance checkpoint. Follow the
 > PR sequence and privacy gates before publication. Do not assume permission to
@@ -109,6 +125,40 @@ ffmpeg/ffprobe and platform Tauri dependencies. Linux Docker checks need a worki
 Docker engine and Compose in the isolated guest. Record exact installed versions.
 Do not upgrade project lockfiles merely to set up the guest.
 
+### Current test environment (2026-10-09)
+
+Development occurs in the primary checkout on the host Mac. All tests run in two
+VMPal guests (Apple Virtualization framework). Each guest has a normal user account,
+a clone at `~/Developer/Cairndex`, fixtures in `~/Cairndex-Test`, server state in
+`~/Cairndex-Data` and private receipts in `~/Cairndex-Receipts`.
+
+| Guest | System and resources | Tools |
+| --- | --- | --- |
+| macOS | macOS 27.0.1 (26A434) arm64; 9 vCPU, 8 GiB; VMPal GPU acceleration setting off; a snapshot exists from before tool installation | uv 0.11.23, Python 3.12.13, Node 22.23.3, Rust 1.99.0 with Clippy and rustfmt, just 1.58.0, Xcode Command Line Tools 27.0, Playwright 1.62.1 Chromium, pinned static ffmpeg/ffprobe 8.1.2 |
+| Ubuntu | Ubuntu 24.04.5 LTS arm64, kernel 7.0.0; 6 vCPU, 8 GiB | The same uv, Node, Rust, just and Playwright versions; Python 3.12.3; Git 2.55.0 from the git-core PPA, as on GitHub runners; ffmpeg 6.1.1; Docker 29.9.0 with Compose 5.6.0; Rosetta registered for amd64 images; CI Tauri and Playwright system packages |
+
+The macOS guest has no nested virtualization, so it cannot run Docker. Agents have
+no administrator access there. Agents can use administrator commands in the Ubuntu
+guest. Both guests reach the owner's NAS on the LAN. Do not connect to the NAS or
+to its production container without the owner's explicit approval.
+
+Two host helpers outside Git control the guests. `vmx` runs a guest command and
+copies its output to a visible console window in the guest. `vmsync` copies the
+exact host working tree, including uncommitted and untracked files, into a detached
+guest checkout and verifies the tree ID. Record that tree ID as test evidence. A
+test does not need a GitHub push. Do not pipe a helper or a gate through `tail`
+without `pipefail`: an earlier run hid a failure that way.
+
+These guest limits are not product defects:
+
+- The Ubuntu ext4 disk takes about 5.7 ms for one write plus fsync. The macOS
+  guest takes about 0.1 ms. Some timing-sensitive tests fail only on that disk;
+  they pass with `--basetemp` or `TMPDIR` on `/dev/shm`.
+- Linux arm64 Playwright Chromium has no H.264/AAC decoder: `canPlayType`
+  returns `"no"`. macOS Chromium returns `"probably"`. CI on x86_64 uses Chrome
+  for Testing.
+- `linux-arm64` is not a platform in the pinned ffmpeg manifest.
+
 ## PR and merge sequence
 
 | Order | Branch/PR scope | Acceptance gate |
@@ -141,11 +191,18 @@ After each accepted merge:
    hunks and record intentional omissions and new fixes. Counts are not proof of
    behavioral coverage.
 5. Prepare the PR description and exact privacy gates. Stop for the applicable
-   acceptance. Do not force-push without separate approval for the exact branch.
+   acceptance.
 
-The application branch is published for this handoff. Future rebase/reconstruction
-must not force-push it without approval. A new unpublished successor branch is an
-option. Keep the original audit reference and its exact tree unchanged.
+On 2026-10-09 the owner set these merge rules. Rebase the branch onto current
+main before its merge. Fold fix-up commits into the commits that they fix. Merge
+with a merge commit (`gh pr merge N --merge`); never squash. Write commit messages
+and PR descriptions that state the problem, the change and the evidence. The owner
+gave standing permission to force-push feature branches with `--force-with-lease`
+after a new privacy gate. A force-push to `main` still needs an instruction that
+names `main`. Small maintenance fixes can go directly to `main` after guest tests
+and `just privacy-range origin/main HEAD`. The application branch still needs
+explicit owner acceptance before its PR is opened and merged. Keep the original
+audit reference and its exact tree unchanged.
 
 ## Existing evidence and remaining application checks
 
@@ -160,6 +217,14 @@ Two observations remain to investigate: the first long session retained stale
 Update status and showed black video captures. Switching libraries refreshed
 status; a clean restart showed progress and decoded direct/remux/fallback frames.
 No cause or code repair was established. Do not mark these fixed from the restart.
+
+The validation record also gives the guest results on source inventory `12f35cdb`.
+In the macOS guest, all section A checks passed. In the Ubuntu guest, the Rust-only
+job, frontend unit tests, sidecar smoke and frozen recovery test passed. Some
+Ubuntu backend and browser failures come from the guest limits above. One frozen
+discovery test has a thin timeout margin; it is an open observation. The
+[results after the rebase](portable-lifecycle-extraction.md#results-after-the-rebase-onto-current-main)
+cover sections A, C, D and E, the test repairs and the open observations.
 
 ### A. Environment and automated checks
 
@@ -276,13 +341,13 @@ They remain required before the application merge. Run in the isolated Linux gue
 ./infra/docker/backup-restore-smoke.sh cairndex:application-test
 ```
 
-Known static mismatch: the current two smoke scripts still expect shared
-`.cairndex/library.db`, the old scan route and shared ownership leases. They are
-not valid format-three acceptance as written. Inspect and replace those assertions
-with the application contract before treating the gate as valid. Keep the minimum
-portable Create/Update/recovery smoke repair in the application branch if required
-for merge; leave full distribution changes in group 7. Do not enable source
-operations merely to run the reference's joined smoke helper.
+The two smoke scripts formerly expected shared `.cairndex/library.db`, the old
+scan route and shared ownership leases. On 2026-10-09 this branch replaced those
+assertions with the format-three contract: reviewed Update, the media adapter, a
+database-free package, clean and forced restarts, a separate snapshot volume,
+damaged-store recovery and retained access. Image, compose and `backup.sh` changes
+stay in group 7. The reference's joined smoke helper was not used, because it
+needs source operations.
 
 Require a non-root runtime, read-only container root, separate private data and
 snapshot storage, media ranges, clean shutdown/restart, forced test-process exit,
@@ -310,7 +375,7 @@ refusal, exact retry, interruption/recovery, stable IDs, replacement history and
 directory Undo. Consult the reference's `docs/storage-qualification.md` with
 `git show origin/fix/library-ownership-lifecycle:docs/storage-qualification.md`.
 Its prior Docker/NAS and SMB receipts qualify only their recorded images,
-executables and shares. The installed `e44bc574` runtime has no new SMB/Keychain
+executables and shares. The installed runtime has no new SMB/Keychain
 qualification. Repeat relevant checks on the extracted branch.
 
 ## Real-library migration and rollback boundary
@@ -386,10 +451,22 @@ For a passing group, prepare a short PR summary and stop at its acceptance point
 
 Use this remaining checklist; add evidence before changing any box:
 
-- [ ] New VM clone, exact refs, hooks, dependencies and isolated state verified.
-- [ ] Ubuntu Rust and relevant Linux package/browser gates pass on proposed HEAD.
-- [ ] Portable Docker compatibility assertions repaired and extracted checks pass.
-- [ ] Sustained macOS native observations resolved or explicitly dispositioned.
+- [x] New VM clone, exact refs, hooks, dependencies and isolated state verified.
+  On 2026-10-09 both guests were clean at `14dfb6a5`, tree
+  `fc2ea3299811825fd1bc6351dc495aca7f43fc49`, with hooks and a local
+  private-pattern file. The Ubuntu Docker engine had no containers, images or volumes.
+- [x] Ubuntu Rust and relevant Linux package/browser gates pass on proposed HEAD.
+  On 2026-10-09, after the rebase: Rust formatting, Clippy and 133 tests; frontend
+  1,253 unit tests and build; sidecar build, smoke and three frozen process tests;
+  backend 1,613 passed on tmpfs. The remaining failures are guest limits (see
+  the validation record).
+- [x] Portable Docker compatibility assertions repaired and extracted checks pass.
+  The two smoke scripts were repaired; build-and-check, smoke and
+  backup-restore-smoke passed on arm64 in the Ubuntu guest.
+- [x] Sustained macOS native observations resolved or explicitly dispositioned.
+  A 60-minute session in the macOS guest did not show stale Update status or black
+  video. The original observations are dispositioned as not reproduced; their
+  cause is not established.
 - [ ] Application functional rounds and scope accepted; exact PR/privacy gates pass.
 - [ ] Application PR merged; main refreshed and result recorded.
 - [ ] Group 6 extracted, tested, accepted and merged.
