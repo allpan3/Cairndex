@@ -55,7 +55,7 @@ url = "2"
 # direct dependency, not a new build. Pinned to the graph's versions: a mismatch
 # would compile a *second* copy of the runtime into the shell.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "=0.6.4"
+objc2 = "=0.6.5"
 objc2-foundation = { version = "=0.3.2", default-features = false, features = [
   "std",
   "NSDictionary",
