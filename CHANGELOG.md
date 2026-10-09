@@ -22,6 +22,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Make the HLS test for an init request during an immediate far-seek restart
+  independent of machine speed. Its stub encoder wrote the first segment as soon
+  as it started, so on a fast machine the first run was complete before the seek
+  and the test failed 13 of 30 runs. The stub now waits before the first segment,
+  as ffmpeg does; the test passed 30 of 30 runs and still fails when an init is
+  served without its first segment.
 - Document the remaining audit PR sequence, isolated VM test procedure,
   qualification limits and selected-library migration prerequisites.
 
