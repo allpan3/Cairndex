@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cairndex.replicas.catalog import projection
-from cairndex.replicas.catalog.index import install
+from cairndex.replicas.catalog.browse import install
 from cairndex.replicas.catalog.model import split_key, structural_targets, value_text
 from cairndex.replicas.catalog.protocol import CatalogDescriptor, Part, Root, UnitChange, decode
 from cairndex.replicas.protocol import ReplicaError, checksum
@@ -55,11 +55,9 @@ class CatalogStorage(PrivateStore):
     ) -> None:
         super().__init__(directory, descriptor, fault=fault)
         with self.connection() as db:
-            from cairndex.replicas.private_layout import (
-                DISCOVERY_SCHEMA,
-                MEDIA_SCHEMA,
-                SOURCE_SCHEMA,
-            )
+            from cairndex.replicas.discovery_state import SCHEMA as DISCOVERY_SCHEMA
+            from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
+            from cairndex.replicas.private_layout import SOURCE_SCHEMA
 
             db.executescript(
                 projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA + SOURCE_SCHEMA
@@ -322,7 +320,7 @@ class CatalogStorage(PrivateStore):
                 "selection_version": 1,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
-                "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
+                "source_operations_version": None,
                 "media_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(

@@ -10,9 +10,10 @@ pub(crate) async fn reveal_file<R: Runtime>(
     library_id: String,
     relative_path: String,
 ) -> Result<(), MappingError> {
+    let scope = mappings::mapping_scope(&app)?;
     // Offline-mount stats can hang for the full SMB timeout; keep them off the IPC thread
     async_runtime::spawn_blocking(move || {
-        let path = mappings::resolve_library_path(&app, &library_id, &relative_path)?;
+        let path = mappings::resolve_library_path(&app, &scope, &library_id, &relative_path)?;
         app.opener()
             .reveal_item_in_dir(path)
             .map_err(|_| MappingError::host_action_failed())
@@ -28,9 +29,10 @@ pub(crate) async fn open_file<R: Runtime>(
     library_id: String,
     relative_path: String,
 ) -> Result<(), MappingError> {
+    let scope = mappings::mapping_scope(&app)?;
     // Offline-mount stats can hang for the full SMB timeout; keep them off the IPC thread
     async_runtime::spawn_blocking(move || {
-        let path = mappings::resolve_library_path(&app, &library_id, &relative_path)?;
+        let path = mappings::resolve_library_path(&app, &scope, &library_id, &relative_path)?;
         let path = path
             .to_str()
             .ok_or_else(MappingError::unsupported_path_encoding)?;

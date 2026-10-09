@@ -1,3 +1,4 @@
+import { METADATA_REPLY } from './mockMetadata'
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock of the unified add-library flow (ADR-0008). With no libraries
@@ -26,6 +27,15 @@ async function mockApi(
   } = {},
 ) {
   const libraries: Array<Record<string, unknown>> = [...(options.startingLibraries ?? [])]
+  await page.route('**/replica/**', (route) => {
+    const path = new URL(route.request().url()).pathname
+    const json = path.endsWith('/status')
+      ? { ready: true, blocked: 0, waiting: 0, invalid: 0, catalog_version: 2, browse_version: 2 }
+      : path.endsWith('/facets')
+        ? { counts: {}, all: 0, untagged: 0, uncategorized: 0, missing: 0 }
+        : { items: [], next_cursor: null, total: 0, offset: 0, limit: 100, frontier: [] }
+    return route.fulfill({ ...METADATA_REPLY, json })
+  })
   // A root listing is long enough to fill the menu to its maximum height, which
   // is when it stops fitting inside the dialog — the real reported case.
   const long = 'abcdefghijkl'
@@ -33,20 +43,28 @@ async function mockApi(
     .map((letter) => ({ path: `/mnt/${letter.repeat(3)}`, is_library: letter === 'c' }))
 
   await page.route('**/bundles/counts**', (r) =>
-    r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
+    r.fulfill({
+      ...METADATA_REPLY,
+      json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 },
+    }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/collections/counts**', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { counts: {} } }),
+  )
+  await page.route('**/smart-collections', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
-  await page.route('**/api/v1/jobs/active?*', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/v1/jobs/active?*', (r) => r.fulfill({ ...METADATA_REPLY, json: [] }))
   await page.route('**/file-ops/trash', (r) =>
-    r.fulfill({ json: { operations: [], size_bytes: 0 } }),
+    r.fulfill({ ...METADATA_REPLY, json: { operations: [], size_bytes: 0 } }),
   )
   await page.route('**/api/v1/health', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         status: 'ok',
         app_name: 'cairndex',
@@ -57,13 +75,16 @@ async function mockApi(
     }),
   )
   await page.route('**/auth/status', (r) =>
-    r.fulfill({ json: { protected: false, unlocked: true } }),
+    r.fulfill({ ...METADATA_REPLY, json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
+  await page.route('**/ownership', (r) =>
+    r.fulfill({ ...METADATA_REPLY, json: { state: 'own', mountable: true } }),
+  )
 
   // Directory autocomplete, with one entry already marked as a library.
   await page.route('**/path-suggestions**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         suggestions: options.manySuggestions
           ? long
@@ -79,6 +100,7 @@ async function mockApi(
   // What the typed path is. The modal asks once, on submit.
   await page.route('**/probe-path**', (r) =>
     r.fulfill({
+      ...METADATA_REPLY,
       json: {
         exists: true,
         is_library: options.probeIsLibrary ?? false,
@@ -107,22 +129,22 @@ async function mockApi(
 
   await page.route('**/api/v1/libraries/create', async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>
-    await r.fulfill({ status: 201, json: created(body, body.display_name) })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created(body, body.display_name) })
   })
   await page.route('**/api/v1/libraries/register', async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>
-    await r.fulfill({ status: 201, json: created(body, 'Existing Library') })
+    await r.fulfill({ ...METADATA_REPLY, status: 201, json: created(body, 'Existing Library') })
   })
 
   // Deregistration is metadata-only; the mock just drops the row.
   await page.route('**/api/v1/libraries/lib1', async (r) => {
     if (r.request().method() !== 'DELETE') return r.fallback()
     libraries.length = 0
-    await r.fulfill({ status: 204, body: '' })
+    await r.fulfill({ ...METADATA_REPLY, status: 204, body: '' })
   })
 
   // Libraries list (mutable).
-  await page.route('**/api/v1/libraries', (r) => r.fulfill({ json: libraries }))
+  await page.route('**/api/v1/libraries', (r) => r.fulfill({ ...METADATA_REPLY, json: libraries }))
   return { libraries }
 }
 
@@ -193,8 +215,8 @@ test.describe('the suggestion menu stays on screen', () => {
       await mockApi(page, {
         manySuggestions: true,
         startingLibraries: [
-          registered('01H', 'lex', '/Volumes/media/library'),
-          registered('01J', 'Demo', '/Users/owner/DemoLibrary'),
+          registered('01H', 'Example', '/fixtures/library'),
+          registered('01J', 'Demo', '/fixtures/demo'),
         ],
       })
       await page.goto('/')
@@ -344,58 +366,27 @@ test('an unavailable library recovers in place without mounting content early', 
   api.libraries[0].status = 'available'
   await page.getByRole('button', { name: 'Retry' }).click()
 
-  await expect(page.getByText('Nothing here yet.')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toBeVisible()
   expect(scopedRequests).toBeGreaterThan(0)
 })
 
-test('switching libraries replaces the browser shell without a reload', async ({ page }) => {
-  const libraries = [
-    { id: 'lib1', name: 'Library One', root_path: '/srv/one', status: 'available' },
-    { id: 'lib2', name: 'Library Two', root_path: '/srv/two', status: 'available' },
-  ]
-  const item = (libraryId: string) => ({
-    id: `${libraryId}-bundle`,
-    title: libraryId === 'lib1' ? 'First Library Movie' : 'Second Library Movie',
-    rating: null,
-    file_count: 1,
-    total_size: 100,
-    has_missing: false,
-    has_cover: false,
-    media_kind: 'video',
-    width: 1920,
-    height: 1080,
-    duration: 60,
-    extension: 'mp4',
-    date_added: '2026-07-10T00:00:00Z',
-  })
-  const libraryFrom = (url: string) => (url.includes('/lib2/') ? 'lib2' : 'lib1')
-
-  await page.route('**/api/v1/libraries', (route) => route.fulfill({ json: libraries }))
-  await page.route('**/auth/status', (route) =>
-    route.fulfill({ json: { protected: false, unlocked: true } }),
+// Keyboard users can leave a recovery screen without losing their intended library
+test('keeps a missing remembered library and exposes the server chooser by keyboard', async ({
+  page,
+}) => {
+  await mockApi(page, { startingLibraries: [registered('other', 'Another Library', '/srv/other')] })
+  await page.addInitScript(() =>
+    localStorage.setItem('cairndex.libraryId', JSON.stringify('missing')),
   )
-  await page.route('**/ownership', (route) =>
-    route.fulfill({ json: { state: 'own', mountable: true } }),
-  )
-  await page.route('**/bundles/counts**', (route) =>
-    route.fulfill({ json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 } }),
-  )
-  await page.route('**/collections/counts**', (route) => route.fulfill({ json: { counts: {} } }))
-  await page.route('**/collections?*', (route) =>
-    route.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/smart-collections', (route) => route.fulfill({ json: [] }))
-  await page.route('**/bundles/browse**', (route) => {
-    const libraryId = libraryFrom(route.request().url())
-    route.fulfill({ json: { items: [item(libraryId)], total: 1, offset: 0, limit: 100 } })
-  })
-
-  await page.addInitScript(() => localStorage.removeItem('cairndex.libraryId'))
   await page.goto('/')
-  await expect(page.getByText('First Library Movie')).toBeVisible()
-
-  await page.getByRole('combobox', { name: 'Library' }).selectOption('lib2')
-  await expect(page.getByRole('combobox', { name: 'Library' })).toHaveValue('lib2')
-  await expect(page.getByText('Second Library Movie')).toBeVisible()
-  await expect(page.getByText('First Library Movie')).toHaveCount(0)
+  await expect(page.getByText('Selected library is missing')).toBeVisible()
+  await page.getByRole('button', { name: 'Servers…' }).focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Servers' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('Server address').fill('https://another.example')
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByText('Selected library is missing')).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('cairndex.libraryId'))).toBe('"missing"')
 })

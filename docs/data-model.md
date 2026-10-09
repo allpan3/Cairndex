@@ -5,11 +5,14 @@
 The internal migration inventory classifies all modeled tables and columns as
 authored metadata, observations, private plans, resume or recovery records.
 Every category remains in the private checkpoint. Catalog projection retains
-stable IDs and complete relationship units. Private discovery/source layouts
-are retained for schema compatibility without their workflow workers. Known
+stable IDs and complete relationship units. Private discovery layouts support Update. Source-operation layouts
+remain for recovery compatibility without their workflow workers. Known
 additive private upgrades do not change package format. See [migration](replica-migration.md).
 
-> Status: current through the scan grouping review workflow. Logical "folders"
+> Internal legacy model reference: the sections below describe the ORM used by
+> migration and model fixtures. Portable application contracts are in
+> [catalog](replica-catalog.md), [discovery](replica-discovery.md) and
+> [recovery](replica-recovery.md). Logical "folders"
 > are now **collections**. The core content schema is implemented in
 > `apps/server/src/cairndex/persistence/models.py` and created per library via
 > `create_all` (ADR-0008). Decisions are recorded in ADR-0002 (core
@@ -36,12 +39,17 @@ additive private upgrades do not change package format. See [migration](replica-
   `If-Match: <version>` and return 409 (`version_conflict`) on stale edits;
   without it, edits remain last-write-wins.
 
-## Per-library content database
+## Catalog projection and retained model schema
 
-Each Cairndex library is a directory with a `.cairndex/` package. The content
-schema below lives in `<library-root>/.cairndex/library.db`. There is no content
-`storage_roots` table and no `asset_files.storage_root_id`: the library DB is the
-storage scope, and `asset_files.relative_path` is relative to the library root.
+The portable library stores immutable authored history. The serving instance
+materializes the following content model in a private SQLite catalog outside
+the library root. File locations remain library-relative. Shared ORM tables
+also describe disposable migration inputs; their `.cairndex/library.db` location
+is not a supported application storage path.
+
+Portable edits use retained causal bases, explicit conflict review and durable
+operation identities. The optional legacy `If-Match` routes described in the
+model reference do not admit portable libraries.
 
 ### `asset_bundles`
 
@@ -742,3 +750,15 @@ manual cover choice is never overwritten. These values are portable metadata in
   queries, and larger-library benchmarks.
 - Collection delete service semantics beyond current FK defaults (tag delete now
   has explicit safe-delete semantics — see `tags` above).
+
+## Portable registry additions
+
+`registered_libraries.package_format` records the admitted package format.
+Existing rows default to the old format and remain unavailable.
+`serving_released` persists explicit Release across restart. Additive private
+registry upgrades do not modify package descriptors or convert library formats.
+
+`recovery_tasks` stores a library-scoped operation ID, exact action/input, state,
+result, cancellation and timestamps. Indexes support bounded queue and library
+listing. Recovery paths are server-managed; HTTP clients submit no recovery path.
+See [private recovery](replica-recovery.md) for receipts and generation binding.

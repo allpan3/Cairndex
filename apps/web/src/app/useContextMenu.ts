@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { currentDisplayedBasis } from '../api/editBasis'
 
 import { dropRightClickSelection } from './selection'
 
@@ -14,9 +15,11 @@ export interface MenuItem {
 export type MenuEntry = MenuItem | null
 
 export interface MenuState {
+  editBasis?: string
   x: number
   y: number
   items: MenuEntry[]
+  returnFocus?: HTMLElement | null
 }
 
 /**
@@ -37,7 +40,9 @@ export function useContextMenu() {
     dropRightClickSelection(e.target)
     // An all-disabled or empty menu would just be an empty box — skip it.
     if (!items.some((i) => i && !i.disabled)) return
-    setState({ x: e.clientX, y: e.clientY, items })
+    const element = e.target instanceof Element ? e.target : null
+    const returnFocus = element?.closest<HTMLElement>('button, [tabindex]') ?? null
+    setState({ x: e.clientX, y: e.clientY, items, returnFocus, editBasis: currentDisplayedBasis() })
   }
   const close = () => setState(null)
   return { state, open, close }

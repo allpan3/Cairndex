@@ -1,25 +1,9 @@
-/**
- * The desktop connections model (plan 3 §7.1, ADR-0018 §5).
- *
- * The shell used to know exactly one server URL. It now knows a set of
- * connections — remote servers plus one managed local server — with **exactly
- * one active at a time**. Switching, not simultaneous browsing: the media relay
- * is single-config by design, deep-link classification is built around "not on
- * this server", and ADR-0018 already guarantees one server per library, so
- * simultaneity would buy breadth of view at the cost of multiplying all three.
- *
- * Two properties this module exists to guarantee, both easy to get wrong:
- *
- * - **Activation is all-or-nothing.** Every fallible step runs before anything
- *   user-visible changes. A half-switch — new URL against an old cache, or the
- *   reverse — is worse than either endpoint, because every request afterwards
- *   looks plausible and is wrong.
- * - **Only one activation runs at a time.** A menu double-click or a StrictMode
- *   double-effect is the same race the shell's `start_once` had to fix.
- */
+// One committed desktop connection with cancellable preparation and durable selection
 
 import {
   configureHostServer,
+  getHostPlatform,
+  normalizeHostServerUrl,
   loadHostConnections,
   loadHostServerUrl,
   saveHostConnections,
@@ -27,7 +11,7 @@ import {
   type StoredConnection,
   type StoredConnections,
 } from '../platform'
-import { setApiBaseUrl } from '../api/client'
+import { fetchLibraries, setApiBaseUrl } from '../api/client'
 import { resetJobNotifications } from './useJobNotifications'
 import { verifyServer } from './verifyServer'
 
@@ -54,7 +38,12 @@ let listeners = new Set<() => void>()
  * refused rather than queued — queueing would eventually run a switch the user
  * has already navigated past.
  */
-let inFlight: { id: string; promise: Promise<Connection> } | null = null
+let inFlight: {
+  id: string
+  libraryUuid?: string
+  promise: Promise<Connection>
+  controller: AbortController
+} | null = null
 
 function notify(): void {
   for (const listener of listeners) listener()
@@ -138,16 +127,6 @@ function normalize(stored: StoredConnections): ConnectionsState {
   return { connections, activeConnectionId: active }
 }
 
-async function persist(): Promise<void> {
-  await saveHostConnections({
-    // The local connection is re-derived each session, so persisting its (null)
-    // URL is harmless, but persisting a token would not be — there is none here
-    // to persist by construction.
-    connections: state.connections,
-    activeConnectionId: state.activeConnectionId,
-  })
-}
-
 /** Add a remote connection, or return the existing entry for that URL. */
 export async function addRemoteConnection(serverUrl: string): Promise<Connection> {
   const existing = state.connections.find(
@@ -160,8 +139,9 @@ export async function addRemoteConnection(serverUrl: string): Promise<Connection
     label: labelFor(serverUrl),
     serverUrl,
   }
-  state = { ...state, connections: [...state.connections, connection] }
-  await persist()
+  const next = { ...state, connections: [...state.connections, connection] }
+  await saveHostConnections(next)
+  state = next
   notify()
   return connection
 }
@@ -171,40 +151,76 @@ export async function ensureLocalConnection(): Promise<Connection> {
   const existing = state.connections.find((entry) => entry.kind === 'local')
   if (existing) return existing
   const connection = localConnection()
-  state = { ...state, connections: [...state.connections, connection] }
-  await persist()
+  const next = { ...state, connections: [...state.connections, connection] }
+  await saveHostConnections(next)
+  state = next
   notify()
   return connection
 }
 
-/**
- * Make one connection the active one, or leave everything exactly as it was.
- *
- * Ordering is the point. Resolving the URL and reconfiguring transport are the
- * steps that can fail, and both run before `activeConnectionId` moves; the
- * commit itself cannot fail. On failure the previous connection is restored —
- * including a media-relay reconfigure, which is the one step with an effect
- * outside this module's state and so the only thing needing compensation.
- */
-export async function activateConnection(id: string): Promise<Connection> {
+// Reports one attempt independently of the committed connection and query scope
+export interface ActivationState {
+  id: string | null
+  cancellable: boolean
+  error: string | null
+}
+let activation: ActivationState = { id: null, cancellable: false, error: null }
+let session = 0
+
+// Reconnecting the same server still creates a fresh request and query scope
+export function getConnectionSession(): number {
+  return session
+}
+
+// Exposes progress and retry guidance without pretending an unverified target is active
+export function getActivation(): ActivationState {
+  return activation
+}
+
+// Cancellation during preparation leaves the current workspace and intended selection intact
+export function cancelActivation(): void {
+  if (activation.cancellable) inFlight?.controller.abort()
+}
+
+// Serializes attempts; repeat clicks join the same attempt and other targets remain explicit
+export async function activateConnection(id: string, libraryUuid?: string): Promise<Connection> {
   if (inFlight) {
-    if (inFlight.id === id) return inFlight.promise
-    throw new Error('Another connection is already being opened.')
+    if (inFlight.id === id && inFlight.libraryUuid === libraryUuid) return inFlight.promise
+    throw new Error(
+      'Another connection is already being opened. Cancel it before choosing another server.',
+    )
   }
-  const promise = runActivation(id).finally(() => {
-    inFlight = null
-  })
-  inFlight = { id, promise }
+  const controller = new AbortController()
+  activation = { id, cancellable: true, error: null }
+  const promise = runActivation(id, controller.signal, libraryUuid)
+    .catch((error: unknown) => {
+      activation = {
+        id: null,
+        cancellable: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not connect. Retry or choose another server.',
+      }
+      throw error
+    })
+    .finally(() => {
+      inFlight = null
+      notify()
+    })
+  inFlight = { id, libraryUuid, promise, controller }
+  notify()
   return promise
 }
 
-async function runActivation(id: string): Promise<Connection> {
+// Verifies before persisting or changing transport; a failed commit restores the stored choice
+async function runActivation(
+  id: string,
+  signal: AbortSignal,
+  libraryUuid?: string,
+): Promise<Connection> {
   const target = state.connections.find((entry) => entry.id === id)
   if (!target) throw new Error('That connection is no longer configured.')
-
-  const previous = getActiveConnection()
-
-  // --- fallible steps, before anything user-visible moves -------------------
   let serverUrl: string
   let localToken: string | null = null
   if (target.kind === 'local') {
@@ -214,70 +230,47 @@ async function runActivation(id: string): Promise<Connection> {
   } else {
     if (!target.serverUrl) throw new Error('That connection has no server address.')
     serverUrl = target.serverUrl
-    // Reachability is a fallible step, so it runs before the commit like every
-    // other one. Without this a lease redirect would switch to the holder's
-    // advertised address without checking anything answers there — stranding
-    // the user on a dead server and persisting it as active, so the next launch
-    // opened straight into the error (owner-reported).
-    await verifyServer(serverUrl)
+    await verifyServer(serverUrl, signal)
   }
+  let selectedLibrary: string | undefined
+  if (libraryUuid) {
+    const libraries = await fetchLibraries(signal, serverUrl)
+    selectedLibrary = libraries.find((entry) => entry.library_uuid === libraryUuid)?.id
+    if (!selectedLibrary)
+      throw new Error(
+        'The serving server does not list this library. Retry or choose a library on that server.',
+      )
+  }
+  if (signal.aborted) throw new Error('Connection cancelled. The previous selection is unchanged.')
 
+  // Once the short commit starts, its store and IPC operations must finish together
+  activation = { id, cancellable: false, error: null }
+  notify()
+  const previous = state
+  const next = { ...state, activeConnectionId: id }
+  await saveHostConnections(next)
   try {
+    // The platform commits URL, grant and relay atomically on success
     await configureHostServer(serverUrl, { localToken })
   } catch (error) {
-    await restore(previous)
+    try {
+      await saveHostConnections(previous)
+    } catch {
+      throw new Error(
+        'Connection failed and the remembered selection could not be restored. Retry before restarting.',
+        { cause: error },
+      )
+    }
     throw error
   }
-
-  // --- commit: nothing below can fail --------------------------------------
-  // The API base is where every JSON request goes, so it moves here — in the
-  // commit, for both kinds — and nowhere else. It used to move only as a side
-  // effect of `verifyServer`, which meant a local activation never pointed the
-  // app at the sidecar at all (requests kept going to the previous remote, or
-  // nowhere on first run), and a failed remote activation left the base on the
-  // dead server it had just probed. Found by the D6 whole-milestone review.
-  setApiBaseUrl(serverUrl)
-  // Run state is module-scoped by D5b design (so a Workspace remount does not
-  // drop a run in flight), which is exactly why a *connection* switch has to
-  // clear it: a run started on the previous server would otherwise settle here
-  // and notify about work the user is no longer looking at.
+  setApiBaseUrl(serverUrl, id)
   resetJobNotifications()
-  state = {
-    connections: state.connections.map((entry) =>
-      entry.id === id
-        ? { ...entry, serverUrl: entry.kind === 'local' ? null : entry.serverUrl }
-        : entry,
-    ),
-    activeConnectionId: id,
-  }
+  state = next
+  session += 1
+  if (selectedLibrary) setPendingLibrarySelection(id, selectedLibrary)
+  activation = { id: null, cancellable: false, error: null }
   notify()
-  void persist()
   return target
-}
-
-// Re-points transport at the connection that was active before a failed switch.
-// Reconfiguring rotates the media relay's capability route, so without this the
-// previous connection would survive with dead media URLs.
-//
-// Handles both kinds. The local connection stores no URL by design, so the
-// original `!previous?.serverUrl` guard silently skipped it — the one
-// compensation path could not compensate for a switch away from local. Its
-// address and token are re-read from the shell, which returns the running
-// sidecar rather than starting a rival.
-async function restore(previous: Connection | null): Promise<void> {
-  try {
-    if (previous?.kind === 'local') {
-      const info = await startHostLocalServer()
-      await configureHostServer(info.baseUrl, { localToken: info.token })
-      setApiBaseUrl(info.baseUrl)
-    } else if (previous?.serverUrl) {
-      await configureHostServer(previous.serverUrl)
-      setApiBaseUrl(previous.serverUrl)
-    }
-  } catch {
-    // Nothing better to do: the switch already failed, and reporting a second
-    // failure over the first would only obscure the cause.
-  }
 }
 
 /**
@@ -293,20 +286,19 @@ export function libraryStorageKey(connectionId: string | null): string {
   return connectionId ? `cairndex.libraryId:${connectionId}` : 'cairndex.libraryId'
 }
 
-/**
- * Follow a lease redirect: add the holder's server and switch to it.
- *
- * The URL comes from the *server's* ownership response, which only ever offers
- * a non-loopback address (a loopback one names the holder's own machine and
- * would send this user to their own server). It is added as an ordinary remote
- * connection, so the user keeps it afterwards rather than having to re-enter it.
- *
- * A no-op outside the desktop shell: the browser has one server and no way to
- * point itself at another.
- */
-export async function connectToServer(serverUrl: string): Promise<void> {
-  const connection = await addRemoteConnection(serverUrl)
-  await activateConnection(connection.id)
+// Follows ownership to a specific server before resolving its portable library identity
+export async function connectToServer(serverUrl: string, libraryUuid?: string): Promise<void> {
+  const target = new URL(serverUrl)
+  if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password)
+    throw new Error('The serving address must be HTTP or HTTPS without credentials.')
+  if (getHostPlatform().kind !== 'desktop') {
+    if (libraryUuid) target.searchParams.set('library_uuid', libraryUuid)
+    window.location.assign(target.href)
+    return
+  }
+  const address = await normalizeHostServerUrl(serverUrl)
+  const connection = await addRemoteConnection(address)
+  await activateConnection(connection.id, libraryUuid)
 }
 
 /**
@@ -356,8 +348,26 @@ export function takePendingLibrarySelection(connectionId: string | null): string
 /** Test-only reset, mirroring `resetHostPlatformForTests`. */
 export function resetConnectionsForTests(): void {
   state = EMPTY
+  activation = { id: null, cancellable: false, error: null }
+  session = 0
   listeners = new Set()
   inFlight = null
   pendingSelection.clear()
+  pendingIndexes.clear()
   pendingVersion = 0
+}
+
+// Hands first indexing to the destination app after a native create crosses a server switch
+const pendingIndexes = new Map<string, string>()
+export function queueLibraryIndex(connectionId: string, libraryId: string): void {
+  pendingIndexes.set(connectionId, libraryId)
+  pendingVersion += 1
+  notify()
+}
+
+// Consumes only when the intended library is available on the destination
+export function takeLibraryIndex(connectionId: string | null, libraryId: string): boolean {
+  if (!connectionId || pendingIndexes.get(connectionId) !== libraryId) return false
+  pendingIndexes.delete(connectionId)
+  return true
 }

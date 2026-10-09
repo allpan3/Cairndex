@@ -1,11 +1,13 @@
-"""Schemas for the read-only File Browser (storage-root filesystem browsing)."""
+"""Schemas for library-scoped File Browser queries"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 
 class FileBrowserEntryRead(BaseModel):
+    local_state: Literal["observed", "unavailable", "unknown"] | None = None
     name: str
     relative_path: str
     # "directory" or "file".
@@ -13,7 +15,7 @@ class FileBrowserEntryRead(BaseModel):
     size_bytes: int | None
     modified_at: datetime | None
     # When the file was created / added on disk (distinct from modified_at); null
-    # for rows sourced from the DB where only mtime is known.
+    # for filesystem entries without birth time; Unbundled uses the indexing time.
     created_at: datetime | None
     extension: str | None
     mime_type: str | None
@@ -50,6 +52,7 @@ class FileBrowserEntryRead(BaseModel):
 
 
 class FileBrowserListingRead(BaseModel):
+    local_state: Literal["observed", "unavailable", "unknown"] | None = None
     # The relative directory listed ("" = the library root itself).
     path: str
     entries: list[FileBrowserEntryRead]
@@ -58,7 +61,7 @@ class FileBrowserListingRead(BaseModel):
 
 
 class UnbundledFilesPage(BaseModel):
-    """A flat, cross-library page of not-yet-bundled files (the provisional
+    """A flat, library-scoped page of not-yet-bundled files (the provisional
     scan rows), shaped like File Browser entries so one file row renders both."""
 
     items: list[FileBrowserEntryRead]

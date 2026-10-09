@@ -1,3 +1,4 @@
+import { useMetadataDraft } from '../state/useMetadataDraft'
 import { useState } from 'react'
 
 import type { CollectionRead } from '../api/client'
@@ -15,8 +16,20 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
   // Keyed by id in the parent so drafts re-initialize when the selection changes.
   const stats = useCollectionStats(collection.id)
   const update = useUpdateCollection()
-  const [name, setName] = useState(collection.name)
-  const [note, setNote] = useState(collection.note ?? '')
+  const nameDraft = useMetadataDraft(
+    `collection:${collection.id}:name`,
+    collection.name,
+    collection,
+  )
+  const noteDraft = useMetadataDraft(
+    `collection:${collection.id}:note`,
+    collection.note ?? '',
+    collection,
+  )
+  const name = nameDraft.value
+  const note = noteDraft.value
+  const setName = nameDraft.change
+  const setNote = noteDraft.change
   // Tracked against the URL rather than latched once — see `CollectionCard` for
   // why a plain boolean left the cover missing for good after one 404.
   const coverSrc = collectionThumbnailUrl(collection.id, collection.updated_at)
@@ -29,14 +42,14 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
       setName(collection.name)
       return
     }
-    update.mutate({ id: collection.id, patch: { name: trimmed }, version: collection.version })
+    update.mutate(nameDraft.bind({ id: collection.id, patch: { name: trimmed } }), {
+      onSuccess: () => nameDraft.saved(name),
+    })
   }
   const commitNote = () => {
     if (note === (collection.note ?? '')) return
-    update.mutate({
-      id: collection.id,
-      patch: { note: note.trim() || null },
-      version: collection.version,
+    update.mutate(noteDraft.bind({ id: collection.id, patch: { note: note.trim() || null } }), {
+      onSuccess: () => noteDraft.saved(note),
     })
   }
 
@@ -55,10 +68,14 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
         </div>
       )}
 
+      {(nameDraft.error || noteDraft.error) && (
+        <p role="alert">{nameDraft.error || noteDraft.error}</p>
+      )}
       <input
         className="edit edit--title"
         value={name}
         placeholder="Untitled collection"
+        onFocus={nameDraft.begin}
         onChange={(e) => setName(e.target.value)}
         onBlur={commitName}
         onKeyDown={(e) => {
@@ -77,6 +94,7 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
         className="edit edit--note"
         value={note}
         placeholder="Describe this collection…"
+        onFocus={noteDraft.begin}
         onChange={(e) => setNote(e.target.value)}
         onBlur={commitNote}
         aria-label="Collection description"

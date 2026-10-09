@@ -17,6 +17,16 @@ import { focusRenameInput } from './renameSelection'
 import { useCommitOnPointerDownOutside } from './useCommitOutside'
 import { OverlayScrollbar } from './OverlayScrollbar'
 
+const PRIMARY_FACTS = new Set([
+  'Type',
+  'Size',
+  'Dimensions',
+  'Duration',
+  'Date Added',
+  'Date Modified',
+  'Status',
+])
+
 /**
  * Right-pane details for one file, wherever it was selected. Deliberately *not*
  * the bundle inspector: this describes a file, not the bundle around it.
@@ -109,10 +119,7 @@ export function FileInspector({
     )
   }
 
-  // No "Name" row: the title above already is the name. Path *is* here now — in
-  // a bundle the files can come from anywhere, so where one lives is the thing
-  // you want the pane to tell you (owner, 2026-07-27). It wraps rather than
-  // truncates, and sits last so a deep path pushes nothing else out of view.
+  // The title already supplies the name; optional facts retain the complete relative path
   const dims = formatDimensions(entry.width, entry.height)
   const rows: [string, string][] = [
     // Same spelling as every other surface's type label, so a file does not
@@ -197,16 +204,16 @@ export function FileInspector({
         </div>
       )}
       <dl className="file-meta">
-        {rows.map(([k, v]) => (
-          <div className="file-meta__row" key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
+        {rows
+          .filter(([key]) => PRIMARY_FACTS.has(key))
+          .map(([key, value]) => (
+            <div className="file-meta__row" key={key}>
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
       </dl>
-      {/* Actions below the facts: the metadata is what the pane is *for*, and
-          buttons above it pushed every fact down a row. Locate stays available
-          on the web; Open/Reveal remain mapped-desktop capabilities. */}
+      {/* Keep actions after the essential facts and before optional technical details */}
       {entry.kind === 'file' && (onLocate || onRevealFile || onOpenFile) && (
         <div className="file-inspector__actions">
           {onLocate && (
@@ -226,6 +233,19 @@ export function FileInspector({
           )}
         </div>
       )}
+      <details className="file-inspector__details" key={entry.relativePath}>
+        <summary>More details</summary>
+        <dl className="file-meta">
+          {rows
+            .filter(([key]) => !PRIMARY_FACTS.has(key))
+            .map(([key, value]) => (
+              <div className="file-meta__row" key={key}>
+                <dt>{key}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+        </dl>
+      </details>
     </aside>
   )
 }

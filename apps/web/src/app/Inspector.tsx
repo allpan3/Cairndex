@@ -1,4 +1,7 @@
+import { basisOf, rememberBasis } from '../api/editBasis'
+import { MetadataEditError } from '../api/metadataEdits'
 import {
+  useEffect,
   Fragment,
   memo,
   useLayoutEffect,
@@ -44,7 +47,9 @@ import {
   formatResolution,
 } from '../lib/format'
 import type { HostLabels } from '../platform'
+import { libraryStateKey, useBundleDraft } from '../state/useBundleDraft'
 import { usePersistentState } from '../state/usePersistentState'
+import { useSessionState } from '../state/useSessionState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
@@ -54,6 +59,9 @@ import { OverlayScrollbar } from './OverlayScrollbar'
 import { moveTo } from './reorder'
 import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
+
+const EMPTY_FILES: FileRead[] = []
+const EMPTY_MEMBERS: DirectoryMember[] = []
 
 /** Where a dragged note would land: the gap before or after the note at
  * `index`. Notes have no ids, so a position is all there is to name. */
@@ -68,21 +76,23 @@ function ConflictNotice({ error }: { error: unknown }) {
   if (!(error instanceof ConflictError)) return null
   return (
     <div className="conflict-notice" role="alert">
-      This item was changed elsewhere, so your edit wasn’t applied. The latest values are shown
-      below — save again to apply your change over them.
+      This item changed elsewhere. Your draft is retained; review the current and proposed values
+      before saving.
     </div>
   )
 }
 
 /** Bundle title textarea that grows with wrapped content and inspector width. */
-function BundleTitleEditor({
+export function BundleTitleEditor({
   value,
   onChange,
   onCommit,
+  onBegin,
 }: {
   value: string
   onChange: (value: string) => void
   onCommit: () => void
+  onBegin?: () => void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -120,6 +130,7 @@ function BundleTitleEditor({
       rows={1}
       value={value}
       placeholder="Untitled"
+      onFocus={onBegin}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
       onKeyDown={(event) => {
@@ -157,7 +168,8 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
     onFlash,
     onFilterByTags,
   } = useBundleInspectorActions()
-  const { data: bundle } = useBundle(bundleId)
+  const bundleQuery = useBundle(bundleId)
+  const bundle = bundleQuery.data
 
   if (bundleId === null) {
     return (
@@ -180,7 +192,22 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   if (!bundle) {
     return (
       <aside className="inspector" data-tauri-drag-region>
-        <div className="state">Loading…</div>
+        {bundleQuery.error ? (
+          <div className="state" role="alert">
+            Could not load bundle details.{' '}
+            <button
+              className="btn"
+              disabled={bundleQuery.isFetching}
+              onClick={() => void bundleQuery.refetch()}
+            >
+              Retry details
+            </button>
+          </div>
+        ) : (
+          <div className="state" role="status">
+            Loading bundle details…
+          </div>
+        )}
       </aside>
     )
   }
@@ -255,20 +282,29 @@ function BundleEditor({
   onFilterByTags?: (tagIds: string[]) => void
 }) {
   const bundleId = bundle.id
-  const { data: files = [] } = useBundleFiles(bundleId)
-  const update = useUpdateBundle(bundleId, bundle.version)
+  const filesQuery = useBundleFiles(bundleId)
+  const files = filesQuery.data ?? EMPTY_FILES
+  const draft = useBundleDraft(bundle)
+  const update = useUpdateBundle(bundleId)
   const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
 
-  const [title, setTitle] = useState(bundle.title ?? '')
+  const title = draft.patch.title !== undefined ? (draft.patch.title ?? '') : (bundle.title ?? '')
+  const setTitle = (title: string) => draft.update({ title })
   // Multiple freeform notes; always keep at least one (empty) box so there is
   // something to type into and to append below with the "+" affordance.
-  const [notes, setNotes] = useState<string[]>(
-    bundle.notes && bundle.notes.length > 0 ? bundle.notes : [''],
+  const notes = useMemo(
+    () => draft.patch.notes ?? (bundle.notes?.length ? bundle.notes : ['']),
+    [draft.patch.notes, bundle.notes],
   )
+  const setNotes = (notes: string[]) => draft.update({ notes })
   // Mirror of ``notes`` kept synchronously current in the event handlers, so a
   // blur that lands in the same tick as the last keystroke still commits the
   // latest text (a plain render-closure could be one edit stale).
   const notesRef = useRef(notes)
+  const noteSave = useRef({ bundleId, inFlight: false, queued: false })
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
   const applyNotes = (next: string[]) => {
     notesRef.current = next
     setNotes(next)
@@ -282,7 +318,7 @@ function BundleEditor({
   // V2 leaves prior fixed heights behind so one-line notes regain the compact
   // default rather than a stale manual value
   const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
-    'cairndex.noteHeights.v2',
+    libraryStateKey('cairndex.noteHeights.v2'),
     {},
   )
   const heights = noteHeights[bundleId] ?? []
@@ -302,18 +338,53 @@ function BundleEditor({
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
   const commitTitle = (value: string) => {
-    if (value === (bundle.title ?? '')) return
-    update.mutate({ title: value === '' ? null : value })
+    if (value === (bundle.title ?? '')) {
+      draft.saved({ title: value })
+      return
+    }
+    const patch = { title: value === '' ? null : value }
+    update.mutate(draft.bind(patch, 'title'), {
+      onSuccess: (saved) => draft.saved({ title: value }, saved),
+      onError: (error) => {
+        if (error instanceof MetadataEditError && error.discarded) draft.saved({ title: value })
+      },
+    })
   }
 
   // Notes edit as a whole-list replace. Blank/whitespace-only blocks (an
   // untouched draft box) are dropped, and compared out here so blurring an empty
   // box never fires a redundant PATCH.
-  const commitNotes = () => {
+  const commitNotes = (previousSaved?: string[]) => {
+    if (noteSave.current.bundleId !== bundleId)
+      noteSave.current = { bundleId, inFlight: false, queued: false }
+    const state = noteSave.current
+    if (state.inFlight) {
+      state.queued = true
+      return
+    }
     const cleaned = notesRef.current.filter((n) => n.trim() !== '')
-    const prev = (bundle.notes ?? []).filter((n) => n.trim() !== '')
+    const prev = (previousSaved ?? bundle.notes ?? []).filter((n) => n.trim() !== '')
     if (cleaned.length === prev.length && cleaned.every((n, i) => n === prev[i])) return
-    update.mutate({ notes: cleaned })
+    const original = notesRef.current
+    state.inFlight = true
+    update.mutate(draft.bind({ notes: cleaned }, 'notes'), {
+      onSuccess: (saved) => {
+        draft.saved({ notes: original }, saved)
+        if (noteSave.current !== state) return
+        state.inFlight = false
+        if (state.queued) {
+          state.queued = false
+          queueMicrotask(() => commitNotes(saved.notes))
+        }
+      },
+      onError: (error) => {
+        if (noteSave.current === state) {
+          state.inFlight = false
+          state.queued = false
+        }
+        if (error instanceof MetadataEditError && error.discarded) draft.saved({ notes: original })
+      },
+    })
   }
   const changeNote = (i: number, value: string) =>
     applyNotes(notesRef.current.map((n, j) => (j === i ? value : n)))
@@ -438,24 +509,48 @@ function BundleEditor({
       </div>
 
       <ConflictNotice error={update.error} />
+      {draft.error && <p role="alert">{draft.error}</p>}
+      {draft.recovered && (
+        <div role="status">
+          Recovered unsaved draft{' '}
+          <button className="btn btn--sm" onClick={draft.discard}>
+            Discard draft
+          </button>
+        </div>
+      )}
 
-      <BundleTitleEditor value={title} onChange={setTitle} onCommit={() => commitTitle(title)} />
+      <BundleTitleEditor
+        value={title}
+        onBegin={() => {
+          if (draft.patch.title === undefined) setTitle(title)
+        }}
+        onChange={setTitle}
+        onCommit={() => commitTitle(title)}
+      />
 
       <div className="prop">
         <span className="prop__k">Rating</span>
         <StarRating
           value={bundle.rating ?? 0}
-          onChange={(v) => update.mutate({ rating: v === 0 ? null : v })}
+          onChange={(v) =>
+            update.mutate(rememberBasis({ rating: v === 0 ? null : v }, basisOf(bundle)))
+          }
         />
       </div>
       <div className="prop">
         <span className="prop__k">Files</span>
-        <span className="prop__v">{files.length}</span>
+        <span className="prop__v">
+          {filesQuery.data?.length ?? (filesQuery.error ? 'Unavailable' : 'Loading…')}
+        </span>
       </div>
       <div className="prop">
         <span className="prop__k">Size</span>
         <span className="prop__v">
-          {formatBytes(files.reduce((s, f) => s + (f.size_bytes ?? 0), 0))}
+          {filesQuery.data
+            ? formatBytes(files.reduce((s, f) => s + (f.size_bytes ?? 0), 0))
+            : filesQuery.error
+              ? 'Unavailable'
+              : 'Loading…'}
         </span>
       </div>
       <div className="prop">
@@ -479,7 +574,12 @@ function BundleEditor({
       >
         {/* A wrapper, so a note row can be found under the pointer during a drag
             without also matching a row in some other inspector pane. */}
-        <div className="notes-list">
+        <div
+          className="notes-list"
+          onFocus={() => {
+            if (!draft.patch.notes) setNotes(notes)
+          }}
+        >
           {notes.map((n, i) => (
             <NoteBox
               key={i}
@@ -488,14 +588,17 @@ function BundleEditor({
               count={notes.length}
               height={heights[i] ?? null}
               onChange={(v) => changeNote(i, v)}
-              onCommit={commitNotes}
+              onCommit={() => commitNotes()}
               onRemove={() => removeNote(i)}
               onResize={(h) => setNoteHeight(i, h)}
               dragging={draggingNote === i}
               drop={
                 noteDropSlot?.index === i ? (noteDropSlot.before ? 'before' : 'after') : undefined
               }
-              onDragStart={() => setDraggingNote(i)}
+              onDragStart={() => {
+                if (!draft.patch.notes) setNotes(notes)
+                setDraggingNote(i)
+              }}
               onDragMove={(x, y) => hoverNoteDrop(i, x, y)}
               onDragEnd={() => {
                 const slot = noteDropRef.current
@@ -546,7 +649,8 @@ const MIN_NOTE_HEIGHT = 34
  * resize grip; once a manual height is set (shared across all note boxes and
  * persisted) it becomes a fixed box with a scrollbar when the text overflows.
  * Double-clicking the grip returns to auto-fit. */
-function NoteBox({
+export function NoteBox({
+  keyboardReorderOnly = false,
   value,
   index,
   count,
@@ -562,6 +666,7 @@ function NoteBox({
   onDragEnd,
   onMoveBy,
 }: {
+  keyboardReorderOnly?: boolean
   value: string
   index: number
   count: number
@@ -729,7 +834,7 @@ function NoteBox({
         <button
           type="button"
           className="note-drag"
-          onPointerDown={startReorder}
+          onPointerDown={keyboardReorderOnly ? undefined : startReorder}
           onKeyDown={(event) => {
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
             event.preventDefault()
@@ -737,7 +842,7 @@ function NoteBox({
           }}
           aria-label={`Reorder note ${index + 1}`}
           aria-keyshortcuts="ArrowUp ArrowDown"
-          title="Drag to reorder"
+          title={keyboardReorderOnly ? 'Use arrow keys to reorder' : 'Drag to reorder'}
         >
           <IconGrip />
         </button>
@@ -789,10 +894,13 @@ export function FileList({
 }) {
   const menu = useContextMenu()
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
-  const { data: files = [] } = useBundleFiles(bundleId)
+  const filesQuery = useBundleFiles(bundleId)
+  const files = filesQuery.data ?? EMPTY_FILES
   // Folder members (plan 6): a directory that stands in for its files as one
   // row, so an album of a thousand photos does not fill the rail.
-  const { data: members = [] } = useBundleDirectoryMembers(bundleId)
+  const membersQuery = useBundleDirectoryMembers(bundleId)
+  const members = membersQuery.data ?? EMPTY_MEMBERS
+  const ready = filesQuery.data !== undefined && membersQuery.data !== undefined
   const { collapse, expand } = useDirectoryMemberMutations(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
@@ -802,7 +910,7 @@ export function FileList({
   // What the rail draws: loose files and folder rows in one order. The covered
   // files are still the bundle's files — `files` stays the whole list, because
   // reordering and the counts below are about membership, not about drawing.
-  const rows = useMemo(() => bundleRows(files, members), [files, members])
+  const rows = useMemo(() => (ready ? bundleRows(files, members) : []), [files, members, ready])
   const visibleFiles = useMemo(
     () => rows.flatMap((row) => (row.kind === 'file' ? [row.file] : [])),
     [rows],
@@ -821,13 +929,25 @@ export function FileList({
     () => new Map(visibleFiles.map((file, index) => [file.id, index])),
     [visibleFiles],
   )
-  // Which folder rows are showing their contents. Purely a way of looking:
-  // opening one changes nothing about the bundle, so it is not persisted.
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  // Disclosure is window-local navigation state, scoped independently from bundle membership
+  const [openFolders, setOpenFolders] = useSessionState<Set<string>>(
+    libraryStateKey(`cairndex.inspectorFolders:${bundleId}`),
+    new Set(),
+  )
+  useEffect(() => {
+    if (!membersQuery.data || membersQuery.error || membersQuery.isFetching) return
+    const ids = new Set(membersQuery.data.map((member) => member.id))
+    setOpenFolders((previous) => {
+      const next = new Set([...previous].filter((id) => ids.has(id)))
+      return next.size === previous.size ? previous : next
+    })
+  }, [membersQuery.data, membersQuery.error, membersQuery.isFetching, setOpenFolders])
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
   const pointerDragRef = useRef<{
+    basis: string | undefined
+    orderedIds: string[]
     fileId: string
     pointerId: number
     startX: number
@@ -872,12 +992,16 @@ export function FileList({
     const visibleIndex = visibleFiles.findIndex((candidate) => candidate.id === file.id)
     const over = visibleFiles[visibleIndex + delta]
     if (visibleIndex === -1 || over === undefined) return
+    // Use this arrangement's read basis, as pointer reorder does at drag start
     reorder.mutate(
-      moveTo(
-        files.map((f) => f.id),
-        file.id,
-        over.id,
-        delta < 0,
+      rememberBasis(
+        moveTo(
+          files.map((f) => f.id),
+          file.id,
+          over.id,
+          delta < 0,
+        ),
+        basisOf(files),
       ),
     )
   }
@@ -965,6 +1089,8 @@ export function FileList({
           event.currentTarget.focus({ preventScroll: true })
           event.currentTarget.setPointerCapture(event.pointerId)
           pointerDragRef.current = {
+            basis: basisOf(files),
+            orderedIds: files.map((file) => file.id),
             fileId: f.id,
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -996,13 +1122,8 @@ export function FileList({
           if (!pointer || pointer.pointerId !== event.pointerId) return
           const slot = dropSlotRef.current
           if (pointer.active && pointer.mode === 'reorder' && slot) {
-            const orderedIds = moveTo(
-              files.map((file) => file.id),
-              pointer.fileId,
-              slot.id,
-              slot.before,
-            )
-            reorder.mutate(orderedIds)
+            const orderedIds = moveTo(pointer.orderedIds, pointer.fileId, slot.id, slot.before)
+            reorder.mutate(rememberBasis(orderedIds, pointer.basis))
           }
           clearDrag()
         }}
@@ -1066,9 +1187,10 @@ export function FileList({
       className="files"
       title={
         <>
-          Files in bundle ({files.length}
+          Files in bundle{filesQuery.data !== undefined ? ` (${files.length}` : ''}
           {members.length > 0 ? ` · ${members.length} folder${members.length > 1 ? 's' : ''}` : ''}
-          {missingCount > 0 ? ` · ${missingCount} missing` : ''})
+          {missingCount > 0 ? ` · ${missingCount} missing` : ''}
+          {filesQuery.data !== undefined ? ')' : ''}
         </>
       }
       actions={
@@ -1085,6 +1207,13 @@ export function FileList({
       }
     >
       <ConflictNotice error={update.error} />
+      <BundleFilesStatus query={filesQuery} kind="files" />
+      <BundleFilesStatus query={membersQuery} kind="folders" />
+      {ready &&
+        !filesQuery.error &&
+        !membersQuery.error &&
+        files.length === 0 &&
+        members.length === 0 && <p>No files in this bundle.</p>}
       <div className="files__list" role="list" aria-label="Files in bundle">
         {rows.map((row) => {
           if (row.kind === 'folder') {
@@ -1126,6 +1255,32 @@ export function FileList({
       )}
     </InspectorSection>
   )
+}
+
+// Missing query data is unknown; cached data remains readable during refresh and failure
+function BundleFilesStatus({
+  query,
+  kind,
+}: {
+  query: { data?: unknown; error: unknown; isFetching: boolean; refetch: () => unknown }
+  kind: 'files' | 'folders'
+}) {
+  if (query.error)
+    return (
+      <p role="alert">
+        Could not load bundle {kind}. {query.data !== undefined ? `Showing cached ${kind}. ` : ''}
+        <button
+          className="btn btn--sm"
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          Retry {kind}
+        </button>
+      </p>
+    )
+  if (query.data === undefined) return <p role="status">Loading bundle {kind}…</p>
+  if (query.isFetching) return <p role="status">Refreshing bundle {kind}…</p>
+  return null
 }
 
 /**

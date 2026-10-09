@@ -9,6 +9,18 @@ interrupted work, retries, schema refusal, conflicts and retained recovery.
 The [procedure](replica-migration.md) accepts no owner path through an application
 command. Generated libraries and private receipts must not enter Git.
 
+## Portable lifecycle service checks
+
+The [application extraction](portable-lifecycle-extraction.md) uses disposable
+fixtures for Create/Open, access and recovery. Run
+`uv run pytest tests/test_replica_creation.py tests/test_replica_recovery.py`
+from `apps/server`. The tests cover exclusive publication, process exits,
+concurrent snapshot capture, retained intent, generation activation and retry.
+Run browser integration with `npm run test:e2e` from `apps/web`. The agent performs native
+functional checks with disposable data. Owner assistance is needed only for
+product decisions, unavailable access or devices, and approved real-data operations.
+
+
 ## Prerequisites
 
 | Tool                       | Why                                            | Notes                                                                                                |

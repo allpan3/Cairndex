@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
+import { advanceConnectionScope } from '../api/requestScope'
 import { conflictName, hostImportMessage, useHostImports } from './useHostImports'
 
 // Copying Finder-dropped files into the library (plan 4 W5, desktop half).
@@ -246,4 +247,32 @@ test('a skipped collision is not reported as landed', async () => {
 
   await waitFor(() => expect(flashes.some((f) => f.message.includes('Skipped'))).toBe(true))
   expect(settled).toEqual([])
+})
+
+// Delayed native work must not advance an old batch or invoke mutations on a newly selected server
+test('a server switch fences late native import results before callbacks or the next file', async () => {
+  let release: ((value: unknown) => void) | undefined
+  importDroppedFile.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
+  const { result } = setup()
+  act(() => result.current.copyIn(['/tmp/a.mkv', '/tmp/b.mkv']))
+  await waitFor(() => expect(importDroppedFile).toHaveBeenCalledTimes(1))
+  advanceConnectionScope('another-server')
+  await act(async () => release?.(outcome('Show/a.mkv')))
+  await waitFor(() => expect(finishImportBatch).toHaveBeenCalledTimes(1))
+  expect(importDroppedFile).toHaveBeenCalledTimes(1)
+  expect(flashes).toEqual([])
+  expect(settled).toEqual([])
+})
+
+test('a server switch while batch registration waits prevents the first native upload', async () => {
+  let release: (() => void) | undefined
+  startImportBatch.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)))
+  const { result } = setup()
+  act(() => result.current.copyIn(['/tmp/a.mkv']))
+  advanceConnectionScope('another-server')
+  await act(async () => release?.())
+  await waitFor(() => expect(finishImportBatch).toHaveBeenCalledTimes(1))
+  expect(cancelImportBatch).toHaveBeenCalledTimes(1)
+  expect(importDroppedFile).not.toHaveBeenCalled()
+  expect(flashes).toEqual([])
 })

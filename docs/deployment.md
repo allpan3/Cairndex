@@ -1,5 +1,21 @@
 # Deployment
 
+## Extracted application qualification
+
+This branch is a local application candidate. Source operations and mounted-SMB
+publication are unavailable. The Docker daemon is unavailable during current
+qualification; no extracted container or NAS result is claimed. Earlier receipts
+apply only to their exact images and commits. Do not deploy this candidate to
+production from those receipts.
+
+Portable working databases, access settings, registry and caches require private
+server storage outside libraries/provider trees. Private snapshots use
+`CAIRNDEX_PRIVATE_BACKUP_DIR` or a sibling of the data directory. Use the supported
+[recovery procedure](replica-recovery.md); legacy `library.db` backup examples
+below describe old-format maintenance and do not back up portable libraries.
+Shared authored history, source files and credentials need separate backups.
+
+
 > Status: production packaging exists, and ADR-0008 has moved runtime/content
 > state to a server-local registry plus portable per-library packages. See
 > [ADR-0005](adr/0005-packaging-and-deployment.md) for the original packaging

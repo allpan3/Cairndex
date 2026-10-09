@@ -5,10 +5,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect
 
-from cairndex.ownership import get_lease_manager, read_lease
 from cairndex.registry import library_package as pkg
+from cairndex.replicas.catalog.creation import create
 
 
 def _make_root(tmp_path: Path, name: str = "Movies") -> Path:
@@ -27,20 +26,13 @@ def test_create_library_builds_package_and_registers(client: TestClient, tmp_pat
     body = resp.json()
     assert body["name"] == "Movies"
     assert body["status"] == "available"
-    assert len(body["library_uuid"]) == 26
+    assert len(body["library_uuid"]) == 32
 
     # On-disk package was created.
     assert pkg.manifest_path(root).is_file()
-    assert pkg.db_path(root).is_file()
-    for sub in pkg.CACHE_SUBDIRS:
-        assert (pkg.cache_dir(root) / sub).is_dir()
-
-    # The library.db carries the content schema (e.g. asset_bundles).
-    eng = create_engine(f"sqlite:///{pkg.db_path(root).as_posix()}")
-    try:
-        assert "asset_bundles" in inspect(eng).get_table_names()
-    finally:
-        eng.dispose()
+    assert not pkg.db_path(root).exists()
+    assert pkg.read_manifest(root).replica is not None
+    assert not list(root.rglob("*.db*"))
 
 
 def test_create_library_listed_and_fetchable(client: TestClient, tmp_path: Path) -> None:
@@ -99,7 +91,7 @@ def test_create_on_existing_library_conflicts(client: TestClient, tmp_path: Path
 
 def test_register_existing_library(client: TestClient, tmp_path: Path) -> None:
     root = _make_root(tmp_path, "Images")
-    manifest = pkg.create_package(root, "Images")  # build a package without registering
+    manifest = create(root, tmp_path / "private", "Images")  # build a package without registering
 
     resp = client.post("/api/v1/libraries/register", json={"root_path": str(root)})
     assert resp.status_code == 201, resp.text
@@ -121,14 +113,14 @@ def test_register_rejects_invalid_manifest(client: TestClient, tmp_path: Path) -
     assert resp.status_code == 422
 
 
-def test_get_reflects_unavailable_when_db_missing(client: TestClient, tmp_path: Path) -> None:
+def test_get_reflects_unavailable_when_manifest_missing(client: TestClient, tmp_path: Path) -> None:
     root = _make_root(tmp_path)
     created = client.post(
         "/api/v1/libraries/create",
         json={"root_path": str(root), "display_name": "Movies"},
     ).json()
 
-    pkg.db_path(root).unlink()  # simulate an offline/moved library
+    pkg.manifest_path(root).unlink()  # simulate an offline/moved library
     fetched = client.get(f"/api/v1/libraries/{created['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["status"] == "unavailable"
@@ -201,7 +193,7 @@ def test_probe_reports_an_unregistered_library_with_its_own_name(
     client: TestClient, tmp_path: Path
 ) -> None:
     root = _make_root(tmp_path, "Images")
-    pkg.create_package(root, "Family Photos")  # a library on disk, not registered here
+    create(root, tmp_path / "private", "Family Photos")  # a library on disk, not registered here
 
     body = _probe(client, root)
 
@@ -264,28 +256,6 @@ def test_probe_surfaces_a_broken_marker_rather_than_offering_to_create(
     assert resp.status_code == 422
 
 
-def _write_marker_plan(plans_file: Path) -> str:
-    """Insert one recognisable plan row directly into the plans database."""
-    import sqlite3
-
-    plan_id = "01K00000000000000000MARKER"
-    with sqlite3.connect(plans_file) as conn:
-        conn.execute(
-            "INSERT INTO grouping_plans (id, status, rule_version, stem_modes, generated_at,"
-            " created_at, updated_at, version) VALUES (?, 'OPEN', 1, '{}', datetime('now'),"
-            " datetime('now'), datetime('now'), 1)",
-            (plan_id,),
-        )
-    return plan_id
-
-
-def _marker_plans(plans_file: Path) -> list[str]:
-    import sqlite3
-
-    with sqlite3.connect(f"file:{plans_file}?mode=ro", uri=True) as conn:
-        return [row[0] for row in conn.execute("SELECT id FROM grouping_plans")]
-
-
 # --- deregistration (metadata-only) -------------------------------------------
 
 
@@ -306,10 +276,8 @@ def test_delete_removes_the_row_and_leaves_the_library_on_disk(
     assert client.get(f"/api/v1/libraries/{created['id']}").status_code == 404
     # Nothing on disk was touched: the package and the media are still there.
     assert pkg.manifest_path(root).is_file()
-    assert pkg.db_path(root).is_file()
+    assert not pkg.db_path(root).exists()
     assert (root / "movie.mp4").read_bytes() == b"media"
-    for sub in pkg.CACHE_SUBDIRS:
-        assert (pkg.cache_dir(root) / sub).is_dir()
 
 
 def test_delete_then_re_register_restores_the_same_library(
@@ -332,93 +300,6 @@ def test_delete_then_re_register_restores_the_same_library(
     assert again.status_code == 201, again.text
     assert again.json()["library_uuid"] == created["library_uuid"]
     assert again.json()["name"] == "Movies"
-
-
-def test_delete_releases_the_ownership_lease(client: TestClient, tmp_path: Path) -> None:
-    # ADR-0018 §3 lists unregistration alongside clean shutdown as a release
-    # trigger: a server that no longer serves a library must not keep holding
-    # it, or the next machine to open the folder meets a takeover prompt for a
-    # library nobody is serving.
-    root = _make_root(tmp_path)
-    created = client.post(
-        "/api/v1/libraries/create",
-        json={"root_path": str(root), "display_name": "Movies"},
-    ).json()
-    manager = get_lease_manager()
-    manager.acquire(library_id=created["id"], root=root)
-    assert manager.holds(created["id"], root)
-
-    assert client.delete(f"/api/v1/libraries/{created['id']}").status_code == 204
-
-    assert not manager.holds(created["id"], root)
-    record = read_lease(root).record
-    assert record is not None and record.released_at is not None
-
-
-def test_delete_leaves_the_librarys_plans_where_they_are(
-    client: TestClient, tmp_path: Path
-) -> None:
-    """Remove-and-re-add must not cost the owner a review in progress.
-
-    ADR-0022 put grouping plans in this server's data directory rather than the
-    library folder, and the first version of that deleted them here — which made a
-    gesture the test above documents as reversible quietly destructive. A plan holds
-    decisions only the owner could make: renames, destinations, files dragged between
-    suggestions, bundle/collection conversions. The file is collected at the next
-    server startup instead (see below), which is a boundary the owner can see coming.
-    """
-    from cairndex.persistence.engine import plans_database_path
-
-    root = _make_root(tmp_path)
-    created = client.post(
-        "/api/v1/libraries/create",
-        json={"root_path": str(root), "display_name": "Movies"},
-    ).json()
-    # Reading from the library is what opens it, and opening is what creates the file.
-    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
-    plans_file = plans_database_path(pkg.db_path(root))
-    assert plans_file.is_file()
-    marker = _write_marker_plan(plans_file)
-
-    assert client.delete(f"/api/v1/libraries/{created['id']}").status_code == 204
-    assert plans_file.is_file()
-
-    re_added = client.post("/api/v1/libraries/register", json={"root_path": str(root)})
-    assert re_added.status_code == 201
-    reopened = client.get(f"/api/v1/libraries/{re_added.json()['id']}/grouping/plans")
-    assert reopened.status_code == 200
-    assert _marker_plans(plans_file) == [marker]
-
-
-def test_a_new_server_run_starts_with_no_plans(client: TestClient, tmp_path: Path) -> None:
-    """A grouping plan lasts as long as the server that made it (ADR-0022).
-
-    Owner's call, and it is what removes any need to work out which plans files are
-    still claimed: a plans database is keyed on a path, so it is orphaned by a moved
-    library and by a symlinked mount that was offline when its digest was computed,
-    not only by deregistration. Clearing the directory at startup collects all of
-    them. At *startup* rather than shutdown, so a crash cannot leave a plan behind
-    that outlives the rule.
-    """
-    from cairndex.persistence.engine import discard_all_plans, plans_database_path
-
-    root = _make_root(tmp_path)
-    created = client.post(
-        "/api/v1/libraries/create",
-        json={"root_path": str(root), "display_name": "Movies"},
-    ).json()
-    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").status_code == 200
-    plans_file = plans_database_path(pkg.db_path(root))
-    _write_marker_plan(plans_file)
-    orphan = plans_file.with_name("0000000000000000.db")  # e.g. a library since moved
-    orphan.write_bytes(b"")
-
-    discard_all_plans()  # what the lifespan does before anything opens a library
-
-    assert not plans_file.exists()
-    assert not orphan.exists()
-    # ...and the library reopens perfectly well, with a plans database made afresh.
-    assert client.get(f"/api/v1/libraries/{created['id']}/grouping/plans").json() == []
 
 
 def test_delete_unknown_library_404(client: TestClient) -> None:

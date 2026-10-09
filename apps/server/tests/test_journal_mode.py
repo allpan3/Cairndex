@@ -143,13 +143,13 @@ def test_creating_a_library_through_the_api_survives_an_immediate_clean_stop(
         "/api/v1/libraries/create", json={"root_path": str(root), "display_name": "Fresh"}
     )
     assert response.status_code == 201
-    assert journal_mode_in_file(pkg.db_path(root)) == ROLLBACK
+    assert not pkg.db_path(root).exists()
 
     # A clean shutdown immediately afterwards must find nothing left to fix —
     # confirming the assertion above isn't passing only because shutdown will
     # paper over it.
     close_library_engines()
-    assert journal_mode_in_file(pkg.db_path(root)) == ROLLBACK
+    assert not pkg.db_path(root).exists()
 
 
 # --- a library uses WAL while it is open ------------------------------------
@@ -487,7 +487,7 @@ def test_an_unrelated_failure_is_not_disguised_as_a_journal_problem(
 # --- through the API --------------------------------------------------------
 
 
-def test_browsing_a_locked_out_library_returns_a_409_that_says_how_to_fix_it(
+def test_legacy_network_database_is_refused_before_open(
     isolated_client: TestClient,
     registry_session: Session,
     tmp_path: Path,
@@ -505,7 +505,9 @@ def test_browsing_a_locked_out_library_returns_a_409_that_says_how_to_fix_it(
     root = tmp_path / "locked-out"
     root.mkdir()
     pkg.create_package(root, "Locked Out")
-    library = registry_service.register_existing_library(registry_session, root_path=str(root))
+    library = registry_service._insert(
+        registry_session, manifest=pkg.read_manifest(root), root=root
+    )
     registry_session.commit()
 
     with sqlite3.connect(pkg.db_path(root)) as conn:
@@ -516,6 +518,5 @@ def test_browsing_a_locked_out_library_returns_a_409_that_says_how_to_fix_it(
 
     assert response.status_code == 409
     body = response.json()
-    assert body["code"] == "library_database_unopenable"
-    assert body["details"] == {"reason": "wal_on_network_filesystem", "filesystem": "smbfs"}
-    assert "PRAGMA journal_mode=DELETE" in body["message"]
+    assert body["code"] == "library_format_unsupported"
+    assert "Legacy library format is not supported" in body["message"]

@@ -37,6 +37,7 @@ class PlaybackProgressRead(BaseModel):
 class PlaybackProgressUpdate(BaseModel):
     position_s: float
     duration_s: float | None = None
+    source_generation: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     # Validate numeric payloads before service-level clamping
     @field_validator("position_s", "duration_s")
@@ -136,6 +137,7 @@ class PlaybackSessionRef(BaseModel):
 
 # Per-file playback decision request (§6.1)
 class PlaybackDecisionRequest(BaseModel):
+    source_generation: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     caps: ClientCapabilities
     audio_stream_index: int | None = None
     burn_subtitle_track_id: str | None = None
@@ -193,6 +195,7 @@ class PlaybackDecisionResponse(BaseModel):
 
 # Explicit HLS session creation (§6.2) — e.g. a quality/audio switch mid-play
 class PlaybackSessionCreate(BaseModel):
+    source_generation: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     caps: ClientCapabilities
     start_s: float | None = None
     audio_stream_index: int | None = None

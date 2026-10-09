@@ -26,8 +26,7 @@ from cairndex.registry import services as registry_service
 def _make_library(tmp_path: Path, registry: Session, name: str, *, passphrase: str | None) -> str:
     root = tmp_path / name
     root.mkdir()
-    pkg.create_package(root, name)
-    library = registry_service.register_existing_library(registry, root_path=str(root))
+    library = registry_service.create_library(registry, root_path=str(root), display_name=name)
     if passphrase is not None:
         set_passphrase(root, passphrase, registry=registry)
     registry.commit()
@@ -35,7 +34,7 @@ def _make_library(tmp_path: Path, registry: Session, name: str, *, passphrase: s
 
 
 def _browse(client: TestClient, library_id: str) -> int:
-    return client.get(f"/api/v1/libraries/{library_id}/bundles/browse").status_code
+    return client.get(f"/api/v1/libraries/{library_id}/replica/status").status_code
 
 
 # --- password hashing --------------------------------------------------------
@@ -75,7 +74,7 @@ def test_session_store_scoping_and_expiry() -> None:
 def test_set_and_verify_passphrase(tmp_path: Path, registry_session: Session) -> None:
     root = tmp_path / "lib"
     root.mkdir()
-    pkg.create_package(root, "L")
+    registry_service.create_library(registry_session, root_path=str(root), display_name="L")
     assert is_protected(root) is False
     set_passphrase(root, "s3cret", registry=registry_session)
     assert is_protected(root) is True
@@ -94,7 +93,12 @@ def test_protected_library_blocks_until_unlocked(
 
     # Status reflects protection; content is blocked while locked.
     status = isolated_client.get(f"/api/v1/libraries/{protected}/auth/status").json()
-    assert status == {"protected": True, "unlocked": False}
+    assert status == {
+        "protected": True,
+        "unlocked": False,
+        "access_settings_version": 1,
+        "private_recovery_version": 1,
+    }
     assert _browse(isolated_client, protected) == 401
     # Unprotected library works normally and needs no unlock.
     assert _browse(isolated_client, unprotected) == 200
@@ -115,7 +119,12 @@ def test_protected_library_blocks_until_unlocked(
         f"/api/v1/libraries/{protected}/auth/unlock", json={"passphrase": "open-sesame"}
     )
     assert ok.status_code == 200
-    assert ok.json() == {"protected": True, "unlocked": True}
+    assert ok.json() == {
+        "protected": True,
+        "unlocked": True,
+        "access_settings_version": 1,
+        "private_recovery_version": 1,
+    }
     assert _browse(isolated_client, protected) == 200
 
 
@@ -126,7 +135,7 @@ def test_non_bearer_authorization_header_preserves_cookie_unlock(
     isolated_client.post(f"/api/v1/libraries/{protected}/auth/unlock", json={"passphrase": "owner"})
 
     response = isolated_client.get(
-        f"/api/v1/libraries/{protected}/bundles/browse",
+        f"/api/v1/libraries/{protected}/replica/status",
         headers={"Authorization": "Basic reverse-proxy-credential"},
     )
 
@@ -141,9 +150,10 @@ def test_existing_corrupt_manifest_fails_closed(
 
     status = isolated_client.get(f"/api/v1/libraries/{library_id}/auth/status")
 
-    assert status.json() == {"protected": True, "unlocked": False}
-    assert _browse(isolated_client, library_id) == 401
-    assert isolated_client.get("/api/v1/auth/devices").status_code == 401
+    assert status.status_code == 422
+    assert _browse(isolated_client, library_id) == 404
+    # Server access settings are independent of damaged portable metadata.
+    assert isolated_client.get("/api/v1/auth/devices").status_code == 200
 
 
 def test_unlocking_one_library_does_not_unlock_another(

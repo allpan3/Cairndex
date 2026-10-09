@@ -29,6 +29,7 @@ from cairndex.domain.enums import (
 from cairndex.domain.rating import rating_facet_key
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
+from cairndex.persistence.file_queries import visible_path
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -134,9 +135,8 @@ class BundlePage:
 # A scan stages every newly discovered file as a provisional one-file bundle
 # (grouping_source=scan_suggestion). Until the user bundles or confirms it — via
 # grouping review or the manual bundling assistant — it is an "unbundled" file:
-# it belongs in the dedicated Unbundled view. A stale provisional row also appears
-# in Missing so the owner can repair it; it remains hidden from every other normal
-# view and collection. Confirmed bundles and legacy/manual/fast-add bundles are
+# it belongs in the dedicated Unbundled view and remains hidden from normal
+# views, including Missing, and collections. Confirmed and legacy/manual/fast-add bundles are
 # never unbundled.
 def _unbundled_predicate() -> ColumnElement[bool]:
     """SQL predicate: a scan-staged provisional bundle not yet confirmed."""
@@ -160,9 +160,10 @@ def _file_count_sq() -> Any:
 # Hidden files are not library-visible assets
 def _visible_file_exists() -> Any:
     """SQL predicate allowing empty bundles or at least one non-hidden file."""
-    hidden_path = AssetFile.relative_path.like(".%") | AssetFile.relative_path.like("%/.%")
     any_file = exists().where(AssetFile.bundle_id == AssetBundle.id)
-    visible_file = exists().where((AssetFile.bundle_id == AssetBundle.id) & not_(hidden_path))
+    visible_file = exists().where(
+        (AssetFile.bundle_id == AssetBundle.id) & visible_path(AssetFile.relative_path)
+    )
     return not_(any_file) | visible_file
 
 
@@ -241,6 +242,7 @@ def apply_scope(
     search) to any ``select`` over ``AssetBundle``. Shared by the browse grid, its
     counts, and the facet-count endpoint so all three scope identically."""
     stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
+    stmt = stmt.where(_visible_file_exists())
     # Every normal view hides provisional rows until they are confirmed —
     # **including Missing**. Missing Files used to show them, on the reasoning
     # that a stale staged row wants a repair surface. It does not: an unbundled
@@ -362,10 +364,10 @@ def browse_bundles(
             search_pred=search_pred,
         )
 
-    base = _scoped(select(AssetBundle.id).where(_visible_file_exists()))
+    base = _scoped(select(AssetBundle.id))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
 
-    page = _scoped(select(AssetBundle).where(_visible_file_exists()))
+    page = _scoped(select(AssetBundle))
     if view is SystemView.RANDOM:
         # The whole point of the view is the shuffle, so the sort params are
         # ignored rather than allowed to un-shuffle it; the id tie-break keeps
@@ -442,7 +444,7 @@ def _write_manual_order(
 def scoped_manual_order(session: Session, collection_id: str | None) -> list[str]:
     """Every bundle id in the scope, in its current manual order."""
     scoped = apply_scope(
-        select(AssetBundle.id).where(_visible_file_exists()),
+        select(AssetBundle.id),
         session,
         view=SystemView.ALL,
         collection_id=collection_id,
@@ -505,7 +507,7 @@ def cleanup_bundle_order(
     resulting manual order is dense and deterministic across the whole collection
     (or the global order when ``collection_id`` is None)."""
     scoped = apply_scope(
-        select(AssetBundle.id).where(_visible_file_exists()),
+        select(AssetBundle.id),
         session,
         view=SystemView.ALL,
         collection_id=collection_id,
@@ -544,6 +546,8 @@ def _cover_key(asset_file: AssetFile | None) -> str | None:
     return (
         f"{asset_file.id}:{asset_file.updated_at.timestamp()}"
         if asset_file.cover_time is not None
+        else f"{asset_file.id}:{asset_file.quick_fingerprint}"
+        if asset_file.quick_fingerprint
         else asset_file.id
     )
 
@@ -823,7 +827,7 @@ def facet_counts(
     """
     predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
     scoped = apply_scope(
-        select(AssetBundle.id).where(_visible_file_exists()),
+        select(AssetBundle.id),
         session,
         view=view,
         collection_id=collection_id,

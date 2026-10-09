@@ -680,7 +680,7 @@ fn remember_local_mapping<R: Runtime>(app: &AppHandle<R>, library_id: &str, root
     let Some(uuid) = read_uuid(root) else {
         return;
     };
-    let _ = mappings::remember_mapping(app, library_id, &uuid, root);
+    let _ = mappings::remember_mapping(app, "local", library_id, &uuid, root);
 }
 
 // One client for a single request to the sidecar, with a bound on how long a
@@ -1250,13 +1250,16 @@ mod tests {
             opened.library_id
         );
 
-        // A second create at the same folder is refused with the server's own
-        // reason rather than quietly making a duplicate.
+        // An exact creation retry preserves the completed portable identity.
+        let retried = create_library(&info, &plain, "Holiday Videos").expect("exact retry");
+        assert_eq!(retried.library_id, opened.library_id);
+        assert_eq!(retried.library_uuid, opened.library_uuid);
+
+        // A changed name cannot reuse the retained creation intent.
         let error = create_library(&info, &plain, "Again").expect_err("already a library");
-        assert!(
-            error.message.contains("already a Cairndex library"),
-            "unhelpful message: {}",
-            error.message
+        assert_eq!(
+            error.message,
+            "Creation name changed; use the original name to resume"
         );
 
         terminate(&mut child);

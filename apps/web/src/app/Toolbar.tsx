@@ -1,3 +1,4 @@
+import { ViewOptions } from './ViewOptions'
 import { useState, type ReactNode } from 'react'
 
 import type { BundleSort, SortOrder } from '../api/client'
@@ -10,6 +11,9 @@ import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
 
 interface ToolbarProps {
+  unavailableFilters?: string
+  allowCollectionSort?: boolean
+
   /** Leading controls before the title — the sidebar toggle and the
    *  Back/Forward history buttons. */
   leading?: ReactNode
@@ -52,8 +56,11 @@ const LAYOUTS: { value: LayoutMode; icon: ReactNode; label: string }[] = [
   { value: 'list', icon: <IconLayoutList />, label: 'List' },
 ]
 
+// Keep browse actions in their established order with compact alternatives for narrow panes
 export function Toolbar({
   leading,
+  unavailableFilters,
+  allowCollectionSort = true,
   trailing,
   onReshuffle,
   title,
@@ -117,7 +124,8 @@ export function Toolbar({
           onClick={() => setFiltersOpen((o) => !o)}
           aria-label="Filters"
           aria-pressed={filtersOpen}
-          title="Filters"
+          title={unavailableFilters ?? 'Filters'}
+          disabled={Boolean(unavailableFilters)}
         >
           <IconFilter />
           {filtersActive && <span className="toolbar__filter-dot" />}
@@ -129,7 +137,7 @@ export function Toolbar({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           aria-label="Search"
-          title="Search titles, filenames, tags, and collections across the whole library"
+          title="Search bundle names, notes, file notes, and moment comments"
         />
 
         {/* Ahead of the buttons rather than among them: a slider between two
@@ -161,12 +169,12 @@ export function Toolbar({
                 ? BUNDLE_SORTS.filter((option) => allowedSorts.includes(option.value))
                 : BUNDLE_SORTS
             }
-            perCollection={perCollectionSort}
-            onPerCollection={onPerCollectionSort}
+            perCollection={allowCollectionSort ? perCollectionSort : undefined}
+            onPerCollection={allowCollectionSort ? onPerCollectionSort : undefined}
           />
         )}
 
-        <div className="seg" role="group" aria-label="Layout">
+        <div className="seg toolbar__layouts" role="group" aria-label="Layout">
           {LAYOUTS.map((l) => (
             <button
               key={l.value}
@@ -181,6 +189,15 @@ export function Toolbar({
           ))}
         </div>
 
+        <ViewOptions
+          layout={prefs.layout}
+          layouts={LAYOUTS}
+          onLayout={(layout) => onPrefs({ ...prefs, layout })}
+          zoom={prefs.zoom}
+          min={ZOOM_MIN}
+          max={ZOOM_MAX}
+          onZoom={(zoom) => onPrefs({ ...prefs, zoom })}
+        />
         {trailing}
       </div>
 

@@ -7,6 +7,7 @@ library's content metadata lives in its own ``library.db`` and is never
 modified here — deregistering removes the row and nothing on disk.
 """
 
+import errno
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,11 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import LibraryStatus
 from cairndex.registry import library_package as pkg
 from cairndex.registry.models import RegisteredLibrary
+from cairndex.replicas.protocol import PackageFormatError
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,14 @@ def _normalize_root(raw: str) -> Path:
 
 
 def _probe_status(root: Path) -> LibraryStatus:
-    """A library is available when its root, marker DB, and manifest all exist."""
-    ok = root.is_dir() and pkg.db_path(root).is_file() and pkg.manifest_path(root).is_file()
+    """Report availability only for a supported portable package"""
+    try:
+        manifest = pkg.read_manifest(root)
+        ok = root.is_dir() and manifest.replica is not None
+    except ValidationError:
+        ok = False
+    except (DomainError, OSError, UnicodeError):
+        ok = False
     return LibraryStatus.AVAILABLE if ok else LibraryStatus.UNAVAILABLE
 
 
@@ -51,6 +59,7 @@ def _insert(session: Session, *, manifest: pkg.LibraryManifest, root: Path) -> R
         manifest_path=pkg.manifest_path(root).as_posix(),
         status=_probe_status(root),
         schema_version=manifest.format_version,
+        package_format=manifest.package_format,
     )
     session.add(library)
     try:
@@ -79,10 +88,27 @@ def create_library(
     elif not root.is_dir():
         raise ValidationError(f"root path {root.as_posix()!r} is not a directory")
 
-    if pkg.detect(root) is not None:
-        raise ConflictError(f"{root.as_posix()!r} is already a Cairndex library")
+    from cairndex.core.config import get_settings
+    from cairndex.replicas.catalog.creation import create
 
-    manifest = pkg.create_package(root, name)
+    try:
+        create(root, get_settings().data_dir.resolve(), name)
+    except OSError as exc:
+        if exc.errno in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}:
+            raise ValidationError(
+                "Library storage does not support exclusive metadata publication. "
+                "Creation is incomplete; source files remain unchanged."
+            ) from exc
+        raise ValidationError(
+            "Library storage could not complete creation. Check storage availability, "
+            "permissions and free space. Incomplete metadata is retained for review."
+        ) from exc
+    manifest = pkg.read_manifest(root)
+    existing = session.scalar(
+        select(RegisteredLibrary).where(RegisteredLibrary.library_uuid == manifest.library_uuid)
+    )
+    if existing:
+        return existing
     return _insert(session, manifest=manifest, root=root)
 
 
@@ -95,8 +121,10 @@ def register_existing_library(session: Session, *, root_path: str) -> Registered
     manifest = pkg.detect(root)  # raises ValidationError if the marker is broken
     if manifest is None:
         raise ValidationError(f"{root.as_posix()!r} is not a Cairndex library (no marker found)")
-    if not pkg.db_path(root).is_file():
-        raise ValidationError(f"library at {root.as_posix()!r} is missing its {pkg.DB_NAME}")
+    if manifest.replica is None:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
 
     return _insert(session, manifest=manifest, root=root)
 
@@ -136,6 +164,10 @@ def probe_path(session: Session, root_path: str) -> PathProbe:
     """
     root = _normalize_root(root_path)
     manifest = pkg.detect(root) if root.is_dir() else None
+    if manifest is not None and manifest.replica is None:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
     registered = session.scalars(
         select(RegisteredLibrary).where(RegisteredLibrary.root_path == root.as_posix())
     ).first()
@@ -159,6 +191,20 @@ def get_library(session: Session, library_id: str) -> RegisteredLibrary:
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
+    if library.package_format == pkg.FORMAT:
+        raise PackageFormatError(
+            "Legacy library format is not supported. Convert a separate copy before opening."
+        )
+    if pkg.manifest_path(Path(library.root_path)).exists():
+        try:
+            manifest = pkg.read_manifest(Path(library.root_path))
+        except (ValidationError, OSError, UnicodeError):
+            pass  # Preserve existing locked/unavailable behavior for unreadable manifests
+        else:
+            if manifest.library_uuid != library.library_uuid:
+                raise ConflictError("Registered library identity changed")
+            if manifest.package_format != library.package_format:
+                raise PackageFormatError("Registered library format changed; recovery required")
     # Re-probe so a freshly fetched row reflects current mount availability.
     status = _probe_status(Path(library.root_path))
     if status != library.status:
@@ -185,54 +231,19 @@ def list_libraries(session: Session) -> list[RegisteredLibrary]:
 
 
 def deregister_library(session: Session, library_id: str) -> None:
-    """Remove a library from this server's registry. **Metadata-only.**
+    """Drain and close under ownership, then remove only the registration
 
-    Deletes the registry row and nothing else: the library folder, its
-    ``.cairndex/`` package, its ``library.db``, and every media file are left
-    exactly as they are (AGENTS.md file-safety rules). Re-adding the same folder
-    later restores everything the user cares about, because none of it lives in
-    the registry (ADR-0018 §1).
-
-    Two things are cleaned up on the way out, both server-runtime state:
-
-    - the ownership lease is released, which ADR-0018 §3 lists alongside clean
-      shutdown as a release trigger — a server that no longer serves a library
-      must not keep holding it, or the next machine to open the folder meets a
-      takeover prompt for a library nobody is serving;
-    - the cached content engine is disposed, which closes the last connection so
-      SQLite folds the WAL back into a single consistent file (ADR-0018 §6).
-
-    The library's grouping plans are deliberately **not** deleted, though ADR-0022
-    put them in this server's own data directory. Removing a library and adding it
-    back is a documented, reversible gesture — there is a test of exactly that — and
-    a plan holds decisions only the owner could make: renames, destinations, files
-    dragged between suggestions, bundle/collection conversions. They are collected
-    later by ``sweep_orphaned_plans``, once nothing has claimed the file for a
-    fortnight, which also catches the orphans deleting here never could: a library
-    that was *moved*, or one reached through a symlinked mount that was offline.
-
-    Queued jobs for the library go with the row through the ``ON DELETE
-    CASCADE`` on ``job_queue``. A job already *running* stops at its next
-    checkpoint, because the released lease makes its ownership check fail.
+    Source media and content metadata remain intact. Same-run grouping plans
+    remain in the server-local store; ADR-0022 discards them at server startup.
+    Running jobs stop at a cooperative boundary before the row is deleted;
+    queued jobs cascade with the registration. Incomplete draining is retryable
     """
-    # Imported here rather than at module scope: the registry is the lower layer
-    # (ownership's manager reads the server identity *from* it at build time),
-    # so a top-level import would be a cycle waiting to happen.
-    from cairndex.ownership import get_lease_manager
-    from cairndex.registry.library_engine import dispose_library_engine
+    from cairndex.ownership.lifecycle import lifecycle
 
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
-
-    try:
-        get_lease_manager().release(library_id)
-    except Exception:  # noqa: BLE001 — an unreachable mount must not block removal
-        # The lease then ages out to stale, which is recoverable with a
-        # confirmation; refusing to deregister a library on an offline NAS would
-        # leave the user no way to clean up their own list.
-        logger.warning("could not release the lease for library %s", library_id, exc_info=True)
-    dispose_library_engine(library_id)
+    lifecycle.close(library_id)
 
     session.delete(library)
     session.flush()

@@ -70,7 +70,7 @@ export function shortcutReference(): Array<{
 }> {
   return keymapMenus.flatMap((menu) =>
     menu.items
-      .filter((item) => item.label !== undefined && !item.separator)
+      .filter((item) => item.label !== undefined && !item.separator && item.requires !== 'never')
       .map((item) => ({
         menu: menu.label,
         label: item.label as string,
@@ -79,4 +79,21 @@ export function shortcutReference(): Array<{
         browserReserved: item.browserReserved === true,
       })),
   )
+}
+
+// Format the canonical accelerator for the current platform without changing its binding
+export function formatAccelerator(accelerator: string, mac: boolean): string {
+  const tokens: Record<string, string> = mac
+    ? { CmdOrCtrl: '⌘', Cmd: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Enter: '↩' }
+    : { CmdOrCtrl: 'Ctrl', Cmd: 'Meta', Ctrl: 'Ctrl', Alt: 'Alt', Shift: 'Shift' }
+  return accelerator
+    .split('+')
+    .map((key) => tokens[key] ?? key)
+    .join(mac ? '' : '+')
+}
+
+// Show a desktop accelerator only where the host actually registers it
+export function actionShortcutLabel(id: string, mac: boolean): string | undefined {
+  const item = keymapMenus.flatMap((menu) => menu.items).find((entry) => entry.id === id)
+  return item?.accelerator ? formatAccelerator(item.accelerator, mac) : undefined
 }

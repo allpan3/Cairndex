@@ -30,6 +30,7 @@ const MOVIES: LibraryRead = {
   root_path: '/srv/movies',
   status: 'available',
   schema_version: 1,
+  package_format: 'cairndex.library',
   write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',
@@ -241,7 +242,7 @@ test('an initial library-list failure is explicit and retryable', async () => {
   expect(screen.queryByText(/No libraries yet/)).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Library path'), { target: { value: '/synthetic/new' } })
   expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Browse…' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Browse…' })).toBeEnabled()
 
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 

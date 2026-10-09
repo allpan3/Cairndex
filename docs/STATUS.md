@@ -1,36 +1,52 @@
 # Project status
 
-## Audit extraction: migration foundation
+## Audit extraction: VM handoff and application checkpoint
 
-Group 1 is on `feature/library-migration-foundation`, based on published main
-`a0ac750cb6b462648daa78eba58f79c08951776e`. The unrelated local development-tool
-commit remains on local main and is excluded from this group.
+The owner requests continuation on a separate machine or VM. The
+[handoff plan](audit-vm-handoff.md) defines clone/setup, remaining PR order, tests,
+real-library prerequisites and stopping rules. Application/reference branch
+transfer is authorized; application acceptance and merge remain pending.
+No further native tests are scheduled on the owner's active desktop.
 
-The preserved audit reference is `fix/library-ownership-lifecycle` at
-`8c814e311726ff178b3ab0efca75cb42d4c63c9a`, tree
-`f78c202018b94501af4fa796163b9c584303ae0f`. The
-[extraction ledger](audit-extraction.md) records dependencies, coverage and tests.
-The [migration procedure](replica-migration.md) defines the disposable workflow,
-backup requirements and real-library prerequisites. Conversion and activation
-remain unavailable. Application routes are unchanged. No legacy support is
-restored. Group 1 requires no manual owner test.
+Group 1 merged through PR #38 as `b8d9e3b9`. Its internal migration foundation
+passed the required checks. Real-library conversion and activation remain
+unavailable. The original reference is `8c814e31`, tree
+`f78c202018b94501af4fa796163b9c584303ae0f`, unchanged.
 
-The owner authorized agent review and PR merge for internal groups, and explicitly
-approved the machine name that caused the historical privacy findings. Only that
-exact local pattern was removed. Hooks, home-path patterns and credential checks
-remain active. The publication gates must pass for the exact final ref and PR text.
-No published history was changed.
+The primary checkout uses `feature/portable-library-lifecycle`, based on merged
+main. The owner approved one application branch for former groups 2–5, with
+separate functional rounds for controls/recovery, Update, browsing/edits and
+playback. Implementation is complete and local qualification passed. Functional
+acceptance is not recorded. Branch publication is for the VM handoff. See the [application validation record](portable-lifecycle-extraction.md)
+and [extraction ledger](audit-extraction.md).
 
-Earlier full checks on the local-main base passed 1,400 backend tests with one
-skip, Ruff, formatting, mypy, 10 library browser tests, unchanged OpenAPI and
-isolated wheel preparation/retry/rollback. The rebased branch has fresh backend
-results in the ledger. Installed-app compatibility retained a synthetic note
-across restart and rollback; decoded-pixel playback was not verified. Owner state,
-installed app and signing configuration were restored unchanged. No real library
-or production NAS service was changed. Desktop and deployment sources are unchanged.
+Backend: 1,612 tests passed, one existing skip. Frontend: 1,253 unit tests and
+31 browser tests passed. Rust: 135 tests passed. Relevant static checks, sidecar
+build, package smoke, three frozen recovery/discovery tests and macOS production
+app/DMG build passed. Native synthetic controls, recovery, protected restart,
+media pixels, note persistence, switching and empty-library Refresh passed.
+Docker was unavailable; Ubuntu Rust was not run locally. Those results are not
+claimed. Provider/NAS qualification remains limited to recorded earlier builds.
 
-Next: complete Group 1 publication checks and merge, then extract the portable
-application from refreshed main. User-visible groups require functional acceptance.
+The installed app is unchanged. The owner profile was held during native tests
+and restored with matching hashes, modes and links. No real-library operation is
+authorized. Source operations/SMB and distribution/deployment remain separate.
+The agent performs the functional tests; no scripted owner test is required now.
+Additional checks on application source `4fea9d07` passed for saved metadata and
+drafts, library switching, scoped file browsing, stable-ID move and reverse repair,
+restart persistence, video frames, keyboard seek and local resume. The validation
+record retains the initial stale-status and black-capture observations; a clean
+restart passed without source changes. Platform gates and application acceptance
+remain open. The owner does not review code.
+
+The prior local-main work remains on `preserve/local-main-media-tools`. Only the
+owner-approved machine-name private pattern was removed. All other privacy checks
+and hooks remain active. Exact publication gates must run before a future push/PR.
+
+## Earlier implementation records
+
+The records below describe their stated commits and builds. They do not qualify
+the extracted application or its deployment.
 
 > **Progressive-playback recovery hotfix validated (`0.2.1`, 2026-08-31).** A
 > production NAS deployment could open an ordinary direct-play video but either

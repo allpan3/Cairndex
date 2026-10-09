@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from cairndex.auth import SESSION_COOKIE, requires_unlock
-from cairndex.auth.local_token import is_local_owner_token
+from cairndex.auth.local_token import is_local_owner_token, owner_session
 from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.file_ops import gate as write_mode_gate
@@ -71,6 +71,9 @@ def require_library_ownership(library_id: str, root: Path) -> None:
     Cheap by construction: a library we already hold costs one dictionary
     lookup, so this adds no filesystem I/O to the request path.
     """
+    from cairndex.registry.library_package import require_legacy
+
+    require_legacy(root)
     get_lease_manager().ensure_owned(library_id=library_id, root=root)
 
 
@@ -92,7 +95,7 @@ def authorize_library(
             # but unlike a paired device token it does **not** stand in for a
             # library's passphrase: it is minted with no owner approval, so a
             # locked library stays locked until someone actually unlocks it.
-            if requires_unlock(root, session_cookie, library_id):
+            if requires_unlock(root, owner_session(authorization, session_cookie), library_id):
                 raise AuthRequiredError(f"library {library_id!r} is locked")
             return
         token_service.authenticate_device_token(

@@ -24,8 +24,10 @@ They are not proof for an extracted branch.
   applies only to its recorded executable and share.
 
 These are reference-branch facts, not claims that all features are extracted.
-Group 1 leaves main's application behavior unchanged. No extracted group is
-accepted or merged yet, and no publication is authorized.
+Group 1 is merged through PR #38. The owner approved combined application
+extraction for groups 2–5 with separate functional test rounds. That application
+branch is not accepted for merge. Publication is authorized for the VM handoff. Source operations and deployment remain
+separate groups.
 
 ## Separate deferred work
 

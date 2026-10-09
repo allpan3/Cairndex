@@ -42,5 +42,12 @@ def abort_scope(should_abort: Callable[[], bool]) -> Iterator[None]:
 
 def aborted() -> bool:
     """True when the current scope has been asked to stop."""
+    from cairndex.core.errors import LibraryLeaseError
+    from cairndex.ownership.lifecycle import check_work_ownership
+
+    try:
+        check_work_ownership()
+    except LibraryLeaseError:
+        return True
     signal = _ABORT.get()
     return signal is not None and signal()

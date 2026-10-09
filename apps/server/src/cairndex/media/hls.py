@@ -148,6 +148,8 @@ class HlsSession:
     last_access: float = 0.0  # monotonic clock; drives idle reaping
     closed: bool = False
     failed: bool = False
+    source_generation: str | None = None
+    input_scope: Callable[[], contextlib.AbstractContextManager[None]] = contextlib.nullcontext
 
     @property
     def segment_count(self) -> int:
@@ -388,7 +390,14 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
             args += ["-vf", ",".join(filters)]
 
     args += _audio_args(session)
+    # Copy seeks may include the preceding keyframe; exclude packets before the requested start
+    args += ["-copypriorss", "0"]
+    # Every bounded run shares one VOD timeline, including clients caching the first init
+    # frag_discont prevents the MP4 muxer subtracting this run's first decode timestamp
+    args += ["-output_ts_offset", f"{start_s:g}"]
     args += [
+        "-hls_segment_options",
+        "movflags=+frag_discont",
         "-f",
         "hls",
         "-hls_time",
@@ -413,7 +422,15 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
 def _launch_ffmpeg(args: list[str]) -> subprocess.Popen[bytes]:
     # stdout/stderr → DEVNULL: we never parse ffmpeg output (we watch the output
     # dir), and an unread PIPE can deadlock a long encode.
-    return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    from cairndex.media.inputs import command
+
+    args, descriptors = command(args)
+    return subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        pass_fds=descriptors,
+    )
 
 
 class SessionManager:
@@ -466,6 +483,7 @@ class SessionManager:
         params: SessionParams,
         start_s: float = 0.0,
         reuse: bool = True,
+        input_scope: Callable[[], contextlib.AbstractContextManager[None]] = contextlib.nullcontext,
     ) -> HlsSession:
         """Create (or reuse) and start a session; raise ``CapacityError`` past the bound.
 
@@ -484,7 +502,8 @@ class SessionManager:
         with self._lock:
             self._require_capacity()
         # Keyframe scan (remux only) runs outside the lock — it can be slow.
-        segment_starts = self._segment_starts(kind, source_path, duration)
+        with input_scope():
+            segment_starts = self._segment_starts(kind, source_path, duration)
         playlist = _render_playlist(segment_starts, duration)
 
         with self._lock:
@@ -503,6 +522,7 @@ class SessionManager:
                 file_id=file_id,
                 kind=kind,
                 source_path=source_path,
+                input_scope=input_scope,
                 output_dir=output_dir,
                 duration=duration,
                 segment_starts=segment_starts,
@@ -512,8 +532,12 @@ class SessionManager:
                 last_access=self._clock(),
             )
             self._sessions[session_id] = session
-        with session.lock:
-            self._start_run(session, _segment_index_for(segment_starts, start_s))
+        try:
+            with session.lock:
+                self._start_run(session, _segment_index_for(segment_starts, start_s))
+        except Exception:
+            self._teardown(session)
+            raise
         return session
 
     def _require_capacity(self) -> None:
@@ -567,6 +591,25 @@ class SessionManager:
     def teardown(self, library_id: str, session_id: str) -> None:
         session = self.get(library_id, session_id)
         self._teardown(session)
+
+    def close_library(self, library_id: str) -> None:
+        """Stop this library's local encoders after its requests drain"""
+        with self._lock:
+            sessions = [s for s in self._sessions.values() if s.library_id == library_id]
+        for session in sessions:
+            self._teardown(session)
+
+    # Retained file IDs must not reuse encoders that still hold the displaced bytes
+    def close_source(self, path: Path) -> None:
+        with self._lock:
+            sessions = [
+                s
+                for s in self._sessions.values()
+                if s.source_path == path
+                or (s.params.burn_subtitle is not None and s.params.burn_subtitle.path == path)
+            ]
+        for session in sessions:
+            self._teardown(session)
 
     def shutdown(self) -> None:
         """Stop the reaper and tear down every session (server shutdown)."""
@@ -702,7 +745,8 @@ class SessionManager:
                 (session.output_dir / _segment_name(session.run_end)).unlink()
         start_s = session.segment_starts[start_number]
         args = self._command_builder(session, start_number, start_s)
-        session.process = self._launcher(args)
+        with session.input_scope():
+            session.process = self._launcher(args)
 
     def _finalize_finished_run(self, session: HlsSession) -> None:
         """Remove an ffmpeg boundary extra once the current run has exited."""
@@ -850,3 +894,15 @@ def shutdown_session_manager() -> None:
         _default_manager = None
     if manager is not None:
         manager.shutdown()
+
+
+def close_library_sessions(library_id: str) -> None:
+    """Stop existing library encoders without initializing a new manager"""
+    if _default_manager is not None:
+        _default_manager.close_library(library_id)
+
+
+# Invalidate running derivatives without starting a manager just for an import
+def close_source_sessions(path: Path) -> None:
+    if _default_manager is not None:
+        _default_manager.close_source(path)

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useModalDialog } from './useModalDialog'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { CollectionRead } from '../api/client'
@@ -29,30 +30,25 @@ export function RemoveCollectionDialog({
 }: RemoveCollectionDialogProps) {
   const [cascade, setCascade] = useState(true)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, pending)
 
   const count = collections.length
   const title = count > 1 ? `Delete ${count} Collections` : 'Delete Collection'
   const target = count > 1 ? `these ${count} collections` : `“${collections[0]?.name ?? ''}”`
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--confirm"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="modal__head">
           <h2>{title}</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Cancel">
+          <button className="modal__close" onClick={closeDialog} aria-label="Cancel">
             ×
           </button>
         </div>
@@ -82,7 +78,7 @@ export function RemoveCollectionDialog({
 
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onCancel} disabled={pending}>
+          <button className="btn" onClick={closeDialog} disabled={pending}>
             Cancel
           </button>
           <button

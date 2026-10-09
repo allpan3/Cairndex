@@ -1,3 +1,4 @@
+import { libraryStateKey } from '../state/useBundleDraft'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -33,7 +34,7 @@ vi.mock('./CollectionPicker', () => ({ CollectionPicker: () => null }))
 // tests.
 vi.mock('./Moments', () => ({ Moments: () => null }))
 
-const HEIGHTS_KEY = 'cairndex.noteHeights.v2'
+const heightsKey = () => libraryStateKey('cairndex.noteHeights.v2')
 
 /** jsdom does no layout, so the auto-grow/drag arithmetic has nothing to read.
  *  Report the height the component itself last wrote, falling back to a stand-in
@@ -90,7 +91,7 @@ function clickGrip() {
 }
 
 function storedHeights(): unknown {
-  return JSON.parse(localStorage.getItem(HEIGHTS_KEY) ?? '{}')
+  return JSON.parse(localStorage.getItem(heightsKey()) ?? '{}')
 }
 
 /** Two notes, the second carrying a height the owner set by hand. */
@@ -99,7 +100,7 @@ function twoNotes() {
     ...(hooks.bundle as Record<string, unknown>),
     notes: ['first note', 'second note'],
   } as unknown as BundleRead
-  localStorage.setItem(HEIGHTS_KEY, JSON.stringify({ 'bundle-1': [null, 120] }))
+  localStorage.setItem(heightsKey(), JSON.stringify({ 'bundle-1': [null, 120] }))
 }
 
 function noteRows(): HTMLElement[] {
@@ -164,7 +165,10 @@ test('a note is dragged into a new position, and its height goes with it', () =>
   expect(firstRow).toHaveAttribute('data-drop', 'before')
   fireEvent.pointerUp(secondGrip, { pointerId: 1, clientX: 0, clientY: 5 })
 
-  expect(hooks.update.mutate).toHaveBeenCalledWith({ notes: ['second note', 'first note'] })
+  expect(hooks.update.mutate).toHaveBeenCalledWith(
+    { notes: ['second note', 'first note'] },
+    expect.any(Object),
+  )
   // The manual height belonged to the note, not to the position: it moves with
   // it, and the trailing auto entry is trimmed away.
   expect(storedHeights()).toEqual({ 'bundle-1': [120] })
@@ -178,7 +182,10 @@ test('the grip reorders from the keyboard too', () => {
 
   fireEvent.keyDown(secondGrip, { key: 'ArrowUp' })
 
-  expect(hooks.update.mutate).toHaveBeenCalledWith({ notes: ['second note', 'first note'] })
+  expect(hooks.update.mutate).toHaveBeenCalledWith(
+    { notes: ['second note', 'first note'] },
+    expect.any(Object),
+  )
 })
 
 test('the last note cannot be moved further down', () => {

@@ -5,7 +5,7 @@
 [ADR-0035](adr/0035-portable-library-format.md) is the accepted target: one ordinary
 portable library, private working databases, normal format-three creation and
 refusal of old packages. The offline migration foundation is a prerequisite.
-Current extraction state and remaining application integration are recorded in
+Current extraction state and functional acceptance are recorded in
 [STATUS](STATUS.md). No owner conversion is available.
 
 This document describes the Cairndex product model and long-term direction. Agent operating rules live in [`AGENTS.md`](../AGENTS.md); current implementation status lives in [`docs/STATUS.md`](STATUS.md); consequential architecture decisions live in [`docs/adr/`](adr/).
@@ -33,7 +33,7 @@ The first product target is the computer-side web application. Android TV suppor
 
 1. **Bundle Browser is bundle-first.** In Bundle Browser, the visible item is an Asset Bundle, not a file.
 2. **File Browser is filesystem-first.** In File Browser, the visible items are physical directories and files under the active library root. File Browser is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
-3. **Libraries are the storage scope.** A Cairndex library is a directory with `.cairndex/{manifest.json,library.db,cache/}`. The server-local registry tracks known libraries and jobs.
+3. **Libraries are the storage scope.** A Cairndex library is a directory with a portable descriptor and immutable authored metadata history. Working databases and caches remain private to each server. The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
 6. **Metadata-only and non-destructive first.** The current File Browser milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
@@ -41,7 +41,7 @@ The first product target is the computer-side web application. Android TV suppor
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
 9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN or private overlay network.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
-11. **One source of truth.** Each library's `library.db` is authoritative for app metadata. The registry DB is server-local runtime state for known libraries and jobs, not portable content metadata.
+11. **One source of truth.** Immutable authored library history is authoritative. Each server materializes a private catalog. The registry DB is server-local runtime state for known libraries and jobs, not portable content metadata.
 12. **Progressive capability.** Direct playback comes first; remux/transcoding, File Browser write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
 
 ## Fixed product decisions
@@ -91,11 +91,8 @@ A `Library` is the content and storage boundary. It is a server-visible root dir
   media files...
   .cairndex/
     manifest.json
-    library.db
-    cache/
-      thumbnails/
-      subtitles/
-      storyboards/
+    replica/
+      immutable metadata objects...
 ```
 
 Required concepts:
@@ -105,8 +102,8 @@ Required concepts:
 - canonical server path recorded in the registry;
 - availability/status;
 - schema version;
-- portable content DB at `.cairndex/library.db`;
-- reproducible derived cache under `.cairndex/cache/`.
+- immutable authored history in the library and a private working catalog;
+- reproducible derived cache in private server storage.
 
 Store file locations as library-relative paths. Do not reintroduce a content `storage_roots` table or `asset_files.storage_root_id` unless a new ADR explicitly changes the per-library model. Never expose arbitrary unrestricted server paths through content APIs. File Browser must browse through the active library abstraction, not through unrestricted absolute server paths.
 

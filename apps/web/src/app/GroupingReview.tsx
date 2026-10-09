@@ -1,3 +1,5 @@
+import { useModalDialog } from './useModalDialog'
+import { useGroupingEditBasis } from '../state/useGroupingEditBasis'
 import {
   type DragEvent,
   Fragment,
@@ -1708,6 +1710,7 @@ export function GroupingReview({
   const openPlan = plans.data?.find((p) => p.status === 'open') ?? null
   const planId = chosenId ?? openPlan?.id ?? null
   const plan = useGroupingPlan(planId)
+  const bindEdit = useGroupingEditBasis(plan.data, plans.data)
   const collections = useCollections()
   const generate = useGenerateGroupingPlan()
   const rename = useRenameGroupingProposal(planId)
@@ -1849,7 +1852,7 @@ export function GroupingReview({
   // Carry the owner's per-folder levels into the fresh plan; the response's dial
   // map reports a maximum too, which POST does not take.
   const onGenerate = () =>
-    generate.mutate(stemLevelInput(plan.data?.stem_levels ?? {}), {
+    generate.mutate(bindEdit(stemLevelInput(plan.data?.stem_levels ?? {})), {
       onSuccess: (p) => {
         finishGeneration(p, 'Suggestions generated from the current library state.')
       },
@@ -1858,35 +1861,29 @@ export function GroupingReview({
   // In-place: only the adjusted directory's rows are replaced, so every other
   // suggestion — and every owner edit and checkbox on it — survives untouched.
   const setStemLevel = (directory: string, level: number) =>
-    stemLevelMutation.mutate(
-      { directory, level },
-      {
-        onSuccess: (updated) => {
-          const dial = stemDial(updated.stem_levels ?? {}, directory)
-          // Counted from the response rather than reported by the server: the rows
-          // for this folder are already in hand, and they are what the owner is
-          // looking at while reading the message.
-          const bundles = updated.proposals.filter(
-            (p) => p.directory === directory && p.kind === 'bundle',
-          ).length
-          setNotice(stemNotice(directory, dial.stem, bundles))
-        },
+    stemLevelMutation.mutate(bindEdit({ directory, level }), {
+      onSuccess: (updated) => {
+        const dial = stemDial(updated.stem_levels ?? {}, directory)
+        // Counted from the response rather than reported by the server: the rows
+        // for this folder are already in hand, and they are what the owner is
+        // looking at while reading the message.
+        const bundles = updated.proposals.filter(
+          (p) => p.directory === directory && p.kind === 'bundle',
+        ).length
+        setNotice(stemNotice(directory, dial.stem, bundles))
       },
-    )
+    })
 
   const convertKind = (proposal: GroupingProposal) => {
     const next = proposal.kind === 'bundle' ? 'container' : 'bundle'
-    proposalKindMutation.mutate(
-      { proposalId: proposal.id, kind: next },
-      {
-        onSuccess: () =>
-          setNotice(
-            next === 'container'
-              ? `“${proposal.title ?? 'This folder'}” is now a collection of bundles.`
-              : `“${proposal.title ?? 'This collection'}” is now a single bundle.`,
-          ),
-      },
-    )
+    proposalKindMutation.mutate(bindEdit({ proposalId: proposal.id, kind: next }), {
+      onSuccess: () =>
+        setNotice(
+          next === 'container'
+            ? `“${proposal.title ?? 'This folder'}” is now a collection of bundles.`
+            : `“${proposal.title ?? 'This collection'}” is now a single bundle.`,
+        ),
+    })
   }
 
   const startRename = (proposal: GroupingProposal, caretOffset: number | null = null) => {
@@ -1918,19 +1915,14 @@ export function GroupingReview({
 
     committingRename.current = proposalId
     setRenameError(null)
-    rename.mutate(
-      { proposalId, title },
-      {
-        onSuccess: () => setEditing(null),
-        onError: (failure) =>
-          setRenameError(
-            failure instanceof Error ? failure.message : 'Could not rename suggestion.',
-          ),
-        onSettled: () => {
-          committingRename.current = null
-        },
+    rename.mutate(bindEdit({ proposalId, title }), {
+      onSuccess: () => setEditing(null),
+      onError: (failure) =>
+        setRenameError(failure instanceof Error ? failure.message : 'Could not rename suggestion.'),
+      onSettled: () => {
+        committingRename.current = null
       },
-    )
+    })
   }
 
   /** What an apply did, for the notice that carries it into the next round. */
@@ -1951,60 +1943,54 @@ export function GroupingReview({
 
   const onApply = () => {
     if (!planId) return
-    apply.mutate(
-      { id: planId, proposalIds: [...selectedIds] },
-      {
-        onSuccess: (r) => {
-          setNotice(null)
-          // Conflicts have to be read, so they end the review the way they always
-          // did. Everything else carries on below.
-          if (r.conflicts.length > 0) {
-            setResult(r)
-            return
-          }
-          // Nothing left: the plan is finished, so show what it did.
-          if (r.proposals_remaining === 0) {
-            setResult(r)
-            return
-          }
-          // Otherwise carry on in the *same* plan. Accepting a selection retires
-          // only the rows it confirmed and leaves the rest untouched, so there is
-          // nothing to fetch and nothing to rebuild: the surviving rows keep their
-          // ids, which is what lets the collapsed folders and open runs survive too.
-          //
-          // This used to generate a whole fresh plan, because a partial accept
-          // closed the one being reviewed. That was a second round trip after the
-          // apply — 851 ms on top of 942 ms — and it returned an entirely new set of
-          // proposal ids, so every fold reset and the tree jumped under the owner
-          // (owner-reported, 2026-08-15).
-          setEditing(null)
-          setRenameError(null)
-          setDragItem(null)
-          setDropSlot(null)
-          destination.reset()
-          setFileOverrides(new Map())
-          setNotice(
-            `${appliedSummary(r)} ${r.proposals_remaining} ${
-              r.proposals_remaining === 1 ? 'suggestion' : 'suggestions'
-            } left to review.`,
-          )
-        },
+    apply.mutate(bindEdit({ id: planId, proposalIds: [...selectedIds] }), {
+      onSuccess: (r) => {
+        setNotice(null)
+        // Conflicts have to be read, so they end the review the way they always
+        // did. Everything else carries on below.
+        if (r.conflicts.length > 0) {
+          setResult(r)
+          return
+        }
+        // Nothing left: the plan is finished, so show what it did.
+        if (r.proposals_remaining === 0) {
+          setResult(r)
+          return
+        }
+        // Otherwise carry on in the *same* plan. Accepting a selection retires
+        // only the rows it confirmed and leaves the rest untouched, so there is
+        // nothing to fetch and nothing to rebuild: the surviving rows keep their
+        // ids, which is what lets the collapsed folders and open runs survive too.
+        //
+        // This used to generate a whole fresh plan, because a partial accept
+        // closed the one being reviewed. That was a second round trip after the
+        // apply — 851 ms on top of 942 ms — and it returned an entirely new set of
+        // proposal ids, so every fold reset and the tree jumped under the owner
+        // (owner-reported, 2026-08-15).
+        setEditing(null)
+        setRenameError(null)
+        setDragItem(null)
+        setDropSlot(null)
+        destination.reset()
+        setFileOverrides(new Map())
+        setNotice(
+          `${appliedSummary(r)} ${r.proposals_remaining} ${
+            r.proposals_remaining === 1 ? 'suggestion' : 'suggestions'
+          } left to review.`,
+        )
       },
-    )
+    })
   }
 
   const setDestination = (proposal: GroupingProposal, createNewBundle: boolean) => {
-    destination.mutate(
-      { proposalId: proposal.id, createNewBundle },
-      {
-        onSuccess: () =>
-          setNotice(
-            createNewBundle
-              ? 'The files will create a new bundle.'
-              : `The files will be added to ${targetTitle(proposal)}.`,
-          ),
-      },
-    )
+    destination.mutate(bindEdit({ proposalId: proposal.id, createNewBundle }), {
+      onSuccess: () =>
+        setNotice(
+          createNewBundle
+            ? 'The files will create a new bundle.'
+            : `The files will be added to ${targetTitle(proposal)}.`,
+        ),
+    })
   }
 
   const clearDrag = () => {
@@ -2056,7 +2042,7 @@ export function GroupingReview({
     targetCollectionId: string | null = null,
   ) => {
     reparentProposal.mutate(
-      { proposalId: proposal.id, parentProposalId, targetCollectionId },
+      bindEdit({ proposalId: proposal.id, parentProposalId, targetCollectionId }),
       {
         onSuccess: () => {
           const kind = proposal.kind === 'container' ? 'Collection' : 'Bundle'
@@ -2092,12 +2078,12 @@ export function GroupingReview({
     if (dragItem?.kind !== 'file') return
     const { proposalId, assetFileId } = dragItem
     moveProposalFile.mutate(
-      {
+      bindEdit({
         sourceProposalId: proposalId,
         assetFileId,
         targetProposalId,
         targetIndex,
-      },
+      }),
       {
         onSuccess: (updated) => {
           rememberEmptiedSuggestions(updated)
@@ -2127,7 +2113,8 @@ export function GroupingReview({
     proposalKindMutation.isPending ||
     stemLevelMutation.isPending ||
     apply.isPending
-  const actionBlocked = busy || editing !== null
+  const actionBlocked =
+    busy || editing !== null || plans.isPending || (planId !== null && plan.isPending)
   const error = (generate.error ??
     destination.error ??
     moveProposalFile.error ??
@@ -2238,7 +2225,7 @@ export function GroupingReview({
     canEdit: status === 'open' && editing === null,
     pending: busy || expandDirectory.isPending,
     setExpanded: (proposalId, directoryId, expanded) =>
-      expandDirectory.mutate({ proposalId, directoryId, expanded }),
+      expandDirectory.mutate(bindEdit({ proposalId, directoryId, expanded })),
   }
   const sharedNodeProps: SharedNodeProps = {
     selection: nodeSelection,
@@ -2255,17 +2242,20 @@ export function GroupingReview({
     fold: foldControls,
   }
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal grp-modal"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Suggest grouping</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -2430,7 +2420,7 @@ export function GroupingReview({
           )}
           <div className="grp-foot__spacer" />
           {applied ? (
-            <button className="btn btn--primary" onClick={onClose}>
+            <button className="btn btn--primary" onClick={closeDialog}>
               Done
             </button>
           ) : (

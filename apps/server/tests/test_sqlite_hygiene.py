@@ -306,7 +306,9 @@ def second_library(tmp_path: Path, registry_session) -> tuple[str, Path]:  # typ
     root = tmp_path / "second"
     root.mkdir()
     pkg.create_package(root, "Second")
-    library = registry_service.register_existing_library(registry_session, root_path=str(root))
+    library = registry_service._insert(
+        registry_session, manifest=pkg.read_manifest(root), root=root
+    )
     registry_session.commit()
     return str(library.id), root
 

@@ -11,6 +11,7 @@ import { actionIdsRequiring, dispatchableActionIds, keymapMenus, shortcutReferen
 const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'reload',
   'settings',
+  'keyboard-shortcuts',
   'manage-libraries',
   'pair-device',
   'new-bundle',

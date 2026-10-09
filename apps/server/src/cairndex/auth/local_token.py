@@ -48,3 +48,14 @@ def is_local_owner_token(candidate: str) -> bool:
     if expected is None:
         return False
     return secrets.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
+
+
+def owner_session(authorization: str | None, cookie: str | None) -> str | None:
+    """Select a process-local grant only after validating the sidecar bearer."""
+    import hashlib
+
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and is_local_owner_token(token.strip()):
+            return "local-" + hashlib.sha256(token.strip().encode()).hexdigest()
+    return cookie

@@ -406,11 +406,11 @@
       "label": "Help",
       "items": [
         {
-          "id": "help-placeholder",
-          "label": "Cairndex Help",
+          "id": "keyboard-shortcuts",
+          "label": "Keyboard Shortcuts",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "never",
+          "requires": "server",
           "keys": []
         }
       ]

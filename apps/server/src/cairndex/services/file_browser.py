@@ -6,10 +6,9 @@ library's root directory, identified by a root-relative path — it never accept
 or exposes an absolute server path, and never moves, renames, deletes, or
 rewrites anything on disk (ADR-0008: the library root comes from the registry).
 
-This first milestone is strictly read-only. It is structured so later write-mode
-operations (open-with-default-app, reveal, guarded rename/move/delete — see
-``docs/adr/0007`` and Phase 7) can be layered on without a rewrite: all path
-resolution already funnels through ``core.paths``.
+Journaled write-mode operations live separately in ``file_ops`` (ADR-0013).
+Both surfaces validate library-relative paths through ``core.paths``. Native
+Open/Reveal use desktop mappings; this listing service cannot execute host actions.
 """
 
 from __future__ import annotations
@@ -19,9 +18,9 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, case, func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
@@ -30,25 +29,14 @@ from cairndex.domain.enums import GroupingSource, GroupingState
 from cairndex.media import playback
 from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.engine import library_root_for_session
+from cairndex.persistence.file_queries import path_basename, visible_path
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
-from cairndex.scanning.media_types import classify, is_hidden_relative_path
+from cairndex.scanning.media_types import HIDDEN_NAMES, classify
 from cairndex.services.playback_progress import resume_position as progress_resume_position
-
-# Non-dotfile names we still hide: caches, OS/DB cruft, thumbnails. Dotfiles and
-# dot-directories (e.g. .git, .DS_Store, .env, the .cairndex marker) are hidden
-# by the leading-dot rule below, so this list only needs the non-dot offenders.
-_HIDDEN_NAMES: frozenset[str] = frozenset(
-    {
-        "__pycache__",
-        "node_modules",
-        "Thumbs.db",
-        ".DS_Store",  # belt-and-suspenders; already a dotfile
-    }
-)
 
 
 def _is_hidden(name: str) -> bool:
-    return name.startswith(".") or name in _HIDDEN_NAMES
+    return name.startswith(".") or name in HIDDEN_NAMES
 
 
 @dataclass(frozen=True)
@@ -204,16 +192,20 @@ class UnbundledFilesPage:
     limit: int
 
 
-def list_unbundled_files(
-    session: Session, *, offset: int = 0, limit: int = 100
-) -> UnbundledFilesPage:
-    """A flat, cross-library page of *unbundled* files — those linked into a
-    scan-staged provisional bundle and not yet confirmed (the "to-bundle queue").
+UnbundledSort = Literal["name", "type", "size", "added", "modified"]
 
-    A cheap DB query (no filesystem walk): entries are built from the stored
-    ``AssetFile`` rows, shaped like File Browser entries so one file row renders both
-    the tree and this list. Ordered by path for stable pagination.
-    """
+
+# Filter and globally order the eligible DB rows before selecting one bounded page
+def list_unbundled_files(
+    session: Session,
+    *,
+    offset: int = 0,
+    limit: int = 100,
+    search: str | None = None,
+    sort: UnbundledSort = "name",
+    descending: bool = False,
+) -> UnbundledFilesPage:
+    """List visible scan-staged files within this library without filesystem I/O"""
     unbundled = (AssetBundle.grouping_state == GroupingState.PROVISIONAL) & (
         AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION
     )
@@ -224,6 +216,7 @@ def list_unbundled_files(
             AssetFile.bundle_id.label("bundle_id"),
             AssetFile.size_bytes.label("size_bytes"),
             AssetFile.mtime.label("mtime"),
+            AssetFile.created_at.label("created_at"),
             func.json_extract(AssetFile.tech_metadata, "$.container").label("container"),
             func.json_extract(AssetFile.tech_metadata, "$.video_codec").label("video_codec"),
             func.json_extract(AssetFile.tech_metadata, "$.video_codec_tag").label(
@@ -247,13 +240,34 @@ def list_unbundled_files(
         .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
         .where(unbundled)
     )
-    rows = [
-        row for row in session.execute(base).all() if not is_hidden_relative_path(row.relative_path)
-    ]
-    rows.sort(key=lambda row: row.relative_path.lower())
-    total = len(rows)
-    items = [_unbundled_entry(row) for row in rows[offset : offset + limit]]
-    return UnbundledFilesPage(items=items, total=total, offset=offset, limit=limit)
+    name = path_basename(AssetFile.relative_path)
+    base = base.where(visible_path(AssetFile.relative_path))
+    if search and search.strip():
+        base = base.where(name.icontains(search.strip(), autoescape=True))
+    # A path/ID tie-break is stable even for equal names, sizes or timestamps
+    extension = func.substr(name, func.length(func.rtrim(name, func.replace(name, ".", ""))) + 1)
+    column = {
+        "name": func.lower(name),
+        "type": func.lower(case((func.instr(name, ".") > 0, extension), else_="")),
+        "size": func.coalesce(AssetFile.size_bytes, 0),
+        "added": AssetFile.created_at,
+        "modified": func.coalesce(AssetFile.mtime, ""),
+    }[sort]
+    total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
+    ordered = base.order_by(
+        column.desc() if descending else column.asc(),
+        func.lower(name),
+        func.lower(AssetFile.relative_path),
+        AssetFile.relative_path,
+        AssetFile.id,
+    )
+    rows = session.execute(ordered.offset(offset).limit(limit)).all()
+    return UnbundledFilesPage(
+        items=[_unbundled_entry(row) for row in rows],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 # Shape one linked provisional row like a File Browser entry. Takes the query
@@ -271,7 +285,7 @@ def _unbundled_entry(row: Row[Any]) -> FileBrowserEntry:
         kind="file",
         size_bytes=row.size_bytes,
         modified_at=row.mtime,
-        created_at=None,
+        created_at=row.created_at,
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,

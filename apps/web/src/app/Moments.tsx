@@ -1,3 +1,5 @@
+import { basisOf, rememberBasis } from '../api/editBasis'
+import { useMetadataDraft } from '../state/useMetadataDraft'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -281,7 +283,13 @@ function MomentRow({
               maxChips={1}
               assignment={{
                 assigned: moment.tag_ids,
-                onSetTags: (ids) => mutations.setTags.mutate({ momentId: moment.id, ids }),
+                onSetTags: (ids) =>
+                  mutations.setTags.mutate(
+                    rememberBasis(
+                      { momentId: moment.id, ids, before: moment.tag_ids },
+                      basisOf(moment),
+                    ),
+                  ),
                 removeLabel: 'Remove from This Moment',
               }}
               onFilterByTags={onFilterByTags}
@@ -322,16 +330,29 @@ function MomentRow({
         </div>
         {editingComment ? (
           <CommentBox
-            value={moment.comment ?? ''}
+            moment={moment}
             onCancel={() => setEditingComment(false)}
-            onCommit={(next) => {
-              setEditingComment(false)
-              if (next === (moment.comment ?? '')) return
-              mutations.update.mutate({
-                momentId: moment.id,
-                patch: { comment: next },
-                version: moment.version,
-              })
+            onCommit={(next, basis, saved) => {
+              if (next === (moment.comment ?? '')) {
+                saved()
+                setEditingComment(false)
+                return
+              }
+              mutations.update.mutate(
+                rememberBasis(
+                  {
+                    momentId: moment.id,
+                    patch: { comment: next },
+                  },
+                  basis,
+                ),
+                {
+                  onSuccess: () => {
+                    saved()
+                    setEditingComment(false)
+                  },
+                },
+              )
             }}
           />
         ) : (
@@ -577,15 +598,15 @@ function SpanPlayback({
  *  on blur, and abandons the edit on Escape — the same contract as a note box,
  *  without the drag grip and saved height a stack of them needs. */
 function CommentBox({
-  value,
+  moment,
   onCommit,
   onCancel,
 }: {
-  value: string
-  onCommit: (next: string) => void
+  moment: Moment
+  onCommit: (next: string, basis: string | undefined, saved: () => void) => void
   onCancel: () => void
 }) {
-  const [draft, setDraft] = useState(value)
+  const draft = useMetadataDraft(`moment:${moment.id}:comment`, moment.comment ?? '', moment)
   const ref = useRef<HTMLTextAreaElement>(null)
 
   /**
@@ -620,24 +641,26 @@ function CommentBox({
     element.style.height = 'auto'
     const border = element.offsetHeight - element.clientHeight
     element.style.height = `${element.scrollHeight + border}px`
-  }, [draft])
+  }, [draft.value])
 
   return (
     <textarea
       ref={ref}
       className="edit moment-row__edit"
       rows={1}
-      value={draft}
+      value={draft.value}
       placeholder="Comment"
       aria-label="Moment comment"
-      onChange={(event) => setDraft(event.target.value)}
+      onFocus={draft.begin}
+      onChange={(event) => draft.change(event.target.value)}
       onBlur={() => {
-        onCommit(draft)
+        onCommit(draft.value, basisOf(draft.bind({})), () => draft.saved(draft.value))
         handBackFocus()
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault()
+          draft.discard()
           onCancel()
           handBackFocus()
           return

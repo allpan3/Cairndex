@@ -1,3 +1,20 @@
+import { useContext } from 'react'
+import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
+import { catalog } from './catalog'
+import {
+  changeBundleTags,
+  changeBundleCollections,
+  changeMomentTags,
+  changeTagGroupTags,
+  type MembershipEdit,
+} from './client'
+import { bindEdit, basisOf, rememberBasis, minimumBasis, type EditVersion } from './editBasis'
+import {
+  useScopedMutation as useMutation,
+  useScopedQueryClient as useQueryClient,
+} from './useScopedMutation'
+import { captureRequestScope } from './requestScope'
+import { changeLibraryServing, getActiveLibraryId, type UnbundledFilesParams } from './client'
 import { useCallback } from 'react'
 
 import {
@@ -6,10 +23,8 @@ import {
   type QueryClient,
   type QueryKey,
   useInfiniteQuery,
-  useMutation,
   useQueries,
   useQuery,
-  useQueryClient,
 } from '@tanstack/react-query'
 
 import {
@@ -47,6 +62,8 @@ import {
   type ViewCounts,
   addUnbundledFilesToBundle,
   batchUpdate,
+  batchEditBundles,
+  batchDeleteBundles,
   browseBundles,
   createBundleFromUnbundled,
   createCollection,
@@ -59,11 +76,9 @@ import {
   deleteTag,
   deleteTagGroup,
   renameTagGroup,
-  setTagGroupTags,
   updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
-  deleteBundle,
   deleteBundleWithFiles,
   forgetMissingFiles,
   deleteCollection,
@@ -220,12 +235,19 @@ function restoreBundleFileSnapshots(
 // Wait for a queued/running job to finish so dependent queries refetch fresh
 // data. ``onProgress`` (when given) receives each polled snapshot so the UI can
 // render live phase/message/progress; it fires for the initial state too.
-async function waitForJob(job: JobRead, onProgress?: JobProgressFn): Promise<JobRead> {
+async function waitForJob(
+  job: JobRead,
+  onProgress?: JobProgressFn,
+  includeLibrary = true,
+): Promise<JobRead> {
+  const assertScope = captureRequestScope(includeLibrary)
   let current = job
   onProgress?.(current)
   while (!TERMINAL_JOB_STATUSES.has(current.status)) {
     await new Promise((resolve) => setTimeout(resolve, 500))
+    assertScope()
     current = await fetchJob(job.id)
+    assertScope()
     onProgress?.(current)
   }
   if (current.status === 'failed') {
@@ -346,18 +368,38 @@ export function useViewCounts() {
 /** Faceted counts for a toolbar filter popover, scoped to the current browse
  * context. Keyed by the full params so it refetches when the scope changes. */
 export function useFacets(params: FacetParams, enabled = true) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['facets', params],
-    queryFn: ({ signal }) => fetchFacets(params, signal),
+    queryKey: ['facets', library, params],
+    queryFn: ({ signal }) =>
+      library
+        ? catalog<Awaited<ReturnType<typeof fetchFacets>>>(library, '/bundles/facets', 'POST', {
+            view: params.view,
+            collection_id: params.collectionId ?? null,
+            include_descendants: params.includeDescendants ?? false,
+            q: params.q ?? '',
+            filter: params.filter ?? null,
+            facets: params.facets,
+            tag_include_descendants: params.tagIncludeDescendants ?? true,
+          })
+        : fetchFacets(params, signal),
     enabled,
   })
 }
 
 /** Live match-count for a draft filter, debounced by query key (the AST). */
 export function useFilterPreview(filter: FilterExpression | null) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['filter-preview', filter],
-    queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
+    queryKey: ['filter-preview', library, filter],
+    queryFn: ({ signal }) =>
+      library && filter
+        ? catalog<{ total: number }>(library, '/bundles/browse', 'POST', { filter, limit: 1 }).then(
+            (page) => page.total,
+          )
+        : filter
+          ? previewFilter(filter, signal)
+          : Promise.resolve(0),
     enabled: filter !== null,
   })
 }
@@ -401,7 +443,7 @@ export function useSmartCollectionMutations() {
       }: {
         id: string
         payload: SmartCollectionUpdate
-        version?: number
+        version?: EditVersion
       }) => updateSmartCollection(id, payload, version),
       // Refetch on conflict too, so the editor shows the latest server state.
       onSettled: invalidate,
@@ -427,9 +469,8 @@ export function useLibraries({
     refetchInterval: (query) => {
       const libraries = query.state.data
       return pollWhileUnavailable &&
-        libraries !== undefined &&
-        libraries.length > 0 &&
-        libraries.every((library) => library.status === 'unavailable')
+        (query.state.status === 'error' ||
+          libraries?.some((library) => library.status === 'unavailable'))
         ? 5000
         : false
     },
@@ -437,37 +478,49 @@ export function useLibraries({
 }
 
 export function useLibraryMutations() {
-  const qc = useQueryClient()
+  const qc = useQueryClient(false)
   const invalidate = () => qc.invalidateQueries({ queryKey: ['libraries'] })
   return {
-    create: useMutation({
-      mutationFn: (payload: LibraryCreate) => createLibrary(payload),
-      onSuccess: invalidate,
-    }),
-    register: useMutation({
-      mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
-      onSuccess: invalidate,
-    }),
+    create: useMutation(
+      {
+        mutationFn: (payload: LibraryCreate) => createLibrary(payload),
+        onSuccess: invalidate,
+      },
+      false,
+    ),
+    register: useMutation(
+      {
+        mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
+        onSuccess: invalidate,
+      },
+      false,
+    ),
     // Classifies a typed path so the add flow can confirm one action instead of
     // making the owner choose between "create" and "register" up front. A
     // mutation rather than a query because it runs on submit, not on keystrokes.
-    probe: useMutation({
-      mutationFn: (path: string) => probeLibraryPath(path),
-    }),
-    // Metadata-only: deregisters the library and touches nothing on disk.
-    remove: useMutation({
-      mutationFn: (libraryId: string) => deleteLibrary(libraryId),
-      onSuccess: (_result, libraryId) => {
-        // Drop the row before refetching. The list is what resolves the active
-        // library, so leaving the removed one in the cache for a round trip
-        // would keep it active — and content queries, just cleared, would
-        // immediately reload against a library this server no longer has.
-        qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
-          current?.filter((library) => library.id !== libraryId),
-        )
-        return invalidate()
+    probe: useMutation(
+      {
+        mutationFn: (path: string) => probeLibraryPath(path),
       },
-    }),
+      false,
+    ),
+    // Metadata-only: deregisters the library and touches nothing on disk.
+    remove: useMutation(
+      {
+        mutationFn: (libraryId: string) => deleteLibrary(libraryId),
+        onSuccess: (_result, libraryId) => {
+          // Drop the row before refetching. The list is what resolves the active
+          // library, so leaving the removed one in the cache for a round trip
+          // would keep it active — and content queries, just cleared, would
+          // immediately reload against a library this server no longer has.
+          qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+            current?.filter((library) => library.id !== libraryId),
+          )
+          return invalidate()
+        },
+      },
+      false,
+    ),
   }
 }
 
@@ -670,6 +723,7 @@ export function useLibraryAuth(libraryId: string | null) {
     queryKey: ['auth-status', libraryId],
     queryFn: ({ signal }) => fetchAuthStatus(libraryId!, signal),
     enabled: libraryId !== null,
+    refetchInterval: 5000,
   })
 }
 
@@ -686,7 +740,20 @@ export function useLibraryOwnership(libraryId: string | null) {
     queryKey: ['library-ownership', libraryId],
     queryFn: ({ signal }) => fetchLibraryOwnership(libraryId!, signal),
     enabled: libraryId !== null,
-    refetchInterval: (query) => (query.state.data?.takeover?.running ? 2000 : false),
+    refetchInterval: (query) => (query.state.data?.takeover?.running ? 2000 : 5000),
+  })
+}
+
+/** Refresh the mount gate after an explicit handoff or reopen */
+export function useLibraryServing(libraryId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (action: 'release' | 'reopen') => changeLibraryServing(libraryId!, action),
+    onSuccess: (ownership) => {
+      qc.setQueryData(['library-ownership', libraryId], ownership)
+      invalidateLibraryContent(qc)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['library-ownership', libraryId] }),
   })
 }
 
@@ -864,28 +931,31 @@ export function useScan(options: MaintenanceOptions = {}) {
  * storyboards, which are the expensive one and remain a deliberate action.
  */
 export function useIndexNewLibrary() {
-  const qc = useQueryClient()
+  const qc = useQueryClient(false)
   // Progress is not threaded through a callback here as it is for the sidebar's
   // own maintenance actions: this runs from the library dialog, which is a
   // level above the sidebar and does not own its job indicator. Nudging the
   // active-jobs query instead lets the sidebar find the work server-side and
   // report it exactly as it reports a scan the owner started.
   const showInSidebar = () => qc.invalidateQueries({ queryKey: ['active-jobs'] })
-  return useMutation({
-    mutationFn: async (libraryId: string) => {
-      const scan = await enqueueScan({ suggestGrouping: false, libraryId })
-      void showInSidebar()
-      await waitForJob(scan)
-      invalidateLibraryContent(qc)
-      const probe = await enqueueProbe(libraryId)
-      void showInSidebar()
-      await waitForJob(probe)
-      invalidateProbeContent(qc)
+  return useMutation(
+    {
+      mutationFn: async (libraryId: string) => {
+        const scan = await enqueueScan({ suggestGrouping: false, libraryId })
+        void showInSidebar()
+        await waitForJob(scan, undefined, false)
+        invalidateLibraryContent(qc)
+        const probe = await enqueueProbe(libraryId)
+        void showInSidebar()
+        await waitForJob(probe, undefined, false)
+        invalidateProbeContent(qc)
+      },
+      // A failure here is reported by the job row itself, and must not take the
+      // add flow down with it — the library is registered either way.
+      onSettled: showInSidebar,
     },
-    // A failure here is reported by the job row itself, and must not take the
-    // add flow down with it — the library is registered either way.
-    onSettled: showInSidebar,
-  })
+    false,
+  )
 }
 
 /** Enqueue scan/grouping, then hand metadata and storyboards to background progress */
@@ -1174,11 +1244,11 @@ export function useApplyGroupingPlan() {
 const hasSelection = (sel: FileSelection) =>
   (sel.fileIds?.length ?? 0) > 0 || (sel.relativePaths?.length ?? 0) > 0
 
-/** The flat "to-bundle queue": all not-yet-bundled files, cross-library. */
-export function useUnbundledFiles(enabled = true) {
+/** The flat "to-bundle queue": matching not-yet-bundled files within the active library. */
+export function useUnbundledFiles(params: UnbundledFilesParams = {}, enabled = true) {
   return useInfiniteQuery({
-    queryKey: ['unbundled-files'],
-    queryFn: ({ pageParam, signal }) => fetchUnbundledFiles(pageParam, 200, signal),
+    queryKey: ['unbundled-files', getActiveLibraryId(), params],
+    queryFn: ({ pageParam, signal }) => fetchUnbundledFiles(pageParam, 200, signal, params),
     initialPageParam: 0,
     getNextPageParam: (last) =>
       last.offset + last.limit < last.total ? last.offset + last.limit : undefined,
@@ -1270,9 +1340,17 @@ export function useFileBrowser(path: string | null, enabled = true, keepPrevious
 }
 
 export function useCollections() {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['collections'],
-    queryFn: ({ signal }) => fetchAllCollections(signal),
+    queryKey: library ? ['catalog-navigation', library, 'collections'] : ['collections'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchAllCollections>>[number]>(
+            library,
+            'collections',
+          )
+        : fetchAllCollections(signal),
+    refetchInterval: library ? 2000 : false,
   })
 }
 
@@ -1284,7 +1362,15 @@ export function useCollectionCounts() {
 }
 
 export function useTags() {
-  return useQuery({ queryKey: ['tags'], queryFn: ({ signal }) => fetchTags(signal) })
+  const library = useContext(CatalogQueryContext)
+  return useQuery({
+    queryKey: library ? ['catalog-navigation', library, 'tags'] : ['tags'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchTags>>[number]>(library, 'tags')
+        : fetchTags(signal),
+    refetchInterval: library ? 2000 : false,
+  })
 }
 
 /** Create a tag inline from a picker's search box (no matches → "Create …"). */
@@ -1321,6 +1407,7 @@ export function useCreateTagPath() {
       /** Create beneath this tag instead of at the top level. */
       parentId?: string | null
     }): Promise<TagRead> => {
+      const submit = bindEdit(createTag)
       const segments = path
         .split('/')
         .map((part) => part.trim())
@@ -1337,7 +1424,7 @@ export function useCreateTagPath() {
         if (found) {
           leaf = found
         } else {
-          leaf = await createTag({ name, parent_id: parentId })
+          leaf = await submit({ name, parent_id: parentId })
           known.push(leaf)
         }
         parentId = leaf.id
@@ -1366,7 +1453,7 @@ export function useTagMutations() {
   }
   return {
     rename: useMutation({
-      mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+      mutationFn: ({ id, name, version }: { id: string; name: string; version?: EditVersion }) =>
         updateTag(id, { name }, version),
       // onSettled so a 409 conflict also refetches the latest tag state.
       onSettled: invalidate,
@@ -1387,7 +1474,7 @@ export function useTagMutations() {
       }: {
         id: string
         parentId: string | null
-        version?: number
+        version?: EditVersion
       }) => updateTag(id, { parent_id: parentId }, version),
       onMutate: async ({ id, parentId }) => {
         await qc.cancelQueries({ queryKey: ['tags'] })
@@ -1406,7 +1493,18 @@ export function useTagMutations() {
 }
 
 export function useTagGroups() {
-  return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
+  const library = useContext(CatalogQueryContext)
+  return useQuery({
+    queryKey: library ? ['catalog-navigation', library, 'tag_groups'] : ['tag-groups'],
+    queryFn: ({ signal }) =>
+      library
+        ? catalogNavigation<Awaited<ReturnType<typeof fetchTagGroups>>[number]>(
+            library,
+            'tag_groups',
+          )
+        : fetchTagGroups(signal),
+    refetchInterval: library ? 2000 : false,
+  })
 }
 
 export function useTagCounts() {
@@ -1416,14 +1514,7 @@ export function useTagCounts() {
   })
 }
 
-/** Create/rename/delete tag groups, and move a tag in or out of one.
- *
- * The server replaces a group's membership wholesale (there is no add/remove
- * verb), so `addTag`/`removeTag` read the group's current members from the
- * `tag-group-memberships` cache the page already renders from and send the
- * amended list. A group whose membership has not been fetched yet is read from
- * the network first rather than assumed empty — sending a short list would
- * silently drop every other tag in the group. */
+// Group checkbox changes name independent edges and never replace unseen memberships
 export function useTagGroupMutations() {
   const qc = useQueryClient()
   // Group membership changes what the All Tags panels and the picker's group
@@ -1431,13 +1522,6 @@ export function useTagGroupMutations() {
   const invalidate = () => {
     for (const key of ['tag-groups', 'tag-group-memberships'])
       qc.invalidateQueries({ queryKey: [key] })
-  }
-  const membersOf = async (groupId: string): Promise<string[]> => {
-    const cached = qc
-      .getQueriesData<Record<string, string[]>>({ queryKey: ['tag-group-memberships'] })
-      .map(([, data]) => data?.[groupId])
-      .find((ids) => ids !== undefined)
-    return cached ?? (await fetchTagGroupTags(groupId))
   }
   return {
     create: useMutation({
@@ -1453,22 +1537,13 @@ export function useTagGroupMutations() {
       onSuccess: invalidate,
     }),
     addTag: useMutation({
-      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
-        const current = await membersOf(groupId)
-        if (current.includes(tagId)) return
-        await setTagGroupTags(groupId, [...current, tagId])
-      },
+      mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
+        changeTagGroupTags(groupId, [tagId], []),
       onSuccess: invalidate,
     }),
     removeTag: useMutation({
-      mutationFn: async ({ groupId, tagId }: { groupId: string; tagId: string }) => {
-        const current = await membersOf(groupId)
-        if (!current.includes(tagId)) return
-        await setTagGroupTags(
-          groupId,
-          current.filter((id) => id !== tagId),
-        )
-      },
+      mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
+        changeTagGroupTags(groupId, [], [tagId]),
       onSuccess: invalidate,
     }),
   }
@@ -1476,16 +1551,30 @@ export function useTagGroupMutations() {
 
 /** Map of tag-group id → its member tag ids, for the tag picker's group tabs. */
 export function useTagGroupMemberships() {
+  const library = useContext(CatalogQueryContext)
   const groups = useTagGroups()
   const ids = (groups.data ?? []).map((g) => g.id)
   return useQuery({
-    queryKey: ['tag-group-memberships', ids],
+    queryKey: ['tag-group-memberships', library, ids],
     enabled: groups.data !== undefined,
     queryFn: async () => {
+      if (library) {
+        const rows = await catalogNavigation<{ group_id: string; tag_id: string }>(
+          library,
+          'tag_group_memberships',
+        )
+        const result: Record<string, string[]> = {}
+        for (const row of rows) (result[row.group_id] ??= []).push(row.tag_id)
+        return result
+      }
+
       const entries = await Promise.all(
         (groups.data ?? []).map(async (g) => [g.id, await fetchTagGroupTags(g.id)] as const),
       )
-      return Object.fromEntries(entries) as Record<string, string[]>
+      return rememberBasis(
+        Object.fromEntries(entries) as Record<string, string[]>,
+        minimumBasis(entries.map(([, members]) => basisOf(members))),
+      )
     },
   })
 }
@@ -1663,13 +1752,23 @@ export function useMomentMutations(bundleId: string | null) {
       }: {
         momentId: string
         patch: MomentPatch
-        version?: number
+        version?: EditVersion
       }) => updateMoment(requireBundle(), momentId, patch, version),
       onSettled: invalidate,
     }),
     setTags: useMutation({
-      mutationFn: ({ momentId, ids }: { momentId: string; ids: string[] }) =>
-        setMomentTags(requireBundle(), momentId, ids),
+      mutationFn: ({
+        momentId,
+        ids,
+        before,
+      }: {
+        momentId: string
+        ids: string[]
+        before?: string[]
+      }) =>
+        before
+          ? changeMomentTags(requireBundle(), momentId, { before, ids })
+          : setMomentTags(requireBundle(), momentId, ids),
       // Optimistic, for the reason the bundle's own tag write is: the pill has to
       // appear on the click, not a round trip and three refetches later. Tagging
       // a moment was visibly slower than tagging its bundle, which is the same
@@ -2163,7 +2262,7 @@ function applyBundlePatch(previous: BundleRead, patch: BundlePatch): BundleRead 
   }
 }
 
-export function useUpdateBundle(id: string, version?: number) {
+export function useUpdateBundle(id: string, version?: EditVersion) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (patch: BundlePatch) => updateBundle(id, patch, version),
@@ -2211,12 +2310,14 @@ export function useBundleCursor(id: string) {
 export function useSetBundleTags(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleTags(id, ids),
+    mutationFn: (edit: string[] | MembershipEdit) =>
+      Array.isArray(edit) ? setBundleTags(id, edit) : changeBundleTags(id, edit),
     // Optimistic: the chip appears on click rather than after a round trip plus
     // a refetch. Tagging felt like it took a second (owner, 2026-07-27) because
     // the picker only redrew once `bundle-tags` came back, behind a full
     // `browse` refetch competing for the same connections.
-    onMutate: async (ids: string[]) => {
+    onMutate: async (edit: string[] | MembershipEdit) => {
+      const ids = Array.isArray(edit) ? edit : edit.ids
       const key = ['bundle-tags', id]
       await Promise.all([
         qc.cancelQueries({ queryKey: key }),
@@ -2257,9 +2358,11 @@ export function useSetBundleTags(id: string) {
 export function useSetBundleCollections(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleCollections(id, ids),
+    mutationFn: (edit: string[] | MembershipEdit) =>
+      Array.isArray(edit) ? setBundleCollections(id, edit) : changeBundleCollections(id, edit),
     // Optimistic for the same reason as tags — see useSetBundleTags.
-    onMutate: async (ids: string[]) => {
+    onMutate: async (edit: string[] | MembershipEdit) => {
+      const ids = Array.isArray(edit) ? edit : edit.ids
       const key = ['bundle-collections', id]
       await Promise.all([
         qc.cancelQueries({ queryKey: key }),
@@ -2326,7 +2429,7 @@ export function useFileMutations(bundleId: string) {
       }: {
         fileId: string
         patch: FilePatch
-        version?: number
+        version?: EditVersion
       }) => updateFile(bundleId, fileId, patch, version),
       onSettled: () => invalidate(),
     }),
@@ -2379,7 +2482,7 @@ export function useFileMutations(bundleId: string) {
       onSuccess: updateCoverCache,
     }),
     clearCoverFrame: useMutation({
-      mutationFn: (fileId: string) => clearCoverFrame(fileId),
+      mutationFn: ({ fileId }: { fileId: string }) => clearCoverFrame(fileId),
       onSuccess: updateCoverCache,
     }),
   }
@@ -2417,7 +2520,9 @@ export function useDeleteBundles() {
     // write-gated route — so it is undoable and they stay listed in the Trash
     // rather than simply vanishing.
     mutationFn: ({ ids, deleteFiles = false }: { ids: string[]; deleteFiles?: boolean }) =>
-      Promise.all(ids.map((id) => (deleteFiles ? deleteBundleWithFiles(id) : deleteBundle(id)))),
+      deleteFiles
+        ? Promise.all(ids.map((id) => deleteBundleWithFiles(id))).then(() => undefined)
+        : batchDeleteBundles(ids),
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
       // Unbundled list + File Browser badges must refresh too.
@@ -2536,7 +2641,7 @@ export function useCreateCollectionFromDirectory() {
 export function useRenameCollection() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+    mutationFn: ({ id, name, version }: { id: string; name: string; version?: EditVersion }) =>
       renameCollection(id, name, version),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
@@ -2567,7 +2672,7 @@ export function useUpdateCollection() {
         cover_bundle_id?: string | null
         parent_id?: string | null
       }
-      version?: number
+      version?: EditVersion
     }) => updateCollection(id, patch, version),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
@@ -2941,14 +3046,12 @@ export function useCommonBundleCollections(ids: string[]) {
 }
 
 /** Overwrite title and/or rating across every bundle in a multi-selection.
- * Fires one PATCH per bundle in parallel (there's no bulk endpoint for scalar
- * fields, only membership) with no If-Match — a bulk overwrite is an explicit,
- * one-shot action, and per-row versions aren't loaded in the browse grid. */
+ * The selection's displayed read basis guards one atomic server transaction. */
 export function useBulkUpdateBundles() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ ids, patch }: { ids: string[]; patch: BundlePatch }) =>
-      Promise.all(ids.map((id) => updateBundle(id, patch))),
+      batchEditBundles(ids, patch),
     onSuccess: (_data, { ids }) => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       for (const id of ids) qc.invalidateQueries({ queryKey: ['bundle', id] })

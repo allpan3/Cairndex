@@ -5,7 +5,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::{async_runtime, AppHandle, Runtime};
+use tauri::{async_runtime, AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_store::StoreExt;
 
@@ -325,9 +325,22 @@ pub(crate) fn verified_root_for(
     validate_library_root(Path::new(&record.local_root), &record.library_uuid)
 }
 
-// Loads the complete shell-owned library-id to mapping-record map
-pub(crate) fn load_mappings<R: Runtime>(
+// Requires the configured server so identical registry IDs cannot share a native mapping
+pub(crate) fn mapping_scope<R: Runtime>(app: &AppHandle<R>) -> Result<String, MappingError> {
+    app.state::<crate::media_proxy::MediaProxy>()
+        .connection_scope()
+        .ok_or_else(|| {
+            MappingError::new(
+                MappingErrorCode::LibraryUnmapped,
+                "Connect to a server before locating its library.",
+            )
+        })
+}
+
+// Loads the complete library map for one captured server
+pub(crate) fn load_mappings_for<R: Runtime>(
     app: &AppHandle<R>,
+    scope: &str,
 ) -> Result<BTreeMap<String, MappingRecord>, MappingError> {
     let store = app.store(STORE_PATH).map_err(|_| {
         MappingError::new(
@@ -335,7 +348,7 @@ pub(crate) fn load_mappings<R: Runtime>(
             "Library mappings could not be loaded.",
         )
     })?;
-    match store.get(MAPPINGS_KEY) {
+    match store.get(format!("{MAPPINGS_KEY}:{scope}")) {
         Some(value) => {
             let raw: BTreeMap<String, serde_json::Value> =
                 serde_json::from_value(value).map_err(|_| {
@@ -362,6 +375,7 @@ pub(crate) fn load_mappings<R: Runtime>(
 // Persists all mappings atomically through the existing shell settings store
 fn save_mappings<R: Runtime>(
     app: &AppHandle<R>,
+    scope: &str,
     mappings: &BTreeMap<String, MappingRecord>,
 ) -> Result<(), MappingError> {
     let store = app.store(STORE_PATH).map_err(|_| {
@@ -371,7 +385,7 @@ fn save_mappings<R: Runtime>(
         )
     })?;
     store.set(
-        MAPPINGS_KEY,
+        format!("{MAPPINGS_KEY}:{scope}"),
         serde_json::to_value(mappings).map_err(|_| {
             MappingError::new(
                 MappingErrorCode::MappingStoreUnavailable,
@@ -398,6 +412,7 @@ fn save_mappings<R: Runtime>(
 /// only leave the manual locate available.
 pub(crate) fn remember_mapping<R: Runtime>(
     app: &AppHandle<R>,
+    scope: &str,
     library_id: &str,
     library_uuid: &str,
     local_root: &Path,
@@ -413,7 +428,7 @@ pub(crate) fn remember_mapping<R: Runtime>(
             )
         })?
         .to_owned();
-    let mut mappings = load_mappings(app)?;
+    let mut mappings = load_mappings_for(app, scope)?;
     mappings.insert(
         library_id.to_string(),
         MappingRecord {
@@ -421,7 +436,7 @@ pub(crate) fn remember_mapping<R: Runtime>(
             library_uuid: library_uuid.to_string(),
         },
     );
-    save_mappings(app, &mappings)
+    save_mappings(app, scope, &mappings)
 }
 
 // Returns the configured local root without resolving any media path
@@ -431,9 +446,10 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
     library_id: String,
 ) -> Result<Option<String>, MappingError> {
     validate_library_id(&library_id)?;
+    let scope = mapping_scope(&app)?;
     // First store access reads the settings file; keep that off the IPC thread
     async_runtime::spawn_blocking(move || {
-        Ok(load_mappings(&app)?
+        Ok(load_mappings_for(&app, &scope)?
             .get(&library_id)
             .map(|record| record.local_root.clone()))
     })
@@ -537,6 +553,7 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
     library_uuid: String,
 ) -> Result<Option<String>, MappingError> {
     validate_library_id(&library_id)?;
+    let scope = mapping_scope(&app)?;
     let Some(selected) = app
         .dialog()
         .file()
@@ -561,7 +578,7 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
             )
         })?
         .to_owned();
-    let mut mappings = load_mappings(&app)?;
+    let mut mappings = load_mappings_for(&app, &scope)?;
     mappings.insert(
         library_id,
         MappingRecord {
@@ -569,7 +586,7 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
             library_uuid,
         },
     );
-    save_mappings(&app, &mappings)?;
+    save_mappings(&app, &scope, &mappings)?;
     Ok(Some(root_text))
 }
 
@@ -598,8 +615,15 @@ pub(crate) async fn adopt_library_mapping<R: Runtime>(
     local_root: String,
 ) -> Result<Option<String>, MappingError> {
     validate_library_id(&library_id)?;
+    let scope = mapping_scope(&app)?;
     async_runtime::spawn_blocking(move || {
-        remember_mapping(&app, &library_id, &library_uuid, Path::new(&local_root))?;
+        remember_mapping(
+            &app,
+            &scope,
+            &library_id,
+            &library_uuid,
+            Path::new(&local_root),
+        )?;
         // Report the canonical form, which is what was stored.
         Ok(Some(
             validate_library_root(Path::new(&local_root), &library_uuid)?
@@ -618,11 +642,12 @@ pub(crate) async fn clear_library_mapping<R: Runtime>(
     library_id: String,
 ) -> Result<(), MappingError> {
     validate_library_id(&library_id)?;
+    let scope = mapping_scope(&app)?;
     // Persisting the trimmed map writes the settings file; keep it off the IPC thread
     async_runtime::spawn_blocking(move || {
-        let mut mappings = load_mappings(&app)?;
+        let mut mappings = load_mappings_for(&app, &scope)?;
         mappings.remove(&library_id);
-        save_mappings(&app, &mappings)
+        save_mappings(&app, &scope, &mappings)
     })
     .await
     .map_err(|_| MappingError::store_task_failed())?
@@ -631,11 +656,12 @@ pub(crate) async fn clear_library_mapping<R: Runtime>(
 // Resolves one command request from its persisted mapping
 pub(crate) fn resolve_library_path<R: Runtime>(
     app: &AppHandle<R>,
+    scope: &str,
     library_id: &str,
     relative_path: &str,
 ) -> Result<PathBuf, MappingError> {
     validate_library_id(library_id)?;
-    let mappings = load_mappings(app)?;
+    let mappings = load_mappings_for(app, scope)?;
     let record = mappings.get(library_id).ok_or_else(|| {
         MappingError::new(
             MappingErrorCode::LibraryUnmapped,
@@ -677,9 +703,10 @@ pub(crate) async fn reverse_map_paths<R: Runtime>(
     paths: Vec<String>,
 ) -> Result<ReverseMapResult, MappingError> {
     validate_library_id(&library_id)?;
+    let scope = mapping_scope(&app)?;
     // Canonicalizing dropped paths touches the mount; keep it off the IPC thread.
     async_runtime::spawn_blocking(move || {
-        let mappings = load_mappings(&app)?;
+        let mappings = load_mappings_for(&app, &scope)?;
         let Some(record) = mappings.get(&library_id) else {
             // An un-located library has no local root, so nothing can be inside it;
             // echo every dropped path as outside (the web short-circuits unmapped

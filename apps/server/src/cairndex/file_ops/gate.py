@@ -29,6 +29,7 @@ from cairndex.auth import is_protected
 from cairndex.core.config import get_settings
 from cairndex.core.errors import AuthRequiredError, WriteModeDisabledError
 from cairndex.registry import services as registry_service
+from cairndex.registry.library_package import require_legacy
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ def _state(*, enabled: bool, root: Path) -> WriteModeState:
 def read_write_mode(registry: Session, library_id: str) -> WriteModeState:
     """Report the write-mode state of one registered library (404 if unknown)."""
     library = registry_service.get_library(registry, library_id)
+    require_legacy(Path(library.root_path))
     return _state(enabled=library.write_mode_enabled, root=Path(library.root_path))
 
 
@@ -99,6 +101,7 @@ def set_write_mode(
     secret itself stays in the API layer and never reaches here.
     """
     library = registry_service.get_library(registry, library_id)
+    require_legacy(Path(library.root_path))
     root = Path(library.root_path)
 
     if enabled:

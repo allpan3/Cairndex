@@ -90,10 +90,6 @@ export async function confirmPickedLibrary(
 async function adoptOpenedLibrary(opened: OpenedLibrary): Promise<void> {
   await ensureLocalConnection()
 
-  // Queued *before* activation, because activating remounts the query scope and
-  // with it the component that would consume this. Setting it after would race
-  // the remount it is meant to survive.
-  setPendingLibrarySelection(LOCAL_CONNECTION_ID, opened.libraryId)
-
   await activateConnection(LOCAL_CONNECTION_ID)
+  setPendingLibrarySelection(LOCAL_CONNECTION_ID, opened.libraryId)
 }

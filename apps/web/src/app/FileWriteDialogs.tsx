@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useEffect, useRef, useState } from 'react'
 
 import {
@@ -37,11 +38,14 @@ export function ConflictDialog({
   onCancel: () => void
   busy: boolean
 }) {
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Name already in use"
@@ -63,7 +67,7 @@ export function ConflictDialog({
         </p>
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          <button type="button" className="btn" onClick={closeDialog} disabled={busy}>
             Cancel
           </button>
           {onSkip && (
@@ -106,11 +110,14 @@ export function DeleteDialog({
 }) {
   const single = paths.length === 1 ? (paths[0] as string).split('/').pop() : null
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Move to Trash"
@@ -141,7 +148,7 @@ export function DeleteDialog({
         )}
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          <button type="button" className="btn" onClick={closeDialog} disabled={busy}>
             Cancel
           </button>
           <button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>
@@ -264,11 +271,17 @@ export function DirectoryPicker({
   const crumbs = here ? here.split('/') : []
   const count = moving.length
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(
+    () => (creatingFolder ? setCreatingFolder(false) : onCancel()),
+    busy || mkdir.isPending,
+  )
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={heading ?? 'Move to'}
@@ -471,7 +484,7 @@ export function DirectoryPicker({
         )}
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          <button type="button" className="btn" onClick={closeDialog} disabled={busy}>
             Cancel
           </button>
           <button

@@ -49,6 +49,24 @@ struct ProxyConfig {
     secret: String,
 }
 
+// Derives durable mapping identity from the same snapshot as transport credentials
+impl ProxyConfig {
+    fn connection_scope(&self) -> String {
+        if self.server_scoped_token {
+            "local".to_owned()
+        } else {
+            self.server_url.as_str().trim_end_matches('/').to_owned()
+        }
+    }
+}
+
+// Pins an import's transport and mapping namespace before any filesystem work
+pub(crate) struct ImportTarget {
+    pub(crate) server_url: Url,
+    pub(crate) token: Option<String>,
+    pub(crate) mapping_scope: String,
+}
+
 // Streams authenticated media to the webview without putting bearer tokens in URLs
 pub(crate) struct MediaProxy {
     address: String,
@@ -459,6 +477,13 @@ fn targets_running_sidecar(local: &LocalServer, server_url: &str, token: Option<
 }
 
 impl MediaProxy {
+    // Names the mapping namespace without persisting the managed sidecar's ephemeral URL
+    pub(crate) fn connection_scope(&self) -> Option<String> {
+        let guard = self.config.read().ok()?;
+        let config = guard.as_ref()?;
+        Some(config.connection_scope())
+    }
+
     /// The server and bearer that may be used for one library, or None.
     ///
     /// Exposes the *same* decision the relay makes for a media request (above):
@@ -466,14 +491,18 @@ impl MediaProxy {
     /// explicitly grants this library. Shared rather than re-derived so a change
     /// to the scoping rule cannot be applied in one place and forgotten in the
     /// other — the import path (`importer.rs`) uploads with this.
-    pub(crate) fn target_for(&self, library_id: &str) -> Option<(Url, Option<String>)> {
+    pub(crate) fn target_for(&self, library_id: &str) -> Option<ImportTarget> {
         let guard = self.config.read().ok()?;
         let config = guard.as_ref()?;
         let token = config
             .token
             .clone()
             .filter(|_| config.server_scoped_token || config.library_ids.contains(library_id));
-        Some((config.server_url.clone(), token))
+        Some(ImportTarget {
+            server_url: config.server_url.clone(),
+            token,
+            mapping_scope: config.connection_scope(),
+        })
     }
 }
 
@@ -670,6 +699,68 @@ mod tests {
         );
         assert_eq!(response.bytes().unwrap().len(), expected_length);
         worker.join().unwrap();
+    }
+
+    // Mapping identity follows the server even when portable and registry IDs are duplicated
+    #[test]
+    fn mapping_scope_survives_local_restart_and_separates_remotes() {
+        let proxy = MediaProxy::start().unwrap();
+        assert_eq!(proxy.connection_scope(), None);
+        proxy
+            .configure("https://one.example", None, vec![], false)
+            .unwrap();
+        assert_eq!(
+            proxy.connection_scope().as_deref(),
+            Some("https://one.example")
+        );
+        proxy
+            .configure("https://two.example/library", None, vec![], false)
+            .unwrap();
+        assert_eq!(
+            proxy.connection_scope().as_deref(),
+            Some("https://two.example/library")
+        );
+        for port in [51001, 51002] {
+            proxy
+                .configure(
+                    &format!("http://127.0.0.1:{port}"),
+                    Some("local-test".into()),
+                    vec![],
+                    true,
+                )
+                .unwrap();
+            assert_eq!(proxy.connection_scope().as_deref(), Some("local"));
+        }
+    }
+
+    // A delayed import retains one server's namespace and grant after the active server changes
+    #[test]
+    fn import_target_pins_scope_and_credentials_together() {
+        let proxy = MediaProxy::start().unwrap();
+        proxy
+            .configure(
+                "https://one.example",
+                Some("first-grant".into()),
+                vec!["same-id".into()],
+                false,
+            )
+            .unwrap();
+        let first = proxy.target_for("same-id").unwrap();
+        assert!(proxy.target_for("other-id").unwrap().token.is_none());
+        proxy
+            .configure(
+                "https://two.example",
+                Some("second-grant".into()),
+                vec!["same-id".into()],
+                false,
+            )
+            .unwrap();
+        let second = proxy.target_for("same-id").unwrap();
+        assert_eq!(first.server_url.as_str(), "https://one.example/");
+        assert_eq!(first.mapping_scope, "https://one.example");
+        assert_eq!(first.token.as_deref(), Some("first-grant"));
+        assert_eq!(second.mapping_scope, "https://two.example");
+        assert_eq!(second.token.as_deref(), Some("second-grant"));
     }
 
     // Refuses untrusted pages, write methods, non-media paths, and unapproved scopes

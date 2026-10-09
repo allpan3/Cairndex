@@ -8,6 +8,9 @@ import type { PlayerController } from './usePlayer'
 function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController {
   return {
     status: 'paused',
+    wantsPlayback: false,
+    paused: true,
+    buffering: false,
     currentTime: 10,
     duration: 120,
     buffered: [],

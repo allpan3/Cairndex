@@ -1,5 +1,9 @@
 # Audit extraction ledger
 
+Continuation on another machine uses the [VM handoff plan](audit-vm-handoff.md).
+The owner authorizes transfer of the application branch and preserved reference
+after privacy inspection. This does not approve their merge or real-data use.
+
 ## Preserved reference and base
 
 - Reference branch: `fix/library-ownership-lifecycle`.
@@ -23,11 +27,11 @@ mean its full reference contents belong to one group.
 
 | Group | Final behavior and dependencies | Tests and contract scope | State |
 | --- | --- | --- | --- |
-| 1 | Offline migration foundation: complete catalog, causal constraints, retained branches, private schema compatibility, format-three preparation and rollback | All-family catalog, schema/refusal, WAL, process-exit/retry and rollback tests; private schema only; no HTTP API change | Extracted; validation in this ledger; acceptance and merge pending |
-| 2 | Portable application: normal Create/Open, old-format refusal, lifecycle drain, private access and backup/recovery controls; requires 1 | Creation/admission/access/recovery API and registry schema, OpenAPI/types, browser/native, packaging and backup checks | Planned |
-| 3 | Reviewed Update, discovery/grouping, stable-ID repair, full verification and interrupted reviews; requires 1–2 | Private discovery schemas and library-scoped API, process tests, browser/native, source-generation checks | Planned |
-| 4 | Browse/edit: complete search/filter populations, exact saved filters, navigation, inspectors, albums, bulk selection and retained drafts; requires 1–3 for complete workflow | Catalog query/API types, component and real-server browser suites, synthetic native checks | Planned |
-| 5 | Playback/connection continuity, scoped requests, server navigation, keyboard/layout and loading/error fixes; requires 2–4 | Media/API and native host contracts; playback, connection, component/browser/native and package checks | Planned |
+| 1 | Offline migration foundation: complete catalog, causal constraints, retained branches, private schema compatibility, format-three preparation and rollback | All-family catalog, schema/refusal, WAL, process-exit/retry and rollback tests; private schema only; no HTTP API change | Merged through PR #38; automated review accepted |
+| 2 | Portable application: normal Create/Open, old-format refusal, lifecycle drain, private access and backup/recovery controls; requires 1 | Creation/admission/access/recovery API and registry schema, OpenAPI/types, browser/native, packaging and backup checks | Implemented and locally tested; application round 1 acceptance pending |
+| 3 | Reviewed Update, discovery/grouping, stable-ID repair, full verification and interrupted reviews; requires 1–2 | Private discovery schemas and library-scoped API, process tests, browser/native, source-generation checks | Implemented and locally tested; application round 2 acceptance pending |
+| 4 | Browse/edit: complete search/filter populations, exact saved filters, navigation, inspectors, albums, bulk selection and retained drafts; requires 1–3 for complete workflow | Catalog query/API types, component and real-server browser suites, synthetic native checks | Implemented and locally tested; application round 3 acceptance pending |
+| 5 | Playback/connection continuity, scoped requests, server navigation, keyboard/layout and loading/error fixes; requires 2–4 | Media/API and native host contracts; playback, connection, component/browser/native and package checks | Implemented and locally tested; application round 4 acceptance pending |
 | 6 | Reviewed source operations, identity-preserving Replace/Undo and retained recovery; then mounted SMB; requires 1–5 | Private journals and source-event protocol, API/types, process/browser/native tests; SMB and Keychain only for exact executable/share | Planned |
 | 7 | Distribution/deployment: signing preflight, packaged dependencies, private volumes and backup scripts; requires applicable runtime groups | Docker contexts/images, source/license inventory, package smoke, isolated deployment restart and recovery | Planned |
 
@@ -128,7 +132,7 @@ marks exact, partial, or pending coverage. New files outside the reference are `
 `catalog/index.py`, `replicas/private_layout.py`, `test_library_migration.py`
 and the two extraction tracking files. The split schema modules preserve the
 reference layouts; migration preparation and its tests are new implementation.
-The inventory records 26 exact, 13 partial and 501 pending reference paths.
+The inventory records 340 exact, 47 partial and 153 pending reference paths.
 No pending path is an intentional omission by default. Before each later merge,
 compare the combined main result against the preserved reference tree, review
 shared-file hunks and record intentional omissions. Superseded legacy workspace
@@ -150,3 +154,38 @@ The subsequent Rust audit identifies RUSTSEC-2026-0285 in inherited rustls
 to 0.103.15. Local Rust formatting, locked Clippy and all 122 tests pass. The
 local cargo-audit command is unavailable; CI runs the authoritative Rust audit
 and the packaged macOS build. The installed app is unchanged.
+
+## Group 1 merge and Group 2 start
+
+PR #38 is merged as `b8d9e3b90658c1a4c9a6b18b2a9658a8a6a8f6cd`. All checks
+passed on `c1391134`, including dependency audit, backend, frontend/browser,
+full-stack browser, packaged server, Docker, Ubuntu Rust, macOS app and privacy.
+The merge retains the migration commit and separate dependency repairs.
+
+Group 2 starts on `feature/portable-library-lifecycle` from that merged main.
+The unrelated prior local-main commit is retained on
+`preserve/local-main-media-tools`. The original audit branch and exact tree are
+unchanged. No force-push or published-history rewrite occurred.
+
+## Approved application regrouping and qualification
+
+The owner approved one application branch for groups 2–5, with separate functional
+test rounds before merge. The normal portable application shares its catalog
+workspace across lifecycle, Update, browsing/editing and playback. A temporary
+reduced application is not required. Source operations/SMB (group 6) and
+distribution/deployment (group 7) remain separate.
+
+The application is implemented and locally tested. See the [validation record](portable-lifecycle-extraction.md)
+for exact test counts, native results, contract changes, intentional omissions,
+new fixes and limitations. Path coverage records source equality only; partial
+files need hunk review when later groups are extracted. New application fixes are
+portable thumbnail routing and safe empty-library Refresh. Internal legacy fixture
+adaptations do not restore legacy application support.
+
+The owner delegates all available functional checks to the agent. Additional
+native checks cover metadata, retained drafts, moved-file repair, restart and
+playback on disposable data. No scripted owner test is required now. Product
+acceptance and publication permission are not implied by testing delegation.
+Before merge, complete the missing platform/deployment checks and the exact
+publication privacy gates.
+The preserved reference and installed app remain unchanged.

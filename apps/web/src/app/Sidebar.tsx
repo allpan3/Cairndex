@@ -1,3 +1,4 @@
+import { PromptDialog } from './PromptDialog'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
@@ -63,6 +64,8 @@ function viewIcon(view: SystemView): ReactNode {
 }
 
 export interface SidebarProps {
+  navigationOnly?: boolean
+  availableViews?: SystemView[]
   mode: AppMode
   onMode: (mode: AppMode) => void
   libraries: LibraryRead[]
@@ -224,6 +227,8 @@ function findRow(nodes: TreeNode[], id: string, depth = 0): TreeRow | null {
 }
 
 export function Sidebar({
+  navigationOnly = false,
+  availableViews,
   mode,
   onMode,
   libraries,
@@ -337,10 +342,12 @@ export function Sidebar({
   // or Cmd-toggled. A ref, not state — it never needs a re-render of its own.
   const rangeAnchorRef = useRef<string | null>(null)
 
-  // Id of the collection currently showing an inline rename box — set right
-  // after "+ Collection" creates one, so the user can type its name in place.
+  // Existing collections use inline renaming; new collections use a local draft
   const [editingId, setEditingId] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [collectionDraft, setCollectionDraft] = useState<{ parentId: string | null } | null>(null)
+  const [creatingCollection, setCreatingCollection] = useState(false)
+  const createInFlight = useRef(false)
   // Branch expand/collapse is normally per-node local state (depth 0 open by
   // default), but creating a collection nested under the currently open one
   // needs to force its ancestor chain open so the new node is visible.
@@ -455,28 +462,39 @@ export function Sidebar({
     [collections],
   )
 
+  // A new collection stays local until its name is explicitly confirmed
   const createCollectionUnder = useCallback(
     (parentId: string | null) => {
+      if (createInFlight.current) return
       setCreateError(null)
-      const siblingNames = new Set(
-        collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
-      )
-      let name = 'New Collection'
-      for (let n = 2; siblingNames.has(name); n++) name = `New Collection ${n}`
-
-      onCreateCollection(
-        { name, parent_id: parentId },
-        {
-          onSuccess: (created) => {
-            revealCollection(parentId)
-            setEditingId(created.id)
-          },
-          onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
-        },
-      )
+      setCollectionDraft({ parentId })
     },
-    [collections, onCreateCollection, revealCollection],
+    [setCreateError, setCollectionDraft],
   )
+
+  // Persist the named draft once, retaining it and its error when creation fails
+  const submitCollection = (name: string) => {
+    if (!collectionDraft || createInFlight.current) return
+    createInFlight.current = true
+    setCreatingCollection(true)
+    setCreateError(null)
+    onCreateCollection(
+      { name, parent_id: collectionDraft.parentId },
+      {
+        onSuccess: () => {
+          createInFlight.current = false
+          setCreatingCollection(false)
+          revealCollection(collectionDraft.parentId)
+          setCollectionDraft(null)
+        },
+        onError: (error) => {
+          createInFlight.current = false
+          setCreatingCollection(false)
+          setCreateError(error instanceof Error ? error.message : 'Could not create collection')
+        },
+      },
+    )
+  }
 
   /** Put a collection's row into its inline rename box, unfolding to reach it. */
   const renameCollection = useCallback(
@@ -487,17 +505,7 @@ export function Sidebar({
     [collections, revealCollection],
   )
 
-  // A request from outside the sidebar (the grid's empty-space menu, the native
-  // File menu). It arrives as a prop rather than a callback because the sidebar
-  // owns the flow — the new row's inline rename box and branch expansion are its
-  // state — while the caller only names the parent. An effect is the only hook
-  // available: the trigger is another pane or the OS menu, so there is no event in
-  // this subtree to hang it off (mirrors App's deepLink handling).
-  //
-  // Consumption is tracked by request identity rather than by trusting the
-  // caller's clear: `createCollectionUnder` changes identity whenever the
-  // collection list refetches — which creating one causes — so a caller that
-  // wired the request without the clear callback would otherwise create in a loop.
+  // Grid and native menu requests open one draft under the requested parent
   const consumedRequestRef = useRef<{ parentId: string | null } | null>(null)
   useEffect(() => {
     if (!newCollectionRequest || consumedRequestRef.current === newCollectionRequest) return
@@ -636,91 +644,92 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="sidebar__jobs" role="group" aria-label="Library actions">
-        <button
-          className="sidebar__job"
-          onClick={onUpdateLibrary}
-          title={
-            updateWaiting
-              ? 'Waiting for the job ahead of it to reach a checkpoint'
-              : 'Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background'
-          }
-          disabled={updating || libraryId === null}
-        >
-          {/* "Updating…" while the scan is still queued was a lie the owner had
+      {!navigationOnly && (
+        <div className="sidebar__jobs" role="group" aria-label="Library actions">
+          <button
+            className="sidebar__job"
+            onClick={onUpdateLibrary}
+            title={
+              updateWaiting
+                ? 'Waiting for the job ahead of it to reach a checkpoint'
+                : 'Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background'
+            }
+            disabled={updating || libraryId === null}
+          >
+            {/* "Updating…" while the scan is still queued was a lie the owner had
               no way to see through: a storyboard pass could hold the queue for
               an hour and the button read exactly as it does while working. */}
-          {updateWaiting ? '⟳ Waiting…' : updating ? '⟳ Updating…' : '⟳ Update'}
-        </button>
-        <div className="sidebar__job-menu" ref={jobsMenuRef}>
-          <button
-            className="sidebar__job-more"
-            onClick={() => setJobsMenuOpen((open) => !open)}
-            title="More library actions"
-            aria-label="More library actions"
-            aria-expanded={jobsMenuOpen}
-            disabled={libraryId === null}
-          >
-            ⋯
+            {updateWaiting ? '⟳ Waiting…' : updating ? '⟳ Updating…' : '⟳ Update'}
           </button>
-          {jobsMenuOpen && (
-            <div className="sidebar__job-popover">
-              {onAddFiles && (
-                <>
-                  <button
-                    onClick={() => {
-                      setJobsMenuOpen(false)
-                      onAddFiles()
-                    }}
-                    title="Copy files from this computer into a folder you pick"
-                  >
-                    Add files
-                  </button>
-                  <div className="sidebar__job-divider" role="separator" />
-                </>
-              )}
-              <button
-                onClick={() => {
-                  setJobsMenuOpen(false)
-                  onScanFiles()
-                }}
-                title="Find new, moved, and missing files. Nothing else — grouping and metadata are the items below."
-                disabled={scanningFiles}
-              >
-                {scanningFiles ? 'Scanning…' : 'Scan new files'}
-              </button>
-              <button
-                onClick={() => {
-                  setJobsMenuOpen(false)
-                  onProbe()
-                }}
-                disabled={probing}
-              >
-                {probing ? 'Collecting…' : 'Collect metadata'}
-              </button>
-              <button
-                onClick={() => {
-                  setJobsMenuOpen(false)
-                  onReviewGrouping()
-                }}
-                title="Suggest grouping for unbundled files and new additions"
-              >
-                Suggest grouping
-              </button>
-              <button
-                onClick={() => {
-                  setJobsMenuOpen(false)
-                  onGenerateStoryboards()
-                }}
-                disabled={generatingStoryboards}
-              >
-                {generatingStoryboards ? 'Generating…' : 'Generate storyboards'}
-              </button>
-            </div>
-          )}
+          <div className="sidebar__job-menu" ref={jobsMenuRef}>
+            <button
+              className="sidebar__job-more"
+              onClick={() => setJobsMenuOpen((open) => !open)}
+              title="More library actions"
+              aria-label="More library actions"
+              aria-expanded={jobsMenuOpen}
+              disabled={libraryId === null}
+            >
+              ⋯
+            </button>
+            {jobsMenuOpen && (
+              <div className="sidebar__job-popover">
+                {onAddFiles && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setJobsMenuOpen(false)
+                        onAddFiles()
+                      }}
+                      title="Copy files from this computer into a folder you pick"
+                    >
+                      Add files
+                    </button>
+                    <div className="sidebar__job-divider" role="separator" />
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    setJobsMenuOpen(false)
+                    onScanFiles()
+                  }}
+                  title="Find new, moved, and missing files. Nothing else — grouping and metadata are the items below."
+                  disabled={scanningFiles}
+                >
+                  {scanningFiles ? 'Scanning…' : 'Scan new files'}
+                </button>
+                <button
+                  onClick={() => {
+                    setJobsMenuOpen(false)
+                    onProbe()
+                  }}
+                  disabled={probing}
+                >
+                  {probing ? 'Collecting…' : 'Collect metadata'}
+                </button>
+                <button
+                  onClick={() => {
+                    setJobsMenuOpen(false)
+                    onReviewGrouping()
+                  }}
+                  title="Suggest grouping for unbundled files and new additions"
+                >
+                  Suggest grouping
+                </button>
+                <button
+                  onClick={() => {
+                    setJobsMenuOpen(false)
+                    onGenerateStoryboards()
+                  }}
+                  disabled={generatingStoryboards}
+                >
+                  {generatingStoryboards ? 'Generating…' : 'Generate storyboards'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-
+      )}
       <div className="sidebar__modes" role="tablist" aria-label="Browsing surface">
         <button
           role="tab"
@@ -741,7 +750,7 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__section">
-        {SYSTEM_VIEWS.map((v) => {
+        {SYSTEM_VIEWS.filter((v) => !availableViews || availableViews.includes(v.view)).map((v) => {
           // Unbundled lives in the Files surface; the rest are bundle browse
           // views (only active in Bundles mode).
           const isUnbundled = v.view === 'unbundled'
@@ -812,7 +821,7 @@ export function Sidebar({
           label="Smart Collections"
           collapsed={smartCollapsed}
           onToggle={() => setSmartCollapsed(!smartCollapsed)}
-          onAdd={onNewSmartCollection}
+          onAdd={navigationOnly ? undefined : onNewSmartCollection}
           addLabel="New smart collection"
         />
         {!smartCollapsed &&
@@ -825,7 +834,7 @@ export function Sidebar({
                 onClick={() =>
                   onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
                 }
-                onContextMenu={(e) => smartMenu(sc, e)}
+                onContextMenu={navigationOnly ? undefined : (e) => smartMenu(sc, e)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -862,7 +871,7 @@ export function Sidebar({
         onContextMenu={(e) => {
           const target = e.target as HTMLElement
           if (target.closest('.nav-item, button, input, select, textarea, label')) return
-          collectionsBackgroundMenu(e)
+          if (!navigationOnly) collectionsBackgroundMenu(e)
         }}
       >
         <SectionHeading
@@ -874,14 +883,14 @@ export function Sidebar({
           // unfolded as they get.
           showCaret={foldable.length > 0}
           toggleTitle={allCollapsed ? 'Expand all collections' : 'Collapse all collections'}
-          onAdd={() => createCollectionUnder(null)}
+          onAdd={navigationOnly ? undefined : () => createCollectionUnder(null)}
           addLabel="New collection"
           // Always the top level, whatever is open. Nesting is the collection
           // row's own right-click menu.
           addTitle="New top-level collection"
-          onContextMenu={collectionsBackgroundMenu}
+          onContextMenu={navigationOnly ? undefined : collectionsBackgroundMenu}
         />
-        {createError && (
+        {createError && !collectionDraft && (
           <div className="sidebar__heading" role="alert">
             {createError}
           </div>
@@ -889,6 +898,7 @@ export function Sidebar({
         {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
         {tree.map((node, i) => (
           <CollectionBranch
+            navigationOnly={navigationOnly}
             key={node.collection.id}
             node={node}
             depth={0}
@@ -903,7 +913,7 @@ export function Sidebar({
             }}
             multiSelectedIds={multiSelectedIds}
             onModifierSelect={modifierSelectRow}
-            onContextMenu={collectionMenu}
+            onContextMenu={navigationOnly ? (_c, e) => e.preventDefault() : collectionMenu}
             collectionCounts={collectionCounts}
             isExpanded={isExpanded}
             onToggle={toggleExpanded}
@@ -963,7 +973,14 @@ export function Sidebar({
             {maintenanceError}
           </div>
         )}
-        <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
+        <button
+          className="nav-item sidebar__settings"
+          onClick={(event) => {
+            // Preserve the dialog return target after WebKit pointer activation
+            event.currentTarget.focus({ preventScroll: true })
+            onOpenSettings()
+          }}
+        >
           <span className="nav-item__icon">
             <IconSettings />
           </span>
@@ -971,6 +988,20 @@ export function Sidebar({
         </button>
       </div>
 
+      {collectionDraft && (
+        <PromptDialog
+          title={collectionDraft.parentId ? 'New Subcollection' : 'New Collection'}
+          label="Collection name"
+          confirmLabel="Create"
+          pending={creatingCollection}
+          error={createError}
+          onCancel={() => {
+            setCollectionDraft(null)
+            setCreateError(null)
+          }}
+          onConfirm={submitCollection}
+        />
+      )}
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
   )
@@ -1000,7 +1031,7 @@ function SectionHeading({
   onToggle: () => void
   showCaret?: boolean
   toggleTitle?: string
-  onAdd: () => void
+  onAdd?: () => void
   addLabel: string
   addTitle?: string
   onContextMenu?: (e: React.MouseEvent) => void
@@ -1023,14 +1054,17 @@ function SectionHeading({
           </span>
         )}
       </button>
-      <button className="sidebar__add" onClick={onAdd} aria-label={addLabel} title={addTitle}>
-        +
-      </button>
+      {onAdd && (
+        <button className="sidebar__add" onClick={onAdd} aria-label={addLabel} title={addTitle}>
+          +
+        </button>
+      )}
     </div>
   )
 }
 
 function CollectionBranch({
+  navigationOnly = false,
   node,
   depth,
   trail,
@@ -1056,6 +1090,7 @@ function CollectionBranch({
   onReparentCollections,
   onMoveBundlesInto,
 }: {
+  navigationOnly?: boolean
   node: TreeNode
   depth: number
   // Ancestor continuation flags (one per column, length = depth - 1) + whether
@@ -1126,7 +1161,7 @@ function CollectionBranch({
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
-        draggable={!editing}
+        draggable={!editing && !navigationOnly}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
           // Grabbing a row that is part of a multi-selection drags the whole
@@ -1232,6 +1267,7 @@ function CollectionBranch({
       {expanded &&
         node.children.map((child, i) => (
           <CollectionBranch
+            navigationOnly={navigationOnly}
             key={child.collection.id}
             node={child}
             depth={depth + 1}

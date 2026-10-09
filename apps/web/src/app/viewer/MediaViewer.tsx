@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { thumbnailUrl } from '../../api/client'
+import { basisOf, rememberBasis } from '../../api/editBasis'
 import {
   useBundle,
   useBundleCursor,
@@ -121,11 +122,15 @@ export function MediaViewer({
 
   const cover = useMemo<ShellCoverActions | null>(() => {
     if (!currentId) return null
+    // Cover commands retain the displayed file's basis, including our last accepted cover write
+    const basis = basisOf(current)
     return {
-      onUseFrame: (time: number) => fileMutations.setCoverFrame.mutate({ fileId: currentId, time }),
-      onClear: () => fileMutations.clearCoverFrame.mutate(currentId),
+      onUseFrame: (time: number) =>
+        fileMutations.setCoverFrame.mutate(rememberBasis({ fileId: currentId, time }, basis)),
+      onClear: () =>
+        fileMutations.clearCoverFrame.mutate(rememberBasis({ fileId: currentId }, basis)),
     }
-  }, [currentId, fileMutations.clearCoverFrame, fileMutations.setCoverFrame])
+  }, [current, currentId, fileMutations.clearCoverFrame, fileMutations.setCoverFrame])
 
   const loading =
     bundleLoading || filesLoading || (current?.media_kind === 'video' && playbackLoading)

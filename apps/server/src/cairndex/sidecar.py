@@ -116,7 +116,13 @@ def watch_parent(server: uvicorn.Server) -> None:
     threading.Thread(target=wait_for_eof, name="cairndex-parent-watch", daemon=True).start()
 
 
+# Local recovery administration exits before authenticated HTTP server startup
 def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments and arguments[0] == "replica-recovery":
+        from cairndex.replicas.recovery_cli import main as recovery_main
+
+        return recovery_main(arguments[1:])
     parser = argparse.ArgumentParser(prog="cairndex-sidecar", description=__doc__)
     parser.add_argument(
         "--watch-parent",

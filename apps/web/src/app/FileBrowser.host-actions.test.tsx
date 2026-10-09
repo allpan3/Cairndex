@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 import { setActiveLibraryId } from '../api/client'
 import { hostLabelsFor } from '../platform'
@@ -41,7 +41,8 @@ vi.mock('../api/hooks', async () => {
 // The File Browser only exists inside an open library, and its card thumbnails
 // build library-scoped URLs, so the active library has to be set as it is in the
 // app rather than left unset.
-setActiveLibraryId('lib1')
+let libraryIndex = 0
+beforeEach(() => setActiveLibraryId(`host-actions-${++libraryIndex}`))
 
 const labels = hostLabelsFor('macos')
 

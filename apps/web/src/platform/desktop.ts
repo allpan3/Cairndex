@@ -29,6 +29,19 @@ const SERVER_URL_KEY = 'serverUrl'
 const DEVICE_AUTH_KEY = 'deviceAuth'
 const CONNECTIONS_KEY = 'connections'
 
+// Serializes transport and credential changes across asynchronous store and IPC work
+let transportQueue: Promise<unknown> = Promise.resolve()
+function changeTransport<T>(work: () => Promise<T>): Promise<T> {
+  const next = transportQueue.then(work)
+  transportQueue = next.catch(() => undefined)
+  return next
+}
+
+// Keeps grants separate even when two servers use the same library identifiers
+function deviceAuthKey(serverUrl: string): string {
+  return `${DEVICE_AUTH_KEY}:${serverUrl}`
+}
+
 // Couples a retained device token to the server that issued it
 interface DeviceAuthRecord {
   serverUrl: string
@@ -88,7 +101,9 @@ async function settingsStore() {
 // Loads a complete token grant only when it belongs to the configured server
 async function loadDeviceAuth(serverUrl: string): Promise<DeviceAuthRecord | null> {
   const store = await settingsStore()
-  const record = await store.get<DeviceAuthRecord>(DEVICE_AUTH_KEY)
+  const record =
+    (await store.get<DeviceAuthRecord>(deviceAuthKey(serverUrl))) ??
+    (await store.get<DeviceAuthRecord>(DEVICE_AUTH_KEY))
   if (
     !record ||
     record.serverUrl !== serverUrl ||
@@ -102,20 +117,22 @@ async function loadDeviceAuth(serverUrl: string): Promise<DeviceAuthRecord | nul
   return { ...record, libraryIds: [...new Set(record.libraryIds)] }
 }
 
-// Refreshes the native streaming relay after a server or token change
-async function configureMediaProxy(): Promise<void> {
-  if (!configuredServerUrl) {
-    mediaProxyBaseUrl = null
-    return
-  }
-  mediaProxyBaseUrl = await invoke<string>('configure_media_proxy', {
-    serverUrl: configuredServerUrl,
-    // The sidecar's token when the local connection is active, otherwise the
-    // paired device token. The shell decides which scoping applies by matching
-    // the running sidecar, so this layer never asserts it.
-    token: localToken ?? deviceToken,
-    libraryIds: [...deviceLibraryIds],
+// Commits credentials and URL together only after the native relay accepts the target
+async function configureTransport(
+  serverUrl: string,
+  nextLocalToken: string | null,
+  auth: DeviceAuthRecord | null,
+): Promise<void> {
+  const relay = await invoke<string>('configure_media_proxy', {
+    serverUrl,
+    token: nextLocalToken ?? auth?.token ?? null,
+    libraryIds: auth?.libraryIds ?? [],
   })
+  configuredServerUrl = serverUrl
+  localToken = nextLocalToken
+  deviceToken = auth?.token ?? null
+  deviceLibraryIds = new Set(auth?.libraryIds ?? [])
+  mediaProxyBaseUrl = relay
 }
 
 // Returns whether a URL belongs to the configured Cairndex server base path
@@ -228,16 +245,12 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     revealWindow: () => invoke('renderer_ready'),
     fetch: desktopFetch,
     assetUrl: desktopAssetUrl,
-    configureServer: async (serverUrl, options) => {
-      configuredServerUrl = serverUrl
-      localToken = options?.localToken ?? null
-      // A local connection has no paired device grant, and carrying a stale one
-      // across a switch would attach the wrong bearer to the wrong server.
-      const auth = localToken ? null : await loadDeviceAuth(serverUrl)
-      deviceToken = auth?.token ?? null
-      deviceLibraryIds = new Set(auth?.libraryIds ?? [])
-      await configureMediaProxy()
-    },
+    configureServer: (serverUrl, options) =>
+      changeTransport(async () => {
+        const nextLocalToken = options?.localToken ?? null
+        const auth = nextLocalToken ? null : await loadDeviceAuth(serverUrl)
+        await configureTransport(serverUrl, nextLocalToken, auth)
+      }),
     startLocalServer: () =>
       invoke<{ base_url: string; token: string }>('start_local_server').then((info) => ({
         baseUrl: info.base_url,
@@ -264,28 +277,32 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     },
     hasDeviceToken: () => deviceToken !== null,
     hasDeviceAccess: (libraryId) => deviceToken !== null && deviceLibraryIds.has(libraryId),
-    saveDeviceToken: async (token, libraryIds) => {
-      if (!configuredServerUrl) throw new Error('No Cairndex server is configured.')
-      const scopes = [...new Set(libraryIds.filter(Boolean))]
-      if (scopes.length === 0) throw new Error('Device pairing did not approve any libraries.')
-      const store = await settingsStore()
-      await store.set(DEVICE_AUTH_KEY, {
-        serverUrl: configuredServerUrl,
-        token,
-        libraryIds: scopes,
+    saveDeviceToken: (token, libraryIds) => {
+      const serverUrl = configuredServerUrl
+      return changeTransport(async () => {
+        if (!serverUrl) throw new Error('No Cairndex server is configured.')
+        const scopes = [...new Set(libraryIds.filter(Boolean))]
+        if (scopes.length === 0) throw new Error('Device pairing did not approve any libraries.')
+        const record = { serverUrl, token, libraryIds: scopes }
+        const store = await settingsStore()
+        await store.set(deviceAuthKey(serverUrl), record)
+        await store.save()
+        // A delayed pairing result belongs to the server where pairing began
+        if (configuredServerUrl === serverUrl && !localToken)
+          await configureTransport(serverUrl, null, record)
       })
-      await store.save()
-      deviceToken = token
-      deviceLibraryIds = new Set(scopes)
-      await configureMediaProxy()
     },
-    clearDeviceToken: async () => {
-      const store = await settingsStore()
-      await store.delete(DEVICE_AUTH_KEY)
-      await store.save()
-      deviceToken = null
-      deviceLibraryIds = new Set()
-      await configureMediaProxy()
+    clearDeviceToken: () => {
+      const serverUrl = configuredServerUrl
+      return changeTransport(async () => {
+        if (!serverUrl) return
+        const store = await settingsStore()
+        await store.delete(deviceAuthKey(serverUrl))
+        const legacy = await store.get<DeviceAuthRecord>(DEVICE_AUTH_KEY)
+        if (legacy?.serverUrl === serverUrl) await store.delete(DEVICE_AUTH_KEY)
+        await store.save()
+        if (configuredServerUrl === serverUrl) await configureTransport(serverUrl, localToken, null)
+      })
     },
     loadServerUrl: async () => {
       const store = await settingsStore()
@@ -293,9 +310,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     },
     saveServerUrl: async (serverUrl) => {
       const store = await settingsStore()
-      const auth = await store.get<DeviceAuthRecord>(DEVICE_AUTH_KEY)
       await store.set(SERVER_URL_KEY, serverUrl)
-      if (auth && auth.serverUrl !== serverUrl) await store.delete(DEVICE_AUTH_KEY)
       await store.save()
     },
     normalizeServerUrl: (value) => invoke<string>('normalize_server_url_command', { value }),
@@ -365,8 +380,8 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
         onConflict: onConflict ?? null,
       }),
     listenFileDrop: (handler) =>
-      // Tauri delivers OS file drops as a native webview event (dragDropEnabled),
-      // carrying the real absolute paths; internal DOM drag-and-drop is untouched.
+      // Retained native route; the shipping window disables dragDropEnabled to
+      // preserve internal HTML drops, so this listener currently receives none
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),

@@ -8,18 +8,22 @@ paths are deterministic from the file id, so generation is reproducible and
 de-duplicated (an existing thumbnail is reused).
 """
 
+import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from threading import BoundedSemaphore
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
-from cairndex.media import image_support, previews
+from cairndex.media import derived_cache, image_support, previews
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
+from cairndex.ownership.lifecycle import check_work_ownership
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
@@ -27,6 +31,12 @@ from cairndex.services.bundles import get_bundle, list_active_files
 
 THUMBNAIL_WIDTH = 480
 _THUMBNAILABLE = (MediaKind.VIDEO, MediaKind.IMAGE)
+_LIBRARY_PAGE_SIZE = 256
+# Bound request admission before any SQLite connection is checked out. A grid
+# can ask for dozens of cold tiles at once, and queued work must leave capacity
+# for browsing, edits, playback and job control.
+_REQUEST_SLOTS = BoundedSemaphore(4)
+_GENERATE_SLOTS = BoundedSemaphore(2)
 
 ProgressFn = Callable[[int, int | None], None]
 
@@ -59,25 +69,49 @@ def thumbnail_media_type(path: Path) -> str:
 
 
 def _generate(source: Path, dest: Path, kind: MediaKind, cover_time: float | None = None) -> None:
+    check_work_ownership()
     dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f"{dest.stem}.tmp-", suffix=dest.suffix, dir=dest.parent
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
     # The "thumbnail" filter picks a representative video frame without needing
     # the duration (no -ss seek, so very short clips still work).
     vf = f"thumbnail,{scale}" if kind is MediaKind.VIDEO and cover_time is None else scale
     seek = ["-ss", f"{cover_time:g}"] if cover_time is not None else []
     try:
-        run_ffmpeg(
-            [ffmpeg_exe(), "-y", *seek, "-i", str(source), "-vf", vf, "-frames:v", "1", str(dest)],
-            timeout=60,
-            stderr_limit=200,
-        )
-    except FfmpegError as exc:
-        raise ThumbnailError(str(exc)) from exc
-    if not dest.exists() or dest.stat().st_size == 0:
-        raise ThumbnailError(f"ffmpeg produced no thumbnail for {source}")
+        try:
+            with _GENERATE_SLOTS:
+                run_ffmpeg(
+                    [
+                        ffmpeg_exe(),
+                        "-y",
+                        *seek,
+                        "-i",
+                        str(source),
+                        "-vf",
+                        vf,
+                        "-frames:v",
+                        "1",
+                        str(temp_path),
+                    ],
+                    timeout=60,
+                    stderr_limit=200,
+                )
+        except FfmpegError as exc:
+            raise ThumbnailError(str(exc)) from exc
+        if not temp_path.exists() or temp_path.stat().st_size == 0:
+            raise ThumbnailError(f"ffmpeg produced no thumbnail for {source}")
+        check_work_ownership()
+        temp_path.replace(dest)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
-def generate_for_file(session: Session, file_id: str, *, force: bool = False) -> Path:
+def _generate_for_file(session: Session, file_id: str, *, force: bool) -> Path:
+    """Generate one thumbnail while its request admission slot is held."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
@@ -93,12 +127,25 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
 
     library_root = library_root_for_session(session)
     dest = thumbnail_cache_path(library_root, file_id)
-    if dest.exists() and not force:
+    if derived_cache.is_current(dest, asset_file.quick_fingerprint) and not force:
         return dest  # cache hit — reused, not regenerated
 
     source = resolve_within_root(library_root, asset_file.relative_path)
-    _generate(Path(source), dest, asset_file.media_kind, asset_file.cover_time)
+    # Multiple browser tabs can ask for the same cold tile concurrently. The
+    # lock and second cache check make that one atomic encode, while the global
+    # slots keep a page of different cold tiles from launching an ffmpeg storm.
+    with derived_cache.locked(dest):
+        if derived_cache.is_current(dest, asset_file.quick_fingerprint) and not force:
+            return dest
+        _generate(Path(source), dest, asset_file.media_kind, asset_file.cover_time)
+        derived_cache.write_fingerprint(dest, asset_file.quick_fingerprint)
     return dest
+
+
+def generate_for_file(session: Session, file_id: str, *, force: bool = False) -> Path:
+    """Generate or reuse one thumbnail without exhausting database sessions."""
+    with _REQUEST_SLOTS:
+        return _generate_for_file(session, file_id, force=force)
 
 
 def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
@@ -128,10 +175,11 @@ def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
 def generate_for_bundle(session: Session, bundle_id: str, *, force: bool = False) -> Path | None:
     """Generate (or reuse) the bundle's cover thumbnail, or None if it has no
     thumbnailable file."""
-    source_file = effective_cover_file(session, bundle_id)
-    if source_file is None:
-        return None
-    return generate_for_file(session, source_file.id, force=force)
+    with _REQUEST_SLOTS:
+        source_file = effective_cover_file(session, bundle_id)
+        if source_file is None:
+            return None
+        return _generate_for_file(session, source_file.id, force=force)
 
 
 @dataclass(frozen=True)
@@ -147,23 +195,37 @@ def generate_for_library(
     on_progress: ProgressFn | None = None,
     batch_size: int = 20,
 ) -> ThumbnailSummary:
-    """Generate thumbnails for every thumbnailable, available file in the library."""
-    stmt = select(AssetFile).where(
+    """Generate every eligible thumbnail in bounded keyset pages."""
+    eligible = (
         AssetFile.availability == FileAvailability.AVAILABLE,
         AssetFile.media_kind.in_(_THUMBNAILABLE),
     )
-    files = list(session.scalars(stmt))
-    total = len(files)
+    total = session.scalar(select(func.count()).select_from(AssetFile).where(*eligible)) or 0
     generated = failed = 0
-
-    for index, asset_file in enumerate(files, start=1):
-        try:
-            generate_for_file(session, asset_file.id, force=force)
-            generated += 1
-        except (ThumbnailError, PathSafetyError, ValidationError, OSError):
-            failed += 1
-        if on_progress is not None and index % batch_size == 0:
-            on_progress(index, total)
+    processed = 0
+    last_id: str | None = None
+    if on_progress is not None:
+        on_progress(0, total)
+    while True:
+        stmt = select(AssetFile.id).where(*eligible)
+        if last_id is not None:
+            stmt = stmt.where(AssetFile.id > last_id)
+        # Buffer one small page before media work. Progress checkpoints may
+        # commit the content session, so a streaming SQLite cursor cannot span
+        # the loop safely.
+        file_ids = list(session.scalars(stmt.order_by(AssetFile.id).limit(_LIBRARY_PAGE_SIZE)))
+        if not file_ids:
+            break
+        for file_id in file_ids:
+            last_id = file_id
+            try:
+                generate_for_file(session, file_id, force=force)
+                generated += 1
+            except (ThumbnailError, PathSafetyError, ValidationError, OSError):
+                failed += 1
+            processed += 1
+            if on_progress is not None and (processed % batch_size == 0 or processed == total):
+                on_progress(processed, total)
 
     if on_progress is not None:
         on_progress(total, total)

@@ -125,24 +125,45 @@ function isBlank(r: Condition): boolean {
   return false
 }
 
-/** AST → editor draft, for editing a saved Smart Collection built by this UI. */
-export function expressionToDraft(expr: FilterExpression | null): FilterDraft {
+/** Decode only conditions the simple editor can represent without losing meaning */
+export function expressionToDraft(expr: FilterExpression | null): FilterDraft | null {
   const root = expr?.root
   if (!root) return { match: 'all', rows: [newCondition()] }
   if ('op' in root && (root.op === 'and' || root.op === 'or')) {
-    const rows = root.children.filter((c): c is Condition => 'field' in c).map(toCondition)
-    return { match: root.op === 'and' ? 'all' : 'any', rows: rows.length ? rows : [newCondition()] }
+    const rows = root.children.map((node) => ('field' in node ? editableCondition(node) : null))
+    if (!rows.length || rows.some((row) => row === null)) return null
+    return { match: root.op === 'and' ? 'all' : 'any', rows: rows as Condition[] }
   }
-  if ('field' in root) return { match: 'all', rows: [toCondition(root)] }
-  return { match: 'all', rows: [newCondition()] }
+  const row = 'field' in root ? editableCondition(root) : null
+  return row ? { match: 'all', rows: [row] } : null
 }
 
-function toCondition(node: {
+/** Reject valid API predicates whose operator or value has no faithful UI control */
+function editableCondition(node: {
   field: string
   operator: string
   value?: unknown
   include_descendants?: boolean
-}): Condition {
+}): Condition | null {
+  const def = FIELDS.find((field) => field.field === node.field)
+  if (!def || !def.operators.includes(node.operator)) return null
+  const value = node.value
+  if (def.kind === 'text' && (typeof value !== 'string' || !value.trim())) return null
+  if (def.kind === 'number' && typeof value !== 'number') return null
+  if (def.kind === 'bool' && typeof value !== 'boolean') return null
+  // Date inputs cannot retain a time or zone; the unrated control emits only true
+  if (def.kind === 'date' && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)))
+    return null
+  if (def.kind === 'rating') {
+    if (node.operator === 'is_null') {
+      if (value !== true) return null
+    } else if (typeof value !== 'number' || value < 0 || value > 5 || value % 0.5 !== 0) return null
+  }
+  if (
+    (def.kind === 'tags' || def.kind === 'collections') &&
+    (!Array.isArray(value) || !value.length || !value.every((id) => typeof id === 'string'))
+  )
+    return null
   return {
     field: node.field,
     operator: node.operator,
