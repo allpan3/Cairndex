@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Make the publication privacy gate fail closed when Git ignores `rev-list --objects -z`.
+  Git 2.43 (the Ubuntu 24.04 package) printed newline-delimited output there, and the gate
+  then reported a pass after it had scanned no blobs.
 - Update source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q, denial of service through crafted
   source-map offsets) and Mako to 1.4.3 (GHSA-5639-2j2p-m4mx, a Windows-only template path
   traversal). Both are transitive dependencies: source-map-js of the web build tools, Mako of
