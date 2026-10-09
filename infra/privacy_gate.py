@@ -164,6 +164,8 @@ _QUOTED_SECRET = re.compile(
     r"\s*[:=]\s*(['\"])(?P<value>[^'\"\r\n]{12,})\1"
 )
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# A full SHA-1 or SHA-256 object ID, as `git rev-list --objects -z` prints it
+_OBJECT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _POSIX_HOME = re.compile(r"/(?:Users|home)/([^/\s'\"`]+)")
 _WINDOWS_HOME = re.compile(r"(?i)\b[A-Z]:\\Users\\([^\\\s'\"`]+)")
 _COMMIT_IDENTITY_EMAIL = re.compile(
@@ -558,6 +560,15 @@ def _range_objects(
             path = record.removeprefix(b"path=").decode("utf-8", errors="surrogateescape")
             objects[current_oid].add(path)
         else:
+            # A Git without NUL-delimited --objects output ignores -z and prints
+            # newline-delimited "oid path" lines, which would parse as one bogus
+            # record: cat-file then reads only its first object and the scan
+            # passes without seeing a single blob. Fail closed instead.
+            if not _OBJECT_ID.fullmatch(record):
+                raise SystemExit(
+                    "git rev-list --objects -z output is not NUL-delimited; "
+                    "this Git is too old for the privacy gate, so upgrade Git"
+                )
             current_oid = record.decode("ascii", errors="strict")
             objects.setdefault(current_oid, set())
     return commits, objects

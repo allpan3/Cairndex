@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _SCRIPT = Path(__file__).resolve().parents[3] / "infra" / "privacy_gate.py"
 _spec = importlib.util.spec_from_file_location("privacy_gate", _SCRIPT)
 assert _spec is not None and _spec.loader is not None
@@ -309,6 +311,34 @@ def test_range_scan_finds_a_deleted_secret_blob(tmp_path: Path):
     assert commits == 2
     assert blobs >= 1
     assert any("GitHub credential" in finding for finding in findings)
+
+
+# Fail closed when Git ignores -z, instead of passing a scan that read no blobs
+def test_range_scan_rejects_newline_delimited_object_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo = initialized_repo(tmp_path)
+    docs = repo / "docs"
+    docs.mkdir()
+    (docs / "readme.md").write_text("synthetic\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "initial synthetic fixture")
+    base = git(repo, "rev-parse", "HEAD")
+    (docs / "temporary.md").write_text(github_token(), encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "add fixture")
+
+    real_git = privacy_gate._git
+
+    # Git 2.43 accepts -z for rev-list --objects but still prints "oid path\n"
+    def git_without_nul_objects(repo_root: Path, *args: str, **kwargs: object) -> bytes:
+        if args[:3] == ("rev-list", "--objects", "-z"):
+            return real_git(repo_root, "rev-list", "--objects", *args[3:])
+        return real_git(repo_root, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(privacy_gate, "_git", git_without_nul_objects)
+    with pytest.raises(SystemExit, match="not NUL-delimited"):
+        privacy_gate.scan_range(repo, "HEAD", base, False, privacy_gate.load_allowlist(), [])
 
 
 # Scan the exact index bytes before Git creates a reachable commit
