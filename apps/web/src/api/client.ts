@@ -248,6 +248,23 @@ export async function send<T>(
 ): Promise<T> {
   if (isMetadataWrite(url, method))
     return sendMetadata<T>(url, method, body, editBasis(url, ifMatch))
+  return sendDirect<T>(url, method, body, ifMatch, includeLibraryScope)
+}
+
+/**
+ * Send one request to the server without the persisted metadata edit queue.
+ *
+ * Requests that carry a passphrase or a pairing code call this directly, not
+ * `send`. The queue keeps request bodies in localStorage, so a secret must
+ * never depend on `isMetadataWrite` rejecting its URL to stay out of it.
+ */
+async function sendDirect<T>(
+  url: string,
+  method: string,
+  body?: unknown,
+  ifMatch?: EditVersion,
+  includeLibraryScope = true,
+): Promise<T> {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
@@ -960,7 +977,7 @@ export const fetchAuthStatus = (libraryId: string, signal?: AbortSignal) =>
   getJson<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/status`, signal)
 
 export const unlockLibrary = (libraryId: string, passphrase: string) =>
-  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/unlock`, 'POST', { passphrase })
+  sendDirect<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/unlock`, 'POST', { passphrase })
 
 export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
@@ -1014,7 +1031,7 @@ export const pollDevicePairing = (pollKey: string, signal?: AbortSignal) =>
   })
 
 export const approveDevicePairing = (pairCode: string, libraryIds: string[]) =>
-  send<void>('/api/v1/auth/pair/approve', 'POST', {
+  sendDirect<void>('/api/v1/auth/pair/approve', 'POST', {
     pair_code: pairCode,
     library_ids: libraryIds,
   })
@@ -1656,7 +1673,7 @@ export const configureLibraryAccess = (
   passphrase: string | null,
   current: string,
 ) =>
-  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/settings`, 'PUT', {
+  sendDirect<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/settings`, 'PUT', {
     passphrase,
     current_passphrase: current || null,
   })

@@ -19,6 +19,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Alembic.
 - Update AnyIO, brace-expansion, undici, rustls and rustls-webpki to patch releases that resolve
   the current dependency audit findings.
+- Send library passphrases and device pairing codes without the metadata edit queue. The
+  queue stores request bodies in localStorage, and before this change only the URL check in
+  `isMetadataWrite` kept these secrets out of it.
 
 ### Internal
 
