@@ -53,7 +53,7 @@ jobs:
         run: npm audit --audit-level=high
         working-directory: apps/desktop
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.11.23"
           enable-cache: true
@@ -86,7 +86,7 @@ jobs:
       - name: Install ffmpeg (for scanner/probe/thumbnail tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.11.23"
           enable-cache: true
@@ -118,7 +118,7 @@ jobs:
       - name: Install ffmpeg (the smoke test scans and previews real fixtures)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.11.23"
           enable-cache: true
@@ -178,7 +178,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.11.23"
           enable-cache: true
@@ -281,7 +281,7 @@ jobs:
         run: npm run build
         working-directory: apps/web
       - name: Install uv (for the sidecar bundle)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.11.23"
           enable-cache: true
