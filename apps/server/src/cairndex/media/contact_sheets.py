@@ -86,8 +86,9 @@ def _validated(cols: int, rows: int, width: int) -> tuple[int, int, int]:
         )
     if not (MIN_SHEET_WIDTH <= width <= MAX_SHEET_WIDTH):
         raise ValidationError(f"width must be between {MIN_SHEET_WIDTH} and {MAX_SHEET_WIDTH}")
-    # Even, so `scale=cell:-2` derives an even height for every cell.
-    return cols, rows, width - (width % 2)
+    # Even, so `scale=cell:-2` derives an even height for every cell. int() lets
+    # CodeQL see plain integers, not request values, in the cache file name.
+    return int(cols), int(rows), width - (width % 2)
 
 
 def frame_times(duration: float, cols: int, rows: int) -> list[float]:
@@ -129,7 +130,7 @@ def sheet_for_file(
 
     times = frame_times(duration, cols, rows)
     library_root = library_root_for_session(session)
-    dest = sheet_cache_path(library_root, file_id, cols, rows, width)
+    dest = sheet_cache_path(library_root, asset_file.id, cols, rows, width)
     if derived_cache.is_current(dest, asset_file.quick_fingerprint):
         return dest, times
 

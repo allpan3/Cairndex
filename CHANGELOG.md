@@ -22,6 +22,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Send library passphrases and device pairing codes without the metadata edit queue. The
   queue stores request bodies in localStorage, and before this change only the URL check in
   `isMetadataWrite` kept these secrets out of it.
+- Build thumbnail, preview, contact-sheet and storyboard cache paths, and the trash folder
+  that a restore removes, from database values and server constants instead of request
+  text. Send the shuffle seed to SQLite as a bound parameter. Behavior does not change: each
+  request value already had to match a database row, a fixed list or a range first.
 
 ### Internal
 

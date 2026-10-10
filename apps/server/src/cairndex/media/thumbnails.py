@@ -126,7 +126,7 @@ def _generate_for_file(session: Session, file_id: str, *, force: bool) -> Path:
             raise ThumbnailError(str(exc)) from exc
 
     library_root = library_root_for_session(session)
-    dest = thumbnail_cache_path(library_root, file_id)
+    dest = thumbnail_cache_path(library_root, asset_file.id)
     if derived_cache.is_current(dest, asset_file.quick_fingerprint) and not force:
         return dest  # cache hit — reused, not regenerated
 
