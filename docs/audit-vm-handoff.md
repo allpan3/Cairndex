@@ -29,8 +29,8 @@ deleted, and their releases are drafts. Do not create or publish a release.
 
 | Ref | Purpose | State |
 | --- | --- | --- |
-| `main` | Accepted migration foundation, dependency and privacy-gate repairs | PR #38 merge `a8c536e1709360a84034fc8185dcff55b4e8e812`; then `718f1820` (source-map-js and Mako advisories) and PR #42 merge `7d5e50b68861d2f8936f51ba63d774fdc3f18cfc` (privacy gate fails closed when Git ignores `rev-list -z`) |
-| `feature/portable-library-lifecycle` | Application, tests and this handoff | Groups 2–5 combined with owner approval; published at `14dfb6a561df42ce6729167f2dba068def3727ef` on the PR #38 merge; rebased onto current main for its PR; acceptance and merge pending |
+| `main` | Accepted migration foundation, dependency and privacy-gate repairs | PR #38 merge `a8c536e1709360a84034fc8185dcff55b4e8e812`; then `718f1820` (source-map-js and Mako advisories) and PR #42 merge `7d5e50b68861d2f8936f51ba63d774fdc3f18cfc` (privacy gate fails closed when Git ignores `rev-list -z`); PR #45 merge `cbf1643d9d1b09921aea4df1b6abd181deac375b` (groups 2–5) |
+| `feature/portable-library-lifecycle` | Application, tests and this handoff | Groups 2–5 combined with owner approval; published at `14dfb6a561df42ce6729167f2dba068def3727ef` on the PR #38 merge; rebased onto main `7d5e50b6`; merged through PR #45, merge commit `cbf1643d9d1b09921aea4df1b6abd181deac375b` |
 | `fix/library-ownership-lifecycle` | Preserved cumulative audit reference | Exact commit `cd38493fcb306198ff4af00e19b5d78ada241ceb`, tree `912a0e657005ade3fb3e3b089df7c2343305fb99`; extraction source only |
 
 The earlier application checks used a local checkpoint that never reached the

@@ -136,9 +136,11 @@ def _preview_source(session: Session, file_id: str) -> tuple[Path, AssetFile]:
 
 # Validate the public preview size ladder
 def _preview_size(size: int) -> PreviewSize:
-    if size not in PREVIEW_SIZES:
-        raise ValidationError("unsupported preview size")
-    return cast(PreviewSize, size)
+    # Return the ladder's own value, so cache file names hold only server constants
+    for allowed in PREVIEW_SIZES:
+        if size == allowed:
+            return cast(PreviewSize, allowed)
+    raise ValidationError("unsupported preview size")
 
 
 # Generate or reuse one WebP derivative with atomic replacement
@@ -160,7 +162,7 @@ def preview_for_file(session: Session, file_id: str, size: int) -> Path:
     preview_size = _preview_size(size)
     source, asset_file = _preview_source(session, file_id)
     library_root = library_root_for_session(session)
-    dest = preview_cache_path(library_root, file_id, preview_size)
+    dest = preview_cache_path(library_root, asset_file.id, preview_size)
     return _preview_for_source(source, dest, preview_size, asset_file.quick_fingerprint)
 
 

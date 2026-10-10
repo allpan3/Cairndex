@@ -19,8 +19,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Alembic.
 - Update AnyIO, brace-expansion, undici, rustls and rustls-webpki to patch releases that resolve
   the current dependency audit findings.
+- Send library passphrases and device pairing codes without the metadata edit queue. The
+  queue stores request bodies in localStorage, and before this change only the URL check in
+  `isMetadataWrite` kept these secrets out of it.
+- Build thumbnail, preview, contact-sheet and storyboard cache paths, and the trash folder
+  that a restore removes, from database values and server constants instead of request
+  text. Send the shuffle seed to SQLite as a bound parameter. Behavior does not change: each
+  request value already had to match a database row, a fixed list or a range first.
 
 ### Internal
+
+- CodeQL no longer analyzes test code (`.github/codeql/codeql-config.yml`). The unit-test
+  localStorage stub keeps every key in one Map, so CodeQL reported false clear-text storage
+  and DOM XSS alerts in application code.
 
 - Repair the Docker smoke and backup-restore acceptance scripts for portable
   format three. They no longer expect `.cairndex/library.db`, the scan route or

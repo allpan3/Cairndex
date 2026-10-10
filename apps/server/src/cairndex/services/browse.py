@@ -329,7 +329,10 @@ def _shuffle_order(seed: int) -> Any:
     # in rowid order — no shuffle at all. The modulus is prime, so any non-zero
     # multiplier below it permutes rather than collides.
     multiplier = (seed * 2_654_435_761 + 40_503) % 2_147_483_647 or 1
-    return text(f"(asset_bundles._rowid_ * {multiplier}) % 2147483647")
+    # A bound parameter, not SQL text: the seed comes from the request
+    return text("(asset_bundles._rowid_ * :shuffle_multiplier) % 2147483647").bindparams(
+        shuffle_multiplier=multiplier
+    )
 
 
 def browse_bundles(

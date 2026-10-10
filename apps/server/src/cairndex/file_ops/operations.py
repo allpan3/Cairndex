@@ -534,7 +534,7 @@ def restore(session: Session, root: Path, *, operation_id: str) -> OperationResu
     entries = [trash.entry_from_payload(item) for item in operation.payload.get("entries", [])]
     restored = _restore_entries(session, root, entries)
 
-    trash.prune_operation_dir(root, operation_id)
+    trash.prune_operation_dir(root, operation.id)
     journal.mark_undone(session, operation)
     return OperationResult(
         operation=operation,

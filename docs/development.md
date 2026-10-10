@@ -898,6 +898,19 @@ pull-request volume bounded. Vulnerability reports belong in GitHub's private
 reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
 issue containing real owner data.
 
+The "CodeQL" check on a pull request fails when the PR has a new alert of high
+or critical security severity; it is not a required check. An alert is new when
+main has no alert with the same fingerprint. The fingerprint comes from the text
+of the flagged line, so a PR that edits a line with an open or dismissed alert
+makes that alert new again. Test code is not analyzed
+(`.github/codeql/codeql-config.yml`). For each new alert, read its data flow from
+the source to the sink. When a request value reaches a file path, a command or
+SQL, take the value from the database or from a server constant, or pass it as a
+bound parameter: such a fix stays fixed when the line changes later. Dismiss an
+alert only when the behavior is intended, for example the absolute folder that
+the owner gives to Create/Open, and write the reason and the code that limits the
+value in the dismissal.
+
 Every third-party workflow action outside GitHub's own `actions/*` and
 `github/*` namespaces is pinned to an immutable commit SHA. Keep the human
 version comment beside each pin, and let Dependabot propose reviewed updates;

@@ -41,7 +41,7 @@ SamplingMode = Literal["keyframe", "exact"]
 # as one long GOP yields a single tile — so it is worth one full decode instead.
 _MIN_KEYFRAME_SAMPLES = 2
 
-_SHEET_STEM = re.compile(r"^sb_\d{3}$")
+_SHEET_STEM = re.compile(r"^sb_[0-9]{3}$")
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-_]|\[[0-?]*[ -/]*[@-~])")
 # One showinfo line per sampled frame, before `tile` packs it into a sheet.
 _SHOWINFO_FRAME = re.compile(
@@ -204,7 +204,7 @@ def _cached_context(
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
     library_root = library_root_for_session(session)
-    cache_dir = storyboard_cache_dir(library_root, file_id)
+    cache_dir = storyboard_cache_dir(library_root, asset_file.id)
     return asset_file, library_root, cache_dir
 
 
@@ -212,7 +212,7 @@ def _cached_context(
 def cached_index_for_file(session: Session, file_id: str) -> Path:
     asset_file, library_root, cache_dir = _cached_context(session, file_id)
     index = cache_dir / "index.vtt"
-    if not is_current_index(library_root, file_id, asset_file.quick_fingerprint):
+    if not is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint):
         raise NotFoundError("storyboard index not found")
     return index
 
@@ -222,7 +222,8 @@ def cached_sheet_for_file(session: Session, file_id: str, sheet_name: str) -> Pa
     _asset_file, _library_root, cache_dir = _cached_context(session, file_id)
     if not _SHEET_STEM.fullmatch(sheet_name):
         raise NotFoundError("storyboard sheet not found")
-    sheet = cache_dir / f"{sheet_name}.jpg"
+    # Rebuild the name from its number, so the path holds no request text
+    sheet = cache_dir / f"sb_{int(sheet_name[3:]):03d}.jpg"
     if not sheet.exists():
         raise NotFoundError("storyboard sheet not found")
     return sheet
@@ -463,8 +464,8 @@ def generate_for_file(
     duration = _duration(asset_file)
     assert duration is not None
     library_root = library_root_for_session(session)
-    cache_dir = storyboard_cache_dir(library_root, file_id)
-    if not force and is_current_index(library_root, file_id, asset_file.quick_fingerprint):
+    cache_dir = storyboard_cache_dir(library_root, asset_file.id)
+    if not force and is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint):
         return StoryboardFileResult("skipped", path=cache_dir / "index.vtt", reason="cache current")
 
     temp_dir: Path | None = None
