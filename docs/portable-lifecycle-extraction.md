@@ -7,8 +7,8 @@ Branch: `feature/portable-library-lifecycle`. It was published on the PR #38 mer
 history rewrite of 2026-10-09.
 Group 1 merged through PR #38. The owner approved one application branch for
 former groups 2–5, with separate functional test rounds. The application is
-implemented and locally tested. Functional acceptance and merge are pending. Branch publication is authorized
-for the [VM handoff](audit-vm-handoff.md).
+implemented and tested in the [VM guests](audit-vm-handoff.md). PR #45 merged it
+into main on 2026-10-10 with merge commit `cbf1643d`.
 
 Normal format-three Create/Open, private access, Release/Reopen, snapshots and
 recovery share the catalog workspace with Update, browsing, metadata edits and
@@ -352,9 +352,9 @@ owner decision; no product code was changed for them.
 
 The platform gates, Docker checks, the sustained native session and the four
 functional rounds are complete on synthetic data in the test guests. No scripted
-owner test is required. The next steps are the owner's decision on the open
-observations above, application acceptance, and the exact PR privacy gates before
-the PR is opened and merged. Source operations/SMB and deployment/distribution
+owner test is required. PR #45 merged the branch on 2026-10-10 (merge commit
+`cbf1643d`). The next step is the owner's decision on the open observations
+above. Source operations/SMB and deployment/distribution
 remain separate groups. No real conversion, registration or replacement is approved.
 `CONVERSION_AVAILABLE = False`; there is no owner conversion command.
 

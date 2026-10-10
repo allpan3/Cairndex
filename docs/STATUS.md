@@ -60,8 +60,9 @@ throughput is limited to 32 entries per phase per second, which makes the frozen
 discovery test run close to its 60-second wait and is slow for large libraries;
 a same-device recovery right after an Update can be blocked by `sources` gap
 rows; the recovery CLI `prepare` does not require Release. Minor UI observations
-are in the validation record. Application acceptance by the owner is the next
-step; the PR is prepared but not opened.
+are in the validation record. PR #45 merged the branch into main on 2026-10-10
+with merge commit `cbf1643d`. Its CodeQL check reported 44 new alerts; the
+branch `security/codeql-triage` fixes them or records why each one is safe.
 
 The installed app is unchanged. The owner profile was held during native tests
 and restored with matching hashes, modes and links. No real-library operation is
