@@ -1,99 +1,84 @@
-"""Per-library engine + routing isolation tests (ADR-0008, phase 3/4 slice)."""
+"""Normal portable libraries isolate authored metadata and private SQLite."""
 
+import json
 from pathlib import Path
+from uuid import uuid4
 
-import pytest
-from fastapi.testclient import TestClient
-
-from cairndex.registry import library_package as pkg
-
-
-@pytest.fixture
-def client(isolated_client: TestClient) -> TestClient:
-    """Use real per-library resolution (not the shared-session client) so these
-    isolation tests open each library's own DB."""
-    return isolated_client
+from cairndex.replicas import service
+from cairndex.replicas.catalog import jobs
 
 
-def _create_library(client: TestClient, root: Path, name: str) -> str:
+def create(client, root: Path):
     root.mkdir()
-    resp = client.post(
-        "/api/v1/libraries/create",
-        json={"root_path": str(root), "display_name": name},
+    response = client.post(
+        "/api/v1/libraries/create", json={"root_path": str(root), "display_name": root.name}
     )
-    assert resp.status_code == 201, resp.text
-    return resp.json()["id"]
+    assert response.status_code == 201, response.text
+    identity = response.json()["id"]
+    base = f"/api/v1/libraries/{identity}/replica/catalog"
+    for _ in range(8):
+        client.get(base + "/entities/collections")
+        service.exchange(identity)
+    return identity, base
 
 
-def test_collection_isolated_between_libraries(client: TestClient, tmp_path: Path) -> None:
-    lib_a = _create_library(client, tmp_path / "A", "A")
-    lib_b = _create_library(client, tmp_path / "B", "B")
-
-    created = client.post(
-        f"/api/v1/libraries/{lib_a}/collections",
-        json={"name": "Holidays"},
+def collection(client, identity, base, name):
+    cells = client.get(base + "/creation/collections").json()["cells"]
+    cells["name"] = json.dumps(name)
+    store = service._handles[identity][0]
+    preview = uuid4().hex
+    response = client.post(
+        base + "/jobs",
+        json={
+            "operation": preview,
+            "action": "preview",
+            "body": {"action": "create", "family": "collections", "cells": cells},
+        },
     )
-    assert created.status_code == 201, created.text
-
-    # Library A sees it.
-    in_a = client.get(f"/api/v1/libraries/{lib_a}/collections").json()["items"]
-    assert [c["name"] for c in in_a] == ["Holidays"]
-
-    # Library B does not — separate library.db (ADR-0008).
-    in_b = client.get(f"/api/v1/libraries/{lib_b}/collections").json()["items"]
-    assert in_b == []
-
-
-def test_library_routes_hit_separate_db_files(client: TestClient, tmp_path: Path) -> None:
-    lib_a = _create_library(client, tmp_path / "A", "A")
-    lib_b = _create_library(client, tmp_path / "B", "B")
-
-    client.post(f"/api/v1/libraries/{lib_a}/collections", json={"name": "OnlyA"})
-    client.post(f"/api/v1/libraries/{lib_b}/collections", json={"name": "OnlyB"})
-
-    # The names live in each library's own library.db, read directly off disk.
-    from sqlalchemy import create_engine, text
-
-    for root_name, expected in (("A", "OnlyA"), ("B", "OnlyB")):
-        db = pkg.db_path(tmp_path / root_name)
-        eng = create_engine(f"sqlite:///{db.as_posix()}")
-        try:
-            with eng.connect() as conn:
-                names = [r[0] for r in conn.execute(text("SELECT name FROM collections"))]
-        finally:
-            eng.dispose()
-        assert names == [expected]
+    assert response.status_code == 202, response.text
+    jobs.run_one(store)
+    result = client.get(base + "/jobs/" + preview).json()
+    assert result["state"] == "succeeded", result
+    operation = uuid4().hex
+    response = client.post(
+        base + "/jobs",
+        json={
+            "operation": operation,
+            "action": "commit_preview",
+            "body": {"job": preview, "receipt": result["receipt"]},
+        },
+    )
+    assert response.status_code == 202
+    jobs.run_one(store)
+    assert client.get(base + "/jobs/" + operation).json()["state"] == "succeeded"
+    return json.loads(cells["id"])
 
 
-def test_get_collection_scoped_to_its_library(client: TestClient, tmp_path: Path) -> None:
-    lib_a = _create_library(client, tmp_path / "A", "A")
-    lib_b = _create_library(client, tmp_path / "B", "B")
+def test_collections_and_databases_are_library_scoped(isolated_client, tmp_path):
+    client = isolated_client
+    a, base_a = create(client, tmp_path / "A")
+    b, base_b = create(client, tmp_path / "B")
+    entity = collection(client, a, base_a, "Only A")
+    collection(client, b, base_b, "Only B")
+    for identity, base, name in ((a, base_a, "Only A"), (b, base_b, "Only B")):
+        rows = client.get(base + "/entities/collections").json()["items"]
+        assert len(rows) == 1
+        assert rows[0]["fields"]["name"]["value"] == json.dumps(name)
+        assert service._handles[identity][0].path.is_file()
+    assert service._handles[a][0].path != service._handles[b][0].path
+    assert not list((tmp_path / "A").rglob("*.db*"))
+    assert not list((tmp_path / "B").rglob("*.db*"))
+    assert client.get(base_a + "/entities/collections/" + entity).status_code == 200
+    assert client.get(base_b + "/entities/collections/" + entity).status_code == 409
 
-    coll_id = client.post(f"/api/v1/libraries/{lib_a}/collections", json={"name": "X"}).json()["id"]
 
-    # Fetchable in its own library, 404 in the other.
-    assert client.get(f"/api/v1/libraries/{lib_a}/collections/{coll_id}").status_code == 200
-    assert client.get(f"/api/v1/libraries/{lib_b}/collections/{coll_id}").status_code == 404
-
-
-def test_unknown_library_404(client: TestClient) -> None:
-    resp = client.get("/api/v1/libraries/01JZZZZZZZZZZZZZZZZZZZZZZZ/collections")
-    assert resp.status_code == 404
+def test_unknown_library_is_refused(isolated_client):
+    response = isolated_client.get("/api/v1/libraries/unknown/replica/catalog/entities/collections")
+    assert response.status_code == 404
 
 
-def test_unavailable_library_404(client: TestClient, tmp_path: Path) -> None:
+def test_missing_descriptor_is_refused(isolated_client, tmp_path):
     root = tmp_path / "A"
-    lib = _create_library(client, root, "A")
-    pkg.db_path(root).unlink()  # library.db missing -> unavailable
-
-    resp = client.get(f"/api/v1/libraries/{lib}/collections")
-    assert resp.status_code == 404
-    assert "unavailable" in resp.json()["message"]
-
-
-def test_collection_persists_across_requests(client: TestClient, tmp_path: Path) -> None:
-    """A second request re-opens the same cached engine and sees prior writes."""
-    lib = _create_library(client, tmp_path / "A", "A")
-    client.post(f"/api/v1/libraries/{lib}/collections", json={"name": "Persisted"})
-    items = client.get(f"/api/v1/libraries/{lib}/collections").json()["items"]
-    assert [c["name"] for c in items] == ["Persisted"]
+    _, base = create(isolated_client, root)
+    (root / ".cairndex/manifest.json").unlink()
+    assert isolated_client.get(base + "/entities/collections").status_code == 404

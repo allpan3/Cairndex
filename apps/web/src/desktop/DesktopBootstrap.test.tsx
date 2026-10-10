@@ -19,6 +19,7 @@ import {
 vi.mock('../platform', () => ({
   configureHostServer: vi.fn().mockResolvedValue(undefined),
   hostFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
+  getHostPlatform: () => ({ kind: 'desktop' }),
   initializeHostPlatform: vi.fn().mockResolvedValue({ kind: 'desktop' }),
   listenHostLifecycle: vi.fn().mockResolvedValue(() => undefined),
   listenHostMenu: vi.fn().mockResolvedValue(() => undefined),

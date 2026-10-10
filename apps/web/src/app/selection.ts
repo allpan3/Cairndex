@@ -26,7 +26,7 @@ export function isMultiSelection<T>(selected: ReadonlySet<T>): boolean {
 export function suppressShiftSelection(e: React.MouseEvent): void {
   if (!e.shiftKey) return
   const target = e.target as HTMLElement
-  if (target.closest('input, textarea, [contenteditable="true"]')) return
+  if (target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return
   e.preventDefault()
   globalThis.getSelection?.()?.removeAllRanges()
 }
@@ -51,6 +51,51 @@ export function suppressShiftSelection(e: React.MouseEvent): void {
  */
 export function dropRightClickSelection(target: EventTarget | null): void {
   const element = target instanceof Element ? target : null
-  if (element?.closest('input, textarea, [contenteditable="true"]')) return
+  if (element?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return
   globalThis.getSelection?.()?.removeAllRanges()
+}
+// Pointer and keyboard selection share modifier and anchor rules
+export type SelectionModifiers = Pick<React.MouseEvent, 'shiftKey' | 'metaKey' | 'ctrlKey'>
+
+// Resolve an inclusive range in loaded order, retaining existing items for additive selection
+export function selectionRange(
+  ids: string[],
+  anchor: string | null,
+  target: string,
+  base: ReadonlySet<string> = new Set(),
+): Set<string> {
+  const end = ids.indexOf(target)
+  if (end < 0) return new Set(base)
+  const found = anchor === null ? -1 : ids.indexOf(anchor)
+  const start = found < 0 ? end : found
+  return new Set([...base, ...ids.slice(Math.min(start, end), Math.max(start, end) + 1)])
+}
+
+// Clicking listing content establishes keyboard ownership without moving a text caret
+export function focusListing(event: React.MouseEvent<HTMLElement>): void {
+  const target = event.target instanceof Element ? event.target : null
+  if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
+    return
+  if (target?.closest('button, a') && !target.closest('[data-collection-id], [data-relpath]'))
+    return
+  event.currentTarget.focus({ preventScroll: true })
+  suppressShiftSelection(event)
+}
+
+// Editors, modal overlays and nested controls retain their own keyboard commands
+export function listingOwnsKey(event: KeyboardEvent, root: HTMLElement | null): boolean {
+  if (event.defaultPrevented || !root) return false
+  const target = event.target instanceof Element ? event.target : document.activeElement
+  if (!target || !root.contains(target)) return false
+  if (
+    target.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"]',
+    )
+  )
+    return false
+  if (target.closest('button, a') && !target.closest('[data-collection-id], [data-relpath]'))
+    return false
+  return !Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]')).some(
+    (dialog) => !dialog.matches('dialog:not([open])') && !dialog.contains(root),
+  )
 }

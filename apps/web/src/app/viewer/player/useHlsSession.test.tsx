@@ -389,7 +389,7 @@ test('a source with nothing to decide about plays natively', async () => {
     kind: 'native',
     src: '/file?path=loose.mp4',
     mimeType: 'video/mp4',
-    startAt: 0,
+    startAt: undefined,
   })
   // Neither a row nor a path, so there is nothing to ask the server about.
   expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
@@ -414,7 +414,7 @@ test('stepping between undecidable sources does not carry the previous playhead'
   // share a null file id and a null path.
   rerender({ url: '/file?path=b.mp4' })
   await waitFor(() => expect(result.current.source?.src).toBe('/file?path=b.mp4'))
-  expect(result.current.source?.startAt).toBe(0)
+  expect(result.current.source?.startAt).toBeUndefined()
 })
 
 test('a source with no readable URL at all stays idle', async () => {
@@ -519,4 +519,28 @@ test('a keepalive response says alive, gone, or nothing at all', () => {
   expect(sessionTouchOutcome(null)).toBe('unknown')
   expect(sessionTouchOutcome(503)).toBe('alive')
   expect(sessionTouchOutcome(429)).toBe('alive')
+})
+
+// A seek made during a pending replacement wins over the request's earlier position
+test('a delayed quality decision attaches at the latest playhead', async () => {
+  let position = 12
+  let settle!: (decision: PlaybackDecisionResponse) => void
+  mocks.requestPlaybackDecision
+    .mockResolvedValueOnce(remuxDecision('initial'))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve
+        }),
+    )
+  const { result } = renderHook(() =>
+    useHlsSession({ ...options('f1'), getCurrentTime: () => position }),
+  )
+  await waitFor(() => expect(result.current.source?.src).toBe('/s/initial/index.m3u8'))
+  act(() => result.current.setParam('maxHeight', 720))
+  await waitFor(() => expect(settle).toBeDefined())
+  expect(mocks.requestPlaybackDecision.mock.calls[1]?.[1]?.start_s).toBe(12)
+  position = 87
+  await act(async () => settle(remuxDecision('replacement')))
+  expect(result.current.source?.startAt).toBe(87)
 })

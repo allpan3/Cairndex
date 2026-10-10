@@ -207,7 +207,7 @@ test('stores and clears one complete server-bound device grant', async () => {
 
   await runtime.saveDeviceToken('cdx_secret', ['lib-one', 'lib-one'])
 
-  expect(mocks.storeSet).toHaveBeenCalledWith('deviceAuth', {
+  expect(mocks.storeSet).toHaveBeenCalledWith('deviceAuth:http://nas.local:8000', {
     serverUrl: 'http://nas.local:8000',
     token: 'cdx_secret',
     libraryIds: ['lib-one'],
@@ -216,7 +216,7 @@ test('stores and clears one complete server-bound device grant', async () => {
 
   await runtime.clearDeviceToken()
 
-  expect(mocks.storeDelete).toHaveBeenCalledWith('deviceAuth')
+  expect(mocks.storeDelete).toHaveBeenCalledWith('deviceAuth:http://nas.local:8000')
   expect(runtime.hasDeviceAccess('lib-one')).toBe(false)
   expect(mocks.invoke).toHaveBeenLastCalledWith('configure_media_proxy', {
     serverUrl: 'http://nas.local:8000',
@@ -269,4 +269,88 @@ test('routes window close through ExitGate and awaits SPA exit tasks', async () 
   stopTask()
   expect(mocks.stopClose).toHaveBeenCalledOnce()
   expect(mocks.stopExit).toHaveBeenCalledOnce()
+})
+
+// Mimics persisted grants without retaining any real device credentials
+function storedGrants() {
+  const records = new Map<string, unknown>()
+  mocks.storeGet.mockImplementation(async (key: string) => records.get(key) ?? null)
+  mocks.storeSet.mockImplementation(async (key: string, value: unknown) => records.set(key, value))
+  mocks.storeDelete.mockImplementation(async (key: string) => records.delete(key))
+  mocks.invoke.mockResolvedValue('http://127.0.0.1:49152/relay')
+  return records
+}
+
+test('retains independent grants across two remotes, local activation and restart', async () => {
+  storedGrants()
+  let runtime = await createDesktopRuntime()
+  await runtime.configureServer('https://one.example')
+  await runtime.saveDeviceToken('one-token', ['same-id'])
+  await runtime.configureServer('https://two.example')
+  expect(runtime.hasDeviceAccess('same-id')).toBe(false)
+  await runtime.saveDeviceToken('two-token', ['same-id'])
+  await runtime.configureServer('http://127.0.0.1:51000', { localToken: 'local-token' })
+  expect(runtime.hasDeviceToken()).toBe(false)
+  runtime = await createDesktopRuntime()
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetch)
+  for (const [server, token] of [
+    ['one', 'one-token'],
+    ['two', 'two-token'],
+  ]) {
+    await runtime.configureServer(`https://${server}.example`)
+    await runtime.fetch(`https://${server}.example/api/v1/libraries/same-id/bundles`)
+    expect(new Headers(fetch.mock.lastCall?.[1]?.headers).get('Authorization')).toBe(
+      `Bearer ${token}`,
+    )
+  }
+  await runtime.clearDeviceToken()
+  await runtime.configureServer('https://one.example')
+  expect(runtime.hasDeviceAccess('same-id')).toBe(true)
+  await runtime.configureServer('https://two.example')
+  expect(runtime.hasDeviceAccess('same-id')).toBe(false)
+})
+
+test('never sends the old credential to a target whose settings are still loading', async () => {
+  storedGrants()
+  const runtime = await createDesktopRuntime()
+  await runtime.configureServer('https://one.example')
+  await runtime.saveDeviceToken('one-token', ['same-id'])
+  let finish!: (value: null) => void
+  mocks.storeGet.mockImplementation(
+    () =>
+      new Promise<null>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const switching = runtime.configureServer('https://two.example')
+  await vi.waitFor(() => expect(finish).toBeDefined())
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetch)
+  await runtime.fetch('https://two.example/api/v1/libraries/same-id/bundles')
+  expect(fetch.mock.lastCall?.[1]).toBeUndefined()
+  await runtime.fetch('https://one.example/api/v1/libraries/same-id/bundles')
+  expect(new Headers(fetch.mock.lastCall?.[1]?.headers).get('Authorization')).toBe(
+    'Bearer one-token',
+  )
+  mocks.storeGet.mockResolvedValue(null)
+  finish(null)
+  await switching
+  expect(runtime.hasDeviceToken()).toBe(false)
+})
+
+test('a rejected relay configuration preserves the complete previous transport', async () => {
+  storedGrants()
+  const runtime = await createDesktopRuntime()
+  await runtime.configureServer('https://one.example')
+  await runtime.saveDeviceToken('one-token', ['same-id'])
+  mocks.invoke.mockRejectedValueOnce(new Error('Relay unavailable'))
+  await expect(runtime.configureServer('https://two.example')).rejects.toThrow('Relay unavailable')
+  expect(runtime.hasDeviceAccess('same-id')).toBe(true)
+  expect(runtime.assetUrl('https://one.example/api/v1/libraries/same-id/files/f/stream')).toContain(
+    '/relay/api/',
+  )
+  expect(runtime.assetUrl('https://two.example/api/v1/libraries/same-id/files/f/stream')).toContain(
+    'https://two.example/',
+  )
 })

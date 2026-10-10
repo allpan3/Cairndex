@@ -1,3 +1,4 @@
+import { useModalDialog } from './useModalDialog'
 import { useMemo, useState } from 'react'
 
 import {
@@ -52,10 +53,13 @@ export function ClipExportDialog({
   // source's own size, so the missing "Original" is explained.
   const capped = isWidthCapped(target.sourceWidth)
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose)
+
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
       <div
         className="modal modal--narrow"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="GIF options"
@@ -96,7 +100,7 @@ export function ClipExportDialog({
         </p>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={closeDialog}>
             Cancel
           </button>
           <button

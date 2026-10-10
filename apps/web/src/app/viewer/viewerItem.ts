@@ -32,6 +32,8 @@ export interface ViewerImageTier {
 export interface ViewerItem {
   /** Identity for React keys and per-item viewer state. Unique within a list. */
   key: string
+  /** Device-local source generation; absent for legacy media */
+  sourceGeneration?: string | null
   /** `AssetFile` id when this item is indexed; null for an unindexed path. */
   fileId: string | null
   /**
@@ -105,9 +107,9 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
   const imageTiers: ViewerImageTier[] =
     file.media_kind === 'image'
       ? [
-          { tier: 'thumbnail', src: fileThumbnailUrl(file.bundle_id, file.id) },
+          { tier: 'thumbnail', src: fileThumbnailUrl(file.bundle_id, file.id, file.updated_at) },
           ...(nativeImage
-            ? [{ tier: 'original' as const, src: fileContentUrl(file.id) }]
+            ? [{ tier: 'original' as const, src: fileContentUrl(file.id, file.quick_fingerprint) }]
             : [
                 { tier: 'preview1600' as const, src: filePreviewUrl(file, 1600) },
                 { tier: 'preview2560' as const, src: filePreviewUrl(file, 2560) },

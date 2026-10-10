@@ -1,6 +1,7 @@
 # Audit extraction status
 
-The preserved audit reference is `8c814e311726ff178b3ab0efca75cb42d4c63c9a`.
+The preserved audit reference is `cd38493fcb306198ff4af00e19b5d78ada241ceb`
+(ID after the history rewrite of 2026-10-09).
 The [extraction ledger](audit-extraction.md) governs current branch work.
 Historical test results apply only to their recorded commits and executables.
 They are not proof for an extracted branch.
@@ -24,8 +25,10 @@ They are not proof for an extracted branch.
   applies only to its recorded executable and share.
 
 These are reference-branch facts, not claims that all features are extracted.
-Group 1 leaves main's application behavior unchanged. No extracted group is
-accepted or merged yet, and no publication is authorized.
+Group 1 is merged through PR #38. The owner approved combined application
+extraction for groups 2–5 with separate functional test rounds. That application
+branch is not accepted for merge. Publication is authorized for the VM handoff. Source operations and deployment remain
+separate groups.
 
 ## Separate deferred work
 

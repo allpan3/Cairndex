@@ -9,10 +9,12 @@ interpolated text (AGENTS.md §10).
 
 import operator as op
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any
 
-from sqlalchemy import and_, exists, func, not_, or_, select, true
+from sqlalchemy import and_, case, exists, func, not_, null, or_, select, true
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ValidationError
@@ -48,13 +50,23 @@ _NUM_OPS: dict[str, Callable[[Any, Any], Any]] = {
 Bool = Any
 
 
-def compile_expression(session: Session, expr: FilterExpression) -> Bool:
+@dataclass(frozen=True)
+class CatalogFilterContext:
+    """Resolve private hierarchy reads without a legacy session or source observations."""
+
+    descendants: Callable[[str, list[str]], list[str]]
+
+
+FilterContext = Session | CatalogFilterContext
+
+
+def compile_expression(session: FilterContext, expr: FilterExpression) -> Bool:
     if expr.root is None:
         return true()
     return _compile(session, expr.root)
 
 
-def _compile(session: Session, node: object) -> Bool:
+def _compile(session: FilterContext, node: object) -> Bool:
     if isinstance(node, AndNode):
         return and_(*(_compile(session, c) for c in node.children)) if node.children else true()
     if isinstance(node, OrNode):
@@ -109,15 +121,20 @@ def _notes_text(operator: str, value: Any) -> Bool:
 
 def _numeric(column: Any, operator: str, value: Any) -> Bool:
     if operator == "between":
-        if not (isinstance(value, list) and len(value) == 2):
+        if not (isinstance(value, list) and len(value) == 2 and all(_is_number(v) for v in value)):
             raise ValidationError("'between' needs a [low, high] value")
         return column.between(value[0], value[1])
     fn = _NUM_OPS.get(operator)
     if fn is None:
         raise ValidationError(f"operator {operator!r} is not valid for numeric fields")
-    if not isinstance(value, (int, float)):
+    if not _is_number(value):
         raise ValidationError("numeric filter value must be a number")
     return fn(column, value)
+
+
+# JSON booleans and non-finite floats are not numeric comparison values
+def _is_number(value: Any) -> bool:
+    return type(value) in (int, float) and (not isinstance(value, float) or isfinite(value))
 
 
 def _parse_dt(value: Any) -> datetime:
@@ -144,7 +161,11 @@ def _file_exists(condition: Bool) -> Bool:
     return exists().where((AssetFile.bundle_id == AssetBundle.id) & condition)
 
 
-def _expand(session: Session, model: type[Tag] | type[Collection], ids: list[str]) -> list[str]:
+def _expand(
+    session: FilterContext, model: type[Tag] | type[Collection], ids: list[str]
+) -> list[str]:
+    if isinstance(session, CatalogFilterContext):
+        return session.descendants(model.__tablename__, ids)
     out: list[str] = []
     for i in ids:
         out.extend(descendant_ids(session, model, i, include_self=True))
@@ -152,14 +173,14 @@ def _expand(session: Session, model: type[Tag] | type[Collection], ids: list[str
 
 
 def _membership(
-    session: Session,
+    session: FilterContext,
     *,
     bundle_col: Any,
     member_col: Any,
     model: type[Tag] | type[Collection],
     node: PredicateNode,
 ) -> Bool:
-    if not isinstance(node.value, list):
+    if not isinstance(node.value, list) or not all(isinstance(v, str) for v in node.value):
         raise ValidationError(f"{node.field} filter value must be a list of ids")
     ids: list[str] = node.value
 
@@ -217,7 +238,7 @@ def _as_bool(value: Any) -> bool:
 
 
 # --- field dispatch ----------------------------------------------------------
-def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
+def _compile_predicate(session: FilterContext, node: PredicateNode) -> Bool:
     field = node.field
     o, v = node.operator, node.value
 
@@ -239,7 +260,14 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
     if field == "file_count":
         return _numeric(_file_count_col(), o, v)
     if field == "size_bytes":
-        return _numeric(_size_col(), o, v)
+        # Source size is unknown until separately observed. SQL NULL also stays
+        # unknown under NOT; it must never become a fabricated zero-byte match.
+        size = (
+            case((_file_count_col() == 0, 0), else_=null())
+            if isinstance(session, CatalogFilterContext)
+            else _size_col()
+        )
+        return _numeric(size, o, v)
     if field == "date_added":
         return _date(AssetBundle.created_at, o, v)
     if field == "tags":
@@ -263,11 +291,20 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
     if field == "has_cover":
         if o != "equals":
             raise ValidationError("has_cover only supports 'equals'")
-        return _has_cover_expr() if _as_bool(v) else not_(_has_cover_expr())
+        cover = _has_cover_expr()
+        if isinstance(session, CatalogFilterContext):
+            cover = case(
+                (AssetBundle.cover_file_id.isnot(None), True),
+                (_file_count_col() == 0, False),
+                else_=null(),
+            )
+        return cover if _as_bool(v) else not_(cover)
     if field == "has_missing":
         if o != "equals":
             raise ValidationError("has_missing only supports 'equals'")
         miss = _file_exists(AssetFile.availability == FileAvailability.MISSING)
+        if isinstance(session, CatalogFilterContext):
+            miss = case((_file_count_col() == 0, False), else_=null())
         return miss if _as_bool(v) else not_(miss)
     raise ValidationError(f"unknown filter field {field!r}")
 
@@ -282,13 +319,15 @@ def _file_exists_text(operator: str, value: Any) -> Bool:
 
 def _extension(operator: str, value: Any) -> Bool:
     if operator == "equals":
+        if not isinstance(value, str):
+            raise ValidationError("extension must be a string")
         exts = [value]
     elif operator in ("in", "not_in"):
-        if not isinstance(value, list):
-            raise ValidationError("'in'/'not_in' need a list value")
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise ValidationError("'in'/'not_in' need a list of strings")
         exts = value
     else:
         raise ValidationError(f"operator {operator!r} is not valid for extension")
-    patterns = [func.lower(AssetFile.relative_path).like(f"%.{str(e).lower()}") for e in exts]
+    patterns = [AssetFile.relative_path.iendswith(f".{e}", autoescape=True) for e in exts]
     sub = _file_exists(or_(*patterns)) if patterns else true()
     return not_(sub) if operator == "not_in" else sub

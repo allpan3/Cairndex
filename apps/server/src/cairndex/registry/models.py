@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cairndex.domain.enums import JobStatus, JobType, LibraryStatus
@@ -37,11 +37,16 @@ class RegisteredLibrary(RegistryBase):
     )
     # The library DB's schema/format version, as recorded in the manifest.
     schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    package_format: Mapped[str] = mapped_column(
+        String(64), default="cairndex.library", server_default="cairndex.library"
+    )
     # Guarded file operations inside this library's root (ADR-0013), default off.
     # Deliberately registry state rather than manifest state: copying a library
     # to another server must never carry write permission with it. The
     # deployment switch ``CAIRNDEX_WRITE_MODE`` can override this to read-only.
     write_mode_enabled: Mapped[bool] = mapped_column(default=False)
+    # Explicit release survives server restart and persisted client selection
+    serving_released: Mapped[bool] = mapped_column(default=False, server_default="0")
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
@@ -121,3 +126,28 @@ class DeviceToken(RegistryBase):
     created_at: Mapped[CreatedAt]
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class RecoveryTask(RegistryBase):
+    """Private administrative operations; never copied into portable metadata."""
+
+    __tablename__ = "recovery_tasks"
+    __table_args__ = (
+        Index("ix_recovery_tasks_library_id", "library_id", "id"),
+        Index("ix_recovery_tasks_state", "state", "created_at", "id"),
+        Index(
+            "uq_recovery_tasks_active",
+            "library_id",
+            unique=True,
+            sqlite_where=text("state IN ('queued', 'running')"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    library_id: Mapped[str] = mapped_column(String(26))
+    action: Mapped[str] = mapped_column(String(20))
+    state: Mapped[str] = mapped_column(String(20))
+    body: Mapped[dict[str, Any]] = mapped_column(JSON)
+    descriptor: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[CreatedAt]

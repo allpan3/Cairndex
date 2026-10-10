@@ -1,7 +1,8 @@
 """CLI: set or clear a library's optional owner passphrase lock (ADR-0010).
 
-Stores only a PBKDF2 hash in the library's portable manifest — never the
-passphrase. This is a private LAN/Tailscale guardrail, not public-internet
+Stores only a PBKDF2 hash in this server's private access settings.
+Stop the server before local administration, then restart to clear browser grants.
+This is a private LAN/Tailscale guardrail, not public-internet
 hardening and not multi-user auth.
 
 Usage (from apps/server):
@@ -43,7 +44,8 @@ def main() -> None:
         raise SystemExit(f"no Cairndex library at {root}")
 
     if args.clear:
-        clear_passphrase(root)
+        with registry_session_scope() as registry:
+            clear_passphrase(root, registry=registry)
         print(f"Removed the passphrase lock from {root}.")
         return
 

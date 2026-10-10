@@ -20,6 +20,8 @@ mod mappings;
 mod media_proxy;
 // Reads OS keyboard-modifier state, which a native drag hides from the webview
 mod modifiers;
+// Prevents file drops and external URLs from replacing the app renderer
+mod navigation;
 // Owns validation for the persisted Cairndex server URL
 mod server_url;
 // Spawns and supervises the bundled local-server sidecar
@@ -77,6 +79,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(navigation::init())
         // Fullscreen can also be entered or left without the app asking — the green
         // zoom button, Mission Control, or a window manager. Those paths issue no
         // command, so watch resize (which fires across every fullscreen transition)
@@ -86,10 +89,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if matches!(event, tauri::WindowEvent::Resized(_)) {
                 app_menu::broadcast_fullscreen(window.app_handle());
             }
-            // Record what was dropped *here*, in the shell, rather than trusting
-            // the webview to report it back later. The webview receives the same
-            // drop through its own event and drives the flow; this is only the
-            // record of what the user actually put on the window.
+            // Only native window events can authorize path-based uploads
+            // This retained route is inactive with dragDropEnabled set to false
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 importer::remember_drop(&window.state::<importer::DroppedFiles>(), paths);
             }

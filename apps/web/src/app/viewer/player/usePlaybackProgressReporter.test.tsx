@@ -20,10 +20,17 @@ interface HarnessProps {
   currentTime: number
   duration?: number
   completed?: boolean | null
+  sourceGeneration?: string
 }
 
 // Test shell that gives the hook a React Query client
-function Harness({ status, currentTime, duration = 100, completed = false }: HarnessProps) {
+function Harness({
+  status,
+  currentTime,
+  duration = 100,
+  completed = false,
+  sourceGeneration,
+}: HarnessProps) {
   usePlaybackProgressReporter({
     bundleId: 'b0',
     fileId: 'f0',
@@ -32,6 +39,7 @@ function Harness({ status, currentTime, duration = 100, completed = false }: Har
     currentTime,
     duration,
     completed,
+    sourceGeneration,
   })
   return null
 }
@@ -148,6 +156,33 @@ test('sends a beacon on pagehide', () => {
   expect(beaconPlaybackProgress).toHaveBeenCalledWith('f0', {
     position_s: 9,
     duration_s: 100,
+  })
+})
+
+// Both ordinary writes and page-exit beacons carry the observed replica source identity
+test('fences replica progress by source generation on pause and page exit', async () => {
+  const { rerender, queryClient } = renderReporter({
+    status: 'playing',
+    currentTime: 9,
+    sourceGeneration: 'a'.repeat(64),
+  })
+  act(() => window.dispatchEvent(new Event('pagehide')))
+  expect(beaconPlaybackProgress).toHaveBeenLastCalledWith('f0', {
+    position_s: 9,
+    duration_s: 100,
+    source_generation: 'a'.repeat(64),
+  })
+  await act(async () => {
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <Harness status="paused" currentTime={23} sourceGeneration={'b'.repeat(64)} />
+      </QueryClientProvider>,
+    )
+  })
+  expect(updatePlaybackProgress).toHaveBeenLastCalledWith('f0', {
+    position_s: 23,
+    duration_s: 100,
+    source_generation: 'b'.repeat(64),
   })
 })
 

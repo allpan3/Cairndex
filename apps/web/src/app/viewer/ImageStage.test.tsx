@@ -17,6 +17,8 @@ let resizeObserverCallback: ResizeObserverCallback | null = null
 // Build the FileRead shape used by viewer tests
 function file(overrides: Partial<FileRead> = {}): FileRead {
   return {
+    note: null,
+    source: null,
     id: 'f1',
     bundle_id: 'b1',
     relative_path: 'photo.png',

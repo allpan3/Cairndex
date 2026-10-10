@@ -122,7 +122,7 @@ describe('openLibraryFolder', () => {
 
     await openLibraryFolder()
 
-    expect(seenAtConfigure).toEqual(['queued'])
+    expect(seenAtConfigure).toEqual(['empty'])
     expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBe(OPENED.libraryId)
   })
 
@@ -261,7 +261,7 @@ describe('confirmPickedLibrary', () => {
     expect(pendingCount()).toBe('empty')
   })
 
-  it('queues the selection before activating, as the picker path does', async () => {
+  it('queues the selection only after successful activation', async () => {
     await loadConnections()
     const seenAtConfigure: string[] = []
     configureHostServer.mockImplementation(async () => {
@@ -270,6 +270,14 @@ describe('confirmPickedLibrary', () => {
 
     await confirmPickedLibrary('pick-token-1', 'Trips')
 
-    expect(seenAtConfigure).toEqual(['queued'])
+    expect(seenAtConfigure).toEqual(['empty'])
   })
+})
+
+// An already registered local folder must not change selection if transport setup fails
+it('does not leave a queued library after failed activation', async () => {
+  await loadConnections()
+  configureHostServer.mockRejectedValueOnce(new Error('relay unavailable'))
+  await expect(openLibraryFolder()).rejects.toThrow('relay unavailable')
+  expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBeNull()
 })

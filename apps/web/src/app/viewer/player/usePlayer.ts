@@ -34,6 +34,9 @@ export interface BufferedRange {
 
 export interface PlayerController {
   status: PlayerStatus
+  wantsPlayback: boolean
+  paused: boolean
+  buffering: boolean
   currentTime: number
   duration: number
   buffered: BufferedRange[]
@@ -69,6 +72,8 @@ export interface PlayerBindings {
 
 interface UsePlayerOptions {
   source: PlaybackSource | null
+  mediaKey?: string | null
+  expectedDuration?: number | null
   rootRef: React.RefObject<HTMLElement | null>
   prefs: PlayerPrefs
   onPrefs: Dispatch<SetStateAction<PlayerPrefs>>
@@ -80,6 +85,8 @@ interface UsePlayerOptions {
 /** Headless native-video state and commands for the M2 custom controls. */
 export function usePlayer({
   source,
+  mediaKey = null,
+  expectedDuration = null,
   rootRef,
   prefs,
   onPrefs,
@@ -95,6 +102,26 @@ export function usePlayer({
   const resumedSourceRef = useRef<string | null>(null)
   const [videoElement, setVideoElementState] = useState<HTMLVideoElement | null>(null)
   const [status, setStatus] = useState<PlayerStatus>('idle')
+  const [wantsPlayback, setWantsPlayback] = useState(true)
+  const intentRef = useRef(true)
+  const playRequest = useRef(0)
+  const [paused, setPaused] = useState(true)
+  const [buffering, setBuffering] = useState(false)
+  const [observedSource, setObservedSource] = useState(source)
+
+  // Latest accumulated relative-seek target, and the throttle that commits it.
+  const pendingSeek = useRef<number | null>(null)
+  const relativeSeek = useRef<LeadingTrailingThrottle<number> | null>(null)
+  const queuedSeek = useRef<number | null>(null)
+
+  // A new media selection starts playback; replacing its transport preserves the last action
+  useEffect(() => {
+    intentRef.current = true
+    queuedSeek.current = null
+    playRequest.current += 1
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize the selected media identity
+    setWantsPlayback(true)
+  }, [mediaKey])
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [buffered, setBuffered] = useState<BufferedRange[]>([])
@@ -112,8 +139,14 @@ export function usePlayer({
 
   useEffect(() => {
     resumedSourceRef.current = null
+    pendingSeek.current = null
+    relativeSeek.current?.cancel()
+    playRequest.current += 1
     if (videoRef.current) videoRef.current.currentTime = 0
     /* eslint-disable react-hooks/set-state-in-effect */
+    setObservedSource(source)
+    setPaused(true)
+    setBuffering(Boolean(source))
     setCurrentTime(0)
     setDuration(0)
     setBuffered([])
@@ -126,13 +159,13 @@ export function usePlayer({
     setVideoElementState(element)
   }, [])
 
-  // Latest accumulated relative-seek target, and the throttle that commits it.
-  const pendingSeek = useRef<number | null>(null)
-  const relativeSeek = useRef<LeadingTrailingThrottle<number> | null>(null)
   useEffect(() => {
     const throttle = createLeadingTrailingThrottle(RELATIVE_SEEK_THROTTLE_MS, (time: number) => {
       pendingSeek.current = null
-      engineRef.current?.seek(time)
+      const video = videoRef.current
+      if (!engineRef.current || !video || !Number.isFinite(video.duration) || video.duration <= 0)
+        queuedSeek.current = time
+      else engineRef.current.seek(time)
     })
     relativeSeek.current = throttle
     return () => {
@@ -156,6 +189,22 @@ export function usePlayer({
     )
   }, [])
 
+  // Only the current engine and latest command may settle an asynchronous play attempt
+  const requestPlay = useCallback((engine: PlaybackEngine) => {
+    const request = ++playRequest.current
+    void engine.play().catch((error: unknown) => {
+      if (engineRef.current !== engine || request !== playRequest.current || !intentRef.current)
+        return
+      // A seek can interrupt play; canplay/seeked will retry without erasing intent
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      intentRef.current = false
+      setWantsPlayback(false)
+      setPaused(true)
+      setBuffering(false)
+      setStatus('paused')
+    })
+  }, [])
+
   useEffect(() => {
     if (!videoElement || !source) {
       engineRef.current = null
@@ -169,12 +218,13 @@ export function usePlayer({
     engine.setRate(initialPrefs.rate)
     engine.setPreservesPitch(initialPrefs.preservesPitch)
     engine.load(source)
-    void engine.play().catch(() => setStatus('paused'))
+    if (intentRef.current) requestPlay(engine)
     return () => {
-      engine.destroy()
       if (engineRef.current === engine) engineRef.current = null
+      playRequest.current += 1
+      engine.destroy()
     }
-  }, [source, videoElement])
+  }, [source, videoElement, requestPlay])
 
   useEffect(() => {
     const engine = engineRef.current
@@ -190,18 +240,37 @@ export function usePlayer({
     const video = videoElement
     if (!engine || !video) return
     const onLoaded = () => {
-      setDuration(Number.isFinite(video.duration) ? video.duration : 0)
+      const knownDuration = source?.kind === 'hls' ? expectedDuration : null
+      setDuration(
+        knownDuration && Number.isFinite(knownDuration) && knownDuration > 0
+          ? knownDuration
+          : Number.isFinite(video.duration)
+            ? video.duration
+            : 0,
+      )
       syncBuffered()
+      if (!Number.isFinite(video.duration) || video.duration <= 0) return
       if (!source || resumedSourceRef.current === source.src) return
-      // An explicit startAt (quality/audio switch or transparent re-attach) wins
-      // over resume progress — the new stream must pick up at the live playhead.
-      const startAt = source.startAt
-      if (typeof startAt === 'number' && Number.isFinite(startAt) && startAt > 0) {
-        engine.seek(startAt)
-        setCurrentTime(startAt)
+      if (queuedSeek.current !== null) {
+        const time = queuedSeek.current
+        queuedSeek.current = null
+        engine.seek(time)
+        setCurrentTime(time)
         resumedSourceRef.current = source.src
         return
       }
+      // An explicit startAt (quality/audio switch or transparent re-attach) wins
+      // over resume progress — the new stream must pick up at the live playhead.
+      const startAt = source.startAt
+      if (typeof startAt === 'number' && Number.isFinite(startAt) && startAt >= 0) {
+        engine.seek(startAt)
+        setCurrentTime(startAt)
+        resumedSourceRef.current = source.src
+        if (startAt > 0 && startAt === resumeRef.current.position && !resumeRef.current.completed)
+          resumeRef.current.onResumed?.(startAt)
+        return
+      }
+      resumedSourceRef.current = source.src
       const resume = resumeRef.current
       const position = resume.position ?? 0
       if (!resume.completed && position > 0) {
@@ -212,29 +281,77 @@ export function usePlayer({
       }
     }
     const onTime = () => setCurrentTime(video.currentTime)
-    const onPlay = () => setStatus('playing')
-    const onPause = () => setStatus(video.ended ? 'ended' : 'paused')
-    const onEnded = () => setStatus('ended')
-    const onWaiting = () => setStatus((s) => (s === 'playing' ? 'loading' : s))
-    const onError = () => setStatus('error')
+    const onPlay = () => {
+      if (!intentRef.current) {
+        engine.pause()
+        return
+      }
+      setPaused(video.paused)
+      setBuffering(false)
+      setStatus('playing')
+    }
+    const onPause = () => {
+      setCurrentTime(video.currentTime)
+      setPaused(true)
+      setStatus('paused')
+    }
+    const onEnded = () => {
+      // A truncated native HLS timeline is a session failure, never a playlist advance
+      if (
+        source?.kind === 'hls' &&
+        expectedDuration &&
+        Number.isFinite(expectedDuration) &&
+        video.currentTime < expectedDuration - 2
+      ) {
+        video.dispatchEvent(new CustomEvent('error', { detail: 'session' }))
+        return
+      }
+      intentRef.current = false
+      setWantsPlayback(false)
+      setPaused(true)
+      setBuffering(false)
+      setStatus('ended')
+    }
+    const onWaiting = () => {
+      setBuffering(true)
+      setStatus(intentRef.current ? 'loading' : 'paused')
+    }
+    const onReady = () => {
+      setCurrentTime(video.currentTime)
+      setBuffering(false)
+      if (intentRef.current && video.paused && !video.ended) requestPlay(engine)
+      else if (!intentRef.current && !video.paused) engine.pause()
+    }
+    const onError = () => {
+      setBuffering(false)
+      setStatus('error')
+    }
+    // Teardown events from an abandoned engine cannot alter the replacement source
+    const listen = (event: Parameters<PlaybackEngine['on']>[0], callback: () => void) =>
+      engine.on(event, () => {
+        if (engineRef.current === engine) callback()
+      })
     const off = [
-      engine.on('loadedmetadata', onLoaded),
-      engine.on('durationchange', onLoaded),
-      engine.on('progress', syncBuffered),
-      engine.on('timeupdate', onTime),
-      engine.on('play', onPlay),
-      engine.on('playing', onPlay),
-      engine.on('pause', onPause),
-      engine.on('ended', onEnded),
-      engine.on('waiting', onWaiting),
-      engine.on('error', onError),
-      engine.on('enterpictureinpicture', () => setPip(true)),
-      engine.on('leavepictureinpicture', () => setPip(false)),
+      listen('loadedmetadata', onLoaded),
+      listen('durationchange', onLoaded),
+      listen('progress', syncBuffered),
+      listen('timeupdate', onTime),
+      listen('play', onPlay),
+      listen('playing', onPlay),
+      listen('pause', onPause),
+      listen('ended', onEnded),
+      listen('waiting', onWaiting),
+      listen('seeking', onWaiting),
+      listen('canplay', onReady),
+      listen('seeked', onReady),
+      listen('error', onError),
+      listen('enterpictureinpicture', () => setPip(true)),
+      listen('leavepictureinpicture', () => setPip(false)),
     ]
     onLoaded()
     onTime()
     return () => off.forEach((unsubscribe) => unsubscribe())
-  }, [source, syncBuffered, videoElement])
+  }, [source, expectedDuration, syncBuffered, videoElement, requestPlay])
 
   useEffect(() => {
     // In the shell the viewer uses real window fullscreen (see toggleFullscreen),
@@ -276,18 +393,23 @@ export function usePlayer({
   }, [])
 
   const play = useCallback(() => {
-    void engineRef.current?.play().catch(() => setStatus('paused'))
-  }, [])
+    intentRef.current = true
+    setWantsPlayback(true)
+    const engine = engineRef.current
+    if (engine) requestPlay(engine)
+  }, [requestPlay])
 
   const pause = useCallback(() => {
+    intentRef.current = false
+    playRequest.current += 1
+    setWantsPlayback(false)
+    setStatus('paused')
     engineRef.current?.pause()
   }, [])
 
   const playPause = useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-    if (video.paused || video.ended) play()
-    else pause()
+    if (intentRef.current) pause()
+    else play()
   }, [pause, play])
 
   const clampTime = useCallback((time: number) => {
@@ -300,7 +422,10 @@ export function usePlayer({
       pendingSeek.current = null
       relativeSeek.current?.cancel()
       const target = clampTime(time)
-      engineRef.current?.seek(target)
+      const video = videoRef.current
+      if (!engineRef.current || !video || !Number.isFinite(video.duration) || video.duration <= 0)
+        queuedSeek.current = target
+      else engineRef.current.seek(target)
       setCurrentTime(target)
     },
     [clampTime],
@@ -314,7 +439,7 @@ export function usePlayer({
   // path has had this since it shipped (`SeekBar`); the keyboard never did.
   const seekBy = useCallback(
     (delta: number) => {
-      const from = pendingSeek.current ?? videoRef.current?.currentTime ?? 0
+      const from = pendingSeek.current ?? queuedSeek.current ?? videoRef.current?.currentTime ?? 0
       const target = clampTime(from + delta)
       pendingSeek.current = target
       setCurrentTime(target)
@@ -401,9 +526,12 @@ export function usePlayer({
   )
 
   const player = useMemo<PlayerController>(() => {
-    const active = Boolean(source && videoElement)
+    const active = Boolean(source && source === observedSource && videoElement)
     return {
-      status: active ? (status === 'idle' ? 'loading' : status) : 'idle',
+      status: active ? (status === 'idle' ? 'loading' : status) : source ? 'loading' : 'idle',
+      wantsPlayback,
+      paused: active ? paused : true,
+      buffering: active ? buffering : Boolean(source),
       currentTime: active ? currentTime : 0,
       duration: active ? duration : 0,
       buffered: active ? buffered : [],
@@ -432,6 +560,10 @@ export function usePlayer({
     }
   }, [
     status,
+    wantsPlayback,
+    paused,
+    buffering,
+    observedSource,
     currentTime,
     duration,
     buffered,

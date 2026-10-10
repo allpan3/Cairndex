@@ -45,6 +45,9 @@ def _dispose_library_engines() -> Iterator[None]:
     # Leases are held in process memory (ADR-0018), so without this a library id
     # reused by a later test would look already-owned and skip the mount gate.
     reset_lease_manager()
+    from cairndex.ownership.lifecycle import lifecycle
+
+    lifecycle.reset()
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -133,12 +136,43 @@ def registry_session(registry_session_factory: sessionmaker[Session]) -> Iterato
 
 
 @pytest.fixture
-def library_id(registry_session: Session, library_root: Path) -> str:
-    """Register the test library in the registry and return its id."""
-    library = registry_service.register_existing_library(
-        registry_session, root_path=str(library_root)
+def library_id(
+    registry_session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Bind the retained legacy model fixture without enabling public registration.
+
+    These dependency-overridden service tests also cover conversion inputs.
+    Current-format admission is tested separately through the real API.
+    """
+    library = registry_service._insert(
+        registry_session, manifest=pkg.read_manifest(library_root), root=library_root
     )
     registry_session.commit()
+    # This is an internal ORM/handler harness, not public package admission. The
+    # portable catalog reuses these models and media helpers. Integration tests
+    # create portable packages through the API and do not request this fixture.
+    # Retain the old model tests without enabling its format in the application.
+    from cairndex.auth import private_auth
+    from cairndex.domain.enums import LibraryStatus
+
+    get_library = registry_service.get_library
+    read_auth = private_auth.read
+
+    def model_library(session: Session, identity: str):
+        if identity == library.id:
+            row = session.get(type(library), identity)
+            if row is not None:
+                row.status = LibraryStatus.AVAILABLE
+                return row
+        return get_library(session, identity)
+
+    def model_auth(root: Path, library_uuid: str | None = None):
+        if root == library_root and pkg.read_manifest(root).replica is None:
+            return None
+        return read_auth(root, library_uuid)
+
+    monkeypatch.setattr(registry_service, "get_library", model_library)
+    monkeypatch.setattr(private_auth, "read", model_auth)
     return library.id
 
 
@@ -186,6 +220,11 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
     app.dependency_overrides[get_library_session] = _override_get_library_session
     app.dependency_overrides[get_library_access] = _override_get_library_access
+    from cairndex.api.media_deps import MediaAccess, get_media_access
+
+    app.dependency_overrides[get_media_access] = lambda: MediaAccess(
+        legacy=_override_get_library_access()
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -229,3 +268,9 @@ def isolated_client(registry_session: Session) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def raw_client(isolated_client: TestClient) -> TestClient:
+    """Use real admission and media dependencies with an isolated registry."""
+    return isolated_client

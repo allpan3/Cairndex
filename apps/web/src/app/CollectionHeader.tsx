@@ -6,7 +6,7 @@ import type { DragItem } from './dnd'
 import type { LayoutMode } from './types'
 import { dropZone, getActiveDrag, isCopyDrag, sameTarget, seamFor, setActiveDrag } from './dnd'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
-import { suppressShiftSelection } from './selection'
+import { focusListing } from './selection'
 import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth, listRowHeight } from './layout'
 import { gapBefore } from './reorder'
@@ -362,7 +362,8 @@ export function CollectionHeader({
     <div
       className={`collhead${marqueeRect ? ' browser--dragging' : ''}`}
       ref={scrollElRef}
-      onMouseDownCapture={suppressShiftSelection}
+      tabIndex={0}
+      onMouseDownCapture={focusListing}
       onMouseDown={onMouseDown}
       onDragOver={onSurfaceDragOver}
       onDrop={onSurfaceDrop}

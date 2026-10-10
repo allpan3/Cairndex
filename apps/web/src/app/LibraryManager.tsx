@@ -1,18 +1,22 @@
+import { usePersistentState } from '../state/usePersistentState'
+import { getConnectionScopeKey } from '../api/requestScope'
 import { useEffect, useRef, useState } from 'react'
+import { captureRequestScope } from '../api/requestScope'
+import { LibraryPrivateControls } from './LibraryPrivateControls'
+import { useModalDialog } from './useModalDialog'
 
+import { type LibraryRead, type PathSuggestion, fetchPathSuggestions } from '../api/client'
 import {
-  type LibraryRead,
-  type PathSuggestion,
-  PassphraseRequiredError,
-  fetchPathSuggestions,
-} from '../api/client'
-import {
-  useDeploymentWriteMode,
   useLibraries,
   useLibraryMutations,
-  useWriteModeMutation,
+  useLibraryOwnership,
+  useLibraryServing,
 } from '../api/hooks'
-import { getActiveConnection } from '../desktop/connections'
+import {
+  activeConnectionLabel,
+  getActiveConnection,
+  queueLibraryIndex,
+} from '../desktop/connections'
 import { confirmPickedLibrary, openLibraryFolder } from '../desktop/openLibraryFolder'
 import { hostOperationErrorMessage, isDesktopHost } from '../platform'
 
@@ -53,7 +57,6 @@ export function LibraryManager({
 }) {
   const libraries = useLibraries()
   const { create, register, probe, remove } = useLibraryMutations()
-  const writeModeAllowed = useDeploymentWriteMode()
 
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
@@ -155,14 +158,16 @@ export function LibraryManager({
   // (switch to the local server), because the folder cannot otherwise join the
   // list being shown; that path keeps the old switch-and-close behaviour.
   const browse = async () => {
-    if (busy || listUnavailable) return
+    if (busy) return
     setError(null)
     setHostBusy(true)
     try {
       // `stage: true` — the shell parks the pick instead of adding it, so Browse
       // only picks a folder and the deliberate Add is the confirm step below.
       const { opened } = await openLibraryFolder(
-        rows.map((library) => library.library_uuid).filter(Boolean),
+        getActiveConnection()?.kind === 'remote'
+          ? []
+          : rows.map((library) => library.library_uuid).filter(Boolean),
         { stage: true },
       )
       if (!opened) return // cancelled — nothing changed
@@ -205,7 +210,10 @@ export function LibraryManager({
         const { opened } = await confirmPickedLibrary(confirming.token, chosen, { adopt })
         // A picked *folder* is new to Cairndex and holds nothing; a picked
         // library arrives with its own database and is left alone.
-        if (becomingALibrary && opened?.libraryId) onCreated?.(opened.libraryId)
+        if (becomingALibrary && opened?.libraryId) {
+          if (adopt) queueLibraryIndex('local', opened.libraryId)
+          else onCreated?.(opened.libraryId)
+        }
       } catch (failure) {
         setError(hostOperationErrorMessage(failure))
         return
@@ -240,28 +248,47 @@ export function LibraryManager({
 
   const removeLibrary = (libraryId: string) => {
     setError(null)
-    remove.mutate(libraryId, {
-      onSuccess: () => onRemoved?.(libraryId),
-      onError: (failure) => setError(messageOf(failure)),
-    })
+    const assertScope = captureRequestScope(false)
+    // The registry refresh can remount this dialog before per-observer callbacks run
+    void remove
+      .mutateAsync(libraryId)
+      .then(() => {
+        assertScope()
+        onRemoved?.(libraryId)
+      })
+      .catch((failure: unknown) => {
+        try {
+          assertScope()
+        } catch {
+          return
+        }
+        setError(messageOf(failure))
+      })
   }
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(
+    confirming ? cancelConfirm : onClose,
+    busy,
+  )
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         // `--menus`: this dialog's suggestion menu must be able to escape it.
         className="modal modal--menus"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Libraries</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
 
+        <p className="lib-add__hint">Libraries served by {activeConnectionLabel()}</p>
         <div className="lib-list">
           {libraries.isPending && <div className="inspector__empty">Loading libraries…</div>}
           {libraries.isError && libraries.data === undefined && (
@@ -279,8 +306,11 @@ export function LibraryManager({
               key={library.id}
               library={library}
               busy={busy}
-              writeModeAllowed={writeModeAllowed}
               onRemove={() => removeLibrary(library.id)}
+              onSelect={() => {
+                onSelect?.(library.id)
+                onClose()
+              }}
             />
           ))}
           {libraries.isError && libraries.data !== undefined && !addedLibrary && (
@@ -346,12 +376,7 @@ export function LibraryManager({
               </button>
             ) : !confirming ? (
               isDesktopHost() && (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => void browse()}
-                  disabled={busy || listUnavailable}
-                >
+                <button type="button" className="btn" onClick={() => void browse()} disabled={busy}>
                   Browse…
                 </button>
               )
@@ -360,7 +385,7 @@ export function LibraryManager({
               className="btn btn--primary"
               disabled={
                 busy ||
-                listUnavailable ||
+                (listUnavailable && confirming?.kind !== 'pick') ||
                 (!addedLibrary && !(confirming ? name.trim() : path.trim()))
               }
             >
@@ -380,9 +405,15 @@ export function LibraryManager({
               ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
               : confirming
                 ? newLibraryAsk(confirming)
-                : 'An absolute path on the server. An existing library is added as it is; any other folder is offered as a new one.'}
+                : `Typed paths belong to ${activeConnectionLabel()}. An existing library is added as it is; any other folder is offered as a new one.`}
           </p>
 
+          {isDesktopHost() && (
+            <p className="lib-add__hint">
+              Browse selects a folder on This Computer. Adding it uses this computer’s private
+              metadata store and access settings.
+            </p>
+          )}
           {error && <div className="modal__error">{error}</div>}
         </form>
       </div>
@@ -425,7 +456,7 @@ function LibraryListError({
 function newLibraryAsk(target: ConfirmState): string {
   if (target.kind === 'pick') {
     return target.isLibrary
-      ? `“${target.folderName}” is a Cairndex library. Confirming adds it to this server.`
+      ? `“${target.folderName}” is a Cairndex library. Confirming adds it to This Computer.`
       : `“${target.folderName}” isn’t a Cairndex library. Confirming creates a new one there.`
   }
   if (target.createFolder) {
@@ -463,17 +494,20 @@ export function NewLibraryDialog({
   const [name, setName] = useState(folderName)
   const trimmed = name.trim()
 
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, busy)
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >
         <div className="modal__head">
           <h2>Add library</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Close">
+          <button className="modal__close" onClick={closeDialog} aria-label="Close">
             ×
           </button>
         </div>
@@ -501,7 +535,7 @@ export function NewLibraryDialog({
           </p>
           <div className="modal__actions">
             <span className="toolbar__spacer" />
-            <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            <button type="button" className="btn" onClick={closeDialog} disabled={busy}>
               Cancel
             </button>
             <button className="btn btn--primary" disabled={busy || !trimmed}>
@@ -518,19 +552,36 @@ export function NewLibraryDialog({
 function LibraryRow({
   library,
   busy,
-  writeModeAllowed,
   onRemove,
+  onSelect,
 }: {
   library: LibraryRead
   busy: boolean
-  /** The deployment master switch (ADR-0013 §1); false forces read-only. */
-  writeModeAllowed: boolean
   onRemove: () => void
+  onSelect: () => void
 }) {
   // At most one of the two confirmations is open, because they ask about the
   // same row and both replace it.
-  const [asking, setAsking] = useState<'remove' | 'write-mode' | null>(null)
+  const [asking, setAsking] = useState<'remove' | null>(null)
+  const [privatePanel, setPrivatePanel] = usePersistentState(
+    `cairndex.libraryControls:${getConnectionScopeKey() ?? 'web'}:${library.id}`,
+    false,
+  )
   const available = library.status === 'available'
+  const ownership = useLibraryOwnership(library.id)
+  const serving = useLibraryServing(library.id)
+  const released = ownership.data?.state === 'locally_released'
+
+  if (privatePanel)
+    return (
+      <div className="library-private-panel">
+        <button className="btn" onClick={() => setPrivatePanel(false)}>
+          Back to libraries
+        </button>
+        <h2>{library.name}</h2>
+        <LibraryPrivateControls libraryId={library.id} released={released} />
+      </div>
+    )
 
   if (asking === 'remove') {
     return (
@@ -554,25 +605,37 @@ function LibraryRow({
     )
   }
 
-  if (asking === 'write-mode') {
-    return <EnableWriteMode library={library} onDone={() => setAsking(null)} />
-  }
-
   return (
     <div className="lib-row">
       <div className="lib-row__main">
         <span className="lib-row__name">{library.name}</span>
         <span className="lib-row__path">{library.root_path}</span>
       </div>
+      <button
+        className="btn btn--sm"
+        disabled={busy}
+        onClick={onSelect}
+        aria-label={`Open ${library.name}`}
+      >
+        Open
+      </button>
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>
-      <WriteModeToggle
-        library={library}
-        busy={busy}
-        allowed={writeModeAllowed}
-        onEnable={() => setAsking('write-mode')}
-      />
+      <button
+        className="btn btn--sm"
+        disabled={busy || serving.isPending}
+        title="Release stops this server from serving the library to all clients; registration and content remain"
+        onClick={() => serving.mutate(released ? 'reopen' : 'release')}
+      >
+        {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
+      </button>
+      {released && <span className="lib-row__note">Released on this server</span>}
+      <button className="btn btn--sm" disabled={busy} onClick={() => setPrivatePanel(true)}>
+        Access and backups
+      </button>
+      {serving.error && <span role="alert">{serving.error.message}</span>}
+
       <button
         className="btn btn--sm"
         onClick={() => setAsking('remove')}
@@ -585,132 +648,6 @@ function LibraryRow({
   )
 }
 
-const WRITE_MODE_BLOCKED_HINT =
-  'This server is configured read-only (CAIRNDEX_WRITE_MODE=disabled), so write mode cannot be turned on here.'
-
-/**
- * The write-mode switch for one library (ADR-0013 §1).
- *
- * Turning it **off** is immediate: giving up a capability needs no
- * confirmation. Turning it **on** goes through `EnableWriteMode`, which says
- * what it unlocks and collects the passphrase when the library has one.
- *
- * When the deployment forbids write mode the control is disabled and explains
- * why rather than disappearing — a missing switch reads as a missing feature,
- * and the owner would go looking for it in the wrong place.
- */
-function WriteModeToggle({
-  library,
-  busy,
-  allowed,
-  onEnable,
-}: {
-  library: LibraryRead
-  busy: boolean
-  allowed: boolean
-  onEnable: () => void
-}) {
-  const writeMode = useWriteModeMutation()
-  const enabled = library.write_mode_enabled
-  const blocked = !allowed && !enabled
-
-  return (
-    <button
-      className={`btn btn--sm${enabled && allowed ? ' btn--active' : ''}`}
-      onClick={() =>
-        enabled ? writeMode.mutate({ libraryId: library.id, enabled: false }) : onEnable()
-      }
-      disabled={busy || writeMode.isPending || blocked}
-      aria-pressed={enabled}
-      title={blocked ? WRITE_MODE_BLOCKED_HINT : undefined}
-      aria-label={`Write mode for ${library.name}`}
-    >
-      {/* An enabled flag the deployment is overriding is stated as exactly
-          that, rather than silently rendered as off. */}
-      Write mode: {enabled ? (allowed ? 'on' : 'on (blocked)') : 'off'}
-    </button>
-  )
-}
-
-/**
- * The enable step: what write mode unlocks, and the passphrase when required.
- *
- * The passphrase field appears only after the server asks for it, so an
- * unprotected library is one click and a protected one is never guessed at.
- * The same 401 covers a wrong passphrase, which is why the field stays open
- * with a message instead of collapsing the step.
- */
-function EnableWriteMode({ library, onDone }: { library: LibraryRead; onDone: () => void }) {
-  const writeMode = useWriteModeMutation()
-  const [passphrase, setPassphrase] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const enable = () => {
-    setError(null)
-    writeMode.mutate(
-      { libraryId: library.id, enabled: true, passphrase: passphrase ?? undefined },
-      {
-        onSuccess: onDone,
-        onError: (failure) => {
-          if (failure instanceof PassphraseRequiredError) {
-            setError(
-              passphrase === null
-                ? null // First ask: the field's own label is the explanation.
-                : 'That passphrase was not accepted.',
-            )
-            setPassphrase(passphrase ?? '')
-            return
-          }
-          setError(messageOf(failure))
-        },
-      },
-    )
-  }
-
-  return (
-    <form
-      className="lib-row lib-row--confirm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        enable()
-      }}
-    >
-      <div className="lib-row__main">
-        <span className="lib-row__name">Turn on write mode for “{library.name}”?</span>
-        <span className="lib-row__note">
-          Cairndex will be able to create, rename, move, and trash files inside this folder. Every
-          operation is recorded and can be undone, and deleted files go to the library’s trash
-          rather than disappearing.
-        </span>
-        {passphrase !== null && (
-          <input
-            className="edit"
-            type="password"
-            value={passphrase}
-            onChange={(event) => setPassphrase(event.target.value)}
-            aria-label={`Passphrase for ${library.name}`}
-            placeholder="Library passphrase"
-            autoFocus
-            autoComplete="current-password"
-          />
-        )}
-        {error && <span className="lib-row__note">{error}</span>}
-      </div>
-      <button type="button" className="btn btn--sm" onClick={onDone} disabled={writeMode.isPending}>
-        Cancel
-      </button>
-      <button
-        className="btn btn--sm btn--primary"
-        disabled={writeMode.isPending || passphrase === ''}
-      >
-        Turn on
-      </button>
-    </form>
-  )
-}
-
-// Mirrors `.path-input__menu`'s max-height, plus its offset from the field. Used
-// only to decide which side has room; the menu's real size stays CSS's business.
 const MENU_MAX_HEIGHT = 226
 
 // The longest prefix every suggestion shares, for Tab completion. Empty when the

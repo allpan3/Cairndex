@@ -1,7 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { replicaRequest } from '../api/replicas'
+import type { components } from '../api/schema'
+import { ReplicaViewer } from './viewer/ReplicaViewer'
+import { ViewOptions } from './ViewOptions'
+import { libraryStateKey } from '../state/useBundleDraft'
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  type ReactNode,
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import type { FileBrowserEntry, SortOrder } from '../api/client'
+import type { FileBrowserEntry, SortOrder, UnbundledFilesParams } from '../api/client'
 import { fileBrowserPreviewUrl, fileThumbnailUrl } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate, formatDuration, formatFileType } from '../lib/format'
@@ -13,6 +28,7 @@ import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { markHtmlFileDropHandled } from './htmlFileDrop'
 import { FileEntryViewer } from './FileEntryViewer'
+import { fileEntryKey, useFileSelection } from './useFileSelection'
 import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
@@ -34,7 +50,13 @@ import { FILE_ZOOM_MAX, FILE_ZOOM_MIN, listRowHeight } from './layout'
 import { SortControl } from './SortControl'
 import { SortHeaderCell } from './SortHeader'
 import { usePinyinSearch } from './pinyin'
-import { selectionTargets, suppressShiftSelection } from './selection'
+import {
+  focusListing,
+  listingOwnsKey,
+  selectionRange,
+  selectionTargets,
+  type SelectionModifiers,
+} from './selection'
 import { navTargetsFrom, rowStep } from './spatialNav'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -43,7 +65,7 @@ import type { PlayerPrefs, SortOption, SortPref } from './types'
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
 // grid/list layouts (justified needs image aspect ratios files don't carry).
-type FileSort = 'name' | 'type' | 'size' | 'added' | 'modified'
+type FileSort = NonNullable<UnbundledFilesParams['sort']>
 type FileLayout = 'list' | 'grid'
 
 interface FilePrefs {
@@ -76,6 +98,7 @@ const FILE_SORTS: SortOption<FileSort>[] = [
 ]
 
 interface FileBrowserProps {
+  catalogLibrary?: string
   /** Leading header controls — the sidebar toggle and Back/Forward buttons. */
   headerLeading?: ReactNode
   /** Trailing toolbar controls — the inspector toggle. */
@@ -131,8 +154,13 @@ function crumbs(path: string): { label: string; path: string }[] {
  * directories) has neither and keeps its icon.
  */
 function thumbnailFor(entry: FileBrowserEntry): string | null {
-  if (entry.kind === 'directory') return null
-  if (entry.file_id && entry.bundle_id) return fileThumbnailUrl(entry.bundle_id, entry.file_id)
+  if (entry.kind === 'directory' || entry.local_state != null) return null
+  if (entry.file_id && entry.bundle_id)
+    return fileThumbnailUrl(
+      entry.bundle_id,
+      entry.file_id,
+      `${entry.size_bytes}:${entry.modified_at}`,
+    )
   if (entry.media_kind === 'image') return fileBrowserPreviewUrl(entry.relative_path, 640)
   return null
 }
@@ -250,14 +278,95 @@ function compareEntries(a: FileBrowserEntry, b: FileBrowserEntry, sort: FileSort
  * The physical, library-scoped file browser (ADR-0008). The visible items are
  * real directories and files under the active library's root — not bundle cards.
  * Two scopes: `browse` navigates the directory tree; `unbundled` shows a flat,
- * cross-library list of files awaiting bundling. Files can be right-clicked to
+ * library-wide list of files awaiting bundling. Files can be right-clicked to
  * add them to / create a bundle (metadata-only; no move/rename/delete on disk).
  */
 export function FileBrowser(props: FileBrowserProps) {
-  return props.scope === 'unbundled' ? <UnbundledScope {...props} /> : <BrowseScope {...props} />
+  return <FileBrowserControls key={libraryStateKey(props.scope)} {...props} />
 }
 
-function BrowseScope(props: FileBrowserProps) {
+interface FileControls {
+  prefs: FilePrefs
+  setPrefs: Dispatch<SetStateAction<FilePrefs>>
+  search: string
+  setSearch: (value: string) => void
+}
+type FileScopeProps = FileBrowserProps & FileControls
+
+/** Keep query criteria above the request so each server page has the intended order */
+function FileBrowserControls(props: FileBrowserProps) {
+  const [prefs, setPrefs] = usePersistentState<FilePrefs>(
+    libraryStateKey('cairndex.filePrefs'),
+    DEFAULT_FILE_PREFS,
+  )
+  const [criteria, setCriteria] = useState({ path: props.path, search: '' })
+  if (criteria.path !== props.path) setCriteria({ path: props.path, search: '' })
+  const controls = {
+    prefs,
+    setPrefs,
+    search: criteria.search,
+    setSearch: (search: string) => setCriteria({ path: props.path, search }),
+  }
+  return props.catalogLibrary ? (
+    <CatalogBrowseScope {...props} {...controls} />
+  ) : props.scope === 'unbundled' ? (
+    <UnbundledScope {...props} {...controls} />
+  ) : (
+    <BrowseScope {...props} {...controls} />
+  )
+}
+
+function CatalogBrowseScope(props: FileScopeProps) {
+  const query = useQuery({
+    queryKey: ['catalog-local-directory', props.catalogLibrary, props.path],
+    queryFn: () =>
+      replicaRequest<components['schemas']['FileBrowserListingRead']>(
+        props.catalogLibrary!,
+        `/media/directory?path=${encodeURIComponent(props.path)}`,
+      ),
+    refetchInterval: 4000,
+  })
+  return (
+    <div className="file-browser">
+      <p className="catalog-capabilities">
+        Files are checked on this device. Unavailable catalog paths remain listed. Unlinked files
+        must be cataloged before they can open here.
+      </p>
+      {query.data?.local_state === 'unavailable' && (
+        <p role="status">This directory is unavailable on this device. Showing cataloged paths.</p>
+      )}
+      <FileList
+        {...props}
+        key={`${props.catalogLibrary}/${props.path}`}
+        header={
+          <nav className="file-browser__crumbs" aria-label="Breadcrumb">
+            <button className="crumb" onClick={() => props.onNavigate('')}>
+              {props.libraryName}
+            </button>
+            {crumbs(props.path).map((crumb) => (
+              <button
+                className="crumb"
+                key={crumb.path}
+                onClick={() => props.onNavigate(crumb.path)}
+              >
+                {crumb.label}
+              </button>
+            ))}
+          </nav>
+        }
+        entries={query.data?.entries ?? []}
+        isLoading={query.isLoading}
+        isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError}
+        onRetry={() => void query.refetch()}
+        errorText={query.error?.message}
+        emptyText="This folder is empty."
+      />
+    </div>
+  )
+}
+
+function BrowseScope(props: FileScopeProps) {
   const { headerLeading, libraryName, path, onNavigate } = props
   const qc = useQueryClient()
   // `keepPrevious`: hold the current folder's rows while the next one loads,
@@ -299,11 +408,13 @@ function BrowseScope(props: FileBrowserProps) {
   return (
     <div className="file-browser">
       <FileList
-        key={`browse:${path}`}
+        key={libraryStateKey(`browse:${path}`)}
         header={header}
         entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError && !stale}
+        onRetry={() => void query.refetch()}
         errorText={query.error instanceof Error ? query.error.message : undefined}
         emptyText="This folder is empty."
         stale={stale}
@@ -313,14 +424,15 @@ function BrowseScope(props: FileBrowserProps) {
   )
 }
 
-function UnbundledScope(props: FileBrowserProps) {
-  const query = useUnbundledFiles()
+function UnbundledScope(props: FileScopeProps) {
+  const params = { q: props.search.trim(), sort: props.prefs.sort, order: props.prefs.order }
+  const query = useUnbundledFiles(params)
   const entries = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
 
   return (
     <div className="file-browser">
       <FileList
-        key="unbundled"
+        key={libraryStateKey('unbundled')}
         header={
           <>
             {props.headerLeading}
@@ -330,8 +442,14 @@ function UnbundledScope(props: FileBrowserProps) {
         entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError && !query.hasNextPage}
+        onRetry={() => void query.refetch()}
         errorText={query.error instanceof Error ? query.error.message : undefined}
-        emptyText="Nothing to bundle — every file is already in a bundle."
+        emptyText={
+          props.search.trim()
+            ? `No files match “${props.search}”.`
+            : 'No indexed files awaiting bundling.'
+        }
         hasMore={query.hasNextPage}
         isFetchingMore={query.isFetchingNextPage}
         onLoadMore={() => query.fetchNextPage()}
@@ -341,11 +459,13 @@ function UnbundledScope(props: FileBrowserProps) {
   )
 }
 
-interface FileListProps extends FileBrowserProps {
+interface FileListProps extends FileScopeProps {
   header: ReactNode
   entries: FileBrowserEntry[]
   isLoading: boolean
   isError: boolean
+  complete: boolean
+  onRetry: () => void
   errorText?: string
   emptyText: string
   /**
@@ -367,12 +487,19 @@ interface FileListProps extends FileBrowserProps {
  * inspector); double click navigates into a folder or opens a file. Only files
  * participate in the bundling context menu and drag-select. */
 function FileList({
+  catalogLibrary,
+  prefs,
+  setPrefs,
+  search,
+  setSearch,
   header,
   headerTrailing,
   entries,
   stale = false,
   isLoading,
   isError,
+  complete,
+  onRetry,
   errorText,
   emptyText,
   hasMore,
@@ -409,10 +536,6 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = writeMode && scope === 'browse'
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Anchor for Shift-range selection (the last plainly-clicked file).
-  const [anchor, setAnchor] = useState<string | null>(null)
-  const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
   /**
    * The sort in force here, and how changing it is stored.
    *
@@ -443,7 +566,20 @@ function FileList({
   // `entry.name`, so hiding extensions can never change what an action does.
   const labelFor = (entry: FileBrowserEntry) =>
     displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
-  const [search, setSearch] = useState('')
+  const { selected, setSelected, anchor, setAnchor, focusedPath, setFocusedPath, selectedEntry } =
+    useFileSelection(
+      libraryStateKey(`cairndex.fileSelection:${JSON.stringify([scope, currentPath, search])}`),
+      entries,
+      complete,
+      selectedPath,
+    )
+  // Keep the inspector and host actions on the refreshed path of the selected indexed file
+  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry) => {
+    if (catalogLibrary || selectedPath !== entry.relative_path) onSelectEntry(entry)
+  })
+  useEffect(() => {
+    if (selectedEntry && !stale) refreshSelectedEntry(selectedEntry)
+  }, [selectedEntry, stale])
   const matchSearch = usePinyinSearch(search)
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -457,6 +593,7 @@ function FileList({
   // analogous to collections). Whole-library / recursive file search is a
   // future backend enhancement — see docs/STATUS.md.
   const visible = useMemo(() => {
+    if (scope === 'unbundled') return entries
     const q = search.trim()
     const filtered = q ? entries.filter((e) => matchSearch(e.name)) : entries
     const dir = activeSort.order === 'asc' ? 1 : -1
@@ -465,10 +602,14 @@ function FileList({
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
-  }, [entries, search, activeSort.sort, activeSort.order, matchSearch])
+  }, [entries, scope, search, activeSort.sort, activeSort.order, matchSearch])
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
-  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const openIndex =
+    openKey === null ? -1 : openable.findIndex((entry) => fileEntryKey(entry) === openKey)
+  if (complete && openKey !== null && !entries.some((entry) => fileEntryKey(entry) === openKey))
+    setOpenKey(null)
   // The viewer's heading names where the playlist came from: the folder being
   // browsed (the library root has no path segment), or the flat queue.
   const viewerTitle =
@@ -481,19 +622,25 @@ function FileList({
   // Single click selects (for the inspector); Cmd/Ctrl toggles the entry, Shift
   // selects the inclusive range from the anchor. Both directories and files take
   // part (bundling later filters to files). Navigation/opening is double-click.
-  const clickEntry = (entry: FileBrowserEntry, e: React.MouseEvent) => {
+  const clickEntry = (entry: FileBrowserEntry, e: SelectionModifiers) => {
     // Belt and braces with the `listing--inert` style: CSS alone would leave the
     // guard dependent on a stylesheet having loaded, and what it is guarding is
     // Rename/Move to…/Move to Trash resolving against the previous folder.
     if (stale) return
+    setFocusedPath(entry.relative_path)
     if (e.shiftKey && anchor) {
       const ids = visible.map((v) => v.relative_path)
       const a = ids.indexOf(anchor)
       const b = ids.indexOf(entry.relative_path)
       if (a !== -1 && b !== -1) {
-        const [lo, hi] = a < b ? [a, b] : [b, a]
-        const range = visible.slice(lo, hi + 1).map((v) => v.relative_path)
-        setSelected(new Set(range))
+        setSelected((previous) =>
+          selectionRange(
+            ids,
+            anchor,
+            entry.relative_path,
+            e.metaKey || e.ctrlKey ? previous : undefined,
+          ),
+        )
         onSelectEntry(entry)
         return
       }
@@ -519,8 +666,7 @@ function FileList({
       return
     }
     if (entry.supported) {
-      const idx = openable.findIndex((e) => e.relative_path === entry.relative_path)
-      if (idx >= 0) setOpenIndex(idx)
+      setOpenKey(fileEntryKey(entry))
     }
   }
 
@@ -609,16 +755,17 @@ function FileList({
       }
     }
     if (items.length > 0) items.push(null)
-    items.push(
-      {
-        label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
-        onClick: () => onCreateBundle(targets),
-      },
-      {
-        label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
-        onClick: () => onAddToBundle(targets),
-      },
-    )
+    if (!catalogLibrary)
+      items.push(
+        {
+          label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
+          onClick: () => onCreateBundle(targets),
+        },
+        {
+          label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
+          onClick: () => onAddToBundle(targets),
+        },
+      )
     if (n === 1) {
       const owningBundleId = entry.bundle_id
       if (onLocateBundle && owningBundleId && !entry.unbundled) {
@@ -634,7 +781,7 @@ function FileList({
       onClick: () => copyPath(entry.relative_path),
     })
     // An unindexed video has no file row for the server to cut a sheet from
-    if (n === 1 && entry.media_kind === 'video' && entry.file_id) {
+    if (!catalogLibrary && n === 1 && entry.media_kind === 'video' && entry.file_id) {
       items.push(
         null,
         contactSheetMenuItem(
@@ -702,17 +849,22 @@ function FileList({
     visible.filter((entry) => paths.includes(entry.relative_path) && entry.linked).length
 
   /** Move the selection one step through the listing (arrow keys). */
-  const moveSelection = (direction: 'up' | 'down' | 'left' | 'right') => {
+  const moveSelection = (
+    direction: 'up' | 'down' | 'left' | 'right' | 'home' | 'end',
+    event: SelectionModifiers,
+  ) => {
     if (visible.length === 0) return
     // The anchor is where the last deliberate click landed; `selectedPath` keeps
     // a Locate-in-File-Browser arrival navigable without a click first.
-    const from = anchor ?? [...selected].at(-1) ?? selectedPath
+    const from = focusedPath ?? selectedPath ?? [...selected].at(-1)
     const index = visible.findIndex((entry) => entry.relative_path === from)
     // Up/Down move by row — in the card layout that is a row of cards, in the
     // list layout the next row is the next entry anyway. Left/Right step one
     // place along, which wraps a card row the way a file manager does.
     let nextPath: string | null = null
-    if (direction === 'up' || direction === 'down') {
+    if (direction === 'home' || direction === 'end') {
+      nextPath = (direction === 'home' ? visible[0] : visible.at(-1))?.relative_path ?? null
+    } else if (direction === 'up' || direction === 'down') {
       const targets = navTargetsFrom(
         wrapperRef.current ?? document,
         '[data-relpath]',
@@ -728,50 +880,86 @@ function FileList({
     }
     const target = visible.find((entry) => entry.relative_path === nextPath)
     if (!target) return
-    setSelected(new Set([target.relative_path]))
-    setAnchor(target.relative_path)
-    onSelectEntry(target)
-    wrapperRef.current
-      ?.querySelector(`[data-relpath="${CSS.escape(target.relative_path)}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
+    setFocusedPath(target.relative_path)
+    if (event.shiftKey || (!event.metaKey && !event.ctrlKey)) clickEntry(target, event)
+    scrollEl?.focus({ preventScroll: true })
+    const item = wrapperRef.current?.querySelector(
+      `[data-relpath="${CSS.escape(target.relative_path)}"]`,
+    )
+    item?.scrollIntoView({ block: 'nearest' })
+    // Sticky headers occlude rows that scrollIntoView considers inside the viewport
+    const stickyHeader = wrapperRef.current?.querySelector('.file-table__head')
+    if (item && stickyHeader && scrollEl) {
+      const overlap = stickyHeader.getBoundingClientRect().bottom - item.getBoundingClientRect().top
+      if (overlap > 0) scrollEl.scrollBy({ top: -overlap, behavior: 'instant' })
+    }
   }
 
-  // Arrow keys walk the listing, the way they already walk cards in the Bundle
-  // Browser. Bound to `window` for the same reason that one is: the scroll
-  // container is focusable but nothing focuses it, so the keys reached the shell
-  // instead and only drew a focus ring (owner, 2026-09-01). Everything that
-  // takes the keyboard for itself — a rename field, an open viewer, a dialog, a
-  // context menu — is checked first.
+  // The focused listing owns selection keys while editors and overlays keep their commands
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const key = event.key
-      if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowLeft' && key !== 'ArrowRight')
-        return
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      // `instanceof Element` rather than a cast: a key event can be dispatched at
-      // the window itself, which has no `closest`.
-      const target = event.target
+      if (!listingOwnsKey(event, scrollEl) || stale || openKey !== null || menu.state) return
       if (
-        target instanceof Element &&
-        target.closest('input, textarea, select, [contenteditable="true"]')
+        write.renamingPath ||
+        write.creatingFolder ||
+        write.conflict ||
+        write.pendingDelete ||
+        write.pendingMove ||
+        sheetTarget
       )
         return
-      if (stale || openIndex !== null || menu.state !== null) return
-      if (write.renamingPath || write.creatingFolder) return
-      if (write.conflict || write.pendingDelete || write.pendingMove || sheetTarget) return
-      event.preventDefault()
-      moveSelection(
-        key === 'ArrowDown'
-          ? 'down'
-          : key === 'ArrowUp'
-            ? 'up'
-            : key === 'ArrowRight'
-              ? 'right'
-              : 'left',
-      )
+      const command = event.metaKey || event.ctrlKey
+      if (command && !event.shiftKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setSelected(new Set(visible.map((entry) => entry.relative_path)))
+        const first = focusedPath ?? visible[0]?.relative_path ?? null
+        setFocusedPath(first)
+        setAnchor(first)
+        onSelectEntry(visible.find((entry) => entry.relative_path === first) ?? null)
+        return
+      }
+      if (event.altKey) return
+      const directions = {
+        ArrowRight: 'right',
+        ArrowDown: 'down',
+        ArrowLeft: 'left',
+        ArrowUp: 'up',
+        Home: 'home',
+        End: 'end',
+      } as const
+      const direction = directions[event.key as keyof typeof directions]
+      if (direction) {
+        event.preventDefault()
+        moveSelection(direction, event)
+      } else if (catalogLibrary && event.key === 'Enter' && !command) {
+        const entry = visible.find((item) => item.relative_path === focusedPath)
+        if (entry) {
+          event.preventDefault()
+          openEntry(entry)
+        }
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        setSelected(new Set())
+        setFocusedPath(null)
+        setAnchor(null)
+        onSelectEntry(null)
+      } else if (event.key === ' ' && command) {
+        const entry = visible.find((item) => item.relative_path === focusedPath)
+        if (entry) {
+          event.preventDefault()
+          clickEntry(entry, { metaKey: true, ctrlKey: false, shiftKey: false })
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  })
+
+  // The focus ring follows navigation independently of the selected range
+  useEffect(() => {
+    wrapperRef.current?.querySelectorAll<HTMLElement>('[data-relpath]').forEach((element) => {
+      element.dataset.focused = String(element.dataset.relpath === focusedPath)
+    })
   })
 
   // Item size and New Folder come from the View and File menus in the desktop
@@ -859,6 +1047,8 @@ function FileList({
     getBaseSelection: () => selected,
     onChange: (ids) => {
       setSelected(new Set(ids))
+      setFocusedPath(ids.at(-1) ?? null)
+      setAnchor(ids.at(-1) ?? null)
       const lastId = ids.at(-1)
       const lastEntry = lastId ? (visible.find((e) => e.relative_path === lastId) ?? null) : null
       onSelectEntry(lastEntry)
@@ -950,7 +1140,7 @@ function FileList({
           scopeLabel="Remember sort per folder"
         />
 
-        <div className="seg" role="group" aria-label="Layout">
+        <div className="seg toolbar__layouts" role="group" aria-label="Layout">
           <button
             className={prefs.layout === 'grid' ? 'is-active' : ''}
             onClick={() => setPrefs({ ...prefs, layout: 'grid' })}
@@ -971,6 +1161,20 @@ function FileList({
           </button>
         </div>
 
+        <ViewOptions
+          onAddFiles={canCreateFolder ? () => fileInputRef.current?.click() : undefined}
+          addFilesDisabled={write.busy}
+          layout={prefs.layout}
+          layouts={[
+            { value: 'grid', label: 'Card' },
+            { value: 'list', label: 'List' },
+          ]}
+          onLayout={(layout) => setPrefs({ ...prefs, layout })}
+          zoom={prefs.zoom}
+          min={FILE_ZOOM_MIN}
+          max={FILE_ZOOM_MAX}
+          onZoom={(zoom) => setPrefs({ ...prefs, zoom })}
+        />
         {headerTrailing}
       </div>
 
@@ -979,13 +1183,13 @@ function FileList({
           dropActive ? ' file-browser__body--dropping' : ''
         }`}
         ref={setScrollEl}
-        onMouseDownCapture={suppressShiftSelection}
+        onMouseDownCapture={focusListing}
         // Row-based interaction is suspended while the listing is stale: a band
         // select or an arrow key would resolve against the previous folder's
         // entries. Path-based affordances below (drop, New Folder, the
         // background menu) stay live — they key off `path`, which is already the
         // folder being navigated to, so they are correct throughout.
-        onMouseDown={stale ? undefined : onBackgroundMouseDown}
+        onMouseDown={stale || openKey !== null ? undefined : onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={stale ? undefined : listKeyDown}
         onDragOver={canCreateFolder ? onDragOverFiles : undefined}
@@ -993,8 +1197,19 @@ function FileList({
         onDrop={canCreateFolder ? onDropFiles : undefined}
         // Focusable so F2/Enter reach the list without stealing the tab order
         // from the toolbar controls above it.
-        tabIndex={-1}
+        tabIndex={0}
+        role={prefs.layout === 'list' ? 'grid' : 'listbox'}
+        aria-label="Files"
+        aria-activedescendant={
+          focusedPath ? `file-option-${encodeURIComponent(focusedPath)}` : undefined
+        }
+        aria-multiselectable="true"
       >
+        {hasMore && selected.size > 0 && (
+          <div className="listing-selection-note" role="status">
+            {selected.size} selected · Select All includes {visible.length} loaded entries
+          </div>
+        )}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
@@ -1010,11 +1225,18 @@ function FileList({
             />
           </div>
         )}
+        {isError && (
+          <div className="empty empty--error" role="alert">
+            {errorText ?? 'Could not load files.'}{' '}
+            {entries.length > 0 ? 'Showing cached files. ' : ''}
+            <button className="btn" onClick={onRetry}>
+              Retry files
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="empty">Loading…</div>
-        ) : isError ? (
-          <div className="empty empty--error">{errorText ?? 'Could not load files.'}</div>
-        ) : entries.length === 0 ? (
+        ) : isError && entries.length === 0 ? null : entries.length === 0 ? (
           <div className="empty">{emptyText}</div>
         ) : visible.length === 0 ? (
           <div className="empty">No files match “{search}”.</div>
@@ -1041,7 +1263,6 @@ function FileList({
               {prefs.layout === 'list' ? (
                 <div
                   className="file-table"
-                  role="table"
                   style={{ ['--file-row-h' as string]: `${listRowHeight(prefs.zoom)}px` }}
                 >
                   {/* Clicking a header sorts by that column, the way every file
@@ -1065,9 +1286,7 @@ function FileList({
                       key={entry.relative_path}
                       entry={entry}
                       label={labelFor(entry)}
-                      selected={
-                        selected.has(entry.relative_path) || entry.relative_path === selectedPath
-                      }
+                      selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
@@ -1085,9 +1304,7 @@ function FileList({
                       key={entry.relative_path}
                       entry={entry}
                       label={labelFor(entry)}
-                      selected={
-                        selected.has(entry.relative_path) || entry.relative_path === selectedPath
-                      }
+                      selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
@@ -1151,12 +1368,23 @@ function FileList({
           />
         )}
 
-        {openIndex !== null && (
+        {openIndex >= 0 && catalogLibrary && openable[openIndex]?.file_id && (
+          <ReplicaViewer
+            library={catalogLibrary}
+            folder={{ entries: openable, title: viewerTitle }}
+            target={{ fileId: openable[openIndex]!.file_id! }}
+            onClose={() => setOpenKey(null)}
+          />
+        )}
+        {openIndex >= 0 && !catalogLibrary && (
           <FileEntryViewer
             files={openable}
             index={openIndex}
-            onIndex={setOpenIndex}
-            onClose={() => setOpenIndex(null)}
+            onIndex={(index) => {
+              const entry = openable[index]
+              if (entry) setOpenKey(fileEntryKey(entry))
+            }}
+            onClose={() => setOpenKey(null)}
             title={viewerTitle}
             playerPrefs={playerPrefs}
             onPlayerPrefs={onPlayerPrefs}
@@ -1200,12 +1428,13 @@ function FileRow({
       onContextMenu={onContextMenu}
       role="row"
       aria-selected={selected}
+      id={`file-option-${encodeURIComponent(entry.relative_path)}`}
       data-relpath={entry.relative_path}
       // A row being renamed must not also be a drag source: the pointer belongs
       // to the text field while a name is being edited.
       {...(renaming ? {} : dragProps)}
     >
-      <span className="file-row__name">
+      <span role="gridcell" className="file-row__name">
         <span className="file-row__icon">
           <EntryThumb
             entry={entry}
@@ -1222,7 +1451,20 @@ function FileRow({
             onCancel={onCancelRename}
           />
         ) : (
-          <span className="file-row__text">{label}</span>
+          <span className="file-row__text">
+            {label}
+            {entry.local_state && (
+              <small>
+                {' '}
+                · {entry.linked ? 'Cataloged' : 'Unlinked'} ·{' '}
+                {entry.local_state === 'observed'
+                  ? 'Observed here'
+                  : entry.local_state === 'unavailable'
+                    ? 'Unavailable here'
+                    : 'Availability unknown'}
+              </small>
+            )}
+          </span>
         )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
@@ -1230,12 +1472,16 @@ function FileRow({
         {!isDir && !entry.linked && <span className="badge badge--warn">unlinked</span>}
         {!isDir && entry.unbundled && <span className="badge badge--warn">unbundled</span>}
       </span>
-      <span className="file-row__type">{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
-      <span className="file-table__num">{isDir ? '' : formatBytes(entry.size_bytes)}</span>
-      <span className="file-row__added">
+      <span role="gridcell" className="file-row__type">
+        {isDir ? 'Folder' : (entry.extension ?? 'file')}
+      </span>
+      <span role="gridcell" className="file-table__num">
+        {isDir ? '' : formatBytes(entry.size_bytes)}
+      </span>
+      <span role="gridcell" className="file-row__added">
         {entry.created_at ? formatDate(entry.created_at) : ''}
       </span>
-      <span className="file-row__modified">
+      <span role="gridcell" className="file-row__modified">
         {entry.modified_at ? formatDate(entry.modified_at) : ''}
       </span>
     </div>
@@ -1273,22 +1519,25 @@ function FileCard({
   const isDir = entry.kind === 'directory'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
-      entry.media_kind === 'video' && entry.file_id && entry.duration
-        ? {
-            mediaKind: 'video',
-            fileId: entry.file_id,
-            mimeType: entry.mime_type,
-            relativePath: entry.relative_path,
-            container: entry.container,
-            videoCodec: entry.video_codec,
-            videoCodecTag: entry.video_codec_tag,
-            bitDepth: entry.bit_depth,
-            audioCodec: entry.audio_codec,
-            duration: entry.duration,
-            startTime: entry.resume_position,
-          }
-        : null,
+      entry.local_state != null
+        ? null
+        : entry.media_kind === 'video' && entry.file_id && entry.duration
+          ? {
+              mediaKind: 'video',
+              fileId: entry.file_id,
+              mimeType: entry.mime_type,
+              relativePath: entry.relative_path,
+              container: entry.container,
+              videoCodec: entry.video_codec,
+              videoCodecTag: entry.video_codec_tag,
+              bitDepth: entry.bit_depth,
+              audioCodec: entry.audio_codec,
+              duration: entry.duration,
+              startTime: entry.resume_position,
+            }
+          : null,
     [
+      entry.local_state,
       entry.audio_codec,
       entry.bit_depth,
       entry.container,
@@ -1308,8 +1557,9 @@ function FileCard({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      role="gridcell"
+      role="option"
       aria-selected={selected}
+      id={`file-option-${encodeURIComponent(entry.relative_path)}`}
       data-relpath={entry.relative_path}
       {...(renaming ? {} : dragProps)}
     >

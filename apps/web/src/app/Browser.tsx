@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { BundleSort, BundleSummary, SortOrder } from '../api/client'
 import { thumbnailUrl } from '../api/client'
@@ -9,14 +9,24 @@ import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
 import { DRAG_BUNDLES, sameTarget, seamFor } from './dnd'
-import { selectionTargets, suppressShiftSelection } from './selection'
+import { focusListing, selectionTargets } from './selection'
+import { rowStep } from './spatialNav'
 import { SortHeaderCell } from './SortHeader'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 const H_PADDING = 12
 
+// The full layout owns navigation even when a target row is outside the rendered window
+export interface BrowserNavigation {
+  step: (from: string | null, direction: 'up' | 'down') => string | null
+  focus: (id: string) => void
+}
+
 interface BrowserProps {
+  unavailableSize?: boolean
+  singleSelection?: boolean
+
   items: BundleSummary[]
   total: number
   layout: LayoutMode
@@ -26,6 +36,8 @@ interface BrowserProps {
   order: SortOrder
   onSort: (sort: BundleSort, order: SortOrder) => void
   selectedIds: Set<string>
+  activeId?: string | null
+  navigationRef?: React.Ref<BrowserNavigation>
   onSelect: (id: string, e: React.MouseEvent) => void
   // Fired continuously while a marquee drag is in progress (and once more on
   // mouseup) with the full resulting selection — replaces selectedIds wholesale.
@@ -274,6 +286,38 @@ export function Browser(props: BrowserProps) {
     overscan: 6,
   })
 
+  useImperativeHandle(props.navigationRef, () => ({
+    step: (from, direction) =>
+      rowStep(
+        rows.flatMap((row, index) =>
+          row.cards.map((card) => ({
+            id: card.item.id,
+            rect: {
+              top: rowTops[index] ?? 0,
+              bottom: (rowTops[index] ?? 0) + row.height,
+              left: card.x,
+              right: card.x + card.width,
+            },
+          })),
+        ),
+        from,
+        direction,
+      ),
+    focus: (id) => {
+      const index = rows.findIndex((row) => row.cards.some((card) => card.item.id === id))
+      if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })
+      scrollEl?.focus({ preventScroll: true })
+    },
+  }))
+
+  // Mark the focused option after virtual rows mount, independent of its selected range
+  useLayoutEffect(() => {
+    scrollEl?.querySelectorAll<HTMLElement>('[data-bundle-id]').forEach((element) => {
+      element.id = `bundle-option-${element.dataset.bundleId}`
+      element.dataset.focused = String(element.dataset.bundleId === props.activeId)
+    })
+  })
+
   // The virtualizer caches row sizes and only re-derives them when the row
   // count changes. Grid zoom changes the column count (so it recomputes), but
   // list zoom keeps one row per item — so force a re-measure when zoom/layout
@@ -351,14 +395,22 @@ export function Browser(props: BrowserProps) {
       ref={setScrollEl}
       role="listbox"
       aria-label="Bundles"
-      onMouseDownCapture={suppressShiftSelection}
-      onMouseDown={onBackgroundMouseDown}
+      aria-multiselectable={!props.singleSelection}
+      aria-activedescendant={props.activeId ? `bundle-option-${props.activeId}` : undefined}
+      tabIndex={0}
+      onMouseDownCapture={focusListing}
+      onMouseDown={props.singleSelection ? undefined : onBackgroundMouseDown}
       onMouseMove={onContainerMouseMove}
       onContextMenu={onRootContextMenu}
       onDragOver={onContainerDragOver}
       onDrop={onContainerDrop}
       onDragLeave={onContainerDragLeave}
     >
+      {!props.singleSelection && props.hasNextPage && selectedIds.size > 0 && (
+        <div className="listing-selection-note" role="status">
+          {selectedIds.size} selected · Select All includes {items.length} loaded bundles
+        </div>
+      )}
       {props.isError && (
         <div className="state state--error">
           <div>Couldn’t load the library.</div>
@@ -429,6 +481,7 @@ export function Browser(props: BrowserProps) {
                 {layout === 'list'
                   ? row.cards.map((c) => (
                       <ListRow
+                        unavailableSize={props.unavailableSize}
                         key={c.item.id}
                         item={c.item}
                         selected={selectedIds.has(c.item.id)}
@@ -515,6 +568,7 @@ function ListHeader({
 }
 
 function ListRow({
+  unavailableSize,
   item,
   selected,
   onSelect,
@@ -523,6 +577,7 @@ function ListRow({
   dragProps,
 }: {
   item: BundleSummary
+  unavailableSize?: boolean
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
@@ -558,7 +613,7 @@ function ListRow({
       <div className="list-row__title">{item.title ?? 'Untitled'}</div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
-      <span className="list-cell">{formatBytes(item.total_size)}</span>
+      <span className="list-cell">{unavailableSize ? '—' : formatBytes(item.total_size)}</span>
       <span className="list-cell">{formatDate(item.date_added)}</span>
     </div>
   )

@@ -1,3 +1,4 @@
+import { basisOf, withEditBasis } from '../api/editBasis'
 /**
  * What an import says for itself, and the bundle it offers to join.
  *
@@ -157,13 +158,13 @@ export async function announceImport(
     // every confirmed bundle, rather than to nothing.
     offers.push({ label: 'Add to Bundle', run: () => deps.openPicker(paths) })
   } else {
+    const openingBasis = basisOf(best)
     const bundleId = best.bundle_id
     const title = best.title ?? 'that bundle'
     offers.push({
       label: `Add to “${title}”`,
       run: () => {
-        void deps
-          .addToBundle(bundleId, paths)
+        void withEditBasis(openingBasis, () => deps.addToBundle(bundleId, paths))
           .then(() => {
             deps.onLinked?.(bundleId)
             deps.show(`Added to “${title}”.`)

@@ -106,10 +106,10 @@ export function ControlBar({
         <button
           className="mv-btn mv-btn--primary"
           onClick={player.playPause}
-          aria-label={player.status === 'playing' ? 'Pause' : 'Play'}
-          title={player.status === 'playing' ? 'Pause' : 'Play'}
+          aria-label={player.wantsPlayback ? 'Pause' : 'Play'}
+          title={player.wantsPlayback ? 'Pause' : 'Play'}
         >
-          {player.status === 'playing' ? <IconPause /> : <IconPlay />}
+          {player.wantsPlayback ? <IconPause /> : <IconPlay />}
         </button>
         <span className="mv-time">{time}</span>
         <div className="mv-controls__spacer" />

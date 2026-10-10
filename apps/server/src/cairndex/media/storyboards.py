@@ -19,6 +19,7 @@ from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media import derived_cache
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
+from cairndex.ownership.lifecycle import check_work_ownership
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
@@ -435,6 +436,7 @@ def _build_cues(
 
 # Atomically replace one file's storyboard artifact directory
 def _replace_cache_dir(cache_dir: Path, temp_dir: Path) -> None:
+    check_work_ownership()
     cache_dir.parent.mkdir(parents=True, exist_ok=True)
     old_dir = cache_dir.with_name(f"{cache_dir.name}.old")
     if old_dir.exists():
@@ -469,6 +471,7 @@ def generate_for_file(
     try:
         source = Path(resolve_within_root(library_root, asset_file.relative_path))
         interval = storyboard_interval(duration)
+        check_work_ownership()
         cache_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f"{cache_dir.name}.tmp-", dir=cache_dir.parent))
         times = _sample_sheets(source, temp_dir, interval, duration, settings.storyboard_sampling)
@@ -505,6 +508,7 @@ def generate_for_file(
         # half-built directory would otherwise stay in the cache forever. That
         # is where the strays a killed pass leaves behind come from.
         if temp_dir is not None and temp_dir.exists():
+            check_work_ownership()
             shutil.rmtree(temp_dir, ignore_errors=True)
     return StoryboardFileResult("generated", path=cache_dir / "index.vtt")
 

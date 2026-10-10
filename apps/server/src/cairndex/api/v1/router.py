@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from cairndex.api.v1 import (
     auth,
     bundles,
+    catalog_replicas,
     devices,
     exports,
     file_ops,
@@ -18,6 +19,10 @@ from cairndex.api.v1 import (
     ownership,
     playback,
     playback_sessions,
+    private_recovery,
+    replica_discovery,
+    replica_media,
+    replicas,
     smart_collections,
     tag_groups,
     tags,
@@ -28,6 +33,11 @@ router = APIRouter(prefix="/api/v1")
 # Global (registry) routes.
 router.include_router(health.router)
 router.include_router(libraries.router)
+router.include_router(replicas.router)
+router.include_router(catalog_replicas.router)
+router.include_router(replica_discovery.router)
+router.include_router(replica_media.router)
+router.include_router(private_recovery.router)
 router.include_router(jobs.router)
 # Per-library auth (reachable while locked — the way to unlock; not content-gated).
 router.include_router(auth.router)

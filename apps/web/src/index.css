@@ -497,15 +497,10 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
-/* What a toolbar gives up as its column narrows, in order: the title
-   ellipsizes, then the item count goes, then the zoom slider. Everything after
-   that is a control with no other home — the panel toggles, the layout group,
-   the sort control, the search field — so the row clips rather than painting
-   over the inspector beside it. Before this the row simply overflowed: the zoom
-   slider collapsed to nothing and the inspector toggle was drawn on top of the
-   panel it governs (owner, 2026-09-01). */
+/* A narrow surface keeps actions and search on one row, with view controls in a dialog */
 .toolbar {
   overflow: hidden;
+  flex-shrink: 0;
 }
 .toolbar__title {
   min-width: 0;
@@ -514,38 +509,39 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.toolbar__view-options {
+  display: none;
+  flex: none;
+  cursor: pointer;
+}
 @container surface (max-width: 700px) {
   .toolbar .toolbar__count {
     display: none;
+  }
+  .toolbar:has(.btn) .zoom {
+    display: none;
+  }
+  .toolbar:has(.btn) .toolbar__view-options {
+    display: inline-flex;
   }
 }
 @container surface (max-width: 620px) {
   .toolbar .zoom {
     display: none;
   }
+  .toolbar .toolbar__view-options {
+    display: inline-flex;
+  }
 }
-/* A row carrying an action — the File Browser's Add Files Here, Trash's Empty
-   Trash… — is ~100px heavier, so it reaches the same point sooner and gives the
-   same two things up there. */
 @container surface (max-width: 760px) {
   .toolbar:has(.btn) .toolbar__count {
     display: none;
   }
 }
-@container surface (max-width: 700px) {
-  .toolbar:has(.btn) .zoom {
+@container surface (max-width: 560px) {
+  .toolbar .toolbar__layouts {
     display: none;
   }
-}
-/* Narrower still: the File Browser's Add Files Here goes too, and the two
-   flexible things left — the breadcrumb trail, which scrolls, and the search
-   field — drop to a smaller floor. That keeps the controls with no other home
-   (sort, layout, both panel toggles) on the row down to the narrowest column
-   the app allows. Adding files stays reachable from File ▸ Add Files to
-   Library… and the sidebar's ⋯ menu; Trash's own action is deliberately not
-   matched here, because hiding it mid-confirmation would strip the buttons the
-   confirmation is asking about. */
-@container surface (max-width: 560px) {
   .center .toolbar {
     gap: 6px;
     padding-left: 8px;
@@ -554,20 +550,33 @@ button {
   .center .file-browser .toolbar .btn {
     display: none;
   }
-  /* One class more specific than the base rules further down the sheet, which
-     would otherwise win on order and pin these at their comfortable floors. */
   .center .toolbar input[type='search'] {
     min-width: 72px;
   }
   .center .file-browser__crumbs {
     min-width: 40px;
   }
-  /* The surface's name goes last of the text: the sidebar's highlighted row
-     already says which view is open, and the Bundle Browser's third layout
-     button makes its row the tightest of the two. */
   .center .toolbar .toolbar__title {
     display: none;
   }
+}
+.modal.view-options {
+  width: min(320px, 92vw);
+}
+.view-options__field {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.view-options__field select {
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.view-options__field input {
+  width: 100%;
 }
 
 /* One height for every boxed control in a toolbar — segmented groups, actions,
@@ -1606,7 +1615,9 @@ button {
 .list-row {
   position: absolute;
   display: grid;
-  grid-template-columns: 56px 1fr 110px 70px 90px 110px;
+  /* Preserve a readable name while secondary columns scroll horizontally */
+  min-width: 704px;
+  grid-template-columns: 56px minmax(180px, 1fr) 110px 70px 90px 110px;
   align-items: center;
   gap: 12px;
   padding: 0 14px;
@@ -1701,6 +1712,7 @@ button {
 
 /* --- Inspector ----------------------------------------------------------- */
 .inspector {
+  min-width: 0;
   grid-column: 3;
   background: var(--bg-2);
   border-left: 1px solid var(--border);
@@ -1713,7 +1725,8 @@ button {
 }
 .inspector__cover {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
+  max-height: 144px;
   border-radius: 8px;
   background: var(--bg) center/cover no-repeat;
   border: 1px solid var(--border);
@@ -4409,7 +4422,8 @@ code {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.inspector__cover:hover .inspector__play {
+.inspector__cover:hover .inspector__play,
+.inspector__cover:focus-within .inspector__play {
   opacity: 1;
 }
 .inspector__play:hover {
@@ -6104,6 +6118,8 @@ code {
    are also used (with a different layout) by the bundle inspector. */
 .file-table {
   font-size: 13px;
+  /* Keep 180px for names beside the fixed metadata columns and their gaps */
+  min-width: 838px;
 }
 .file-table__head,
 .file-table .file-row {
@@ -6263,7 +6279,7 @@ code {
 }
 .file-meta {
   margin: 0;
-  padding: 12px 16px;
+  padding: 0;
 }
 .file-inspector__actions {
   display: grid;
@@ -6498,6 +6514,11 @@ code {
   color: var(--text-strong);
   cursor: pointer;
   font-size: 13px;
+}
+.lockscreen__connection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .lockscreen__submit:disabled {
   opacity: 0.5;
@@ -7223,4 +7244,760 @@ code {
   100% {
     background-position: 140% 0;
   }
+}
+
+/* Bounded metadata workspace shares the application's palette and keyboard controls */
+.replica-workspace {
+  height: 100vh;
+  overflow: auto;
+  padding: 24px;
+}
+.replica-workspace header,
+.replica-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.replica-workspace header > div {
+  flex: 1;
+}
+.replica-workspace button,
+.replica-review button {
+  padding: 8px 12px;
+  margin: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: inherit;
+  cursor: pointer;
+}
+.replica-workspace button:disabled,
+.replica-review button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.replica-workspace label {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+}
+.replica-workspace input,
+.replica-workspace textarea,
+.replica-workspace select {
+  padding: 8px;
+  background: var(--bg-2);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.replica-workspace textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+.replica-status {
+  padding: 12px;
+  margin-block: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.replica-layout {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr);
+  gap: 24px;
+  max-width: 1100px;
+}
+.replica-layout nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.replica-layout nav button[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.replica-editor fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.replica-editor section {
+  margin-block: 16px;
+}
+.replica-candidate {
+  border-left: 3px solid var(--border);
+  padding: 8px 12px;
+  margin-block: 8px;
+}
+.replica-editor pre,
+.replica-review pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.replica-review {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: auto;
+}
+.replica-review::backdrop {
+  background: #0008;
+}
+.replica-workspace [role='alert'],
+.replica-review [role='alert'] {
+  color: var(--error);
+}
+@media (max-width: 650px) {
+  .replica-workspace {
+    padding: 12px;
+  }
+  .replica-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Complete catalog controls keep long retained values inside the shared workspace */
+.catalog-workspace nav[aria-label='Catalog families'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 1rem;
+}
+.catalog-workspace fieldset {
+  border: 1px solid var(--border, #555);
+  margin-block: 0.8rem;
+  padding: 0.8rem;
+  min-width: 0;
+}
+.catalog-exact {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 18rem;
+  overflow: auto;
+}
+.catalog-workspace .replica-editor {
+  min-width: 0;
+}
+.catalog-history-value {
+  border-bottom: 1px solid var(--border, #555);
+  padding-block: 0.8rem;
+}
+
+/* Server choice remains reachable outside library and authentication gates */
+.connection-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.connection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.connection-bar > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connection-bar [role='alert'] {
+  color: var(--danger);
+}
+.connection-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.connection-content .app {
+  height: 100%;
+}
+.connection-content .lockscreen {
+  min-height: 100%;
+}
+.connection-dialog {
+  color: var(--text);
+  background: var(--panel);
+  padding: 20px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.connection-dialog::backdrop {
+  background: #0008;
+}
+.connection-choices {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.connection-choices > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  white-space: normal;
+  text-align: left;
+}
+.connection-choices [aria-current='true'] {
+  outline: 1px solid var(--accent);
+}
+:root[data-titlebar='overlay'] .connection-bar {
+  padding-left: 90px;
+}
+
+:root[data-titlebar='overlay'] .connection-content .sidebar__titlebar {
+  min-height: 28px;
+  padding-left: 8px;
+}
+
+.connection-dialog:not([open]) {
+  display: none;
+}
+
+.mv-diagnostics {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.mv-diagnostics summary {
+  cursor: pointer;
+}
+.mv-diagnostics p {
+  color: var(--text-muted);
+}
+.mv-diagnostics textarea {
+  width: 100%;
+  margin-top: 8px;
+  font: 11px monospace;
+  resize: vertical;
+}
+
+/* Keyboard focus remains visible within a selected range */
+.browser:focus [data-focused='true'],
+.collcard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.listing-selection-note {
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Compatibility notices reserve space instead of covering browsing controls. */
+.library-workspace {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.library-workspace > .app {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+}
+.metadata-status {
+  flex: 0 0 auto;
+  max-height: 35vh;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+.metadata-status:empty {
+  display: none;
+}
+.metadata-drafts {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  z-index: 180;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.metadata-compatibility {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.metadata-compatibility p {
+  flex: 1 1 280px;
+  margin: 0;
+}
+.metadata-review {
+  z-index: 10020;
+}
+.metadata-review .modal {
+  max-width: 760px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.metadata-review__values {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.metadata-review__values section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.metadata-review pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.metadata-review__empty {
+  opacity: 0.6;
+}
+
+/* Technical details stay available without pushing file actions below long paths */
+.file-inspector__details {
+  margin-top: 12px;
+}
+.file-inspector__details summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--text-muted);
+}
+.file-meta__row dt {
+  flex-shrink: 0;
+}
+.file-meta__row dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.inspector__multi-head {
+  gap: 8px;
+}
+.inspector .prop__v {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-reference {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 4px 12px 18px;
+}
+.shortcut-reference h3 {
+  margin: 12px 0 8px;
+}
+.shortcut-reference p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shortcut-reference dl {
+  margin: 0;
+}
+.shortcut-reference__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.shortcut-reference__row dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-reference__row dd {
+  flex: none;
+  margin: 0;
+}
+.shortcut-reference kbd {
+  font: inherit;
+  color: var(--text-strong);
+}
+
+.catalog-bundle-browser {
+  display: flex;
+  flex: 1;
+  min-height: 400px;
+  height: 65vh;
+}
+.catalog-bundle-browser > .center {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-bundle-browser > .inspector {
+  width: 300px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.catalog-capabilities {
+  font-size: 12px;
+  padding: 0 12px;
+  color: var(--text-muted);
+}
+
+.catalog-browser-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  gap: 6px;
+}
+.catalog-browser-workspace > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.catalog-browser-workspace > header > div {
+  flex: 1;
+}
+.catalog-browser-workspace h1 {
+  font-size: 16px;
+  margin: 0;
+}
+.catalog-browser-workspace > header p {
+  display: none;
+}
+.catalog-browser-workspace > header label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.catalog-browser-workspace > section[aria-label='Metadata delivery status'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.catalog-browser-workspace > section[aria-label='Metadata delivery status'] p {
+  margin: 0;
+}
+.catalog-browser-workspace > :is(header, nav, section) button,
+.catalog-browser-workspace > button,
+.catalog-browser-workspace select {
+  background: var(--bg-raised);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.catalog-browser-workspace > button {
+  align-self: start;
+}
+.catalog-browser-workspace > nav {
+  display: flex;
+  gap: 6px;
+}
+.catalog-browser-workspace .catalog-bundle-browser {
+  flex: 1;
+  min-height: 300px;
+  height: auto;
+}
+.catalog-bundle-browser .inspector p {
+  margin: 8px 12px;
+}
+.catalog-bundle-browser .inspector > .btn {
+  margin: 4px 8px;
+}
+
+.catalog-ordinary-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.catalog-ordinary-layout > .sidebar {
+  width: 220px;
+  flex-shrink: 0;
+}
+.catalog-ordinary-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.source-operation-toolbar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--toolbar-h, 44px);
+}
+
+.source-operation-panel {
+  width: min(780px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
+.source-operation-panel .modal__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-2);
+  padding-bottom: 12px;
+}
+
+.source-operation-panel > * {
+  flex-shrink: 0;
+}
+
+.source-operation-panel button:not([class]) {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  margin: 4px 6px 4px 0;
+  cursor: pointer;
+}
+
+.source-operation-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.source-operation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 16px;
+}
+
+.source-operation-panel section {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.source-operation-panel label {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+}
+
+.source-receipt {
+  margin-block: 12px;
+  overflow-wrap: anywhere;
+}
+
+.catalog-bundle-surface,
+.catalog-file-surface {
+  height: 100%;
+}
+.catalog-file-surface {
+  display: flex;
+}
+.catalog-file-surface > .file-browser {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-file-surface > .inspector {
+  width: 260px;
+  flex-shrink: 0;
+}
+.catalog-bundle-surface[hidden] {
+  display: none;
+}
+
+.catalog-bundle-surface > .catalog-bundle-browser {
+  height: 100%;
+}
+
+.catalog-inspector-cover {
+  margin: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.catalog-inspector-cover img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  background: var(--bg-raised);
+  border-radius: 6px;
+}
+.catalog-membership-picker {
+  display: grid;
+  gap: 8px;
+}
+.catalog-bulk-inspector button,
+.catalog-unbundled button,
+.catalog-membership-picker button,
+.catalog-inspector-cover button,
+.catalog-inspector-file button,
+.catalog-file-details > button,
+[aria-label='Files in bundle'] > button {
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.catalog-bulk-inspector button:disabled,
+.catalog-membership-picker button:disabled,
+[aria-label='Files in bundle'] button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.catalog-membership-picker input[type='search'] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.catalog-membership-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.catalog-membership-row > span,
+.catalog-inspector-file > button {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.catalog-membership-path {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.catalog-inspector-file {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.catalog-inspector-file > button {
+  width: 100%;
+  text-align: left;
+}
+.catalog-inspector-file > div {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.catalog-file-details > .inspector {
+  width: auto;
+  border: 0;
+  padding: 0;
+}
+.catalog-file-surface > .inspector {
+  overflow-y: auto;
+}
+
+.catalog-bulk-open {
+  align-self: flex-start;
+  margin: 0 12px 8px;
+}
+.catalog-bulk-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.catalog-bulk-inspector h2,
+.catalog-bulk-inspector p {
+  margin: 0;
+}
+.catalog-bulk-inspector label,
+.catalog-bulk-inspector section,
+.catalog-unbundled label {
+  display: grid;
+  gap: 6px;
+}
+.catalog-bulk-inspector input,
+.catalog-bulk-inspector select,
+.catalog-unbundled input {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.catalog-bulk-inspector .catalog-membership-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.catalog-bulk-inspector .catalog-membership-row > span {
+  grid-column: 1 / -1;
+}
+.catalog-bulk-inspector ul {
+  max-height: 160px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-left: 20px;
+}
+.catalog-unbundled {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  overflow-y: auto;
+}
+.catalog-unbundled ul {
+  list-style: none;
+  padding: 0;
+}
+.catalog-unbundled li button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+  margin-bottom: 4px;
+}
+.catalog-unbundled button[aria-pressed='true'] {
+  outline: 2px solid var(--accent);
+}
+
+.catalog-album-page,
+.catalog-album-browser-return {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.catalog-album-page[hidden],
+.catalog-album-browser-return[hidden] {
+  display: none;
+}
+
+.library-private-panel {
+  width: 100%;
+}
+.library-private {
+  display: grid;
+  gap: 1rem;
+}
+.library-private form,
+.library-private label {
+  display: grid;
+  gap: 0.5rem;
+}
+.library-private input {
+  max-width: 26rem;
+}
+.library-private .btn {
+  margin: 0.25rem;
+}
+.library-private__actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+.library-private__record {
+  max-height: 15rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

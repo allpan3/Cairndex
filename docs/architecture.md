@@ -1,23 +1,23 @@
 # Architecture
 
-## Offline catalog preparation
+## Portable application storage
 
-The migration foundation uses linked immutable seeds, causal catalog projection,
-exact structural choices and separate private SQLite. It preserves complete
-legacy checkpoints and exports rollback copies. Private schema layouts are
-independent of discovery/source workers. This extraction has no application API
-integration. See [migration](replica-migration.md) and [extraction](audit-extraction.md).
+Normal Create publishes immutable format-three seed objects before the descriptor.
+Open refuses old packages. The private catalog reconstructs complete authored
+metadata and validates relationships, retained alternatives and exact retries.
+Read [catalog](replica-catalog.md), [discovery](replica-discovery.md),
+[recovery](replica-recovery.md) and [playback](playback.md) for the application
+contracts. Private schema upgrades do not convert a library format.
 
-> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D4
-> (probe enrichment, the unified custom media viewer, storyboard trickplay,
-> watch progress/resume, image viewer v2 with preview derivatives, the
-> server-side playback decision + HLS remux/transcode session foundation, and
-> the web hls.js/native-HLS engine
-> integration, player polish, card hover previews, and device pairing/scoped
-> bearer tokens; merged through M12 #12, with T0 on `feat/device-pairing`). See
-> `AGENTS.md` for the product brief, `docs/plans/` for the client-platform
-> roadmap, and `docs/STATUS.md` for current gaps, validation state, and
-> recommended next tasks.
+Registry rows contain `package_format` and `serving_released`. Durable
+`recovery_tasks` hold server-managed operations. Release blocks new content work,
+drains admitted requests and closes the private binding lock. Reopen is explicit.
+Access settings remain outside recovery generations.
+
+The shared ORM, legacy routes and shared-folder lease utilities below remain
+internal fixture and model references. Public registry admission does not allow
+old libraries to use them. Portable routes use the private catalog. Source
+operations and mounted-SMB adapters are outside this extracted application.
 
 ## 1. System overview
 
@@ -25,7 +25,8 @@ Cairndex is a single-owner, self-hosted application. A FastAPI backend runs
 on the server/NAS that can see the media library path; a React/Vite frontend runs
 in a browser or inside the Tauri 2 desktop host. Content metadata is **per library**, not server-global: each
 library is a directory with a `.cairndex/` package containing its portable
-manifest, content database, and derived-media cache. A separate server-local
+manifest and immutable metadata history. Working databases and derived-media
+caches stay in private server storage. A separate server-local
 registry tracks which libraries are known and owns the runtime job queue.
 
 ```text

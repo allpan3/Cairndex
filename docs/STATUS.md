@@ -1,36 +1,89 @@
 # Project status
 
-## Audit extraction: migration foundation
+## Audit extraction: VM handoff and application checkpoint
 
-Group 1 is on `feature/library-migration-foundation`, based on published main
-`a0ac750cb6b462648daa78eba58f79c08951776e`. The unrelated local development-tool
-commit remains on local main and is excluded from this group.
+The owner requests continuation on a separate machine or VM. The
+[handoff plan](audit-vm-handoff.md) defines clone/setup, remaining PR order, tests,
+real-library prerequisites and stopping rules. Application/reference branch
+transfer is authorized; application acceptance and merge remain pending.
+No further native tests are scheduled on the owner's active desktop.
 
-The preserved audit reference is `fix/library-ownership-lifecycle` at
-`8c814e311726ff178b3ab0efca75cb42d4c63c9a`, tree
-`f78c202018b94501af4fa796163b9c584303ae0f`. The
-[extraction ledger](audit-extraction.md) records dependencies, coverage and tests.
-The [migration procedure](replica-migration.md) defines the disposable workflow,
-backup requirements and real-library prerequisites. Conversion and activation
-remain unavailable. Application routes are unchanged. No legacy support is
-restored. Group 1 requires no manual owner test.
+On 2026-10-09 the owner approved a history rewrite that removed private names
+from two documents. Every commit from 2026-07-28 onward has a new ID; this file
+uses the new IDs. No other file content changed. The release tags `v0.2.0` and
+`v0.2.1` were deleted, and their releases are drafts. Main then received a
+dependency-advisory fix (`718f1820`) and PR #42 (`7d5e50b6`), which makes the
+privacy gate stop when Git ignores `rev-list --objects -z`.
 
-The owner authorized agent review and PR merge for internal groups, and explicitly
-approved the machine name that caused the historical privacy findings. Only that
-exact local pattern was removed. Hooks, home-path patterns and credential checks
-remain active. The publication gates must pass for the exact final ref and PR text.
-No published history was changed.
+Group 1 merged through PR #38 as `a8c536e1`. Its internal migration foundation
+passed the required checks. Real-library conversion and activation remain
+unavailable. The original reference is `cd38493f`, tree
+`912a0e657005ade3fb3e3b089df7c2343305fb99`; only the two rewritten documents
+differ from its pre-rewrite tree.
 
-Earlier full checks on the local-main base passed 1,400 backend tests with one
-skip, Ruff, formatting, mypy, 10 library browser tests, unchanged OpenAPI and
-isolated wheel preparation/retry/rollback. The rebased branch has fresh backend
-results in the ledger. Installed-app compatibility retained a synthetic note
-across restart and rollback; decoded-pixel playback was not verified. Owner state,
-installed app and signing configuration were restored unchanged. No real library
-or production NAS service was changed. Desktop and deployment sources are unchanged.
+The primary checkout uses `feature/portable-library-lifecycle`, based on merged
+main. The owner approved one application branch for former groups 2–5, with
+separate functional rounds for controls/recovery, Update, browsing/edits and
+playback. Implementation is complete and local qualification passed. Functional
+acceptance is not recorded. Branch publication is for the VM handoff. See the [application validation record](portable-lifecycle-extraction.md)
+and [extraction ledger](audit-extraction.md).
 
-Next: complete Group 1 publication checks and merge, then extract the portable
-application from refreshed main. User-visible groups require functional acceptance.
+Backend: 1,612 tests passed, one existing skip. Frontend: 1,253 unit tests and
+31 browser tests passed. Rust: 135 tests passed. Relevant static checks, sidecar
+build, package smoke, three frozen recovery/discovery tests and macOS production
+app/DMG build passed. Native synthetic controls, recovery, protected restart,
+media pixels, note persistence, switching and empty-library Refresh passed.
+Docker was unavailable on the original machine. Provider/NAS qualification
+remains limited to recorded earlier builds.
+
+All tests now run in two VMPal guests, macOS 27.0.1 arm64 and Ubuntu 24.04.5
+arm64; the [handoff](audit-vm-handoff.md#current-test-environment-2026-10-09)
+records their tools and limits. The branch is rebased onto main `7d5e50b6`. The
+[validation record](portable-lifecycle-extraction.md#results-after-the-rebase-onto-current-main)
+gives the exact trees and hashes. Results on 2026-10-09:
+
+- macOS guest: every section A check passed, after two test repairs; the
+  production app was rebuilt and passed the distribution check.
+- Ubuntu guest: the Rust-only job, frontend, sidecar package and frozen process
+  checks passed; the backend and browser failures are guest limits only.
+- Docker: the two smoke scripts were repaired for format three. Build-and-check,
+  smoke and backup-restore-smoke passed on arm64, and both smokes passed with the
+  amd64 image under Rosetta. The NAS was not tested.
+- A 60-minute native session and the four functional rounds passed on synthetic
+  data. The stale Update status and black video did not occur.
+- Test repairs: an HLS test from main that failed on fast machines, and an
+  inherited browser test that raced the server's stop of a moved media file and
+  ran recovery preparation before Release.
+
+Open observations that need an owner decision (reference code, not changed): Update
+throughput is limited to 32 entries per phase per second, which makes the frozen
+discovery test run close to its 60-second wait and is slow for large libraries;
+a same-device recovery right after an Update can be blocked by `sources` gap
+rows; the recovery CLI `prepare` does not require Release. Minor UI observations
+are in the validation record. Application acceptance by the owner is the next
+step; the PR is prepared but not opened.
+
+The installed app is unchanged. The owner profile was held during native tests
+and restored with matching hashes, modes and links. No real-library operation is
+authorized. Source operations/SMB and distribution/deployment remain separate.
+The agent performs the functional tests; no scripted owner test is required now.
+Additional checks on an earlier local checkpoint with the same source passed for saved metadata and
+drafts, library switching, scoped file browsing, stable-ID move and reverse repair,
+restart persistence, video frames, keyboard seek and local resume. The validation
+record retains the initial stale-status and black-capture observations; a clean
+restart passed without source changes. Platform gates and application acceptance
+remain open. The owner does not review code.
+
+The prior local-main work is reachable from the reference. Only the
+owner-approved machine-name private pattern was removed. All other privacy checks
+and hooks remain active. Exact publication gates must run before a future push/PR.
+
+## Earlier implementation records
+
+The records below describe their stated commits and builds. They do not qualify
+the extracted application or its deployment. Commit IDs in them are the IDs after
+the history rewrite of 2026-10-09. A binary built before that date embeds the
+pre-rewrite ID of its build commit.
 
 > **Progressive-playback recovery hotfix validated (`0.2.1`, 2026-08-31).** A
 > production NAS deployment could open an ordinary direct-play video but either
@@ -116,7 +169,7 @@ application from refreshed main. User-visible groups require functional acceptan
 
 > **Repository privacy incident resolved (2026-08-30).** The live public repository
 > is the newly created `allpan3/Cairndex`; its clean `main` starts at
-> `52c8f6785ad2faad886bd56f0575a279f880b169`. The contaminated repository is now
+> `be11f0318f41e754979830a4ee1e5e0fa0253484`. The contaminated repository is now
 > `allpan3/Cairndex-archive-3`, private and archived. No pull-request refs, tags, or
 > releases were migrated. The clean repository's first CI run passed all seven jobs.
 > The incident record immediately below describes why recreating the repository was
@@ -198,7 +251,7 @@ application from refreshed main. User-visible groups require functional acceptan
 > and a fresh privacy pass; confirmation cannot remove GitHub PR refs.
 
 > **Release-hardening verification complete locally (2026-08-31).** Branch
-> `chore/release-hardening` is implemented through `3f990be9` plus this status
+> `chore/release-hardening` is implemented through `cf89bb5c` plus this status
 > receipt; nothing is pushed and no PR, tag, release, or image publication was
 > created. The synchronized candidate is `0.2.0` with desktop identifier
 > `dev.cairndex.desktop`. Full gates passed: backend Ruff/format/mypy and 1,258
@@ -208,7 +261,7 @@ application from refreshed main. User-visible groups require functional acceptan
 > the documented Linux GTK exception.
 >
 > The packaged `0.2.0` sidecar smoke test passed. A macOS app and Apple Silicon
-> DMG built with exact commit `3f990be911ad71062c1069d6182d9aae675106af`;
+> DMG built with exact commit `cf89bb5c8eb6d57a2d7b4610288fce7ee33975a1`;
 > both carry all notices, the app has a valid ad-hoc signature, and its embedded
 > version, identifier, and build commit match. Docker development/production
 > context and residue checks, production smoke, and same-image backup/restore
@@ -448,7 +501,7 @@ legitimate change trips them.
 
 ## Merged: eight owner UI reports in both browsers (2026-09-04, PR #19)
 
-Merged as `36a5d652`, with `65231250` and `39bb667e` beside it (a lockfile bump
+Merged as `1184a306`, with `e7c35996` and `5b6d7ca8` beside it (a lockfile bump
 for a new advisory, and a platform-aware test). Eight items the owner reported in
 one pass, all UI:
 

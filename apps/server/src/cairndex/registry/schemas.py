@@ -64,6 +64,7 @@ class LibraryRead(BaseModel):
     root_path: str
     status: LibraryStatus
     schema_version: int
+    package_format: str = "cairndex.library"
     # Guarded file operations, off by default (ADR-0013). The deployment switch
     # can still override this to read-only — see ``HealthStatus.write_mode``.
     write_mode_enabled: bool

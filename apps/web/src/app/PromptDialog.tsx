@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useModalDialog } from './useModalDialog'
+import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 /**
@@ -17,6 +18,8 @@ export function PromptDialog({
   label,
   initial = '',
   confirmLabel = 'Save',
+  pending = false,
+  error = null,
   onCancel,
   onConfirm,
 }: {
@@ -24,68 +27,80 @@ export function PromptDialog({
   label: string
   initial?: string
   confirmLabel?: string
+  pending?: boolean
+  error?: string | null
   onCancel: () => void
   onConfirm: (value: string) => void
 }) {
   const [value, setValue] = useState(initial)
   const trimmed = value.trim()
+  const inputId = useId()
+
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, pending)
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onCancel()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onCancel])
+    if (error) dialogRef.current?.querySelector('input')?.focus()
+  }, [error, dialogRef])
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--confirm"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="modal__head">
           <h2>{title}</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Close">
+          <button
+            className="modal__close"
+            onClick={closeDialog}
+            disabled={pending}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>
 
-        <label className="field-label" htmlFor="prompt-value">
+        <label className="field-label" htmlFor={inputId}>
           {label}
         </label>
         <input
-          id="prompt-value"
+          id={inputId}
           className="edit"
           value={value}
           autoFocus
           spellCheck={false}
+          disabled={pending}
+          aria-invalid={Boolean(error)}
           onFocus={(e) => e.target.select()}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key !== 'Enter' || !trimmed) return
+            if (e.key !== 'Enter' || !trimmed || pending) return
             e.preventDefault()
             onConfirm(trimmed)
           }}
         />
 
+        {error && (
+          <div role="alert" className="modal__error">
+            {error}
+          </div>
+        )}
+
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onCancel}>
+          <button className="btn" onClick={closeDialog} disabled={pending}>
             Cancel
           </button>
           <button
             className="btn btn--primary"
-            disabled={!trimmed}
+            disabled={pending || !trimmed}
             onClick={() => onConfirm(trimmed)}
           >
-            {confirmLabel}
+            {pending ? 'Saving…' : confirmLabel}
           </button>
         </div>
       </div>
@@ -111,29 +126,26 @@ export function ConfirmDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onCancel()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onCancel])
+  const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, pending)
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onCancel}>
+    <div className="modal-backdrop" onMouseDown={closeDialog}>
       <div
         className="modal modal--confirm"
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="modal__head">
           <h2>{title}</h2>
-          <button className="modal__close" onClick={onCancel} aria-label="Close">
+          <button
+            className="modal__close"
+            onClick={closeDialog}
+            disabled={pending}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>
@@ -142,7 +154,7 @@ export function ConfirmDialog({
 
         <div className="modal__actions">
           <span className="toolbar__spacer" />
-          <button className="btn" onClick={onCancel} disabled={pending}>
+          <button className="btn" onClick={closeDialog} disabled={pending}>
             Cancel
           </button>
           <button

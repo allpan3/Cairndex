@@ -47,6 +47,12 @@ class SessionStore:
             self._sessions[token].unlocked[library_id] = self._now() + self._ttl
             return token
 
+    def grant(self, token: str, library_id: str) -> None:
+        """Grant a verified sidecar session after passphrase verification."""
+        with self._lock:
+            session = self._sessions.setdefault(token, _Session())
+            session.unlocked[library_id] = self._now() + self._ttl
+
     def is_unlocked(self, token: str | None, library_id: str) -> bool:
         if not token:
             return False
@@ -86,6 +92,12 @@ class SessionStore:
         with self._lock:
             session = self._sessions.get(token)
             if session is not None:
+                session.unlocked.pop(library_id, None)
+
+    def revoke_library(self, library_id: str) -> None:
+        """Invalidate every browser grant when access configuration changes."""
+        with self._lock:
+            for session in self._sessions.values():
                 session.unlocked.pop(library_id, None)
 
     def clear(self) -> None:

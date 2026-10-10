@@ -115,6 +115,9 @@ def _generate(source: Path, dest: Path, size: PreviewSize) -> None:
                 raise PreviewError(f"could not decode image {source.name}") from exc
         if not tmp_path.exists() or tmp_path.stat().st_size == 0:
             raise PreviewError(f"Pillow produced no preview for {source.name}")
+        from cairndex.ownership.lifecycle import check_work_ownership
+
+        check_work_ownership()
         tmp_path.replace(dest)
     finally:
         if tmp_path.exists():

@@ -5,6 +5,8 @@ import { bundleRows, isInside, memberCovering, playlistFor, proposalEntries } fr
 
 function file(path: string, overrides: Partial<FileRead> = {}): FileRead {
   return {
+    note: null,
+    source: null,
     id: path,
     bundle_id: 'b1',
     relative_path: path,
@@ -175,4 +177,13 @@ test('a file index stays its position in the original list', () => {
 test('a folder matching none of the files is not drawn at all', () => {
   const entries = proposalEntries([pfile('other/x.jpg', 0)], [DIR], (f) => f.asset_file_id)
   expect(entries.map((e) => e.key)).toEqual(['other/x.jpg'])
+})
+
+test('a selected file beyond the loaded page determines the folder playlist', () => {
+  const loaded = [file('trailer.mp4', { media_kind: 'video' }), file('album/first.jpg')]
+  const selected = file('album/last.jpg')
+  expect(
+    playlistFor(loaded, [member('album')], selected.id, selected).map((item) => item.id),
+  ).toEqual(['album/first.jpg'])
+  expect(playlistFor(loaded, [member('album')]).map((item) => item.id)).toEqual(['trailer.mp4'])
 })

@@ -10,9 +10,8 @@ conversion command, application route, registration, or activation operation.
 
 [ADR-0035](adr/0035-portable-library-format.md) defines the target application:
 one ordinary portable library format, with private working databases. The first
-extracted group contains preparation code only. Main's existing application
-routes are unchanged; do not install this branch as the portable application.
-The portable Create/Open and old-format refusal changes belong to group 2.
+extracted group contains preparation code only. The application extraction uses portable Create/Open and refuses old-format
+packages. Its functional acceptance remains separate from migration preparation.
 No legacy application support is added or restored by this preparation group.
 
 ## Compatibility classification

@@ -186,7 +186,7 @@ def test_the_local_token_does_not_unlock_a_protected_library(
     library_id = created.json()["id"]
 
     # Reachable before the lock is set.
-    before = sidecar_client.get(f"/api/v1/libraries/{library_id}/collections", headers=auth)
+    before = sidecar_client.get(f"/api/v1/libraries/{library_id}/replica/status", headers=auth)
     assert before.status_code == 200, before.text
 
     from cairndex.registry.engine import registry_session_scope
@@ -194,7 +194,7 @@ def test_the_local_token_does_not_unlock_a_protected_library(
     with registry_session_scope() as registry:
         set_passphrase(root, "hunter2", registry=registry)
 
-    resp = sidecar_client.get(f"/api/v1/libraries/{library_id}/collections", headers=auth)
+    resp = sidecar_client.get(f"/api/v1/libraries/{library_id}/replica/status", headers=auth)
 
     assert resp.status_code == 401
     assert resp.json()["code"] == "auth_required"

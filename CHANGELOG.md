@@ -22,10 +22,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Repair the Docker smoke and backup-restore acceptance scripts for portable
+  format three. They no longer expect `.cairndex/library.db`, the scan route or
+  the shared ownership lease. The smoke admits a video through a reviewed
+  Update and checks the thumbnail, ranges, HLS, a database-free package, and the
+  same catalog after a clean restart and a forced exit. The recovery smoke keeps
+  the registry backup and adds a separate snapshot volume, recovery of a damaged
+  private store and a retained passphrase.
+- Make the HLS test for an init request during an immediate far-seek restart
+  independent of machine speed. Its stub encoder wrote the first segment as soon
+  as it started, so on a fast machine the first run was complete before the seek
+  and the test failed 13 of 30 runs. The stub now waits before the first segment,
+  as ffmpeg does; the test passed 30 of 30 runs and still fails when an init is
+  served without its first segment.
+- Document the remaining audit PR sequence, isolated VM test procedure,
+  qualification limits and selected-library migration prerequisites.
+
+- Extract the portable application: format-three Create/Open, old-format refusal,
+  private access and recovery, reviewed Update, catalog browsing/editing and
+  local playback. Source operations and mounted-SMB publication remain separate.
+  Functional acceptance is pending.
+
 - Add a disposable format-three migration foundation with complete catalog
   reconstruction, private schema validation, retained recovery, durable intent,
   interruption/retry checks and separate rollback exports. Owner conversion and
-  activation remain unavailable; application routes are unchanged.
+  activation remain unavailable.
 - Record audit extraction dependencies, reference coverage and inherited
   publication blockers.
 
@@ -72,6 +93,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Keep empty-library Refresh from requesting an undefined bundle. Serve portable
+  thumbnails through the library media adapter.
 
 - **Arrow keys walk the File Browser.** They previously reached the shell rather
   than the listing, which only drew a focus ring. In the Bundle Browser they now

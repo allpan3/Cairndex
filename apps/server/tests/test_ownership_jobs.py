@@ -170,7 +170,9 @@ def test_cancelling_a_librarys_jobs_leaves_other_libraries_alone(
     second_root.mkdir()
     pkg.create_package(second_root, "Second")
     with registry_session_factory() as reg:
-        second = registry_service.register_existing_library(reg, root_path=str(second_root))
+        second = registry_service._insert(
+            reg, manifest=pkg.read_manifest(second_root), root=second_root
+        )
         other = job_service.create_job(reg, library_id=second.id, job_type=JobType.SCAN, payload={})
         reg.commit()
         other_id = other.id

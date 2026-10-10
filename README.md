@@ -1,11 +1,19 @@
 # Cairndex
 
-## Offline migration preparation
+## Portable application
 
-The internal [migration foundation](docs/replica-migration.md) prepares and tests
-format-three catalogs on disposable data. It has no owner conversion command or
-activation route. [ADR-0035](docs/adr/0035-portable-library-format.md) defines the
-portable application target; this extraction leaves the main application unchanged.
+For audit work on another machine, start with the
+[PR, merge and VM test plan](docs/audit-vm-handoff.md).
+
+Normal Create uses format-three portable libraries. Open refuses old
+`cairndex.library` packages. Working databases, drafts, jobs, access settings
+and caches stay private to each server. The library contains immutable metadata
+history and its descriptor. There is one ordinary library concept.
+
+The [migration foundation](docs/replica-migration.md) is restricted to disposable
+fixtures. `CONVERSION_AVAILABLE = False`; there is no owner conversion command.
+Do not use an old real library with this application before separate migration
+qualification. The [extraction ledger](docs/audit-extraction.md) records acceptance.
 
 Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
@@ -23,58 +31,22 @@ See [docs/product-brief.md](docs/product-brief.md) for the product model and
 [AGENTS.md](AGENTS.md) for the canonical engineering rules that govern coding
 agents working in this repository.
 
-## Status
+## Features and qualification
 
-Cairndex is past the project-foundation phase. It provides an Eagle-inspired
-desktop web browser over asset bundles: portable per-library metadata,
-hierarchical **Collections**, a read-only physical **File Browser**, hierarchical
-tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail/
-storyboard jobs with high-confidence moved-file repair, and a hardened
-single-container production deployment. Media playback runs in a unified
-custom **media viewer** — a hand-built video player (auto-hiding controls,
-keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
-tracks, **seek-bar storyboard trickplay** and chapter ticks, **watch
-progress / resume**, and **moments**: saved frames and spans inside a video,
-tagged and commented in the Bundle Inspector, drawn on the seek track, and
-loopable with the **range loop** — plus a **zoom/pan image viewer** with progressive
-preview tiers and server-side WebP derivatives that make HEIC/TIFF/BMP
-openable in the browser. Bundle file sequence is the media playlist order, and
-one remembered bundle cursor keeps card hover and double-click open aligned
-without coupling either behavior to the selected cover artwork.
+- Library Create/Open, separate per-server access protection, Release/Reopen,
+  private snapshots and explicit recovery review.
+- Reviewed Update, stable file identity, metadata browsing and editing,
+  collections, tags, structured filters and retained drafts.
+- Local media observation, image/video playback and scoped library/server
+  navigation.
 
-Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
-each library is a directory carrying its own `.cairndex/` metadata
-(`manifest.json`, `library.db`, `cache/`), and a separate server-side
-**registry** tracks registered libraries and the job queue. All content APIs are
-scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
-active library per tab. The normal maintenance flow is **Update**: scan the
-library, persist a reviewable grouping plan, refresh the UI, and open grouping
-review when suggestions exist. Technical metadata continues in the background;
-missing or stale storyboard generation follows it because storyboard eligibility
-uses the probed duration. Individual scan, grouping suggestion, metadata
-collection, and storyboard-generation actions remain available in the
-maintenance menu. There are no global storage-root content APIs in the current
-model.
-
-The app is still pre-1.0 and should not be exposed directly to the public
-internet. Optional passphrase/cookie auth and owner-approved device bearer
-tokens provide a private-network, single-owner guardrail; the desktop shell can
-pair, retain its server-bound token, and browse/play a protected scoped library
-without a browser cookie. Its bearer is sent only for libraries in that grant;
-unscoped unprotected libraries retain anonymous access, while unscoped protected
-libraries offer pairing instead of an unusable cross-origin passphrase form. A
-desktop-only Settings page maps each server library to its local/SMB mount after
-matching the portable manifest UUID; mapped files gain safe reveal/default-app
-actions plus drag-out to Finder and reverse-mapped drag-in, while browser and
-unmapped-library behavior remain unchanged.
-Important follow-ups include cross-filesystem repair candidates and token
-rotation/expiry policy. Bundle/container reclassification and File Browser
-write-mode drag-in copy are implemented. Job progress bars, large-library browse
-indexing, whole-library indexed text search (SQLite FTS5), media
-fallback/transcoding, and pinyin matching in local tag/collection and file
-pickers are implemented.
-See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
-recommended next tasks.
+Source operations and mounted-SMB publication are unavailable in this extraction.
+OS drag integration is incomplete and paused. Folder pagination, Recently Used,
+file note/source UI, cross-device resume, owner-media playback diagnosis and
+production registration repair remain deferred. Cross-device iCloud delivery,
+offline delivery, hydration, conflicts, large-scale use and power-loss safety
+are not qualified. The installed application's earlier evidence does not qualify
+this branch. See [STATUS](docs/STATUS.md) for exact checks and remaining limits.
 
 ## Install (macOS desktop app)
 

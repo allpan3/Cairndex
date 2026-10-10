@@ -2,7 +2,7 @@
 
 A private LAN/Tailscale guardrail, **not** public-internet hardening and **not**
 multi-user auth. Each library independently stores only a passphrase *hash* in
-its portable manifest; unlocking is a server-side session scoped to specific
+private server configuration; unlocking is a server-side session scoped to specific
 library ids. See ADR-0010.
 """
 

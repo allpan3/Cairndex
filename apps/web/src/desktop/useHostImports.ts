@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { requestScopeVersion } from '../api/requestScope'
 
 import {
   cancelHostImportBatch,
@@ -17,6 +18,7 @@ export interface HostImportConflict {
 
 /** Mutable state for the desktop batch currently in progress */
 interface HostImportBatch {
+  scope: string
   id: string
   paths: string[]
   index: number
@@ -83,6 +85,10 @@ export function useHostImports({
   const sample = useRef<{ sent: number; at: number; rate: number }>({ sent: 0, at: 0, rate: 0 })
   const mountedRef = useRef(true)
 
+  // An old batch may finish natively, but cannot publish into the new workspace
+  const isCurrent = (batch: HostImportBatch) =>
+    mountedRef.current && batch.scope === requestScopeVersion()
+
   useEffect(() => {
     let unsubscribe = () => {}
     let active = true
@@ -130,6 +136,7 @@ export function useHostImports({
       return
     }
     const batch: HostImportBatch = {
+      scope: requestScopeVersion(),
       id: newBatchId(),
       paths,
       index: 0,
@@ -167,7 +174,7 @@ export function useHostImports({
     setActivity((shown) => (shown ? { ...shown, status: 'stopping' } : shown))
     if (batch.prepared && batch.inFlight) {
       void cancelHostImportBatch(batch.id).catch((failure) => {
-        if (mountedRef.current) onFlash(hostImportMessage(failure, 'this import'))
+        if (isCurrent(batch)) onFlash(hostImportMessage(failure, 'this import'))
       })
     } else if (batch.prepared) void settle(batch, true, 0)
   }
@@ -189,6 +196,7 @@ export function useHostImports({
     try {
       await startHostImportBatch(batch.id)
       batch.prepared = true
+      if (!isCurrent(batch)) batch.stopping = true
       if (batch.stopping) {
         await cancelHostImportBatch(batch.id)
         await settle(batch, true, 0)
@@ -198,7 +206,7 @@ export function useHostImports({
     } catch (failure) {
       if (batch.prepared) await finishHostImportBatch(batch.id).catch(() => undefined)
       batchRef.current = null
-      if (mountedRef.current) {
+      if (isCurrent(batch)) {
         setActivity(null)
         onFlash(hostImportMessage(failure, nameOf(batch.paths[0] as string)))
       }
@@ -212,6 +220,7 @@ export function useHostImports({
   ): Promise<void> {
     if (!libraryId) return
     while (batch.index < batch.paths.length) {
+      if (!isCurrent(batch)) batch.stopping = true
       if (batch.stopping) {
         await settle(batch, true, 0)
         return
@@ -246,6 +255,11 @@ export function useHostImports({
           onConflict: oneShotPolicy,
         })
         oneShotPolicy = undefined
+        if (!isCurrent(batch)) {
+          batch.stopping = true
+          await settle(batch, true, 0)
+          return
+        }
         if (outcome.skipped) {
           batch.skipped += 1
           onFlash(`Skipped “${name}” — something with that name is already here.`)
@@ -262,7 +276,7 @@ export function useHostImports({
           return
         }
       } catch (failure) {
-        if (batch.stopping || isHostImportCancelled(failure)) {
+        if (batch.stopping || !isCurrent(batch) || isHostImportCancelled(failure)) {
           await settle(batch, true, 1)
           return
         }
@@ -302,7 +316,7 @@ export function useHostImports({
     current.current = null
     setConflict(null)
     await finishHostImportBatch(batch.id).catch(() => undefined)
-    if (!mountedRef.current) return
+    if (!isCurrent(batch)) return
     setActivity(null)
     // Before the stopped-summary flash below, so that summary still wins the
     // toast when a batch was abandoned — same precedence as the web path.
@@ -310,10 +324,10 @@ export function useHostImports({
       try {
         await onSettled?.(batch.landed)
       } catch (failure) {
-        if (mountedRef.current) onFlash(hostImportMessage(failure, 'this import'))
+        if (isCurrent(batch)) onFlash(hostImportMessage(failure, 'this import'))
       }
     }
-    if (stopped) {
+    if (stopped && isCurrent(batch)) {
       onFlash(
         importStoppedSummary({
           imported: batch.imported,

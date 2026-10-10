@@ -112,6 +112,7 @@ export interface UseHlsSessionOptions {
   getCurrentTime: () => number
   /** Saved-moment time requested before this file's first decision. */
   initialStartAt?: number | null
+  sourceGeneration?: string | null
 }
 
 export interface HlsSessionState {
@@ -160,6 +161,7 @@ export function useHlsSession({
   caps,
   getCurrentTime,
   initialStartAt = null,
+  sourceGeneration = null,
 }: UseHlsSessionOptions): HlsSessionState {
   // A row wins over a path: an indexed File Browser entry should reach the same
   // subtitles, storyboards and resume the Bundle Browser gives it.
@@ -168,7 +170,13 @@ export function useHlsSession({
       fileId ? { kind: 'file', fileId } : browserPath ? { kind: 'path', path: browserPath } : null,
     [fileId, browserPath],
   )
-  const [source, setSource] = useState<PlaybackSource | null>(null)
+  const targetKey = (target?.kind === 'file' ? target.fileId : target?.path) ?? directStreamUrl
+  const sourceKey = sourceGeneration ? `${targetKey}:${sourceGeneration}` : targetKey
+  const [sourceState, setSourceState] = useState<{
+    key: string | null
+    source: PlaybackSource | null
+  } | null>(null)
+  const source = sourceState?.key === sourceKey ? sourceState.source : null
   // Start in 'deciding' so the very first frame of a playable file shows the
   // loading state, never a flash of the "can't be previewed" fallback card.
   const [status, setStatus] = useState<HlsStatus>('deciding')
@@ -183,7 +191,11 @@ export function useHlsSession({
   const [keepAliveUrl, setKeepAliveUrl] = useState<string | null>(null)
 
   const paramsRef = useRef<SwitchParams>(DEFAULT_PARAMS)
-  const startAtRef = useRef(0)
+  const startAtRef = useRef<number | null>(null)
+  const initialStartRef = useRef(initialStartAt)
+  useEffect(() => {
+    initialStartRef.current = initialStartAt
+  }, [initialStartAt])
   const forceHlsRef = useRef(false)
   const methodRef = useRef<PlaybackMethod | null>(null)
   // The target is kept with the session id: teardown has to address the route
@@ -214,15 +226,15 @@ export function useHlsSession({
     // A target with no id or path (there is none) falls back to the stream URL —
     // otherwise stepping between two of them would look like the same file and
     // carry the previous one's playhead into the next.
-    const sourceKey = (target?.kind === 'file' ? target.fileId : target?.path) ?? directStreamUrl
+    const setSource = (source: PlaybackSource | null) => setSourceState({ key: sourceKey, source })
     const freshFile = lastSourceRef.current !== sourceKey
     if (freshFile) {
       lastSourceRef.current = sourceKey
       paramsRef.current = DEFAULT_PARAMS
       startAtRef.current =
-        typeof initialStartAt === 'number' && Number.isFinite(initialStartAt)
-          ? Math.max(0, initialStartAt)
-          : 0
+        typeof initialStartRef.current === 'number' && Number.isFinite(initialStartRef.current)
+          ? Math.max(0, initialStartRef.current)
+          : null
       forceHlsRef.current = false
       methodRef.current = null
       reattachCountRef.current = 0
@@ -258,7 +270,7 @@ export function useHlsSession({
         src: directStreamUrl,
         mimeType: directMimeType ?? 'video/mp4',
         kind: 'native',
-        startAt: startAtRef.current,
+        startAt: startAtRef.current ?? undefined,
       })
       setStatus('ready')
       return
@@ -274,6 +286,10 @@ export function useHlsSession({
     }, DECISION_TIMEOUT_MS)
     const startAt = startAtRef.current
     const active = paramsRef.current
+    const replacing = methodRef.current !== null
+    // Playback and user seeks can advance while the replacement decision is pending
+    const attachmentStart = () =>
+      replacing ? Math.max(0, getCurrentTimeRef.current()) : (startAt ?? undefined)
     setStatus('deciding')
     /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -281,19 +297,20 @@ export function useHlsSession({
       src: url,
       mimeType: directMimeType ?? 'video/mp4',
       kind: 'native',
-      startAt,
+      startAt: attachmentStart(),
     })
 
     const decide = async () => {
       const payload = {
         caps,
+        ...(sourceGeneration ? { source_generation: sourceGeneration } : {}),
         audio_stream_index: active.audioStreamIndex,
         burn_subtitle_track_id: active.burnSubtitleTrackId,
         max_height: active.maxHeight,
         force_hls: forceHlsRef.current,
         // A saved-moment open should create its first HLS generation at that
         // point, not create one at zero and immediately kill it with a far seek
-        start_s: startAt > 0 ? startAt : null,
+        start_s: startAt,
       }
       try {
         return await requestPlaybackDecision(target, payload, controller.signal)
@@ -342,7 +359,7 @@ export function useHlsSession({
             mimeType: HLS_MIME,
             kind: 'hls',
             nativeHls: caps.native_hls,
-            startAt,
+            startAt: attachmentStart(),
           })
           setStatus('ready')
         } else if (directPlayable && directStreamUrl && !forceHlsRef.current) {
@@ -403,7 +420,8 @@ export function useHlsSession({
     directStreamUrl,
     directMimeType,
     caps,
-    initialStartAt,
+    sourceKey,
+    sourceGeneration,
     teardownLive,
   ])
 
@@ -524,8 +542,8 @@ export function useHlsSession({
 
   return {
     source,
-    status,
-    method,
+    status: sourceState?.key === sourceKey ? status : enabled ? 'deciding' : 'idle',
+    method: sourceState?.key === sourceKey ? method : null,
     reason,
     audioStreams,
     params,

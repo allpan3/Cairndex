@@ -8,13 +8,10 @@ from source, where every module is present.
 So this deliberately drives the frozen binary over HTTP, through the paths whose
 imports are resolved dynamically:
 
-- creating a library    -> SQLAlchemy's sqlite dialect (loaded by entry-point
-                           name) and the FTS5 search schema;
-- a scan job            -> the background worker and the job handler registry;
-- a thumbnail job       -> Pillow's plugin discovery, the usual casualty;
-- SIGTERM               -> the lifespan shutdown that releases ownership leases,
-                           which is what keeps a takeover prompt from appearing
-                           on the user's next launch.
+- portable creation and private SQLite/FTS materialization;
+- Update, reviewed catalog admission, and JPEG/HEIC derivatives;
+- refusal of source operations outside the extracted application scope;
+- process shutdown and release of private binding exclusion.
 
     python packaging/smoke_test.py [--bundle path/to/cairndex-sidecar]
 
@@ -92,18 +89,18 @@ def wait_for_port(process: "subprocess.Popen[bytes]", log: Path) -> int:
     raise SmokeFailure(f"sidecar never announced a port within {STARTUP_TIMEOUT:.0f}s")
 
 
-def await_job(port: int, job_id: str, label: str) -> None:
+def await_state(port: int, path: str, expected: str) -> dict[str, Any]:
     deadline = time.monotonic() + JOB_TIMEOUT
     while time.monotonic() < deadline:
-        status, job = request(port, f"/api/v1/jobs/{job_id}")
-        if status != 200 or job is None:
-            raise SmokeFailure(f"could not read {label} job: HTTP {status}")
-        if job["status"] in ("succeeded", "failed", "cancelled"):
-            if job["status"] != "succeeded":
-                raise SmokeFailure(f"{label} job {job['status']}: {job.get('error')}")
-            return
-        time.sleep(0.5)
-    raise SmokeFailure(f"{label} job did not finish within {JOB_TIMEOUT:.0f}s")
+        status, result = request(port, path)
+        if status != 200 or result is None:
+            raise SmokeFailure(f"could not read operation: HTTP {status}")
+        if result.get("state") == expected:
+            return dict(result)
+        if result.get("state") in {"failed", "cancelled"}:
+            raise SmokeFailure("portable operation failed")
+        time.sleep(0.2)
+    raise SmokeFailure("portable operation timed out")
 
 
 def write_fixtures(library_root: Path) -> None:
@@ -157,51 +154,56 @@ def check(port: int, library_root: Path) -> None:
         raise SmokeFailure(f"could not create a library: HTTP {status} {library}")
     library_id = library["id"]
 
-    status, _ = request(port, f"/api/v1/libraries/{library_id}/collections")
+    base = f"/api/v1/libraries/{library_id}/replica"
+    status, _ = request(port, base + "/catalog/entities/asset_bundles")
     if status != 200:
-        raise SmokeFailure(f"could not open the library DB: HTTP {status}")
-
-    lease = library_root / ".cairndex" / "locks" / "active-owner.json"
-    if not lease.is_file():
-        raise SmokeFailure("serving a library did not acquire its ownership lease")
-
+        raise SmokeFailure(f"could not open the private catalog: HTTP {status}")
+    if list(library_root.rglob("*.db*")):
+        raise SmokeFailure("mutable SQLite appeared inside the portable library")
+    deadline = time.monotonic() + JOB_TIMEOUT
+    while time.monotonic() < deadline:
+        _, state = request(port, base + "/status")
+        if state and state.get("ready"):
+            break
+        time.sleep(0.2)
+    else:
+        raise SmokeFailure("portable baseline did not become ready")
     write_fixtures(library_root)
-
-    status, job = request(port, f"/api/v1/libraries/{library_id}/jobs/scan", method="POST", body={})
-    if status not in (200, 201, 202) or job is None:
-        raise SmokeFailure(f"could not queue a scan: HTTP {status}")
-    await_job(port, job["id"], "scan")
-
-    # Pillow's plugin discovery — the import most likely to be missing.
-    status, job = request(
-        port, f"/api/v1/libraries/{library_id}/jobs/thumbnails", method="POST", body={}
+    status, _ = request(
+        port, base + "/discovery/runs", method="POST", body={"operation": "smoke-update"}
     )
-    if status not in (200, 201, 202) or job is None:
-        raise SmokeFailure(f"could not queue thumbnails: HTTP {status}")
-    await_job(port, job["id"], "thumbnail")
+    if status != 202:
+        raise SmokeFailure("could not start portable Update")
+    await_state(port, base + "/discovery/status", "succeeded")
+    status, candidates = request(port, base + "/discovery/candidates")
+    if status != 200 or not candidates or not candidates["items"]:
+        raise SmokeFailure("Update produced no synthetic candidates")
+    for index, candidate in enumerate(candidates["items"]):
+        operation = f"smoke-review-{index}"
+        path = base + "/discovery/reviews"
+        status, _ = request(
+            port, path, method="POST", body={"operation": operation, "candidate": candidate["id"]}
+        )
+        if status != 202:
+            raise SmokeFailure("could not prepare discovery review")
+        review = await_state(port, path + "/" + operation, "ready")
+        status, _ = request(
+            port,
+            path + "/" + operation + "/accept",
+            method="POST",
+            body={"receipt": review["receipt"]},
+        )
+        if status != 202:
+            raise SmokeFailure("could not accept discovery review")
+        await_state(port, path + "/" + operation, "applied")
 
-    # Deliberately *not* `?limit=1`, which asserted on whichever bundle happened
-    # to sort first — an input this test does not control, across three fixtures
-    # of different formats. That made it flaky on the Linux CI job: it failed
-    # with "thumbnail is not a JPEG (296 bytes)" on 2026-07-22 and again on
-    # 2026-07-23, having passed 37 minutes earlier on identical code.
-    #
-    # What produced those 296 bytes is still unexplained — a 200 response whose
-    # body is not JPEG, from a path that only ever writes `.jpg`. The bundled
-    # ffmpeg thumbnails all three fixtures correctly when checked by hand,
-    # including the HEIC, so it is not simply a missing decoder. Pinning the
-    # fixture removes the uncontrolled variable and makes the assertion mean
-    # what it says; if this recurs on a known bundle, the remaining suspect is
-    # the generate-then-serve path rather than the choice of fixture.
-    #
-    # HEIC keeps its coverage through check_heic_preview below, which exercises
-    # the import that actually matters for it (Pillow + pillow_heif).
-    bundle_id = find_bundle_with_file(port, library_id, ".jpg")
-    if bundle_id is None:
-        raise SmokeFailure("the scan produced no bundle for photo.jpg")
+    found = find_file_by_suffix(port, library_id, ".jpg")
+    if found is None:
+        raise SmokeFailure("Update produced no bundle for photo.jpg")
+    bundle_id, file = found
 
     req = urllib.request.Request(  # noqa: S310
-        f"http://127.0.0.1:{port}/api/v1/libraries/{library_id}/bundles/{bundle_id}/thumbnail"
+        f"http://127.0.0.1:{port}/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file['id']}/thumbnail"
     )
     req.add_header("Authorization", f"Bearer {TOKEN}")
     try:
@@ -217,10 +219,23 @@ def check(port: int, library_root: Path) -> None:
         ) from None
     # Asserting on the bytes, not the status: a frozen Pillow that cannot decode
     # would still let the route answer, just with nothing useful in it.
-    if not image.startswith(b"\xff\xd8\xff"):
-        raise SmokeFailure(f"thumbnail is not a JPEG ({len(image)} bytes)")
+    from io import BytesIO
+
+    from PIL import Image
+
+    with Image.open(BytesIO(image)) as rendered:
+        pixel = rendered.convert("RGB").getpixel((rendered.width // 2, rendered.height // 2))
+        assert isinstance(pixel, tuple)
+        if any(
+            abs(actual - expected) > 20
+            for actual, expected in zip(pixel, (200, 80, 40), strict=True)
+        ):
+            raise SmokeFailure("thumbnail pixels differ from the synthetic source")
 
     check_heic_preview(port, library_id)
+    status, _ = request(port, f"/api/v1/libraries/{library_id}/source-operations")
+    if status != 404:
+        raise SmokeFailure("source operations must be absent from this application group")
 
 
 def find_file_by_suffix(
@@ -233,17 +248,19 @@ def find_file_by_suffix(
     they exercise, and which one sorts first is not a property worth depending
     on.
     """
-    status, bundles = request(port, f"/api/v1/libraries/{library_id}/bundles?limit=50")
+    status, bundles = request(
+        port, f"/api/v1/libraries/{library_id}/replica/catalog/entities/asset_bundles?limit=50"
+    )
     if status != 200 or bundles is None:
         raise SmokeFailure(f"could not list bundles: HTTP {status}")
 
     for bundle in bundles.get("items", []):
         status, files = request(
-            port, f"/api/v1/libraries/{library_id}/bundles/{bundle['id']}/files?limit=50"
+            port, f"/api/v1/libraries/{library_id}/replica/media/bundles/{bundle['id']}?limit=50"
         )
         if status != 200 or files is None:
             continue
-        items = files.get("items", files) if isinstance(files, dict) else files
+        items = files.get("files", [])
         match = next(
             (f for f in items if str(f.get("relative_path", "")).lower().endswith(suffix)),
             None,
@@ -360,9 +377,7 @@ def main() -> int:
                 port = wait_for_port(process, log)
                 check(port, library_root)
 
-                # SIGTERM is what the shell sends. The lifespan shutdown it
-                # triggers is what releases the ownership lease — skip it and
-                # the user's next launch meets a takeover prompt.
+                # The shell stop signal must close private process exclusion.
                 process.send_signal(signal.SIGINT)
                 try:
                     process.wait(timeout=30)
@@ -380,11 +395,11 @@ def main() -> int:
                 if "Fatal Python error" in log.read_text(errors="replace"):
                     raise SmokeFailure("sidecar logged a fatal Python error during shutdown")
 
-                lease = json.loads(
-                    (library_root / ".cairndex" / "locks" / "active-owner.json").read_text()
-                )
-                if "released_at" not in lease:
-                    raise SmokeFailure("clean shutdown did not release the ownership lease")
+                import fcntl
+
+                for binding in (data_dir / "replica-bindings").glob("*.lock"):
+                    with binding.open("rb") as handle:
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except SmokeFailure as failure:
                 print(f"SMOKE TEST FAILED: {failure}\n", file=sys.stderr)
                 print(log.read_text(errors="replace")[-4000:], file=sys.stderr)

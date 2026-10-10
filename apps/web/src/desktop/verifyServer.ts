@@ -43,8 +43,11 @@ const HEALTH_TIMEOUT_MS = 5000
  * never probes) left the base pointed at the previous connection entirely.
  * Activation owns the base; this function only answers a question.
  */
-export async function verifyServer(serverUrl: string): Promise<void> {
+export async function verifyServer(serverUrl: string, signal?: AbortSignal): Promise<void> {
   const controller = new AbortController()
+  const cancel = () => controller.abort()
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted) controller.abort()
   const timeout = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS)
   try {
     const health = await fetchHealth(controller.signal, serverUrl)
@@ -56,9 +59,14 @@ export async function verifyServer(serverUrl: string): Promise<void> {
       REQUIRED_API_FEATURES.every((feature) => health.api_features.includes(feature))
     if (!compatible) throw new Error(INCOMPATIBLE_SERVER_ERROR)
   } catch (error) {
+    if (signal?.aborted)
+      throw new Error('Connection cancelled. The previous selection is unchanged.', {
+        cause: error,
+      })
     if (error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR) throw error
     throw new Error(unreachableServerMessage(), { cause: error })
   } finally {
     window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', cancel)
   }
 }

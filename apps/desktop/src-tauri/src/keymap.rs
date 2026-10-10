@@ -283,8 +283,11 @@ mod tests {
         assert_eq!(action_for_id("play-pause"), Some("play-pause"));
         // Shell-owned: handled in Rust, never emitted to the SPA.
         assert_eq!(action_for_id("quit"), None);
-        // Disabled placeholder.
-        assert_eq!(action_for_id("help-placeholder"), None);
+        // Help uses the shared reference once the server workspace is ready
+        assert_eq!(
+            action_for_id("keyboard-shortcuts"),
+            Some("keyboard-shortcuts")
+        );
         assert_eq!(action_for_id("not-a-menu-item"), None);
     }
 

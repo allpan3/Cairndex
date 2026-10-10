@@ -41,7 +41,8 @@ from cairndex.services import bundles as bundle_service
 _FFMPEG = shutil.which("ffmpeg")
 requires_ffmpeg = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not installed")
 
-# A stand-in for ffmpeg: write an init segment, then media segments start_number
+# A stand-in for ffmpeg: write an init segment, wait an optional lead time (ffmpeg
+# needs time for its first fragment), then write media segments start_number
 # .. count-1 with a delay between each, and stop cleanly on SIGTERM.
 _STUB_SOURCE = textwrap.dedent(
     """
@@ -56,8 +57,10 @@ _STUB_SOURCE = textwrap.dedent(
     signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     out.mkdir(parents=True, exist_ok=True)
     window = int(sys.argv[5])
+    lead = float(sys.argv[7])
 
     (out / sys.argv[6]).write_bytes(b"init")
+    time.sleep(lead)
     for i in range(start, min(count, start + window)):
         (out / (str(i) + ".m4s")).write_bytes(("seg" + str(i)).encode())
         time.sleep(delay)
@@ -72,7 +75,7 @@ def stub_script(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
-def _stub_builder(stub_script: Path, delay: float) -> hls.CommandBuilder:
+def _stub_builder(stub_script: Path, delay: float, lead: float = 0.0) -> hls.CommandBuilder:
     def build(session: HlsSession, start_number: int, _start_s: float) -> list[str]:
         return [
             sys.executable,
@@ -83,6 +86,7 @@ def _stub_builder(stub_script: Path, delay: float) -> hls.CommandBuilder:
             str(delay),
             str(session.run_window),
             session.run_init_name,
+            str(lead),
         ]
 
     return build
@@ -96,9 +100,9 @@ def make_manager(tmp_path: Path, stub_script: Path) -> Iterator[ManagerFactory]:
     """Build stub-backed SessionManagers and tear them all down after the test."""
     managers: list[SessionManager] = []
 
-    def factory(*, delay: float = 0.0, **kwargs: object) -> SessionManager:
+    def factory(*, delay: float = 0.0, lead: float = 0.0, **kwargs: object) -> SessionManager:
         kwargs.setdefault("transcode_dir", tmp_path / f"transcode-{len(managers)}")
-        kwargs.setdefault("command_builder", _stub_builder(stub_script, delay))
+        kwargs.setdefault("command_builder", _stub_builder(stub_script, delay, lead))
         kwargs.setdefault("start_reaper", False)
         kwargs.setdefault("segment_wait", 5.0)
         # No real ffprobe in stub tests: remux falls back to the uniform grid.
@@ -262,7 +266,10 @@ def test_init_waits_for_the_first_complete_media_segment(tmp_path: Path) -> None
 
 
 def test_init_follows_an_immediate_far_seek_restart(make_manager: ManagerFactory) -> None:
-    manager = make_manager(delay=0.2, ahead_window=1, segment_wait=5.0)
+    # The lead keeps each run's first segment back for 1 s, so the init request is
+    # still waiting when the seek restarts the run. Without it, a fast machine
+    # completes the first run before the seek and the first init is correct.
+    manager = make_manager(delay=0.2, lead=1.0, ahead_window=1, segment_wait=5.0)
     session = _create(manager, duration=600.0)
     result: dict[str, Path | Exception] = {}
 

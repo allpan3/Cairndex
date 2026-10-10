@@ -9,7 +9,19 @@
 // stay global.
 
 import { hostFetch, resolveHostAssetUrl } from '../platform'
+import { advanceConnectionScope, advanceLibraryScope, captureRequestScope } from './requestScope'
+import {
+  basisOf,
+  clearEditBases,
+  editBasis,
+  minimumBasis,
+  rememberBasis,
+  rememberVersionBases,
+  type EditVersion,
+} from './editBasis'
+import { isMetadataWrite, sendMetadata, retireMetadataRequests } from './metadataEdits'
 import type { components } from './schema'
+import { setMetadataCompatibility, validMetadataBasis } from './metadataCompatibility'
 
 export type HealthStatus = components['schemas']['HealthStatus']
 export type BundleSummary = components['schemas']['BundleSummary']
@@ -113,7 +125,10 @@ type CairndexRuntime = typeof globalThis & {
 const runtime = globalThis as CairndexRuntime
 
 // Selects the remote server used by the desktop host while browsers stay same-origin
-export function setApiBaseUrl(value: string | null): void {
+export function setApiBaseUrl(value: string | null, connectionKey: string | null = value): void {
+  advanceConnectionScope(connectionKey)
+  clearEditBases()
+  retireMetadataRequests()
   runtime.__cairndexApiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
 }
 
@@ -130,6 +145,11 @@ export function resolveAssetUrl(value: string): string {
 }
 
 export function setActiveLibraryId(id: string | null): void {
+  if (activeLibraryId !== id) {
+    advanceLibraryScope()
+    clearEditBases()
+    retireMetadataRequests()
+  }
   activeLibraryId = id
 }
 
@@ -165,27 +185,44 @@ function apiErrorDetail(payload: unknown): string {
   return ''
 }
 
-async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
+  const assertScope = captureRequestScope(/\/libraries\/[^/?]+\//.test(url))
   const response = await hostFetch(resolvedUrl, { signal })
+  assertScope()
   if (!response.ok) {
     // Surface the server's structured `{message}` when present so callers can
     // show a friendly reason (e.g. "library is currently unavailable") instead
     // of a bare HTTP status.
     let detail = ''
+    let code: string | undefined
     try {
-      detail = apiErrorDetail(await response.json())
+      const payload: unknown = await response.json()
+      detail = apiErrorDetail(payload)
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'code' in payload &&
+        typeof payload.code === 'string'
+      )
+        code = payload.code
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     // Status-bearing, so a caller can tell "this is gone" from "this failed".
     // The message is unchanged, which is what everything catching these reads.
     throw new HttpError(
       response.status,
       detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
+      code,
     )
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  return result
 }
 
 /**
@@ -201,21 +238,26 @@ export class ConflictError extends Error {
   }
 }
 
-async function send<T>(
+export async function send<T>(
   url: string,
   method: string,
   body?: unknown,
   /** Optimistic-concurrency precondition: the entity `version` last read. */
-  ifMatch?: number,
+  ifMatch?: EditVersion,
+  includeLibraryScope = true,
 ): Promise<T> {
+  if (isMetadataWrite(url, method))
+    return sendMetadata<T>(url, method, body, editBasis(url, ifMatch))
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
+  const assertScope = captureRequestScope(includeLibraryScope)
   const response = await hostFetch(resolveApiUrl(url), {
     method,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
+  assertScope()
   if (!response.ok) {
     let detail = ''
     try {
@@ -223,12 +265,17 @@ async function send<T>(
     } catch {
       /* ignore */
     }
+    assertScope()
     if (response.status === 409) {
       throw new ConflictError(detail || 'This item was changed elsewhere.')
     }
     throw new Error(`Request failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`)
   }
-  return (response.status === 204 ? undefined : await response.json()) as T
+  const result = (response.status === 204 ? undefined : await response.json()) as T
+  assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  return result
 }
 
 async function sendSignal<T>(
@@ -238,19 +285,25 @@ async function sendSignal<T>(
   body: unknown,
 ): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolvedUrl, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   })
+  assertScope()
   if (!response.ok) {
     throw new HttpError(
       response.status,
       `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
     )
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  rememberBasis(result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  rememberVersionBases(url, result, response.headers?.get('X-Cairndex-Basis') ?? null)
+  return result
 }
 
 /** Carries the HTTP status so callers can branch (e.g. retry a 429). */
@@ -265,10 +318,12 @@ export function isNotFoundError(error: unknown): boolean {
 
 export class HttpError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly code: string | undefined
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'HttpError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -281,7 +336,7 @@ export interface BrowseParams {
   offset: number
   limit: number
   filter?: FilterExpression | null
-  // Whole-library full-text search over metadata (title/filename/tag/etc.).
+  // Bundle names, bundle/file notes and moment comments; file names and origins are excluded
   search?: string | null
   // Shuffle seed for the Random view; a new seed is a reshuffle.
   seed?: number | null
@@ -368,7 +423,7 @@ export const createSmartCollection = (payload: SmartCollectionCreate) =>
 export const updateSmartCollection = (
   id: string,
   payload: SmartCollectionUpdate,
-  version?: number,
+  version?: EditVersion,
 ) => send<SmartCollectionRead>(`${lib()}/smart-collections/${id}`, 'PATCH', payload, version)
 
 export const deleteSmartCollection = (id: string) =>
@@ -541,14 +596,16 @@ interface Page<T> {
 
 async function fetchAllPaged<T>(path: string, signal?: AbortSignal): Promise<T[]> {
   const out: T[] = []
+  const bases: (string | undefined)[] = []
   let cursor: string | null = null
   do {
     const url = `${path}?limit=200${cursor ? `&cursor=${cursor}` : ''}`
     const page: Page<T> = await getJson<Page<T>>(url, signal)
+    bases.push(basisOf(page))
     out.push(...page.items)
     cursor = page.next_cursor
   } while (cursor)
-  return out
+  return rememberBasis(out, minimumBasis(bases))
 }
 
 export const fetchAllCollections = (signal?: AbortSignal) =>
@@ -578,7 +635,7 @@ export const createCollectionFromDirectory = (payload: {
     payload,
   )
 
-export const renameCollection = (id: string, name: string, version?: number) =>
+export const renameCollection = (id: string, name: string, version?: EditVersion) =>
   send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', { name }, version)
 
 export const updateCollection = (
@@ -590,7 +647,7 @@ export const updateCollection = (
     // Reparent (drag a collection into another; null = move to top level).
     parent_id?: string | null
   },
-  version?: number,
+  version?: EditVersion,
 ) => send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', patch, version)
 
 export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
@@ -614,8 +671,8 @@ export const cleanupCollectionOrder = (order: 'asc' | 'desc') =>
   send<void>(`${lib()}/collections/cleanup-order`, 'POST', { order })
 
 // --- Libraries (registry) ----------------------------------------------------
-export const fetchLibraries = (signal?: AbortSignal): Promise<LibraryRead[]> =>
-  getJson<LibraryRead[]>('/api/v1/libraries', signal)
+export const fetchLibraries = (signal?: AbortSignal, baseUrl = ''): Promise<LibraryRead[]> =>
+  getJson<LibraryRead[]>(`${baseUrl}/api/v1/libraries`, signal)
 
 export const createLibrary = (payload: LibraryCreate) =>
   send<LibraryRead>('/api/v1/libraries/create', 'POST', payload)
@@ -667,11 +724,13 @@ export class PathConflictError extends Error {
 }
 
 async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
+  assertScope()
   if (!response.ok) {
     let payload: unknown = null
     try {
@@ -679,6 +738,7 @@ async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     const detail = apiErrorDetail(payload)
     const details = (payload as { details?: { code?: string; name?: string; path?: string } })
       ?.details
@@ -687,7 +747,9 @@ async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as T
+  const result = (await response.json()) as T
+  assertScope()
+  return result
 }
 
 /** Rename one file or directory in place, carrying its metadata with it. */
@@ -731,12 +793,14 @@ export async function importFile(
     // bundle. Callers opt in explicitly if they ever want the link.
     link: String(options.link ?? false),
   })
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file,
     signal: options.signal,
   })
+  assertScope()
   if (!response.ok) {
     let payload: unknown = null
     try {
@@ -744,6 +808,7 @@ export async function importFile(
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     const detail = apiErrorDetail(payload)
     const details = (payload as { details?: { code?: string; name?: string; path?: string } })
       ?.details
@@ -752,7 +817,9 @@ export async function importFile(
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as ImportResult
+  const result = (await response.json()) as ImportResult
+  assertScope()
+  return result
 }
 
 /** Move files and folders into the library's trash. Never unlinks. */
@@ -816,11 +883,13 @@ export async function setLibraryWriteMode(
   enabled: boolean,
   passphrase?: string,
 ): Promise<WriteModeRead> {
+  const assertScope = captureRequestScope()
   const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/write-mode`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled, passphrase: passphrase ?? null }),
   })
+  assertScope()
   if (!response.ok) {
     let detail = ''
     try {
@@ -828,23 +897,38 @@ export async function setLibraryWriteMode(
     } catch {
       /* non-JSON body */
     }
+    assertScope()
     if (response.status === 401) {
       throw new PassphraseRequiredError(detail || "This library's passphrase is required.")
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
-  return (await response.json()) as WriteModeRead
+  const result = (await response.json()) as WriteModeRead
+  assertScope()
+  return result
 }
 
 // --- Background jobs ----------------------------------------------------------
 /** Enqueue discovery. `suggestGrouping` adds the reviewable grouping pass to it. */
 export const enqueueScan = (options: { suggestGrouping?: boolean; libraryId?: string } = {}) => {
   const suggest = options.suggestGrouping ?? true
-  return send<JobRead>(`${lib(options.libraryId)}/jobs/scan?suggest_grouping=${suggest}`, 'POST')
+  return send<JobRead>(
+    `${lib(options.libraryId)}/jobs/scan?suggest_grouping=${suggest}`,
+    'POST',
+    undefined,
+    undefined,
+    options.libraryId === undefined,
+  )
 }
 
 export const enqueueProbe = (libraryId?: string) =>
-  send<JobRead>(`${lib(libraryId)}/jobs/probe`, 'POST')
+  send<JobRead>(
+    `${lib(libraryId)}/jobs/probe`,
+    'POST',
+    undefined,
+    undefined,
+    libraryId === undefined,
+  )
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
@@ -915,6 +999,10 @@ export const fetchLibraryOwnership = (libraryId: string, signal?: AbortSignal) =
 
 export const startLibraryTakeover = (libraryId: string) =>
   send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/takeover`, 'POST')
+
+/** Explicit server-level handoff; never called for a client disconnect */
+export const changeLibraryServing = (libraryId: string, action: 'release' | 'reopen') =>
+  send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/${action}`, 'POST')
 
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
 export const startDevicePairing = (deviceName: string) =>
@@ -1117,11 +1205,25 @@ export const createBundleFromUnbundled = (sel: FileSelection, title?: string | n
 export const createEmptyBundle = (title?: string | null) =>
   send<ManualBundleResult>(`${mb()}/create-empty-bundle`, 'POST', { title: title ?? null })
 
-// The flat "to-bundle queue": a cross-library page of not-yet-bundled files,
-// shaped like File Browser entries so one file row renders both surfaces.
+// Filename search and global ordering apply within the active library before pagination
 export type UnbundledFilesPage = components['schemas']['UnbundledFilesPage']
-export const fetchUnbundledFiles = (offset = 0, limit = 200, signal?: AbortSignal) =>
-  getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?offset=${offset}&limit=${limit}`, signal)
+export interface UnbundledFilesParams {
+  q?: string
+  sort?: 'name' | 'type' | 'size' | 'added' | 'modified'
+  order?: SortOrder
+}
+export const fetchUnbundledFiles = (
+  offset = 0,
+  limit = 200,
+  signal?: AbortSignal,
+  params: UnbundledFilesParams = {},
+) => {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+  if (params.q) query.set('q', params.q)
+  if (params.sort) query.set('sort', params.sort)
+  if (params.order) query.set('order', params.order)
+  return getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?${query}`, signal)
+}
 
 // --- File Browser (read-only filesystem browsing) -------------------------------
 export function fetchFileBrowserEntries(
@@ -1186,7 +1288,7 @@ export function updateMoment(
   bundleId: string,
   momentId: string,
   patch: MomentPatch,
-  version?: number,
+  version?: EditVersion,
 ): Promise<Moment> {
   return send<Moment>(`${lib()}/bundles/${bundleId}/moments/${momentId}`, 'PATCH', patch, version)
 }
@@ -1253,8 +1355,10 @@ export function collectionThumbnailUrl(collectionId: string, coverKey?: string |
   return resolveAssetUrl(coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base)
 }
 
-export function fileContentUrl(fileId: string): string {
-  return resolveAssetUrl(`${lib()}/files/${fileId}/content`)
+// Version retained identities so image viewers reload replaced source bytes
+export function fileContentUrl(fileId: string, version?: string | null): string {
+  const base = `${lib()}/files/${fileId}/content`
+  return resolveAssetUrl(version ? `${base}?v=${encodeURIComponent(version)}` : base)
 }
 
 export type PreviewSize = 640 | 1600 | 2560
@@ -1334,7 +1438,7 @@ export const createTag = (payload: TagCreate) => send<TagRead>(`${lib()}/tags`, 
 export const updateTag = (
   id: string,
   patch: { name?: string; parent_id?: string | null; color?: string | null },
-  version?: number,
+  version?: EditVersion,
 ) => send<TagRead>(`${lib()}/tags/${id}`, 'PATCH', patch, version)
 
 /** Delete a tag. `cascade` also removes its child tags, which the server
@@ -1381,7 +1485,7 @@ export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promis
 }
 
 // --- Mutations ---------------------------------------------------------------
-export const updateBundle = (id: string, patch: BundlePatch, version?: number) =>
+export const updateBundle = (id: string, patch: BundlePatch, version?: EditVersion) =>
   send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch, version)
 
 export const updateBundleCursor = (id: string, fileId: string) =>
@@ -1391,6 +1495,32 @@ export const updateBundleCursor = (id: string, fileId: string) =>
  *  opening a bundle must not wait on it, and must not fail because of it. */
 export const markBundleOpened = (id: string) =>
   send<void>(`${lib()}/bundles/${id}/opened`, 'POST').catch(() => undefined)
+
+export interface MembershipEdit {
+  before: string[]
+  ids: string[]
+}
+
+// Checkbox and paste operations name only changed edges from the displayed selection
+export function membershipDelta({ before, ids }: MembershipEdit) {
+  return {
+    add_ids: ids.filter((id) => !before.includes(id)),
+    remove_ids: before.filter((id) => !ids.includes(id)),
+  }
+}
+
+export const changeBundleTags = (id: string, edit: MembershipEdit) =>
+  send<unknown>(`${lib()}/bundles/${id}/tags`, 'POST', membershipDelta(edit))
+export const changeBundleCollections = (id: string, edit: MembershipEdit) =>
+  send<unknown>(`${lib()}/bundles/${id}/collections`, 'POST', membershipDelta(edit))
+export const changeMomentTags = (bundleId: string, momentId: string, edit: MembershipEdit) =>
+  send<MomentTags>(
+    `${lib()}/bundles/${bundleId}/moments/${momentId}/tags`,
+    'POST',
+    membershipDelta(edit),
+  )
+export const changeTagGroupTags = (groupId: string, add_ids: string[], remove_ids: string[]) =>
+  send(`${lib()}/tag-groups/${groupId}/tags`, 'POST', { add_ids, remove_ids })
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })
@@ -1407,8 +1537,13 @@ export const fetchBundleCollections = (id: string, signal?: AbortSignal) =>
     signal,
   )
 
-export const updateFile = (bundleId: string, fileId: string, patch: FilePatch, version?: number) =>
-  send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch, version)
+// Retain the file read's opening basis; note/source null clears and display_title only echoes a filename
+export const updateFile = (
+  bundleId: string,
+  fileId: string,
+  patch: FilePatch,
+  version?: EditVersion,
+) => send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch, version)
 
 export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
@@ -1483,3 +1618,45 @@ export async function fetchHealth(signal?: AbortSignal, baseUrl?: string): Promi
   }
   return getJson<HealthStatus>('/api/v1/health', signal)
 }
+
+// One small revision read drives refresh and supplies context for new independent objects
+export async function fetchMetadataRevision(signal?: AbortSignal): Promise<{ basis: string }> {
+  const assertScope = captureRequestScope()
+  let revision: { basis: string }
+  try {
+    revision = await getJson<{ basis: string }>(`${lib()}/metadata`, signal)
+  } catch (error) {
+    assertScope()
+    if (!signal?.aborted)
+      setMetadataCompatibility(
+        error instanceof HttpError && !error.code && [404, 405].includes(error.status)
+          ? 'unsupported'
+          : 'unavailable',
+      )
+    throw error
+  }
+  assertScope()
+  // Both the clock and its readable header are needed by the shared editing protocol.
+  if (!validMetadataBasis(revision?.basis) || basisOf(revision) !== revision.basis) {
+    setMetadataCompatibility('unsupported')
+    throw new Error('The server does not provide compatible metadata edit information.')
+  }
+  setMetadataCompatibility('supported')
+  return revision
+}
+
+// Bulk authored overwrites and metadata deletion commit atomically across the selection
+export const batchEditBundles = (ids: string[], patch: BundlePatch) =>
+  send<BundleRead[]>(`${lib()}/bundles/batch-edit`, 'POST', { bundle_ids: ids, patch })
+export const batchDeleteBundles = (ids: string[]) =>
+  send<void>(`${lib()}/bundles/batch-delete`, 'POST', { bundle_ids: ids })
+
+export const configureLibraryAccess = (
+  libraryId: string,
+  passphrase: string | null,
+  current: string,
+) =>
+  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/settings`, 'PUT', {
+    passphrase,
+    current_passphrase: current || null,
+  })
