@@ -1,0 +1,13 @@
+# CodeQL analyzes the code that ships, not the tests.
+#
+# Test code gave false alerts in application code: the unit-test localStorage
+# stub (apps/web/src/test/setup.ts) keeps every key in one Map, so CodeQL
+# followed a value written under one key into every read of another key.
+name: Cairndex CodeQL
+
+paths-ignore:
+  - apps/server/tests
+  - apps/web/e2e
+  - apps/web/src/test
+  - "apps/web/src/**/*.test.ts"
+  - "apps/web/src/**/*.test.tsx"

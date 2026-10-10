@@ -22,6 +22,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- CodeQL no longer analyzes test code (`.github/codeql/codeql-config.yml`). The unit-test
+  localStorage stub keeps every key in one Map, so CodeQL reported false clear-text storage
+  and DOM XSS alerts in application code.
+
 - Repair the Docker smoke and backup-restore acceptance scripts for portable
   format three. They no longer expect `.cairndex/library.db`, the scan route or
   the shared ownership lease. The smoke admits a video through a reviewed
