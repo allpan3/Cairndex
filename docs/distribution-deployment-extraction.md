@@ -6,6 +6,10 @@ merge `a7d149db1f34d0e0bba3d544b8253626dc521b8a`. The preserved reference is
 `912a0e657005ade3fb3e3b089df7c2343305fb99`. It is an extraction source, not a
 branch to merge.
 
+PR #49 merged as `77c7c279b8a121e3edcbb3b88da588e98646309b` on 2026-10-11.
+The complete CI matrix passed on `8e32840f`; the merge tree equals that head.
+Local main is refreshed. No production deployment or release was published.
+
 ## Scope
 
 - Optional local macOS certificate identity, strict configured-signer checks and
@@ -123,12 +127,14 @@ adds its disposable Keychain alongside the existing entries and restores the
 original list in `finally`, including failed-signing cleanup. `codesign` errors
 report only a fixed diagnostic category and exit code, never raw tool output.
 Regression tests cover known/unknown error redaction and empty/spaced search-list
-restoration after a signing failure. Runner verification remains pending.
+restoration after a signing failure. The GitHub macOS runner then passed the
+real Keychain smoke, pinned sidecar build/smoke, Rust gates and production app build.
 
 Ruff, formatting, mypy and 29 signing regressions passed in both guests. The
 real macOS Keychain smoke also passed all access/refusal assertions and removed
 the temporary Keychain with the original search list retained. GitHub runner
-verification and the full CI merge review remain pending.
+verification and the complete CI matrix passed before the merge. Final handoff
+privacy regressions passed 22 tests in each guest.
 
 The web source, API and user interactions are unchanged. The production SPA build
 ran; the group 6 frontend unit/browser suite was not repeated locally for group 7.
@@ -138,7 +144,8 @@ delivery, representative scale and power-loss safety remain unqualified.
 
 ## Publication checkpoint
 
-The reference ledger has 361 exact, 132 partial and 47 absent paths. These compare
+The reference ledger has 372 exact path matches (361 blobs and 11 matching
+deletions), 132 partial and 36 absent paths. These compare
 bytes rather than behavioral acceptance. The obsolete shared-package ownership
 smoke is intentionally omitted; paused OS drag, former prototypes, superseded
 legacy API/tests and separate application proposals are not imported by group 7.
@@ -147,7 +154,9 @@ hooks intact: one commit and 40 newly reachable text/JSON blobs; full reachable
 history of 884 commits and 6,192 blobs; and the prepared PR title/body. New blob
 contents, detected types/sizes, paths, commit metadata and text were inspected.
 There is no new binary, build output or vendored tree. Docker context/image checks
-also passed. These gates run again against the final amended ref before pushing.
+also passed. Both normal follow-up pushes passed their hooks; the final branch
+range and current PR metadata passed again immediately before merge: three
+commits and 57 newly reachable text/JSON blobs, with all 10 patterns retained.
 
 No owner host signing configuration, installed app, real library, production NAS,
 release tag or published image is changed by this work. Developer ID signing and

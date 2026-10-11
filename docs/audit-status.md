@@ -28,7 +28,9 @@ These are reference-branch facts, not claims that all features are extracted.
 Group 1 is merged through PR #38. The combined application for groups 2–5 merged
 through PR #45, followed by the CodeQL repair in PR #46. Group 6 source operations
 merged through PR #47 as `a7d149db`, after prerequisite PR #48. Distribution and
-deployment are being qualified on `feature/distribution-deployment`. See the
+deployment merged through PR #49 as `77c7c279` after the full CI matrix passed.
+The combined reference comparison and omitted/deferred paths are recorded in
+the extraction ledger. See the
 [source-operation record](source-operations-extraction.md) and
 [distribution record](distribution-deployment-extraction.md).
 

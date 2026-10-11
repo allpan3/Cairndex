@@ -49,6 +49,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record the completed source-operation and distribution/deployment merges,
+  combined reference comparison and corrected matched-deletion inventory.
 - Extract distribution/deployment from the preserved audit reference. Development
   bundles share checksum-verified media tools from an isolated cache; production
   bundles copy them. CI covers launcher behavior and Keychain identity continuity.

@@ -1,6 +1,6 @@
 # Project status
 
-## Current: distribution/deployment extraction
+## Current: source operations and distribution/deployment merged
 
 PR #47 merged as `a7d149db` after its complete CI matrix passed. PR #48's
 screenshot-declaration prerequisite merged as `39904f6a`. Group 6 is complete;
@@ -16,19 +16,29 @@ recovery and clean/forced restart checks. Both different signed frozen builds
 passed mounted-SMB acceptance without background prompts. Native mounted-library
 Create/browse/Quit/restart passed and the original guest profile is restored.
 The read-only registry restore bug is fixed and covered by regression tests.
-PR #49 is open; CI and merge review remain. The macOS runner still failed to
-sign the disposable reader after explicit unlock/partition setup. The smoke now
-also adds its test Keychain to the certificate search list and restores the
-original list on success or failure. Signing errors expose only fixed diagnostic
-categories. The real smoke and 29 signing regressions pass in the macOS guest;
-the regressions and static gates also pass in Ubuntu. Runner verification remains.
+PR #49 merged as `77c7c279b8a121e3edcbb3b88da588e98646309b` on 2026-10-11;
+local main is refreshed. Its full CI matrix passed on `8e32840f`, including the
+real macOS Keychain smoke, packaged sidecar and desktop build. The merge tree
+matches that tested head. The smoke temporarily adds its disposable Keychain
+to the certificate search list and restores the original list on failure too.
+Signing errors expose only fixed diagnostic categories. The real smoke and
+29 signing regressions pass in the macOS guest; regressions and static gates
+also pass in Ubuntu. The final handoff privacy regressions pass 22 tests in each
+guest. The reference commit/tree remain unchanged; the combined comparison is
+recorded in the extraction ledger, with deferred work explicitly separated.
 No production deployment or release was published.
 See [the distribution record](distribution-deployment-extraction.md).
 
 The backend job on PR #47 took about 16 minutes. The watcher reported the
 required privacy context while the backend was running, then did not report that
 optional job's completion. The later CI review must measure test durations and
-check full-matrix monitoring; current gates remain unchanged.
+check full-matrix monitoring; current gates remain unchanged. On PR #49, CI
+ran from 12:27:52 to 12:39:56 UTC (12 minutes, 4 seconds). The watcher again
+did not wake after the non-required jobs passed, leaving the task idle until
+23:04 UTC. The owner correctly identified the excessive wait. This is a
+monitoring failure separate from test execution time. The next recommended task
+is the requested CI timing/scope and completion-monitoring review; no tests or
+required checks were weakened during this extraction.
 
 ## Source-operation qualification checkpoint
 
