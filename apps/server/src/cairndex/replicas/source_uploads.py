@@ -40,11 +40,15 @@ async def receive(
             "ON CONFLICT(id) DO UPDATE SET state='receiving'",
             (upload, size),
         )
+        # Request text selects the durable intent; recovery paths use its stored identity.
+        stored_upload = str(
+            db.execute("SELECT id FROM source_uploads WHERE id=?", (upload,)).fetchone()[0]
+        )
     try:
         from cairndex.replicas.source_claims import claim
 
-        claim(store, root, upload, {"upload": upload, "size": size})
-        with operation_directory(root, upload, create=True) as directory:
+        claim(store, root, stored_upload, {"upload": upload, "size": size})
+        with operation_directory(root, stored_upload, create=True) as directory:
             complete = False
             try:
                 handle = os.open("source", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)

@@ -23,6 +23,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Resolve picker-upload recovery paths from the persisted upload identity;
+  request text selects the record and strict token and symlink checks remain in force.
 - Make the publication privacy gate fail closed when Git ignores `rev-list --objects -z`.
   Git 2.43 (the Ubuntu 24.04 package) printed newline-delimited output there, and the gate
   then reported a pass after it had scanned no blobs.

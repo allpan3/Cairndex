@@ -10,7 +10,13 @@ are implemented and qualified on synthetic local and selected mounted-SMB data
 in the test guests. Final backend gates passed 1,749 macOS and 1,748 Ubuntu tests
 (one explicit unsupported-platform exclusion). Source, exact frozen executable,
 browser and native mounted checks passed; the original guest profile is restored.
-The branch is ready for publication review. See
+PR #47 is open. Its trusted-base privacy check requires the reviewed synthetic
+screenshot declaration to land first in a separate internal prerequisite; the
+scanner and owner-specific profile remain unchanged. The CodeQL follow-up binds
+picker-upload recovery paths to their persisted upload record.
+The follow-up passed the complete macOS backend gate (1,752 tests), 87 Ubuntu
+source-operation/privacy regressions, and rebuilt Linux package smoke/frozen
+HTTP acceptance. Static checks passed in both guests. See
 [the source-operation record](source-operations-extraction.md) for scope,
 omissions and exact test evidence. Distribution/deployment remains group 7.
 The installed host app and production services are unchanged.

@@ -1,5 +1,9 @@
 """The normal API retains format, access, write and Release gates for source work."""
 
+from urllib.parse import quote
+
+import pytest
+
 from cairndex.file_ops.gate import ensure_portable_write_mode
 from cairndex.replicas import service
 from cairndex.replicas.source_execute import run_one
@@ -90,3 +94,20 @@ def test_picker_upload_copies_with_exact_retry(isolated_client, registry_session
     assert isolated_client.get(path + "/copy-upload").json()["state"] == "succeeded"
     assert (root / "uploaded.txt").read_bytes() == content
     assert (root / ".cairndex/source-operations/upload-one/source").read_bytes() == content
+
+
+@pytest.mark.parametrize("upload", ["bad.name", "bad space", "x" * 65])
+def test_upload_rejects_invalid_identity_before_staging(isolated_client, tmp_path, upload):
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    base = f"/api/v1/libraries/{identity}"
+    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 200
+    before = set(root.rglob("*"))
+    response = isolated_client.put(
+        base + f"/source-operations/uploads/{quote(upload, safe='')}?size=9",
+        content=b"Synthetic",
+    )
+    assert response.status_code == 422, response.text
+    assert set(root.rglob("*")) == before
+    with service._handles[identity][0].connection(readonly=True) as db:
+        assert db.execute("SELECT count(*) FROM source_uploads").fetchone()[0] == 0

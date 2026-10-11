@@ -129,14 +129,28 @@ asynchronous waits. Native cleanup stopped only the test app, allowed its sideca
 to drain, verified original/copy/nested bytes and the database-free package, and
 restored the original guest profile with matching hashes, modes and symlinks.
 
-Later qualification changes only adjust acceptance tests and documentation;
-the runtime source remains identical to the tested build. Its source inventory
+The first published checkpoint `73289e8` includes only acceptance-test and
+documentation changes after the tested build. That checkpoint's source inventory
 SHA-256 is `2afc1de27bcbd865a36b5d1f8d2d5213d05375ad56d41613ebbef455d49029f0`.
 Reproduce it with:
 
 ```bash
-git ls-tree -r HEAD -- apps/server/src apps/server/packaging apps/server/pyproject.toml apps/server/uv.lock apps/desktop/src-tauri apps/web/src | shasum -a 256
+git ls-tree -r 73289e8 -- apps/server/src apps/server/packaging apps/server/pyproject.toml apps/server/uv.lock apps/desktop/src-tauri apps/web/src | shasum -a 256
 ```
+
+PR #47's CodeQL follow-up resolves picker-upload recovery paths from the durable
+upload record rather than request text. Strict token validation and descriptor-based
+symlink refusal remain in force. The artifact hashes above and below identify the
+qualified pre-follow-up checkpoint, not the later security change.
+The follow-up passed 87 source-operation/privacy regressions and static checks
+in Ubuntu. Three new API cases prove invalid upload identities create neither
+staging files nor private upload rows. A rebuilt Linux frozen sidecar passes
+package smoke and the full source-operation HTTP acceptance, including picker
+Copy and restart recovery. Linux arm64 still uses system media tools.
+The complete macOS backend gate passed 1,752 tests after the follow-up, with
+Ruff, formatting and mypy passing. The unchanged frontend/native/mounted checks
+above qualify the initial checkpoint; they were not repeated for this internal
+upload-record lookup.
 
 The exact standalone and embedded sidecar SHA-256 is
 `3a7a4b1279b7d6637c130dbc9e252d5f9379cd7b241841d2646afb52e6a8d9b1`.

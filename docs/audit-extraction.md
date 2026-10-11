@@ -138,7 +138,8 @@ marks exact, partial, or pending coverage. New files outside the reference are `
 `catalog/index.py`, `replicas/private_layout.py`, `test_library_migration.py`
 and the two extraction tracking files. The split schema modules preserve the
 reference layouts; migration preparation and its tests are new implementation.
-After the group 6 source extraction, the inventory records 355 exact, 133 partial
+After the group 6 source extraction and upload-path security follow-up, the inventory
+records 353 exact, 135 partial
 and 52 missing reference paths. These statuses compare current bytes with the
 reference, including existing shared files that deliberately differ. They do not
 independently establish behavioral acceptance.

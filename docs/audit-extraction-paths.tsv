@@ -191,7 +191,7 @@ apps/server/src/cairndex/replicas/source_receipts.py	6	exact	5e4126cb9a395aaa80b
 apps/server/src/cairndex/replicas/source_transport.py	6	exact	50ca946626402dfdb352d9b5be21ad4f064b314c
 apps/server/src/cairndex/replicas/source_trees.py	6	exact	19ff7ca3e5487af35d4c401ace869d9bd0d01437
 apps/server/src/cairndex/replicas/source_undo.py	6	exact	cf5a6931503642fe158623d789f1cdd533dc0871
-apps/server/src/cairndex/replicas/source_uploads.py	6	exact	64f92d77af940f976dfbb850d9bd7b0e2b666f7e
+apps/server/src/cairndex/replicas/source_uploads.py	6	partial	64f92d77af940f976dfbb850d9bd7b0e2b666f7e
 apps/server/src/cairndex/replicas/store.py	1	exact	b94d9af1128748a2324b8513e5d9ffdbcb25f715
 apps/server/src/cairndex/replicas/transport.py	2	exact	5d3bde0d8dee825086c9d20a79ccfd1226627f38
 apps/server/src/cairndex/scanning/handler.py	3	partial	858406dcc69e6049f49c0a0ab6402068fb30ee0a
@@ -238,7 +238,7 @@ apps/server/tests/test_ownership_lease.py	2	partial	967cddde330686a41d13bedbab52
 apps/server/tests/test_ownership_lifecycle.py	2	pending	5f62ef898154cee28784480b3b42d3d66ba8a469
 apps/server/tests/test_playback.py	5	partial	95f8f974c83a28aa56d988269a13910582dd3bfa
 apps/server/tests/test_portable_admission.py	4	exact	06ed59c9e075156d8adb07e853cc69a8a973deb5
-apps/server/tests/test_portable_source_api.py	6	exact	2c26722f1a41a2f492074d1044186efcb18b8cf5
+apps/server/tests/test_portable_source_api.py	6	partial	2c26722f1a41a2f492074d1044186efcb18b8cf5
 apps/server/tests/test_portable_source_files.py	6	partial	d331a451e2f6ecc0b16c4367a67e96949e0c0220
 apps/server/tests/test_portable_source_operations.py	6	partial	14b0a250a57d78ba89ea2cbd009feadc1a70ece3
 apps/server/tests/test_portable_source_undo_creation.py	6	exact	a053e863450e53c76eb0a0650ea459754d181dcd
