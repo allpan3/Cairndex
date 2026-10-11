@@ -6,6 +6,12 @@ PR #47's trusted-base privacy scan requires the synthetic source-operation
 screenshot declaration to land before the image. This internal prerequisite adds
 only its reviewed exact digest, path and provenance; no image or application code
 is included. The trusted scanner and private patterns remain unchanged.
+The binary-inventory test now supports that declaration-first workflow; an
+integration regression checks the two publication stages and rejects changed
+bytes or paths.
+All 22 privacy tests, Ruff and formatting pass in an isolated Ubuntu checkout
+with the declaration present and the screenshot absent. Full CI must finish
+before this prerequisite merges.
 
 ## Audit extraction: VM handoff and application checkpoint
 

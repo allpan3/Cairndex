@@ -891,6 +891,9 @@ replaces the pre-publication local gate. A PR that deliberately changes the
 binary/root allowlist must land before a separate PR uses the new allowance.
 Keep that prerequisite PR limited to the reviewed declaration and documentation;
 include the binary itself only in the consuming PR.
+The inventory test verifies assets already present; an absent asset may have a
+declaration waiting for the consuming PR. Its digest and path remain mandatory
+when its bytes are staged or become reachable.
 
 CodeQL analyzes Python and JavaScript/TypeScript on pushes, pull requests, and a
 weekly schedule. Dependency review rejects a pull request that introduces a

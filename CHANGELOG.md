@@ -31,6 +31,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Declare the reviewed synthetic source-operation screenshot by exact digest,
   path and provenance before the application PR publishes its binary.
+- Allow the binary-inventory test to verify declarations before their assets
+  arrive, while checking every existing asset and retaining exact bytes/path gates.
 - CodeQL no longer analyzes test code (`.github/codeql/codeql-config.yml`). The unit-test
   localStorage stub keeps every key in one Map, so CodeQL reported false clear-text storage
   and DOM XSS alerts in application code.
