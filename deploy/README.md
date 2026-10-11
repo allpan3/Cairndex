@@ -10,13 +10,14 @@ once you edit the library path. That is deliberate: a NAS Docker UI that takes
 a pasted or uploaded compose file has nowhere to put an `.env`, and a compose
 file that only works beside one is a compose file that only works from a shell.
 
-For the reasoning behind any of it — the hardening, the ownership lease,
+For the reasoning behind any of it — the hardening, private storage,
 backups, remote access — see [`docs/deployment.md`](../docs/deployment.md). This
 page is the runbook.
 
-> **No authentication yet** (`AGENTS.md` §12). Anyone who can reach the port can
-> use it. The compose file binds your LAN, which is the intended reach; do not
-> port-forward it. For access from outside, use Tailscale or a VPN.
+> Optional per-library passphrase sessions and paired device tokens provide a
+> private-network access guard; unlocked libraries remain anonymous. The compose
+> file binds all host interfaces by default, so restrict it to the intended LAN.
+> Direct public exposure is unsupported. Use Tailscale or a VPN for remote access.
 
 ## Install — through your NAS's Docker UI
 
@@ -29,7 +30,7 @@ you would rather not administer this from a shell.
 2. Create a **Project** (UGREEN and Synology call it that; QNAP calls it an
    Application, TrueNAS a Custom App with YAML) pointed at that folder, and
    paste in [`docker-compose.yml`](docker-compose.yml).
-3. Edit the two lines the file marks: the library path, and the machine name.
+3. Edit the marked library path and restrict the bind address to your private network.
 4. Start it.
 
 The image is public, so no registry login is needed. It will **not** appear in
@@ -74,7 +75,8 @@ same thing, and the compose file lists the first, not the second.
 **One mount holds as many libraries as you like.** With `/volume1/media` mounted,
 `/libraries/main/films` and `/libraries/main/photos` can each be a separate
 library, added whenever you feel like it, live — no compose change, no restart.
-Creating one even makes the folder if it is not there yet.
+Create requires a root without existing Cairndex metadata and leaves any source
+files in place. Open admits an existing compatible format-three package.
 
 **You edit compose only when files live somewhere the container cannot see** —
 a different volume or share. Then you add a sibling mount:
@@ -113,26 +115,26 @@ The app then writes as you, into directories you already own. Files Cairndex
 creates stay yours, so a host-side backup can read them — the whole ownership
 problem below simply does not arise.
 
-This works because the app writes only to `/data`, `/tmp` and the library
-mounts, all supplied from outside; `infra/docker/smoke.sh` tests the image under
-an arbitrary uid so that stays true. **One requirement: `/data` must be a bind
-mount.** A named volume takes its ownership from the image — uid 10001 — and
-would lock your id out of it.
+The app writes private state to `/data`, snapshots to `/backups`, temporary
+files to `/tmp` and immutable metadata to the library package; `infra/docker/smoke.sh` tests the image under
+an arbitrary uid so that stays true. Use writable bind mounts for both `/data` and `/backups` when running as your
+own uid. New named volumes inherit the image's uid 10001 and may deny another uid.
 
 ### Or: grant uid 10001 access
 
-Leave `user:` alone and give that id what it needs. Two grants, and note what
-each one is *not*:
+Leave `user:` alone and grant that id write access to private data, separate
+backup storage and the library metadata package:
 
 ```bash
-sudo mkdir -p /volume1/docker/cairndex/data && sudo chown -R 10001:10001 /volume1/docker/cairndex/data
+sudo mkdir -p /volume1/docker/cairndex/data /volume1/docker/cairndex/backups
+sudo chown -R 10001:10001 /volume1/docker/cairndex/data /volume1/docker/cairndex/backups
 ```
 
 ```bash
 sudo setfacl -m u:10001:rwx /path/to/library/root
 ```
 
-The first is recursive because that directory belongs to Cairndex alone. The
+The first is recursive because those private directories belong to Cairndex alone. The
 second is **not recursive on purpose**: Cairndex only needs to create
 `.cairndex/` in the library root, and everything it writes goes inside that.
 Your media files just need to stay readable. Do not `chown -R` a media share —
@@ -145,7 +147,7 @@ sudo chgrp 10001 /path/to/library/root && sudo chmod g+rwx /path/to/library/root
 ```
 
 With this approach, files Cairndex creates are owned by `10001:10001` and the
-ownership lease is mode `0600`, so your own account may not be able to read all
+private administrative state has restricted modes, so your own account may not be able to read all
 of them. That matters for host-side backups; see [Backups](#backups).
 
 **If the container exits immediately, read the log first.** A startup preflight
@@ -160,27 +162,20 @@ docker compose logs app
 
 ## Updating
 
-Take hot backups before pulling, and copy them off the container host:
+Before updating, create and verify private snapshots for each library through
+**Manage libraries → Access and backups**, and protect source media, immutable
+history, retained source versions and administrative settings separately. Take
+a hot registry copy and copy the complete backup volume to private off-box storage:
 
 ```bash
-docker compose exec app /app/infra/backup.sh /data/registry.db /data/backups
-docker compose exec app /app/infra/backup.sh \
-  /libraries/main/.cairndex/library.db /data/backups
-docker compose cp app:/data/backups ./backups
-```
-
-Repeat the library command for every registered library. Then update:
-
-```bash
+docker compose exec app /app/infra/backup.sh /data/registry.db /backups
+docker compose cp app:/backups ./backups
 docker compose pull && docker compose up -d
 ```
 
-There is no migration step. The registry database is created on first open and
-each library's schema is patched additively when that library opens, so
-upgrading is starting the new image. A downgrade is not automatically safe:
-read the target release's compatibility note. If backward compatibility is not
-explicit, stop the app and restore the complete pre-upgrade database set before
-starting the older image.
+Private stores use validated schema upgrades. Read the target changelog before
+a downgrade; if backward compatibility is not explicit, stop and restore an
+independently verified pre-upgrade set. No automatic old-library conversion exists.
 
 Pin `CAIRNDEX_IMAGE_TAG` in `.env` if you would rather updates be a version you
 choose than whatever `:latest` points at today.
@@ -191,55 +186,52 @@ choose than whatever `:latest` points at today.
 docker compose down
 ```
 
-Prefer this to killing the container. A clean shutdown releases each library's
-ownership lease and checkpoints its WAL back into `library.db`. A `SIGKILL`
-part-way through strands the lease until it ages out (five minutes), and during
-that window nothing else will open the library — including your desktop app —
-without a confirmed takeover. The compose file allows 30s for this, above
-Docker's 10s default, which matters for a large or network-mounted library.
+A clean shutdown drains admitted work and closes private databases and process
+locks. The compose file allows 30 seconds. A forced exit can leave operations
+interrupted; inspect retained review/recovery tasks and retry explicitly. It
+does not establish power-loss safety. A client disconnect does not Release a library.
 
 ## Backups
 
-Back up:
+Back up source files, immutable `.cairndex/` history and retained
+`.cairndex/source-operations/` versions separately. Private snapshots capture
+received drafts, unpublished metadata and journals; administrative access settings,
+device credentials, server configuration and unreceived browser text are separate.
+The compose file gives snapshots their own `cairndex-backups` volume at `/backups`.
+Keep a protected copy on independent storage.
 
-- each library's `<library root>/.cairndex/library.db`;
-- the `cairndex-data` volume, which holds the server-local `registry.db`;
-- `<library root>/.cairndex/trash/` **if you use write mode** — it holds real
-  deleted files that have not been permanently removed, and it is not derived
-  from anything.
+When adopting this example, retain the existing data volume and any configured
+backup mount/path and its contents. An empty new backup volume does not contain
+previous managed snapshots. Verify a copied snapshot in an isolated deployment
+before switching an established snapshot location.
 
-`.cairndex/cache/` is regenerable and can be skipped.
-
-Because those files are owned by uid 10001, a backup job running as your own
-account may be denied. Run it with enough privilege, share a group with 10001,
-or read the package through a container.
-
-Backups from different libraries are named with their library UUID and a unique
-suffix, so they cannot overwrite one another in `/data/backups`. To restore,
-keep the app down and use the image's guarded helper rather than copying over a
-possibly live SQLite file:
+Use the verified [private recovery procedure](../docs/replica-recovery.md) for
+portable stores. Registry copies use `backup.sh`; its guarded restore helper
+requires every process using that registry to be stopped:
 
 ```bash
 docker compose down
 docker compose run --rm --no-deps \
   -v "$PWD/backups:/restore:ro" \
   --entrypoint /app/infra/restore.sh app \
-  --stopped /restore/<backup-file> /data/registry.db
+  --stopped /restore/<registry-backup> /data/registry.db
 docker compose up -d
 ```
 
-For a library backup, replace the destination with its container path, such as
-`/libraries/main/.cairndex/library.db`. The helper refuses WAL sidecars,
-integrity-checks and atomically installs the backup, and retains an existing
-destination as `*.pre-restore-*` for rollback.
+The helper refuses WAL sidecars, verifies a temporary copy, atomically installs it
+and retains the previous file for rollback. It rejects legacy `library.db`
+maintenance; replacing a portable working store directly is unsupported.
 
 ## When something is refused
 
-Two refusals look like failures and are not:
+These refusals identify configuration or lifecycle prerequisites:
 
-- **"This library is open on another server."** A library may be open on exactly
-  one server at a time (ADR-0018). Your desktop app counts. Close it, or point
-  the server at a different library.
+- **A private store is already in use.** Each server needs its own private data
+  directory. Stop the other process using this instance's private store; do not
+  share or clone working SQLite databases.
+- **Library metadata is unwritable.** Keep source media protected if needed,
+  while permitting immutable metadata publication under `.cairndex/`.
+- **Library is Released.** Reopen it deliberately before normal serving.
 - **The preflight message about an unwritable `/data`.** See
   [Permissions](#permissions--read-this-before-the-first-run).
 

@@ -27,9 +27,10 @@ They are not proof for an extracted branch.
 These are reference-branch facts, not claims that all features are extracted.
 Group 1 is merged through PR #38. The combined application for groups 2–5 merged
 through PR #45, followed by the CodeQL repair in PR #46. Group 6 source operations
-are qualified on `feature/portable-source-operations` and await publication review; distribution and
-deployment remain a separate group. See the
-[source-operation record](source-operations-extraction.md).
+merged through PR #47 as `a7d149db`, after prerequisite PR #48. Distribution and
+deployment are being qualified on `feature/distribution-deployment`. See the
+[source-operation record](source-operations-extraction.md) and
+[distribution record](distribution-deployment-extraction.md).
 
 ## Separate deferred work
 

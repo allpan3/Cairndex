@@ -157,6 +157,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm run test
+      - name: Desktop development launcher tests
+        run: npm --prefix ../desktop test
       - name: Build
         run: npm run build
       - name: Install Playwright browser
@@ -287,6 +289,9 @@ jobs:
           enable-cache: true
       - name: Sync server dependencies
         run: uv sync --frozen
+        working-directory: apps/server
+      - name: Keychain identity continuity (disposable credentials)
+        run: uv run python packaging/keychain_signing_smoke.py
         working-directory: apps/server
       # Keyed on the manifest, so a re-pin re-downloads and everything else
       # reuses ~125 MB of binaries. The vendor directory is platform-scoped, so

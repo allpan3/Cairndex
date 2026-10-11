@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -40,21 +39,17 @@ def run_backup(database: Path, destination: Path) -> Path:
     return Path(output.rsplit(" (", 1)[0])
 
 
-def test_library_backups_use_uuid_and_never_collide(tmp_path: Path):
+def test_registry_backups_never_collide(tmp_path: Path):
     backup_dir = tmp_path / "backups"
     outputs: list[Path] = []
-    for library_uuid, value in (("library-one", "first"), ("library-two", "second")):
-        marker = tmp_path / library_uuid / ".cairndex"
-        database = marker / "library.db"
+    for server, value in (("server-one", "first"), ("server-two", "second")):
+        database = tmp_path / server / "registry.db"
         make_database(database, value)
-        (marker / "manifest.json").write_text(
-            json.dumps({"library_uuid": library_uuid}), encoding="utf-8"
-        )
         outputs.append(run_backup(database, backup_dir))
 
     assert outputs[0] != outputs[1]
-    assert outputs[0].name.startswith("library-library-one-")
-    assert outputs[1].name.startswith("library-library-two-")
+    assert outputs[0].name.startswith("registry-")
+    assert outputs[1].name.startswith("registry-")
     assert outputs[0].stat().st_mode & 0o777 == 0o600
     assert outputs[1].stat().st_mode & 0o777 == 0o600
     assert read_value(outputs[0]) == "first"
@@ -96,6 +91,45 @@ def test_restore_refuses_a_database_with_wal_sidecars(tmp_path: Path):
     assert str(wal) in result.stderr
 
 
+def test_restore_reads_a_wal_backup_without_writing_its_mount(tmp_path: Path):
+    database = tmp_path / "registry.db"
+    make_database(database, "before")
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.close()
+    directory = tmp_path / "read-only-backups"
+    backup = run_backup(database, directory)
+    renamed = directory / "registry?read#only.db"
+    backup.rename(renamed)
+    before = renamed.read_bytes()
+    assert before[18:20] == b"\x02\x02", "Fixture must retain its WAL header"
+    renamed.chmod(0o444)
+    directory.chmod(0o555)
+    try:
+        subprocess.run([_RESTORE, "--stopped", renamed, database], check=True)
+        assert read_value(database) == "before"
+        assert renamed.read_bytes() == before
+        assert list(directory.iterdir()) == [renamed]
+    finally:
+        directory.chmod(0o755)
+        renamed.chmod(0o600)
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_restore_refuses_incomplete_backup_companions(tmp_path: Path, suffix: str):
+    database = tmp_path / "registry.db"
+    make_database(database, "unchanged")
+    backup = run_backup(database, tmp_path / "backups")
+    Path(f"{backup}{suffix}").touch()
+    result = subprocess.run(
+        [_RESTORE, "--stopped", backup, database], capture_output=True, text=True
+    )
+    assert result.returncode == 1
+    assert "backup with SQLite sidecars" in result.stderr
+    assert read_value(database) == "unchanged"
+    assert not list(tmp_path.glob("registry.db.pre-restore-*"))
+
+
 @pytest.mark.parametrize("label", ["../escape", "space leak", "/absolute"])
 def test_backup_rejects_unsafe_labels(tmp_path: Path, label: str):
     database = tmp_path / "registry.db"
@@ -105,3 +139,12 @@ def test_backup_rejects_unsafe_labels(tmp_path: Path, label: str):
     )
     assert result.returncode == 1
     assert "backup label" in result.stderr
+
+
+def test_helpers_refuse_legacy_library_database(tmp_path: Path):
+    database = tmp_path / ".cairndex" / "library.db"
+    make_database(database, "unchanged")
+    backup = subprocess.run([_BACKUP, database, tmp_path / "backups"], capture_output=True)
+    restore = subprocess.run([_RESTORE, "--stopped", database, database], capture_output=True)
+    assert backup.returncode == restore.returncode == 1
+    assert read_value(database) == "unchanged"

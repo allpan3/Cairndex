@@ -38,20 +38,21 @@ LIBRARY_DIR="$(mktemp -d)"
 ALT_CONTAINER="${CONTAINER}-altuid"
 ALT_LIBRARY_DIR="$(mktemp -d)"
 ALT_DATA_DIR="$(mktemp -d)"
+ALT_BACKUP_DIR="$(mktemp -d)"
 ALT_PORT=$((PORT + 1))
 RANGE_HEADERS=""
 RANGE_BODY=""
 
 cleanup() {
     docker rm -f "$CONTAINER" "$ALT_CONTAINER" >/dev/null 2>&1 || true
-    docker volume rm "${CONTAINER}-data" >/dev/null 2>&1 || true
+    docker volume rm "${CONTAINER}-data" "${CONTAINER}-backups" >/dev/null 2>&1 || true
     # The .cairndex/ tree and the generated video belong to uid 10001 on the host
     # as well (see in_library below), so this user cannot unlink them. Root in a
     # container can.
     in_library rm -rf /libraries/main/.cairndex /libraries/main/smoke.mp4 >/dev/null 2>&1 || true
     rm -rf "$LIBRARY_DIR"
     # The alternate-uid run wrote as *this* user, so no container is needed.
-    rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR"
+    rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR" "$ALT_BACKUP_DIR"
     [[ -z "$RANGE_HEADERS" ]] || rm -f "$RANGE_HEADERS"
     [[ -z "$RANGE_BODY" ]] || rm -f "$RANGE_BODY"
     if [[ "$BUILT_IMAGE" == true ]]; then
@@ -175,6 +176,7 @@ docker run -d --name "$CONTAINER" \
     -p "127.0.0.1:${PORT}:8000" \
     -e CAIRNDEX_PREFER_HLS=true \
     -v "${CONTAINER}-data:/data" \
+    -v "${CONTAINER}-backups:/backups" \
     -v "${LIBRARY_DIR}:/libraries/main:rw" \
     --read-only --tmpfs /tmp \
     --security-opt no-new-privileges:true \
@@ -324,7 +326,7 @@ docker stop --timeout 30 "$CONTAINER" >/dev/null
 # Cairndex creates owned by them — including the files a host-side backup has to
 # read.
 #
-# That only works while the image writes nowhere it has to own: /data, /tmp, and
+# That only works while the image writes nowhere it has to own: /data, /backups, /tmp, and
 # the library mounts, all of them supplied from outside. It is one `pip install`
 # of a library with a cache directory away from quietly becoming false, so it is
 # tested rather than assumed. /data is bind-mounted here on purpose — a *named*
@@ -334,6 +336,7 @@ docker run -d --name "$ALT_CONTAINER" \
     -p "127.0.0.1:${ALT_PORT}:8000" \
     --user "$(id -u):$(id -g)" \
     -v "${ALT_DATA_DIR}:/data" \
+    -v "${ALT_BACKUP_DIR}:/backups" \
     -v "${ALT_LIBRARY_DIR}:/libraries/main:rw" \
     --read-only --tmpfs /tmp \
     --security-opt no-new-privileges:true \

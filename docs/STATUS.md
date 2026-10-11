@@ -1,6 +1,30 @@
 # Project status
 
-## Current: source-operation extraction
+## Current: distribution/deployment extraction
+
+PR #47 merged as `a7d149db` after its complete CI matrix passed. PR #48's
+screenshot-declaration prerequisite merged as `39904f6a`. Group 6 is complete;
+the source-operation evidence below records its qualification checkpoints.
+
+Branch `feature/distribution-deployment` starts from refreshed main `a7d149db`
+and extracts group 7 from the unchanged reference `cd38493f`. Scope: optional
+stable macOS sidecar signing, isolated development staging, private container
+data/backup volumes, registry backup safeguards and current deployment guidance.
+Local qualification passed: backend coverage of 1,780 macOS/1,779 Ubuntu unique
+tests, package and Rust gates, real development shutdown, Docker media/private
+recovery and clean/forced restart checks. Both different signed frozen builds
+passed mounted-SMB acceptance without background prompts. Native mounted-library
+Create/browse/Quit/restart passed and the original guest profile is restored.
+The read-only registry restore bug is fixed and covered by regression tests.
+Publication review remains; no production deployment or release was published.
+See [the distribution record](distribution-deployment-extraction.md).
+
+The backend job on PR #47 took about 16 minutes. The watcher reported the
+required privacy context while the backend was running, then did not report that
+optional job's completion. The later CI review must measure test durations and
+check full-matrix monitoring; current gates remain unchanged.
+
+## Source-operation qualification checkpoint
 
 Main is `39904f6a`, the fully green PR #48 screenshot-declaration prerequisite
 merge following PR #46 (`9ba347c8`). Branch `feature/portable-source-operations`
@@ -11,7 +35,7 @@ data in the test guests. Initial backend gates passed 1,749 macOS and 1,748 Ubun
 tests (one explicit unsupported-platform exclusion). Source, exact frozen executable,
 browser and native mounted checks passed; the original guest profile is restored.
 
-PR #47 is open. Its CodeQL follow-up binds picker-upload recovery paths to their
+PR #47's CodeQL follow-up binds picker-upload recovery paths to their
 persisted upload record. The complete macOS backend gate passed 1,752 tests;
 87 Ubuntu source-operation/privacy regressions and rebuilt Linux package smoke
 and frozen HTTP acceptance also passed. Static checks passed in both guests.

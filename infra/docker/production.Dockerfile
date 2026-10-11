@@ -45,8 +45,9 @@ RUN apt-get update \
 
 # Non-root user (AGENTS.md §12). A fixed high UID/GID plays well with NAS volume
 # permissions, and is the id the mounted volumes must grant write access to: /data
-# always, and the library root too, since a library keeps its .cairndex/ package
-# (manifest, library.db, cache) inside it. Source *media* is still never written
+# always, and the library root too, since a library keeps its .cairndex/ descriptor
+# and immutable history inside it. Working databases and caches stay in /data.
+# Source *media* is still never written
 # outside an ADR-0013 write-mode operation — a writable mount is not write mode.
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --home /app app
@@ -56,7 +57,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     CAIRNDEX_ENVIRONMENT=production \
     CAIRNDEX_BUILD_COMMIT=$CAIRNDEX_BUILD_COMMIT \
     CAIRNDEX_STATIC_DIR=/app/web \
-    CAIRNDEX_DATA_DIR=/data
+    CAIRNDEX_DATA_DIR=/data \
+    CAIRNDEX_PRIVATE_BACKUP_DIR=/backups
 
 WORKDIR /app
 # The venv installs the project editable against /app, so the source must live
@@ -81,8 +83,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh /app/infra/restor
 
 # Writable app-data dir (SQLite DB + derived-media cache) — a mounted volume in
 # production, owned by the non-root user. Kept outside any storage root.
-RUN mkdir -p /data && chown -R app:app /data
-VOLUME ["/data"]
+RUN mkdir -p /data /backups && chown -R app:app /data /backups
+VOLUME ["/data", "/backups"]
 
 # The root every library mount hangs under: /libraries/main, /libraries/archive.
 # Created here rather than left to Docker so that it exists even when nothing is

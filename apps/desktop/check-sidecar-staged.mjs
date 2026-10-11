@@ -11,6 +11,7 @@
 // Wired into `build.beforeBuildCommand`, which runs only for `tauri build`, so
 // the empty-dir affordance is untouched everywhere else.
 
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -74,6 +75,8 @@ const inputs = [
   join(serverRoot, 'uv.lock'),
   join(serverRoot, 'packaging', 'cairndex-sidecar.spec'),
   join(serverRoot, 'packaging', 'sidecar_entry.py'),
+  join(serverRoot, 'packaging', 'build_sidecar.py'),
+  join(serverRoot, 'packaging', 'macos_signing.py'),
 ]
 const pending = [join(serverRoot, 'src')]
 while (pending.length > 0) {
@@ -99,3 +102,10 @@ if (statSync(binary).mtimeMs < newestInput) {
   )
   process.exit(1)
 }
+
+// Do not seal a bundle around a backend signed by a stale or missing identity.
+execFileSync(
+  'uv',
+  ['run', 'python', 'packaging/macos_signing.py', 'check', binary],
+  { cwd: serverRoot, stdio: 'inherit' },
+)

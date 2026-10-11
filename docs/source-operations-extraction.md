@@ -1,5 +1,10 @@
 # Source-operation extraction
 
+PR #47 merged as `a7d149db1f34d0e0bba3d544b8253626dc521b8a` after all remote
+checks passed on `09fb453360614ef650935f1358f6b2d42bce4abc`. PR #48's declaration
+prerequisite merged first as `39904f6a`. Group 7 starts from this accepted main;
+the qualification checkpoints below retain their exact executable limits.
+
 Branch: `feature/portable-source-operations`, from main `9ba347c8`.
 Reference: `cd38493fcb306198ff4af00e19b5d78ada241ceb`, tree
 `912a0e657005ade3fb3e3b089df7c2343305fb99`. The reference remains unchanged.

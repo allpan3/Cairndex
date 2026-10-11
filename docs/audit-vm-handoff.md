@@ -3,10 +3,11 @@
 ## Start here
 
 Current continuation: application PR #45 and CodeQL follow-up PR #46 are merged.
-Group 6 is qualified on `feature/portable-source-operations`, initially based on
-main `9ba347c8` and now incorporating the green PR #48 publication prerequisite
-at `39904f6a`; see [its record](source-operations-extraction.md). Group 7 remains
-the next separate branch. Preserve the reference and run all tests in the guests.
+Group 6 merged through PR #47 as `a7d149db`, after the fully green PR #48
+publication prerequisite at `39904f6a`; see [its record](source-operations-extraction.md).
+Group 7 is on `feature/distribution-deployment` from refreshed main; see
+[its record](distribution-deployment-extraction.md). Preserve the reference and
+run all tests in the guests.
 
 The current owner instruction authorizes pushing, opening and merging both
 remaining PRs after their required qualification, review and privacy gates.
@@ -179,8 +180,8 @@ These guest limits are not product defects:
 | --- | --- | --- |
 | Done | Group 1: offline migration foundation, catalog, private schema and recovery dependencies | PR #38 merged; no real conversion command |
 | Done | Application groups 2–5: normal format-three Create/Open, access/recovery, reviewed Update, browse/edit and playback | PR #45 merged as `cbf1643d`; CodeQL follow-up PR #46 merged as `9ba347c8` |
-| Current | New branch from refreshed main: group 6, reviewed source operations and identity-preserving Replace/Undo, then mounted SMB | Test its own local source, process, browser/native and exact executable/share behavior; see the extraction record |
-| Then | New branch from refreshed main: group 7, distribution/deployment, private volumes, backups and signing/package preflight | Fresh container/package/deployment checks, isolated restart and recovery; stop for acceptance |
+| Done | Group 6, reviewed source operations and identity-preserving Replace/Undo, then mounted SMB | PR #47 merged as `a7d149db` after local source, process, browser/native, exact executable/share and complete CI checks |
+| Current | New branch from refreshed main: group 7, distribution/deployment, private volumes, backups and signing/package preflight | Fresh container/package/deployment checks, isolated restart and recovery, review and privacy gates; owner-authorized PR/merge |
 | Conditional | Selected-library conversion adapter and activation procedure | Only if format inventory shows a need; separate dependency-complete implementation, synthetic tests, copy-based qualification and explicit real-data approval |
 
 Groups 2–5 share the catalog workspace. Splitting their application UI would need
@@ -201,7 +202,7 @@ After each accepted merge:
 3. Resolve dependencies and conflicts, then test that branch itself. Old full-audit
    results do not qualify it. Rerun affected checks after every reconstruction.
 4. Update `docs/audit-extraction-paths.tsv` and the extraction ledger. Current
-   counts are 355 exact, 133 partial and 52 pending reference paths. Review partial
+   counts are 364 exact, 129 partial and 47 pending reference paths. Review partial
    hunks and record intentional omissions and new fixes. Counts are not proof of
    behavioral coverage.
 5. Prepare the PR description and exact privacy gates. Stop for the applicable
@@ -483,7 +484,7 @@ Use this remaining checklist; add evidence before changing any box:
   cause is not established.
 - [x] Application functional rounds and exact PR/privacy gates recorded in PR #45.
 - [x] Application PR #45 merged; main refreshed. CodeQL follow-up PR #46 merged.
-- [ ] Group 6 extracted, tested, accepted and merged.
+- [x] Group 6 extracted, tested, accepted and merged through PR #47 as `a7d149db`.
 - [ ] Group 7 extracted, tested, accepted and merged.
 - [ ] Combined behavior compared with preserved reference; omissions explained.
 - [ ] Optional external/real-data qualification recorded separately when authorized.

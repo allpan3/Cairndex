@@ -14,7 +14,10 @@ Inspect received drafts, saved jobs and history. After review, select
 to serve the selected generation. Original stores and snapshots remain intact.
 
 Snapshots default to a sibling of `CAIRNDEX_DATA_DIR` named with a `-backups`
-suffix. Set `CAIRNDEX_PRIVATE_BACKUP_DIR` for separate storage. Both locations must
+suffix in source installations. The production image and compose examples set
+`CAIRNDEX_PRIVATE_BACKUP_DIR=/backups` with a separate writable volume. Preserve
+an existing explicit snapshot root and its contents when updating deployment
+configuration. Both locations must
 stay outside library folders and must not use linked paths. Keep a protected copy
 on separate storage. The API accepts managed operation IDs, never storage paths.
 

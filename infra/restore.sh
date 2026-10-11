@@ -10,11 +10,23 @@ fi
 
 BACKUP_PATH="$2"
 DB_PATH="$3"
+if [[ "$(basename "$DB_PATH")" == "library.db" ]]; then
+    echo "error: legacy library format is unsupported" >&2
+    exit 1
+fi
 
 if [[ ! -f "$BACKUP_PATH" ]]; then
     echo "error: backup not found at $BACKUP_PATH" >&2
     exit 1
 fi
+# A backup is a complete, inactive database, not a live database plus journals.
+# Copying only the main file would discard changes retained in a companion.
+for suffix in -wal -shm -journal; do
+    if [[ -e "${BACKUP_PATH}${suffix}" ]]; then
+        echo "error: refusing restore from a backup with SQLite sidecars" >&2
+        exit 1
+    fi
+done
 if [[ ! -d "$(dirname "$DB_PATH")" ]]; then
     echo "error: destination directory does not exist: $(dirname "$DB_PATH")" >&2
     exit 1
@@ -57,20 +69,17 @@ fd, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.restore-", di
 os.close(fd)
 temporary = Path(temporary_name)
 try:
-    # The shell already proved the source exists. A normal path keeps `?` and
-    # `#` literal instead of letting SQLite's URI parser reinterpret them.
-    src = sqlite3.connect(source)
-    src.execute("PRAGMA query_only = ON")
+    # WAL-format backups need writable companion files even for a read. Open
+    # only this private copy, keeping a read-only backup mount untouched and
+    # treating `?` and `#` literally without SQLite URI interpretation.
+    shutil.copyfile(source, temporary)
     dst = sqlite3.connect(temporary)
     try:
-        with dst:
-            src.backup(dst)
         result = dst.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":
             raise SystemExit(f"error: restored copy failed integrity check: {result}")
     finally:
         dst.close()
-        src.close()
 
     os.chmod(temporary, mode)
     with temporary.open("rb") as handle:

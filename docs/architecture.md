@@ -47,10 +47,17 @@ registry tracks which libraries are known and owns the runtime job queue.
        │              job_queue                       │ media files         │
        │                                              │ .cairndex/         │
        │                                              │   manifest.json     │
-       │                                              │   library.db        │
-       │                                              │   cache/            │
+       │                                              │   replica/          │
+       │                                              │   source-operations/│
        │                                              └────────────────────┘
 ```
+
+Private working databases and derived caches are beneath server-local data.
+Container snapshots use a separate `/backups` volume; shared library roots hold
+portable immutable metadata and journaled retained source versions, not SQLite.
+The optional macOS build identity signs the frozen sidecar without changing its
+application identifier. Development staging shares verified media-cache links;
+distribution staging copies the pinned tools.
 
 `apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
 development URL and production build. It owns first-run server configuration,
