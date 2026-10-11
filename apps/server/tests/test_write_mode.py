@@ -1,22 +1,25 @@
-"""Portable libraries refuse source writes until their separate group is extracted."""
+"""Portable write permission does not enable the removed legacy operation API."""
 
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, inspect, text
 
+from cairndex.api.schemas.write_mode import WriteModeUpdate
+from cairndex.api.v1.write_mode import set_write_mode
 from cairndex.core.config import get_settings
 from cairndex.registry.engine import create_registry_engine
+from cairndex.registry.models import RegisteredLibrary
 from tests.test_library_scoped import create
 
 
-def test_portable_source_writes_are_unavailable(isolated_client, tmp_path):
+def test_portable_permission_does_not_enable_legacy_operations(isolated_client, tmp_path):
     root = tmp_path / "library"
     identity, _ = create(isolated_client, root)
     source = root / "example.txt"
     source.write_bytes(b"Synthetic source")
     base = f"/api/v1/libraries/{identity}"
-    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 409
+    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 200
     for operation, body in (
         ("rename", {"path": "example.txt", "new_name": "changed.txt"}),
         ("mkdir", {"path": "New directory"}),
@@ -38,6 +41,27 @@ def test_invalid_deployment_switch_is_rejected_at_startup() -> None:
                 get_settings()
         finally:
             get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_permission_response_is_visible_before_dependency_cleanup(
+    isolated_client, tmp_path, registry_session_factory, enabled
+):
+    identity, _ = create(isolated_client, tmp_path / "library")
+    with registry_session_factory() as registry:
+        library = registry.get(RegisteredLibrary, identity)
+        assert library is not None
+        library.write_mode_enabled = not enabled
+        registry.commit()
+
+        response = set_write_mode(identity, WriteModeUpdate(enabled=enabled), registry, None, None)
+        assert response.enabled is enabled
+        # HTTP can deliver the response while a yield dependency is still open.
+        # The next request must already observe the acknowledged permission.
+        with registry_session_factory() as reader:
+            persisted = reader.get(RegisteredLibrary, identity)
+            assert persisted is not None
+            assert persisted.write_mode_enabled is enabled
 
 
 def test_existing_registries_gain_the_write_mode_column(tmp_path: Path) -> None:

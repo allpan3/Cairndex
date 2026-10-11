@@ -7,6 +7,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from uuid import uuid4
 
+from cairndex.file_ops import smb_transport
 from cairndex.file_ops.exclusive import link
 from cairndex.replicas.catalog.storage import CatalogStorage
 from cairndex.replicas.protocol import MAX_BYTES, ReplicaError
@@ -126,6 +127,7 @@ class Transport:
 
     # One exchange tick bounds discovery, dependency retries and outbox publication separately
     def tick(self) -> None:
+        smb_transport._mount(self.root)
         info = self.root.stat(follow_symlinks=False)
         if self._root_identity != (info.st_dev, info.st_ino):
             self.close()

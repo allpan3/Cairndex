@@ -2,11 +2,11 @@
 
 ## Extracted application qualification
 
-This branch is a local application candidate. Source operations and mounted-SMB
-publication are unavailable. The Docker daemon is unavailable during current
-qualification; no extracted container or NAS result is claimed. Earlier receipts
-apply only to their exact images and commits. Do not deploy this candidate to
-production from those receipts.
+Application groups 2–5 merged through PR #45 with isolated guest Docker checks.
+Group 6 adds reviewed source operations and the mounted-SMB adapter; its fresh
+[qualification record](source-operations-extraction.md) is separate from earlier
+reference receipts. Distribution/deployment extraction remains group 7. No new
+production NAS result or deployment is claimed.
 
 Portable working databases, access settings, registry and caches require private
 server storage outside libraries/provider trees. Private snapshots use

@@ -8,8 +8,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- Reviewed portable source Copy, Rename, Move, Replace, Trash, conditional Undo
+  and retained recovery copies. Exact private intent, independent versions and
+  no-replace publication protect identities and occupied paths. The File Browser
+  provides saved review, collision choices, interruption Retry and recovery.
+  Writes remain off by default and require per-library and deployment permission.
+- An authenticated mounted-SMB publication adapter with share-scoped saved-login
+  access, signed/encrypted SMB3, bounded visibility waits and exact recovery.
+  New qualification is recorded separately for source, frozen and native runs.
+  Completed renames refresh the former mounted name before checking absence,
+  preserving arriving entries while avoiding stale positive stat results.
+
 ### Security
 
+- Resolve picker-upload recovery paths from the persisted upload identity;
+  request text selects the record and strict token and symlink checks remain in force.
 - Make the publication privacy gate fail closed when Git ignores `rev-list --objects -z`.
   Git 2.43 (the Ubuntu 24.04 package) printed newline-delimited output there, and the gate
   then reported a pass after it had scanned no blobs.
@@ -56,7 +71,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Extract the portable application: format-three Create/Open, old-format refusal,
   private access and recovery, reviewed Update, catalog browsing/editing and
   local playback. Source operations and mounted-SMB publication remain separate.
-  Functional acceptance is pending.
+  Merged through PR #45; CodeQL repairs followed in PR #46.
 
 - Add a disposable format-three migration foundation with complete catalog
   reconstruction, private schema validation, retained recovery, durable intent,
@@ -108,6 +123,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Commit library write-permission changes before returning success, so the next
+  source request observes both enabling and revocation immediately.
 
 - Keep empty-library Refresh from requesting an undefined bundle. Serve portable
   thumbnails through the library media adapter.

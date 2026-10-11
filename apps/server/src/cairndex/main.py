@@ -11,6 +11,7 @@ from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
 from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
+from cairndex.file_ops.smb_transport import close_sessions as close_smb_sessions
 from cairndex.media.exports import shutdown_export_manager
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.persistence.engine import discard_all_plans
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Export artifacts are throwaway state under the data dir, so they go
         # with the process that made them rather than outliving it as orphans.
         shutdown_export_manager()
+        close_smb_sessions()
 
 
 def create_app() -> FastAPI:

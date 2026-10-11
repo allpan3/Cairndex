@@ -93,4 +93,7 @@ def set_write_mode(
         enabled=payload.enabled,
         passphrase_verified=verified,
     )
+    # Yield dependencies may finish after the response reaches the client.
+    # Commit permission before acknowledging it to subsequent requests/workers.
+    registry.commit()
     return _read(state)

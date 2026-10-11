@@ -1,24 +1,45 @@
 # Project status
 
-## Source-operation publication prerequisite
+## Current: source-operation extraction
 
-PR #47's trusted-base privacy scan requires the synthetic source-operation
-screenshot declaration to land before the image. This internal prerequisite adds
-only its reviewed exact digest, path and provenance; no image or application code
-is included. The trusted scanner and private patterns remain unchanged.
-The binary-inventory test now supports that declaration-first workflow; an
-integration regression checks the two publication stages and rejects changed
-bytes or paths.
-All 22 privacy tests, Ruff and formatting pass in an isolated Ubuntu checkout
-with the declaration present and the screenshot absent. Full CI must finish
-before this prerequisite merges.
+Main is `39904f6a`, the fully green PR #48 screenshot-declaration prerequisite
+merge following PR #46 (`9ba347c8`). Branch `feature/portable-source-operations`
+extracts group 6 from the unchanged cumulative reference. Portable reviewed source
+operations, identity-preserving Replace/Undo, retained versions and the mounted-SMB
+adapter are implemented and qualified on synthetic local and selected mounted-SMB
+data in the test guests. Initial backend gates passed 1,749 macOS and 1,748 Ubuntu
+tests (one explicit unsupported-platform exclusion). Source, exact frozen executable,
+browser and native mounted checks passed; the original guest profile is restored.
+
+PR #47 is open. Its CodeQL follow-up binds picker-upload recovery paths to their
+persisted upload record. The complete macOS backend gate passed 1,752 tests;
+87 Ubuntu source-operation/privacy regressions and rebuilt Linux package smoke
+and frozen HTTP acceptance also passed. Static checks passed in both guests.
+All remote checks on that follow-up passed except the trusted-base privacy scan,
+which needed PR #48's declaration first. The branch now incorporates that main
+checkpoint with unchanged application runtime bytes and refreshed privacy review.
+
+The prerequisite's binary-inventory test supports declaration before asset
+publication. All 22 privacy tests pass in both the declaration-only and combined
+source-operation Ubuntu checkouts; the regression proves changed bytes and paths
+remain rejected. Full CI on PR #48
+passed before its merge. The trusted scanner and owner-specific patterns are unchanged.
+See [the source-operation record](source-operations-extraction.md) for exact test
+evidence and limits. Distribution/deployment remains group 7. The installed host
+app and production services are unchanged.
+
+The owner requested a later CI timing/scope review. Measure the slow backend
+tests, review which checks metadata/declaration and test-only changes need,
+and verify that monitoring reports completion of the full matrix. The declaration
+prerequisite's full backend job took about nine minutes per run.
 
 ## Audit extraction: VM handoff and application checkpoint
 
 The owner requests continuation on a separate machine or VM. The
 [handoff plan](audit-vm-handoff.md) defines clone/setup, remaining PR order, tests,
 real-library prerequisites and stopping rules. Application/reference branch
-transfer is authorized; application acceptance and merge remain pending.
+transfer is authorized. The application merged through PR #45; PR #46 completed
+the CodeQL follow-up. The detailed earlier checkpoint below is historical.
 No further native tests are scheduled on the owner's active desktop.
 
 On 2026-10-09 the owner approved a history rewrite that removed private names

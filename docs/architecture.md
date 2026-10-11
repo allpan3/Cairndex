@@ -16,8 +16,12 @@ Access settings remain outside recovery generations.
 
 The shared ORM, legacy routes and shared-folder lease utilities below remain
 internal fixture and model references. Public registry admission does not allow
-old libraries to use them. Portable routes use the private catalog. Source
-operations and mounted-SMB adapters are outside this extracted application.
+old libraries to use them. Portable routes use the private catalog. Reviewed
+source operations use a private intent journal, two bounded workers and
+independent retained versions under `.cairndex/source-operations/`. Received
+receipts never run filesystem work. Local no-replace primitives and the
+authenticated mounted-SMB adapter preserve occupied names. See
+[source operations](file-operations.md) and [qualification](storage-qualification.md).
 
 ## 1. System overview
 
