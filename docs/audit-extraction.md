@@ -2,8 +2,9 @@
 
 Continuation on another machine uses the [VM handoff plan](audit-vm-handoff.md).
 Application groups 2–5 merged through PR #45, followed by CodeQL repair PR #46.
-The next extraction is group 6 on `feature/portable-source-operations` from
-main `9ba347c8`. Its [qualification record](source-operations-extraction.md)
+Group 6 is on `feature/portable-source-operations`, initially from main
+`9ba347c8` and now incorporating the green PR #48 prerequisite at `39904f6a`.
+Its [qualification record](source-operations-extraction.md)
 tracks scope and evidence. Real-data use and conversion remain separate.
 
 ## Preserved reference and base

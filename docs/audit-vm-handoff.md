@@ -3,8 +3,9 @@
 ## Start here
 
 Current continuation: application PR #45 and CodeQL follow-up PR #46 are merged.
-Group 6 is qualified on `feature/portable-source-operations`, based on
-main `9ba347c8`; see [its record](source-operations-extraction.md). Group 7 remains
+Group 6 is qualified on `feature/portable-source-operations`, initially based on
+main `9ba347c8` and now incorporating the green PR #48 publication prerequisite
+at `39904f6a`; see [its record](source-operations-extraction.md). Group 7 remains
 the next separate branch. Preserve the reference and run all tests in the guests.
 
 The current owner instruction authorizes pushing, opening and merging both

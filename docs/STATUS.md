@@ -2,24 +2,36 @@
 
 ## Current: source-operation extraction
 
-Main is `9ba347c8`, the PR #46 CodeQL repair merge following application PR #45
-(`cbf1643d`). Branch `feature/portable-source-operations` extracts group 6 from
-the unchanged cumulative reference. Portable reviewed source operations,
-identity-preserving Replace/Undo, retained versions and the mounted-SMB adapter
-are implemented and qualified on synthetic local and selected mounted-SMB data
-in the test guests. Final backend gates passed 1,749 macOS and 1,748 Ubuntu tests
-(one explicit unsupported-platform exclusion). Source, exact frozen executable,
+Main is `39904f6a`, the fully green PR #48 screenshot-declaration prerequisite
+merge following PR #46 (`9ba347c8`). Branch `feature/portable-source-operations`
+extracts group 6 from the unchanged cumulative reference. Portable reviewed source
+operations, identity-preserving Replace/Undo, retained versions and the mounted-SMB
+adapter are implemented and qualified on synthetic local and selected mounted-SMB
+data in the test guests. Initial backend gates passed 1,749 macOS and 1,748 Ubuntu
+tests (one explicit unsupported-platform exclusion). Source, exact frozen executable,
 browser and native mounted checks passed; the original guest profile is restored.
-PR #47 is open. Its trusted-base privacy check requires the reviewed synthetic
-screenshot declaration to land first in a separate internal prerequisite; the
-scanner and owner-specific profile remain unchanged. The CodeQL follow-up binds
-picker-upload recovery paths to their persisted upload record.
-The follow-up passed the complete macOS backend gate (1,752 tests), 87 Ubuntu
-source-operation/privacy regressions, and rebuilt Linux package smoke/frozen
-HTTP acceptance. Static checks passed in both guests. See
-[the source-operation record](source-operations-extraction.md) for scope,
-omissions and exact test evidence. Distribution/deployment remains group 7.
-The installed host app and production services are unchanged.
+
+PR #47 is open. Its CodeQL follow-up binds picker-upload recovery paths to their
+persisted upload record. The complete macOS backend gate passed 1,752 tests;
+87 Ubuntu source-operation/privacy regressions and rebuilt Linux package smoke
+and frozen HTTP acceptance also passed. Static checks passed in both guests.
+All remote checks on that follow-up passed except the trusted-base privacy scan,
+which needed PR #48's declaration first. The branch now incorporates that main
+checkpoint with unchanged application runtime bytes and refreshed privacy review.
+
+The prerequisite's binary-inventory test supports declaration before asset
+publication. All 22 privacy tests pass in both the declaration-only and combined
+source-operation Ubuntu checkouts; the regression proves changed bytes and paths
+remain rejected. Full CI on PR #48
+passed before its merge. The trusted scanner and owner-specific patterns are unchanged.
+See [the source-operation record](source-operations-extraction.md) for exact test
+evidence and limits. Distribution/deployment remains group 7. The installed host
+app and production services are unchanged.
+
+The owner requested a later CI timing/scope review. Measure the slow backend
+tests, review which checks metadata/declaration and test-only changes need,
+and verify that monitoring reports completion of the full matrix. The declaration
+prerequisite's full backend job took about nine minutes per run.
 
 ## Audit extraction: VM handoff and application checkpoint
 
