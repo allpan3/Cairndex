@@ -74,6 +74,14 @@
       ],
       "purpose": "Generated Windows Cairndex application icon set",
       "provenance": "Derived from the repository SVG logo"
+    },
+    {
+      "sha256": "3bc0d68ec87a7121e91ed0e2f9c6734361065f6e503df9235b2ac287d62bcb70",
+      "paths": [
+        "docs/screenshots/source-operations.png"
+      ],
+      "purpose": "Document reviewed portable source operations and recovery UI",
+      "provenance": "Playwright capture of fresh synthetic folder and picker fixtures; reviewed edge to edge, with no owner media, paths, account data, or desktop content"
     }
   ],
   "vendored_trees": []

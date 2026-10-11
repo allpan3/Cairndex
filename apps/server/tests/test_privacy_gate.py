@@ -265,14 +265,65 @@ def test_repository_declares_no_vendored_trees():
     assert privacy_gate.load_allowlist().vendored_trees == ()
 
 
-# Match each established binary to its exact reviewed bytes and path
+# Declarations land before their assets; verify every asset already present.
 def test_real_binary_allowlist_matches_repository_assets():
     allowlist = privacy_gate.load_allowlist()
     for allowance in allowlist.binaries.values():
         for relative_path in allowance.paths:
-            data = (_SCRIPT.parent.parent / relative_path).read_bytes()
+            path = _SCRIPT.parent.parent / relative_path
+            if not path.exists():
+                continue
+            data = path.read_bytes()
             assert hashlib.sha256(data).hexdigest() == allowance.sha256
             assert privacy_gate.scan_blob(data, "fixture", {relative_path}, allowlist, []) == []
+
+
+# A declaration-only first commit grants only the reviewed bytes at the reviewed path.
+def test_binary_declaration_can_precede_exact_asset(tmp_path: Path):
+    repo = initialized_repo(tmp_path)
+    data = b"\x89PNG\r\n\x1a\n" + b"synthetic bytes"
+    relative_path = "docs/screenshot.png"
+    declaration = repo / ".github" / "privacy-allowlist.json"
+    declaration.parent.mkdir()
+    declaration.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "allowed_root_entries": [".github", "docs"],
+                "binaries": [
+                    {
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                        "paths": [relative_path],
+                        "purpose": "Synthetic publication fixture",
+                        "provenance": "Generated in this test",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    allowlist = privacy_gate.load_allowlist(declaration)
+    git(repo, "add", ".github/privacy-allowlist.json")
+    assert not (repo / relative_path).exists()
+    assert privacy_gate.scan_staged(repo, allowlist, []) == ([], 1)
+    git(repo, "commit", "-qm", "declare synthetic asset")
+    base = git(repo, "rev-parse", "HEAD")
+
+    asset = repo / relative_path
+    asset.parent.mkdir()
+    asset.write_bytes(data)
+    git(repo, "add", relative_path)
+    assert privacy_gate.scan_staged(repo, allowlist, []) == ([], 1)
+    git(repo, "commit", "-qm", "add exact synthetic asset")
+    assert privacy_gate.scan_range(repo, "HEAD", base, False, allowlist, []) == ([], 1, 1)
+
+    asset.write_bytes(data + b"changed")
+    git(repo, "add", relative_path)
+    assert privacy_gate.scan_staged(repo, allowlist, [])[0]
+    git(repo, "restore", "--staged", relative_path)
+    (repo / "docs" / "other.png").write_bytes(data)
+    git(repo, "add", "docs/other.png")
+    assert privacy_gate.scan_staged(repo, allowlist, [])[0]
 
 
 # Reject an opaque payload even when its path has no media extension
