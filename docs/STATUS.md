@@ -1,5 +1,12 @@
 # Project status
 
+## Source-operation publication prerequisite
+
+PR #47's trusted-base privacy scan requires the synthetic source-operation
+screenshot declaration to land before the image. This internal prerequisite adds
+only its reviewed exact digest, path and provenance; no image or application code
+is included. The trusted scanner and private patterns remain unchanged.
+
 ## Audit extraction: VM handoff and application checkpoint
 
 The owner requests continuation on a separate machine or VM. The

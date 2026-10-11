@@ -889,6 +889,8 @@ ruleset after the workflow first reaches `main`. GitHub has no access to the
 owner's local literal profile, so a green remote check complements rather than
 replaces the pre-publication local gate. A PR that deliberately changes the
 binary/root allowlist must land before a separate PR uses the new allowance.
+Keep that prerequisite PR limited to the reviewed declaration and documentation;
+include the binary itself only in the consuming PR.
 
 CodeQL analyzes Python and JavaScript/TypeScript on pushes, pull requests, and a
 weekly schedule. Dependency review rejects a pull request that introduces a

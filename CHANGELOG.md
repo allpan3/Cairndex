@@ -29,6 +29,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Declare the reviewed synthetic source-operation screenshot by exact digest,
+  path and provenance before the application PR publishes its binary.
 - CodeQL no longer analyzes test code (`.github/codeql/codeql-config.yml`). The unit-test
   localStorage stub keeps every key in one Map, so CodeQL reported false clear-text storage
   and DOM XSS alerts in application code.
