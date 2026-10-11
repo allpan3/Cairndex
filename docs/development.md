@@ -444,6 +444,10 @@ Run `uv run python packaging/keychain_signing_smoke.py` on macOS to verify chang
 binaries sharing one certificate, refusal of other certificates/identifiers and
 ad-hoc copies, and cleanup. It uses only a disposable Keychain and synthetic data;
 all credential reads disable user interaction. This gate also runs in macOS CI.
+Its disposable Keychain is explicitly unlocked and its private signing keys get
+the Apple signing partitions required by headless runners. This test setup uses
+the temporary password over stdin and never applies a partition change to a
+workstation Keychain or saved-login item.
 
 The sidecar also carries `smbprotocol` for ADR-0034 and ADR-0037's macOS mounted-SMB
 publication path. Its static import must remain visible to PyInstaller, and the

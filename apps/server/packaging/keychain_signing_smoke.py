@@ -70,10 +70,34 @@ def _denied(binary: Path, keychain: Path) -> None:
     assert result.returncode == 1 and "status=-25293" in result.stdout, result.stdout
 
 
-def verify(work: Path, keychain: Path) -> None:
+def _allow_test_signing(keychain: Path, password: str) -> None:
+    # This Keychain was created by this test and contains only its signing keys.
+    # Headless runners also require Apple's partition, beyond import's codesign ACL.
+    # Never apply this to a user Keychain or credential item.
+    _run(
+        ["/usr/bin/security", "-i"],
+        input_text=shlex.join(
+            [
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:",
+                "-s",
+                "-t",
+                "private",
+                "-k",
+                password,
+                str(keychain),
+            ]
+        )
+        + "\n",
+    )
+
+
+def verify(work: Path, keychain: Path, password: str) -> None:
     config = work / "build-signing.json"
     identity = create_local_identity(config, keychain=keychain)
     assert create_local_identity(config) == identity, "Repeated setup changed the identity"
+    _allow_test_signing(keychain, password)
     source = work / "reader.c"
     source.write_text(_SOURCE)
     first, second = _compile(source, 1), _compile(source, 2)
@@ -104,6 +128,7 @@ def verify(work: Path, keychain: Path) -> None:
     )
     _denied(unrelated, keychain)
     other_identity = create_local_identity(work / "other-signing.json", keychain=keychain)
+    _allow_test_signing(keychain, password)
     other = _compile(source, 4)
     sign_sidecar(other, SigningIdentity(other_identity.fingerprint, keychain))
     _denied(other, keychain)
@@ -131,6 +156,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cairndex signing verification ") as directory:
         work = Path(directory)
         keychain = work / "disposable.keychain-db"
+        password = token_hex(32)
         try:
             _run(
                 ["/usr/bin/security", "-i"],
@@ -138,14 +164,19 @@ def main() -> int:
                     [
                         "create-keychain",
                         "-p",
-                        token_hex(32),
+                        password,
                         str(keychain),
                     ]
                 )
                 + "\n",
             )
             assert keychain.is_file(), "Temporary Keychain was not created"
-            verify(work, keychain)
+            _run(["/usr/bin/security", "set-keychain-settings", "-t", "3600", str(keychain)])
+            _run(
+                ["/usr/bin/security", "-i"],
+                input_text=shlex.join(["unlock-keychain", "-p", password, str(keychain)]) + "\n",
+            )
+            verify(work, keychain, password)
         finally:
             if keychain.exists():
                 _run(["/usr/bin/security", "delete-keychain", str(keychain)])

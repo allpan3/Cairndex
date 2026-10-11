@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 PACKAGING_DIR = Path(__file__).resolve().parents[1] / "packaging"
 sys.path.insert(0, str(PACKAGING_DIR))
 
+import keychain_signing_smoke as keychain_smoke  # noqa: E402
 import macos_signing as signing  # noqa: E402
 
 FINGERPRINT = "1" * 40
@@ -186,6 +188,33 @@ def test_security_failure_does_not_echo_sensitive_stdin(monkeypatch):
     with pytest.raises(signing.SigningError) as failure:
         signing._run(["/usr/bin/security", "-i"], input_text="synthetic-wrapping-password")
     assert "synthetic-wrapping-password" not in str(failure.value)
+
+
+def test_headless_smoke_grants_only_its_private_signing_keys_without_password_arguments(
+    tmp_path, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(
+        keychain_smoke, "_run", lambda arguments, **kwargs: calls.append((arguments, kwargs))
+    )
+    keychain = tmp_path / "disposable signing.keychain-db"
+    password = "synthetic-test-password"
+    keychain_smoke._allow_test_signing(keychain, password)
+    arguments, kwargs = calls[0]
+    assert arguments == ["/usr/bin/security", "-i"]
+    command = shlex.split(kwargs["input_text"])
+    assert command == [
+        "set-key-partition-list",
+        "-S",
+        "apple-tool:,apple:",
+        "-s",
+        "-t",
+        "private",
+        "-k",
+        password,
+        str(keychain),
+    ]
+    assert password not in json.dumps(arguments)
 
 
 def test_setup_keeps_private_material_out_of_config_and_arguments(local_config, monkeypatch):

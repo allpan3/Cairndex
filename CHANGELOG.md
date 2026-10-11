@@ -12,6 +12,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Optional stable local macOS sidecar signing with strict identity preflight and
   disposable Keychain qualification across changed executable builds.
+  Its disposable CI Keychain explicitly supports headless signing while keeping
+  workstation enrollment and saved-login access rules unchanged.
 - Reviewed portable source Copy, Rename, Move, Replace, Trash, conditional Undo
   and retained recovery copies. Exact private intent, independent versions and
   no-replace publication protect identities and occupied paths. The File Browser

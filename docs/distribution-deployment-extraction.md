@@ -106,6 +106,21 @@ profile was restored with matching hashes, modes and symlinks. The disposable
 signing Keychain was removed and the original Keychain search list retained.
 Private raw receipts remain outside Git.
 
+### PR #49 headless runner follow-up
+
+The first GitHub macOS 26.6.2 job failed in `codesign` while signing the
+disposable test reader, before the package build. The macOS 27 guest's earlier
+smoke passed. The test now explicitly unlocks its freshly created Keychain and
+sets Apple signing partitions on only that Keychain's private signing keys,
+following [GitHub's runner setup](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications).
+Passwords stay on stdin; this does not change local enrollment, system trust or
+saved-login ACLs. All changed-reader and rejected-identity assertions remain.
+
+Ruff, formatting, mypy and 21 signing regressions passed in both guests. The
+real macOS Keychain smoke also passed all access/refusal assertions and removed
+the temporary Keychain with the original search list retained. GitHub runner
+verification and the full CI merge review remain pending.
+
 The web source, API and user interactions are unchanged. The production SPA build
 ran; the group 6 frontend unit/browser suite was not repeated locally for group 7.
 Linux package checks use system ffmpeg because Linux-arm64 has no pinned media
