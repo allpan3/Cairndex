@@ -19,8 +19,8 @@ apps/desktop/src-tauri/src/navigation.rs	5	exact	c8ef6262d35259fa60bad0ccec55e3d
 apps/desktop/src-tauri/src/sidecar.rs	5	exact	0e884503b6bb1a99d346bc494604aea4a63f51eb
 apps/server/packaging/build_sidecar.py	7	exact	2e55630661a40aae1f76efa50781200ca42a4f0c
 apps/server/packaging/cairndex-sidecar.spec	7	exact	28624bbe1536fe778e17d01a79ee06215f464cf4
-apps/server/packaging/keychain_signing_smoke.py	7	exact	4f54249658455564b724e0bca44f99881730accc
-apps/server/packaging/macos_signing.py	7	exact	5f9e6a4de6ba705e1cb7dda428925a67dcc5d687
+apps/server/packaging/keychain_signing_smoke.py	7	partial	4f54249658455564b724e0bca44f99881730accc
+apps/server/packaging/macos_signing.py	7	partial	5f9e6a4de6ba705e1cb7dda428925a67dcc5d687
 apps/server/packaging/smoke_test.py	7	exact	6d9657aa18ad0142547da3583ffa8bb11c34c56e
 apps/server/prototypes/cloud_metadata/README.md	4	pending	3276eeb7a9d891917625a4196cb5328021275761
 apps/server/prototypes/cloud_metadata/__init__.py	4	pending	db437662c9a8b106544d54c949e6227e12af6c6b
@@ -227,7 +227,7 @@ apps/server/tests/test_import_replacement.py	6	pending	b328637c6738b86e40126c56b
 apps/server/tests/test_journal_mode.py	4	exact	b21447e830fb8fef0a909f4ab6115650cf109c4a
 apps/server/tests/test_libraries.py	2	exact	d52391512b4f89db0e41c2f612a8c92fd89318f2
 apps/server/tests/test_library_scoped.py	2	exact	40d26c6c72ed948e521b5905fd385e051375ace6
-apps/server/tests/test_macos_signing.py	7	exact	f4301ac019d4a6de3ca9130de11c248d1ac26740
+apps/server/tests/test_macos_signing.py	7	partial	f4301ac019d4a6de3ca9130de11c248d1ac26740
 apps/server/tests/test_media_work.py	5	exact	b0349926a3704276bc50a4cabde1b25cbffa8dd8
 apps/server/tests/test_metadata_edits.py	4	pending	874e2788f5679124066e7082f3a0134e531dfcf5
 apps/server/tests/test_models.py	4	partial	725994c5dbdb5baccae2aea9892d5cd483129e4a

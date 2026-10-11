@@ -49,7 +49,23 @@ def _run(arguments: Sequence[str], *, input_text: str | None = None) -> str:
     )
     if result.returncode:
         # Security's interactive mode can echo input containing a temporary password.
-        raise SigningError(f"{Path(arguments[0]).name} failed during sidecar signing")
+        detail = ""
+        if arguments[0] == "/usr/bin/codesign":
+            # Classify only fixed diagnostics; paths, certificate names and raw
+            # stdout/stderr can contain private values and must never escape.
+            reasons = (
+                ("unable to build chain to self-signed root", "certificate chain unavailable"),
+                ("errSecInteractionNotAllowed", "Keychain interaction unavailable"),
+                ("errSecAuthFailed", "Keychain authorization failed"),
+                ("errSecInternalComponent", "Security internal component error"),
+                ("The specified item could not be found", "signing identity unavailable"),
+            )
+            reason = next(
+                (label for marker, label in reasons if marker in result.stderr),
+                "unclassified signing error",
+            )
+            detail = f" (exit {result.returncode}; {reason})"
+        raise SigningError(f"{Path(arguments[0]).name} failed during sidecar signing{detail}")
     return result.stdout
 
 

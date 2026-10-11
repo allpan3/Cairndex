@@ -52,6 +52,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Extract distribution/deployment from the preserved audit reference. Development
   bundles share checksum-verified media tools from an isolated cache; production
   bundles copy them. CI covers launcher behavior and Keychain identity continuity.
+  The disposable signing smoke restores the certificate search list after failure;
+  signing diagnostics expose fixed error categories without private tool output.
 - Declare the reviewed synthetic source-operation screenshot by exact digest,
   path and provenance before the application PR publishes its binary.
 - Allow the binary-inventory test to verify declarations before their assets

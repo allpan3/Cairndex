@@ -202,7 +202,7 @@ After each accepted merge:
 3. Resolve dependencies and conflicts, then test that branch itself. Old full-audit
    results do not qualify it. Rerun affected checks after every reconstruction.
 4. Update `docs/audit-extraction-paths.tsv` and the extraction ledger. Current
-   counts are 364 exact, 129 partial and 47 pending reference paths. Review partial
+   counts are 361 exact, 132 partial and 47 pending reference paths. Review partial
    hunks and record intentional omissions and new fixes. Counts are not proof of
    behavioral coverage.
 5. Prepare the PR description and exact privacy gates. Stop for the applicable

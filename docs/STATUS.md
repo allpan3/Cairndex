@@ -16,10 +16,11 @@ recovery and clean/forced restart checks. Both different signed frozen builds
 passed mounted-SMB acceptance without background prompts. Native mounted-library
 Create/browse/Quit/restart passed and the original guest profile is restored.
 The read-only registry restore bug is fixed and covered by regression tests.
-PR #49 is open at `b9718a32`; CI and merge review remain. Its first macOS runner
-failed to sign the disposable Keychain reader. The smoke now explicitly unlocks
-its own test Keychain and configures headless signing access only for its private
-signing keys. The real smoke and 21 signing regressions pass in the macOS guest;
+PR #49 is open; CI and merge review remain. The macOS runner still failed to
+sign the disposable reader after explicit unlock/partition setup. The smoke now
+also adds its test Keychain to the certificate search list and restores the
+original list on success or failure. Signing errors expose only fixed diagnostic
+categories. The real smoke and 29 signing regressions pass in the macOS guest;
 the regressions and static gates also pass in Ubuntu. Runner verification remains.
 No production deployment or release was published.
 See [the distribution record](distribution-deployment-extraction.md).

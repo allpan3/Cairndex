@@ -190,6 +190,31 @@ def test_security_failure_does_not_echo_sensitive_stdin(monkeypatch):
     assert "synthetic-wrapping-password" not in str(failure.value)
 
 
+@pytest.mark.parametrize(
+    ("stderr", "reason"),
+    [
+        ("unable to build chain to self-signed root", "certificate chain unavailable"),
+        ("errSecInteractionNotAllowed", "Keychain interaction unavailable"),
+        ("errSecAuthFailed", "Keychain authorization failed"),
+        ("errSecInternalComponent", "Security internal component error"),
+        ("The specified item could not be found", "signing identity unavailable"),
+        ("unexpected failure", "unclassified signing error"),
+    ],
+)
+def test_codesign_failure_reports_only_a_fixed_reason(monkeypatch, stderr, reason):
+    private = "synthetic-private-value"
+    monkeypatch.setattr(
+        signing.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 1, private, f"{private}: {stderr}"
+        ),
+    )
+    with pytest.raises(signing.SigningError) as failure:
+        signing._run(["/usr/bin/codesign", private])
+    assert str(failure.value) == f"codesign failed during sidecar signing (exit 1; {reason})"
+
+
 def test_headless_smoke_grants_only_its_private_signing_keys_without_password_arguments(
     tmp_path, monkeypatch
 ):
@@ -215,6 +240,50 @@ def test_headless_smoke_grants_only_its_private_signing_keys_without_password_ar
         str(keychain),
     ]
     assert password not in json.dumps(arguments)
+
+
+@pytest.mark.parametrize("original", [[], ["/synthetic/original signing.keychain-db"]])
+def test_smoke_restores_the_search_list_and_deletes_its_keychain_after_failure(
+    monkeypatch, original
+):
+    calls = []
+    created = []
+
+    def run(arguments, *, input_text=None):
+        calls.append(arguments)
+        if arguments == ["/usr/bin/security", "list-keychains", "-d", "user"]:
+            return shlex.join(original)
+        if arguments == ["/usr/bin/security", "-i"]:
+            command = shlex.split(input_text)
+            if command[0] == "create-keychain":
+                keychain = Path(command[-1])
+                keychain.touch()
+                created.append(keychain)
+        if arguments[1] == "delete-keychain":
+            Path(arguments[2]).unlink()
+        return ""
+
+    def fail(work, keychain, password):
+        assert keychain.is_file() and password
+        raise signing.SigningError("synthetic signing failure")
+
+    monkeypatch.setattr(keychain_smoke.sys, "platform", "darwin")
+    monkeypatch.setattr(keychain_smoke, "_run", run)
+    monkeypatch.setattr(keychain_smoke, "verify", fail)
+    with pytest.raises(signing.SigningError, match="synthetic signing failure"):
+        keychain_smoke.main()
+    assert len(created) == 1 and not created[0].exists()
+    assert calls[-2] == ["/usr/bin/security", "delete-keychain", str(created[0])]
+    assert calls[-1] == ["/usr/bin/security", "list-keychains", "-d", "user", "-s", *original]
+    assert [
+        "/usr/bin/security",
+        "list-keychains",
+        "-d",
+        "user",
+        "-s",
+        str(created[0]),
+        *original,
+    ] in calls
 
 
 def test_setup_keeps_private_material_out_of_config_and_arguments(local_config, monkeypatch):

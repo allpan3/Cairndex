@@ -139,7 +139,7 @@ marks exact, partial, or pending coverage. New files outside the reference are `
 `catalog/index.py`, `replicas/private_layout.py`, `test_library_migration.py`
 and the two extraction tracking files. The split schema modules preserve the
 reference layouts; migration preparation and its tests are new implementation.
-After group 7 extraction, the inventory records 364 exact, 129 partial
+After group 7 extraction and runner fixes, the inventory records 361 exact, 132 partial
 and 47 missing reference paths. The obsolete shared-package ownership smoke
 is intentionally omitted; see the distribution extraction record. These statuses compare current bytes with the
 reference, including existing shared files that deliberately differ. They do not

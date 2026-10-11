@@ -448,6 +448,9 @@ Its disposable Keychain is explicitly unlocked and its private signing keys get
 the Apple signing partitions required by headless runners. This test setup uses
 the temporary password over stdin and never applies a partition change to a
 workstation Keychain or saved-login item.
+The test also temporarily adds that Keychain to the certificate search list and
+restores the original list on success or failure. Signing failures report a fixed
+diagnostic category and exit code while withholding raw tool output.
 
 The sidecar also carries `smbprotocol` for ADR-0034 and ADR-0037's macOS mounted-SMB
 publication path. Its static import must remain visible to PyInstaller, and the

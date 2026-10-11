@@ -176,10 +176,35 @@ def main() -> int:
                 ["/usr/bin/security", "-i"],
                 input_text=shlex.join(["unlock-keychain", "-p", password, str(keychain)]) + "\n",
             )
+            # --keychain selects the identity, but codesign can still use the
+            # search list to assemble its certificate chain. Keep existing entries.
+            _run(
+                [
+                    "/usr/bin/security",
+                    "list-keychains",
+                    "-d",
+                    "user",
+                    "-s",
+                    str(keychain),
+                    *shlex.split(before),
+                ]
+            )
             verify(work, keychain, password)
         finally:
-            if keychain.exists():
-                _run(["/usr/bin/security", "delete-keychain", str(keychain)])
+            try:
+                if keychain.exists():
+                    _run(["/usr/bin/security", "delete-keychain", str(keychain)])
+            finally:
+                _run(
+                    [
+                        "/usr/bin/security",
+                        "list-keychains",
+                        "-d",
+                        "user",
+                        "-s",
+                        *shlex.split(before),
+                    ]
+                )
     assert before == _run(["/usr/bin/security", "list-keychains", "-d", "user"])
     print("PASS: temporary Keychain removed; original search list retained", flush=True)
     return 0

@@ -52,10 +52,11 @@ identifiers, certificates and ad-hoc readers; original search-list cleanup passe
 The initial compose configurations and shell syntax checks passed on Ubuntu.
 
 Full qualification used checkpoint `5d934efe`, tree `b07e106e875a2dee4b9102f8dd7478e719be47ad`.
-The compiled runtime-input inventory SHA-256 is `d2b07f153c2530311bfdf2965490becd982a1e0f94d97112af3e84ef63b83492`;
-these inputs remain unchanged after the separately tested launcher and restore
-repairs. This identifies the tested source, rather than promising reproducible
-binaries or qualifying a release built from a later metadata commit.
+Its recorded build/source input inventory SHA-256 is `d2b07f153c2530311bfdf2965490becd982a1e0f94d97112af3e84ef63b83492`.
+Backend, desktop-host and web runtime source still match that checkpoint. Later
+launcher, restore-helper, signing-diagnostic and CI-smoke repairs are separately
+tested below. The inventory identifies the tested checkpoint; it does not promise
+reproducible binaries or qualify a release built from a later commit.
 
 | Check | Result |
 | --- | --- |
@@ -116,7 +117,15 @@ following [GitHub's runner setup](https://docs.github.com/en/actions/how-tos/dep
 Passwords stay on stdin; this does not change local enrollment, system trust or
 saved-login ACLs. All changed-reader and rejected-identity assertions remain.
 
-Ruff, formatting, mypy and 21 signing regressions passed in both guests. The
+The runner still failed at the first signature after unlock/partition setup.
+Creating a Keychain does not add it to the search list; the smoke now explicitly
+adds its disposable Keychain alongside the existing entries and restores the
+original list in `finally`, including failed-signing cleanup. `codesign` errors
+report only a fixed diagnostic category and exit code, never raw tool output.
+Regression tests cover known/unknown error redaction and empty/spaced search-list
+restoration after a signing failure. Runner verification remains pending.
+
+Ruff, formatting, mypy and 29 signing regressions passed in both guests. The
 real macOS Keychain smoke also passed all access/refusal assertions and removed
 the temporary Keychain with the original search list retained. GitHub runner
 verification and the full CI merge review remain pending.
@@ -129,7 +138,7 @@ delivery, representative scale and power-loss safety remain unqualified.
 
 ## Publication checkpoint
 
-The reference ledger has 364 exact, 129 partial and 47 absent paths. These compare
+The reference ledger has 361 exact, 132 partial and 47 absent paths. These compare
 bytes rather than behavioral acceptance. The obsolete shared-package ownership
 smoke is intentionally omitted; paused OS drag, former prototypes, superseded
 legacy API/tests and separate application proposals are not imported by group 7.
