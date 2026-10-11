@@ -50,7 +50,7 @@ def _wait_until_ready(server_port: int, web_port: int) -> None:
 
 
 def _run() -> None:
-    """Acquire a lease, interrupt `just dev`, and require a clean release."""
+    """Open a private store, interrupt `just dev`, and verify process exclusion ends."""
     scratch = Path(tempfile.mkdtemp(prefix="cairndex-dev-smoke."))
     data_dir = scratch / "data"
     library_root = scratch / "library"
@@ -92,23 +92,18 @@ def _run() -> None:
             payload={"root_path": str(library_root), "display_name": "Scratch"},
         )
         library_id = library["id"]
-        _request(server_port, f"/api/v1/libraries/{library_id}/collections")
-        _request(
-            server_port,
-            f"/api/v1/libraries/{library_id}/write-mode",
-            method="PUT",
-            payload={"enabled": True},
-        )
+        _request(server_port, f"/api/v1/libraries/{library_id}/replica/status")
 
         os.killpg(process.pid, signal.SIGINT)
         process.wait(timeout=20)
-        lease = json.loads(
-            (library_root / ".cairndex/locks/active-owner.json").read_text(encoding="utf-8")
-        )
         if process.returncode != 130:
             raise RuntimeError(f"`just dev` exited with {process.returncode}, expected 130")
-        if "released_at" not in lease:
-            raise RuntimeError("Ctrl-C left the scratch library lease unreleased")
+        import fcntl
+
+        with (data_dir / "replica-bindings" / f"{library['library_uuid']}.lock").open("rb") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if list(library_root.rglob("*.db*")):
+            raise RuntimeError("A mutable database was written into the library")
     except BaseException:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
@@ -118,7 +113,7 @@ def _run() -> None:
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
-    print("dev stack Ctrl-C released the scratch library lease")
+    print("dev stack Ctrl-C closed the scratch private store")
 
 
 if __name__ == "__main__":

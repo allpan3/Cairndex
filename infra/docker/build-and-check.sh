@@ -100,8 +100,23 @@ run_build production docker build \
     -f infra/docker/production.Dockerfile \
     -t "$PRODUCTION_IMAGE" .
 
+docker compose config --format json >"${LOG_DIR}/compose.json"
+service_image() {
+    python3 - "${LOG_DIR}/compose.json" "$1" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config = json.loads(Path(sys.argv[1]).read_text())
+service = sys.argv[2]
+print(config["services"][service].get("image") or config["name"] + "-" + service)
+PY
+}
+SERVER_IMAGE=$(service_image server)
+WEB_IMAGE=$(service_image web)
+
 # Prove broad COPY instructions did not admit any synthetic private-data path
-for image in cairndex-server cairndex-web "$PRODUCTION_IMAGE"; do
+for image in "$SERVER_IMAGE" "$WEB_IMAGE" "$PRODUCTION_IMAGE"; do
     found=$(docker run --rm --entrypoint sh "$image" -c \
         "find /app -name '*${CANARY}*' -print -quit")
     if [[ -n "$found" ]]; then
@@ -112,7 +127,7 @@ done
 
 # Canaries prove the named local paths are ignored. Also reject residue that a
 # package tool or earlier local run may have created under a different name.
-for image in cairndex-server "$PRODUCTION_IMAGE"; do
+for image in "$SERVER_IMAGE" "$PRODUCTION_IMAGE"; do
     found=$(docker run --rm --entrypoint sh "$image" -c \
         "find /app \( -name '.uv-cache' -o -name '.cache' -o -name '__pycache__' -o -name '*.pyc' -o -name '*.pyo' -o -name 'tests' \) -print -quit")
     if [[ -n "$found" ]]; then

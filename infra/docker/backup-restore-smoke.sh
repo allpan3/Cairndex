@@ -51,8 +51,8 @@ start_image() {
         -p "127.0.0.1:${PORT}:8000" \
         --user "$(id -u):$(id -g)" \
         -v "${DATA_DIR}:/data" \
-        -v "${SNAPSHOT_DIR}:/snapshots" \
-        -e CAIRNDEX_PRIVATE_BACKUP_DIR=/snapshots \
+        -v "${SNAPSHOT_DIR}:/backups" \
+        -e CAIRNDEX_PRIVATE_BACKUP_DIR=/backups \
         -v "${LIBRARY_DIR}:/libraries/main:rw" \
         --read-only --tmpfs /tmp \
         --security-opt no-new-privileges:true \
@@ -223,7 +223,7 @@ phase snapshot || fail "could not admit media, protect access and take a private
 
 step "taking a hot registry backup"
 registry_output=$(docker exec "$CONTAINER" \
-    /app/infra/backup.sh /data/registry.db /data/backups)
+    /app/infra/backup.sh /data/registry.db /backups)
 registry_backup=$(awk '{print $3}' <<<"$registry_output")
 [[ -n "$registry_backup" ]] || fail "backup helper did not report its output path"
 
@@ -244,6 +244,7 @@ step "restoring the registry atomically with $TARGET_IMAGE"
 docker run --rm --user "$(id -u):$(id -g)" \
     --entrypoint /app/infra/restore.sh \
     -v "${DATA_DIR}:/data" \
+    -v "${SNAPSHOT_DIR}:/backups:ro" \
     "$TARGET_IMAGE" --stopped "$registry_backup" /data/registry.db
 
 step "recovering the private store from its snapshot with $TARGET_IMAGE"

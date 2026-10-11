@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Optional stable local macOS sidecar signing with strict identity preflight and
+  disposable Keychain qualification across changed executable builds.
+  Its disposable CI Keychain explicitly supports headless signing while keeping
+  workstation enrollment and saved-login access rules unchanged.
 - Reviewed portable source Copy, Rename, Move, Replace, Trash, conditional Undo
   and retained recovery copies. Exact private intent, independent versions and
   no-replace publication protect identities and occupied paths. The File Browser
@@ -25,6 +29,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Resolve picker-upload recovery paths from the persisted upload identity;
   request text selects the record and strict token and symlink checks remain in force.
+
 - Make the publication privacy gate fail closed when Git ignores `rev-list --objects -z`.
   Git 2.43 (the Ubuntu 24.04 package) printed newline-delimited output there, and the gate
   then reported a pass after it had scanned no blobs.
@@ -44,6 +49,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Extract distribution/deployment from the preserved audit reference. Development
+  bundles share checksum-verified media tools from an isolated cache; production
+  bundles copy them. CI covers launcher behavior and Keychain identity continuity.
+  The disposable signing smoke restores the certificate search list after failure;
+  signing diagnostics expose fixed error categories without private tool output.
 - Declare the reviewed synthetic source-operation screenshot by exact digest,
   path and provenance before the application PR publishes its binary.
 - Allow the binary-inventory test to verify declarations before their assets
@@ -82,6 +92,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Container deployments keep private snapshots in a separate writable backup
+  volume, including the bare image default. Registry backup/restore helpers reject
+  legacy shared `library.db`; portable library recovery uses its private stores.
+  Environment examples and deployment guidance describe format-three storage.
 - **Both browsers' toolbars are one row of controls.** Every boxed control in a
   toolbar — segmented groups, actions, the search field, the sort control — is
   the same height, and every icon button draws its glyph at the same size. The
@@ -124,6 +138,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore consistent WAL-format registry backups from read-only backup mounts
+  using an independently validated private copy. Refuse incomplete backups with
+  SQLite companions and preserve the original snapshot and rollback database.
 - Commit library write-permission changes before returning success, so the next
   source request observes both enabling and revocation immediately.
 

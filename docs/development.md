@@ -59,14 +59,10 @@ uv sync                 # creates .venv, installs locked deps + Python 3.12
 uv run uvicorn cairndex.main:app --reload --port 8000
 ```
 
-`just dev` starts this server and Vite together. Stop it with Ctrl-C: the
-recipe signals the Uvicorn reloader itself and waits for FastAPI's lifespan
-shutdown before returning, so every mounted library's ownership lease is
-released. Do not replace that targeted shutdown with a process-group kill;
-terminating the reloader and its worker simultaneously can skip lifespan
-shutdown and leave the next server waiting for a stale-lease takeover.
-`just dev-smoke` exercises that exact shutdown against a generated scratch
-library and fails if Ctrl-C leaves its lease active.
+`just dev` starts the server and Vite together. Ctrl-C targets the Uvicorn
+reloader and waits for application shutdown to drain work and close private
+stores. `just dev-smoke` creates a disposable portable library and verifies that
+Ctrl-C releases its private process lock, with no SQLite in the library folder.
 
 Checks (run from `apps/server`):
 
@@ -176,25 +172,19 @@ whether you ever run `:8000` for desktop work:
 - **"This Computer" — the bundled sidecar**, which the shell spawns itself. This
   is the self-contained server end users get, but it is a **PyInstaller build of
   `apps/server` frozen at build time**, staged from
-  `packaging/dist/cairndex-sidecar/`. After changing server code you must rebuild
-  it, or it silently serves stale code — a route added since the last build
-  `404`s in the desktop while the web app (on your live `:8000`) works:
+  `packaging/dist/development/cairndex-sidecar/` for development. Run
+  `just bundled` from the repository root: it rebuilds stale server code and
+  verifies that the linked FFmpeg/FFprobe still match the pinned cache.
 
-```bash
-cd apps/server && uv run python packaging/build_sidecar.py
-# Run the shell against the fresh binary, bypassing the stale copy Tauri staged
-# into target/ at its last cargo build:
-cd apps/desktop
-CAIRNDEX_SIDECAR_BIN="$(cd ../server && pwd)/packaging/dist/cairndex-sidecar/cairndex-sidecar" \
-  npm run tauri dev
-```
+`just bundled` uses only the host architecture (Apple Silicon on an ARM Mac).
+Its media tools are symlinks into `packaging/vendor/ffmpeg/<platform>/`, and its
+Tauri invocation disables bundle resources so Cargo does not copy release
+sidecars into `target/debug`. The development bundle is checkout-local;
+`just build-desktop` produces the self-contained release bundle separately.
 
-Reach for the sidecar only when you specifically want to exercise the
-self-contained bundling (or the packaged `.app`, see the README); use the
-standalone `:8000` server for everything else. Two servers opening the *same*
-library folder is refused by the ownership lease, so do not run the sidecar
-against a library your `:8000` server already has open — that is the
-"open on `<this machine>`" message.
+Use the packaged sidecar to verify the self-contained application. Independent
+servers can open the same portable library with separate private data directories.
+A private binding lock prevents two processes from using the same private store.
 
 The first-run screen stores a verified server URL in the Tauri store. Bootstrap
 also requires the health response to advertise the pairing and progress
@@ -423,12 +413,78 @@ The desktop app bundles the Python server so a local library folder opens with
 no server administration (plan 3 D6, ADR-0018 §5). It is packaged with
 PyInstaller one-dir (ADR-0019 §2).
 
+For local macOS builds, opt into a persistent sidecar signing identity once:
+
+```bash
+cd apps/server
+uv run python packaging/macos_signing.py create-local
+```
+
+The setup creates a non-exportable signing key in the user's default Keychain,
+grants only `codesign` access to that new key, and stores its public certificate
+fingerprint and Keychain location outside the checkout. It changes neither system
+trust nor existing password access rules. Repeating setup reuses the same identity;
+a missing key or invalid configuration stops the build instead of rotating it.
+Both development and self-contained builds use `dev.cairndex.sidecar` with that
+certificate. The first explicit SMB operation may require **Always Allow** for the
+new signer; grants can then survive rebuilt code. Merely choosing **Allow** grants
+one access, and a locked Keychain or changed certificate can still require action.
+
+`just bundled` detects stale signing even when source timestamps are unchanged,
+and the desktop bundle preflight refuses an incorrectly signed backend. The
+configuration is `~/Library/Application Support/Cairndex/build-signing.json`;
+`CAIRNDEX_SIDECAR_SIGNING_CONFIG` selects another explicit configuration. Neither
+configuration nor signing keys belong in the repository or build artifacts.
+CI ignores the workstation default. `APPLE_SIGNING_IDENTITY` takes precedence;
+`-` explicitly selects the existing ad-hoc path. A real Apple signing identity
+also signs PyInstaller's native libraries before the final stable backend identifier
+is applied; notarization still requires its separate release qualification.
+
+Run `uv run python packaging/keychain_signing_smoke.py` on macOS to verify changed
+binaries sharing one certificate, refusal of other certificates/identifiers and
+ad-hoc copies, and cleanup. It uses only a disposable Keychain and synthetic data;
+all credential reads disable user interaction. This gate also runs in macOS CI.
+Its disposable Keychain is explicitly unlocked and its private signing keys get
+the Apple signing partitions required by headless runners. This test setup uses
+the temporary password over stdin and never applies a partition change to a
+workstation Keychain or saved-login item.
+The test also temporarily adds that Keychain to the certificate search list and
+restores the original list on success or failure. Signing failures report a fixed
+diagnostic category and exit code while withholding raw tool output.
+
+The sidecar also carries `smbprotocol` for ADR-0034 and ADR-0037's macOS mounted-SMB
+publication path. Its static import must remain visible to PyInstaller, and the
+packaged smoke gate must retain `cryptography`'s runtime hook. Source-level SMB
+tests do not prove that the frozen binary contains this dependency chain or can
+access the saved login. Portable background work never requests a Keychain prompt.
+A packaged saved-login refusal must be resolved for that application before its
+mounted-SMB workflow can be qualified.
+
+Authorize the built sidecar explicitly with
+`packaging/dist/cairndex-sidecar/cairndex-sidecar authorize-smb <mounted-directory>`.
+The command selects the exact mounted server, account and share's saved login.
+The Keychain path is the share name, without an added leading slash. The command
+permits a bounded Keychain prompt and verifies signed, encrypted SMB3. It starts
+no HTTP server and writes no library files. Complete the secure Keychain approval when required. Authorization failure output includes only a numeric Security status or a timeout
+message; it excludes private paths and credential values. Background publication
+never prompts. A diagnostic executable's grant does not qualify access for the
+actual packaged sidecar.
+
+
 ```bash
 cd apps/server
 uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see below)
 uv run python packaging/build_sidecar.py      # -> packaging/dist/cairndex-sidecar/
 uv run python packaging/smoke_test.py         # runs the bundle and drives it over HTTP
 ```
+
+For a frozen development server, `build_sidecar.py --development` writes to
+`packaging/dist/development/cairndex-sidecar/` and links the verified media tools
+from the cache. The default build writes regular copies to
+`packaging/dist/cairndex-sidecar/` for distribution. Never distribute the
+checkout-local development directory. Old Cargo build output is regenerable;
+changing development mode does not automatically delete existing outputs.
+
 
 `packaging/ffmpeg-manifest.json` pins both macOS architectures (ADR-0019 §3).
 **On Linux, build with `--skip-ffmpeg`** — that platform is deliberately
@@ -501,7 +557,7 @@ bundle missing a dynamically resolved import — that only surfaces when the cod
 path first runs. The smoke test drives the real binary through the paths where
 that actually happens: SQLAlchemy's sqlite dialect, the job worker, Pillow
 thumbnails, a HEIC preview (`media/previews.py` imports `pi_heif` inside a
-function), and SIGTERM releasing the ownership lease. CI runs it on every push.
+function), and SIGTERM releasing the private binding lock. CI runs it on every push.
 
 `hiddenimports` in `cairndex-sidecar.spec` is **empty, and that was measured**.
 An initial version listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries;
@@ -555,10 +611,9 @@ directory silently — or embed stale server code behind the current app version
   needs no target-OS branches (Windows has no SIGTERM, and plan 3 §2.1 exists to
   avoid such branches), and it still works when the shell never gets to ask. A
   signal requires a shell alive enough to send it; a crash or `kill -9` sends
-  nothing and would orphan a process still holding ownership leases, which the
-  user meets as a takeover prompt on their next launch. The kernel closes the
-  pipe however the shell dies. Verified: SIGKILLing a parent leaves no orphan and
-  the lease still comes back with `released_at`.
+  nothing and could orphan a process holding a private binding lock. The kernel
+  closes the pipe when the shell dies. Verify parent-loss shutdown against the
+  actual packaged executable; it must close private stores and leave no orphan.
 - The sidecar gets its own `CAIRNDEX_DATA_DIR` under the app's data directory
   (`local-server/`), kept out of the shell's own store — its registry is
   invisible plumbing (ADR-0018 §5).
@@ -576,16 +631,12 @@ CAIRNDEX_SIDECAR_BIN=$PWD/../../server/packaging/dist/cairndex-sidecar/cairndex-
 
 ## Databases and local state
 
-Cairndex now uses the ADR-0008 per-library model:
-
-- the server-local registry DB lives under `CAIRNDEX_DATA_DIR` as
-  `registry.db` and tracks registered libraries plus the runtime `job_queue`;
-- each library is a directory with `.cairndex/manifest.json`,
-  `.cairndex/library.db`, and `.cairndex/cache/`;
-- content tables are created in each `library.db` via the current SQLAlchemy
-  metadata bootstrap for this pre-1.0 phase;
-- there is no current global content DB, no `storage_roots` content table, and no
-  `asset_files.storage_root_id`.
+The private registry is `CAIRNDEX_DATA_DIR/registry.db`. Portable library folders
+hold descriptors and immutable history. Working databases, drafts, jobs and
+caches live below private `replicas`; access settings live under `library-access`.
+The content schema is reused by catalog projection and synthetic model tests.
+Model-fixture tests do not qualify public old-format admission. Use real portable
+API fixtures for admission, authorization, isolation and serving lifecycle checks.
 
 ### Adding a library
 
@@ -609,7 +660,7 @@ same trust level as each other: they read absolute server paths the owner typed
 and are unrelated to File Browser path safety, which stays library-relative.
 
 **Removal is metadata-only.** `DELETE /api/v1/libraries/{id}` drops the registry
-row, releases that library's ownership lease, and disposes its content engine.
+row after draining and closing the private store.
 It never deletes a folder, a `.cairndex/` package, or a media file — re-adding
 the folder restores the library, because nothing authoritative lives in the
 registry (ADR-0018 §1). Any change here must preserve that.
@@ -742,15 +793,15 @@ hot-updates the browser.
 
 ### Two collisions to know about
 
-**The dev container has its own registry**, deliberately not the
-`apps/server/var` that native `just dev` uses. If they shared one `registry.db`
-both servers would register the same libraries and then contend for their
-ADR-0018 ownership leases, each taking the library from the other.
+**The dev container has its own private data**, deliberately separate from the
+`apps/server/var` that native `just dev` uses. Sharing it would contend for the
+same private registry and binding locks. Independent serving instances use
+independent private storage; format three has no shared ownership lease.
 
-**A library may be open on one server at a time** (ADR-0018). Point
-`CAIRNDEX_DEV_LIBRARY_PATH` at a scratch library, not at one your desktop app or
-native dev server is also serving — the second server to try is refused, and it
-will name the first. `just docker-dev-library` seeds one at `var/docker-library`:
+**Use a scratch library for development.** Point `CAIRNDEX_DEV_LIBRARY_PATH`
+at synthetic media rather than a library another app is actively using. Separate
+private stores do not serialize two servers' physical source operations.
+`just docker-dev-library` seeds one at `var/docker-library`:
 fourteen generated files — 2-second clips, JPEG covers, and subtitles, arranged
 into a multi-part film, an episodic set, and some loose images — so multi-file
 bundling, grouping, covers, and playback all have something real to work on. It
@@ -773,10 +824,9 @@ just docker-dev-down                 # keeps the registry volume
 just docker-dev-down --volumes       # and discards it
 ```
 
-Prefer this to killing the container. Shutdown releases each library's ownership
-lease and checkpoints its WAL; a SIGKILL part-way through leaves the lease
-behind until it ages out (`CAIRNDEX_LEASE_TTL`, five minutes), during which
-nothing else will open that library without a confirmed takeover.
+A clean shutdown drains admitted work and closes private stores and process
+locks. A forced exit can leave retained operations interrupted for explicit
+review and retry. It does not establish power-loss safety.
 
 ### Changing dependencies
 
@@ -936,3 +986,22 @@ Every third-party workflow action outside GitHub's own `actions/*` and
 `github/*` namespaces is pinned to an immutable commit SHA. Keep the human
 version comment beside each pin, and let Dependabot propose reviewed updates;
 do not replace a pin with a moving major, tag, or branch.
+
+## Distribution and deployment qualification
+
+Run the launcher test with `npm --prefix apps/desktop test`. Verify both isolated
+development links and regular distribution media-tool copies against their pins.
+Configured signing errors stop a build or launch rather than falling back.
+Run `packaging/keychain_signing_smoke.py` in a disposable macOS guest; its synthetic
+credential reads disable interaction, prove continuity across changed binaries,
+reject other signers and restore the Keychain search list. Verify the configured
+identity again on the actual sidecar embedded in a production app.
+
+For isolated Linux deployment, run build-and-check, production media smoke and
+backup-restore smoke against one explicit candidate image. Preserve their image
+canary/license, thumbnail/range/HLS, protected-access, damaged-original retention,
+private-volume and clean/forced restart assertions. `infra/docker/portable_smoke.py`
+adds the joined catalog/conflict/source/recovery workflow and verifies received
+drafts, saved source receipts and bytes after both restart modes. Use a fresh
+disposable root, separate private data/snapshot directories, a unique container
+and a loopback endpoint. No production NAS or release publication is implied.

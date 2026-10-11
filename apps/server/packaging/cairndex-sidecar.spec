@@ -40,7 +40,16 @@
 # If a new dependency ever does need an entry here, the smoke test is what will
 # say so. Add the entry with the failure it fixes named in a comment.
 
+import os
+
 from PyInstaller.utils.hooks import copy_metadata
+
+# A configured Developer ID must sign the entire frozen Python dependency set.
+# Local Keychain continuity signs only the executable after collection, retaining
+# the existing non-hardened local runtime and third-party media-tool signatures.
+identity = os.environ.get("APPLE_SIGNING_IDENTITY")
+if identity in (None, "", "-"):
+    identity = None
 
 analysis = Analysis(
     ["sidecar_entry.py"],
@@ -74,6 +83,7 @@ exe = EXE(
     strip=False,
     upx=False,  # UPX-compressed binaries trip macOS code signing and Gatekeeper
     console=True,  # stdout is the port-announcement channel to the shell
+    codesign_identity=identity,
 )
 
 COLLECT(

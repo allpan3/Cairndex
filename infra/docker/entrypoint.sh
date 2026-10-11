@@ -4,9 +4,9 @@
 #
 # This used to run `alembic upgrade head`. That call had stopped doing anything:
 # Cairndex has no migration chain in use (apps/server/alembic/ has no versions/),
-# the registry DB is bootstrapped by create_all on first open, and each library's
-# schema is created with the library package and patched additively on open
-# (persistence.engine.ensure_content_indexes). The command still exited 0, so the
+# the registry is bootstrapped by create_all on first open and portable private
+# stores validate their schema and apply known additive upgrades. Old library
+# admission and automatic conversion remain unavailable. The command still exited 0, so the
 # only real effect was a startup line claiming migrations had been applied.
 set -euo pipefail
 
@@ -24,9 +24,9 @@ if ! mkdir -p "$data_dir" 2>/dev/null || ! [ -w "$data_dir" ]; then
     exit 1
 fi
 
-# Warnings, not failures: a read-only library is a legitimate way to run
-# Cairndex for browsing alone, and an empty root is simply what a container
-# looks like before anyone has mounted a share into it.
+# Warn rather than refuse startup: source media may stay protected while its
+# .cairndex metadata package has a separate writable mount. A wholly read-only
+# package cannot publish metadata. An empty root is expected before setup.
 #
 # Every mount is a *child* of the root — /libraries/main, /libraries/archive —
 # and never the root itself. Two reasons, one of which is this check:
@@ -48,13 +48,13 @@ else
     for mount in "${library_mounts[@]}"; do
         if ! [ -w "$mount" ]; then
             echo "WARNING: library mount '${mount%/}' is not writable by uid $(id -u)." >&2
-            echo "         Existing libraries can be browsed, but creating or" >&2
-            echo "         scanning one needs to write its .cairndex/ package." >&2
+            echo "         Serving requires writable .cairndex/ metadata;" >&2
+            echo "         private databases, locks and caches remain in app data." >&2
         fi
     done
 fi
 
 # Hand off to the image CMD (uvicorn) as PID 1 so signals propagate cleanly —
-# which is what lets a `docker stop` release library leases and checkpoint each
-# WAL instead of being killed part-way through (ADR-0018 §6).
+# which lets `docker stop` drain admitted work and close private stores and
+# process locks before its grace period expires.
 exec "$@"

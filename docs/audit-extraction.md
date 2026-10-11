@@ -2,10 +2,10 @@
 
 Continuation on another machine uses the [VM handoff plan](audit-vm-handoff.md).
 Application groups 2–5 merged through PR #45, followed by CodeQL repair PR #46.
-Group 6 is on `feature/portable-source-operations`, initially from main
-`9ba347c8` and now incorporating the green PR #48 prerequisite at `39904f6a`.
-Its [qualification record](source-operations-extraction.md)
-tracks scope and evidence. Real-data use and conversion remain separate.
+Group 6 merged through PR #47 as `a7d149db`, after the green PR #48 prerequisite
+at `39904f6a`. Group 7 is on `feature/distribution-deployment` from that refreshed main.
+The [source-operation record](source-operations-extraction.md) and
+[distribution record](distribution-deployment-extraction.md) track scope and evidence. Real-data use and conversion remain separate.
 
 ## Preserved reference and base
 
@@ -39,8 +39,8 @@ mean its full reference contents belong to one group.
 | 3 | Reviewed Update, discovery/grouping, stable-ID repair, full verification and interrupted reviews; requires 1–2 | Private discovery schemas and library-scoped API, process tests, browser/native, source-generation checks | Merged through PR #45 |
 | 4 | Browse/edit: complete search/filter populations, exact saved filters, navigation, inspectors, albums, bulk selection and retained drafts; requires 1–3 for complete workflow | Catalog query/API types, component and real-server browser suites, synthetic native checks | Merged through PR #45 |
 | 5 | Playback/connection continuity, scoped requests, server navigation, keyboard/layout and loading/error fixes; requires 2–4 | Media/API and native host contracts; playback, connection, component/browser/native and package checks | Merged through PR #45 |
-| 6 | Reviewed source operations, identity-preserving Replace/Undo and retained recovery; then mounted SMB; requires 1–5 | Private journals and source-event protocol, API/types, process/browser/native tests; SMB and Keychain only for exact executable/share | Qualified; awaiting publication review |
-| 7 | Distribution/deployment: signing preflight, packaged dependencies, private volumes and backup scripts; requires applicable runtime groups | Docker contexts/images, source/license inventory, package smoke, isolated deployment restart and recovery | Planned |
+| 6 | Reviewed source operations, identity-preserving Replace/Undo and retained recovery; then mounted SMB; requires 1–5 | Private journals and source-event protocol, API/types, process/browser/native tests; SMB and Keychain only for exact executable/share | Merged through PR #47 |
+| 7 | Distribution/deployment: signing preflight, packaged dependencies, private volumes and backup scripts; requires applicable runtime groups | Docker contexts/images, source/license inventory, package smoke, isolated deployment restart and recovery | Qualified locally; PR #49 CI/merge review pending |
 
 Each group carries its necessary documentation, changelog, tests and fixes.
 API artifacts are regenerated from that extracted branch. Later branches are
@@ -139,9 +139,9 @@ marks exact, partial, or pending coverage. New files outside the reference are `
 `catalog/index.py`, `replicas/private_layout.py`, `test_library_migration.py`
 and the two extraction tracking files. The split schema modules preserve the
 reference layouts; migration preparation and its tests are new implementation.
-After the group 6 source extraction and upload-path security follow-up, the inventory
-records 353 exact, 135 partial
-and 52 missing reference paths. These statuses compare current bytes with the
+After group 7 extraction and runner fixes, the inventory records 361 exact, 132 partial
+and 47 missing reference paths. The obsolete shared-package ownership smoke
+is intentionally omitted; see the distribution extraction record. These statuses compare current bytes with the
 reference, including existing shared files that deliberately differ. They do not
 independently establish behavioral acceptance.
 No pending path is an intentional omission by default. Before each later merge,

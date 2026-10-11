@@ -282,3 +282,43 @@ class TestManifestFileShape:
             text = path.read_text(encoding="utf-8")
             assert "--enable-libx264" in text
             assert "x264" in text
+
+
+# Development links must never weaken the pin or leak into release staging
+class TestDevelopmentMediaTools:
+    # Restaging must preserve the cache and reject bytes outside the pin
+    @pytest.mark.parametrize("development", [False, True])
+    def test_staging_checks_pins_and_preserves_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, development: bool
+    ) -> None:
+        source = tmp_path / "cache"
+        bundle = tmp_path / "bundle"
+        source.mkdir()
+        bundle.mkdir()
+        for tool in fm.MEDIA_TOOLS:
+            (source / tool).write_bytes(tool.encode())
+            (source / tool).chmod(0o755)
+        pins = fm.pins_for(
+            "macos-arm64",
+            _manifest(
+                **{
+                    "macos-arm64": {
+                        tool: _entry(sha256=fm.sha256(source / tool)) for tool in fm.MEDIA_TOOLS
+                    }
+                }
+            ),
+        )
+        monkeypatch.setattr(bs, "pins_for", lambda _: pins)
+        bs.stage_media_tools(source, "macos-arm64", bundle=bundle, development=True)
+        bs.stage_media_tools(source, "macos-arm64", bundle=bundle, development=development)
+        for tool in fm.MEDIA_TOOLS:
+            assert (bundle / tool).is_symlink() is development
+            assert (bundle / tool).read_bytes() == tool.encode()
+            assert (source / tool).read_bytes() == tool.encode()
+            if development:
+                assert (bundle / tool).samefile(source / tool)
+        (source / "ffmpeg").write_bytes(b"changed")
+        with pytest.raises(SystemExit, match="checksum mismatch"):
+            bs.stage_media_tools(source, "macos-arm64", bundle=bundle, development=development)
+        if not development:
+            assert (bundle / "ffmpeg").read_bytes() == b"ffmpeg"

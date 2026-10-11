@@ -45,7 +45,8 @@ agents working in this repository.
 
 The source-operation and mounted-SMB qualification is recorded in
 [source-operation extraction](docs/source-operations-extraction.md).
-Distribution/deployment extraction remains separate.
+Distribution/deployment qualification has its own extraction record; releases
+and production deployment remain separate owner-triggered actions.
 OS drag integration is incomplete and paused. Folder pagination, Recently Used,
 file note/source UI, cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,
@@ -169,15 +170,15 @@ that trips people up.** Three ways to run it, fastest to most production-like:
     origin allowed: `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173`, then
     connect the app to `http://127.0.0.1:8000`.
   - **"This Computer"** — the shell runs its own **bundled** server, which is what
-    ships to users but is a *frozen* build. Rebuild it after server changes
-    (`apps/server/packaging/build_sidecar.py`) or it serves stale code — the cause
-    of a route that `404`s in the desktop while the web app works.
+    ships to users but is a *frozen* build. `just bundled` rebuilds it when stale
+    and shares the host architecture's verified media-tool cache. Distribution
+    builds keep regular media-tool copies in a separate self-contained bundle.
 - **Packaged app** (`tauri build`, below) — the real installable `.app`, needed
   for deep links, notifications, and genuine end-user testing.
 
 Rule of thumb: **run `:8000` for the web app and for a live-code desktop; build
 the desktop server (sidecar or packaged app) only to test the self-contained
-product.** Full detail — CORS, the sidecar freshness trap, the single-owner lease
+product.** Full detail — CORS, the sidecar freshness trap, private serving bindings
 — is in [docs/development.md](docs/development.md#desktop-appsdesktop).
 
 ### Rebuilding and reinstalling the desktop app
@@ -216,12 +217,14 @@ section (Synology, UGREEN, QNAP, TrueNAS all have one) and manage it from there
 with logs and stats, or run it from a shell:
 
 ```bash
-docker compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-The library directory must be writable by uid 10001, the container's non-root
-user. Do not expose this to the public internet — there is no authentication
-yet; reach it over your LAN or Tailscale.
+Private state and separate backups require writable `/data` and `/backups`. The
+library metadata package must be writable by the configured container user
+(uid 10001 by default); source media can remain protected. Per-library passphrases
+and paired tokens provide a private-network access guard. Direct public exposure
+is unsupported; use your private LAN or Tailscale.
 [deploy/README.md](deploy/README.md) is the runbook (permissions, updating,
 backups); [docs/deployment.md](docs/deployment.md) has the reasoning, the full
 environment table, and how to build the image yourself instead of pulling it.
@@ -236,8 +239,7 @@ docker compose up --build
 Backend on `:8000` and the Vite dev server on `:5173`, both hot-reloading from
 bind-mounted source. See
 [docs/development.md](docs/development.md#running-with-docker) — in particular
-the note that a library may be open on only one server at a time, so the dev
-stack wants a scratch library rather than one your desktop app is serving.
+the independent private-store requirements and synthetic scratch-library setup.
 
 Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
 `docker-ce` + `docker-compose-plugin` on Linux).
@@ -274,7 +276,7 @@ blobs, and unreviewed binaries; see [AGENTS.md](AGENTS.md#mandatory-publication-
 Cairndex is released under the [MIT License](LICENSE) (owner decision,
 2026-07-21; [ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
 
-Release artifacts additionally bundle third-party software with its own terms —
-notably a GPL-licensed FFmpeg, whose redistribution obligations are discharged
-in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Building from source
-bundles nothing and is unaffected.
+Packaged desktop builds, including builds from source, bundle third-party
+software with its own terms, including GPL-licensed FFmpeg. Redistribution
+obligations and source provenance are documented in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
