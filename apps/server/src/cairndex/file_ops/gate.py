@@ -29,7 +29,7 @@ from cairndex.auth import is_protected
 from cairndex.core.config import get_settings
 from cairndex.core.errors import AuthRequiredError, WriteModeDisabledError
 from cairndex.registry import services as registry_service
-from cairndex.registry.library_package import require_legacy
+from cairndex.registry.library_package import read_manifest, require_legacy
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,6 @@ def _state(*, enabled: bool, root: Path) -> WriteModeState:
 def read_write_mode(registry: Session, library_id: str) -> WriteModeState:
     """Report the write-mode state of one registered library (404 if unknown)."""
     library = registry_service.get_library(registry, library_id)
-    require_legacy(Path(library.root_path))
     return _state(enabled=library.write_mode_enabled, root=Path(library.root_path))
 
 
@@ -73,6 +72,7 @@ def ensure_write_mode(registry: Session, library_id: str) -> None:
     gate said no, because the two have different fixes — one is a toggle the
     owner owns, the other is server configuration they may not control.
     """
+    require_legacy(Path(registry_service.get_library(registry, library_id).root_path))
     state = read_write_mode(registry, library_id)
     if not state.allowed_by_deployment:
         raise WriteModeDisabledError(
@@ -83,6 +83,25 @@ def ensure_write_mode(registry: Session, library_id: str) -> None:
         raise WriteModeDisabledError(
             "Write mode is off for this library; file operations are disabled.",
             details={"reason": "library"},
+        )
+
+
+def ensure_portable_write_mode(registry: Session, library_id: str) -> None:
+    """Authorize source writes without reviving the removed legacy API contract."""
+    from cairndex.core.errors import LibraryReleasedError
+    from cairndex.ownership.lifecycle import lifecycle
+    from cairndex.replicas.protocol import ReplicaError
+
+    library = registry_service.get_library(registry, library_id)
+    if library.serving_released or lifecycle.blocked(library_id):
+        raise LibraryReleasedError("Source operation stopped for Release; retry after Reopen")
+    descriptor = read_manifest(Path(library.root_path)).replica
+    if descriptor is None or descriptor.format_version != 3:
+        raise ReplicaError("Source operations require the complete discovery catalog")
+    state = read_write_mode(registry, library_id)
+    if not state.effective:
+        raise WriteModeDisabledError(
+            "Source operations require library and deployment write permission"
         )
 
 
@@ -101,8 +120,14 @@ def set_write_mode(
     secret itself stays in the API layer and never reaches here.
     """
     library = registry_service.get_library(registry, library_id)
-    require_legacy(Path(library.root_path))
     root = Path(library.root_path)
+    manifest = read_manifest(root)
+    if manifest.replica is None:
+        require_legacy(root)
+    elif manifest.replica.format_version != 3:
+        from cairndex.replicas.protocol import ReplicaError
+
+        raise ReplicaError("Source operations require the complete discovery catalog")
 
     if enabled:
         if not get_settings().deployment_allows_write_mode():

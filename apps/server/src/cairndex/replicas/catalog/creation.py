@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationError
 
+from cairndex.file_ops import smb_transport
 from cairndex.file_ops.exclusive import link
 from cairndex.replicas.binding import BindingLock, read_json, sync_directory, write_json
 from cairndex.replicas.catalog.protocol import (
@@ -166,7 +167,10 @@ def complete(
         raise ReplicaError("Creation intent does not match its complete seed")
     expected = canonical(descriptor.model_dump(mode="json"))
     guard = BindingLock(fixture.private, descriptor)
+    registered = False
     try:
+        smb_transport.register_root(fixture.root)
+        registered = True
         _check(fixture, intent)
         with directory(fixture.root, [".cairndex"]) as fd:
             _manifest(fd, expected)
@@ -225,6 +229,8 @@ def complete(
             fault("creation_after_manifest")
     finally:
         guard.close()
+        if registered:
+            smb_transport.close_root(fixture.root)
     return descriptor
 
 

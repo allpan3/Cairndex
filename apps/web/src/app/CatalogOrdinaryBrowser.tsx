@@ -38,6 +38,8 @@ function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   )
 }
 
+import { SourceOperations } from './SourceOperations'
+
 export function CatalogOrdinaryBrowser(props: {
   library: string
   libraries: LibraryRead[]
@@ -147,6 +149,15 @@ export function CatalogOrdinaryBrowser(props: {
                 }}
               />
               <aside className="inspector" aria-label="File inspector">
+                {props.sourceOperationsEnabled && !props.blocked && (
+                  <SourceOperations
+                    library={props.library}
+                    editor={props.editor}
+                    file={file}
+                    directory={path}
+                    onReviewEntity={props.onReviewEntity}
+                  />
+                )}
                 {file ? (
                   <>
                     <h2>{file.name}</h2>

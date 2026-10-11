@@ -1,11 +1,27 @@
 # Project status
 
+## Current: source-operation extraction
+
+Main is `9ba347c8`, the PR #46 CodeQL repair merge following application PR #45
+(`cbf1643d`). Branch `feature/portable-source-operations` extracts group 6 from
+the unchanged cumulative reference. Portable reviewed source operations,
+identity-preserving Replace/Undo, retained versions and the mounted-SMB adapter
+are implemented and qualified on synthetic local and selected mounted-SMB data
+in the test guests. Final backend gates passed 1,749 macOS and 1,748 Ubuntu tests
+(one explicit unsupported-platform exclusion). Source, exact frozen executable,
+browser and native mounted checks passed; the original guest profile is restored.
+The branch is ready for publication review. See
+[the source-operation record](source-operations-extraction.md) for scope,
+omissions and exact test evidence. Distribution/deployment remains group 7.
+The installed host app and production services are unchanged.
+
 ## Audit extraction: VM handoff and application checkpoint
 
 The owner requests continuation on a separate machine or VM. The
 [handoff plan](audit-vm-handoff.md) defines clone/setup, remaining PR order, tests,
 real-library prerequisites and stopping rules. Application/reference branch
-transfer is authorized; application acceptance and merge remain pending.
+transfer is authorized. The application merged through PR #45; PR #46 completed
+the CodeQL follow-up. The detailed earlier checkpoint below is historical.
 No further native tests are scheduled on the owner's active desktop.
 
 On 2026-10-09 the owner approved a history rewrite that removed private names

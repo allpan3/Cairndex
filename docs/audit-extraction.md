@@ -1,8 +1,10 @@
 # Audit extraction ledger
 
 Continuation on another machine uses the [VM handoff plan](audit-vm-handoff.md).
-The owner authorizes transfer of the application branch and preserved reference
-after privacy inspection. This does not approve their merge or real-data use.
+Application groups 2–5 merged through PR #45, followed by CodeQL repair PR #46.
+The next extraction is group 6 on `feature/portable-source-operations` from
+main `9ba347c8`. Its [qualification record](source-operations-extraction.md)
+tracks scope and evidence. Real-data use and conversion remain separate.
 
 ## Preserved reference and base
 
@@ -36,7 +38,7 @@ mean its full reference contents belong to one group.
 | 3 | Reviewed Update, discovery/grouping, stable-ID repair, full verification and interrupted reviews; requires 1–2 | Private discovery schemas and library-scoped API, process tests, browser/native, source-generation checks | Merged through PR #45 |
 | 4 | Browse/edit: complete search/filter populations, exact saved filters, navigation, inspectors, albums, bulk selection and retained drafts; requires 1–3 for complete workflow | Catalog query/API types, component and real-server browser suites, synthetic native checks | Merged through PR #45 |
 | 5 | Playback/connection continuity, scoped requests, server navigation, keyboard/layout and loading/error fixes; requires 2–4 | Media/API and native host contracts; playback, connection, component/browser/native and package checks | Merged through PR #45 |
-| 6 | Reviewed source operations, identity-preserving Replace/Undo and retained recovery; then mounted SMB; requires 1–5 | Private journals and source-event protocol, API/types, process/browser/native tests; SMB and Keychain only for exact executable/share | Planned |
+| 6 | Reviewed source operations, identity-preserving Replace/Undo and retained recovery; then mounted SMB; requires 1–5 | Private journals and source-event protocol, API/types, process/browser/native tests; SMB and Keychain only for exact executable/share | Qualified; awaiting publication review |
 | 7 | Distribution/deployment: signing preflight, packaged dependencies, private volumes and backup scripts; requires applicable runtime groups | Docker contexts/images, source/license inventory, package smoke, isolated deployment restart and recovery | Planned |
 
 Each group carries its necessary documentation, changelog, tests and fixes.
@@ -136,7 +138,10 @@ marks exact, partial, or pending coverage. New files outside the reference are `
 `catalog/index.py`, `replicas/private_layout.py`, `test_library_migration.py`
 and the two extraction tracking files. The split schema modules preserve the
 reference layouts; migration preparation and its tests are new implementation.
-The inventory records 340 exact, 47 partial and 153 pending reference paths.
+After the group 6 source extraction, the inventory records 355 exact, 133 partial
+and 52 missing reference paths. These statuses compare current bytes with the
+reference, including existing shared files that deliberately differ. They do not
+independently establish behavioral acceptance.
 No pending path is an intentional omission by default. Before each later merge,
 compare the combined main result against the preserved reference tree, review
 shared-file hunks and record intentional omissions. Superseded legacy workspace

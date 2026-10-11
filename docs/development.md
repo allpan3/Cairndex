@@ -20,6 +20,22 @@ Run browser integration with `npm run test:e2e` from `apps/web`. The agent perfo
 functional checks with disposable data. Owner assistance is needed only for
 product decisions, unavailable access or devices, and approved real-data operations.
 
+Group 6 qualification additionally runs `tests/test_portable_source_*.py` and
+`tests/test_smb_*.py`, `e2e/source-operations.spec.ts`, the frozen package smoke
+and the macOS native review/recovery flow. Use synthetic local roots before the
+explicitly selected disposable mounted-share root. Run `authorize-smb` with the
+actual executable when qualifying its Keychain access; background work cannot
+request a prompt. See [the extraction record](source-operations-extraction.md).
+
+`tests/test_portable_source_binary.py` runs the same HTTP review, identity,
+recovery and restart path against source or `CAIRNDEX_RECOVERY_TEST_BINARY`.
+For an explicitly selected disposable mounted-share parent, set
+`CAIRNDEX_SOURCE_TEST_PARENT` and run that test plus the process-exit cases in
+`test_portable_source_operations.py`. Each creates a fresh synthetic library;
+private SQLite and creation intent stay in local test storage. Share fixtures
+remain available for inspection. Never point this option at an owner library.
+The same option applies to `e2e/source-operations.spec.ts`; browser private state
+stays local, and only freshly allocated synthetic library roots use the share.
 
 ## Prerequisites
 

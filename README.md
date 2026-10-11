@@ -39,8 +39,13 @@ agents working in this repository.
   collections, tags, structured filters and retained drafts.
 - Local media observation, image/video playback and scoped library/server
   navigation.
+- Reviewed source Copy, Rename, Move, Replace, Trash and conditional Undo,
+  independent retained versions and exact Retry after interruption. Source
+  writes require explicit per-library and deployment permission.
 
-Source operations and mounted-SMB publication are unavailable in this extraction.
+The source-operation and mounted-SMB qualification is recorded in
+[source-operation extraction](docs/source-operations-extraction.md).
+Distribution/deployment extraction remains separate.
 OS drag integration is incomplete and paused. Folder pagination, Recently Used,
 file note/source UI, cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,

@@ -2,6 +2,15 @@
 
 ## Start here
 
+Current continuation: application PR #45 and CodeQL follow-up PR #46 are merged.
+Group 6 is qualified on `feature/portable-source-operations`, based on
+main `9ba347c8`; see [its record](source-operations-extraction.md). Group 7 remains
+the next separate branch. Preserve the reference and run all tests in the guests.
+
+The current owner instruction authorizes pushing, opening and merging both
+remaining PRs after their required qualification, review and privacy gates.
+That supersedes the earlier acceptance pauses for groups 6 and 7 below.
+
 This is the handoff for work on another machine. It is a plan for separate PRs
 and tests, not permission to merge the cumulative audit branch or use owner data.
 Read `AGENTS.md`, this plan, `docs/STATUS.md` and the linked records before work.
@@ -29,7 +38,7 @@ deleted, and their releases are drafts. Do not create or publish a release.
 
 | Ref | Purpose | State |
 | --- | --- | --- |
-| `main` | Accepted migration foundation, dependency and privacy-gate repairs | PR #38 merge `a8c536e1709360a84034fc8185dcff55b4e8e812`; then `718f1820` (source-map-js and Mako advisories) and PR #42 merge `7d5e50b68861d2f8936f51ba63d774fdc3f18cfc` (privacy gate fails closed when Git ignores `rev-list -z`); PR #45 merge `cbf1643d9d1b09921aea4df1b6abd181deac375b` (groups 2–5) |
+| `main` | Accepted migration foundation, dependency and privacy-gate repairs | PR #38 merge `a8c536e1709360a84034fc8185dcff55b4e8e812`; then `718f1820` (source-map-js and Mako advisories) and PR #42 merge `7d5e50b68861d2f8936f51ba63d774fdc3f18cfc` (privacy gate fails closed when Git ignores `rev-list -z`); PR #45 merge `cbf1643d9d1b09921aea4df1b6abd181deac375b` (groups 2–5), then PR #46 merge `9ba347c83f30897b769d097e0c723ee0f2880e5e` (CodeQL repairs) |
 | `feature/portable-library-lifecycle` | Application, tests and this handoff | Groups 2–5 combined with owner approval; published at `14dfb6a561df42ce6729167f2dba068def3727ef` on the PR #38 merge; rebased onto main `7d5e50b6`; merged through PR #45, merge commit `cbf1643d9d1b09921aea4df1b6abd181deac375b` |
 | `fix/library-ownership-lifecycle` | Preserved cumulative audit reference | Exact commit `cd38493fcb306198ff4af00e19b5d78ada241ceb`, tree `912a0e657005ade3fb3e3b089df7c2343305fb99`; extraction source only |
 
@@ -151,6 +160,10 @@ without `pipefail`: an earlier run hid a failure that way.
 
 These guest limits are not product defects:
 
+- The Ubuntu guest currently reports about 3.8 GiB usable RAM and six online
+  CPUs, despite the earlier 8 GiB setup allowance. Group 6's full backend run
+  uses a 4 GiB tmpfs, retaining current test directories and removing only a
+  completed prior run after checking for active commands and open handles.
 - The Ubuntu ext4 disk takes about 5.7 ms for one write plus fsync. The macOS
   guest takes about 0.1 ms. Some timing-sensitive tests fail only on that disk;
   they pass with `--basetemp` or `TMPDIR` on `/dev/shm`.
@@ -164,8 +177,8 @@ These guest limits are not product defects:
 | Order | Branch/PR scope | Acceptance gate |
 | --- | --- | --- |
 | Done | Group 1: offline migration foundation, catalog, private schema and recovery dependencies | PR #38 merged; no real conversion command |
-| Next | Current application branch: groups 2–5, normal format-three Create/Open, access/recovery, reviewed Update, browse/edit and playback | Close remaining application/platform checks below; record four functional rounds; obtain application acceptance before merge |
-| Then | New branch from refreshed main: group 6, reviewed source operations and identity-preserving Replace/Undo, then mounted SMB | Test its own local source, process, browser/native and exact executable/share behavior; stop for acceptance |
+| Done | Application groups 2–5: normal format-three Create/Open, access/recovery, reviewed Update, browse/edit and playback | PR #45 merged as `cbf1643d`; CodeQL follow-up PR #46 merged as `9ba347c8` |
+| Current | New branch from refreshed main: group 6, reviewed source operations and identity-preserving Replace/Undo, then mounted SMB | Test its own local source, process, browser/native and exact executable/share behavior; see the extraction record |
 | Then | New branch from refreshed main: group 7, distribution/deployment, private volumes, backups and signing/package preflight | Fresh container/package/deployment checks, isolated restart and recovery; stop for acceptance |
 | Conditional | Selected-library conversion adapter and activation procedure | Only if format inventory shows a need; separate dependency-complete implementation, synthetic tests, copy-based qualification and explicit real-data approval |
 
@@ -187,7 +200,7 @@ After each accepted merge:
 3. Resolve dependencies and conflicts, then test that branch itself. Old full-audit
    results do not qualify it. Rerun affected checks after every reconstruction.
 4. Update `docs/audit-extraction-paths.tsv` and the extraction ledger. Current
-   counts are 340 exact, 47 partial and 153 pending reference paths. Review partial
+   counts are 355 exact, 133 partial and 52 pending reference paths. Review partial
    hunks and record intentional omissions and new fixes. Counts are not proof of
    behavioral coverage.
 5. Prepare the PR description and exact privacy gates. Stop for the applicable
@@ -467,8 +480,8 @@ Use this remaining checklist; add evidence before changing any box:
   A 60-minute session in the macOS guest did not show stale Update status or black
   video. The original observations are dispositioned as not reproduced; their
   cause is not established.
-- [ ] Application functional rounds and scope accepted; exact PR/privacy gates pass.
-- [ ] Application PR merged; main refreshed and result recorded.
+- [x] Application functional rounds and exact PR/privacy gates recorded in PR #45.
+- [x] Application PR #45 merged; main refreshed. CodeQL follow-up PR #46 merged.
 - [ ] Group 6 extracted, tested, accepted and merged.
 - [ ] Group 7 extracted, tested, accepted and merged.
 - [ ] Combined behavior compared with preserved reference; omissions explained.

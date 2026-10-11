@@ -5,9 +5,16 @@
 The internal migration inventory classifies all modeled tables and columns as
 authored metadata, observations, private plans, resume or recovery records.
 Every category remains in the private checkpoint. Catalog projection retains
-stable IDs and complete relationship units. Private discovery layouts support Update. Source-operation layouts
-remain for recovery compatibility without their workflow workers. Known
-additive private upgrades do not change package format. See [migration](replica-migration.md).
+stable IDs and complete relationship units. Private discovery layouts support Update.
+Known additive private upgrades do not change package format. See [migration](replica-migration.md).
+
+Portable source work uses the already-provisioned private `source_operations`,
+`source_receipts` and `source_uploads` tables. Journals retain exact intent,
+phase/progress, review and result; completed receipts reference the catalog event
+and independent content versions. Immutable versions and receipts live under
+`.cairndex/source-operations/`; physical identities and credentials remain private.
+The format-three source capability is enabled only with the reviewed-operation
+API/worker/UI. See [file operations](file-operations.md).
 
 > Internal legacy model reference: the sections below describe the ORM used by
 > migration and model fixtures. Portable application contracts are in

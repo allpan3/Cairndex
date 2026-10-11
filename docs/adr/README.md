@@ -50,4 +50,7 @@ design, subtitle modeling, and similar structural choices called out in
 | [0029](0029-cloud-metadata-replicas.md) | Private replicas with immutable metadata changes | accepted |
 | [0031](0031-private-replica-recovery.md) | Private backup and explicit recovery | accepted |
 | [0032](0032-replica-discovery.md) | Private discovery and reviewed identity | accepted |
-| [0035](0035-portable-library-format.md) | One portable library format | accepted; functional acceptance pending |
+| [0034](0034-mounted-smb-copy-publication.md) | Mounted SMB copy publication | accepted historical scope; amended by ADR-0037 |
+| [0035](0035-portable-library-format.md) | One portable library format | accepted; application merged through PR #45 |
+| [0036](0036-portable-source-operations.md) | Portable source operations and retained versions | accepted |
+| [0037](0037-portable-mounted-smb.md) | Portable mounted-SMB publication | accepted; fresh extracted qualification recorded separately |

@@ -25,10 +25,11 @@ They are not proof for an extracted branch.
   applies only to its recorded executable and share.
 
 These are reference-branch facts, not claims that all features are extracted.
-Group 1 is merged through PR #38. The owner approved combined application
-extraction for groups 2–5 with separate functional test rounds. That application
-branch is not accepted for merge. Publication is authorized for the VM handoff. Source operations and deployment remain
-separate groups.
+Group 1 is merged through PR #38. The combined application for groups 2–5 merged
+through PR #45, followed by the CodeQL repair in PR #46. Group 6 source operations
+are qualified on `feature/portable-source-operations` and await publication review; distribution and
+deployment remain a separate group. See the
+[source-operation record](source-operations-extraction.md).
 
 ## Separate deferred work
 

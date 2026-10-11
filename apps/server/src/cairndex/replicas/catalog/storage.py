@@ -320,7 +320,7 @@ class CatalogStorage(PrivateStore):
                 "selection_version": 1,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
-                "source_operations_version": None,
+                "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(
