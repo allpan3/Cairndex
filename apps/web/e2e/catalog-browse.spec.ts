@@ -409,7 +409,12 @@ test('ordinary collection filters and File Browser share one library journey @fu
     const movie = page.getByRole('row').filter({ hasText: 'movie.mp4' })
     await expect(movie).toContainText('Observed here')
     await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('')
-    await movie.click()
+    // Clearing the search refetches the listing, and rows ignore input until the
+    // full listing replaces the filtered one, so repeat the click until it selects.
+    await expect(async () => {
+      await movie.click()
+      await expect(movie).toHaveAttribute('aria-selected', 'true', { timeout: 1_000 })
+    }).toPass()
     await page.getByRole('grid', { name: 'Files', exact: true }).press('Enter')
     await expect(page.locator('video')).toBeVisible()
     await expect

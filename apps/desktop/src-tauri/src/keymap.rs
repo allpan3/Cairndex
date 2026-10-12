@@ -138,15 +138,11 @@ mod tests {
     }
 
     /// "Cmd+X" and "CmdOrCtrl+X" are the same accelerator on macOS, and this pins
-    /// it. muda's parser maps them to two *different* `keyboard_types` bits —
-    /// "Cmd"/"Command"/"Super" to `META`, "CmdOrCtrl" to `SUPER` — and its macOS
-    /// modifier mask translates only `SUPER` into Command, which reads like a bug
-    /// that would silently drop Command from any `Cmd+…` accelerator. It is not:
-    /// both public constructors (`Accelerator::new`, `KeyAccelerator::new`, the
-    /// latter being what string parsing goes through) fold `META` into `SUPER`
-    /// first, and the fields are crate-private, so no `META` value can reach that
-    /// mask. Believing otherwise cost a day and a reverted vendored dependency
-    /// (ADR-0027); this test is here so the next reader does not repeat it.
+    /// it. Since muda 0.20 the parser maps "Cmd"/"Command"/"Super" and, on macOS,
+    /// "CmdOrCtrl" to `META`, and the macOS modifier mask translates `META` into
+    /// Command. Earlier muda folded both into the now-deprecated `SUPER` bit; a
+    /// misreading of that folding cost a day and a reverted vendored dependency
+    /// (ADR-0027). A future muda that changes the mapping again fails here.
     #[test]
     fn cmd_and_cmdorctrl_mean_the_same_thing() {
         use muda::accelerator::{Accelerator, Code, Modifiers};
@@ -154,18 +150,18 @@ mod tests {
         let explicit: Accelerator = "Cmd+F".parse().expect("Cmd+F parses");
         let portable: Accelerator = "CmdOrCtrl+F".parse().expect("CmdOrCtrl+F parses");
 
-        // True everywhere: "Cmd" parses to `META`, and the constructor folds it
-        // into `SUPER` — the bit the macOS mask actually translates to Command.
-        assert!(explicit.matches(Modifiers::SUPER, Code::KeyF));
-        assert!(!explicit.matches(Modifiers::META, Code::KeyF));
+        // True everywhere: "Cmd" parses to `META`, the bit the macOS mask
+        // translates to Command.
+        assert!(explicit.matches(Modifiers::META, Code::KeyF));
+        assert!(!explicit.matches(Modifiers::CONTROL, Code::KeyF));
 
         // "CmdOrCtrl" is the one that is genuinely platform-dependent: muda's
-        // `CMD_OR_CTRL` is `SUPER` on macOS and `CONTROL` elsewhere. Asserting
+        // `CMD_OR_CTRL` is `META` on macOS and `CONTROL` elsewhere. Asserting
         // the macOS reading unconditionally is what broke the Ubuntu Rust gate
         // when this test was first written.
         #[cfg(target_os = "macos")]
         {
-            assert!(portable.matches(Modifiers::SUPER, Code::KeyF));
+            assert!(portable.matches(Modifiers::META, Code::KeyF));
             // The id hashes normalized modifiers plus key, so equal ids mean one
             // accelerator rather than two that merely behave alike.
             assert_eq!(explicit.id(), portable.id());
@@ -173,7 +169,7 @@ mod tests {
             // And the combination the View menu records for Full Screen resolves
             // to Control+Command, not Control alone.
             let full_screen: Accelerator = "Ctrl+Cmd+F".parse().expect("Ctrl+Cmd+F parses");
-            assert!(full_screen.matches(Modifiers::CONTROL | Modifiers::SUPER, Code::KeyF));
+            assert!(full_screen.matches(Modifiers::CONTROL | Modifiers::META, Code::KeyF));
         }
         #[cfg(not(target_os = "macos"))]
         {

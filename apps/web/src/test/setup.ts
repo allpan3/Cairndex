@@ -49,18 +49,23 @@ globalThis.IntersectionObserver =
  * every write leaked between tests there. Four tests passed locally and failed
  * in CI for exactly that reason. Backed by a Map, and cleared before each test
  * so a file's cases stay independent whichever environment runs them.
+ * Vitest 5's jsdom window exposes `localStorage` as a getter only, so the
+ * replacement is defined as an own property rather than assigned.
  */
 const testStorage = new Map<string, string>()
-globalThis.localStorage = {
-  getItem: (key: string) => testStorage.get(key) ?? null,
-  setItem: (key: string, value: string) => void testStorage.set(key, String(value)),
-  removeItem: (key: string) => void testStorage.delete(key),
-  clear: () => testStorage.clear(),
-  key: (index: number) => [...testStorage.keys()][index] ?? null,
-  get length() {
-    return testStorage.size
-  },
-} satisfies Storage
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (key: string) => testStorage.get(key) ?? null,
+    setItem: (key: string, value: string) => void testStorage.set(key, String(value)),
+    removeItem: (key: string) => void testStorage.delete(key),
+    clear: () => testStorage.clear(),
+    key: (index: number) => [...testStorage.keys()][index] ?? null,
+    get length() {
+      return testStorage.size
+    },
+  } satisfies Storage,
+})
 
 beforeEach(() => testStorage.clear())
 
