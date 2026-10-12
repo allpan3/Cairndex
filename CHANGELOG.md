@@ -49,6 +49,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Update GitHub Actions, the desktop Tauri crates and CLI, and the web runtime and
+  development dependencies, including Vitest 5, React 19.3, Vite 8.3 and
+  Playwright 1.64. The desktop keymap test now pins muda 0.20, which maps Command
+  to `META`. Dependabot no longer proposes major `@types/node` versions beyond the
+  Node 22 runtime.
 - Add a complete CI result, conservative documentation/backend-test job scope,
   slow-test reporting and isolated memory-backed bulk fixtures. Source-operation
   and backup/restore safety tests remain on disk; all runtime changes retain the

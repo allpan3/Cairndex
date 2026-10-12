@@ -1,6 +1,35 @@
 # Project status
 
-## Current: CI runtime and completion rollout complete
+## Current: release preparation (2026-10-12)
+
+The owner decided the work before the next release. Each step is its own branch
+and PR. The owner authorized the agent to open and merge each PR after its full
+gates, the privacy gate and CI pass. A release tag follows only after step 6.
+
+1. Dependency updates: one branch replaces Dependabot PRs #25, #36, #39, #41,
+   #43 and #44. PR #26 (`@types/node` 26) is declined; Node 22 is the runtime.
+2. Fix the three open observations: the 1-second worker pause that limits Update
+   to 32 entries per phase per second, the false recovery block on `sources`
+   rows after an Update, and the recovery CLI `prepare` that runs without the
+   binding lock.
+3. Convert old `cairndex.library` packages to format three. The tool writes the
+   new metadata, renames the old `.cairndex` folder to a backup beside it
+   without changing its contents, and leaves media untouched. Undo restores the
+   old folder. This needs a new ADR that amends ADR-0035.
+4. Restore the v0.2.1 features that the removal of the legacy workspace took
+   away (reference commit `473ea9fc`, then PR #45). ADR-0035 named only source
+   operations, Recently Used and cross-device resume as gaps; the owner did not
+   know about the others. Groups: desktop file integration (drag out and in,
+   Reveal, Open, Add Files); viewer tools (moments in the viewer, GIF and
+   contact-sheet exports, storyboard scrubbing); browsing extras (card preview,
+   resume indicator and badges, the Manual/Size/File count/Date Modified/Date
+   Opened sorts, context menus); drag organizing and unreachable dialogs.
+5. Test a new library and a converted v0.2.1 library on the owner's test SMB
+   share from the macOS guest.
+6. The owner tests a real library.
+7. Release.
+
+## CI runtime and completion rollout complete
 
 Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. Four completed
 hosted runs put pytest at 501–915 seconds and more than 90% of backend wall time;
