@@ -64,8 +64,8 @@ Mounted catalog reads and format refusal are tested separately.
 An earlier pre-grouping schema (`ad155fd3`) is refused without changes on each
 storage. A mounted SMB rename exposed stale stat and manifest pages. Activation
 now relies on atomic no-replace vacancy checks and refreshes the known manifest
-after each swap. Occupied-name regressions pass. Full final backend/package and
-desktop checks now pass on source tree `b7136320`. macOS passed 1,900 backend
+after each swap. Occupied-name regressions pass. Initial full backend/package and
+desktop checks passed on source tree `b7136320`. macOS passed 1,900 backend
 tests, four frozen-process tests, the full frontend gate with 1,261 unit tests
 and 34 browser tests, Rust fmt/clippy with 135 tests, app build and license
 verification. Linux passed 1,899 backend tests (1,734 memory and 165 disk),
@@ -82,17 +82,32 @@ catalog and Undo against an isolated synthetic fixture. Its runtime was checked
 for copied databases, environment files and packaging output. The synthetic
 review screenshot passed full-frame privacy review. Its exact digest and path
 are declared on main. The conversion docs include that unchanged synthetic PNG.
-The feature is prepared for publication; hosted CI must pass before its merge.
+The feature is published through PR #59; hosted CI must pass before its merge.
 New Dependabot PRs #52–#56 remain separate work.
 
 Conversion [PR #59](https://github.com/allpan3/Cairndex/pull/59) is open. Its first
 CodeQL scan flags the stopped-swap metadata check on an incoming setup path.
 The follow-up binds that check to the matching saved task and adds admission
-coverage for failed/interrupted activation and Undo. Follow-up qualification
-and complete hosted CI remain pending.
+coverage for failed/interrupted activation and Undo. Follow-up runtime
+qualification passes in both guests. Complete hosted CI remains pending.
 The conversion API readiness test also failed with the original guard on Linux
 disk. It used eight exchange rounds instead of waiting for catalog readiness.
 The test now uses the existing bounded readiness helper; all ten API tests pass.
+The full macOS backend suite passes 1,904 tests on the guard follow-up, with
+sidecar build/smoke, four frozen-process tests, 34 browser tests, app build and
+license verification. The final readiness test repair passes all ten API cases
+and static gates on macOS. Linux passes 1,903 backend tests (1,738 memory and
+165 disk), full static checks, sidecar build/smoke and four frozen-process tests.
+The same single Linux-arm64 manifest assertion remains excluded locally.
+Follow-up receipts: `conversion-codeql-mac-20261012-084339` and
+`conversion-linux-20261012-084936`. Linux also passes all 34 browser tests,
+the production image rebuild and its non-root runtime inspection. The image has
+no copied database, environment file or packaging output in `/app`. Receipt:
+`conversion-codeql-linux-acceptance-20261012-085658`. Final source/test subtree
+`16c87e85` includes the guard and readiness repair. Frontend and Rust source are
+unchanged from their complete initial qualification. The full macOS suite ran
+before the test-only readiness repair; the final ten-case API suite validates
+that repair separately. No security check or privacy hook was weakened.
 
 ## CI runtime and completion rollout complete
 
