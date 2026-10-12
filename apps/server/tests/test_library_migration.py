@@ -28,7 +28,7 @@ def test_format_three_preserves_all_cells_and_recovery(tmp_path):
     assert descriptor.catalog_version == 2 and descriptor.minimum_reader == 3
     assert descriptor.library_uuid == fixture.library_uuid
     assert descriptor.capabilities[-1] == "discovery_identity_v1"
-    assert CONVERSION_AVAILABLE is False
+    assert CONVERSION_AVAILABLE is True
     output = export_legacy(result)
     compare_checkpoints(fixture.source / ".cairndex/library.db", output / "library.db")
     compare_checkpoints(fixture.directory / "private/plans.db", output / "plans.db")

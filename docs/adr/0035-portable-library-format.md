@@ -3,14 +3,16 @@
 - Status: accepted by the product owner
 - Date: 2026-09-28
 - Amends: ADR-0008, ADR-0010, ADR-0013, ADR-0018, ADR-0021 and ADR-0029
+- Amended by: [ADR-0038](0038-legacy-library-conversion.md) for reviewed owner conversion
 
 ## Decision
 
 Normal Create uses the complete format-three portable catalog. Open accepts
 portable packages. The application does not create, register or serve the old
 `cairndex.library` format. Existing registrations for that format are unavailable.
-The owner performs conversion separately. There is no automatic conversion,
-in-place upgrade, legacy passphrase import or legacy fallback workspace.
+The owner starts conversion separately. ADR-0038 permits a reviewed metadata-folder
+swap with a retained original and Undo. There is no automatic conversion, legacy
+passphrase import or legacy fallback workspace.
 
 One library remains the user-facing storage concept. Local disks, NAS mounts and
 provider folders are storage locations. They are not library types.
@@ -38,8 +40,8 @@ explicit retry; recovery does not submit drafts.
 Legacy shared-folder ownership, source-write controls and the legacy workspace
 are not application workflows. Shared schema and media primitives can remain in
 use by the portable catalog and synthetic developer fixtures. Their presence does
-not permit an old library to open. Synthetic conversion helpers remain unavailable
-for owner-library conversion (`CONVERSION_AVAILABLE = False`).
+not permit an old library to open. ADR-0038 adds a separate historical adapter
+and owner workflow; synthetic fixture helpers remain developer tools.
 
 Source Copy, Rename, Move, Replace, Trash and Undo need a separate portable
 operation contract. Recently Used and cross-device resume remain separate work.

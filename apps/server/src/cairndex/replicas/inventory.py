@@ -77,5 +77,5 @@ INVENTORY: dict[str, dict[str, str]] = {
     },
 }
 
-# Conversion remains unavailable until round-trip and conflict support cover every family
-CONVERSION_AVAILABLE = False
+# ADR-0038 enables only the explicit historical adapter and reviewed owner workflow.
+CONVERSION_AVAILABLE = True

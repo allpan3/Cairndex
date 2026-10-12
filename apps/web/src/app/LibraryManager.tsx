@@ -3,6 +3,13 @@ import { getConnectionScopeKey } from '../api/requestScope'
 import { useEffect, useRef, useState } from 'react'
 import { captureRequestScope } from '../api/requestScope'
 import { LibraryPrivateControls } from './LibraryPrivateControls'
+import { LibraryConversionDialog } from './LibraryConversionDialog'
+import {
+  emptyConversion,
+  readConversion,
+  saveConversion,
+  type ConversionHistory,
+} from '../api/libraryConversion'
 import { useModalDialog } from './useModalDialog'
 
 import { type LibraryRead, type PathSuggestion, fetchPathSuggestions } from '../api/client'
@@ -70,6 +77,34 @@ export function LibraryManager({
   // Covers the actions that are not plain mutations — the native picker and the
   // confirm step — which have no `isPending` of their own.
   const [hostBusy, setHostBusy] = useState(false)
+  const conversionKey = `cairndex.libraryConversion:${getConnectionScopeKey() ?? 'web'}`
+  const [conversionHistory, setConversionHistory] = useState(() => readConversion(conversionKey))
+  const [conversion, setConversionState] = useState<{ root: string | null } | null>(() => {
+    try {
+      return conversionHistory.task && localStorage.getItem(`${conversionKey}:visible`) === 'true'
+        ? { root: null }
+        : null
+    } catch {
+      return null
+    }
+  })
+  const setConversion = (value: { root: string | null } | null) => {
+    // A registry refresh can remount this dialog. Keep its visibility, never its path.
+    try {
+      localStorage.setItem(`${conversionKey}:visible`, JSON.stringify(value !== null))
+    } catch {
+      /* best effort */
+    }
+    setConversionState(value)
+  }
+  const rememberConversion = (history: ConversionHistory) => {
+    saveConversion(conversionKey, history)
+    setConversionHistory(history)
+  }
+  const convert = (root: string) => {
+    rememberConversion(emptyConversion)
+    setConversion({ root })
+  }
 
   const rows = libraries.data ?? []
   const listUnavailable = libraries.isError && !addedLibrary
@@ -123,6 +158,10 @@ export function LibraryManager({
     setError(null)
     try {
       const found = await probe.mutateAsync(trimmed)
+      if (found.needs_conversion) {
+        convert(trimmed)
+        return
+      }
       if (found.already_registered_id) {
         // Already here. Selecting it is the whole action — registering again
         // would only conflict.
@@ -185,6 +224,10 @@ export function LibraryManager({
       if (opened.alreadyAvailable) {
         // Not an add — the current server already has it, so go to it.
         const here = rows.find((library) => library.library_uuid === opened.libraryUuid)
+        if (here?.package_format === 'cairndex.library') {
+          convert(here.root_path)
+          return
+        }
         if (here) onSelect?.(here.id)
         onClose()
       }
@@ -272,152 +315,188 @@ export function LibraryManager({
   )
 
   return (
-    <div className="modal-backdrop" onMouseDown={closeDialog}>
+    <>
       <div
-        // `--menus`: this dialog's suggestion menu must be able to escape it.
-        className="modal modal--menus"
-        onMouseDown={(e) => e.stopPropagation()}
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+        className="modal-backdrop"
+        onMouseDown={closeDialog}
+        style={conversion ? { display: 'none' } : undefined}
       >
-        <div className="modal__head">
-          <h2>Libraries</h2>
-          <button className="modal__close" onClick={closeDialog} aria-label="Close">
-            ×
-          </button>
-        </div>
+        <div
+          // `--menus`: this dialog's suggestion menu must be able to escape it.
+          className="modal modal--menus"
+          onMouseDown={(e) => e.stopPropagation()}
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="modal__head">
+            <h2>Libraries</h2>
+            <button className="modal__close" onClick={closeDialog} aria-label="Close">
+              ×
+            </button>
+          </div>
 
-        <p className="lib-add__hint">Libraries served by {activeConnectionLabel()}</p>
-        <div className="lib-list">
-          {libraries.isPending && <div className="inspector__empty">Loading libraries…</div>}
-          {libraries.isError && libraries.data === undefined && (
-            <LibraryListError
-              message="The library list could not be loaded."
-              retrying={libraries.isFetching}
-              onRetry={() => void libraries.refetch()}
-            />
+          <p className="lib-add__hint">Libraries served by {activeConnectionLabel()}</p>
+          {conversionHistory.task && (
+            <button className="btn" onClick={() => setConversion({ root: null })}>
+              Resume conversion
+            </button>
           )}
-          {libraries.isSuccess && rows.length === 0 && (
-            <div className="inspector__empty">No libraries yet. Add one below.</div>
-          )}
-          {rows.map((library) => (
-            <LibraryRow
-              key={library.id}
-              library={library}
-              busy={busy}
-              onRemove={() => removeLibrary(library.id)}
-              onSelect={() => {
-                onSelect?.(library.id)
-                onClose()
-              }}
-            />
-          ))}
-          {libraries.isError && libraries.data !== undefined && !addedLibrary && (
-            <LibraryListError
-              message="The library list could not be refreshed."
-              retrying={libraries.isFetching}
-              onRetry={() => void libraries.refetch()}
-            />
-          )}
-        </div>
+          <div className="lib-list">
+            {libraries.isPending && <div className="inspector__empty">Loading libraries…</div>}
+            {libraries.isError && libraries.data === undefined && (
+              <LibraryListError
+                message="The library list could not be loaded."
+                retrying={libraries.isFetching}
+                onRetry={() => void libraries.refetch()}
+              />
+            )}
+            {libraries.isSuccess && rows.length === 0 && (
+              <div className="inspector__empty">No libraries yet. Add one below.</div>
+            )}
+            {rows.map((library) => (
+              <LibraryRow
+                key={library.id}
+                library={library}
+                busy={busy}
+                onRemove={() => removeLibrary(library.id)}
+                onConvert={() => convert(library.root_path)}
+                onSelect={() => {
+                  onSelect?.(library.id)
+                  onClose()
+                }}
+              />
+            ))}
+            {libraries.isError && libraries.data !== undefined && !addedLibrary && (
+              <LibraryListError
+                message="The library list could not be refreshed."
+                retrying={libraries.isFetching}
+                onRetry={() => void libraries.refetch()}
+              />
+            )}
+          </div>
 
-        {/* The confirmation swaps this row's *contents* rather than replacing
+          {/* The confirmation swaps this row's *contents* rather than replacing
             the section: same label line, same single row, same trailing hint
             line. The primary button therefore stays exactly where the click
             that asked for the confirmation left the pointer, and nothing above
             the row moves. */}
-        <form
-          className="lib-add"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void (addedLibrary
-              ? refreshAddedLibrary(addedLibrary)
-              : confirming
-                ? confirmNewLibrary(name)
-                : submitPath())
-          }}
-        >
-          <label className="field-label" htmlFor={confirming ? 'new-library-name' : 'library-path'}>
-            {confirming ? (addingLibrary ? 'Library' : 'Name') : 'Add library'}
-          </label>
-          {/* One row, so the suggestion menu — which stays open to drill down —
+          <form
+            className="lib-add"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void (addedLibrary
+                ? refreshAddedLibrary(addedLibrary)
+                : confirming
+                  ? confirmNewLibrary(name)
+                  : submitPath())
+            }}
+          >
+            <label
+              className="field-label"
+              htmlFor={confirming ? 'new-library-name' : 'library-path'}
+            >
+              {confirming ? (addingLibrary ? 'Library' : 'Name') : 'Add library'}
+            </label>
+            {/* One row, so the suggestion menu — which stays open to drill down —
               drops over the hint text below rather than over the action it
               would otherwise swallow the click for. */}
-          <div className="lib-add__row">
-            {confirming ? (
-              <input
-                id="new-library-name"
-                className="edit"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                aria-label="Library name"
-                // An existing library keeps the name from its own manifest, so
-                // the field is read-only there — it shows what will be added
-                // rather than inviting an edit that registration would ignore.
-                readOnly={addingLibrary || Boolean(addedLibrary)}
-                // Focused and selected, so the prefilled folder name is one
-                // keystroke away from being replaced and Enter confirms it.
-                autoFocus
-                onFocus={(event) => event.target.select()}
-                spellCheck={false}
-              />
-            ) : (
-              <PathInput
-                fieldRef={pathFieldRef}
-                value={path}
-                onChange={setPath}
-                onSubmit={() => void submitPath()}
-              />
-            )}
-            {confirming && !addedLibrary ? (
-              <button type="button" className="btn" onClick={cancelConfirm} disabled={busy}>
-                Cancel
-              </button>
-            ) : !confirming ? (
-              isDesktopHost() && (
-                <button type="button" className="btn" onClick={() => void browse()} disabled={busy}>
-                  Browse…
+            <div className="lib-add__row">
+              {confirming ? (
+                <input
+                  id="new-library-name"
+                  className="edit"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  aria-label="Library name"
+                  // An existing library keeps the name from its own manifest, so
+                  // the field is read-only there — it shows what will be added
+                  // rather than inviting an edit that registration would ignore.
+                  readOnly={addingLibrary || Boolean(addedLibrary)}
+                  // Focused and selected, so the prefilled folder name is one
+                  // keystroke away from being replaced and Enter confirms it.
+                  autoFocus
+                  onFocus={(event) => event.target.select()}
+                  spellCheck={false}
+                />
+              ) : (
+                <PathInput
+                  fieldRef={pathFieldRef}
+                  value={path}
+                  onChange={setPath}
+                  onSubmit={() => void submitPath()}
+                />
+              )}
+              {confirming && !addedLibrary ? (
+                <button type="button" className="btn" onClick={cancelConfirm} disabled={busy}>
+                  Cancel
                 </button>
-              )
-            ) : null}
-            <button
-              className="btn btn--primary"
-              disabled={
-                busy ||
-                (listUnavailable && confirming?.kind !== 'pick') ||
-                (!addedLibrary && !(confirming ? name.trim() : path.trim()))
-              }
-            >
-              {addedLibrary
-                ? hostBusy
-                  ? 'Refreshing…'
-                  : 'Retry refresh'
-                : confirming
-                  ? addingLibrary
-                    ? 'Add library'
-                    : 'Create library'
-                  : 'Add library'}
-            </button>
-          </div>
-          <p className="lib-add__hint">
-            {addedLibrary
-              ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
-              : confirming
-                ? newLibraryAsk(confirming)
-                : `Typed paths belong to ${activeConnectionLabel()}. An existing library is added as it is; any other folder is offered as a new one.`}
-          </p>
-
-          {isDesktopHost() && (
+              ) : !confirming ? (
+                isDesktopHost() && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void browse()}
+                    disabled={busy}
+                  >
+                    Browse…
+                  </button>
+                )
+              ) : null}
+              <button
+                className="btn btn--primary"
+                disabled={
+                  busy ||
+                  (listUnavailable && confirming?.kind !== 'pick') ||
+                  (!addedLibrary && !(confirming ? name.trim() : path.trim()))
+                }
+              >
+                {addedLibrary
+                  ? hostBusy
+                    ? 'Refreshing…'
+                    : 'Retry refresh'
+                  : confirming
+                    ? addingLibrary
+                      ? 'Add library'
+                      : 'Create library'
+                    : 'Add library'}
+              </button>
+            </div>
             <p className="lib-add__hint">
-              Browse selects a folder on This Computer. Adding it uses this computer’s private
-              metadata store and access settings.
+              {addedLibrary
+                ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
+                : confirming
+                  ? newLibraryAsk(confirming)
+                  : `Typed paths belong to ${activeConnectionLabel()}. An existing library is added as it is; any other folder is offered as a new one.`}
             </p>
-          )}
-          {error && <div className="modal__error">{error}</div>}
-        </form>
+
+            {isDesktopHost() && (
+              <p className="lib-add__hint">
+                Browse selects a folder on This Computer. Adding it uses this computer’s private
+                metadata store and access settings.
+              </p>
+            )}
+            {error && <div className="modal__error">{error}</div>}
+          </form>
+        </div>
       </div>
-    </div>
+      {conversion && (
+        <LibraryConversionDialog
+          root={conversion.root}
+          history={conversionHistory}
+          remember={rememberConversion}
+          onClose={() => {
+            setConversion(null)
+            void libraries.refetch()
+          }}
+          onOpen={(id) => {
+            setConversion(null)
+            onSelect?.(id)
+            onClose()
+          }}
+        />
+      )}
+    </>
   )
 }
 
@@ -554,11 +633,13 @@ function LibraryRow({
   busy,
   onRemove,
   onSelect,
+  onConvert,
 }: {
   library: LibraryRead
   busy: boolean
   onRemove: () => void
   onSelect: () => void
+  onConvert: () => void
 }) {
   // At most one of the two confirmations is open, because they ask about the
   // same row and both replace it.
@@ -568,11 +649,12 @@ function LibraryRow({
     false,
   )
   const available = library.status === 'available'
-  const ownership = useLibraryOwnership(library.id)
-  const serving = useLibraryServing(library.id)
+  const legacy = library.package_format === 'cairndex.library'
+  const ownership = useLibraryOwnership(legacy ? null : library.id)
+  const serving = useLibraryServing(legacy ? null : library.id)
   const released = ownership.data?.state === 'locally_released'
 
-  if (privatePanel)
+  if (privatePanel && !legacy)
     return (
       <div className="library-private-panel">
         <button className="btn" onClick={() => setPrivatePanel(false)}>
@@ -614,24 +696,28 @@ function LibraryRow({
       <button
         className="btn btn--sm"
         disabled={busy}
-        onClick={onSelect}
-        aria-label={`Open ${library.name}`}
+        onClick={legacy ? onConvert : onSelect}
+        aria-label={`${legacy ? 'Convert' : 'Open'} ${library.name}`}
       >
-        Open
+        {legacy ? 'Convert' : 'Open'}
       </button>
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>
       <button
         className="btn btn--sm"
-        disabled={busy || serving.isPending}
+        disabled={legacy || busy || serving.isPending}
         title="Release stops this server from serving the library to all clients; registration and content remain"
         onClick={() => serving.mutate(released ? 'reopen' : 'release')}
       >
         {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
       </button>
       {released && <span className="lib-row__note">Released on this server</span>}
-      <button className="btn btn--sm" disabled={busy} onClick={() => setPrivatePanel(true)}>
+      <button
+        className="btn btn--sm"
+        disabled={legacy || busy}
+        onClick={() => setPrivatePanel(true)}
+      >
         Access and backups
       </button>
       {serving.error && <span role="alert">{serving.error.message}</span>}

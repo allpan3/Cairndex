@@ -192,7 +192,7 @@ def test_inventory_complete():
     from cairndex.persistence.base import Base
     from cairndex.replicas.inventory import CONVERSION_AVAILABLE, INVENTORY
 
-    assert not CONVERSION_AVAILABLE
+    assert CONVERSION_AVAILABLE
     assert set(INVENTORY) == set(Base.metadata.tables)
     for name, table in Base.metadata.tables.items():
         columns = [column for group in INVENTORY[name].values() for column in group.split()]

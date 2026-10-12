@@ -48,7 +48,7 @@ def test_empty_catalog_can_create_edit_and_reconstruct(tmp_path):
         p.relative_to(fixture.root): p.read_bytes() for p in fixture.root.rglob("*.json")
     }
     assert descriptor.format_version == 3
-    assert not CONVERSION_AVAILABLE
+    assert CONVERSION_AVAILABLE
     assert not list(fixture.root.rglob("*.db*"))
     assert not (fixture.root / ".cairndex/locks").exists()
     a = open_store(fixture.root, tmp_path / "author-a")

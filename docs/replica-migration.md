@@ -1,34 +1,97 @@
-# Library migration preparation
+# Library conversion
 
-## Current boundary
+## Owner workflow
 
-`replicas.catalog.migration.prepare()` prepares format-three metadata from a
-fresh disposable legacy fixture. It accepts a `DisposableCatalog` test object.
-This object is not authorization to convert arbitrary paths. There is no owner
-conversion command, application route, registration, or activation operation.
-`CONVERSION_AVAILABLE` remains `False`.
+[ADR-0038](adr/0038-legacy-library-conversion.md) adds an explicit conversion
+path for old `cairndex.library` version-one packages. It amends ADR-0035.
+Normal Open still refuses those packages. Conversion never runs automatically.
+`CONVERSION_AVAILABLE` is `True` for this reviewed path. The application keeps
+one portable metadata model after conversion.
 
-[ADR-0035](adr/0035-portable-library-format.md) defines the target application:
-one ordinary portable library format, with private working databases. The first
-extracted group contains preparation code only. The application extraction uses portable Create/Open and refuses old-format
-packages. Its functional acceptance remains separate from migration preparation.
-No legacy application support is added or restored by this preparation group.
+1. Stop every old app and server that uses the library. Finish any interrupted
+   file operation in the old version first. Keep the writers stopped until
+   conversion completes. Back up source media separately.
+2. Open **Libraries**. Enter the old library root in **Add library**. An existing
+   old registration has a **Convert** button. On desktop, use the typed server
+   path for conversion; the native folder picker still handles Create/Open.
+3. Select **Inspect library**. Inspection reads only the old metadata. A fresh
+   ownership lease, unknown metadata entry, unknown schema or interrupted source
+   operation blocks conversion. The report lists what converts and what stays
+   in the old metadata backup.
+4. Select **Prepare conversion**. The worker copies the quiescent DB, WAL and
+   rollback journal into private storage. SQLite recovers and validates this
+   copy. The original database is never opened in place. Known older schemas
+   receive their historical additive defaults. Preparation reconstructs an
+   independent portable catalog and exports it to compare every authored cell.
+   Nothing in the library folder changes.
+5. Review the report and backup folder name. Confirm that every old writer
+   stopped, then select **Convert library**. Activation uses that exact review
+   receipt. It checks the source again before and after staging. A fresh lease
+   always blocks; confirmation is required for a stale or unreadable lease.
+6. Conversion stages new metadata in `.cairndex-conversion-<attempt>`. It renames
+   the original folder to `.cairndex-legacy-<attempt>` without changing its
+   contents. The staged folder becomes `.cairndex`. No-replace renames refuse
+   occupied names. The library registers as format three, or its old registry
+   row changes in place. Conversion leaves it released and resets an old
+   source-write opt-in. **Open converted library** explicitly reopens it.
 
-## Compatibility classification
+Bundles, files, IDs, relative paths, authored values and relationships convert.
+Resume positions, last-opened times, grouping suggestions, retired single-note
+and moment data, old caches and old trash stay in the backup. The old passphrase
+hash also stays there. Set access protection again on each serving instance.
+Media files are never read, copied, renamed, moved or deleted by conversion.
 
-Inspect each selected library separately before proposing any real operation.
-A format-three portable package does not need legacy library-format conversion.
-A recognized older private SQLite layout can receive an additive private database
-upgrade. That upgrade retains its library ID, epoch, genesis, package descriptor,
-source paths and authored history. Unknown or partial private layouts are refused.
+![Prepared conversion review with synthetic metadata](screenshots/legacy-conversion.png)
 
-An old `cairndex.library` package requires separate format conversion before the
-ADR-0035 application can open it. Formats one and two of
-`cairndex.replica-library` have their own capability contracts; this preparer does
-not promote them by changing their descriptor. No blanket migration is required.
-No real-library format inventory has been made in this task.
+This review uses invented library metadata in a disposable container. It shows
+the conversion counts, retained metadata and required writer-stop confirmation.
 
-## Disposable procedure
+## Retry and Undo
+
+Conversion runs as durable server tasks. Closing a read-only preparation dialog
+keeps its task running. **Resume conversion** in Libraries reads the same task.
+The browser keeps operation IDs and dialog visibility for the selected connection. Paths, review
+receipts and results remain on the server. A lost reply is resolved by reading
+that operation, rather than starting another swap.
+
+After a restart, interrupted activation and Undo recheck and continue their exact
+step. Interrupted preparation requires a new attempt. **Retry conversion** or
+**Retry Undo** retries the accepted task. Create, register and Open refuse an
+active conversion or a stopped swap with missing metadata. They cannot create a
+replacement library in the gap between renames. The worker runs one conversion
+step at a time and accepts one active step per root on this server.
+
+Release the converted library on every server before **Undo conversion**.
+Undo restores the old `.cairndex` folder and retains the converted folder as
+`.cairndex-converted-<attempt>`. The server keeps its private store and binding
+under the private attempt's `retired/` directory. New metadata edits and private
+work are retained. Undo does not merge them into the old library and does not
+reverse later source-file operations. A completed Undo does not rewind later
+legacy edits. Its activation cannot run again; another conversion needs a new
+attempt. Old applications refuse the converted descriptor.
+
+Keep both metadata folders and private server data until their recovery value is
+no longer needed. They are not complete source-media backups. Conversion does
+not automatically remove them.
+
+## Compatibility and qualification
+
+Format-three portable packages need no legacy conversion. Known private SQLite
+upgrades remain additive and retain package identity and authored history.
+Formats one and two of `cairndex.replica-library` have separate capability
+contracts; changing a descriptor does not promote them. Unknown or partial
+layouts fail closed. The old workspace remains unavailable in the new app.
+Pre-grouping schemas with missing required columns are refused. Qualification
+covers actual v0.2.1 metadata and the earlier playback-progress schema; it does
+not establish support for every historical build.
+
+All known writers must stay stopped. Simultaneous conversion from independent
+servers is not qualified. Local POSIX and authenticated mounted-SMB no-replace
+publication use the existing storage adapters. Provider delivery, representative
+scale and power-loss durability require separate qualification. See
+[STATUS](STATUS.md) for actual checks and the owner-test checkpoint.
+
+## Developer fixture preparation
 
 Run from `apps/server`:
 
@@ -69,7 +132,7 @@ attempt. An acknowledged completed retry validates and reuses its original resul
 Changed source, archive, seed or receipt data require inspection. No attempt or
 recovery copy is automatically removed. Power-loss durability is not established.
 
-## Backup and rollback
+### Fixture export
 
 Before edits, `export_legacy()` produces a separate exact legacy metadata copy.
 After edits, it exports the last valid authored arrangement and retains complete
@@ -83,34 +146,3 @@ The original media remains in its original root. A rollback export is metadata,
 not a complete media backup. Unsupported new mappings must stop a real rollback.
 The synthetic exporter uses fixture defaults for newly created file/bundle
 observations; this is not approved behavior for an owner conversion.
-
-## Requirements before a selected real-library operation
-
-1. Identify the selected package format, exact schema, app versions, all known
-   writers and any offline work. Record why this library needs conversion.
-2. Stop or drain every known writer. Preserve unreceived browser text separately.
-   Record pending journals, Trash, source recovery files, private plans and drafts.
-   Unresolved work requires an explicit decision; never discard or replay it.
-3. Prepare a private, independently verified backup outside provider folders:
-   consistent DB/WAL checkpoint, manifest, shared history, source/recovery media,
-   registry, credentials and server settings. Record checksums, counts and space.
-4. Implement and test a read-only adapter for that exact historical schema and
-   its external artifacts. Current fixture validation deliberately refuses other
-   schema layouts, caches, extensions and recovery artifacts. It is not that adapter.
-5. Prepare a separate candidate from the checkpoint. Prove all IDs, values,
-   relationships and paths; test independent reconstruction, interruptions,
-   exact retry and rollback. Do not register the candidate during preparation.
-6. Present the selected paths, backup receipt, validation results, writer shutdown
-   evidence, activation steps and rollback target for owner approval. Activation
-   needs a separate reviewed operation; it is absent from this group.
-7. After approval, use the qualified portable application. Keep the original
-   backup immutable. Before new edits, rollback can restore the verified original
-   authority. After edits, retain all new history and reconcile a separate copy;
-   raw database replacement is not rollback. Offline old writers remain separate
-   preserved branches and cannot be revoked by a descriptor change.
-
-The full source inventory currently hashes all synthetic media. It is suitable
-for small disposable tests only. Real-library preparation needs a bounded storage
-plan, historical schema adapters and recovery-artifact validation. No owner
-activation request is ready. NAS, provider delivery, hydration, scale and power
-loss require separate qualification.

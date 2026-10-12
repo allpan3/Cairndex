@@ -34,15 +34,17 @@ class Conversion:
     store: CatalogStore
 
 
+# Developer fixtures archive a synthetic private auth record; owner conversion does not
+ARCHIVE_FILES = (
+    frozenset({"library.db", "plans.db", "manifest.json", "synthetic-auth.json"}),
+    frozenset({"library.db", "plans.db", "manifest.json"}),
+)
+
+
 # Refuse links and changed recovery files before using an archived authority
 def verify_archive(archive: Path) -> None:
     receipt = json.loads((archive / "receipt.json").read_text())
-    if set(receipt) != {"files"} or set(receipt["files"]) != {
-        "library.db",
-        "plans.db",
-        "manifest.json",
-        "synthetic-auth.json",
-    }:
+    if set(receipt) != {"files"} or frozenset(receipt["files"]) not in ARCHIVE_FILES:
         raise ReplicaError("Unrecognized conversion recovery receipt")
     for name, digest in receipt["files"].items():
         file = archive / name
@@ -138,7 +140,7 @@ def prepare_disposable(
             raise ReplicaError("Disposable conversion refuses linked files")
     target = fixture.directory / f"conversion-{uuid4().hex}"
     target.mkdir()
-    archive, package = target / "recovery", target / "package"
+    archive = target / "recovery"
     archive.mkdir()
     with sqlite3.connect(f"file:{source / 'library.db'}?mode=ro", uri=True) as original:
         original.execute("ATTACH DATABASE ? AS plans", (f"file:{private / 'plans.db'}?mode=ro",))
@@ -150,10 +152,40 @@ def prepare_disposable(
         original.rollback()
     (archive / "manifest.json").write_bytes(manifest_raw)
     shutil.copyfile(private / "synthetic-auth.json", archive / "synthetic-auth.json")
+    seal_archive(archive)
+    fault("checkpoint_complete")
+    package, store = build_candidate(
+        archive,
+        target,
+        library_uuid=fixture.library_uuid,
+        display_name="Synthetic complete catalog",
+        format_version=format_version,
+        epoch=epoch,
+        fault=fault,
+    )
+    return Conversion(fixture, archive, package, store)
+
+
+# Record the exact archived checkpoint files before any candidate is derived from them
+def seal_archive(archive: Path) -> None:
     hashes = {file.name: checksum(file.read_bytes()) for file in archive.iterdir()}
     (archive / "receipt.json").write_bytes(canonical({"files": hashes}))
     verify_archive(archive)
-    fault("checkpoint_complete")
+
+
+# Seed immutable objects from an archived checkpoint, reconstruct an independent private
+# catalog, prove the round trip cell by cell and publish the candidate descriptor last
+def build_candidate(
+    archive: Path,
+    target: Path,
+    *,
+    library_uuid: str,
+    display_name: str,
+    format_version: Literal[2, 3],
+    epoch: str | None = None,
+    fault: Callable[[str], None] = no_fault,
+) -> tuple[Path, CatalogStore]:
+    package = target / "package"
     epoch = epoch or uuid4().hex
     objects = package / ".cairndex" / "replica" / "objects"
     objects.mkdir(parents=True)
@@ -163,7 +195,7 @@ def prepare_disposable(
         genesis = ""
         for identity, raw in payload(
             seed_changes(db),
-            library=fixture.library_uuid,
+            library=library_uuid,
             epoch=epoch,
             replica="seed",
             operation="seed",
@@ -185,8 +217,8 @@ def prepare_disposable(
         catalog_version=2 if format_version == 3 else 1,
         minimum_reader=3 if format_version == 3 else 2,
         capabilities=DISCOVERY_CAPABILITIES if format_version == 3 else CAPABILITIES,
-        library_uuid=fixture.library_uuid,
-        display_name="Synthetic complete catalog",
+        library_uuid=library_uuid,
+        display_name=display_name,
         epoch=epoch,
         genesis=genesis,
     )
@@ -204,9 +236,8 @@ def prepare_disposable(
             break
     if not store.status()["ready"]:
         raise ReplicaError("Incomplete candidate seed cannot activate")
-    conversion = Conversion(fixture, archive, package, store)
     fault("reconstruction_complete")
-    restored = export_legacy(conversion)
+    restored = export_projection(archive, store)
     compare_checkpoints(archive / "library.db", restored / "library.db")
     compare_checkpoints(archive / "plans.db", restored / "plans.db")
     verify_archive(archive)
@@ -217,24 +248,28 @@ def prepare_disposable(
     sync_directory(objects)
     sync_directory(objects.parent)
     fault("before_descriptor")
-    # Only a fully reconstructed, exactly reversible disposable package receives a descriptor
+    # Only a fully reconstructed, exactly reversible package receives a descriptor
     write_json(package / ".cairndex" / "manifest.json", descriptor.model_dump())
     fault("after_descriptor")
-    return conversion
+    return package, store
 
 
 # Export the valid projection into a separate copy while archiving all new branches and drafts
 def export_legacy(conversion: Conversion) -> Path:
-    verify_archive(conversion.archive)
-    output = conversion.archive.parent / f"rollback-{uuid4().hex}"
+    return export_projection(conversion.archive, conversion.store)
+
+
+def export_projection(archive: Path, store: CatalogStore) -> Path:
+    verify_archive(archive)
+    output = archive.parent / f"rollback-{uuid4().hex}"
     output.mkdir()
-    for name in ("library.db", "plans.db", "manifest.json", "synthetic-auth.json"):
-        shutil.copyfile(conversion.archive / name, output / name)
-    with conversion.store.connection() as replica:
+    for name in json.loads((archive / "receipt.json").read_text())["files"]:
+        shutil.copyfile(archive / name, output / name)
+    with store.connection() as replica:
         # Preserve all unpublished events, conflict branches, drafts and receipts at this checkpoint
         # A second read connection allows the backup API while the first excludes new writers
         with (
-            sqlite3.connect(conversion.store.path) as reader,
+            sqlite3.connect(store.path) as reader,
             sqlite3.connect(output / "replica-recovery.db") as backup,
         ):
             reader.backup(backup)

@@ -44,13 +44,15 @@ def command(root, base, *args):
 
 # The sidecar receives only disposable local state and its own synthetic HTTP credential
 @contextmanager
-def running(base, tmp_path):
+def running(base, tmp_path, *, worker_enabled=False):
     token = "synthetic-recovery-local-token"
     environment = {
         name: value for name, value in os.environ.items() if not name.startswith("CAIRNDEX_")
     }
     environment.update(
-        CAIRNDEX_DATA_DIR=str(base), CAIRNDEX_LOCAL_TOKEN=token, CAIRNDEX_WORKER_ENABLED="false"
+        CAIRNDEX_DATA_DIR=str(base),
+        CAIRNDEX_LOCAL_TOKEN=token,
+        CAIRNDEX_WORKER_ENABLED=str(worker_enabled).lower(),
     )
     log = tmp_path / (base.name + ".log")
     with log.open("w") as sink:

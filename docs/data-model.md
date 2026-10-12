@@ -1,12 +1,22 @@
 # Data model
 
-## Migration preparation schema
+## Conversion and migration schema
 
 The internal migration inventory classifies all modeled tables and columns as
 authored metadata, observations, private plans, resume or recovery records.
 Every category remains in the private checkpoint. Catalog projection retains
 stable IDs and complete relationship units. Private discovery layouts support Update.
 Known additive private upgrades do not change package format. See [migration](replica-migration.md).
+
+Registry `conversion_tasks` records each owner-started step by a 32-hex operation
+ID. Each row contains its normalized root, action, preparation attempt, state,
+exact request body, bounded API result and fixed error. A partial unique index
+permits one queued/running task per root. Registry bootstrap creates this new
+table without changing any library database. Private attempts hold the source
+checkpoint, normalized catalog, exact review receipt and activation/Undo intents.
+Preparation independently verifies every authored cell. Original observations
+and retired data stay in the old metadata backup. Public results omit object
+inventories and private storage paths. See [conversion](replica-migration.md).
 
 Portable source work uses the already-provisioned private `source_operations`,
 `source_receipts` and `source_uploads` tables. Journals retain exact intent,

@@ -30,7 +30,7 @@ const MOVIES: LibraryRead = {
   root_path: '/srv/movies',
   status: 'available',
   schema_version: 1,
-  package_format: 'cairndex.library',
+  package_format: 'cairndex.replica-library',
   write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',
@@ -310,6 +310,27 @@ test('cancelling the picker changes nothing', async () => {
   expect(onClose).not.toHaveBeenCalled()
   expect(onSelect).not.toHaveBeenCalled()
   expect(screen.queryByLabelText('Library name')).toBeNull()
+})
+
+test('a known old native pick opens conversion review', async () => {
+  listedLibraries = [{ ...MOVIES, package_format: 'cairndex.library', status: 'unavailable' }]
+  openHostFolder.mockResolvedValue({
+    opened: {
+      ...NEEDS_NAME,
+      needsConfirmation: false,
+      alreadyAvailable: true,
+      libraryUuid: MOVIES.library_uuid,
+    },
+  })
+  const onClose = vi.fn()
+  const onSelect = vi.fn()
+  renderManager({ onClose, onSelect })
+  await screen.findByRole('button', { name: 'Convert Movies' })
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+  await screen.findByRole('dialog', { name: 'Convert old library' })
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(onClose).not.toHaveBeenCalled()
+  expect(confirmHostPick).not.toHaveBeenCalled()
 })
 
 test('a failed pick is reported in the dialog, not swallowed', async () => {

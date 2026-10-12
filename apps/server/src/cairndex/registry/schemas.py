@@ -53,6 +53,8 @@ class PathProbeRead(BaseModel):
     # The basename, which prefills the name field for a new library. Empty for a
     # filesystem root.
     folder_name: str
+    # An old-format library that the owner can convert (ADR-0038)
+    needs_conversion: bool = False
 
 
 class LibraryRead(BaseModel):

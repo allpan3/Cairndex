@@ -173,6 +173,7 @@ def test_probe_reports_a_plain_folder_with_its_basename(client: TestClient, tmp_
     assert body == {
         "exists": True,
         "is_library": False,
+        "needs_conversion": False,
         "already_registered_id": None,
         "manifest_display_name": None,
         # The name field prefills from this, so a plain folder becomes a library

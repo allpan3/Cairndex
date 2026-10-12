@@ -185,9 +185,13 @@ function apiErrorDetail(payload: unknown): string {
   return ''
 }
 
-export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+export async function getJson<T>(
+  url: string,
+  signal?: AbortSignal,
+  includeLibraryScope = /\/libraries\/[^/?]+\//.test(url),
+): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
-  const assertScope = captureRequestScope(/\/libraries\/[^/?]+\//.test(url))
+  const assertScope = captureRequestScope(includeLibraryScope)
   const response = await hostFetch(resolvedUrl, { signal })
   assertScope()
   if (!response.ok) {
@@ -258,7 +262,7 @@ export async function send<T>(
  * `send`. The queue keeps request bodies in localStorage, so a secret must
  * never depend on `isMetadataWrite` rejecting its URL to stay out of it.
  */
-async function sendDirect<T>(
+export async function sendDirect<T>(
   url: string,
   method: string,
   body?: unknown,

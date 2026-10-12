@@ -14,6 +14,15 @@ Registry rows contain `package_format` and `serving_released`. Durable
 drains admitted requests and closes the private binding lock. Reopen is explicit.
 Access settings remain outside recovery generations.
 
+Durable `conversion_tasks` hold global owner-setup inspection, preparation,
+activation and Undo. One worker executes slow metadata work outside HTTP handlers.
+Exact operation IDs resolve lost replies. Private review receipts bind the root,
+source checkpoint and prepared seed. Descriptor-relative staging and no-replace
+renames retain the original `.cairndex` folder. A conversion updates an old
+registry row in place and leaves the library released. Undo requires Release and
+private binding exclusion. [Conversion](replica-migration.md) describes its
+retained metadata and retry contract.
+
 The shared ORM, legacy routes and shared-folder lease utilities below remain
 internal fixture and model references. Public registry admission does not allow
 old libraries to use them. Portable routes use the private catalog. Reviewed

@@ -23,7 +23,7 @@ const MOVIES: LibraryRead = {
   root_path: '/srv/movies',
   status: 'available',
   schema_version: 1,
-  package_format: 'cairndex.library',
+  package_format: 'cairndex.replica-library',
   write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',
@@ -33,6 +33,7 @@ const MOVIES: LibraryRead = {
 const PLAIN_FOLDER: PathProbe = {
   exists: true,
   is_library: false,
+  needs_conversion: false,
   already_registered_id: null,
   manifest_display_name: null,
   folder_name: 'Holiday Videos',
@@ -167,6 +168,7 @@ test('registers an existing library without being told it is one', async () => {
   probe = {
     exists: true,
     is_library: true,
+    needs_conversion: false,
     already_registered_id: null,
     manifest_display_name: 'Family Photos',
     folder_name: 'Images',
@@ -191,6 +193,7 @@ test('selects a folder this server already has instead of adding it twice', asyn
   probe = {
     exists: true,
     is_library: true,
+    needs_conversion: false,
     already_registered_id: MOVIES.id,
     manifest_display_name: 'Movies',
     folder_name: 'movies',
@@ -225,6 +228,26 @@ test('offers a plain folder as a new library named after the folder', async () =
     display_name: 'Holiday Videos',
     create_if_missing: false,
   })
+})
+
+test('reviews an already registered old library instead of opening or registering it', async () => {
+  libraries = [{ ...MOVIES, package_format: 'cairndex.library', status: 'unavailable' }]
+  probe = {
+    ...PLAIN_FOLDER,
+    is_library: true,
+    needs_conversion: true,
+    already_registered_id: MOVIES.id,
+  }
+  const onSelect = vi.fn()
+  renderManager({ onSelect })
+  await screen.findByRole('button', { name: 'Convert Movies' })
+  expect(screen.queryByRole('button', { name: 'Open Movies' })).not.toBeInTheDocument()
+  typePath('/srv/movies')
+  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  await screen.findByRole('dialog', { name: 'Convert old library' })
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(sent('POST', '/api/v1/libraries/register')).toBeUndefined()
+  expect(sent('POST', '/api/v1/libraries/create')).toBeUndefined()
 })
 
 test('creates the folder too when the typed path does not exist yet', async () => {

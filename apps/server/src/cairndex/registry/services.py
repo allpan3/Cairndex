@@ -20,7 +20,7 @@ from cairndex.core.errors import ConflictError, DomainError, NotFoundError, Vali
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import LibraryStatus
 from cairndex.registry import library_package as pkg
-from cairndex.registry.models import RegisteredLibrary
+from cairndex.registry.models import ConversionTask, RegisteredLibrary
 from cairndex.replicas.protocol import PackageFormatError
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,32 @@ def _probe_status(root: Path) -> LibraryStatus:
     return LibraryStatus.AVAILABLE if ok else LibraryStatus.UNAVAILABLE
 
 
+def _conversion_guard(session: Session, root: Path) -> None:
+    """Do not create or open a package in the middle of a metadata swap."""
+    active = session.scalar(
+        select(ConversionTask.id)
+        .where(
+            ConversionTask.root_path == root.as_posix(),
+            ConversionTask.state.in_(("queued", "running")),
+        )
+        .limit(1)
+    )
+    if active is not None:
+        raise ConflictError("A conversion step is running for this folder. Wait for it to finish.")
+    if not (root / ".cairndex").exists():
+        unfinished = session.scalar(
+            select(ConversionTask.id)
+            .where(
+                ConversionTask.root_path == root.as_posix(),
+                ConversionTask.action.in_(("activate", "undo")),
+                ConversionTask.state.in_(("failed", "interrupted")),
+            )
+            .limit(1)
+        )
+        if unfinished is not None:
+            raise ConflictError("The metadata swap stopped. Retry that conversion step first.")
+
+
 def _insert(session: Session, *, manifest: pkg.LibraryManifest, root: Path) -> RegisteredLibrary:
     library = RegisteredLibrary(
         library_uuid=manifest.library_uuid,
@@ -77,6 +103,7 @@ def create_library(
     if not name:
         raise ValidationError("display_name must not be empty")
     root = _normalize_root(root_path)
+    _conversion_guard(session, root)
 
     if not root.exists():
         if not create_if_missing:
@@ -115,6 +142,7 @@ def create_library(
 def register_existing_library(session: Session, *, root_path: str) -> RegisteredLibrary:
     """Register an existing library directory (validates its marker)."""
     root = _normalize_root(root_path)
+    _conversion_guard(session, root)
     if not root.is_dir():
         raise ValidationError(f"root path {root.as_posix()!r} is not an existing directory")
 
@@ -122,11 +150,53 @@ def register_existing_library(session: Session, *, root_path: str) -> Registered
     if manifest is None:
         raise ValidationError(f"{root.as_posix()!r} is not a Cairndex library (no marker found)")
     if manifest.replica is None:
-        raise PackageFormatError(
-            "Legacy library format is not supported. Convert a separate copy before opening."
-        )
+        raise PackageFormatError("This library uses the old format. Convert it before opening.")
 
     return _insert(session, manifest=manifest, root=root)
+
+
+def register_converted(session: Session, root: Path) -> RegisteredLibrary:
+    """Point the registry at a library that conversion just changed to format three.
+
+    A server that served the library before keeps its registry row, so the row is
+    updated in place; otherwise the converted library is registered.
+    """
+    manifest = pkg.read_manifest(root)
+    if manifest.replica is None:
+        raise ConflictError("The library was not converted")
+    library = session.scalar(
+        select(RegisteredLibrary).where(RegisteredLibrary.library_uuid == manifest.library_uuid)
+    )
+    if library is None:
+        library = _insert(session, manifest=manifest, root=root)
+        library.serving_released = True
+        session.flush()
+        return library
+    if library.package_format == pkg.FORMAT:
+        library.serving_released = True
+        library.write_mode_enabled = False
+    library.root_path = root.as_posix()
+    library.manifest_path = pkg.manifest_path(root).as_posix()
+    library.package_format = manifest.package_format
+    library.schema_version = manifest.format_version
+    library.status = _probe_status(root)
+    library.updated_at = utcnow()
+    session.flush()
+    return library
+
+
+def register_restored(session: Session, root: Path) -> None:
+    """Mark a registry row as the old format again after a conversion Undo."""
+    manifest = pkg.read_manifest(root)
+    library = session.scalar(
+        select(RegisteredLibrary).where(RegisteredLibrary.library_uuid == manifest.library_uuid)
+    )
+    if library is not None and manifest.replica is None:
+        library.package_format = manifest.package_format
+        library.schema_version = manifest.format_version
+        library.status = _probe_status(root)
+        library.updated_at = utcnow()
+        session.flush()
 
 
 @dataclass(frozen=True)
@@ -151,6 +221,8 @@ class PathProbe:
     # The basename, which prefills the name field when a plain folder is about to
     # become a library. Empty for a filesystem root, which has no basename.
     folder_name: str
+    # The library uses the old format; the owner can convert it (ADR-0038).
+    needs_conversion: bool = False
 
 
 def probe_path(session: Session, root_path: str) -> PathProbe:
@@ -163,11 +235,8 @@ def probe_path(session: Session, root_path: str) -> PathProbe:
     the parse error, not an invitation to create a second library over it.
     """
     root = _normalize_root(root_path)
+    _conversion_guard(session, root)
     manifest = pkg.detect(root) if root.is_dir() else None
-    if manifest is not None and manifest.replica is None:
-        raise PackageFormatError(
-            "Legacy library format is not supported. Convert a separate copy before opening."
-        )
     registered = session.scalars(
         select(RegisteredLibrary).where(RegisteredLibrary.root_path == root.as_posix())
     ).first()
@@ -184,6 +253,7 @@ def probe_path(session: Session, root_path: str) -> PathProbe:
         already_registered_id=registered.id if registered is not None else None,
         manifest_display_name=manifest.display_name if manifest is not None else None,
         folder_name=root.name,
+        needs_conversion=manifest is not None and manifest.replica is None,
     )
 
 
@@ -191,10 +261,9 @@ def get_library(session: Session, library_id: str) -> RegisteredLibrary:
     library = session.get(RegisteredLibrary, library_id)
     if library is None:
         raise NotFoundError(f"library {library_id!r} not found")
+    _conversion_guard(session, Path(library.root_path))
     if library.package_format == pkg.FORMAT:
-        raise PackageFormatError(
-            "Legacy library format is not supported. Convert a separate copy before opening."
-        )
+        raise PackageFormatError("This library uses the old format. Convert it before opening.")
     if pkg.manifest_path(Path(library.root_path)).exists():
         try:
             manifest = pkg.read_manifest(Path(library.root_path))
