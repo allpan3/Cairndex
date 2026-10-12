@@ -4,8 +4,9 @@
 
 Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. Four completed
 hosted runs put pytest at 501–915 seconds and more than 90% of backend wall time;
-dependency synchronization was already cached. Main's branch protection requires
-only trusted privacy, which explains the missed final-completion notifications.
+dependency synchronization was already cached. At review start, main's branch
+protection required only trusted privacy, which explained the missed
+final-completion notifications.
 
 The branch adds a fail-closed final CI result, conservative docs/backend-test
 scope, slow-test reporting and isolated memory storage for bulk fixtures while
@@ -16,10 +17,13 @@ static checks and 89 focused CI/privacy regressions pass in both guests. Workflo
 validation, real disposable-mount cleanup and Docker context/build checks pass.
 The interrupted disk diagnostic is preserved and is not a passing full gate.
 
-No application runtime source, dependency lock or privacy profile changed. The
-owner approved publication, the required-check rollout and merge after the full
-hosted matrix passes. Hosted verification remains. See [CI review](ci-review.md)
-for the concrete result and activation steps.
+No application runtime source, dependency lock or privacy profile changed.
+[PR #50](https://github.com/allpan3/Cairndex/pull/50) is open. The owner-approved
+required checks are active: CI result, trusted privacy, both CodeQL analyses,
+CodeQL security and dependency review, each bound to its source app. Strictness
+and every other protection field are preserved. The full hosted matrix and
+exact-head readiness remain to be verified before the approved merge.
+See [CI review](ci-review.md) for the concrete result and rollout record.
 
 ## Source operations and distribution/deployment merged
 

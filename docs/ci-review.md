@@ -81,16 +81,18 @@ Raw guest receipts stay outside Git.
 
 ## Completion-monitoring rollout
 
-The current main rule is strict/up-to-date and requires only
+At review start, main's rule was strict/up-to-date and required only
 `publication-privacy/trusted`. T3 Code reports required-check completion, so it
 can wake after privacy and miss the later non-required job completion. The final
 CI job fixes the repository's completion signal; the required-check configuration
 must also be updated for that signal to drive monitoring.
 
-After publication approval, open the CI PR, verify its new completion check has
-been reported, and preserve strict/up-to-date behavior while requiring:
+With owner approval, [PR #50](https://github.com/allpan3/Cairndex/pull/50) was
+opened and the following required checks were activated. The completion result
+becomes reported after its dependencies finish; requiring it while the matrix
+runs prevents an early privacy-only completion notification.
 
-| Context | Verified source app |
+| Context | Required source app |
 | --- | --- |
 | `publication-privacy/trusted` | GitHub Actions, 15368; existing requirement retained |
 | `CI result` | GitHub Actions, 15368 |
@@ -99,9 +101,10 @@ been reported, and preserve strict/up-to-date behavior while requiring:
 | `CodeQL` | GitHub Advanced Security, 57789 |
 | `Review dependency changes` | GitHub Actions, 15368 |
 
-This changes only required status checks; retain all other protection fields.
-Read readiness on the exact head before merging, then confirm the resulting main
-configuration. Other open PRs will need the refreshed base/new workflow before
+The API readback verified these checks, preserved strict/up-to-date behavior and
+confirmed every other protection field unchanged. Full hosted validation remains
+pending. Read readiness on the exact head before merging, then confirm the main
+configuration again. Other open PRs will need the refreshed base/new workflow before
 their completion check can satisfy the rule. Native PR watching remains the
 monitor; no separate polling loop or scheduled watcher is introduced.
 
@@ -109,4 +112,5 @@ A workflow-level path filter would leave a required check missing on docs-only
 PRs, which is why scope is selected inside the always-triggered workflow. See
 [GitHub's skipped-check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
 and [hosted runner resources](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
-No live branch protection was changed during local preparation.
+No live branch protection was changed during local preparation; activation
+followed the owner's explicit publication and rollout approval.

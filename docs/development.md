@@ -126,9 +126,9 @@ the [CI review](ci-review.md) records measurements, limits and required-check ro
 
 `CI result` uses `always()` and depends on every matrix job. A failed, cancelled,
 missing or unexpectedly skipped selected job fails the result; documentation skips
-are accepted only after a successful scope decision. Require this completion result
-alongside privacy and the independent security checks after it has been reported
-by the CI PR. A privacy-only required-check notification does not establish completion.
+are accepted only after a successful scope decision. Main requires this completion
+result alongside privacy and the independent security checks. A privacy-only
+required-check notification does not establish completion.
 
 `desktop-macos` carries `timeout-minutes: 30` against an observed ~4.5-minute
 cold-cache build, so a hung Tauri bundler cannot occupy a runner for GitHub's
@@ -990,10 +990,9 @@ reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
 issue containing real owner data.
 
 The "CodeQL" check on a pull request fails when the PR has a new alert of high
-or critical security severity. The CI-review rollout adds it and both analysis
+or critical security severity. The CI-review rollout requires it and both analysis
 jobs to required checks alongside `CI result`, dependency review and trusted
-privacy; see [the rollout record](ci-review.md). Until that rollout is applied,
-the existing branch rule requires only trusted privacy. An alert is new when
+privacy; see [the rollout record](ci-review.md). An alert is new when
 main has no alert with the same fingerprint. The fingerprint comes from the text
 of the flagged line, so a PR that edits a line with an open or dismissed alert
 makes that alert new again. Test code is not analyzed
