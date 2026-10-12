@@ -102,6 +102,9 @@ are different actions.
 
 Preparation creates a new private recovery set without changing the live binding.
 It reads available package artifacts and optionally adds a verified private backup.
+Finish **Libraries → Release** for this library, or stop its server/sidecar, first:
+`prepare` takes the same process lock as activation and refuses while a server
+still holds it.
 For another device, select its existing copy of the same capable package and its
 own private server data directory. Register/open it normally after activation;
 pair to its server separately if needed.

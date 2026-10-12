@@ -6,8 +6,10 @@ The owner decided the work before the next release. Each step is its own branch
 and PR. The owner authorized the agent to open and merge each PR after its full
 gates, the privacy gate and CI pass. A release tag follows only after step 6.
 
-1. Dependency updates: one branch replaces Dependabot PRs #25, #36, #39, #41,
-   #43 and #44. PR #26 (`@types/node` 26) is declined; Node 22 is the runtime.
+1. Dependency updates merged through [PR #51](https://github.com/allpan3/Cairndex/pull/51)
+   as `75efe80e`. Both VM gates, publication privacy and the full hosted CI matrix
+   passed. Dependabot PRs #25, #36, #39, #41, #43 and #44 are superseded and closed.
+   PR #26 (`@types/node` 26) is declined and closed; Node 22 is the runtime.
 2. Fix the three open observations: the 1-second worker pause that limits Update
    to 32 entries per phase per second, the false recovery block on `sources`
    rows after an Update, and the recovery CLI `prepare` that runs without the
@@ -28,6 +30,19 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
    share from the macOS guest.
 6. The owner tests a real library.
 7. Release.
+
+Branch `fix/update-and-recovery-observations` is based on the dependency merge.
+It implements step 2 without API or schema changes. The worker continues after
+25 ms while work is queued. Recovery recognizes the same published object under
+its prepared source name. CLI preparation takes the binding lock and requires
+Release. Backend static checks pass in both guests. macOS passes all 1,860 tests;
+Ubuntu passes 1,859 with the existing Linux-arm64 manifest assertion excluded.
+Filesystem safety tests run on disk. Sidecar build/smoke and all three frozen
+recovery/discovery tests pass in each guest. Both full browser suites pass all
+33 tests. The first concurrent Linux browser run on disk failed three cases;
+those cases passed in isolation, then the full memory-backed suite passed without
+source changes. Publication privacy and hosted CI are the next gates. After this
+merge, continue legacy conversion. New Dependabot PRs #52–#56 are separate work.
 
 ## CI runtime and completion rollout complete
 
@@ -197,12 +212,10 @@ gives the exact trees and hashes. Results on 2026-10-09:
   inherited browser test that raced the server's stop of a moved media file and
   ran recovery preparation before Release.
 
-Open observations that need an owner decision (reference code, not changed): Update
-throughput is limited to 32 entries per phase per second, which makes the frozen
-discovery test run close to its 60-second wait and is slow for large libraries;
-a same-device recovery right after an Update can be blocked by `sources` gap
-rows; the recovery CLI `prepare` does not require Release. Minor UI observations
-are in the validation record. PR #45 merged the branch into main on 2026-10-10
+Three open observations from the reference code were fixed on 2026-10-12 (see the
+release preparation section): the Update throughput limit of 32 entries per phase
+per second, the `sources` gap block after an Update, and the CLI `prepare` without
+Release. Minor UI observations are in the validation record. PR #45 merged the branch into main on 2026-10-10
 with merge commit `cbf1643d`. Its CodeQL check reported 44 new alerts; the
 branch `security/codeql-triage` fixes them or records why each one is safe.
 

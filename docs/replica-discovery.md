@@ -70,6 +70,9 @@ mtimes converge, while different mtimes can produce ordinary timestamp conflicts
 Timestamps never establish ancestry or authorize a move.
 
 Enumeration yields every 32 entries, including ignored hidden/symlink entries.
+The worker starts its next pass after 25 ms while a run, review, verification,
+catalog job or unpublished event is queued, and after 1 second when every open
+library is idle. Each pass keeps the bounded steps, so Release drains promptly.
 Private disk-backed planning indexes every fresh source and settled catalog owner
 before classifying complete directories. Assignment and role work advances in
 32-file batches; worker batches never split bundles or omit later-page owners.

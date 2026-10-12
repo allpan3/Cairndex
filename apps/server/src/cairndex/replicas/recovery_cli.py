@@ -132,7 +132,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify":
             result = recovery.verify_backup(private_path(args.backup, root), descriptor)
         elif args.command == "prepare":
-            result = recovery.prepare(root, base, args.backup)
+            # A serving process holds this lock until Release drains its work, so
+            # preparation cannot review a store that is still changing (ADR-0035)
+            guard = BindingLock(base, descriptor)
+            try:
+                result = recovery.prepare(root, base, args.backup)
+            finally:
+                guard.close()
         elif args.command == "review":
             directory, result = recovery.review_at(base, args.recovery)
             result = result | {"receipt": checksum(canonical(result))}

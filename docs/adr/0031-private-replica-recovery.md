@@ -104,7 +104,7 @@ not report them cancelled. Restart marks pending operations interrupted. Explici
 retry retains the operation identity, adopts only a complete verified result, and
 never overwrites an incomplete set. A new preparation retains the incomplete set.
 
-Preparation through the interface requires Release. Review binds the exact
+Preparation through the interface and the CLI requires Release. Review binds the exact
 candidate and original state. Activation requires that receipt and process
 exclusion; Reopen is a separate action. The interface reports received drafts,
 unpublished events and saved jobs, and identifies the separate backup needs for

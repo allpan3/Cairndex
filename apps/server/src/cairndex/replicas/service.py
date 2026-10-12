@@ -131,6 +131,38 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
         handle[2].release()
 
 
+# Queued work that another bounded pass would advance. Inbox dependencies are not
+# counted: they can wait indefinitely for objects that have not arrived yet.
+_PENDING_WORK = (
+    "SELECT 1 FROM discovery_runs WHERE state='running' LIMIT 1",
+    "SELECT 1 FROM catalog_jobs WHERE state='queued' LIMIT 1",
+    "SELECT 1 FROM discovery_reviews WHERE state IN ('queued','apply_queued') LIMIT 1",
+    "SELECT 1 FROM discovery_verifications WHERE state IN ('queued','running') LIMIT 1",
+    "SELECT 1 FROM events WHERE local=1 AND published=0 LIMIT 1",
+)
+
+
+def pending(library_id: str) -> bool:
+    """Report whether an open catalog has queued work for the next worker pass.
+
+    A blocked or not-yet-ready store reports none, because the discovery and job
+    steps do nothing for it until recovery or reconstruction completes.
+    """
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is None or not isinstance(handle[0], CatalogStore):
+        return False
+    store = handle[0]
+    with store.connection(readonly=True) as db:
+        if db.execute("SELECT 1 FROM config WHERE key='blocked'").fetchone():
+            return False
+        if not db.execute(
+            "SELECT 1 FROM events WHERE id=?", (store.descriptor.genesis,)
+        ).fetchone():
+            return False
+        return any(db.execute(query).fetchone() for query in _PENDING_WORK)
+
+
 # Close iterators only after admitted work has drained; private history stays on disk
 def close(library_id: str) -> None:
     with _lock:
@@ -149,6 +181,13 @@ def close(library_id: str) -> None:
         smb_transport.close_root(handle[1].root)
 
 
+# Seconds between passes while work is queued, and while every open library is idle.
+# Each pass keeps its bounded per-library steps, so Release still drains promptly;
+# the short pause leaves the SQLite writer free for HTTP saves between passes.
+BUSY_WAIT = 0.025
+IDLE_WAIT = 1.0
+
+
 # Poll only replicas opened by this server, with bounded work per replica
 class ReplicaWorker:
     def __init__(self) -> None:
@@ -163,7 +202,9 @@ class ReplicaWorker:
 
     def run(self) -> None:
         "Storage failures remain visible on explicit status/exchange instead of killing the loop"
-        while not self._stop.wait(1):
+        busy = False
+        while not self._stop.wait(BUSY_WAIT if busy else IDLE_WAIT):
+            busy = False
             for identity, future in list(self._pending.items()):
                 if future.done():
                     with suppress(DomainError, OSError):
@@ -176,6 +217,7 @@ class ReplicaWorker:
                     return
                 try:
                     exchange(library_id)
+                    busy = pending(library_id) or busy
                     with _lock:
                         handle = _handles.get(library_id)
                     if (

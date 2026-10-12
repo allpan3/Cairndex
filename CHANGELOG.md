@@ -152,6 +152,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Update no longer pauses after every batch.** The background worker waited one
+  second after each 32-entry step.
+  It now continues after 25 ms while an Update, review, verification, save job or
+  unpublished change is queued, and waits one second only when idle.
+- A recovery from a snapshot taken right after an Update is no longer blocked as if
+  newer private work would be lost. The check now matches each published object
+  under the name that recovery preparation gives it.
+- The recovery command-line `prepare` now refuses while a server still holds the
+  library, as the interface already did. Finish Release or stop the server first.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.
