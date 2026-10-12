@@ -14,10 +14,12 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
    [PR #57](https://github.com/allpan3/Cairndex/pull/57) as `75fd0e15`. The full
    hosted matrix and all six required checks passed on `7fe5a431`. This includes
    the manifest assertion excluded in the Linux-arm64 guest.
-3. Convert old `cairndex.library` packages to format three. The tool writes the
-   new metadata, renames the old `.cairndex` folder to a backup beside it
-   without changing its contents, and leaves media untouched. Undo restores the
-   old folder. ADR-0038 amends ADR-0035 for this reviewed workflow.
+3. Reviewed old-library conversion merged through
+   [PR #59](https://github.com/allpan3/Cairndex/pull/59) as `9070e810`.
+   Both VM gates, publication privacy, the full hosted matrix and all six
+   required checks passed. Conversion retains the original metadata folder and
+   leaves media untouched. Undo retains converted history and restores the old
+   folder. ADR-0038 amends ADR-0035 for this reviewed workflow.
 4. Restore the v0.2.1 features that the removal of the legacy workspace took
    away (reference commit `473ea9fc`, then PR #45). ADR-0035 named only source
    operations, Recently Used and cross-device resume as gaps; the owner did not
@@ -31,13 +33,16 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 6. The owner tests a real library.
 7. Release.
 
-Branch `feature/legacy-library-conversion` includes both release-preparation
-merges and the screenshot declaration from
+Steps 1–3 are complete. Step 4 is next. The real-library owner test in step 6
+remains the release checkpoint. No release tag or production deployment was made.
+
+The conversion merge includes both earlier release-preparation merges and the
+screenshot declaration from
 [PR #58](https://github.com/allpan3/Cairndex/pull/58), merged as `b39001ad` after
 all six required checks and selected CI gates passed. ADR-0038 records the accepted
-metadata-folder swap. Historical inspection
-and conversion publication have separate modules. Exact step intent, source
-revalidation after staging, confined file descriptors and no-replace renames
+metadata-folder swap. Historical inspection and conversion publication have
+separate modules. Exact step intent, source revalidation after staging, confined
+file descriptors and no-replace renames
 protect activation. Interrupted Undo resumes each step, retains private work and
 does not rewind later legacy edits. Unknown search-prefix tables, database-prefix
 entries and missing core tables are refused.
@@ -48,12 +53,10 @@ reply resolves the exact accepted step. Converted libraries stay released until
 explicit Open. An old source-write opt-in resets. Active or interrupted swaps
 with missing metadata block replacement library creation.
 
-The 67 focused conversion/migration/API/process tests, full backend static checks and
-35 focused frontend tests pass in the Linux guest. The real browser conversion
-flow passes: inspection, private preparation, review confirmation, lost reply,
+The real browser conversion flow passes: inspection, private preparation,
+review confirmation, lost reply,
 new authored edit, Release and Undo retain the old folder and converted edit.
-OpenAPI and frontend contracts plus topic docs are updated. The full Linux web
-gate passes 1,260 unit tests and all 34 browser tests. Historical libraries from
+OpenAPI and frontend contracts plus topic docs are updated. Historical libraries from
 v0.2.1 (`ea7070b3`) and the earlier playback-progress build (`59d82484`) pass
 inspection, preparation, activation, independent catalog joining, old-reader
 refusal and Undo in Linux and macOS. The same cases pass on mounted SMB. Media
@@ -64,35 +67,12 @@ Mounted catalog reads and format refusal are tested separately.
 An earlier pre-grouping schema (`ad155fd3`) is refused without changes on each
 storage. A mounted SMB rename exposed stale stat and manifest pages. Activation
 now relies on atomic no-replace vacancy checks and refreshes the known manifest
-after each swap. Occupied-name regressions pass. Initial full backend/package and
-desktop checks passed on source tree `b7136320`. macOS passed 1,900 backend
-tests, four frozen-process tests, the full frontend gate with 1,261 unit tests
-and 34 browser tests, Rust fmt/clippy with 135 tests, app build and license
-verification. Linux passed 1,899 backend tests (1,734 memory and 165 disk),
-four frozen-process tests, the full frontend gate with 1,261 unit tests and
-34 browser tests, Rust fmt/clippy with 133 tests and the launcher test. Only
-the unchanged Linux-arm64 manifest assertion is excluded locally; hosted
-x86_64 CI must run it.
+after each swap. Occupied-name regressions pass. Stopped-swap admission checks
+use the matching saved task root. Failed/interrupted activation and Undo block
+replacement creation while metadata is absent. Unrelated roots and restored
+metadata remain available. Catalog joining tests wait for actual readiness with
+a bounded timeout.
 
-Backend receipts: `conversion-mac-20261012-075957` and
-`conversion-linux-20261012-080005`. The Linux frontend/Rust receipt uses
-`conversion-web-desktop-linux-final-20261012` with its start time.
-The final production image builds and serves conversion review, activation,
-catalog and Undo against an isolated synthetic fixture. Its runtime was checked
-for copied databases, environment files and packaging output. The synthetic
-review screenshot passed full-frame privacy review. Its exact digest and path
-are declared on main. The conversion docs include that unchanged synthetic PNG.
-The feature is published through PR #59; hosted CI must pass before its merge.
-New Dependabot PRs #52–#56 remain separate work.
-
-Conversion [PR #59](https://github.com/allpan3/Cairndex/pull/59) is open. Its first
-CodeQL scan flags the stopped-swap metadata check on an incoming setup path.
-The follow-up binds that check to the matching saved task and adds admission
-coverage for failed/interrupted activation and Undo. Follow-up runtime
-qualification passes in both guests. Complete hosted CI remains pending.
-The conversion API readiness test also failed with the original guard on Linux
-disk. It used eight exchange rounds instead of waiting for catalog readiness.
-The test now uses the existing bounded readiness helper; all ten API tests pass.
 The full macOS backend suite passes 1,904 tests on the guard follow-up, with
 sidecar build/smoke, four frozen-process tests, 34 browser tests, app build and
 license verification. The final readiness test repair passes all ten API cases
@@ -108,6 +88,25 @@ no copied database, environment file or packaging output in `/app`. Receipt:
 unchanged from their complete initial qualification. The full macOS suite ran
 before the test-only readiness repair; the final ten-case API suite validates
 that repair separately. No security check or privacy hook was weakened.
+The unchanged frontend passes all static gates, 1,261 unit tests and the build
+in both guests. Rust fmt/clippy passes, with 135 tests on macOS and 133 on Linux.
+The Linux launcher test also passes. Original full receipts include
+`conversion-mac-20261012-075957` and
+`conversion-web-desktop-linux-final-20261012` with its start time.
+
+[Hosted CI](https://github.com/allpan3/Cairndex/actions/runs/38274526740)
+passed every job on `8c35d097`, including all 1,904 backend tests (1,849 memory
+and 55 disk) with no platform exclusion. CodeQL security and both analyses,
+dependency review and trusted publication privacy passed. The merged tree
+matches the qualified feature tree. Local main was refreshed to `9070e810`.
+
+The initial production image passed manual conversion review, activation,
+catalog and Undo against an isolated synthetic fixture. The follow-up image
+rebuilt and passed runtime inspection. The unchanged synthetic review screenshot
+passed full-frame privacy review; its exact digest and path are declared on main.
+Provider delivery, representative scale, simultaneous independent-server
+conversion and power-loss durability remain unqualified. New Dependabot
+PRs #52–#56 remain separate work.
 
 ## CI runtime and completion rollout complete
 

@@ -60,6 +60,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record the completed dependency, Update/recovery and reviewed-conversion
+  merges, hosted checks and remaining owner-test release checkpoint.
+
 - Declare the synthetic legacy-conversion screenshot for independent publication
   privacy checks before its feature branch publishes the image.
 
