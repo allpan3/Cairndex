@@ -1,6 +1,27 @@
 # Project status
 
-## Current: source operations and distribution/deployment merged
+## Current: CI runtime and completion review
+
+Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. Four completed
+hosted runs put pytest at 501–915 seconds and more than 90% of backend wall time;
+dependency synchronization was already cached. Main's branch protection requires
+only trusted privacy, which explains the missed final-completion notifications.
+
+The branch adds a fail-closed final CI result, conservative docs/backend-test
+scope, slow-test reporting and isolated memory storage for bulk fixtures while
+keeping source-operation/backup safety on disk. The complete optimized Ubuntu
+gate passed 1,855 tests: 1,800 in 243.36 seconds on memory and 55 in 153.20 seconds
+on disk, with one existing unsupported Linux-arm64 manifest exclusion. Full
+static checks and 89 focused CI/privacy regressions pass in both guests. Workflow
+validation, real disposable-mount cleanup and Docker context/build checks pass.
+The interrupted disk diagnostic is preserved and is not a passing full gate.
+
+No application runtime source, dependency lock or privacy profile changed. The
+owner approved publication, the required-check rollout and merge after the full
+hosted matrix passes. Hosted verification remains. See [CI review](ci-review.md)
+for the concrete result and activation steps.
+
+## Source operations and distribution/deployment merged
 
 PR #47 merged as `a7d149db` after its complete CI matrix passed. PR #48's
 screenshot-declaration prerequisite merged as `39904f6a`. Group 6 is complete;
