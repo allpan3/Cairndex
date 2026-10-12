@@ -182,7 +182,14 @@ def previous_state(path: Path, output: Path, descriptor: Identity) -> dict[str, 
 
 
 # A reviewed recovery cannot hide newer private work that survives in the original store
-def previous_gaps(previous: Path, prepared: Path) -> dict[str, int]:
+def previous_gaps(previous: Path, prepared: Path, recovery_id: str) -> dict[str, int]:
+    """Count original private rows that the prepared candidate lacks or changed.
+
+    Preparation re-reads package objects under ``recovery-<id>/<name>``. An
+    original ``sources`` row for the same object and artifact is therefore covered
+    by its prefixed name; a backup taken before the transport scan reached a new
+    object otherwise blocks a recovery that loses nothing.
+    """
     result = {}
     with closing(reader(prepared)) as db, closing(reader(previous)) as prior:
         tables = {row[0] for row in prior.execute("SELECT name FROM sqlite_master")}
@@ -263,6 +270,11 @@ def previous_gaps(previous: Path, prepared: Path) -> dict[str, int]:
                     f"SELECT {','.join(columns)} FROM {table} WHERE {where}",
                     tuple(row[key] for key in keys),
                 ).fetchone()
+                if table == "sources" and (candidate is None or tuple(candidate) != tuple(row)):
+                    candidate = db.execute(
+                        "SELECT ?,artifact FROM sources WHERE name=?",
+                        (row["name"], f"recovery-{recovery_id}/{row['name']}"),
+                    ).fetchone()
                 missing += candidate is None or tuple(candidate) != tuple(row)
             result[table] = missing
     return result
@@ -356,7 +368,7 @@ def prepare(
     snapshot(store.path, directory / "prepared.db")
     validate_snapshot(directory / "prepared.db", descriptor)
     gaps = (
-        previous_gaps(directory / "previous.db", directory / "prepared.db")
+        previous_gaps(directory / "previous.db", directory / "prepared.db", recovery_id)
         if original["state"] == "valid"
         else {}
     )
@@ -471,7 +483,7 @@ def activate(
         if not report["ready"] or report["waiting"] or report["invalid"] or report["blocked"]:
             raise ReplicaError("Prepared recovery is blocked by incomplete history")
         if review["previous"]["state"] == "valid" and any(
-            previous_gaps(current, prepared).values()
+            previous_gaps(current, prepared, identity).values()
         ):
             raise ReplicaError("Prepared recovery is blocked by surviving original private work")
         if target.exists():

@@ -105,8 +105,8 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
         )
         checkpoint = tmp_path / "backup"
         command(root, bases[0], "backup", "--output", checkpoint)
-        recovery = command(root, bases[0], "prepare", "--backup", checkpoint)
         assert a.post(prefixes[0] + "/ownership/release").status_code == 200
+        recovery = command(root, bases[0], "prepare", "--backup", checkpoint)
         command(
             root,
             bases[0],

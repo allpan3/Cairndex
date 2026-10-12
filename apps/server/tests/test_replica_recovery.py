@@ -404,6 +404,30 @@ def test_prepare_preserves_newer_private_receipts(replica, tmp_path, table):
         recovery.activate(root, base, review["id"], review["receipt"])
 
 
+# A backup between publication and the next scan loses nothing, so recovery stays available
+def test_prepare_accepts_published_object_before_its_scan(replica, tmp_path):
+    root, base, store = replica
+    transport = Transport(root, store)
+    try:
+        transport.tick()
+        assert transport._scan is None
+        event = save(store, intent(store, "Published before scan"), "published-before-scan")
+        transport.tick()
+        with store.connection(readonly=True) as db:
+            assert db.execute("SELECT published FROM events WHERE id=?", (event,)).fetchone()[0]
+            assert not db.execute("SELECT 1 FROM sources WHERE artifact=?", (event,)).fetchone()
+        recovery.backup(root, base, tmp_path / "backup")
+        transport.tick()
+        with store.connection(readonly=True) as db:
+            assert db.execute("SELECT 1 FROM sources WHERE artifact=?", (event,)).fetchone()
+    finally:
+        transport.close()
+    review = recovery.prepare(root, base, tmp_path / "backup")
+    assert review["state"] == "prepared"
+    assert review["previous_private_gaps"]["sources"] == 0
+    restored(root, base, review)
+
+
 # A repeated activation checks the live generation without rewinding legitimate later work
 @pytest.mark.parametrize("change", ["missing", "corrupt", "new-work"])
 def test_repeated_activation_validates_current_database(replica, tmp_path, change):
@@ -560,6 +584,21 @@ def test_cli_review_cancel_paths_and_receipt_requirement(replica, tmp_path, caps
         == 2
     )
     assert main(common + ["review", "--recovery", "../outside"]) == 2
+
+
+# A serving process's lock refuses CLI preparation before any recovery directory exists
+def test_cli_prepare_requires_release(replica, tmp_path, capsys):
+    root, base, _ = replica
+    common = ["--library", str(root), "--data-dir", str(base)]
+    guard = BindingLock(base, recovery.descriptor_at(root))
+    try:
+        assert main(common + ["prepare"]) == 2
+        assert "finish Release" in capsys.readouterr().err
+        assert not list((base / "replica-recoveries").glob("*"))
+    finally:
+        guard.close()
+    assert main(common + ["prepare"]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] in {"prepared", "blocked"}
 
 
 # Unsupported root artifacts and storage inside the package are never silently omitted

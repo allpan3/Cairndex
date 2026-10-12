@@ -325,27 +325,32 @@ Minor observations from these rounds, none blocking:
   visible way back is to prepare again. The access and backup controls are in a
   short inner scroll area of the library dialog.
 
-### Open observations
+### Observations
 
-These come from reference code that the extraction did not change. They need an
-owner decision; no product code was changed for them.
+These come from reference code that the extraction did not change. On 2026-10-12
+the owner accepted fixes for the first three: the worker continues after 25 ms
+while work is queued, the gap check accepts a `sources` row under its recovery
+source name with the same artifact, and the CLI `prepare` takes the binding lock.
 
-- Update throughput. The replica worker runs one exchange per library each second,
-  and each discovery phase handles at most 32 entries in one tick. In the slow
+- Resolved: Update throughput. The replica worker previously ran one exchange per
+  library each second. Each discovery phase handles at most 32 entries in one
+  tick. In the slow
   frozen test the sidecar used about 5 s of CPU in 43 s; the Update phase alone
   took 27–29 s on tmpfs and more than 60 s on the Ubuntu ext4 disk, where the
-  fsync cost of each batch adds to each tick. The walk phase alone therefore needs
-  at least about 52 minutes for 100,000 files. A worker that continues while work
-  remains, and sleeps only when idle, would remove the idle waits; it needs a
-  fairness check against HTTP writes.
-- Same-device recovery after an Update. The exchange records `sources` rows for
-  its own published objects one tick after publication. A snapshot taken before
-  that tick lacks the rows, and a later recovery onto the still-valid original is
-  blocked by the gap check, which compares those rows by name. The prepared
-  candidate contains the same objects under recovery source names.
-- The recovery CLI `prepare` does not require Release or take the binding lock.
-  The API does. Activation still refuses when the original changed.
-- When the server stops a media response for a moved source, it logs an
+  fsync cost of each batch adds to each tick. The walk phase alone would need
+  at least about 52 minutes for 100,000 files with that former cadence. The worker
+  now continues after 25 ms while work remains. It keeps bounded steps and a pause
+  between passes for HTTP writes. This does not qualify representative-scale use.
+- Resolved: Same-device recovery after an Update. The exchange records `sources`
+  rows for its own published objects one tick after publication. A snapshot taken
+  before that tick lacks the rows. A later recovery onto the still-valid original
+  was blocked by the gap check, which compared those rows by name. The prepared
+  candidate contains the same objects under recovery source names. The check now
+  accepts that name only when the artifact is the same.
+- Resolved: The recovery CLI `prepare` now takes the binding lock and requires
+  Release, as the API already did. Activation still refuses when the original
+  changed.
+- Open: When the server stops a media response for a moved source, it logs an
   "Exception in ASGI application" traceback for an intended stop.
 
 ## Limits and next step
@@ -353,9 +358,11 @@ owner decision; no product code was changed for them.
 The platform gates, Docker checks, the sustained native session and the four
 functional rounds are complete on synthetic data in the test guests. No scripted
 owner test is required. PR #45 merged the branch on 2026-10-10 (merge commit
-`cbf1643d`). The next step is the owner's decision on the open observations
-above. Source operations/SMB and deployment/distribution
-remain separate groups. No real conversion, registration or replacement is approved.
+`cbf1643d`). Source operations and distribution/deployment subsequently merged
+through PR #47 and PR #49. The release-preparation sequence in
+[STATUS](STATUS.md) now governs the remaining work, including the accepted
+legacy-conversion design. The media-stop traceback remains open. No operation on
+an owner's real library is approved at this checkpoint.
 `CONVERSION_AVAILABLE = False`; there is no owner conversion command.
 
 Cross-device iCloud, offline delivery, hydration and provider conflicts need two
