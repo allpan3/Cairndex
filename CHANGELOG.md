@@ -49,6 +49,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Add a complete CI result, conservative documentation/backend-test job scope,
+  slow-test reporting and isolated memory-backed bulk fixtures. Source-operation
+  and backup/restore safety tests remain on disk; all runtime changes retain the
+  full matrix. Main requires the completion result and independent security
+  checks alongside trusted privacy, preserving strictness and source-app bindings.
 - Record the completed source-operation and distribution/deployment merges,
   combined reference comparison and corrected matched-deletion inventory.
 - Extract distribution/deployment from the preserved audit reference. Development

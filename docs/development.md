@@ -102,13 +102,33 @@ separate job that provisions the locked backend environment and ffmpeg.
 
 ### What CI runs, and when
 
-Every job runs on every push and pull request, except that
-**documentation-only changes run nothing**: `paths-ignore` in
-`.github/workflows/ci.yml` covers `docs/**`, `**/*.md`, `LICENSE` and
-`.gitignore`. Nothing here validates prose, and roughly half this repository's
-commits touch only docs. A commit that changes docs *and* code still runs
-everything — the filter skips only when every changed file matches.
-`workflow_dispatch` runs the full matrix by hand against any ref.
+CI runs on pushes to `main` and pull requests, with an always-present `CI result`.
+`infra/ci_scope.py` compares the exact event commits and selects conservative scope:
+
+- Documentation-only changes run the scope/result jobs; the heavy matrix is skipped.
+- Backend-test and privacy-declaration changes run backend lint/types/the full test
+  suite and every dependency audit. Unchanged frontend/native/container builds are skipped.
+- Runtime code, dependencies, workflow changes, unknown paths, license texts and
+  generated OpenAPI changes run every existing job. Manual dispatch always runs everything.
+
+Mixed changes retain the broadest scope. Rename detection is disabled for the path
+inventory so a runtime file moved into tests still triggers the full matrix.
+Privacy, CodeQL and dependency review keep their independent triggers.
+
+The backend driver uses an isolated 4 GiB tmpfs when Linux memory headroom permits.
+It retains real `fsync` calls and runs the complete suite in two disjoint phases:
+bulk synthetic fixtures on memory storage; source-operation and backup/restore
+safety tests on ordinary disk. Limited-memory hosts use disk for both phases.
+`CAIRNDEX_CI_MEMORY_PARENT` selects an existing executable memory filesystem for
+local measurement; the driver creates/removes only its own temporary children.
+All phases print slow-test durations. The backend has a 25-minute timeout;
+the [CI review](ci-review.md) records measurements, limits and required-check rollout.
+
+`CI result` uses `always()` and depends on every matrix job. A failed, cancelled,
+missing or unexpectedly skipped selected job fails the result; documentation skips
+are accepted only after a successful scope decision. Main requires this completion
+result alongside privacy and the independent security checks. A privacy-only
+required-check notification does not establish completion.
 
 `desktop-macos` carries `timeout-minutes: 30` against an observed ~4.5-minute
 cold-cache build, so a hung Tauri bundler cannot occupy a runner for GitHub's
@@ -930,7 +950,7 @@ make a finding disappear.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push/PR: dependency audits; backend
+The full scope of `.github/workflows/ci.yml` runs dependency audits; backend
 lint, type-check, and tests; frontend lint, type-check, unit tests, and browser
 e2e; macOS and Ubuntu desktop checks; a macOS Tauri bundle; and Docker
 context/privacy/build/smoke/recovery validation. PRs should be green before
@@ -970,7 +990,9 @@ reporting flow described by [`SECURITY.md`](../SECURITY.md), never in a public
 issue containing real owner data.
 
 The "CodeQL" check on a pull request fails when the PR has a new alert of high
-or critical security severity; it is not a required check. An alert is new when
+or critical security severity. The CI-review rollout requires it and both analysis
+jobs to required checks alongside `CI result`, dependency review and trusted
+privacy; see [the rollout record](ci-review.md). An alert is new when
 main has no alert with the same fingerprint. The fingerprint comes from the text
 of the flagged line, so a PR that edits a line with an open or dismissed alert
 makes that alert new again. Test code is not analyzed

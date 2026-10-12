@@ -8,25 +8,20 @@ name: CI
 # nothing once the meter stopped, and it cost coverage on direct-to-main
 # commits — so it is gone. Do not reintroduce it without a cost to point at.
 #
-# `paths-ignore` stays: skipping docs-only changes is worth it for feedback
-# latency and queue noise, not just money. Roughly half this repository's
-# commits touch only docs, and nothing here validates prose. A commit that
-# changes docs *and* code still runs everything — the filter skips only when
-# every changed file matches.
+# Always create a final result, including for documentation-only PRs. A required
+# workflow-level path filter would leave those PRs waiting for a missing check.
+# Heavy jobs are skipped only for known documentation or backend-test/declaration
+# changes. Runtime, dependencies, workflow changes and unknown paths run everything.
 #
 # `workflow_dispatch` runs the full matrix by hand against any ref.
 on:
   push:
     branches: [main]
-    paths-ignore: &docs_only
-      - "docs/**"
-      - "**/*.md"
-      - LICENSE
-      - THIRD-PARTY-NOTICES.md
-      - .gitignore
   pull_request:
-    paths-ignore: *docs_only
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
@@ -35,8 +30,25 @@ concurrency:
 
 
 jobs:
+  scope:
+    name: CI scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Determine selected gates
+        id: plan
+        run: python3 infra/ci_scope.py plan
+
   dependency-audit:
     name: Dependency audit
+    needs: scope
+    if: needs.scope.outputs.mode != 'docs'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -75,7 +87,10 @@ jobs:
 
   backend:
     name: Backend (lint, types, tests)
+    needs: scope
+    if: needs.scope.outputs.mode != 'docs'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: apps/server
@@ -93,16 +108,20 @@ jobs:
       - name: Sync dependencies (provisions Python 3.12 from .python-version)
         run: uv sync --frozen
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run ruff format --check . ../../infra/ci_scope.py
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run ruff check . ../../infra/ci_scope.py
       - name: mypy
-        run: uv run mypy src packaging
-      - name: pytest
-        run: uv run pytest
+        run: uv run mypy src packaging ../../infra/ci_scope.py
+      - name: CI backend driver syntax
+        run: bash -n ../../infra/ci_backend.sh
+      - name: pytest (memory fixtures and disk safety)
+        run: bash ../../infra/ci_backend.sh
 
   sidecar:
     name: Packaged sidecar (build + smoke test)
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     # The unit suite imports from source, where every module is present, so it
     # structurally cannot catch a PyInstaller bundle missing a dynamically
     # resolved import — that failure only appears when the frozen code path
@@ -137,6 +156,8 @@ jobs:
 
   frontend:
     name: Frontend (lint, types, unit, build, browser e2e)
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -168,6 +189,8 @@ jobs:
 
   fullstack-e2e:
     name: Full-stack e2e (real backend)
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -197,6 +220,8 @@ jobs:
 
   desktop-linux:
     name: Desktop Rust (Ubuntu)
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     env:
       CAIRNDEX_BUILD_COMMIT: ${{ github.sha }}
@@ -249,6 +274,8 @@ jobs:
 
   desktop-macos:
     name: Desktop shell (macOS)
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: macos-latest
     env:
       CAIRNDEX_BUILD_COMMIT: ${{ github.sha }}
@@ -344,6 +371,8 @@ jobs:
 
   docker:
     name: Docker build
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -360,3 +389,27 @@ jobs:
         run: ./infra/docker/smoke.sh cairndex:ci
       - name: Backup and restore acceptance
         run: ./infra/docker/backup-restore-smoke.sh cairndex:ci
+
+  result:
+    name: CI result
+    if: always()
+    needs:
+      - scope
+      - dependency-audit
+      - backend
+      - sidecar
+      - frontend
+      - fullstack-e2e
+      - desktop-linux
+      - desktop-macos
+      - docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require every selected gate to pass
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 infra/ci_scope.py result
