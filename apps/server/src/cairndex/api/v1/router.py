@@ -4,6 +4,7 @@ from cairndex.api.v1 import (
     auth,
     bundles,
     catalog_replicas,
+    conversions,
     devices,
     exports,
     file_ops,
@@ -33,6 +34,7 @@ from cairndex.api.v1 import (
 router = APIRouter(prefix="/api/v1")
 # Global (registry) routes.
 router.include_router(health.router)
+router.include_router(conversions.router)
 router.include_router(libraries.router)
 router.include_router(replicas.router)
 router.include_router(catalog_replicas.router)

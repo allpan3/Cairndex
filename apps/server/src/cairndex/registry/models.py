@@ -151,3 +151,31 @@ class RecoveryTask(RegistryBase):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[CreatedAt]
+
+
+class ConversionTask(RegistryBase):
+    """One owner-started step of a legacy library conversion (ADR-0038).
+
+    Keyed by root path because a legacy library is not registered as a usable
+    library. The attempt names the private workspace and the backup folder.
+    """
+
+    __tablename__ = "conversion_tasks"
+    __table_args__ = (
+        Index("ix_conversion_tasks_state", "state", "created_at", "id"),
+        Index(
+            "uq_conversion_tasks_active",
+            "root_path",
+            unique=True,
+            sqlite_where=text("state IN ('queued', 'running')"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    root_path: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(String(20))
+    attempt: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(20))
+    body: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[CreatedAt]

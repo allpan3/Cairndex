@@ -147,7 +147,7 @@ def configure_access(
     """Change only this server's guard, with current-passphrase reauthentication."""
     root = _library_root(registry, library_id)
     if library_package.read_manifest(root).replica is None:
-        raise ReplicaError("Legacy library format is not supported")
+        raise ReplicaError("This library uses the old format. Convert it before opening.")
     with _settings_lock:
         authorize_library(
             registry,

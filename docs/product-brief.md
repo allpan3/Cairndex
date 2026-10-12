@@ -4,9 +4,10 @@
 
 [ADR-0035](adr/0035-portable-library-format.md) is the accepted target: one ordinary
 portable library, private working databases, normal format-three creation and
-refusal of old packages. The offline migration foundation is a prerequisite.
-Current extraction state and functional acceptance are recorded in
-[STATUS](STATUS.md). No owner conversion is available.
+refusal of old packages by normal Open.
+[ADR-0038](adr/0038-legacy-library-conversion.md) adds reviewed owner conversion.
+It retains the old metadata folder, leaves source media untouched and supports
+Undo. Current qualification is recorded in [STATUS](STATUS.md).
 
 This document describes the Cairndex product model and long-term direction. Agent operating rules live in [`AGENTS.md`](../AGENTS.md); current implementation status lives in [`docs/STATUS.md`](STATUS.md); consequential architecture decisions live in [`docs/adr/`](adr/).
 

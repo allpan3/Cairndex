@@ -8001,3 +8001,51 @@ code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Conversion reports stay readable inside the existing modal and its focus trap. */
+.conversion-dialog {
+  max-width: 760px;
+}
+.conversion-dialog p {
+  margin: 0;
+}
+.conversion-dialog h3 {
+  margin: 0 0 8px;
+}
+.conversion-path {
+  overflow-wrap: anywhere;
+}
+.conversion-report {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.conversion-counts {
+  margin: 8px 0;
+}
+.conversion-counts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.conversion-counts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.conversion-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+.conversion-warning {
+  color: var(--warn);
+}
+.conversion-dialog .modal__actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .conversion-report {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}

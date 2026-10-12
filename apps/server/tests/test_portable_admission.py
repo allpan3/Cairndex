@@ -70,7 +70,7 @@ def test_legacy_open_and_create_are_refused_without_changes(isolated_client, tmp
     }
     result = isolated_client.post("/api/v1/libraries/register", json={"root_path": str(root)})
     assert result.status_code == 409
-    assert "Legacy library format is not supported" in result.json()["message"]
+    assert "uses the old format" in result.json()["message"]
     result = isolated_client.post(
         "/api/v1/libraries/create", json={"root_path": str(root), "display_name": "Example"}
     )
@@ -111,7 +111,7 @@ def test_old_registry_rows_cannot_bypass_format_admission(
     ):
         response = isolated_client.get(base + suffix)
         assert response.status_code == 409, (suffix, response.text)
-        assert "Legacy library format is not supported" in response.json()["message"]
+        assert "uses the old format" in response.json()["message"]
     assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 409
     assert isolated_client.post(base + "/ownership/reopen").status_code == 409
     assert before == {

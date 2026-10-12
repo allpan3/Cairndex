@@ -1027,3 +1027,26 @@ adds the joined catalog/conflict/source/recovery workflow and verifies received
 drafts, saved source receipts and bytes after both restart modes. Use a fresh
 disposable root, separate private data/snapshot directories, a unique container
 and a loopback endpoint. No production NAS or release publication is implied.
+
+## Legacy conversion checks
+
+Owner conversion uses `replicas.catalog.legacy_input`, `legacy_conversion` and
+`replicas.conversion_tasks`. The global `/api/v1/libraries/conversions/tasks`
+API accepts bounded intent and returns an operation ID. Its worker performs
+inspection, preparation and metadata swaps. Conversion requests bypass the
+browser metadata edit queue and follow connection scope only.
+
+Focused checks use synthetic metadata and media:
+
+```bash
+cd apps/server
+uv run pytest tests/test_legacy_conversion.py tests/test_legacy_conversion_safety.py tests/test_legacy_conversion_api.py
+cd ../web
+npm run test:e2e -- e2e/legacy-conversion.spec.ts
+```
+
+The API tests drive the worker explicitly. The browser test uses an isolated
+real backend with its worker enabled. It drops an accepted activation reply,
+reopens the same task, saves a converted edit and verifies its retention after
+Undo. Historical-release and mounted-storage qualification remain separate from
+current-schema fixture coverage. Record actual results in `docs/STATUS.md`.

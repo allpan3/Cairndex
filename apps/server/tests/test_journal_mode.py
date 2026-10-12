@@ -519,4 +519,4 @@ def test_legacy_network_database_is_refused_before_open(
     assert response.status_code == 409
     body = response.json()
     assert body["code"] == "library_format_unsupported"
-    assert "Legacy library format is not supported" in body["message"]
+    assert "uses the old format" in body["message"]

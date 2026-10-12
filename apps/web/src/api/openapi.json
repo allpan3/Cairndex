@@ -3415,6 +3415,309 @@
         "title": "ContinueWatchingProgressRead",
         "type": "object"
       },
+      "ConversionInspectionRead": {
+        "properties": {
+          "blocking": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking",
+            "type": "array"
+          },
+          "caches": {
+            "title": "Caches",
+            "type": "boolean"
+          },
+          "converts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Converts",
+            "type": "object"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "lease": {
+            "enum": [
+              "absent",
+              "released",
+              "fresh",
+              "stale",
+              "unreadable"
+            ],
+            "title": "Lease",
+            "type": "string"
+          },
+          "library_uuid": {
+            "title": "Library Uuid",
+            "type": "string"
+          },
+          "passphrase": {
+            "title": "Passphrase",
+            "type": "boolean"
+          },
+          "stays_in_backup": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Stays In Backup",
+            "type": "object"
+          }
+        },
+        "required": [
+          "library_uuid",
+          "display_name",
+          "lease",
+          "passphrase",
+          "caches"
+        ],
+        "title": "ConversionInspectionRead",
+        "type": "object"
+      },
+      "ConversionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "inspect",
+              "prepare",
+              "activate",
+              "undo"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "confirm_stale_lease": {
+            "default": false,
+            "title": "Confirm Stale Lease",
+            "type": "boolean"
+          },
+          "operation": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt"
+          },
+          "root_path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Root Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "action",
+          "root_path"
+        ],
+        "title": "ConversionRequest",
+        "type": "object"
+      },
+      "ConversionResultRead": {
+        "description": "Bounded review fields; object inventories and private paths stay server-side.",
+        "properties": {
+          "attempt": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "backup_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Name"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "inspection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversionInspectionRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "library_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Uuid"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt"
+          },
+          "retained": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retained"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "converted",
+                  "restored"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "title": "ConversionResultRead",
+        "type": "object"
+      },
+      "ConversionTaskRead": {
+        "properties": {
+          "action": {
+            "enum": [
+              "inspect",
+              "prepare",
+              "activate",
+              "undo"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "attempt": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Attempt",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversionResultRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "root_path": {
+            "title": "Root Path",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "root_path",
+          "action",
+          "attempt",
+          "state"
+        ],
+        "title": "ConversionTaskRead",
+        "type": "object"
+      },
       "CountsResponse": {
         "description": "Generic id \u2192 bundle-count map (collections, tags).",
         "properties": {
@@ -6667,6 +6970,11 @@
               }
             ],
             "title": "Manifest Display Name"
+          },
+          "needs_conversion": {
+            "default": false,
+            "title": "Needs Conversion",
+            "type": "boolean"
           }
         },
         "required": [
@@ -10144,6 +10452,133 @@
         "summary": "List Libraries",
         "tags": [
           "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/conversions/tasks": {
+      "post": {
+        "operationId": "start_api_v1_libraries_conversions_tasks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversionTaskRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "library-conversions"
+        ]
+      }
+    },
+    "/api/v1/libraries/conversions/tasks/{identity}": {
+      "get": {
+        "operationId": "task_api_v1_libraries_conversions_tasks__identity__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Identity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversionTaskRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Task",
+        "tags": [
+          "library-conversions"
+        ]
+      }
+    },
+    "/api/v1/libraries/conversions/tasks/{identity}/retry": {
+      "post": {
+        "operationId": "retry_api_v1_libraries_conversions_tasks__identity__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Identity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversionTaskRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry",
+        "tags": [
+          "library-conversions"
         ]
       }
     },

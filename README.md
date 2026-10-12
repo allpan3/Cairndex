@@ -10,10 +10,11 @@ Normal Create uses format-three portable libraries. Open refuses old
 and caches stay private to each server. The library contains immutable metadata
 history and its descriptor. There is one ordinary library concept.
 
-The [migration foundation](docs/replica-migration.md) is restricted to disposable
-fixtures. `CONVERSION_AVAILABLE = False`; there is no owner conversion command.
-Do not use an old real library with this application before separate migration
-qualification. The [extraction ledger](docs/audit-extraction.md) records acceptance.
+The [conversion workflow](docs/replica-migration.md) inspects and prepares an old
+library before an explicit metadata-folder swap. It retains the old metadata and
+leaves media untouched. Undo retains converted history and restores the old folder.
+The [status record](docs/STATUS.md) lists qualification and the owner-test checkpoint.
+The [extraction ledger](docs/audit-extraction.md) records earlier acceptance.
 
 Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
@@ -33,6 +34,7 @@ agents working in this repository.
 
 ## Features and qualification
 
+- Reviewed legacy conversion, retained metadata backups and explicit Undo.
 - Library Create/Open, separate per-server access protection, Release/Reopen,
   private snapshots and explicit recovery review.
 - Reviewed Update, stable file identity, metadata browsing and editing,

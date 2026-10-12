@@ -10,6 +10,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Reviewed conversion of old libraries to portable format three. Inspection and
+  private preparation verify authored metadata before the owner activates an
+  exact review. The original metadata folder stays in a backup; media remains
+  untouched. Durable retries resume interrupted swaps. Undo retains converted
+  history and private work while restoring the old folder. Libraries provides
+  conversion review and resume controls. Old passphrases, resume positions,
+  caches, retired prototype data and old trash remain in the backup.
+
 - Optional stable local macOS sidecar signing with strict identity preflight and
   disposable Keychain qualification across changed executable builds.
   Its disposable CI Keychain explicitly supports headless signing while keeping
@@ -26,6 +34,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   preserving arriving entries while avoiding stale positive stat results.
 
 ### Security
+
+- Resolve stopped conversion swap checks from the matching saved task. Incoming
+  setup paths select tasks; only accepted stopped swaps trigger metadata checks.
 
 - Resolve picker-upload recovery paths from the persisted upload identity;
   request text selects the record and strict token and symlink checks remain in force.

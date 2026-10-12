@@ -57,6 +57,7 @@ def probe_path(db: RegistryDbSession, path: Annotated[str, Query()]) -> PathProb
         already_registered_id=probe.already_registered_id,
         manifest_display_name=probe.manifest_display_name,
         folder_name=probe.folder_name,
+        needs_conversion=probe.needs_conversion,
     )
 
 

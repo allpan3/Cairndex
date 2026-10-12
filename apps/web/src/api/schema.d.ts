@@ -216,6 +216,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/conversions/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_v1_libraries_conversions_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/conversions/tasks/{identity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Task */
+        get: operations["task_api_v1_libraries_conversions_tasks__identity__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/conversions/tasks/{identity}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retry_api_v1_libraries_conversions_tasks__identity__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/create": {
         parameters: {
             query?: never;
@@ -4845,6 +4896,98 @@ export interface components {
             /** Position S */
             position_s: number;
         };
+        /** ConversionInspectionRead */
+        ConversionInspectionRead: {
+            /** Blocking */
+            blocking?: string[];
+            /** Caches */
+            caches: boolean;
+            /** Converts */
+            converts?: {
+                [key: string]: number;
+            };
+            /** Display Name */
+            display_name: string;
+            /**
+             * Lease
+             * @enum {string}
+             */
+            lease: "absent" | "released" | "fresh" | "stale" | "unreadable";
+            /** Library Uuid */
+            library_uuid: string;
+            /** Passphrase */
+            passphrase: boolean;
+            /** Stays In Backup */
+            stays_in_backup?: {
+                [key: string]: number;
+            };
+        };
+        /** ConversionRequest */
+        ConversionRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "inspect" | "prepare" | "activate" | "undo";
+            /** Attempt */
+            attempt?: string | null;
+            /**
+             * Confirm Stale Lease
+             * @default false
+             */
+            confirm_stale_lease: boolean;
+            /** Operation */
+            operation: string;
+            /** Receipt */
+            receipt?: string | null;
+            /** Root Path */
+            root_path: string;
+        };
+        /**
+         * ConversionResultRead
+         * @description Bounded review fields; object inventories and private paths stay server-side.
+         */
+        ConversionResultRead: {
+            /** Attempt */
+            attempt?: string | null;
+            /** Backup Name */
+            backup_name?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            inspection?: components["schemas"]["ConversionInspectionRead"] | null;
+            /** Library Id */
+            library_id?: string | null;
+            /** Library Uuid */
+            library_uuid?: string | null;
+            /** Receipt */
+            receipt?: string | null;
+            /** Retained */
+            retained?: string | null;
+            /** State */
+            state?: ("converted" | "restored") | null;
+        };
+        /** ConversionTaskRead */
+        ConversionTaskRead: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "inspect" | "prepare" | "activate" | "undo";
+            /** Attempt */
+            attempt: string;
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: string;
+            result?: components["schemas"]["ConversionResultRead"] | null;
+            /** Root Path */
+            root_path: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed" | "interrupted";
+        };
         /**
          * CountsResponse
          * @description Generic id → bundle-count map (collections, tags).
@@ -6024,6 +6167,11 @@ export interface components {
             is_library: boolean;
             /** Manifest Display Name */
             manifest_display_name: string | null;
+            /**
+             * Needs Conversion
+             * @default false
+             */
+            needs_conversion: boolean;
         };
         /**
          * PathSuggestion
@@ -7317,6 +7465,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryRead"][];
+                };
+            };
+        };
+    };
+    start_api_v1_libraries_conversions_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_api_v1_libraries_conversions_tasks__identity__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_api_v1_libraries_conversions_tasks__identity__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionTaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

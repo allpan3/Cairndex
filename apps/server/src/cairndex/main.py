@@ -16,6 +16,7 @@ from cairndex.media.exports import shutdown_export_manager
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.persistence.engine import discard_all_plans
 from cairndex.registry.engine import get_registry_sessionmaker
+from cairndex.replicas.conversion_tasks import ConversionWorker
 from cairndex.replicas.recovery_tasks import RecoveryWorker
 from cairndex.replicas.service import ReplicaWorker
 from cairndex.version import APP_VERSION
@@ -31,12 +32,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     replicas = ReplicaWorker()
     replicas.start()
     recovery_worker: RecoveryWorker | None = None
+    conversion_worker: ConversionWorker | None = None
     if settings.worker_enabled:
         recovery_worker = RecoveryWorker(get_registry_sessionmaker())
         recovery_worker.start()
+        conversion_worker = ConversionWorker(get_registry_sessionmaker())
+        conversion_worker.start()
     try:
         yield
     finally:
+        if conversion_worker is not None:
+            conversion_worker.stop()
         if recovery_worker is not None:
             recovery_worker.stop()
         replicas.stop()

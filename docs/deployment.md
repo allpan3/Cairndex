@@ -348,7 +348,8 @@ reconfigures the other.
 
 **Schema compatibility:** the registry is bootstrapped with `create_all` and
 portable private stores use validated additive upgrades. Old library admission
-and automatic format conversion remain unavailable. Unknown schema objects fail
+remains unavailable. Reviewed conversion is a separate owner-setup operation;
+automatic conversion remains unavailable. See [conversion](replica-migration.md). Unknown schema objects fail
 closed. Before an upgrade, keep verified private snapshots, protected administrative
 state, immutable history and source backups; record the prior image and read the
 target changelog. Downgrade only when its schema compatibility is explicit, or
