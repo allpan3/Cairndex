@@ -14,6 +14,7 @@ from cairndex.registry.models import ConversionTask, RegisteredLibrary
 from cairndex.replicas import conversion_tasks, service
 from cairndex.replicas.catalog import legacy_conversion
 from tests.test_legacy_conversion import _legacy, _tree
+from tests.test_replica_recovery_binary import eventually
 
 TASKS = "/api/v1/libraries/conversions/tasks"
 
@@ -84,10 +85,12 @@ def test_review_activate_release_and_undo(conversion_api, registered):
         assert row.schema_version == 3 and row.status == LibraryStatus.AVAILABLE
     base = f"/api/v1/libraries/{library}"
     assert client.post(base + "/ownership/reopen").status_code == 200
-    client.get(base + "/replica/status")
-    for _ in range(8):
+
+    def joined_status():
         service.exchange(library)
-    assert client.get(base + "/replica/status").json()["ready"]
+        return client.get(base + "/replica/status").json()
+
+    eventually(joined_status, lambda status: status["ready"])
     refused = _step(conversion_api, "undo", **fields)
     assert refused["state"] == "failed" and "Release" in refused["error"]
     assert client.post(base + "/ownership/release").status_code == 200
