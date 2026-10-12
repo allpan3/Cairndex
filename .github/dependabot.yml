@@ -28,6 +28,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      # A new major describes Node APIs that the Node 22 runtime in CI lacks.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       web-runtime:
         dependency-type: production
