@@ -3,6 +3,8 @@
 Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. The application,
 package source and dependency locks are unchanged. This review separates CI test
 execution time from the missed completion notifications after PR #47 and PR #49.
+[PR #50](https://github.com/allpan3/Cairndex/pull/50) merged as `eaa0674d` from
+fully qualified head `f26cf9df` on 2026-10-12 UTC.
 
 ## Completed hosted baselines
 
@@ -74,10 +76,36 @@ in both test phases, and the backend is bounded to 25 minutes.
 
 The optimized test phases total about **6 minutes 37 seconds on this guest**.
 Hardware, Python and architecture differ from hosted runners, so this is not a
-claim of a measured hosted speedup. The first CI PR must establish hosted timing.
-Frontend/browser/native runtime gates were not repeated locally because their
-source is unchanged; the CI PR selects full scope and must run them remotely.
+claim of a measured hosted speedup. The completed hosted run below provides a
+separate measurement. Frontend/browser/native runtime gates were not repeated
+locally because their source is unchanged; they passed remotely in full scope.
 Raw guest receipts stay outside Git.
+
+## Hosted validation
+
+[Run 38192022665](https://github.com/allpan3/Cairndex/actions/runs/38192022665)
+passed full scope on `f26cf9df`. All eight matrix jobs, scope and final result
+passed, including dependency audit, package smoke, both browser suites, Ubuntu
+Rust, macOS Keychain/package/build checks and Docker build/media/backup recovery.
+Independent privacy, both CodeQL analyses, CodeQL security and dependency review
+also passed. All six required checks were successful and exact-head merge
+readiness was clean before the merge.
+
+| Measurement | Result |
+| --- | ---: |
+| Full run, creation through completion | 577 s (9m37s) |
+| Backend job | 528 s (8m48s) |
+| Pytest driver step | 486 s (8m06s) |
+| Isolated-memory phase | 1,801 passed in 449.22 s |
+| Ordinary-disk safety phase | 55 passed in 27.56 s |
+| Full-stack browser job | 360 s |
+| macOS job | 280 s |
+
+The hosted driver reported a real isolated memory mount and ran all **1,856**
+tests without the guest's Linux-arm64 platform exclusion. Neither partition lost
+tests. The pytest step is below the prior 501–915 s range; these are uncontrolled
+runs, so a consistent speedup requires repeated comparable measurements. Backend
+remains the longest job. Raw logs and timing receipts stay outside Git.
 
 ## Completion-monitoring rollout
 
@@ -89,8 +117,8 @@ must also be updated for that signal to drive monitoring.
 
 With owner approval, [PR #50](https://github.com/allpan3/Cairndex/pull/50) was
 opened and the following required checks were activated. The completion result
-becomes reported after its dependencies finish; requiring it while the matrix
-runs prevents an early privacy-only completion notification.
+becomes reported after its dependencies finish; requiring it blocks merging
+until every selected job passes.
 
 | Context | Required source app |
 | --- | --- |
@@ -102,11 +130,17 @@ runs prevents an early privacy-only completion notification.
 | `Review dependency changes` | GitHub Actions, 15368 |
 
 The API readback verified these checks, preserved strict/up-to-date behavior and
-confirmed every other protection field unchanged. Full hosted validation remains
-pending. Read readiness on the exact head before merging, then confirm the main
-configuration again. Other open PRs will need the refreshed base/new workflow before
+confirmed every other protection field unchanged. Full hosted validation passed,
+the exact head was verified and merged, and the resulting main requirements were
+confirmed again. Other open PRs will need the refreshed base/new workflow before
 their completion check can satisfy the rule. Native PR watching remains the
 monitor; no separate polling loop or scheduled watcher is introduced.
+
+Monitoring also exposed a limit: T3 Code first announced five successful reported
+requirements while `CI result` did not exist yet. GitHub still reported the PR
+blocked. After the final job succeeded, T3 Code delivered a six-check completion
+notification and the approved PR was merged. A notification is a prompt to read
+readiness, including missing required contexts, rather than merge authorization.
 
 A workflow-level path filter would leave a required check missing on docs-only
 PRs, which is why scope is selected inside the always-triggered workflow. See

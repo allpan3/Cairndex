@@ -1,6 +1,6 @@
 # Project status
 
-## Current: CI runtime and completion review
+## Current: CI runtime and completion rollout complete
 
 Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. Four completed
 hosted runs put pytest at 501–915 seconds and more than 90% of backend wall time;
@@ -17,12 +17,26 @@ static checks and 89 focused CI/privacy regressions pass in both guests. Workflo
 validation, real disposable-mount cleanup and Docker context/build checks pass.
 The interrupted disk diagnostic is preserved and is not a passing full gate.
 
+The [hosted PR run](https://github.com/allpan3/Cairndex/actions/runs/38192022665)
+passed every selected job and all six required checks on `f26cf9df`. It ran all
+1,856 backend tests: 1,801 on isolated tmpfs in 449.22 seconds and 55 disk safety
+tests in 27.56 seconds, with no platform exclusion. Full CI took 577 seconds;
+backend took 528 seconds and its pytest step took 486 seconds. That is below the
+historical pytest range, but one uncontrolled run does not establish a consistent
+hosted speedup.
+
 No application runtime source, dependency lock or privacy profile changed.
-[PR #50](https://github.com/allpan3/Cairndex/pull/50) is open. The owner-approved
-required checks are active: CI result, trusted privacy, both CodeQL analyses,
+[PR #50](https://github.com/allpan3/Cairndex/pull/50) merged as `eaa0674d` after
+exact-head readiness was verified. Local main was fast-forwarded to the merge.
+The owner-approved required checks are active: CI result, trusted privacy,
+both CodeQL analyses,
 CodeQL security and dependency review, each bound to its source app. Strictness
-and every other protection field are preserved. The full hosted matrix and
-exact-head readiness remain to be verified before the approved merge.
+and every other protection field were preserved and the requirements were
+confirmed after merge. The watcher issued an early five-check notification while
+CI result was missing; GitHub blocked the merge. Its later six-check notification
+reported full completion. Always verify missing requirements and the exact head.
+The rollout is complete; further performance measurements and deferred product
+qualification remain separate tasks.
 See [CI review](ci-review.md) for the concrete result and rollout record.
 
 ## Source operations and distribution/deployment merged
