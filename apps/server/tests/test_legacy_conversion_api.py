@@ -184,3 +184,43 @@ def test_restart_does_not_abandon_queued_preparation(conversion_api):
     worker.recover_interrupted()
     assert client.get(TASKS + "/" + operation).json()["state"] == "interrupted"
     assert pkg.read_manifest(root).replica is None
+
+
+@pytest.mark.parametrize("action", ["activate", "undo"])
+@pytest.mark.parametrize("state", ["failed", "interrupted"])
+def test_stopped_swap_blocks_only_its_missing_metadata(conversion_api, action, state):
+    client, root, factory, _ = conversion_api
+    backup = root / ".synthetic-retained-metadata"
+    (root / ".cairndex").rename(backup)
+    original = _tree(backup)
+    with factory.begin() as session:
+        session.add(
+            ConversionTask(
+                id=uuid4().hex,
+                root_path=root.as_posix(),
+                action=action,
+                attempt=uuid4().hex,
+                body={},
+                state=state,
+            )
+        )
+    assert client.get("/api/v1/libraries/probe-path", params={"path": str(root)}).status_code == 409
+    assert (
+        client.post("/api/v1/libraries/register", json={"root_path": str(root)}).status_code == 409
+    )
+    assert (
+        client.post(
+            "/api/v1/libraries/create",
+            json={"root_path": str(root), "display_name": "Synthetic replacement"},
+        ).status_code
+        == 409
+    )
+    unrelated = root.parent / "Synthetic unrelated folder"
+    assert (
+        client.get("/api/v1/libraries/probe-path", params={"path": str(unrelated)}).status_code
+        == 200
+    )
+    assert _tree(backup) == original and not (root / ".cairndex").exists()
+    backup.rename(root / ".cairndex")
+    restored = client.get("/api/v1/libraries/probe-path", params={"path": str(root)})
+    assert restored.status_code == 200 and restored.json()["needs_conversion"]

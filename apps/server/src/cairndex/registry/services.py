@@ -63,18 +63,19 @@ def _conversion_guard(session: Session, root: Path) -> None:
     )
     if active is not None:
         raise ConflictError("A conversion step is running for this folder. Wait for it to finish.")
-    if not (root / ".cairndex").exists():
-        unfinished = session.scalar(
-            select(ConversionTask.id)
-            .where(
-                ConversionTask.root_path == root.as_posix(),
-                ConversionTask.action.in_(("activate", "undo")),
-                ConversionTask.state.in_(("failed", "interrupted")),
-            )
-            .limit(1)
+    unfinished = session.scalar(
+        select(ConversionTask)
+        .where(
+            ConversionTask.root_path == root.as_posix(),
+            ConversionTask.action.in_(("activate", "undo")),
+            ConversionTask.state.in_(("failed", "interrupted")),
         )
-        if unfinished is not None:
-            raise ConflictError("The metadata swap stopped. Retry that conversion step first.")
+        .limit(1)
+    )
+    # Only an accepted stopped swap needs this disk check. Its saved root is
+    # authoritative; an incoming setup path only selects the matching task.
+    if unfinished is not None and not (Path(unfinished.root_path) / ".cairndex").exists():
+        raise ConflictError("The metadata swap stopped. Retry that conversion step first.")
 
 
 def _insert(session: Session, *, manifest: pkg.LibraryManifest, root: Path) -> RegisteredLibrary:

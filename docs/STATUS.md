@@ -85,6 +85,15 @@ are declared on main. The conversion docs include that unchanged synthetic PNG.
 The feature is prepared for publication; hosted CI must pass before its merge.
 New Dependabot PRs #52–#56 remain separate work.
 
+Conversion [PR #59](https://github.com/allpan3/Cairndex/pull/59) is open. Its first
+CodeQL scan flags the stopped-swap metadata check on an incoming setup path.
+The follow-up binds that check to the matching saved task and adds admission
+coverage for failed/interrupted activation and Undo. Follow-up qualification
+and complete hosted CI remain pending.
+The conversion API readiness test also failed with the original guard on Linux
+disk. It used eight exchange rounds instead of waiting for catalog readiness.
+The test now uses the existing bounded readiness helper; all ten API tests pass.
+
 ## CI runtime and completion rollout complete
 
 Branch `maintenance/ci-runtime-review` starts from main `01a8d6d3`. Four completed

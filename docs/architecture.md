@@ -20,7 +20,8 @@ Exact operation IDs resolve lost replies. Private review receipts bind the root,
 source checkpoint and prepared seed. Descriptor-relative staging and no-replace
 renames retain the original `.cairndex` folder. A conversion updates an old
 registry row in place and leaves the library released. Undo requires Release and
-private binding exclusion. [Conversion](replica-migration.md) describes its
+private binding exclusion. Admission checks inspect missing metadata only for a
+matching stopped task, using its saved root. [Conversion](replica-migration.md) describes its
 retained metadata and retry contract.
 
 The shared ORM, legacy routes and shared-folder lease utilities below remain
