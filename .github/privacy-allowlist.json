@@ -82,6 +82,14 @@
       ],
       "purpose": "Document reviewed portable source operations and recovery UI",
       "provenance": "Playwright capture of fresh synthetic folder and picker fixtures; reviewed edge to edge, with no owner media, paths, account data, or desktop content"
+    },
+    {
+      "sha256": "2f7be9538609a8995dcae7bf3874e7331d8559b18d1bcf52be9f13f39c2d8da4",
+      "paths": [
+        "docs/screenshots/legacy-conversion.png"
+      ],
+      "purpose": "Document reviewed legacy conversion and retained metadata backups",
+      "provenance": "PNG frame from a T3 collaborative browser capture of an isolated synthetic legacy fixture in a disposable container; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []

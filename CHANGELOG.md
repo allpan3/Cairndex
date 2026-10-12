@@ -49,6 +49,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Declare the synthetic legacy-conversion screenshot for independent publication
+  privacy checks before its feature branch publishes the image.
+
 - Update GitHub Actions, the desktop Tauri crates and CLI, and the web runtime and
   development dependencies, including Vitest 5, React 19.3, Vite 8.3 and
   Playwright 1.64. The desktop keymap test now pins muda 0.20, which maps Command
