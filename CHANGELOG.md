@@ -60,6 +60,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Declare the reviewed synthetic desktop file-copy screenshot before publishing
+  it with the feature. The declaration fixes its digest, path and provenance.
+
 - Record the completed dependency, Update/recovery and reviewed-conversion
   merges, hosted checks and remaining owner-test release checkpoint.
 
