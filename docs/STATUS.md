@@ -53,18 +53,27 @@ by this byte-copy workflow. Reviewed Update remains available; manual bundling
 belongs to the later restoration group. Viewer host-action failures remain
 visible and can be dismissed without interrupting playback.
 
-Earlier frontend lint, formatting, types, all 1,280 unit tests, production build
-and all 34 browser tests pass in both guests. Rust formatting and clippy pass;
-Linux passes 133 Rust tests and its launcher test. macOS passes 135 Rust tests
-with the bundled sidecar, the production app build and distribution license
-verification. Receipts: `desktop-files-linux-20261012-204301` and
-`desktop-files-mac-20261012-204358`. The interrupted Linux gate was rerun after
-the test VM reached its disk limit. Backend, Rust and dependency sources are
-unchanged in that feature snapshot; the backend suite was not repeated for this
-frontend change. Qualification of the feature with the repaired Rust lockfile
-is in progress.
+Final combined qualification with the repaired Rust lockfile passes dependency
+checks, frontend lint, formatting, types, all 1,280 unit tests and production
+builds in both guests. Rust formatting and clippy pass. Linux passes 133 Rust
+tests; macOS passes 135 with the real sidecar, sidecar build/smoke, the production
+app build and distribution license verification. Both launcher tests pass.
+Receipts: `desktop-files-final-linux-20261012-220657` and
+`desktop-files-final-mac-20261012-220720`. Backend and Rust source are unchanged
+relative to the base; the backend suite was not repeated locally.
 
-Synthetic native macOS checks cover automatic local mapping, Finder Reveal,
+The initial combined macOS browser run passed 33 of 34 cases. An unchanged
+path-menu test read its bounds before React chose the opening direction. The
+same failure occurred twice in 20 focused cases. A separate test repair retries
+the existing bounds and edge hit checks for up to five seconds. Both guests
+pass 20 repeated cases. A forced off-screen menu still fails while the larger
+viewport passes. Final static checks and all 34 browser tests pass in both
+guests: `desktop-browser-final-linux-20261012-221516` and
+`desktop-browser-final-mac-20261012-221534`. Only that test changed after the
+other combined gates; application source and dependencies stayed the same.
+
+Synthetic native macOS checks before the dependency repair cover automatic local
+mapping, Finder Reveal,
 Open in Default App, incoming Finder drop, picker selection, reviewed Copy and
 Undo, drag-out to Finder and a self-drop that opens no copy review. Filesystem
 checks confirm exact copied bytes and preserved originals. A 512 MiB picker

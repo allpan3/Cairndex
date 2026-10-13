@@ -226,24 +226,28 @@ test.describe('the suggestion menu stays on screen', () => {
 
       // The menu is on screen at both edges. It scrolls its own overflow, so
       // this is about the menu, not about every option being drawn at once.
-      const menu = (await page.locator('.path-input__menu').boundingBox())!
-      expect(menu.y, 'the menu starts above the window').toBeGreaterThanOrEqual(0)
-      expect(menu.y + menu.height, 'the menu runs past the window').toBeLessThanOrEqual(height)
+      // React chooses the opening direction after suggestions render.
+      // Retry the complete layout and hit test until that update is painted.
+      await expect(async () => {
+        const menu = (await page.locator('.path-input__menu').boundingBox())!
+        expect(menu.y, 'the menu starts above the window').toBeGreaterThanOrEqual(0)
+        expect(menu.y + menu.height, 'the menu runs past the window').toBeLessThanOrEqual(height)
 
-      // Both edges of the menu are actually painted where they claim to be: a
-      // dialog that clips leaves its own surface there while the layout box
-      // still reports the full menu.
-      for (const [edge, y] of [
-        ['top', menu.y + 4],
-        ['bottom', menu.y + menu.height - 4],
-      ] as const) {
-        const painted = await page.evaluate(
-          ([x, at]) =>
-            !!document.elementFromPoint(x as number, at as number)?.closest('.path-input__menu'),
-          [menu.x + menu.width / 2, y],
-        )
-        expect(painted, `the menu's ${edge} edge is clipped away`).toBe(true)
-      }
+        // Both edges of the menu are actually painted where they claim to be: a
+        // dialog that clips leaves its own surface there while the layout box
+        // still reports the full menu.
+        for (const [edge, y] of [
+          ['top', menu.y + 4],
+          ['bottom', menu.y + menu.height - 4],
+        ] as const) {
+          const painted = await page.evaluate(
+            ([x, at]) =>
+              !!document.elementFromPoint(x as number, at as number)?.closest('.path-input__menu'),
+            [menu.x + menu.width / 2, y],
+          )
+          expect(painted, `the menu's ${edge} edge is clipped away`).toBe(true)
+        }
+      }).toPass({ timeout: 5_000 })
 
       // And the far end of the list — reached by scrolling the menu itself —
       // still takes the click.

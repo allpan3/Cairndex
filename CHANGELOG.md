@@ -72,6 +72,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for the path suggestion menu's measured layout in its browser test.
+  Keep both edge hit tests so persistent clipping still fails.
+
 - Declare the reviewed synthetic desktop file-copy screenshot before publishing
   it with the feature. The declaration fixes its digest, path and provenance.
 
