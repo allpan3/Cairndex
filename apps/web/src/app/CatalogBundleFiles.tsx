@@ -1,3 +1,5 @@
+import { fileDragProps } from './dragOut'
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
@@ -13,7 +15,11 @@ export function CatalogBundleFiles({
   blocked,
   onCover,
   onOpen,
+  hostFiles,
+  onSelectHostFile,
 }: {
+  hostFiles?: LibraryHostFiles
+  onSelectHostFile?: (file: string | null) => void
   library: string
   bundle: string
   cover: string | null
@@ -56,8 +62,18 @@ export function CatalogBundleFiles({
         {page.error && <button onClick={() => void page.refetch()}>Retry bundle files</button>}
         {page.data?.files.length === 0 && <p>No files in this page.</p>}
         {page.data?.files.map((file) => (
-          <div key={file.id} className="catalog-inspector-file">
-            <button aria-pressed={selected === file.id} onClick={() => setSelected(file.id)}>
+          <div
+            key={file.id}
+            className="catalog-inspector-file"
+            {...fileDragProps(hostFiles?.onStartFileDrag, () => [file.relative_path])}
+          >
+            <button
+              aria-pressed={selected === file.id}
+              onClick={() => {
+                setSelected(file.id)
+                onSelectHostFile?.(file.id)
+              }}
+            >
               {file.relative_path}
             </button>
             {['image', 'video'].includes(file.media_kind) && (
@@ -86,8 +102,20 @@ export function CatalogBundleFiles({
         {error && <p role="alert">{error}</p>}
         {selected && (
           <>
-            <button onClick={() => setSelected(null)}>Close file details</button>
-            <CatalogFileDetails key={selected} library={library} file={selected} />
+            <button
+              onClick={() => {
+                setSelected(null)
+                onSelectHostFile?.(null)
+              }}
+            >
+              Close file details
+            </button>
+            <CatalogFileDetails
+              key={selected}
+              library={library}
+              file={selected}
+              hostFiles={hostFiles}
+            />
           </>
         )}
       </section>

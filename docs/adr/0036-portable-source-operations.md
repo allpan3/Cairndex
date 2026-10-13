@@ -81,5 +81,7 @@ delivered metadata/bytes, concurrent authors, external changes, path safety, acc
 Release and private recovery.
 
 Provider/NAS qualification and final installation/owner acceptance remain later groups.
-Incoming OS drag delivery remains paused. No source-write permission is implied by
-metadata publication capability.
+Incoming file selections use the portable upload and exact-review contract. HTML
+File drops preserve internal drags without Tauri native interception. Native delivery
+qualification belongs in STATUS. No source-write permission is implied by metadata
+publication capability.

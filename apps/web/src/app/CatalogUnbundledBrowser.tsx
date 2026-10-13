@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
 import type { components } from '../api/schema'
 import { CatalogFileDetails } from './CatalogFileDetails'
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 
 export function CatalogUnbundledBrowser({
   library,
   onReview,
+  hostFiles,
+  onHostPath,
 }: {
   library: string
   onReview: () => void
+  hostFiles?: LibraryHostFiles
+  onHostPath?: (path: string | null) => void
 }) {
   const [search, setSearch] = useState('')
   const [offset, setOffset] = useState(0)
@@ -24,6 +29,10 @@ export function CatalogUnbundledBrowser({
       }),
     refetchInterval: 2000,
   })
+  const path = page.data?.items.find((item) => item.id === selected)?.relative_path ?? null
+  useEffect(() => {
+    onHostPath?.(path)
+  }, [path, onHostPath])
   return (
     <div className="catalog-file-surface">
       <section className="catalog-unbundled" aria-label="Unbundled files">
@@ -81,7 +90,12 @@ export function CatalogUnbundledBrowser({
       </section>
       <aside className="inspector" aria-label="Unbundled file inspector">
         {selected ? (
-          <CatalogFileDetails key={selected} library={library} file={selected} />
+          <CatalogFileDetails
+            key={selected}
+            library={library}
+            file={selected}
+            hostFiles={hostFiles}
+          />
         ) : (
           <p>Select a file to see its details.</p>
         )}

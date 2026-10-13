@@ -7723,8 +7723,16 @@ code {
   flex-shrink: 0;
 }
 .catalog-ordinary-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
+}
+.catalog-ordinary-content > .catalog-bundle-surface,
+.catalog-ordinary-content > .catalog-file-surface {
+  flex: 1;
+  height: auto;
   min-height: 0;
 }
 .source-operation-toolbar {

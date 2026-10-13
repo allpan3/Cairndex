@@ -9,6 +9,7 @@ import { DEFAULT_PLAYER_PREFS, type PlayerPrefs } from '../types'
 import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
 import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
+import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
@@ -32,6 +33,7 @@ export function ReplicaViewer({
   onClose: () => void
 }) {
   const [picked, setPicked] = useState<string | null>(null)
+  const hostFiles = useLibraryHostFiles(library)
   const [prefs, setPrefs] = usePersistentState<PlayerPrefs>(
     `cairndex.replica.player.${getConnectionScopeKey()}.${library}`,
     DEFAULT_PLAYER_PREFS,
@@ -195,6 +197,8 @@ export function ReplicaViewer({
       savedMoments={first?.moments}
       onRetryMedia={retry}
       serverExports={false}
+      hostFiles={hostFiles}
+      hostPath={observation?.file.relative_path ?? null}
       startAt={
         target.fileId && target.time !== undefined
           ? { fileId: target.fileId, time: target.time }

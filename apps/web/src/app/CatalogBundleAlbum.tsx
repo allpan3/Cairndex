@@ -1,3 +1,6 @@
+import { ContextMenu } from './ContextMenu'
+import { useContextMenu } from './useContextMenu'
+import { hostFileMenuEntries } from './hostActions'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../api/replicas'
@@ -9,6 +12,7 @@ import type { BrowserNavigation } from './Browser'
 import { selectionRange, type SelectionModifiers } from './selection'
 import { rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import type { LayoutMode } from './types'
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 
 type Page = components['schemas']['CatalogAlbumPage']
 type Item = Page['items'][number]
@@ -21,6 +25,7 @@ export function CatalogBundleAlbum(props: {
   onBack: () => void
   onOpen: (file: string) => void
   onSelectFile: (file: string | null) => void
+  hostFiles?: LibraryHostFiles
 }) {
   const [directory, setDirectory] = useState<string | null>(null)
   return (
@@ -60,6 +65,7 @@ function AlbumPage({
   onOpen,
   onSelectFile,
   activeView = true,
+  hostFiles,
 }: {
   library: string
   bundle: string
@@ -71,6 +77,7 @@ function AlbumPage({
   onBack: () => void
   onOpen: (id: string) => void
   onSelectFile: (id: string | null) => void
+  hostFiles?: LibraryHostFiles
 }) {
   const [generation, setGeneration] = useState(0)
   const pages = useInfiniteQuery({
@@ -98,6 +105,7 @@ function AlbumPage({
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [notice, setNotice] = useState('')
+  const menu = useContextMenu()
   function select(id: string, modifiers: SelectionModifiers) {
     setSelected((previous) => {
       if (modifiers.shiftKey)
@@ -266,9 +274,23 @@ function AlbumPage({
                 onContextMenu: (event: React.MouseEvent) => {
                   event.preventDefault()
                   select(item.id, event)
-                  setNotice('Use the bundle inspector for metadata changes.')
+                  menu.open(event, [
+                    {
+                      label: 'Open in Cairndex',
+                      onClick: () => open(item),
+                      disabled: !item.file || !['image', 'video'].includes(item.file.media_kind),
+                    },
+                    ...(item.file && hostFiles
+                      ? hostFileMenuEntries(hostFiles.labels, hostFiles, item.file.relative_path)
+                      : []),
+                  ])
                 },
-                dragProps: fileDragProps(undefined, () => []),
+                dragProps: fileDragProps(item.file ? hostFiles?.onStartFileDrag : undefined, () =>
+                  (selected.has(item.id)
+                    ? items.filter((member) => selected.has(member.id))
+                    : [item]
+                  ).flatMap((member) => (member.file ? [member.file.relative_path] : [])),
+                ),
                 catalog: true,
               }
               if (item.file)
@@ -323,6 +345,7 @@ function AlbumPage({
           </button>
         )}
       </div>
+      <ContextMenu state={menu.state} onClose={menu.close} />
     </div>
   )
 }

@@ -1,13 +1,18 @@
 # Portable source operations
 
-File Browser provides **Copy, Rename and Move** and **Trash and Undo**. Each opens file
+The ordinary browser provides **Add Files…**, **Copy, Rename and Move** and **Trash and Undo**. Each opens file
 operations and recovery for the selected library. Enable file operations on that serving
 instance first. The deployment must permit writes. A protected library requires its
 passphrase when enabling writes.
 
 Select a regular file or directory and choose an action. Enter a library-relative
 destination for Copy, Rename or Move. **Copy files…** receives files through the file
-picker; the originals stay in place. Prepare the operation, inspect its saved review,
+picker; the originals stay in place. **Add Files…** and regular-file drops open the
+same review. Select **Prepare copies** to stage chosen bytes. Each file has its own
+saved review. The copy destination is the current File Browser folder, or the library
+root on other surfaces. Selection alone changes no source files.
+
+Prepare the operation, inspect its saved review,
 then choose **Apply reviewed operation**. An occupied destination offers Replace, Skip
 or Keep Both. Keep Both selects a vacant suffix during preparation and checks that
 absence again during application. It cannot overwrite a new arrival.
@@ -19,6 +24,18 @@ interrupted work also support a separate recovery copy. Retry is explicit. Cance
 stops preparation and application before capture; after capture, recovery must finish
 the saved operation. Release and write-mode revocation stop admission and are checked
 between byte blocks.
+
+File selection accepts at most 128 regular files, each no larger than 128 GiB.
+Folder drops are refused. Copying does not link a dropped file in place or infer
+its host location. Use reviewed Update to admit existing library files. Stop an
+upload with Cancel upload. Already prepared operations remain available in Saved
+file operations and require their own Apply. Native Reveal, Open and drag-out
+need a verified local mapping; picker and dropped byte copies do not.
+
+![Reviewed copies of synthetic files](screenshots/desktop-file-copies.png)
+
+Synthetic browser example after two reviewed copies. Each selected file has its
+own saved operation. All names and file contents in this example are generated.
 
 ## Identity and recovery
 

@@ -14,6 +14,10 @@ import {
 import { SourceOperationReview } from './SourceOperationReview'
 import { useCatalogDraft } from './useCatalogDraft'
 import { useModalDialog } from './useModalDialog'
+import { useDesktopMenu } from '../desktop/useDesktopMenu'
+import { isBlockingSurfaceOpen } from '../desktop/fileDrop'
+import { incomingFilesError } from '../desktop/useIncomingFileDrop'
+import { captureRequestScope } from '../api/requestScope'
 
 type Props = {
   library: string
@@ -21,6 +25,8 @@ type Props = {
   file: FileBrowserEntry | null
   directory: string
   onReviewEntity: (family: string, id: string) => void
+  incoming?: File[] | null
+  onDismissIncoming?: () => void
 }
 
 function validInput(body: { request: string }) {
@@ -55,9 +61,19 @@ function validInput(body: { request: string }) {
 
 export function SourceOperations(props: Props) {
   const [open, setOpen] = useState(false)
+  useDesktopMenu((action) => {
+    if (action === 'add-files' && !isBlockingSurfaceOpen()) setOpen(true)
+  })
+  const close = () => {
+    setOpen(false)
+    props.onDismissIncoming?.()
+  }
   return (
     <>
       <div className="toolbar source-operation-toolbar" aria-label="File operations">
+        <button className="btn" onClick={() => setOpen(true)}>
+          Add Files…
+        </button>
         <button className="btn" onClick={() => setOpen(true)}>
           Copy, Rename and Move
         </button>
@@ -65,7 +81,7 @@ export function SourceOperations(props: Props) {
           Trash and Undo
         </button>
       </div>
-      {open && <SourceOperationPanel {...props} onClose={() => setOpen(false)} />}
+      {(open || props.incoming) && <SourceOperationPanel {...props} onClose={close} />}
     </>
   )
 }
@@ -77,6 +93,7 @@ function SourceOperationPanel({
   directory,
   onReviewEntity,
   onClose,
+  incoming: initialIncoming,
 }: Props & { onClose: () => void }) {
   const cache = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
@@ -86,9 +103,11 @@ function SourceOperationPanel({
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState(false)
   const [receiving, setReceiving] = useState('')
+  const [incoming, setIncoming] = useState(initialIncoming ?? [])
   const [recoveryPath, setRecoveryPath] = useState('')
   const picker = useRef<HTMLInputElement>(null)
   const uploadAbort = useRef<AbortController | null>(null)
+  const copyIntents = useRef(new WeakMap<File, SourceRequest>())
   const { ref, close } = useModalDialog(onClose, busy)
   const draft = useCatalogDraft(library, 'source-operations', editor, { request: '' }, validInput)
   const writeMode = useQuery({
@@ -160,30 +179,40 @@ function SourceOperationPanel({
     }
   }
   async function copyFiles(files: File[]) {
+    const validation = incomingFilesError(files)
+    if (validation) {
+      setError(validation)
+      return
+    }
+    if (!enabled || busy) return
+    const current = captureRequestScope()
     const controller = new AbortController()
     uploadAbort.current = controller
     setBusy(true)
     setError('')
     try {
       for (const incoming of files) {
+        current()
         if (controller.signal.aborted) break
-        const request: SourceRequest =
-          pending?.upload && files.length === 1
-            ? pending
-            : {
-                operation: operationId(),
-                action: 'copy',
-                upload: operationId(),
-                destination: `${directory ? directory + '/' : ''}${incoming.name}`,
-                collision: 'fail',
-              }
+        const request: SourceRequest = copyIntents.current.get(incoming) ?? {
+          operation: operationId(),
+          action: 'copy',
+          upload: operationId(),
+          destination: `${directory ? directory + '/' : ''}${incoming.name}`,
+          collision: 'fail',
+        }
+        copyIntents.current.set(incoming, request)
         saveRequest(request)
         setReceiving(incoming.name)
         await uploadSource(library, request.upload!, incoming, controller.signal)
+        current()
+        if (controller.signal.aborted) break
         const queued = await sourceRequest<SourceJob>(library, '', 'POST', request)
         setSelected(queued.id)
         await draft.discard()
+        current()
       }
+      if (!controller.signal.aborted) setIncoming([])
       await cache.invalidateQueries({ queryKey: ['source-operations', library] })
     } catch (reason) {
       setError((reason as Error).message)
@@ -214,6 +243,10 @@ function SourceOperationPanel({
           </button>
         </div>
         {writeMode.error && <p role="alert">{writeMode.error.message}</p>}
+        <p>
+          Copy destination: {directory || 'Library root'}. Selected files stay in place. Each copy
+          requires its own saved review and Apply.
+        </p>
         <p>
           {enabled
             ? 'File operations are on for this library on this server.'
@@ -254,7 +287,12 @@ function SourceOperationPanel({
             onChange={(event) => {
               const files = Array.from(event.target.files ?? [])
               event.target.value = ''
-              void copyFiles(files)
+              const error = incomingFilesError(files)
+              if (error) setError(error)
+              else {
+                setIncoming(files)
+                setError('')
+              }
             }}
           />
           <button
@@ -281,6 +319,28 @@ function SourceOperationPanel({
             </button>
           ))}
         </div>
+        {incoming.length > 0 && (
+          <section aria-label="Selected files to copy">
+            <h3>Selected files to copy ({incoming.length})</h3>
+            <ul>
+              {incoming.map((item, index) => (
+                <li key={index}>
+                  {item.name} · {item.size.toLocaleString()} bytes
+                </li>
+              ))}
+            </ul>
+            <button
+              className="btn btn--primary"
+              disabled={!enabled || busy}
+              onClick={() => void copyFiles(incoming)}
+            >
+              Prepare copies
+            </button>
+            <button className="btn" disabled={busy} onClick={() => setIncoming([])}>
+              Clear selected files
+            </button>
+          </section>
+        )}
         {file && <p>Selected: {file.relative_path}</p>}
         {receiving && (
           <p role="status">
