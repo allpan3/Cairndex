@@ -36,6 +36,23 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 Steps 1–3 are complete. Step 4 is next. The real-library owner test in step 6
 remains the release checkpoint. No release tag or production deployment was made.
 
+The screenshot prerequisite [PR #61](https://github.com/allpan3/Cairndex/pull/61)
+is blocked by Rust dependency findings in the existing lockfile. The separate
+`fix/rust-audit-advisories` branch updates quinn-proto to 0.11.18 for five
+denial-of-service advisories, event-listener to 5.4.2 for cross-thread tag
+safety, and the yanked chacha20 0.10.1 to 0.10.2. Direct manifests and
+application source are unchanged. Both VM dependency audits pass with the
+existing glib exception and the remaining proc-macro-error maintenance warning.
+Both guests pass frontend lint, formatting, types, 1,261 unit tests, the web
+build, 34 browser tests, the desktop launcher check and Rust formatting/clippy.
+Linux passes 133 Rust tests; macOS passes 135 with the real sidecar, sidecar
+build/smoke, the production app build and distribution license verification.
+Receipts: `rust-audit-linux-20261012-213406` and
+`rust-audit-mac-20261012-213459`. The unchanged backend suite and Docker build
+were not repeated locally. Hosted CI and publication remain pending. After the
+repair merges, update PR #61 from main and rerun its checks before publishing
+the desktop feature.
+
 The conversion merge includes both earlier release-preparation merges and the
 screenshot declaration from
 [PR #58](https://github.com/allpan3/Cairndex/pull/58), merged as `b39001ad` after
