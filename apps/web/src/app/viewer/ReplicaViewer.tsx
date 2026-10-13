@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../../api/replicas'
+import { useReplicaStatus } from '../../api/useReplicaStatus'
 import { resolveAssetUrl, type FileBrowserEntry } from '../../api/client'
 import { getConnectionScopeKey } from '../../api/requestScope'
 import type { components } from '../../api/schema'
@@ -34,6 +35,8 @@ export function ReplicaViewer({
 }) {
   const [picked, setPicked] = useState<string | null>(null)
   const hostFiles = useLibraryHostFiles(library)
+  // Servers without portable exports keep the export controls hidden
+  const status = useReplicaStatus(library)
   const [prefs, setPrefs] = usePersistentState<PlayerPrefs>(
     `cairndex.replica.player.${getConnectionScopeKey()}.${library}`,
     DEFAULT_PLAYER_PREFS,
@@ -196,7 +199,7 @@ export function ReplicaViewer({
       }
       savedMoments={first?.moments}
       onRetryMedia={retry}
-      serverExports={false}
+      serverExports={status.data?.export_version === 1}
       hostFiles={hostFiles}
       hostPath={observation?.file.relative_path ?? null}
       startAt={

@@ -8,8 +8,11 @@
  */
 
 import type { FileRead } from '../api/client'
-import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
-import { factsFromBundleFile } from './fileFacts'
+import {
+  contactSheetMenuItem,
+  contactSheetTargetForFile,
+  type ContactSheetTarget,
+} from './contactSheetExport'
 import { hostFileMenuEntries } from './hostActions'
 import type { HostLabels } from '../platform'
 import type { MenuEntry } from './useContextMenu'
@@ -44,30 +47,6 @@ export interface BundleFileMenuOptions {
   onCollapseIntoFolder?: (directoryPath: string) => void
   /** Open the contact-sheet dialog; undefined hides the row. */
   onContactSheet?: (target: ContactSheetTarget) => void
-}
-
-/** Everything a contact sheet wants to print about one file.
- *
- * Reads the normalized facts rather than digging into `tech_metadata` again —
- * that dig existed twice, in two shapes, for the same fields.
- */
-function contactSheetTargetFor(file: FileRead): ContactSheetTarget {
-  const facts = factsFromBundleFile(file)
-  return {
-    fileId: file.id,
-    title: file.display_title,
-    sizeBytes: facts.sizeBytes,
-    duration: facts.duration,
-    width: facts.width,
-    height: facts.height,
-    fps: facts.fps,
-    mimeType: facts.mimeType,
-    videoCodec: facts.videoCodec,
-    audioCodec: facts.audioCodec,
-    videoBitrate: facts.videoBitrate,
-    audioBitrate: facts.audioBitrate,
-    audioSampleRate: facts.audioSampleRate,
-  }
 }
 
 /** The one directory every target sits in, or null if they differ or it is the
@@ -155,7 +134,7 @@ export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry
   // asks about that file's duration.
   if (onContactSheet && n === 1 && first.media_kind === 'video') {
     if (items.length > 0) items.push(null)
-    items.push(contactSheetMenuItem(contactSheetTargetFor(first), onContactSheet))
+    items.push(contactSheetMenuItem(contactSheetTargetForFile(first), onContactSheet))
   }
 
   return items

@@ -322,6 +322,7 @@ class CatalogStorage(PrivateStore):
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
                 "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
+                "export_version": 1,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(
                     "SELECT COUNT(*) FROM events WHERE local=1 AND published=0"

@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Restore Save GIF… and Save Contact Sheet… for portable libraries in the
+  viewer, the bundle album and the File Browser. Both read this device's
+  observed bytes through pinned descriptors and fail if the source changes.
+  Contact sheets stay in the server's private cache; GIFs use the existing
+  private export directory. Servers advertise the capability as `export_version`.
+
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library
   mappings and late replies remain scoped to the configured server.

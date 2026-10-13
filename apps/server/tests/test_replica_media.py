@@ -365,3 +365,115 @@ def test_image_open_does_not_require_ffprobe(media_api, monkeypatch):
     image = client.get(base + "/replica/media/files/media-preview").json()
     assert image["state"] == "available" and image["message"] is None
     assert client.get(base + "/files/media-preview/preview?size=640").status_code == 200
+
+
+# A contact sheet gives each frame its own pinned input and stays in private storage
+def test_contact_sheet_uses_private_cache_and_current_generation(media_api):
+    from io import BytesIO
+
+    from PIL import Image
+
+    client, base, store, _, roots = media_api
+    before = authored(store)
+    url = base + "/files/media-direct/contact-sheet?cols=3&rows=2&width=800"
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/jpeg"
+    assert "no-store" in response.headers["cache-control"]
+    times = [float(value) for value in response.headers["x-contact-sheet-times"].split(",")]
+    assert len(times) == 6 and times == sorted(times) and 0 < times[0] < times[-1] < 75
+    with Image.open(BytesIO(response.content)) as sheet:
+        # Three whole cells of 800 // 3 pixels each
+        assert sheet.width == 798
+        # Six separate inputs decode six different test-pattern frames; inputs
+        # that moved each other's file offset would fail or repeat frames.
+        width, height = sheet.width // 3, sheet.height // 2
+        cells = [
+            sheet.crop((col * width, row * height, (col + 1) * width, (row + 1) * height))
+            .convert("L")
+            .tobytes()
+            for row in range(2)
+            for col in range(3)
+        ]
+    assert len(set(cells)) == 6
+    cached = list((store.path.parent / "cache" / "contact-sheets").rglob("*.jpg"))
+    assert len(cached) == 1
+    assert not (roots[0] / ".cairndex/cache").exists()
+    source = roots[0] / "Playback/movie.mp4"
+    copy = source.with_suffix(".new")
+    shutil.copyfile(source, copy)
+    copy.replace(source)
+    assert client.get(url).status_code == 200
+    assert len(list((store.path.parent / "cache" / "contact-sheets").rglob("*.jpg"))) == 2
+    source.unlink()
+    assert client.get(url).status_code == 404
+    assert client.get(base + "/files/media-preview/contact-sheet").status_code == 422
+    assert authored(store) == before
+
+
+# A GIF export pins the observed source and fails rather than encode a replaced file
+def test_gif_export_pins_source_and_refuses_changes(media_api, tmp_path):
+    import threading
+    import time
+
+    from cairndex.api.v1 import exports as exports_api
+    from cairndex.media.exports import ExportManager, _run_gif
+
+    client, base, store, _, roots = media_api
+    before = authored(store)
+    source = roots[0] / "Playback/movie.mp4"
+    started, proceed = threading.Event(), threading.Event()
+    replace = {"source": False}
+
+    def runner(path, dest, params):
+        started.set()
+        proceed.wait(timeout=10)
+        if replace["source"]:
+            copy = source.with_suffix(".new")
+            shutil.copyfile(source, copy)
+            copy.replace(source)
+        _run_gif(path, dest, params)
+
+    manager = ExportManager(exports_dir=tmp_path / "exports", runner=runner, start_reaper=False)
+    client.app.dependency_overrides[exports_api.get_manager] = lambda: manager
+
+    def settle(export_id):
+        for _ in range(300):
+            state = client.get(base + f"/files/media-direct/exports/{export_id}").json()
+            if state["status"] in ("done", "failed"):
+                return state
+            time.sleep(0.05)
+        raise AssertionError("export did not finish")
+
+    try:
+        body = {"kind": "gif", "start_s": 2.0, "end_s": 3.0, "width": 160, "fps": 5}
+        created = client.post(base + "/files/media-direct/exports", json=body)
+        assert created.status_code == 202, created.text
+        assert created.json()["filename"] == "movie.gif"
+        assert started.wait(timeout=10)
+        proceed.set()
+        export_id = created.json()["export_id"]
+        assert settle(export_id)["status"] == "done"
+        download = client.get(base + f"/files/media-direct/exports/{export_id}/download")
+        assert download.status_code == 200 and download.content.startswith(b"GIF8")
+        assert client.delete(base + f"/files/media-direct/exports/{export_id}").status_code == 204
+
+        started.clear()
+        proceed.clear()
+        replace["source"] = True
+        changed = client.post(base + "/files/media-direct/exports", json=body)
+        assert changed.status_code == 202, changed.text
+        assert started.wait(timeout=10)
+        proceed.set()
+        failed = settle(changed.json()["export_id"])
+        assert failed["status"] == "failed"
+        assert "changed" in failed["error"] and str(roots[0]) not in failed["error"]
+        assert client.post(base + "/files/media-preview/exports", json=body).status_code == 422
+    finally:
+        proceed.set()
+        client.app.dependency_overrides.pop(exports_api.get_manager, None)
+        manager.shutdown()
+    assert not (roots[0] / ".cairndex/cache").exists()
+    assert authored(store) == before
+    status = client.get(base + "/replica/status").json()
+    assert status["export_version"] == 1

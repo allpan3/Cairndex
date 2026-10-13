@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../api/replicas'
+import { useReplicaStatus } from '../api/useReplicaStatus'
+import { useLocalContactSheet } from './useLocalContactSheet'
 import type { components } from '../api/schema'
 import { ReplicaViewer } from './viewer/ReplicaViewer'
 import { ViewOptions } from './ViewOptions'
@@ -528,6 +530,9 @@ function FileList({
   const menu = useContextMenu()
   // The file whose contact-sheet options are open, if any.
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
+  // A portable entry is observed on this device before its sheet dialog opens
+  const catalogExports = useReplicaStatus(catalogLibrary).data?.export_version === 1
+  const localSheet = useLocalContactSheet(catalogLibrary, (message) => onFlash?.(message))
   const write = useFileWriteActions({
     currentPath,
     onFlash: onFlash ?? (() => undefined),
@@ -803,6 +808,10 @@ function FileList({
           setSheetTarget,
         ),
       )
+    }
+    if (catalogExports && n === 1 && entry.media_kind === 'video' && entry.file_id) {
+      const fileId = entry.file_id
+      items.push(null, { label: 'Save Contact Sheet…', onClick: () => localSheet.open(fileId) })
     }
     menu.open(e, items)
   }
@@ -1331,10 +1340,13 @@ function FileList({
         )}
 
         <ContextMenu state={menu.state} onClose={menu.close} />
-        {sheetTarget && (
+        {(sheetTarget ?? localSheet.target) && (
           <ContactSheetDialog
-            target={sheetTarget}
-            onClose={() => setSheetTarget(null)}
+            target={(sheetTarget ?? localSheet.target)!}
+            onClose={() => {
+              setSheetTarget(null)
+              localSheet.close()
+            }}
             onReport={(message) => message !== null && onFlash?.(message)}
           />
         )}

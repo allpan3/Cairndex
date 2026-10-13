@@ -1,6 +1,7 @@
 """Private derivatives reuse the production decoders without mutating catalog choices"""
 
 import os
+from contextlib import ExitStack
 from pathlib import Path
 
 from cairndex.core.errors import ValidationError
@@ -9,7 +10,7 @@ from cairndex.media import derived_cache, playback, previews, thumbnails
 from cairndex.media.hls import BurnSubtitle
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile
-from cairndex.replicas.media import ReplicaMedia, generation, open_source
+from cairndex.replicas.media import ReplicaMedia, generation, open_source, open_sources
 from cairndex.replicas.protocol import ReplicaError
 
 
@@ -51,6 +52,50 @@ def thumbnail(media: ReplicaMedia, file_id: str) -> Path:
                 temp.unlink(missing_ok=True)
     media.validate(file_id, token)
     return dest
+
+
+# Each frame input gets its own pinned descriptor; the sheet is published only
+# when the same source generation is still current after ffmpeg finishes
+def contact_sheet(
+    media: ReplicaMedia, file_id: str, *, cols: int, rows: int, width: int
+) -> tuple[Path, list[float]]:
+    from cairndex.media import contact_sheets
+    from cairndex.media.inputs import inherited_inputs
+
+    cols, rows, width = contact_sheets.validated_grid(cols, rows, width)
+    _, asset = media.resolve_file(file_id, probe=True)
+    if asset.media_kind != MediaKind.VIDEO:
+        raise ValidationError("Contact sheets are derived from video files")
+    duration = contact_sheets.probed_duration(asset)
+    if duration is None:
+        raise ValidationError("Local video details are unavailable; retry when it is readable")
+    times = contact_sheets.frame_times(duration, cols, rows)
+    token = asset.quick_fingerprint or ""
+    dest = media.cache("contact-sheets", file_id, token, f"-{cols}x{rows}-{width}.jpg")
+    with derived_cache.locked(dest):
+        if not dest.exists():
+            temp = dest.with_suffix(".tmp.jpg")
+            try:
+                with ExitStack() as stack:
+                    handles = stack.enter_context(
+                        open_sources(media.root, asset.relative_path, len(times))
+                    )
+                    if any(
+                        generation(asset.relative_path, os.fstat(handle)) != token
+                        for handle in handles
+                    ):
+                        raise ReplicaError("Local video changed; retry the contact sheet")
+                    inputs = {Path(f"/dev/fd/{handle}"): handle for handle in handles}
+                    stack.enter_context(inherited_inputs(inputs))
+                    contact_sheets.generate_sheet(
+                        list(inputs), temp, times, cols=cols, rows=rows, width=width
+                    )
+                media.validate(file_id, token)
+                temp.replace(dest)
+            finally:
+                temp.unlink(missing_ok=True)
+    media.validate(file_id, token)
+    return dest, times
 
 
 # SRT/VTT retain their authored track identity and are converted under a source-specific key

@@ -8,7 +8,8 @@
  * hence the "building…" message before the result rather than a silent pause.
  */
 
-import { fileContactSheetUrl } from '../api/client'
+import { fileContactSheetUrl, type FileRead } from '../api/client'
+import { factsFromBundleFile } from './fileFacts'
 import { composeContactSheet, type ContactSheetRow } from './viewer/contactSheet'
 import {
   formatBitrate,
@@ -54,6 +55,30 @@ export interface ContactSheetTarget {
   videoBitrate?: number | null
   audioBitrate?: number | null
   audioSampleRate?: number | null
+}
+
+/** Everything a contact sheet wants to print about one file.
+ *
+ * Reads the normalized facts rather than digging into `tech_metadata` again —
+ * that dig existed twice, in two shapes, for the same fields.
+ */
+export function contactSheetTargetForFile(file: FileRead): ContactSheetTarget {
+  const facts = factsFromBundleFile(file)
+  return {
+    fileId: file.id,
+    title: file.display_title,
+    sizeBytes: facts.sizeBytes,
+    duration: facts.duration,
+    width: facts.width,
+    height: facts.height,
+    fps: facts.fps,
+    mimeType: facts.mimeType,
+    videoCodec: facts.videoCodec,
+    audioCodec: facts.audioCodec,
+    videoBitrate: facts.videoBitrate,
+    audioBitrate: facts.audioBitrate,
+    audioSampleRate: facts.audioSampleRate,
+  }
 }
 
 /** One codec paired with its own stream bitrate. */

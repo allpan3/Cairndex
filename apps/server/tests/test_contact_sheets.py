@@ -150,20 +150,20 @@ def test_grid_bounds_are_enforced(session: Session, library_root: Path) -> None:
 def test_the_grid_admits_up_to_eight_columns() -> None:
     assert contact_sheets.MAX_COLS == 8
     for n in (4, 7, 8):
-        assert contact_sheets._validated(n, n, 2048)[:2] == (n, n)
+        assert contact_sheets.validated_grid(n, n, 2048)[:2] == (n, n)
     with pytest.raises(ValidationError):
-        contact_sheets._validated(9, 9, 2048)
+        contact_sheets.validated_grid(9, 9, 2048)
 
 
 # The width was a three-value enum until the dialogs moved to a scrolling wheel
 # and could offer a real ladder (owner, 2026-08-15).
 def test_width_is_a_range_rather_than_a_fixed_set() -> None:
     for width in (contact_sheets.MIN_SHEET_WIDTH, 1234, contact_sheets.MAX_SHEET_WIDTH):
-        cols, rows, resolved = contact_sheets._validated(4, 4, width)
+        cols, rows, resolved = contact_sheets.validated_grid(4, 4, width)
         assert (cols, rows) == (4, 4)
         # Even, so every cell's `scale=cell:-2` derives an even height.
         assert resolved == width - (width % 2)
-    assert contact_sheets._validated(4, 4, 1235)[2] == 1234
+    assert contact_sheets.validated_grid(4, 4, 1235)[2] == 1234
 
 
 @requires_ffmpeg

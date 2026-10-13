@@ -200,8 +200,8 @@ No-follow directory descriptors prevent symlink escapes. Hidden paths follow the
 scanner exclusions. Absolute and traversal paths are rejected. Cataloged video
 and images open through the guarded shared viewer. File Browser playback follows
 the visible folder order; bundle playback follows bundle order. Unlinked files
-must be cataloged before media opening. Source-write and export controls
-are not offered. A retained bundle draft survives Files/Tags navigation, and closing
+must be cataloged before media opening. Source operations use the reviewed
+File Browser workflow. Save Contact Sheet… is offered for a cataloged video. A retained bundle draft survives Files/Tags navigation, and closing
 the viewer retains file selection.
 
 Bundle query size and missing-state predicates use SQL unknown for nonempty
@@ -320,8 +320,18 @@ Private observations and resume tables live beside authored projection in the
 private DB. Image/subtitle derivatives live under its `cache` directory; HLS stays
 in the server's private transcode directory. None becomes an authored event or a
 synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Storyboard jobs,
-server export workflows, audio-only viewing, cross-device resume, source discovery
-and physical source operations are outside this media capability.
+audio-only viewing, cross-device resume, source discovery and physical source
+operations are outside this media capability.
+
+Servers with `export_version: 1` offer contact sheets and GIF exports through the
+shared `/files/{id}/contact-sheet` and `/files/{id}/exports` routes. Both observe
+the selected file on this device first. A contact sheet opens one pinned
+descriptor per frame, because macOS shares the file offset of a reopened
+`/dev/fd` entry and ffmpeg reads each input independently. The sheet is cached
+under the private `cache/contact-sheets` directory by source generation and is
+served with `no-store`. A GIF encodes from its pinned descriptor on the export
+worker; Release stops the encode, and a source that changed during the encode
+fails the export. Artifacts use the server's private export directory and its TTL.
 
 ## Conversion and evidence
 

@@ -12,14 +12,18 @@ scoping the lookup means a leaked one still cannot pull an artifact out of a
 library the caller does not have open.
 """
 
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibraryAccessDep
+from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.schemas.exports import ClipExportCreate, ClipExportRead
+from cairndex.core.abort import abort_scope
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import MediaKind
@@ -27,6 +31,7 @@ from cairndex.media import exports
 from cairndex.media.exports import ClipExport, ExportManager
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
+from cairndex.replicas.media import ReplicaMedia
 
 router = APIRouter(prefix="/libraries/{library_id}", tags=["exports"])
 
@@ -70,6 +75,33 @@ def _safe_stem(title: str) -> str:
     return cleaned or "clip"
 
 
+def _probed_duration(tech_metadata: dict[str, Any] | None) -> float | None:
+    raw = (tech_metadata or {}).get("duration")
+    return float(raw) if isinstance(raw, (int, float)) and raw > 0 else None
+
+
+def _replica_scope(
+    media: ReplicaMedia, library_id: str, file_id: str, token: str
+) -> Callable[[], AbstractContextManager[None]]:
+    """Pin the observed source for the encode, then refuse a changed source.
+
+    The worker thread outlives the request, so the descriptor pin is taken there
+    rather than here. Release stops the encode instead of waiting for it.
+    """
+    from cairndex.ownership.lifecycle import lifecycle
+
+    @contextmanager
+    def scope() -> Iterator[None]:
+        with (
+            abort_scope(lambda: lifecycle.blocked(library_id)),
+            media.input_scope({file_id: token}),
+        ):
+            yield
+        media.validate(file_id, token)
+
+    return scope
+
+
 @router.post(
     "/files/{file_id}/exports",
     response_model=ClipExportRead,
@@ -79,35 +111,45 @@ def create_export(
     library_id: str,
     file_id: str,
     body: ClipExportCreate,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: ExportManagerDep,
 ) -> ClipExportRead:
     """Start encoding a GIF from a marked span. Returns immediately."""
-    with access.session() as db:
-        asset_file = db.get(AssetFile, file_id)
-        if asset_file is None:
-            raise NotFoundError(f"file {file_id!r} not found")
+    source_scope = None
+    if access.replica is not None:
+        # A portable library observes its local bytes now; the title comes from
+        # the cataloged filename because authored file titles are optional.
+        source, asset_file = access.replica.resolve_file(file_id, probe=True)
         if asset_file.media_kind is not MediaKind.VIDEO:
             raise ValidationError("clips are cut from video files")
-
-        raw_duration = (asset_file.tech_metadata or {}).get("duration")
-        duration = (
-            float(raw_duration)
-            if isinstance(raw_duration, (int, float)) and raw_duration > 0
-            else None
-        )
-        params = exports.validated_gif_params(
-            start_s=body.start_s,
-            end_s=body.end_s,
-            width=body.width,
-            fps=body.fps,
-            duration=duration,
-            corner=body.watermark_corner,
-        )
-        watermark = exports.validated_watermark(body.watermark_png)
-        library_root = library_root_for_session(db)
-        source = Path(resolve_within_root(library_root, asset_file.relative_path))
+        duration = _probed_duration(asset_file.tech_metadata)
+        if duration is None:
+            raise ValidationError("Local video details are unavailable; retry when it is readable")
         title = asset_file.display_title or Path(asset_file.relative_path).stem
+        source_scope = _replica_scope(
+            access.replica, library_id, file_id, asset_file.quick_fingerprint or ""
+        )
+    else:
+        with access.session() as db:
+            assert isinstance(db, Session)
+            legacy_file = db.get(AssetFile, file_id)
+            if legacy_file is None:
+                raise NotFoundError(f"file {file_id!r} not found")
+            if legacy_file.media_kind is not MediaKind.VIDEO:
+                raise ValidationError("clips are cut from video files")
+            duration = _probed_duration(legacy_file.tech_metadata)
+            library_root = library_root_for_session(db)
+            source = Path(resolve_within_root(library_root, legacy_file.relative_path))
+            title = legacy_file.display_title or Path(legacy_file.relative_path).stem
+    params = exports.validated_gif_params(
+        start_s=body.start_s,
+        end_s=body.end_s,
+        width=body.width,
+        fps=body.fps,
+        duration=duration,
+        corner=body.watermark_corner,
+    )
+    watermark = exports.validated_watermark(body.watermark_png)
 
     # Outside the session: creating an export starts an ffmpeg, and holding a DB
     # connection across it is what stranded connections on the streaming routes
@@ -119,6 +161,7 @@ def create_export(
         params=params,
         filename=f"{_safe_stem(title)}.gif",
         watermark_png=watermark,
+        source_scope=source_scope,
     )
     return _read(export)
 
@@ -128,7 +171,7 @@ def get_export(
     library_id: str,
     file_id: str,
     export_id: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: ExportManagerDep,
 ) -> ClipExportRead:
     """Poll one export until it reports `done` or `failed`."""
@@ -143,7 +186,7 @@ def download_export(
     library_id: str,
     file_id: str,
     export_id: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: ExportManagerDep,
 ) -> FileResponse:
     """Serve the finished artifact.
@@ -180,7 +223,7 @@ def delete_export(
     library_id: str,
     file_id: str,
     export_id: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: ExportManagerDep,
 ) -> None:
     """Drop an artifact once the client has it, ahead of the TTL."""

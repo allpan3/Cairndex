@@ -6642,6 +6642,8 @@ export interface components {
             discovery_version?: number | null;
             /** Exchange Error */
             exchange_error?: string | null;
+            /** Export Version */
+            export_version?: number | null;
             /** Inspector Version */
             inspector_version?: number | null;
             /** Invalid */
