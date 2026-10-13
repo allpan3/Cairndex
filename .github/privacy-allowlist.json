@@ -90,6 +90,14 @@
       ],
       "purpose": "Document reviewed legacy conversion and retained metadata backups",
       "provenance": "PNG frame from a T3 collaborative browser capture of an isolated synthetic legacy fixture in a disposable container; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "baf1f03390b30f87240196a44603d2f2bb71fa88d0f7d46ad979592ab7c5706c",
+      "paths": [
+        "docs/screenshots/desktop-file-copies.png"
+      ],
+      "purpose": "Document reviewed file copies from the picker and HTML drops",
+      "provenance": "Playwright capture of fresh synthetic folder, picker and drop fixtures; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
