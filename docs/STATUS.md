@@ -33,25 +33,48 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 6. The owner tests a real library.
 7. Release.
 
-Steps 1–3 are complete. Step 4 is next. The real-library owner test in step 6
+Steps 1–3 are complete. Step 4 is in progress on
+`feature/restore-desktop-file-integration`. The real-library owner test in step 6
 remains the release checkpoint. No release tag or production deployment was made.
 
+The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
+merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
+It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.
+The existing glib exception and proc-macro-error maintenance warning remain.
 The screenshot prerequisite [PR #61](https://github.com/allpan3/Cairndex/pull/61)
-is blocked by Rust dependency findings in the existing lockfile. The separate
-`fix/rust-audit-advisories` branch updates quinn-proto to 0.11.18 for five
-denial-of-service advisories, event-listener to 5.4.2 for cross-thread tag
-safety, and the yanked chacha20 0.10.1 to 0.10.2. Direct manifests and
-application source are unchanged. Both VM dependency audits pass with the
-existing glib exception and the remaining proc-macro-error maintenance warning.
-Both guests pass frontend lint, formatting, types, 1,261 unit tests, the web
-build, 34 browser tests, the desktop launcher check and Rust formatting/clippy.
-Linux passes 133 Rust tests; macOS passes 135 with the real sidecar, sidecar
-build/smoke, the production app build and distribution license verification.
-Receipts: `rust-audit-linux-20261012-213406` and
-`rust-audit-mac-20261012-213459`. The unchanged backend suite and Docker build
-were not repeated locally. Hosted CI and publication remain pending. After the
-repair merges, update PR #61 from main and rerun its checks before publishing
-the desktop feature.
+then merged as `ed40dd70` after its selected CI jobs and all six required checks
+passed. The feature includes its exact declared synthetic screenshot.
+
+Desktop file restoration reconnects mapped Reveal, Open and drag-out across the
+portable browser. Add Files and HTML File drops use portable upload, saved copy
+review and explicit Apply. Native interception stays off to preserve internal
+HTML drags. Folder recursion and in-place dropped-path linking are not provided
+by this byte-copy workflow. Reviewed Update remains available; manual bundling
+belongs to the later restoration group. Viewer host-action failures remain
+visible and can be dismissed without interrupting playback.
+
+Earlier frontend lint, formatting, types, all 1,280 unit tests, production build
+and all 34 browser tests pass in both guests. Rust formatting and clippy pass;
+Linux passes 133 Rust tests and its launcher test. macOS passes 135 Rust tests
+with the bundled sidecar, the production app build and distribution license
+verification. Receipts: `desktop-files-linux-20261012-204301` and
+`desktop-files-mac-20261012-204358`. The interrupted Linux gate was rerun after
+the test VM reached its disk limit. Backend, Rust and dependency sources are
+unchanged in that feature snapshot; the backend suite was not repeated for this
+frontend change. Qualification of the feature with the repaired Rust lockfile
+is in progress.
+
+Synthetic native macOS checks cover automatic local mapping, Finder Reveal,
+Open in Default App, incoming Finder drop, picker selection, reviewed Copy and
+Undo, drag-out to Finder and a self-drop that opens no copy review. Filesystem
+checks confirm exact copied bytes and preserved originals. A 512 MiB picker
+upload reaches review without writing the destination. Half-second samples of
+the app and WebKit processes show approximately 2.3 MiB of combined peak growth
+over their starting resident sizes. This single local sample does not establish
+representative large-file or network performance. Cancelling an upload while
+the disposable sidecar is paused aborts the request; retrying the same selection
+after resume reaches review. The original guest app profiles are restored.
+Publication and hosted CI remain pending. No feature PR has been published.
 
 The conversion merge includes both earlier release-preparation merges and the
 screenshot declaration from

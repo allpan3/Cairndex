@@ -178,11 +178,47 @@ test('portable folder recovery and picker Copy use normal reviews @fullstack', a
       mimeType: 'text/plain',
       buffer: Buffer.from('Synthetic picked bytes'),
     })
+    expect(
+      await readFile(join(root, 'picked.txt')).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    await dialog.getByRole('button', { name: 'Prepare copies', exact: true }).click()
     await dialog.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
     await expect(
       dialog.getByRole('heading', { name: 'copy: succeeded', exact: true }),
     ).toBeVisible()
     expect(await readFile(join(root, 'picked.txt'), 'utf8')).toBe('Synthetic picked bytes')
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    // A real HTML File drop stages no source write and retains the destination in view.
+    await page.getByRole('row').filter({ hasText: 'Renamed' }).dblclick()
+    await page.locator('.catalog-ordinary-layout').evaluate((element) => {
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(
+        new File(['Synthetic dropped bytes'], 'dropped.txt', { type: 'text/plain' }),
+      )
+      element.dispatchEvent(
+        new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }),
+      )
+    })
+    await expect(dialog.getByRole('region', { name: 'Selected files to copy' })).toContainText(
+      'dropped.txt',
+    )
+    expect(
+      await readFile(join(root, 'Renamed', 'dropped.txt')).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    await dialog.getByRole('button', { name: 'Prepare copies', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
+    await expect(
+      dialog.getByRole('heading', { name: 'copy: succeeded', exact: true }),
+    ).toBeVisible()
+    expect(await readFile(join(root, 'Renamed', 'dropped.txt'), 'utf8')).toBe(
+      'Synthetic dropped bytes',
+    )
     await page.screenshot({ path: '/tmp/cairndex-source-operations-synthetic.png' })
   } finally {
     await page.close()

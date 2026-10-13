@@ -276,17 +276,29 @@ layer only the registry id plus a server-provided relative path. An offline
 mapped root returns **Volume not mounted**; it never falls back to a server-side
 command or an unchecked opener call.
 
-The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
-tile, the File inspector, or the bundle inspector — its cover drags the whole
-bundle, while Option-dragging one of its pointer-reorderable file rows drags
-that file — out to Finder while the library is mapped;
-`dragout.rs` validates each path exactly like reveal/open and starts the native
-drag through the `drag` crate. Dropping files from Finder that land inside the
-mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are
-explained ("move them into the library first"); an unmapped library is told to
-locate itself. A plain captured-pointer drag on an inspector file row reorders
-it inside the bundle without invoking WebView HTML drag/drop. No absolute path
-ever crosses into the web layer.
+The same mapping powers drag-out. Drag a File Browser item, a regular album
+file, a file inspector or an inspector file row out to Finder. The bundle
+inspector cover carries its regular files, with a 128-file bound and one
+catalog revision. Native validation rechecks the mapped UUID, containment and
+file existence before handing paths to the OS. Unmapped libraries offer no
+native actions. File menu Open and Reveal follow the visible single selection.
+Bundle handoff chooses the first ordered regular file unless an album or
+inspector file is selected. It also supports files Cairndex cannot preview.
+
+**Add Files…** and file drops open portable source-operation review. The file
+picker and WebKit deliver File objects. Tauri's native drop interception stays
+off to preserve internal HTML drags. Copies target the current File Browser
+folder, or the library root on other surfaces. Select at most 128 regular files;
+each upload is limited to 128 GiB. File-operation permission is required before
+uploading. Prepare copies stages bytes and queues independent reviews. Apply
+is explicit for each file. Cancel upload aborts the in-flight request. Completed
+preparations remain in Saved file operations. Folder drops are refused.
+
+The frontend sends Files directly through its authenticated fetch transport.
+Do not convert a whole incoming video to an ArrayBuffer or reconnect the
+retired native direct-import bridge. In-place linking uses reviewed Update and
+the separate manual-bundling workflow. Test native OS delivery separately from
+synthetic HTML events; a browser test does not qualify a Finder drop.
 
 ### Menus and shortcuts (D5a)
 

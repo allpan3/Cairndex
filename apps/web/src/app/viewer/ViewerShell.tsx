@@ -68,6 +68,8 @@ import { usePlayer, type PlayerController } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
 import { consumeEndedTransition, handlePlaybackEnded } from './player/endBehavior'
 import type { StageFailure } from './player/engine'
+import type { LibraryHostFiles } from '../../desktop/useLibraryHostFiles'
+import { hostFileMenuEntries } from '../hostActions'
 import { classifyMediaError, type PlaybackFailureKind } from './player/mediaError'
 
 // A native progressive video has no HLS session to re-attach, so a transient
@@ -152,6 +154,8 @@ interface ViewerShellProps {
   savedMoments?: Moment[]
   onRetryMedia?: () => Promise<unknown>
   serverExports?: boolean
+  hostFiles?: LibraryHostFiles
+  hostPath?: string | null
 }
 
 /**
@@ -187,6 +191,8 @@ export function ViewerShell({
   savedMoments,
   onRetryMedia,
   serverExports = true,
+  hostFiles,
+  hostPath,
 }: ViewerShellProps) {
   const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -993,6 +999,9 @@ export function ViewerShell({
     if (target.closest('.inspector')) return
     e.preventDefault()
     const entries: MenuEntry[] = []
+    if (hostPath && hostFiles) {
+      entries.push(...hostFileMenuEntries(hostFiles.labels, hostFiles, hostPath), null)
+    }
     if (videoActive) {
       entries.push(
         { label: player.status === 'playing' ? 'Pause' : 'Play', onClick: player.playPause },
@@ -1160,8 +1169,16 @@ export function ViewerShell({
           of them stack instead of sitting at two different heights in two
           different styles (owner, 2026-07-30). The export notice goes above the
           resume notice, which stays nearest the seek track it refers to. */}
-      {(visibleResume !== null || exportNotice !== null) && (
+      {(visibleResume !== null || exportNotice !== null || hostFiles?.error) && (
         <div className="mv-toasts">
+          {hostFiles?.error && (
+            <div className="mv-toast" role="alert">
+              {hostFiles.error}{' '}
+              <button type="button" onClick={hostFiles.dismissError}>
+                Dismiss
+              </button>
+            </div>
+          )}
           {exportNotice !== null && <div className="mv-toast mv-export-notice">{exportNotice}</div>}
           {visibleResume !== null && (
             <button className="mv-toast mv-resume" type="button" onClick={restartFromBeginning}>
@@ -1216,7 +1233,13 @@ export function ViewerShell({
           deliberately absent: none of them apply to something that is not in a
           bundle. */}
       {inspectorOpen && inspectorTarget?.kind === 'file' && (
-        <FileInspector entry={inspectorTarget.facts} hostLabels={getHostLabels()} />
+        <FileInspector
+          entry={inspectorTarget.facts}
+          hostLabels={getHostLabels()}
+          onRevealFile={hostFiles?.onRevealFile}
+          onOpenFile={hostFiles?.onOpenFile}
+          onStartFileDrag={hostFiles?.onStartFileDrag}
+        />
       )}
 
       <ContextMenu state={contextMenu.state} onClose={contextMenu.close} />

@@ -11,6 +11,9 @@ import { DEFAULT_PLAYER_PREFS, type AppMode, type Selection } from './types'
 import { visibleHierarchy } from './usePopover'
 import { CatalogUnbundledBrowser } from './CatalogUnbundledBrowser'
 import { CatalogFileDetails } from './CatalogFileDetails'
+import { useLibraryHostFiles } from '../desktop/useLibraryHostFiles'
+import { useHostFileMenu } from '../desktop/useHostFileMenu'
+import { useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   const tags = useTags()
@@ -68,9 +71,31 @@ export function CatalogOrdinaryBrowser(props: {
   const [path, setPath] = useState('')
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
   const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
+  const [bundleHostPath, setBundleHostPath] = useState<string | null>(null)
+  const [unbundledHostPath, setUnbundledHostPath] = useState<string | null>(null)
+  const [incoming, setIncoming] = useState<File[] | null>(null)
+  const [dropError, setDropError] = useState('')
+  const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
+  const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, setDropError)
+  const hostFiles = useLibraryHostFiles(
+    props.library,
+    props.libraries.find((item) => item.id === props.library),
+  )
+  useHostFileMenu(
+    mode === 'collection'
+      ? bundleHostPath
+      : mode === 'file'
+        ? unbundled
+          ? unbundledHostPath
+          : file?.kind === 'file'
+            ? file.relative_path
+            : null
+        : null,
+    hostFiles,
+  )
   return (
     <CatalogQueryContext value={props.library}>
-      <div className="catalog-ordinary-layout">
+      <div className="catalog-ordinary-layout" {...incomingDrop}>
         <CatalogNavigation
           library={props.library}
           libraries={props.libraries}
@@ -98,9 +123,35 @@ export function CatalogOrdinaryBrowser(props: {
           onReviewEntity={props.onReviewEntity}
         />
         <div className="catalog-ordinary-content">
+          {dropError && (
+            <p role="alert">
+              {dropError} <button onClick={() => setDropError('')}>Dismiss</button>
+            </p>
+          )}
+          {sourceEnabled && (
+            <SourceOperations
+              library={props.library}
+              editor={props.editor}
+              file={mode === 'file' && !unbundled ? file : null}
+              directory={mode === 'file' && !unbundled ? path : ''}
+              onReviewEntity={props.onReviewEntity}
+              incoming={incoming}
+              onDismissIncoming={() => setIncoming(null)}
+            />
+          )}
+          {hostFiles.error && (
+            <p role="alert">
+              {hostFiles.error}{' '}
+              <button className="btn" onClick={hostFiles.dismissError}>
+                Dismiss
+              </button>
+            </p>
+          )}
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
             <CatalogBundleBrowser
               {...props}
+              hostFiles={hostFiles}
+              onHostPath={setBundleHostPath}
               locateRequest={locateRequest}
               selection={selection}
               filters={filters}
@@ -120,7 +171,12 @@ export function CatalogOrdinaryBrowser(props: {
             />
           )}
           {mode === 'file' && unbundled && (
-            <CatalogUnbundledBrowser library={props.library} onReview={props.onReview} />
+            <CatalogUnbundledBrowser
+              library={props.library}
+              onReview={props.onReview}
+              hostFiles={hostFiles}
+              onHostPath={setUnbundledHostPath}
+            />
           )}
           {mode === 'file' && !unbundled && (
             <div className="catalog-file-surface">
@@ -140,6 +196,9 @@ export function CatalogOrdinaryBrowser(props: {
                 onAddToBundle={props.onReview}
                 onCreateBundle={props.onReview}
                 hostLabels={getHostLabels()}
+                onRevealFile={hostFiles.onRevealFile}
+                onOpenFile={hostFiles.onOpenFile}
+                onStartFileDrag={hostFiles.onStartFileDrag}
                 playerPrefs={player}
                 onPlayerPrefs={setPlayer}
                 onLocateBundle={(id) => {
@@ -149,15 +208,6 @@ export function CatalogOrdinaryBrowser(props: {
                 }}
               />
               <aside className="inspector" aria-label="File inspector">
-                {props.sourceOperationsEnabled && !props.blocked && (
-                  <SourceOperations
-                    library={props.library}
-                    editor={props.editor}
-                    file={file}
-                    directory={path}
-                    onReviewEntity={props.onReviewEntity}
-                  />
-                )}
                 {file ? (
                   <>
                     <h2>{file.name}</h2>
@@ -167,6 +217,7 @@ export function CatalogOrdinaryBrowser(props: {
                         key={file.file_id}
                         library={props.library}
                         file={file.file_id}
+                        hostFiles={hostFiles}
                       />
                     )}
                     <p>

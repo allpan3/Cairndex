@@ -12,6 +12,11 @@ import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
 import { selectionRange, type SelectionModifiers } from './selection'
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
+import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
+import { ContextMenu } from './ContextMenu'
+import { useContextMenu } from './useContextMenu'
+import { captureRequestScope } from '../api/requestScope'
 
 type Page = components['schemas']['CatalogBrowsePage']
 const supportedSorts: BundleSort[] = ['title', 'rating', 'date_added']
@@ -34,6 +39,8 @@ export function CatalogBundleBrowser({
   onReview,
   onOpen,
   onOpenFile,
+  hostFiles,
+  onHostPath,
 }: {
   library: string
   locateRequest: number
@@ -51,6 +58,8 @@ export function CatalogBundleBrowser({
   onReview: () => void
   onOpen: (id: string) => void
   onOpenFile: (bundle: string, file: string) => void
+  hostFiles?: LibraryHostFiles
+  onHostPath?: (path: string | null) => void
 }) {
   const collections = useCollections()
   const [includeDescendants, setIncludeDescendants] = useState(true)
@@ -76,6 +85,8 @@ export function CatalogBundleBrowser({
   const [albumFile, setAlbumFile] = useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  const menu = useContextMenu()
+  const [inspectorFile, setInspectorFile] = useState<{ bundle: string; file: string } | null>(null)
   const navigation = useRef<BrowserNavigation>(null)
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search), 200)
@@ -233,6 +244,52 @@ export function CatalogBundleBrowser({
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
     refetchInterval: 2000,
   })
+  // Resolve one ordered member from metadata; host handoff also supports attachments.
+  const hostTarget = useQuery({
+    queryKey: ['catalog-host-target', library, single, albumId, albumFile, inspectorFile],
+    enabled: Boolean(hostFiles?.mapped && single),
+    queryFn: async () => {
+      const pickedFile = albumId
+        ? albumFile
+        : inspectorFile?.bundle === single
+          ? inspectorFile.file
+          : null
+      if (pickedFile) {
+        const file = await catalog<Entity>(library, `/entities/asset_files/${pickedFile}`)
+        return file.fields.$alive?.value === 'true' && file.fields.relative_path?.value
+          ? (JSON.parse(file.fields.relative_path.value) as string)
+          : null
+      }
+      if (albumId) return null
+      return catalogBundleHostPath(library, single!)
+    },
+    refetchInterval: 2000,
+  })
+  const hostPath = hostTarget.isSuccess && single ? (hostTarget.data ?? null) : null
+  useEffect(() => {
+    onHostPath?.(hostPath)
+  }, [hostPath, onHostPath])
+  function hostAction(bundle: string, action: (paths: string[]) => void, drag = false) {
+    const current = captureRequestScope()
+    void (
+      drag
+        ? catalogBundleDragPaths(library, bundle)
+        : catalogBundleHostPath(library, bundle).then((path) => (path ? [path] : []))
+    )
+      .then((paths) => {
+        current()
+        if (!paths.length) throw new Error('This bundle has no file to hand to the desktop.')
+        action(paths)
+      })
+      .catch((reason: Error) => {
+        try {
+          current()
+        } catch {
+          return
+        }
+        setNotice(reason.message)
+      })
+  }
   const changeSort = (next: BundleSort, direction: SortOrder) => {
     if (!supportedSorts.includes(next)) {
       setNotice('This sort is not available for this library.')
@@ -385,9 +442,29 @@ export function CatalogBundleBrowser({
             onSelect={select}
             onMarqueeSelect={many}
             onOpen={openAlbum}
-            onContextMenu={(_, event) => {
-              event.preventDefault()
-              setNotice('Use the inspector to edit metadata or open conflict review.')
+            onContextMenu={(id, event) => {
+              select(id, event)
+              menu.open(event, [
+                { label: 'Open in Cairndex', onClick: () => onOpen(id) },
+                ...(hostFiles?.onOpenFile
+                  ? [
+                      {
+                        label: hostFiles.labels.openFile,
+                        onClick: () => hostAction(id, (paths) => hostFiles.onOpenFile!(paths[0]!)),
+                      },
+                    ]
+                  : []),
+                ...(hostFiles?.onRevealFile
+                  ? [
+                      {
+                        label: hostFiles.labels.revealFile,
+                        onClick: () =>
+                          hostAction(id, (paths) => hostFiles.onRevealFile!(paths[0]!)),
+                      },
+                    ]
+                  : []),
+                { label: 'Review metadata and conflicts', onClick: onReview },
+              ])
             }}
             isLoading={browse.isPending}
             isError={browse.isError}
@@ -411,6 +488,7 @@ export function CatalogBundleBrowser({
             }}
             onOpen={(file) => onOpenFile(albumId, file)}
             onSelectFile={setAlbumFile}
+            hostFiles={hostFiles}
           />
         )}
       </div>
@@ -430,6 +508,15 @@ export function CatalogBundleBrowser({
           library={library}
           entity={detail.data}
           editor={editor}
+          hostFiles={hostFiles}
+          onStartBundleDrag={
+            hostFiles?.onStartFileDrag
+              ? () => hostAction(detail.data.id, hostFiles.onStartFileDrag!, true)
+              : undefined
+          }
+          onSelectHostFile={(file) =>
+            setInspectorFile(file ? { bundle: detail.data.id, file } : null)
+          }
           inspectorEnabled={inspectorEnabled}
           blocked={blocked}
           refresh={refresh}
@@ -451,6 +538,7 @@ export function CatalogBundleBrowser({
           {detail.error && <button onClick={() => void detail.refetch()}>Retry details</button>}
         </aside>
       )}
+      <ContextMenu state={menu.state} onClose={menu.close} />
     </div>
   )
 }

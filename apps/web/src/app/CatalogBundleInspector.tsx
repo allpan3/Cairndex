@@ -1,3 +1,4 @@
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useState } from 'react'
 import type { Entity } from '../api/catalog'
 import { BundleTitleEditor, NoteBox } from './Inspector'
@@ -20,10 +21,16 @@ export function CatalogBundleInspector({
   refresh,
   onReview,
   onOpen,
+  hostFiles,
+  onStartBundleDrag,
+  onSelectHostFile,
   onOpenFile,
   onAlbum,
   albumFile,
 }: {
+  hostFiles?: LibraryHostFiles
+  onStartBundleDrag?: () => void
+  onSelectHostFile?: (file: string | null) => void
   library: string
   entity: Entity
   editor: string
@@ -58,7 +65,14 @@ export function CatalogBundleInspector({
   }
   return (
     <aside className="inspector" aria-label="Bundle inspector">
-      <div className="catalog-inspector-cover">
+      <div
+        className="catalog-inspector-cover"
+        draggable={Boolean(onStartBundleDrag)}
+        onDragStart={(event) => {
+          event.preventDefault()
+          onStartBundleDrag?.()
+        }}
+      >
         {inspectorEnabled &&
           (coverFailed !== coverUrl ? (
             <img src={coverUrl} alt="Bundle cover" onError={() => setCoverFailed(coverUrl)} />
@@ -71,7 +85,14 @@ export function CatalogBundleInspector({
         )}
       </div>
       {onAlbum && <button onClick={onAlbum}>Browse bundle files</button>}
-      {albumFile && <CatalogFileDetails key={albumFile} library={library} file={albumFile} />}
+      {albumFile && (
+        <CatalogFileDetails
+          key={albumFile}
+          library={library}
+          file={albumFile}
+          hostFiles={hostFiles}
+        />
+      )}
       <p role="status">{draft.message}</p>
       {draft.error && <p role="alert">{draft.error}</p>}
       {entity.has_conflicts && <p role="alert">Competing metadata requires review.</p>}
@@ -180,6 +201,8 @@ export function CatalogBundleInspector({
             draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
           }
           onOpen={onOpenFile}
+          hostFiles={hostFiles}
+          onSelectHostFile={onSelectHostFile}
         />
       )}
       {!inspectorEnabled && (
@@ -189,8 +212,8 @@ export function CatalogBundleInspector({
         Review metadata and conflicts
       </button>
       <p>
-        File order, structural changes and history use metadata review. Source file operations are
-        unavailable.
+        File order, structural changes and history use metadata review. Use File Browser for
+        reviewed source file operations.
       </p>
     </aside>
   )

@@ -4,9 +4,18 @@ import { replicaRequest } from '../api/replicas'
 import { getHostLabels } from '../platform'
 import { FileInspector } from './FileInspector'
 import { factsFromBundleFile } from './fileFacts'
+import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 
 // Only an explicitly selected file requests a bounded local observation.
-export function CatalogFileDetails({ library, file }: { library: string; file: string }) {
+export function CatalogFileDetails({
+  library,
+  file,
+  hostFiles,
+}: {
+  library: string
+  file: string
+  hostFiles?: LibraryHostFiles
+}) {
   const detail = useQuery({
     queryKey: ['catalog-local-file', library, file],
     queryFn: () =>
@@ -23,7 +32,15 @@ export function CatalogFileDetails({ library, file }: { library: string; file: s
       {detail.isPending && <p role="status">Checking this file on this device…</p>}
       {detail.error && <p role="alert">{detail.error.message}</p>}
       {detail.data?.message && <p role="status">{detail.data.message}</p>}
-      {facts && <FileInspector entry={facts} hostLabels={getHostLabels()} />}
+      {facts && (
+        <FileInspector
+          entry={facts}
+          hostLabels={getHostLabels()}
+          onRevealFile={hostFiles?.onRevealFile}
+          onOpenFile={hostFiles?.onOpenFile}
+          onStartFileDrag={hostFiles?.onStartFileDrag}
+        />
+      )}
       <button disabled={detail.isFetching} onClick={() => void detail.refetch()}>
         Retry local file details
       </button>

@@ -11,6 +11,8 @@ import {
   type LibraryRead,
 } from '../api/client'
 import { useDeviceMutations, useDevices } from '../api/hooks'
+import { captureRequestScope } from '../api/requestScope'
+import { libraryMappingKey, readLibraryMapping } from '../desktop/useLibraryHostFiles'
 import { formatDateTime } from '../lib/format'
 import { useDisplayPrefs } from '../state/displayPrefs'
 import {
@@ -398,15 +400,15 @@ function WatermarkImageField() {
 
 /** Maps server libraries to manifest-verified folders visible to this desktop. */
 function LibraryMappingsPage({ libraries }: { libraries: LibraryRead[] }) {
-  const { clearLibraryMapping, getLibraryMapping, locateLibrary } = getHostPlatform()
+  const { clearLibraryMapping, locateLibrary } = getHostPlatform()
   const labels = getHostLabels()
   const queryClient = useQueryClient()
   // One cache entry per library, shared with the workspace's mapped-state
   // query, so locate/clear results flow to every host-action surface.
   const mappingQueries = useQueries({
     queries: libraries.map((library) => ({
-      queryKey: ['library-mapping', library.id],
-      queryFn: () => getLibraryMapping(library.id),
+      queryKey: libraryMappingKey(library.id),
+      queryFn: () => readLibraryMapping(library.id),
     })),
   })
   const loading = mappingQueries.some((query) => query.isPending)
@@ -416,11 +418,18 @@ function LibraryMappingsPage({ libraries }: { libraries: LibraryRead[] }) {
 
   // Shares the busy/error lifecycle between the locate and clear actions
   const runMappingAction = async (libraryId: string, action: () => Promise<void>) => {
+    const current = captureRequestScope(false)
     setBusyId(libraryId)
     setErrors((previous) => ({ ...previous, [libraryId]: '' }))
     try {
       await action()
+      current()
     } catch (error) {
+      try {
+        current()
+      } catch {
+        return
+      }
       setErrors((previous) => ({ ...previous, [libraryId]: hostOperationErrorMessage(error) }))
     } finally {
       setBusyId(null)
@@ -429,15 +438,21 @@ function LibraryMappingsPage({ libraries }: { libraries: LibraryRead[] }) {
 
   const locate = (library: LibraryRead) =>
     runMappingAction(library.id, async () => {
+      const current = captureRequestScope(false)
+      const key = libraryMappingKey(library.id)
       const localRoot = await locateLibrary(library.id, library.library_uuid)
+      current()
       if (localRoot === null) return
-      queryClient.setQueryData(['library-mapping', library.id], localRoot)
+      queryClient.setQueryData(key, localRoot)
     })
 
   const clear = (library: LibraryRead) =>
     runMappingAction(library.id, async () => {
+      const current = captureRequestScope(false)
+      const key = libraryMappingKey(library.id)
       await clearLibraryMapping(library.id)
-      queryClient.setQueryData(['library-mapping', library.id], null)
+      current()
+      queryClient.setQueryData(key, null)
     })
 
   return (

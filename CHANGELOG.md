@@ -10,6 +10,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
+  in the portable browser, album, file details and bundle inspector. Library
+  mappings and late replies remain scoped to the configured server.
+- Add Files and regular-file drops open portable copy review. Chosen bytes use
+  the existing upload contract. Source writes require permission and explicit
+  Apply for each saved review. Internal HTML drags remain enabled. Selections,
+  whole-bundle drags and incoming upload sizes have explicit bounds.
+
 - Reviewed conversion of old libraries to portable format three. Inspection and
   private preparation verify authored metadata before the owner activates an
   exact review. The original metadata folder stays in a backup; media remains

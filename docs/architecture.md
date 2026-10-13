@@ -112,34 +112,38 @@ containment/existence, and reports an unavailable root as a structured
 `volume_not_mounted` error. Only then does `host.rs` call the cross-platform
 Tauri opener plugin. Plain web and unmapped libraries expose no host action.
 
-The same mapping/validation boundary powers desktop drag (plan 3 D4). Drag-out
+The same mapping/validation boundary powers desktop drag. Drag-out
 (`dragout.rs`) resolves every requested `{library_id, relative_path}` through
 `mappings.rs` off the IPC thread, then starts a native OS drag on the main
-thread through the cross-platform `drag` crate — the engine behind
-`tauri-plugin-drag`, used directly so absolute paths never reach the web layer
-(the plugin's only surface is a JS command that takes them); the sole OS edge is
-the window handle. Drag-in relies on Tauri's `dragDropEnabled` webview event for
-the dropped absolute paths, which `reverse_map_paths` canonicalizes against the
-active library's identity-verified root and categorizes into in-library relative
-files (fed to Create Bundle), out-of-library files (echoed back as the dropped
-absolutes the web itself supplied), and a directory count. In-library media seeds
-Create Bundle; the server tolerates and reports by reason any path it can't bundle
-in that batch. Outside files are **copied in** when the library permits writing
-(ADR-0013 §7): `importer.rs` streams each one to the server's import endpoint,
-refusing any path the shell did not itself record from the OS drop event — the
-web layer may name a dropped path, never invent one. A read-only library still
-gets the in-place-linking explanation, and a dropped folder gets its own message.
+thread through the cross-platform `drag` crate. File Browser, album tiles,
+file details and inspector file rows provide sources. The bundle inspector
+cover resolves the complete regular-file selection from paginated catalog
+metadata. It requires one revision across pages and refuses bundles above
+128 files. Directory members are not recursed by this gesture.
 
-An import selection remains a **client-owned sequential batch**, not a registry
-job: the bytes live in a browser `File` or a desktop file handle, so putting an
-entry in `job_queue` would move neither the upload nor its cancellation to the
-server. Browser uploads carry an `AbortSignal`. Desktop uploads cross IPC inside
-a batch-scoped cancellation token; stopping makes the Rust reader feeding
-`reqwest` return `Interrupted`, which closes the in-flight HTTP request body.
-Starlette then raises `ClientDisconnect` from `Request.stream()`, and the normal
-ADR-0013 failure path removes `.cairndex/tmp/<operation-id>.part` and marks that
-file's journal operation failed. Files whose individual requests already
-finished stay imported, with their own journal entries and Undo operations.
+The portable application uses HTML `File` drops and the browser file picker.
+The shipping window retains `dragDropEnabled: false` so Tauri does not consume
+internal HTML drags. A file drop opens source-operation review. Dialogs, menus,
+viewer surfaces, self-drags and unsupported folder drops block new selections.
+No absolute source path crosses this workflow. Library mappings are needed for
+native Open, Reveal and drag-out; receiving chosen bytes needs no mapping.
+
+Add Files and dropped files copy to the File Browser's current directory, or
+the library root on other surfaces. Selection itself changes no source files.
+The owner enables source writes, chooses Prepare copies, reviews each saved
+operation and explicitly applies it. Uploads use the existing authenticated
+portable `source-operations/uploads` route. The frontend passes the `File`
+directly to fetch with an AbortSignal. It does not make an ArrayBuffer or a
+base64 copy. Copy preparation and application retain the existing worker,
+collision, storage-budget and exact-review constraints. Each file has its own
+operation identity. Retrying the same selected File retains its upload and
+operation identities. A new selection gets new identities. Switching library
+or server aborts the selection and fences late continuations.
+
+This byte-copy path does not infer where a dropped file lives on the host.
+In-place linking of files already in a library belongs to reviewed Update and
+manual bundling. It must not call the retired direct-import or legacy fast-add
+routes. Folder recursion and metadata drag organizing remain separate work.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability

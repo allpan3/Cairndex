@@ -49,7 +49,8 @@ The source-operation and mounted-SMB qualification is recorded in
 [source-operation extraction](docs/source-operations-extraction.md).
 Distribution/deployment qualification has its own extraction record; releases
 and production deployment remain separate owner-triggered actions.
-OS drag integration is incomplete and paused. Folder pagination, Recently Used,
+Mapped desktop Open, Reveal and file drag-out are restored. Add Files and file drops
+use reviewed copies with explicit Apply. Folder pagination, Recently Used,
 file note/source UI, cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,
 offline delivery, hydration, conflicts, large-scale use and power-loss safety
