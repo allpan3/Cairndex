@@ -4,6 +4,9 @@ import { hostFileMenuEntries } from './hostActions'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../api/replicas'
+import { useReplicaStatus } from '../api/useReplicaStatus'
+import { ContactSheetDialog } from './ContactSheetDialog'
+import { useLocalContactSheet } from './useLocalContactSheet'
 import type { components } from '../api/schema'
 import { fileDragProps } from './dragOut'
 import { AlbumItems } from './AlbumItems'
@@ -106,6 +109,8 @@ function AlbumPage({
   const gridRef = useRef<HTMLDivElement>(null)
   const [notice, setNotice] = useState('')
   const menu = useContextMenu()
+  const exportsEnabled = useReplicaStatus(library).data?.export_version === 1
+  const sheet = useLocalContactSheet(library, setNotice)
   function select(id: string, modifiers: SelectionModifiers) {
     setSelected((previous) => {
       if (modifiers.shiftKey)
@@ -283,6 +288,15 @@ function AlbumPage({
                     ...(item.file && hostFiles
                       ? hostFileMenuEntries(hostFiles.labels, hostFiles, item.file.relative_path)
                       : []),
+                    ...(exportsEnabled && item.file?.media_kind === 'video'
+                      ? [
+                          null,
+                          {
+                            label: 'Save Contact Sheet…',
+                            onClick: () => sheet.open(item.file!.id),
+                          },
+                        ]
+                      : []),
                   ])
                 },
                 dragProps: fileDragProps(item.file ? hostFiles?.onStartFileDrag : undefined, () =>
@@ -346,6 +360,13 @@ function AlbumPage({
         )}
       </div>
       <ContextMenu state={menu.state} onClose={menu.close} />
+      {sheet.target && (
+        <ContactSheetDialog
+          target={sheet.target}
+          onClose={sheet.close}
+          onReport={(message) => setNotice(message ?? '')}
+        />
+      )}
     </div>
   )
 }

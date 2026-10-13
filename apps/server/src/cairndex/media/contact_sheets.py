@@ -79,7 +79,7 @@ def sheet_cache_path(library_root: Path, file_id: str, cols: int, rows: int, wid
     )
 
 
-def _validated(cols: int, rows: int, width: int) -> tuple[int, int, int]:
+def validated_grid(cols: int, rows: int, width: int) -> tuple[int, int, int]:
     if not (MIN_COLS <= cols <= MAX_COLS and MIN_ROWS <= rows <= MAX_ROWS):
         raise ValidationError(
             f"grid must be {MIN_COLS}–{MAX_COLS} columns by {MIN_ROWS}–{MAX_ROWS} rows"
@@ -117,14 +117,14 @@ def sheet_for_file(
     width: int = DEFAULT_SHEET_WIDTH,
 ) -> tuple[Path, list[float]]:
     """The cached contact sheet for one video file, and each cell's timestamp."""
-    cols, rows, width = _validated(cols, rows, width)
+    cols, rows, width = validated_grid(cols, rows, width)
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
     if asset_file.media_kind is not MediaKind.VIDEO:
         raise ValidationError("contact sheets are derived from video files")
 
-    duration = _probed_duration(asset_file)
+    duration = probed_duration(asset_file)
     if duration is None:
         raise ValidationError("this video has not been probed yet — run Collect metadata")
 
@@ -134,13 +134,13 @@ def sheet_for_file(
     if derived_cache.is_current(dest, asset_file.quick_fingerprint):
         return dest, times
 
-    source = resolve_within_root(library_root, asset_file.relative_path)
-    _generate(Path(source), dest, times, cols=cols, rows=rows, width=width)
+    source = Path(resolve_within_root(library_root, asset_file.relative_path))
+    generate_sheet([source] * len(times), dest, times, cols=cols, rows=rows, width=width)
     derived_cache.write_fingerprint(dest, asset_file.quick_fingerprint)
     return dest, times
 
 
-def _probed_duration(asset_file: AssetFile) -> float | None:
+def probed_duration(asset_file: AssetFile) -> float | None:
     value = (asset_file.tech_metadata or {}).get("duration")
     return float(value) if isinstance(value, (int, float)) and value > 0 else None
 
@@ -161,9 +161,17 @@ def _stack_layout(cols: int, rows: int) -> str:
     return "|".join(positions)
 
 
-def _generate(
-    source: Path, dest: Path, times: list[float], *, cols: int, rows: int, width: int
+def generate_sheet(
+    sources: list[Path], dest: Path, times: list[float], *, cols: int, rows: int, width: int
 ) -> None:
+    """Tile one frame per time; ``sources`` names one input path for each time.
+
+    A portable library passes a separate pinned descriptor per input. On macOS
+    an opened ``/dev/fd/N`` shares its file offset with ``N``, so one shared
+    descriptor would let the inputs move each other's read position.
+    """
+    if len(sources) != len(times):
+        raise ContactSheetError("contact sheet inputs do not match its frame times")
     dest.parent.mkdir(parents=True, exist_ok=True)
     cell_width = max(width // cols, 2)
     # One input per frame, each seeking straight to its own timestamp. `-ss`
@@ -173,7 +181,7 @@ def _generate(
     # instant: a contact sheet wants a representative frame, not a precise one,
     # and the difference is the entire cost.
     args = [ffmpeg_exe(), "-y"]
-    for at in times:
+    for source, at in zip(sources, times, strict=True):
         args += ["-noaccurate_seek", "-ss", f"{at:.3f}", "-i", str(source)]
     # The gutter lives *inside* each cell rather than between them, so the sheet
     # divides exactly into `cols x rows` equal cells. The client labels each one
@@ -203,4 +211,4 @@ def _generate(
     except FfmpegError as exc:
         raise ContactSheetError(str(exc)) from exc
     if not dest.exists() or dest.stat().st_size == 0:
-        raise ContactSheetError(f"ffmpeg produced no contact sheet for {source}")
+        raise ContactSheetError("ffmpeg produced no contact sheet")

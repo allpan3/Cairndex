@@ -8488,6 +8488,17 @@
             ],
             "title": "Exchange Error"
           },
+          "export_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Version"
+          },
           "inspector_version": {
             "anyOf": [
               {

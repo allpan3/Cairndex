@@ -32,13 +32,14 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
 from PIL import Image
 
-from cairndex.core.errors import CapacityError, ValidationError
+from cairndex.core.errors import CapacityError, DomainError, ValidationError
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 
 ExportKind = Literal["gif"]
@@ -359,8 +360,14 @@ class ExportManager:
         params: GifParams,
         filename: str,
         watermark_png: bytes | None = None,
+        source_scope: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> ClipExport:
-        """Register an export and start encoding it in the background."""
+        """Register an export and start encoding it in the background.
+
+        ``source_scope`` wraps the encode on the worker thread. A portable
+        library uses it to pin the validated source descriptor for the whole
+        ffmpeg run and to refuse a source that changed while it was read.
+        """
         export_id = uuid.uuid4().hex
         output_path = self.exports_dir / export_id / filename
         export = ClipExport(
@@ -384,7 +391,7 @@ class ExportManager:
 
         thread = threading.Thread(
             target=self._encode,
-            args=(export, source_path),
+            args=(export, source_path, source_scope or nullcontext),
             name=f"clip-export-{export_id[:8]}",
             daemon=True,
         )
@@ -400,7 +407,12 @@ class ExportManager:
             raise
         return export
 
-    def _encode(self, export: ClipExport, source_path: Path) -> None:
+    def _encode(
+        self,
+        export: ClipExport,
+        source_path: Path,
+        source_scope: Callable[[], AbstractContextManager[None]],
+    ) -> None:
         with export.lock:
             export.status = "running"
         try:
@@ -412,7 +424,8 @@ class ExportManager:
                 mark = export.output_path.parent / "watermark.png"
                 mark.write_bytes(export.watermark_png)
                 params = replace(params, watermark_path=mark)
-            self._runner(source_path, export.output_path, params)
+            with source_scope():
+                self._runner(source_path, export.output_path, params)
         except Exception as exc:  # noqa: BLE001 - reported to the caller as state
             with export.lock:
                 export.status = "failed"
@@ -498,6 +511,9 @@ def _safe_reason(exc: Exception) -> str:
     """
     if isinstance(exc, ExportError | FfmpegError):
         return "The clip could not be encoded."
+    # Domain errors carry fixed sentences, such as a changed or unavailable source.
+    if isinstance(exc, DomainError):
+        return exc.message
     return "The clip export failed."
 
 

@@ -419,11 +419,11 @@ def file_preview(
     )
 
 
-# Serve a cached storyboard index without request-path generation
+# Serve one frame grid, cached per grid shape and source generation
 @router.get("/files/{file_id}/contact-sheet")
 def get_contact_sheet(
     file_id: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     cols: Annotated[int, Query(ge=contact_sheets.MIN_COLS, le=contact_sheets.MAX_COLS)] = 4,
     rows: Annotated[int, Query(ge=contact_sheets.MIN_ROWS, le=contact_sheets.MAX_ROWS)] = 4,
     width: Annotated[
@@ -443,19 +443,32 @@ def get_contact_sheet(
     rather than reimplementing the sampling rule. Exposed to the browser because
     the desktop shell reaches this through a cross-origin relay.
     """
-    with access.session() as db:
-        try:
-            path, times = contact_sheets.sheet_for_file(
-                db, file_id, cols=cols, rows=rows, width=width
-            )
-        except contact_sheets.ContactSheetError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if access.replica is not None:
+            from cairndex.replicas.media_cache import contact_sheet
+
+            path, times = contact_sheet(access.replica, file_id, cols=cols, rows=rows, width=width)
+        else:
+            with access.session() as db:
+                assert isinstance(db, Session)
+                path, times = contact_sheets.sheet_for_file(
+                    db, file_id, cols=cols, rows=rows, width=width
+                )
+    except contact_sheets.ContactSheetError as exc:
+        # ffmpeg's stderr can quote the source path, and paths are user data.
+        raise HTTPException(
+            status_code=503, detail="The contact sheet could not be generated."
+        ) from exc
     return FileResponse(
         str(path),
         media_type="image/jpeg",
         filename=path.name,
         headers={
-            "Cache-Control": contact_sheets.CACHE_CONTROL,
+            # A portable sheet URL does not name its source generation, so the
+            # browser must not keep a sheet of replaced bytes.
+            "Cache-Control": "private, no-store"
+            if access.replica is not None
+            else contact_sheets.CACHE_CONTROL,
             "X-Contact-Sheet-Times": ",".join(f"{at:.3f}" for at in times),
             "Access-Control-Expose-Headers": "X-Contact-Sheet-Times",
         },

@@ -223,3 +223,72 @@ test('replica media keeps local availability, playback and exchange independent 
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+// The portable viewer saves a contact sheet and a GIF from this device's bytes
+test('portable viewer exports a contact sheet and a GIF @fullstack', async ({ page }) => {
+  test.setTimeout(180_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-exports-'))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]), duration=40))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Bundles', exact: true })
+        .getByRole('button', { name: 'Synthetic playback', exact: true }),
+    ).toBeVisible()
+    await openPlayback(page)
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(1)
+
+    await page.locator('video').click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Save Contact Sheet…', exact: true }).click()
+    const sheetOptions = page.getByRole('dialog', { name: 'Contact sheet options' })
+    const sheetDownload = page.waitForEvent('download')
+    await sheetOptions.getByRole('button', { name: 'Save', exact: true }).click()
+    const sheet = await sheetDownload
+    expect(sheet.suggestedFilename()).toMatch(/contact sheet\.jpg$/)
+    const sheetBytes = await readFile((await sheet.path())!)
+    expect([...sheetBytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+
+    await page.locator('video').evaluate((video: HTMLVideoElement) => {
+      video.pause()
+      video.currentTime = 5
+    })
+    await expect.poll(async () => (await picture(page)).time).toBeCloseTo(5, 0)
+    await page.locator('.media-viewer').press('[')
+    await page.locator('video').evaluate((video: HTMLVideoElement) => {
+      video.currentTime = 7
+    })
+    await expect.poll(async () => (await picture(page)).time).toBeCloseTo(7, 0)
+    await page.locator('.media-viewer').press(']')
+    await page.getByRole('button', { name: 'Save GIF…', exact: true }).click()
+    const gifOptions = page.getByRole('dialog', { name: 'GIF options' })
+    const gifDownload = page.waitForEvent('download')
+    await gifOptions.getByRole('button', { name: 'Save', exact: true }).click()
+    const gif = await gifDownload
+    expect(gif.suggestedFilename()).toMatch(/\.gif$/)
+    expect((await readFile((await gif.path())!)).subarray(0, 4).toString()).toBe('GIF8')
+    expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
+  } finally {
+    // The open workspace keeps polling, and a stopped backend fails its proxy
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

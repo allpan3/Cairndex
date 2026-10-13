@@ -44,22 +44,32 @@ def generation(path: str, info: os.stat_result) -> str:
 # Reject symlink components and non-regular files while holding the actual source descriptor
 @contextmanager
 def open_source(root: Path, relative: str) -> Iterator[int]:
+    with open_sources(root, relative, 1) as handles:
+        yield handles[0]
+
+
+# Each leaf open is a separate file description with its own read offset; the
+# directory chain is opened once so many inputs stay within descriptor limits
+@contextmanager
+def open_sources(root: Path, relative: str, count: int) -> Iterator[list[int]]:
     parts = normalize_relative_path(relative).split("/")
     if any(part.startswith(".") for part in parts):
         raise ValidationError("Hidden library paths cannot be played")
     handles: list[int] = []
+    leaves: list[int] = []
     try:
         handles.append(os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
-        for index, part in enumerate(parts):
-            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-            if index < len(parts) - 1:
-                flags |= os.O_DIRECTORY
+        for part in parts[:-1]:
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_DIRECTORY
             handles.append(os.open(part, flags, dir_fd=handles[-1]))
-        if not stat.S_ISREG(os.fstat(handles[-1]).st_mode):
-            raise ValidationError("Only regular local files can be played")
-        yield handles[-1]
+        for _ in range(count):
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+            leaves.append(os.open(parts[-1], flags, dir_fd=handles[-1]))
+            if not stat.S_ISREG(os.fstat(leaves[-1]).st_mode):
+                raise ValidationError("Only regular local files can be played")
+        yield leaves
     finally:
-        for handle in reversed(handles):
+        for handle in reversed(handles + leaves):
             os.close(handle)
 
 

@@ -33,9 +33,21 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 6. The owner tests a real library.
 7. Release.
 
-Steps 1–3 are complete. Step 4 is in progress on
-`feature/restore-desktop-file-integration`. The real-library owner test in step 6
-remains the release checkpoint. No release tag or production deployment was made.
+Steps 1–3 are complete. In step 4, desktop file integration merged through
+[PR #63](https://github.com/allpan3/Cairndex/pull/63) as `f544273c`. Viewer tools
+follow as three separate changes: exports, storyboards and moments. The real-library
+owner test in step 6 remains the release checkpoint. No release tag or production
+deployment was made.
+
+Portable exports (`feature/portable-viewer-exports`) restore Save GIF… and Save
+Contact Sheet… in the viewer, album and File Browser for servers that advertise
+`export_version: 1`. The server observes the selected file on this device and pins
+its descriptors. A contact sheet uses one descriptor per frame. A macOS negative
+control with one shared descriptor made ffmpeg fail, while separate descriptors
+pass. A changed source fails a GIF export. Sheets stay in the private cache with
+`no-store`; GIFs use the existing private export directory. Focused backend tests
+pass on Linux (66) and macOS; the full-stack browser export test passes on Linux.
+Full gates and publication remain.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
@@ -83,7 +95,6 @@ over their starting resident sizes. This single local sample does not establish
 representative large-file or network performance. Cancelling an upload while
 the disposable sidecar is paused aborts the request; retrying the same selection
 after resume reaches review. The original guest app profiles are restored.
-Publication and hosted CI remain pending. No feature PR has been published.
 
 The conversion merge includes both earlier release-preparation merges and the
 screenshot declaration from
