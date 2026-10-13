@@ -17,7 +17,8 @@ or replaced bytes without editing the catalog. Resume and ordered bundle cursors
 belong to the serving device. Cataloged subtitles, saved moments and cover times
 retain their authored choices. Every media generation fences decoder inputs,
 streamed bytes, private derivatives and progress. Playback creates no authored
-transactions. Contact sheets and GIF exports read the same pinned generation.
+transactions. Contact sheets, GIF exports and seek-bar storyboards read the same
+pinned generation; storyboards are made in the background after the viewer opens.
 The [capability contract](replica-catalog.md#local-media) lists the supported
 formats and deferred workflows.
 

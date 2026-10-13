@@ -19,6 +19,7 @@ from cairndex.registry.engine import get_registry_sessionmaker
 from cairndex.replicas.conversion_tasks import ConversionWorker
 from cairndex.replicas.recovery_tasks import RecoveryWorker
 from cairndex.replicas.service import ReplicaWorker
+from cairndex.replicas.storyboards import shutdown_queue as shutdown_storyboards
 from cairndex.version import APP_VERSION
 
 
@@ -45,6 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             conversion_worker.stop()
         if recovery_worker is not None:
             recovery_worker.stop()
+        # Before the replica worker closes the stores its decoder reads
+        shutdown_storyboards()
         replicas.stop()
         shutdown_session_manager()
         # Export artifacts are throwaway state under the data dir, so they go

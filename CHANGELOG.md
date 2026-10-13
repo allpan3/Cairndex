@@ -15,6 +15,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   observed bytes through pinned descriptors and fail if the source changes.
   Contact sheets stay in the server's private cache; GIFs use the existing
   private export directory. Servers advertise the capability as `export_version`.
+- Restore seek-bar storyboards for portable libraries. Opening a video queues
+  one background storyboard for the observed generation, newest request first.
+  Sheets stay in the server's private cache and are served only while that
+  generation is current. Release stops the decoder. Servers advertise the
+  capability as `storyboard_version`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

@@ -14,6 +14,7 @@ import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
+type Storyboard = components['schemas']['ReplicaStoryboardRead']
 
 export interface ReplicaOpen {
   bundleId?: string
@@ -35,7 +36,7 @@ export function ReplicaViewer({
 }) {
   const [picked, setPicked] = useState<string | null>(null)
   const hostFiles = useLibraryHostFiles(library)
-  // Servers without portable exports keep the export controls hidden
+  // Capability versions keep export and storyboard requests off older servers
   const status = useReplicaStatus(library)
   const [prefs, setPrefs] = usePersistentState<PlayerPrefs>(
     `cairndex.replica.player.${getConnectionScopeKey()}.${library}`,
@@ -113,6 +114,26 @@ export function ReplicaViewer({
     gcTime: 0,
   })
   const observation = local.isFetchedAfterMount ? local.data : undefined
+  // The server makes the storyboard in the background; poll until it is settled
+  const generation = observation?.generation
+  const storyboard = useQuery({
+    queryKey: ['replica-media', library, 'storyboard', selected, generation],
+    enabled:
+      status.data?.storyboard_version === 1 &&
+      Boolean(selected && generation && observation?.playback),
+    queryFn: ({ signal }) =>
+      replicaRequest<Storyboard>(
+        library,
+        `/media/files/${selected}/storyboard`,
+        'POST',
+        { generation },
+        signal,
+      ),
+    refetchInterval: (query) =>
+      ['queued', 'running'].includes(query.state.data?.state ?? '') ? 2000 : false,
+    retry: false,
+  })
+  const storyboardUrl = storyboard.data?.url ? resolveAssetUrl(storyboard.data.url) : null
   useEffect(() => {
     const owner = folder ? observation?.file.bundle_id : bundleId
     if (!owner || !selected) return
@@ -151,13 +172,14 @@ export function ReplicaViewer({
       ? {
           ...value,
           stream_url: resolveAssetUrl(value.stream_url),
+          storyboard_url: storyboardUrl,
           subtitles: value.subtitles.map((track) => ({
             ...track,
             src: track.src ? resolveAssetUrl(track.src) : null,
           })),
         }
       : null
-  }, [observation?.playback])
+  }, [observation?.playback, storyboardUrl])
   const retry = useCallback(async () => {
     if (!folder && !bundleId && target.fileId) await initial.refetch()
     if (!folder) await pages.refetch()

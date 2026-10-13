@@ -163,6 +163,13 @@ def pending(library_id: str) -> bool:
         return any(db.execute(query).fetchone() for query in _PENDING_WORK)
 
 
+def serving(library_id: str, store: Store | CatalogStore) -> bool:
+    """Report whether this exact store still serves the library on this server."""
+    with _lock:
+        handle = _handles.get(library_id)
+    return handle is not None and handle[0] is store
+
+
 # Close iterators only after admitted work has drained; private history stays on disk
 def close(library_id: str) -> None:
     with _lock:

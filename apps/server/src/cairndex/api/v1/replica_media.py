@@ -1,7 +1,7 @@
 """Catalog playlist reads and local retry/cursor state for the shared media viewer"""
 
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
@@ -166,6 +166,28 @@ def local_file(file_id: str, media: Media) -> LocalMediaRead:
         else "Media unavailable on this device. Make the local file readable, then retry.",
         playback=video,
     )
+
+
+# One observed generation's storyboard; `url` is set only when it is ready
+class ReplicaStoryboardRead(BaseModel):
+    state: Literal["ready", "queued", "running", "failed", "unavailable"]
+    url: str | None
+    message: str | None
+
+
+class ReplicaStoryboardRequest(BaseModel):
+    generation: str
+
+
+# Polling repeats the same request; it queues background work and never decodes
+@router.post("/files/{file_id}/storyboard", response_model=ReplicaStoryboardRead)
+def storyboard(
+    file_id: str, payload: ReplicaStoryboardRequest, media: Media
+) -> ReplicaStoryboardRead:
+    from cairndex.replicas.storyboards import get_queue
+
+    result = get_queue().request(media, file_id, payload.generation)
+    return ReplicaStoryboardRead(state=result.state, url=result.url, message=result.message)
 
 
 # Remember a catalog member without publishing an authored event or needing source availability
