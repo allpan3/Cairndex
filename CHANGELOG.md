@@ -35,6 +35,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Update the Rust lockfile to quinn-proto 0.11.18 for five denial-of-service
+  advisories and event-listener 5.4.2 for its cross-thread tag safety fix.
+  Replace the yanked chacha20 0.10.1 with 0.10.2.
+
 - Resolve stopped conversion swap checks from the matching saved task. Incoming
   setup paths select tasks; only accepted stopped swaps trigger metadata checks.
 
