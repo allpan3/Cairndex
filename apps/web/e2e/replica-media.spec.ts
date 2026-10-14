@@ -309,3 +309,94 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+// Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
+test('portable viewer marks, comments on and deletes moments @fullstack', async ({ page }) => {
+  test.setTimeout(180_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-moments-'))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]), duration=60))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Bundles', exact: true })
+        .getByRole('button', { name: 'Synthetic playback', exact: true }),
+    ).toBeVisible()
+    await openPlayback(page)
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(1)
+    // Pause through the player, which a capture reads, rather than only the element
+    await page.locator('.media-viewer').press('Space')
+    await expect.poll(async () => (await picture(page)).paused).toBe(true)
+    await page.locator('video').evaluate((video: HTMLVideoElement) => {
+      video.currentTime = 10
+    })
+    await expect(page.locator('.mv-time')).toContainText('0:10')
+
+    // `b` saves the frame at the playhead and opens the rail on its comment box
+    await page.locator('.media-viewer').press('b')
+    await expect(page.locator('.mv-export-notice')).toContainText('Moment saved at 0:10')
+    const rail = page.getByRole('complementary', { name: 'Moments' })
+    const comment = rail.getByLabel('Moment comment')
+    await expect(comment).toBeFocused()
+    await comment.fill('Synthetic mark')
+    await comment.press('Enter')
+    await expect(rail.getByText('Synthetic mark')).toBeVisible()
+    await expect(rail.locator('.moment-row__time')).toHaveText(['0:10', '0:42'])
+    await expect(page.locator('.mv-seek__moment-tick')).toHaveCount(1)
+    await expect(page.locator('.mv-seek__moment-band')).toHaveCount(1)
+
+    // The comment box hands focus back, so the next press reaches the viewer
+    await page.keyboard.press('b')
+    await expect(page.locator('.mv-export-notice')).toContainText('Already marked at 0:10')
+
+    const listed = () =>
+      page.evaluate(async (id) => {
+        const response = await fetch(
+          `/api/v1/libraries/${id}/replica/catalog/bundles/bundle-000001/moments`,
+        )
+        return ((await response.json()) as { items: { start_s: number; comment: string }[] }).items
+      }, library.id)
+    await expect
+      .poll(async () => (await listed()).map((item) => [item.start_s, item.comment]))
+      .toEqual([
+        [10, 'Synthetic mark'],
+        [42, 'Synthetic moment'],
+      ])
+
+    // The seeded span arms the range loop, and the new frame can be forgotten
+    await rail.getByRole('button', { name: 'Range loop from 0:42' }).click()
+    await expect(
+      page.getByTestId('clip-bar').getByRole('button', { name: 'Range loop' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await rail.getByRole('button', { name: 'Moment actions for 0:10' }).click()
+    await page.getByRole('menuitem', { name: 'Delete Moment', exact: true }).click()
+    await expect(rail.locator('.moment-row__time')).toHaveText(['0:42'])
+    await expect.poll(async () => (await listed()).length).toBe(1)
+    await expect(page.locator('.mv-seek__moment-tick')).toHaveCount(0)
+    expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
+  } finally {
+    // The open workspace keeps polling, and a stopped backend fails its proxy
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

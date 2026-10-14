@@ -345,6 +345,18 @@ their `v` parameter names the current generation, so a URL always names the same
 bytes. Release aborts the running decoder. A failure returns a fixed sentence and
 is not retried for five minutes.
 
+Servers with `moments_version: 1` let the viewer mark and edit moments.
+`/replica/catalog/bundles/{id}/moments` lists one bundle's moments by start time,
+with their tag IDs, in pages of at most 500. `B`, the clip bar's Save Moment and
+the rail's `+` make a moment through a `create` preview that the viewer commits at
+once; a create preview refuses a file of another bundle. A comment edit is a
+`save` job with the observed bases of the comment and the moment. The viewer
+refuses it when the catalog comment differs from the one on screen. Delete
+Moment commits a `delete` preview. The viewer's docked rail shows only the
+bundle's moments; other bundle metadata stays in the browser inspector. Moment
+tags, private poster and clip previews and the moments section of the browser
+inspector are not part of this capability yet.
+
 ## Conversion and evidence
 
 The [migration contract](replica-migration.md) defines the complete private archive

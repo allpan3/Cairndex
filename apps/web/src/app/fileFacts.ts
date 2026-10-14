@@ -134,7 +134,10 @@ function entryStatus(entry: FileBrowserEntry): string {
  * bundle gets the bundle pane; everything else describes the file.
  */
 export type ViewerInspectorTarget =
-  { kind: 'bundle'; bundleId: string } | { kind: 'file'; facts: FileFacts }
+  | { kind: 'bundle'; bundleId: string }
+  | { kind: 'file'; facts: FileFacts }
+  /** Only the bundle's moments, from a viewer that supplies a moment source. */
+  | { kind: 'moments'; bundleId: string; files: FileRead[] }
 
 /** For a File Browser row, indexed or not. */
 export function inspectorTargetForEntry(

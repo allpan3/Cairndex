@@ -9,6 +9,7 @@ import {
 } from './bundleInspectorActions'
 import { Moments } from './Moments'
 import { noteCapturedMoment } from './momentCapture'
+import { MomentSourceContext, type MomentSource } from './momentSource'
 
 const hooks = vi.hoisted(() => ({
   moments: [] as unknown[],
@@ -540,4 +541,55 @@ test('a span whose clip is not built yet streams the original and keeps to the s
   media.currentTime = 13.6
   fireEvent.timeUpdate(media)
   expect(media.currentTime).toBe(9)
+})
+
+// A portable viewer supplies its catalog moments; the legacy API is not written
+function portableSource(moments: Moment[]): MomentSource {
+  return {
+    moments,
+    mutations: {
+      create: { mutate: vi.fn(), isPending: false },
+      update: { mutate: vi.fn(), isPending: false },
+      remove: { mutate: vi.fn(), isPending: false },
+    },
+    storyboardUrl: () => null,
+  }
+}
+
+function renderPortable(source: MomentSource) {
+  render(
+    <MomentSourceContext value={source}>
+      <BundleInspectorActionsContext value={{ moments: playerActions() }}>
+        <Moments bundleId="bundle" files={[video('file-1', 'clip.mp4')]} />
+      </BundleInspectorActionsContext>
+    </MomentSourceContext>,
+  )
+}
+
+test('a moment source supplies the rows and receives the writes', () => {
+  hooks.moments = [moment({ id: 'legacy', start_s: 5 })]
+  const source = portableSource([moment()])
+  renderPortable(source)
+
+  expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  expect(screen.getByText('1:23')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Moment actions for 1:23' }))
+  fireEvent.click(screen.getByText('Delete Moment'))
+  expect(source.mutations.remove.mutate).toHaveBeenCalledWith('moment-1')
+  expect(hooks.remove.mutate).not.toHaveBeenCalled()
+})
+
+// Portable moments have no tag edges or private posters yet, so neither is offered
+test('a portable row offers no tags and no poster', () => {
+  renderPortable(portableSource([moment(), moment({ id: 'noted', start_s: 90, comment: 'note' })]))
+
+  expect(document.querySelector('.moment-row__tags')).toBeNull()
+  const [plain, noted] = screen.getAllByRole('listitem')
+  // Nothing to show for a frame with no comment and no storyboard tile
+  fireEvent.pointerEnter(plain!)
+  expect(screen.queryByTestId('moment-preview')).not.toBeInTheDocument()
+  fireEvent.pointerLeave(plain!)
+  fireEvent.pointerEnter(noted!)
+  expect(screen.getByTestId('moment-preview')).toHaveTextContent('note')
+  expect(screen.queryByTestId('moment-preview-poster')).not.toBeInTheDocument()
 })

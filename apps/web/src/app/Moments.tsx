@@ -15,6 +15,7 @@ import { useMomentMutations, useMoments } from '../api/hooks'
 import { useBundleInspectorActions } from './bundleInspectorActions'
 import { InspectorSection } from './InspectorSection'
 import { clearCapturedMoment, useJustSavedMoment } from './momentCapture'
+import { useMomentSource, type MomentMutations } from './momentSource'
 import { ContextMenu } from './ContextMenu'
 import { IconMore, IconPlay, IconPlus, IconRepeat } from './icons'
 import { TagPicker } from './TagEditor'
@@ -36,11 +37,17 @@ import { useStoryboardCues } from './viewer/player/useStoryboardCues'
  * `BundleInspectorActions.moments`, which only the viewer supplies. So the
  * shell's rail reads moments back and edits them, but does not offer to mark
  * one — and when there are none to read, it shows nothing at all.
+ *
+ * A `MomentSourceContext` provider (the portable viewer) supplies the moments
+ * and their writes; without one, the legacy library API does.
  */
 export function Moments({ bundleId, files }: { bundleId: string; files: FileRead[] }) {
-  const { data: moments = [] } = useMoments(bundleId)
+  const source = useMomentSource()
+  const { data: legacyMoments = [] } = useMoments(source ? null : bundleId)
+  const legacyMutations = useMomentMutations(source ? null : bundleId)
+  const moments = source?.moments ?? legacyMoments
+  const mutations: MomentMutations = source?.mutations ?? legacyMutations
   const { onPlayMoment, onFilterByTags, moments: player } = useBundleInspectorActions()
-  const mutations = useMomentMutations(bundleId)
   const menu = useContextMenu()
   // The moment saved by the most recent capture, so its row opens straight into
   // its comment box (owner, 2026-08-29): the thing you want to write down is
@@ -140,8 +147,6 @@ export function Moments({ bundleId, files }: { bundleId: string; files: FileRead
   )
 }
 
-type Mutations = ReturnType<typeof useMomentMutations>
-
 /** How far the hover preview sits off the row it belongs to. */
 const PREVIEW_GAP = 6
 
@@ -180,7 +185,7 @@ function MomentRow({
   playable: boolean
   /** This row was just captured: open its comment box without being asked. */
   startEditing: boolean
-  mutations: Mutations
+  mutations: MomentMutations
   onPlay: ((bundleId: string, fileId: string, at: number) => void) | undefined
   onFilterByTags: ((tagIds: string[]) => void) | undefined
   player: ReturnType<typeof useBundleInspectorActions>['moments']
@@ -194,6 +199,9 @@ function MomentRow({
     if (startEditing) clearCapturedMoment(moment.id)
   }, [moment.id, startEditing])
   const { time, length } = describeMoment(moment)
+  const source = useMomentSource()
+  // A portable source has no private poster or clip previews yet
+  const posterUrl = source ? null : momentPosterUrl(moment.bundle_id, moment.id, moment.version)
   const isRange = moment.end_s !== null
   const range = isRange ? { start: moment.start_s, end: moment.end_s as number } : null
   // A range on a file the browser can decode plays itself on hover. `supported`
@@ -201,7 +209,7 @@ function MomentRow({
   // player's remux keeps the still tile rather than dragging that machinery into
   // a hover.
   const playableSpan =
-    range && playable
+    range && playable && !source
       ? {
           clipUrl: momentClipUrl(moment.bundle_id, moment.id, moment.version),
           streamUrl: fileStreamUrl(moment.file_id),
@@ -215,8 +223,12 @@ function MomentRow({
   // treated as immutable: the URL is versioned by a constant rather than by the
   // file's fingerprint, so a video whose storyboard is generated later picks its
   // tile up on the next refetch instead of never.
-  const storyboardUrl = fileStoryboardUrl(moment.file_id)
-  const { data: cues } = useStoryboardCues(storyboardUrl, true, false)
+  //
+  // A portable URL names one source generation, so its index never changes.
+  const storyboardUrl = source
+    ? source.storyboardUrl(moment.file_id)
+    : fileStoryboardUrl(moment.file_id)
+  const { data: cues } = useStoryboardCues(storyboardUrl, true, Boolean(source))
   const cue = useMemo(() => cueForTime(cues, moment.start_s)?.cue ?? null, [cues, moment.start_s])
 
   const openMenu = (event: React.MouseEvent) => {
@@ -250,15 +262,15 @@ function MomentRow({
       onPointerEnter={(event) => setHover(event.currentTarget.getBoundingClientRect())}
       onPointerLeave={() => setHover(null)}
     >
-      {hover && (
-        // Always something to show now: every moment has a poster of its own,
-        // where this used to need a storyboard cue, a playable span, or a comment.
+      {hover && (posterUrl || cue || moment.comment) && (
+        // A legacy moment always has a poster of its own. A portable one shows
+        // its storyboard tile or its comment, and nothing when it has neither.
         <MomentPreview
           anchor={hover}
           // A span deserves to move, so a range plays itself; a frame rests on
           // its poster (owner, 2026-08-29 and 2026-08-30).
           span={playableSpan}
-          posterUrl={momentPosterUrl(moment.bundle_id, moment.id, moment.version)}
+          posterUrl={posterUrl}
           storyboardUrl={storyboardUrl}
           cue={cue}
           comment={moment.comment}
@@ -273,28 +285,30 @@ function MomentRow({
               2026-08-30). The region is width-capped and clips rather than
               wrapping, so a moment with many tags costs the same height as one
               with a single tag — the full set is still in the picker. */}
-          <div className="moment-row__tags">
-            <TagPicker
-              addLabel="+"
-              addAriaLabel="Add tag"
-              // One tag in full and a count for the rest: a pill clipped against
-              // the edge of the region read as a rendering fault rather than as
-              // "there is more" (owner, 2026-08-30).
-              maxChips={1}
-              assignment={{
-                assigned: moment.tag_ids,
-                onSetTags: (ids) =>
-                  mutations.setTags.mutate(
-                    rememberBasis(
-                      { momentId: moment.id, ids, before: moment.tag_ids },
-                      basisOf(moment),
+          {mutations.setTags && (
+            <div className="moment-row__tags">
+              <TagPicker
+                addLabel="+"
+                addAriaLabel="Add tag"
+                // One tag in full and a count for the rest: a pill clipped against
+                // the edge of the region read as a rendering fault rather than as
+                // "there is more" (owner, 2026-08-30).
+                maxChips={1}
+                assignment={{
+                  assigned: moment.tag_ids,
+                  onSetTags: (ids) =>
+                    mutations.setTags?.mutate(
+                      rememberBasis(
+                        { momentId: moment.id, ids, before: moment.tag_ids },
+                        basisOf(moment),
+                      ),
                     ),
-                  ),
-                removeLabel: 'Remove from This Moment',
-              }}
-              onFilterByTags={onFilterByTags}
-            />
-          </div>
+                  removeLabel: 'Remove from This Moment',
+                }}
+                onFilterByTags={onFilterByTags}
+              />
+            </div>
+          )}
           <button
             className="moment-row__act"
             onClick={() => onPlay?.(bundleId, moment.file_id, moment.start_s)}
@@ -418,8 +432,8 @@ function MomentPreview({
    */
   span: { clipUrl: string; streamUrl: string; start: number; end: number } | null
   /** The frame this moment marks, decoded server-side. The honest still. */
-  posterUrl: string
-  storyboardUrl: string
+  posterUrl: string | null
+  storyboardUrl: string | null
   cue: StoryboardCue | null
   /** The moment's comment in full, which the row itself can only clamp. */
   comment: string | null
@@ -460,7 +474,7 @@ function MomentPreview({
             The clip is the third, for a span, and its own first frame is the
             in-point too — so once the poster is in place nothing in this stack
             shows the wrong frame at any point. */}
-        {cue && (
+        {cue && storyboardUrl && (
           <StoryboardTile
             storyboardUrl={storyboardUrl}
             cue={cue}
@@ -468,7 +482,7 @@ function MomentPreview({
             fillClassName="moment-preview__tile"
           />
         )}
-        <MomentPoster url={posterUrl} />
+        {posterUrl && <MomentPoster url={posterUrl} />}
         {span && <SpanPlayback span={span} />}
       </div>
       {comment && <p className="moment-preview__comment">{comment}</p>}

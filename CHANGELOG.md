@@ -20,6 +20,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Sheets stay in the server's private cache and are served only while that
   generation is current. Release stops the decoder. Servers advertise the
   capability as `storyboard_version`.
+- Restore moment authoring in the portable viewer. `B`, Save Moment and the
+  rail's `+` mark a frame or a span; the docked Moments rail lists the bundle's
+  moments, edits their comments, plays and loops them, and deletes them. Every
+  write is a catalog job. Servers advertise the capability as `moments_version`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

@@ -11,6 +11,9 @@ import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
 import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
 import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
+import { useCatalogMomentMutations, useCatalogMoments } from '../../api/catalogMoments'
+import { MomentSourceContext, type MomentSource } from '../momentSource'
+import type { ViewerInspectorTarget } from '../fileFacts'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
@@ -36,7 +39,7 @@ export function ReplicaViewer({
 }) {
   const [picked, setPicked] = useState<string | null>(null)
   const hostFiles = useLibraryHostFiles(library)
-  // Capability versions keep export and storyboard requests off older servers
+  // Capability versions keep export, storyboard and moment requests off older servers
   const status = useReplicaStatus(library)
   const [prefs, setPrefs] = usePersistentState<PlayerPrefs>(
     `cairndex.replica.player.${getConnectionScopeKey()}.${library}`,
@@ -134,6 +137,31 @@ export function ReplicaViewer({
     retry: false,
   })
   const storyboardUrl = storyboard.data?.url ? resolveAssetUrl(storyboard.data.url) : null
+  // Moments belong to the bundle; a folder playlist shows the current file's bundle
+  const momentsEnabled = status.data?.moments_version === 1
+  const momentBundle = (folder ? observation?.file.bundle_id : bundleId) ?? null
+  const catalogMoments = useCatalogMoments(library, momentsEnabled ? momentBundle : null)
+  const momentMutations = useCatalogMomentMutations(library, momentBundle)
+  const momentSource = useMemo<MomentSource>(
+    () => ({
+      moments: catalogMoments.data ?? [],
+      mutations: momentMutations,
+      // Only the observed file has a current storyboard URL
+      storyboardUrl: (fileId) => (fileId === selected ? storyboardUrl : null),
+    }),
+    [catalogMoments.data, momentMutations, selected, storyboardUrl],
+  )
+  const momentFiles = useMemo(
+    () => (folder ? (observation ? [observation.file] : []) : files),
+    [files, folder, observation],
+  )
+  const inspectorTarget = useMemo<ViewerInspectorTarget | null>(
+    () =>
+      momentsEnabled && momentBundle && momentFiles.some((file) => file.media_kind === 'video')
+        ? { kind: 'moments', bundleId: momentBundle, files: momentFiles }
+        : null,
+    [momentBundle, momentFiles, momentsEnabled],
+  )
   useEffect(() => {
     const owner = folder ? observation?.file.bundle_id : bundleId
     if (!owner || !selected) return
@@ -187,7 +215,7 @@ export function ReplicaViewer({
   }, [bundleId, initial, local, pages, selected, target.fileId, folder])
   const mediaError =
     local.data?.state === 'available' && local.data.message ? new Error(local.data.message) : null
-  return (
+  const shell = (
     <ViewerShell
       items={items}
       index={index}
@@ -219,7 +247,8 @@ export function ReplicaViewer({
           ? 'This bundle has no previewable media outside its folder members. Open a cataloged file to view that folder.'
           : null
       }
-      savedMoments={first?.moments}
+      savedMoments={momentsEnabled ? undefined : first?.moments}
+      inspectorTarget={inspectorTarget}
       onRetryMedia={retry}
       serverExports={status.data?.export_version === 1}
       hostFiles={hostFiles}
@@ -230,5 +259,10 @@ export function ReplicaViewer({
           : null
       }
     />
+  )
+  return momentsEnabled ? (
+    <MomentSourceContext value={momentSource}>{shell}</MomentSourceContext>
+  ) : (
+    shell
   )
 }
