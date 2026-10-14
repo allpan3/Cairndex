@@ -2842,6 +2842,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/moments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Moment Page */
+        get: operations["moment_page_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__moments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
         parameters: {
             query?: never;
@@ -4534,6 +4551,13 @@ export interface components {
             items: components["schemas"]["CatalogMembershipChoice"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** CatalogMomentPage */
+        CatalogMomentPage: {
+            /** Items */
+            items: components["schemas"]["MomentRead"][];
+            /** Next Offset */
+            next_offset: number | null;
         };
         /** CatalogNavigationPage */
         CatalogNavigationPage: {
@@ -6667,6 +6691,8 @@ export interface components {
             invalid: number;
             /** Media Version */
             media_version?: number | null;
+            /** Moments Version */
+            moments_version?: number | null;
             /** Outbox */
             outbox: number;
             /**
@@ -12958,6 +12984,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogMembershipPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moment_page_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__moments_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogMomentPage"];
                 };
             };
             /** @description Validation Error */

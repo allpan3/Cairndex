@@ -35,10 +35,11 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 
 Steps 1–3 are complete. In step 4, desktop file integration merged through
 [PR #63](https://github.com/allpan3/Cairndex/pull/63) as `f544273c`. Viewer tools
-follow as three separate changes: exports, storyboards and moments. Exports merged
-through [PR #64](https://github.com/allpan3/Cairndex/pull/64) as `f7a7d828`.
-The real-library owner test in step 6 remains the release checkpoint. No release
-tag or production deployment was made.
+follow as separate changes: exports, storyboards and moments. Exports merged
+through [PR #64](https://github.com/allpan3/Cairndex/pull/64) as `f7a7d828`, and
+storyboards through [PR #65](https://github.com/allpan3/Cairndex/pull/65) as
+`25896d34`. The real-library owner test in step 6 remains the release checkpoint.
+No release tag or production deployment was made.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server
@@ -49,13 +50,23 @@ fails a GIF export. Sheets stay in the private cache with `no-store`; GIFs use
 the existing private export directory. Full gates passed in both guests, and all
 16 hosted checks passed before the merge.
 
-Portable storyboards (`feature/portable-storyboards`) restore seek-bar scrubbing
-for servers that advertise `storyboard_version: 1`. Opening a video queues one
-background storyboard for the observed generation; one server thread makes the
-newest request first. Each decoder pass inherits a fresh pinned descriptor. The
+Portable storyboards restore seek-bar scrubbing for servers that advertise
+`storyboard_version: 1`. Opening a video queues one background storyboard for the
+observed generation; one server thread makes the newest request first. Each decoder pass inherits a fresh pinned descriptor. The
 private cache keys sheets by generation, and the shared routes serve them only
-for the current generation. Library-wide storyboard passes, which feed card hover
-previews, belong to the browsing group.
+for the current generation. Full gates passed in both guests, and all 16 hosted
+checks passed before the merge. Library-wide storyboard passes, which feed card
+hover previews, belong to the browsing group.
+
+Portable moments (`feature/portable-moments`) restore moment authoring in the
+viewer for servers that advertise `moments_version: 1`. `B`, Save Moment and the
+rail's `+` mark a frame or a span through a catalog create preview that the viewer
+commits at once. The viewer's docked rail lists the bundle's moments and edits
+comments, plays, loops and deletes them. The rail shows only moments, because the
+browser inspector under the viewer owns the bundle's private drafts; a second
+draft owner in one tab would overwrite them. The full bundle inspector in the
+viewer, moment tags with ADR-0025 bundle-tag propagation, private poster and clip
+previews and the browser inspector's moments section remain for the next change.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

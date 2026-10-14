@@ -2268,6 +2268,34 @@
         "title": "CatalogMembershipPage",
         "type": "object"
       },
+      "CatalogMomentPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MomentRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "required": [
+          "items",
+          "next_offset"
+        ],
+        "title": "CatalogMomentPage",
+        "type": "object"
+      },
       "CatalogNavigationPage": {
         "additionalProperties": false,
         "properties": {
@@ -8524,6 +8552,17 @@
               }
             ],
             "title": "Media Version"
+          },
+          "moments_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moments Version"
           },
           "outbox": {
             "title": "Outbox",
@@ -23071,6 +23110,113 @@
           }
         },
         "summary": "Membership Choices",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/moments": {
+      "get": {
+        "operationId": "moment_page_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__moments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMomentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Moment Page",
         "tags": [
           "replica-catalog"
         ]

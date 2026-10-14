@@ -47,6 +47,8 @@ import type { ViewerItem } from './viewerItem'
 import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
 import { useMomentMutations, useMoments } from '../../api/hooks'
+import { useMomentSource, type MomentMutations } from '../momentSource'
+import { Moments } from '../Moments'
 import { noteCapturedMoment } from '../momentCapture'
 import { useClipPlayback, useClipRange, type ClipPlaybackMode } from './player/useClipRange'
 import { type ClipRange } from './player/clipRange'
@@ -202,7 +204,12 @@ export function ViewerShell({
   const inspectorOpen = playerPrefs.inspectorOpen
   // The toggle names the pane it will actually open. It used to say "Bundle
   // Inspector" unconditionally, which was the same false claim as showing one.
-  const inspectorLabel = inspectorTarget?.kind === 'file' ? 'File Inspector' : 'Bundle Inspector'
+  const inspectorLabel =
+    inspectorTarget?.kind === 'file'
+      ? 'File Inspector'
+      : inspectorTarget?.kind === 'moments'
+        ? 'Moments'
+        : 'Bundle Inspector'
   // Which file failed, and how. The kind decides the card: a decode/format
   // rejection is deterministic — the engine has already refused these bytes, so
   // a retry replays the same refusal — while a network or aborted read is worth
@@ -377,9 +384,16 @@ export function ViewerShell({
   // question as "is there somewhere for a saved moment to appear". An unbundled
   // or unindexed file gets the File Inspector, which has no moments section, so
   // marking one there would write a row nothing could show.
-  const momentBundleId = inspectorTarget?.kind === 'bundle' ? inspectorTarget.bundleId : null
-  const { data: moments = [] } = useMoments(momentBundleId)
-  const momentMutations = useMomentMutations(momentBundleId)
+  const momentBundleId =
+    inspectorTarget?.kind === 'bundle' || inspectorTarget?.kind === 'moments'
+      ? inspectorTarget.bundleId
+      : null
+  // A portable viewer supplies its catalog moments; the legacy hooks then stay idle
+  const momentSource = useMomentSource()
+  const { data: legacyMoments = [] } = useMoments(momentSource ? null : momentBundleId)
+  const legacyMutations = useMomentMutations(momentSource ? null : momentBundleId)
+  const moments = momentSource?.moments ?? legacyMoments
+  const momentMutations: MomentMutations = momentSource?.mutations ?? legacyMutations
   const momentsAvailable = momentBundleId !== null && fileId !== null && videoActive
   // Only this file's, for the seek track: the list is bundle-wide.
   const fileMoments = useMemo(
@@ -450,7 +464,8 @@ export function ViewerShell({
    * bar the range editor for moments as well as for exports.
    */
   const captureMoment = useCallback(() => {
-    if (!momentBundleId || !fileId) return
+    // A portable save takes a moment; a second press must not mark the frame twice
+    if (!momentBundleId || !fileId || momentMutations.create.isPending) return
     const marked = clip.active ? clip.range : null
     const at = marked ? marked.start : getCurrentTime()
     if (!marked) {
@@ -1226,6 +1241,16 @@ export function ViewerShell({
       {inspectorOpen && inspectorTarget?.kind === 'bundle' && (
         <BundleInspectorActionsContext value={mergedInspectorActions}>
           <Inspector bundleId={inspectorTarget.bundleId} />
+        </BundleInspectorActionsContext>
+      )}
+      {/* The portable rail: the bundle's moments, read and written through the
+          viewer's moment source. Other bundle metadata stays in the browser's
+          inspector, which is mounted under this viewer and owns its drafts. */}
+      {inspectorOpen && inspectorTarget?.kind === 'moments' && (
+        <BundleInspectorActionsContext value={mergedInspectorActions}>
+          <aside className="inspector" aria-label="Moments">
+            <Moments bundleId={inspectorTarget.bundleId} files={inspectorTarget.files} />
+          </aside>
         </BundleInspectorActionsContext>
       )}
       {/* A file with no bundle worth naming — unbundled, or not indexed at all

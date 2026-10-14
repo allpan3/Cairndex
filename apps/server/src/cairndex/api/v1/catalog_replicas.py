@@ -19,6 +19,7 @@ from cairndex.replicas.catalog.inspector import (
     MembershipFamily,
     memberships,
 )
+from cairndex.replicas.catalog.moments import CatalogMomentPage, bundle_moments
 from cairndex.replicas.catalog.navigation import (
     CatalogFacetRequest,
     CatalogFacetResponse,
@@ -179,6 +180,18 @@ def membership_choices(
     assigned: bool = False,
 ) -> CatalogMembershipPage:
     return memberships(store, bundle_id, family, after, limit, q, assigned)
+
+
+# The viewer and the inspector read one bundle's moments; edits use catalog jobs
+@router.get("/bundles/{bundle_id}/moments", response_model=CatalogMomentPage)
+def moment_page(
+    bundle_id: Token,
+    store: Catalog,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> CatalogMomentPage:
+    with store.connection(readonly=True) as db:
+        return bundle_moments(db, bundle_id, offset, limit)
 
 
 @router.get("/navigation/{family}", response_model=CatalogNavigationPage)

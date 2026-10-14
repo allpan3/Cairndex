@@ -47,6 +47,7 @@ class ReplicaStatus(StrictModel):
     media_version: int | None = None
     export_version: int | None = None
     storyboard_version: int | None = None
+    moments_version: int | None = None
     discovery_version: int | None = None
     source_operations_version: int | None = None
     ready: bool

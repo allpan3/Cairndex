@@ -221,6 +221,11 @@ class Preview:
             (family, identity),
         ).fetchone():
             raise ReplicaError("Catalog identity already exists; edit or explicitly recover it")
+        if family == "moments":
+            # A transfer moves moments with their file, so the two bundle IDs always agree
+            file = read_row(self.db, "asset_files", row["file_id"])
+            if file is None or file["bundle_id"] != row["bundle_id"]:
+                raise ReplicaError("A moment must be marked on a file of its bundle")
         self.row(family, row)
         if family == "asset_bundles":
             self.put(key(family, row["id"], "$members"), [])
