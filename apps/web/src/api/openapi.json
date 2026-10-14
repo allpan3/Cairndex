@@ -8560,6 +8560,17 @@
             ],
             "title": "Source Operations Version"
           },
+          "storyboard_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storyboard Version"
+          },
           "system_views_version": {
             "anyOf": [
               {
@@ -8585,6 +8596,63 @@
           "peer_delivery"
         ],
         "title": "ReplicaStatus",
+        "type": "object"
+      },
+      "ReplicaStoryboardRead": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "queued",
+              "running",
+              "failed",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "state",
+          "url",
+          "message"
+        ],
+        "title": "ReplicaStoryboardRead",
+        "type": "object"
+      },
+      "ReplicaStoryboardRequest": {
+        "properties": {
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation"
+        ],
+        "title": "ReplicaStoryboardRequest",
         "type": "object"
       },
       "SaveReceipt": {
@@ -19039,6 +19107,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "V"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -19127,6 +19211,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "V"
             }
           },
           {
@@ -26592,6 +26692,99 @@
           }
         },
         "summary": "Local File",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/files/{file_id}/storyboard": {
+      "post": {
+        "operationId": "storyboard_api_v1_libraries__library_id__replica_media_files__file_id__storyboard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplicaStoryboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaStoryboardRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Storyboard",
         "tags": [
           "replica-media"
         ]

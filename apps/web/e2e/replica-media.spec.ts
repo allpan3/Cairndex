@@ -225,7 +225,9 @@ test('replica media keeps local availability, playback and exchange independent 
 })
 
 // The portable viewer saves a contact sheet and a GIF from this device's bytes
-test('portable viewer exports a contact sheet and a GIF @fullstack', async ({ page }) => {
+test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF @fullstack', async ({
+  page,
+}) => {
   test.setTimeout(180_000)
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-exports-'))
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
@@ -255,6 +257,21 @@ test('portable viewer exports a contact sheet and a GIF @fullstack', async ({ pa
     ).toBeVisible()
     await openPlayback(page)
     await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(1)
+
+    // The server makes the storyboard in the background after the viewer opens
+    const seek = page.getByLabel('Seek', { exact: true })
+    const preview = page.getByTestId('storyboard-preview')
+    await expect(async () => {
+      await seek.hover({ position: { x: 20, y: 2 } })
+      await expect(preview).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 60_000 })
+    const sheetImage = await preview.evaluate(
+      (element) => getComputedStyle(element).backgroundImage,
+    )
+    expect(sheetImage).toContain('/storyboard/sb_001.jpg?v=')
+    expect(
+      await page.evaluate(async (value) => (await fetch(value.slice(5, -2))).status, sheetImage),
+    ).toBe(200)
 
     await page.locator('video').click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Save Contact Sheet…', exact: true }).click()

@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibraryAccessDep, LibrarySession
+from cairndex.api.deps import LibrarySession
 from cairndex.api.media_deps import MediaAccessDep, MediaContext, MediaSession
 from cairndex.api.metadata import MetadataRoute
 from cairndex.api.schemas.bundles import FileRead
@@ -475,35 +475,58 @@ def get_contact_sheet(
     )
 
 
+# A portable storyboard URL names its source generation through `v`, so one URL
+# always names the same bytes and the browser may keep them
+_REPLICA_STORYBOARD_CACHE_CONTROL = "private, max-age=31536000, immutable"
+
+
 @router.get("/files/{file_id}/storyboard.vtt")
-def storyboard_vtt(file_id: str, access: LibraryAccessDep) -> FileResponse:
+def storyboard_vtt(file_id: str, access: MediaAccessDep, v: str | None = None) -> FileResponse:
     """Serve a cached storyboard WebVTT index, never generating on request."""
-    with access.session() as db:
-        path = storyboards.cached_index_for_file(db, file_id)
+    if access.replica is not None:
+        from cairndex.replicas import storyboards as replica_storyboards
+
+        path = replica_storyboards.index(access.replica, file_id, v)
+        cache_control = _REPLICA_STORYBOARD_CACHE_CONTROL
+    else:
+        with access.session() as db:
+            assert isinstance(db, Session)
+            path = storyboards.cached_index_for_file(db, file_id)
+        cache_control = storyboards.STORYBOARD_INDEX_CACHE_CONTROL
     return FileResponse(
         str(path),
         media_type="text/vtt",
         filename="storyboard.vtt",
-        headers={"Cache-Control": storyboards.STORYBOARD_INDEX_CACHE_CONTROL},
+        headers={"Cache-Control": cache_control},
     )
 
 
 # Serve a cached storyboard sheet without request-path generation
 @router.get("/files/{file_id}/storyboard/{sheet_name}.jpg")
-def storyboard_sheet(file_id: str, sheet_name: str, access: LibraryAccessDep) -> FileResponse:
+def storyboard_sheet(
+    file_id: str, sheet_name: str, access: MediaAccessDep, v: str | None = None
+) -> FileResponse:
     """Serve a cached storyboard sheet, never generating on request.
 
     The seek-bar hover tooltip requests (and aborts) sheets continuously while
     scrubbing, so this must not hold a ``yield``-dependency connection (see
     ``file_preview``).
     """
-    with access.session() as db:
-        path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
+    if access.replica is not None:
+        from cairndex.replicas import storyboards as replica_storyboards
+
+        path = replica_storyboards.sheet(access.replica, file_id, sheet_name, v)
+        cache_control = _REPLICA_STORYBOARD_CACHE_CONTROL
+    else:
+        with access.session() as db:
+            assert isinstance(db, Session)
+            path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
+        cache_control = storyboards.STORYBOARD_CACHE_CONTROL
     return FileResponse(
         str(path),
         media_type="image/jpeg",
-        filename=f"{sheet_name}.jpg",
-        headers={"Cache-Control": storyboards.STORYBOARD_CACHE_CONTROL},
+        filename=path.name,
+        headers={"Cache-Control": cache_control},
     )
 
 

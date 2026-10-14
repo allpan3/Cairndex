@@ -35,19 +35,27 @@ gates, the privacy gate and CI pass. A release tag follows only after step 6.
 
 Steps 1–3 are complete. In step 4, desktop file integration merged through
 [PR #63](https://github.com/allpan3/Cairndex/pull/63) as `f544273c`. Viewer tools
-follow as three separate changes: exports, storyboards and moments. The real-library
-owner test in step 6 remains the release checkpoint. No release tag or production
-deployment was made.
+follow as three separate changes: exports, storyboards and moments. Exports merged
+through [PR #64](https://github.com/allpan3/Cairndex/pull/64) as `f7a7d828`.
+The real-library owner test in step 6 remains the release checkpoint. No release
+tag or production deployment was made.
 
-Portable exports (`feature/portable-viewer-exports`) restore Save GIF… and Save
-Contact Sheet… in the viewer, album and File Browser for servers that advertise
-`export_version: 1`. The server observes the selected file on this device and pins
-its descriptors. A contact sheet uses one descriptor per frame. A macOS negative
-control with one shared descriptor made ffmpeg fail, while separate descriptors
-pass. A changed source fails a GIF export. Sheets stay in the private cache with
-`no-store`; GIFs use the existing private export directory. Focused backend tests
-pass on Linux (66) and macOS; the full-stack browser export test passes on Linux.
-Full gates and publication remain.
+Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
+and File Browser for servers that advertise `export_version: 1`. The server
+observes the selected file on this device and pins its descriptors. A contact
+sheet uses one descriptor per frame. A macOS negative control with one shared
+descriptor made ffmpeg fail, while separate descriptors pass. A changed source
+fails a GIF export. Sheets stay in the private cache with `no-store`; GIFs use
+the existing private export directory. Full gates passed in both guests, and all
+16 hosted checks passed before the merge.
+
+Portable storyboards (`feature/portable-storyboards`) restore seek-bar scrubbing
+for servers that advertise `storyboard_version: 1`. Opening a video queues one
+background storyboard for the observed generation; one server thread makes the
+newest request first. Each decoder pass inherits a fresh pinned descriptor. The
+private cache keys sheets by generation, and the shared routes serve them only
+for the current generation. Library-wide storyboard passes, which feed card hover
+previews, belong to the browsing group.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

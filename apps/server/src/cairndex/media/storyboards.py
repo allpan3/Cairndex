@@ -6,6 +6,7 @@ import re
 import shutil
 import tempfile
 from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -317,11 +318,17 @@ def _sample_sheets(
     interval: float,
     duration: float,
     sampling: SamplingMode,
+    scope: Callable[[], AbstractContextManager[None]] = nullcontext,
 ) -> list[float] | None:
+    # Each decoder pass enters its own scope, as each HLS launch does. An
+    # inherited descriptor keeps the file offset of the previous pass, and a
+    # demuxer that reads before it seeks would start there.
     if sampling == "exact":
-        return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
+        with scope():
+            return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
     try:
-        times = _generate_sheets(source, output_dir, interval, duration, sampling="keyframe")
+        with scope():
+            times = _generate_sheets(source, output_dir, interval, duration, sampling="keyframe")
     except StoryboardError as exc:
         reason = f"keyframe pass failed: {exc}"
         times = None
@@ -334,7 +341,8 @@ def _sample_sheets(
     logger.info("storyboard keyframe sampling unusable (%s); decoding in full", reason)
     for stale in output_dir.glob("sb_*.jpg"):
         stale.unlink()
-    return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
+    with scope():
+        return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
 
 
 # Read JPEG dimensions from SOF metadata without adding an image dependency
@@ -435,6 +443,43 @@ def _build_cues(
     return cues
 
 
+# Sample and index one source into an empty directory
+def build_into(
+    source: Path,
+    output_dir: Path,
+    duration: float,
+    quick_fingerprint: str | None,
+    *,
+    sampling: SamplingMode,
+    scope: Callable[[], AbstractContextManager[None]] = nullcontext,
+) -> None:
+    """Write the sheets and the `index.vtt` that names them for one source.
+
+    The index carries the cache key of `quick_fingerprint`, and every sheet URL
+    in it carries that key's version parameter, so a reader can tell which
+    source generation the directory describes.
+    """
+    interval = storyboard_interval(duration)
+    times = _sample_sheets(source, output_dir, interval, duration, sampling, scope)
+    sheets = sorted(output_dir.glob("sb_*.jpg"))
+    if not sheets:
+        raise StoryboardError("ffmpeg produced no storyboard sheets")
+    if times is None:
+        logger.warning("ffmpeg showinfo frame count unavailable; using storyboard sheet capacity")
+    sheet_width, sheet_height = _jpeg_dimensions(sheets[0])
+    cues = _build_cues(
+        duration=duration,
+        interval=interval,
+        times=times,
+        sheets=sheets,
+        sheet_width=sheet_width,
+        sheet_height=sheet_height,
+    )
+    index = output_dir / "index.vtt"
+    index.write_text(render_vtt(cues, quick_fingerprint), encoding="utf-8")
+    derived_cache.write_fingerprint(index, storyboard_cache_key(quick_fingerprint))
+
+
 # Atomically replace one file's storyboard artifact directory
 def _replace_cache_dir(cache_dir: Path, temp_dir: Path) -> None:
     check_work_ownership()
@@ -471,33 +516,15 @@ def generate_for_file(
     temp_dir: Path | None = None
     try:
         source = Path(resolve_within_root(library_root, asset_file.relative_path))
-        interval = storyboard_interval(duration)
         check_work_ownership()
         cache_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f"{cache_dir.name}.tmp-", dir=cache_dir.parent))
-        times = _sample_sheets(source, temp_dir, interval, duration, settings.storyboard_sampling)
-        sheets = sorted(temp_dir.glob("sb_*.jpg"))
-        if not sheets:
-            raise StoryboardError("ffmpeg produced no storyboard sheets")
-        if times is None:
-            logger.warning(
-                "ffmpeg showinfo frame count unavailable; using storyboard sheet capacity"
-            )
-        sheet_width, sheet_height = _jpeg_dimensions(sheets[0])
-        cues = _build_cues(
-            duration=duration,
-            interval=interval,
-            times=times,
-            sheets=sheets,
-            sheet_width=sheet_width,
-            sheet_height=sheet_height,
-        )
-        (temp_dir / "index.vtt").write_text(
-            render_vtt(cues, asset_file.quick_fingerprint),
-            encoding="utf-8",
-        )
-        derived_cache.write_fingerprint(
-            temp_dir / "index.vtt", storyboard_cache_key(asset_file.quick_fingerprint)
+        build_into(
+            source,
+            temp_dir,
+            duration,
+            asset_file.quick_fingerprint,
+            sampling=settings.storyboard_sampling,
         )
         _replace_cache_dir(cache_dir, temp_dir)
         temp_dir = None

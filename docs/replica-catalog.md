@@ -319,9 +319,9 @@ HLS startup failure frees its reservation, and release stops local sessions.
 Private observations and resume tables live beside authored projection in the
 private DB. Image/subtitle derivatives live under its `cache` directory; HLS stays
 in the server's private transcode directory. None becomes an authored event or a
-synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Storyboard jobs,
-audio-only viewing, cross-device resume, source discovery and physical source
-operations are outside this media capability.
+synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Library-wide
+storyboard passes, audio-only viewing, cross-device resume, source discovery and
+physical source operations are outside this media capability.
 
 Servers with `export_version: 1` offer contact sheets and GIF exports through the
 shared `/files/{id}/contact-sheet` and `/files/{id}/exports` routes. Both observe
@@ -332,6 +332,18 @@ under the private `cache/contact-sheets` directory by source generation and is
 served with `no-store`. A GIF encodes from its pinned descriptor on the export
 worker; Release stops the encode, and a source that changed during the encode
 fails the export. Artifacts use the server's private export directory and its TTL.
+
+Servers with `storyboard_version: 1` make seek-bar storyboards on request. The
+viewer posts the generation it observed to `/replica/media/files/{id}/storyboard`
+and polls while the reply is `queued` or `running`. One background thread per
+server makes the newest waiting request first and keeps at most eight waiting.
+Each decoder pass inherits a fresh pinned descriptor, and the result is published
+only if the observed generation is still current. Storyboards are cached under the
+private `cache/storyboards` directory by generation, format and sampling mode. The
+shared `storyboard.vtt` and `storyboard/sb_NNN.jpg` routes serve them only when
+their `v` parameter names the current generation, so a URL always names the same
+bytes. Release aborts the running decoder. A failure returns a fixed sentence and
+is not retried for five minutes.
 
 ## Conversion and evidence
 

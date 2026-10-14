@@ -477,3 +477,140 @@ def test_gif_export_pins_source_and_refuses_changes(media_api, tmp_path):
     assert authored(store) == before
     status = client.get(base + "/replica/status").json()
     assert status["export_version"] == 1
+
+
+def _settle_storyboard(client, url, generation):
+    import time
+
+    for _ in range(600):
+        response = client.post(url, json={"generation": generation})
+        assert response.status_code == 200, response.text
+        if response.json()["state"] not in ("queued", "running"):
+            return response.json()
+        time.sleep(0.05)
+    raise AssertionError("storyboard did not finish")
+
+
+# A storyboard is made in the background from the observed generation and is
+# served only while that generation is current
+def test_storyboard_uses_private_cache_and_current_generation(media_api):
+    client, base, store, _, roots = media_api
+    before = authored(store)
+    request = base + "/replica/media/files/media-direct/storyboard"
+    token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    ready = _settle_storyboard(client, request, token)
+    assert ready["state"] == "ready", ready
+    url = ready["url"]
+    assert url.startswith(base + "/files/media-direct/storyboard.vtt?v=")
+    index = client.get(url)
+    assert index.status_code == 200 and index.text.startswith("WEBVTT")
+    assert "private" in index.headers["cache-control"]
+    cue = next(line for line in index.text.splitlines() if line.startswith("storyboard/"))
+    sheet_url = base + "/files/media-direct/" + cue.split("#", 1)[0]
+    sheet = client.get(sheet_url)
+    assert sheet.status_code == 200 and sheet.content.startswith(b"\xff\xd8")
+    assert client.get(base + "/files/media-direct/storyboard.vtt").status_code == 404
+    assert client.get(base + "/files/media-direct/storyboard.vtt?v=other").status_code == 404
+    assert client.get(sheet_url.replace("sb_001", "sb_999")).status_code == 404
+    cache = store.path.parent / "cache" / "storyboards"
+    assert len([path for path in cache.glob("*/*") if path.is_dir()]) == 1
+    assert not (roots[0] / ".cairndex/cache").exists()
+
+    source = roots[0] / "Playback/movie.mp4"
+    copy = source.with_suffix(".new")
+    shutil.copyfile(source, copy)
+    copy.replace(source)
+    assert client.get(url).status_code == 404
+    assert client.get(sheet_url).status_code == 404
+    stale = client.post(request, json={"generation": token}).json()
+    assert stale["state"] == "unavailable" and "changed" in stale["message"]
+    fresh = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    assert _settle_storyboard(client, request, fresh)["state"] == "ready"
+    assert len([path for path in cache.glob("*/*") if path.is_dir()]) == 2
+    image = client.post(
+        base + "/replica/media/files/media-preview/storyboard", json={"generation": "x"}
+    )
+    assert image.status_code == 422
+    assert authored(store) == before
+    assert client.get(base + "/replica/status").json()["storyboard_version"] == 1
+
+
+# The full-decode fallback runs a second decoder over the same pinned generation
+def test_storyboard_fallback_pass_reads_the_pinned_source(media_api, monkeypatch):
+    from cairndex.media import storyboards as boards
+
+    client, base, _, _, _ = media_api
+    passes = []
+    real = boards._generate_sheets
+
+    def counted(*args, **kwargs):
+        passes.append(kwargs.get("sampling"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(boards, "_MIN_KEYFRAME_SAMPLES", 10**6)
+    monkeypatch.setattr(boards, "_generate_sheets", counted)
+    request = base + "/replica/media/files/media-direct/storyboard"
+    token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    ready = _settle_storyboard(client, request, token)
+    assert ready["state"] == "ready", ready
+    assert passes == ["keyframe", "exact"]
+    index = client.get(ready["url"]).text
+    assert index.count("#xywh=") >= 30
+
+
+# A failure reports a fixed sentence once and is not restarted by every poll
+def test_storyboard_failure_hides_decoder_output(media_api, monkeypatch):
+    from cairndex.media import storyboards as boards
+
+    client, base, _, _, roots = media_api
+    calls = []
+
+    def fail(source, *args, **kwargs):
+        calls.append(source)
+        raise boards.StoryboardError(f"ffmpeg could not read {source}")
+
+    monkeypatch.setattr(boards, "build_into", fail)
+    request = base + "/replica/media/files/media-direct/storyboard"
+    token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    failed = _settle_storyboard(client, request, token)
+    assert failed == {
+        "state": "failed",
+        "url": None,
+        "message": "The storyboard could not be generated.",
+    }
+    assert _settle_storyboard(client, request, token)["state"] == "failed"
+    assert len(calls) == 1
+    assert str(roots[0]) not in str(failed)
+
+
+# Release takes a running storyboard away; Reopen lets the viewer ask again
+def test_storyboard_release_aborts_running_work(media_api, monkeypatch):
+    import threading
+    import time
+
+    from cairndex.core.abort import OperationAborted, aborted
+    from cairndex.media import storyboards as boards
+
+    client, base, store, _, _ = media_api
+    started = threading.Event()
+    real = boards.build_into
+
+    def wait_for_abort(*args, **kwargs):
+        started.set()
+        for _ in range(200):
+            if aborted():
+                raise OperationAborted
+            time.sleep(0.05)
+        raise AssertionError("release did not abort the storyboard")
+
+    monkeypatch.setattr(boards, "build_into", wait_for_abort)
+    request = base + "/replica/media/files/media-direct/storyboard"
+    token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    assert client.post(request, json={"generation": token}).json()["state"] == "queued"
+    assert started.wait(timeout=10)
+    assert client.post(base + "/ownership/release").status_code == 200
+    assert client.post(base + "/ownership/reopen").status_code == 200
+    monkeypatch.setattr(boards, "build_into", real)
+    token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
+    assert _settle_storyboard(client, request, token)["state"] == "ready"
+    assert not list((store.path.parent / "cache" / "storyboards").glob("*/*.tmp-*"))

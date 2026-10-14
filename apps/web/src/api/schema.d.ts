@@ -3408,6 +3408,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/files/{file_id}/storyboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Storyboard */
+        post: operations["storyboard_api_v1_libraries__library_id__replica_media_files__file_id__storyboard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/status": {
         parameters: {
             query?: never;
@@ -6663,10 +6680,29 @@ export interface components {
             selection_version?: number | null;
             /** Source Operations Version */
             source_operations_version?: number | null;
+            /** Storyboard Version */
+            storyboard_version?: number | null;
             /** System Views Version */
             system_views_version?: number | null;
             /** Waiting */
             waiting: number;
+        };
+        /** ReplicaStoryboardRead */
+        ReplicaStoryboardRead: {
+            /** Message */
+            message: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "queued" | "running" | "failed" | "unavailable";
+            /** Url */
+            url: string | null;
+        };
+        /** ReplicaStoryboardRequest */
+        ReplicaStoryboardRequest: {
+            /** Generation */
+            generation: string;
         };
         /** SaveReceipt */
         SaveReceipt: {
@@ -11200,7 +11236,9 @@ export interface operations {
     };
     storyboard_vtt_api_v1_libraries__library_id__files__file_id__storyboard_vtt_get: {
         parameters: {
-            query?: never;
+            query?: {
+                v?: string | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -11236,7 +11274,9 @@ export interface operations {
     };
     storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get: {
         parameters: {
-            query?: never;
+            query?: {
+                v?: string | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -14382,6 +14422,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LocalMediaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storyboard_api_v1_libraries__library_id__replica_media_files__file_id__storyboard_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplicaStoryboardRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaStoryboardRead"];
                 };
             };
             /** @description Validation Error */
