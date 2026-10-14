@@ -262,6 +262,9 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
     const seek = page.getByLabel('Seek', { exact: true })
     const preview = page.getByTestId('storyboard-preview')
     await expect(async () => {
+      // Controls hide after 2.6 s without pointer movement and then take no pointer
+      // events, so a slow storyboard outlasts them; moving over the video shows them
+      await page.locator('video').hover()
       await seek.hover({ position: { x: 20, y: 2 } })
       await expect(preview).toBeVisible({ timeout: 1000 })
     }).toPass({ timeout: 60_000 })
