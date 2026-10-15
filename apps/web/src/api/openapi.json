@@ -1524,7 +1524,9 @@
             "enum": [
               "title",
               "rating",
-              "date_added"
+              "date_added",
+              "manual",
+              "file_count"
             ],
             "title": "Sort",
             "type": "string"
@@ -1931,7 +1933,9 @@
             "enum": [
               "title",
               "rating",
-              "date_added"
+              "date_added",
+              "manual",
+              "file_count"
             ],
             "title": "Sort",
             "type": "string"

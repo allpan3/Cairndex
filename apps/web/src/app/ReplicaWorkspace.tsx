@@ -204,7 +204,7 @@ export function ReplicaWorkspace(props: {
     <CatalogWorkspace
       key={props.libraryId}
       {...props}
-      ordinaryBrowse={status.data.browse_version === 2}
+      ordinaryBrowse={(status.data.browse_version ?? 0) >= 2}
     />
   ) : (
     <BoundedReplicaWorkspace {...props} />

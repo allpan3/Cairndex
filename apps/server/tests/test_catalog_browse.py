@@ -65,12 +65,46 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     for body in (
         {"filter": {"version": 1, "root": {"field": "codec", "operator": "equals", "value": "x"}}},
         {"sort": "size"},
+        {"sort": "date_opened"},
         {"view": "trash"},
         {"limit": 101},
     ):
         assert client.post(url, json=body).status_code == 422
     assert client.get(base + "/bundles/browse").status_code == 409
-    assert client.get(base + "/replica/status").json()["browse_version"] == 2
+    assert client.get(base + "/replica/status").json()["browse_version"] == 3
+
+
+# Manual follows the authored order, or one collection's own membership order
+def test_manual_and_file_count_sorts(tmp_path):
+    import sqlite3
+
+    from cairndex.devtools.catalog_fixture import insert_row
+
+    fixture = create_disposable(parent=tmp_path, bundles=4)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        db.execute("UPDATE asset_bundle_collections SET sort_order=1")
+        insert_row(
+            db,
+            "asset_bundle_collections",
+            {"bundle_id": "bundle-000001", "collection_id": "collections-child", "sort_order": 5},
+        )
+    store = prepare_disposable(fixture).store
+    for identity, order in (("000000", 3), ("000001", 2), ("000002", 2), ("000003", 1)):
+        changes = edit(store, "asset_bundles", f"bundle-{identity}", "manual_order", order)
+        save(store, changes, f"order-{identity}")
+
+    def ids(**args):
+        return [item.id.removeprefix("bundle-") for item in page(store, **args).items]
+
+    # Equal orders put the newer bundle first, as in the legacy browser
+    assert ids(sort="manual") == ["000003", "000002", "000001", "000000"]
+    assert ids(sort="manual", order="desc") == ["000000", "000001", "000002", "000003"]
+    single = {"collection_id": "collections-child", "include_descendants": False}
+    assert ids(sort="manual", **single) == ["000000", "000001"]
+    nested = {"collection_id": "collections-root", "include_descendants": True}
+    assert ids(sort="manual", **nested) == ["000001", "000000"]
+    assert ids(sort="file_count", order="desc")[0] == "000000"
+    assert ids(sort="file_count")[-1] == "000000"
 
 
 def test_browse_population_hidden_provisional_and_empty(tmp_path):

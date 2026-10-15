@@ -123,7 +123,7 @@ root; it does not browse arbitrary server paths or prove local media availabilit
 ## Ordinary browse and edit boundary
 
 Ordinary Open registers an existing complete synthetic package. A server with
-`browse_version: 2` opens the shared virtual Bundle Browser and shared title,
+`browse_version` of 2 or later opens the shared virtual Bundle Browser and shared title,
 ordered-note and star-rating controls. Save changes commits the retained causal
 request. Input remains editable while a save is pending. Its acknowledgement
 advances only saved fields; newer input and unrelated draft bases remain intact.
@@ -138,7 +138,7 @@ library switch. An already observed conflict requires explicit metadata review.
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
 | System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used remains incomplete; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
-| Sort and filters | Title, rating and date-added sorts; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; unsupported request fields/sorts return 422 |
+| Sort and filters | Title, rating and date-added sorts; with `browse_version: 3`, Manual and File Count; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; Size, Date Modified and Date Opened have no portable data; unsupported request fields/sorts return 422 |
 | Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
 | File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening and provider hydration |

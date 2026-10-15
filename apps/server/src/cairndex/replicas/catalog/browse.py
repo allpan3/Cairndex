@@ -43,7 +43,7 @@ class CatalogBrowseRequest(StrictModel):
     view: Literal["all", "uncategorized", "untagged", "recent", "random", "missing"] = "all"
     seed: int = Field(default=0, ge=0, le=2_147_483_647)
     q: str = Field(default="", max_length=1000)
-    sort: Literal["title", "rating", "date_added"] = "title"
+    sort: Literal["title", "rating", "date_added", "manual", "file_count"] = "title"
     order: Literal["asc", "desc"] = "asc"
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=50, ge=1, le=100)
@@ -188,11 +188,29 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
         where += " AND b.rowid IN (SELECT rowid FROM catalog_search WHERE catalog_search MATCH ?)"
         args.append(match)
     total = db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0]
+    order_args: list[Any] = []
     column = {
         "title": "lower(json_extract(b.body,'$.title'))",
         "rating": "json_extract(b.body,'$.rating')",
         "date_added": "json_extract(b.body,'$.created_at')",
+        "manual": "json_extract(b.body,'$.manual_order')",
+        "file_count": (
+            "(SELECT count(*) FROM catalog_rows f WHERE f.family='asset_files' "
+            "AND json_extract(f.body,'$.bundle_id')=b.entity)"
+        ),
     }[request.sort]
+    if request.sort == "manual" and request.collection_id and not request.include_descendants:
+        # One collection orders by its own membership; a descendant view spans several
+        column = (
+            "(SELECT json_extract(e.body,'$.sort_order') FROM catalog_rows e "
+            "WHERE e.family='asset_bundle_collections' AND e.entity=b.entity || '~' || ?)"
+        )
+        order_args.append(request.collection_id)
+    # Under Manual, a bundle nobody has reordered keeps its creation value, so newer
+    # bundles come first among equals, as in the legacy browser
+    tie = "ASC"
+    if request.sort == "manual":
+        tie = "DESC" if request.order == "asc" else "ASC"
     if request.view == "random":
         # Stable identities keep the order unchanged when projection rows are replaced.
         db.create_function(
@@ -202,10 +220,11 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
             deterministic=True,
         )
         column = "catalog_shuffle(b.entity)"
+        order_args, tie = [], "ASC"
     rows = db.execute(
         f"SELECT b.entity,b.body FROM catalog_rows b WHERE {where} "
-        f"ORDER BY {column} {request.order},b.entity ASC LIMIT ? OFFSET ?",
-        [*args, request.limit, request.offset],
+        f"ORDER BY {column} {request.order},b.entity {tie} LIMIT ? OFFSET ?",
+        [*args, *order_args, request.limit, request.offset],
     )
     items = []
     for row in rows:
