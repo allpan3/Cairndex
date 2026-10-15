@@ -1,7 +1,7 @@
 // Portable moments are catalog rows; every write is a catalog job with explicit bases
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, operationId, runJob, type Entity } from './catalog'
-import { resolveAssetUrl, type Moment, type MomentCreate } from './client'
+import { resolveAssetUrl, type FileRead, type Moment, type MomentCreate } from './client'
 import { replicaRequest } from './replicas'
 import type { components } from './schema'
 
@@ -9,10 +9,12 @@ type MomentPage = components['schemas']['CatalogMomentPage']
 type TagPage = components['schemas']['CatalogMembershipPage']
 export type MomentTagChoice = components['schemas']['CatalogMembershipChoice']
 
-/** One bundle's moments and the names of the tags they carry. */
+/** One bundle's moments, the names of the tags they carry and the files they mark. */
 export interface CatalogMoments {
   moments: Moment[]
   tagNames: Record<string, string>
+  /** In bundle order; absent from servers before `moments_version: 4`. */
+  files: FileRead[]
 }
 
 export const catalogMomentsKey = (library: string, bundleId: string | null) => [
@@ -56,6 +58,7 @@ export function useCatalogMoments(library: string, bundleId: string | null) {
     queryFn: async ({ signal }): Promise<CatalogMoments> => {
       const moments: Moment[] = []
       const tagNames: Record<string, string> = {}
+      const files = new Map<string, FileRead>()
       let offset: number | null = 0
       while (offset !== null) {
         const page: MomentPage = await replicaRequest<MomentPage>(
@@ -67,9 +70,13 @@ export function useCatalogMoments(library: string, bundleId: string | null) {
         )
         moments.push(...page.items)
         Object.assign(tagNames, page.tag_names)
+        for (const file of page.files ?? []) files.set(file.id, file)
         offset = page.next_offset
       }
-      return { moments, tagNames }
+      const ordered = [...files.values()].sort(
+        (a, b) => a.sequence - b.sequence || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      )
+      return { moments, tagNames, files: ordered }
     },
     // Another device's moments arrive through the exchange, not through this tab
     refetchInterval: 5000,

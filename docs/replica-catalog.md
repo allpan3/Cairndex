@@ -372,8 +372,11 @@ preview answers 404 and queues one background build, at most two at a time. The
 build reads the source through a pinned descriptor and publishes the preview
 only when the observed generation is still current. The private cache name holds
 the generation and the marked times. Responses are `private, no-store`, because
-the URL does not name the generation. Release aborts a running build. The
-moments section of the browser inspector is not part of this capability yet.
+the URL does not name the generation. Release aborts a running build.
+
+Servers with `moments_version: 4` also name the marked files on each moment page,
+in bundle order, so the browser inspector lists moments without reading playlist
+pages. Its Play from opens the viewer on the moment's file at the moment's start.
 
 ## Conversion and evidence
 

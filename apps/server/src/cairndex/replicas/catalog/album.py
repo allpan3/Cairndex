@@ -8,7 +8,7 @@ from typing import Literal
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
 from cairndex.core.errors import ConflictError, NotFoundError
 from cairndex.replicas.catalog.projection import read_row
-from cairndex.replicas.media import ReplicaMedia
+from cairndex.replicas.media import ReplicaMedia, catalog_file
 from cairndex.replicas.protocol import StrictModel
 from cairndex.scanning.media_types import HIDDEN_NAMES, is_hidden_relative_path
 
@@ -107,7 +107,7 @@ def album(
             CatalogAlbumItem(
                 id=row["entity"],
                 kind=row["kind"],
-                file=FileRead.model_validate(media.catalog_file(db, row["entity"]))
+                file=FileRead.model_validate(catalog_file(db, row["entity"]))
                 if row["kind"] == "file"
                 else None,
                 directory=DirectoryMemberRead.model_validate(json.loads(row["body"]))

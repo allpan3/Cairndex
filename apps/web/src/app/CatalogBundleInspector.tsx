@@ -10,6 +10,7 @@ import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
 import { CatalogMembershipPicker } from './CatalogMembershipPicker'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
+import { CatalogBundleMoments } from './CatalogBundleMoments'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
@@ -25,6 +26,7 @@ export function CatalogBundleInspector({
   onStartBundleDrag,
   onSelectHostFile,
   onOpenFile,
+  onPlayMoment,
   onAlbum,
   albumFile,
 }: {
@@ -40,6 +42,8 @@ export function CatalogBundleInspector({
   onReview: () => void
   onOpen: () => void
   onOpenFile: (file: string) => void
+  /** Open the viewer at a moment: its file, `time` seconds in. */
+  onPlayMoment?: (file: string, time: number) => void
   onAlbum?: () => void
   albumFile?: string | null
 }) {
@@ -204,6 +208,9 @@ export function CatalogBundleInspector({
           hostFiles={hostFiles}
           onSelectHostFile={onSelectHostFile}
         />
+      )}
+      {inspectorEnabled && onPlayMoment && (
+        <CatalogBundleMoments library={library} bundle={entity.id} onPlay={onPlayMoment} />
       )}
       {!inspectorEnabled && (
         <p>Additional inspector controls require a server update. Use Metadata review.</p>

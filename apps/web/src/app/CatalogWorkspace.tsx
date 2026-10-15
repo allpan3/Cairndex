@@ -390,7 +390,7 @@ export function CatalogWorkspace({
             setReviewMode(true)
           }}
           onOpen={(id) => setMedia({ bundleId: id })}
-          onOpenFile={(bundleId, fileId) => setMedia({ bundleId, fileId })}
+          onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
         />
       )}
       {!reviewMode && !state?.ready && (

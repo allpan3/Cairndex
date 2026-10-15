@@ -6,7 +6,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from cairndex.api.schemas.bundles import FileRead
 from cairndex.api.schemas.moments import MomentRead
+from cairndex.replicas.media import catalog_file
 
 
 class CatalogMomentPage(BaseModel):
@@ -14,6 +16,8 @@ class CatalogMomentPage(BaseModel):
     next_offset: int | None
     # Names of the tags on these moments, so a row can show them without a second request
     tag_names: dict[str, str]
+    # The files these moments mark, in bundle order, so a list needs no playlist pages
+    files: list[FileRead]
 
 
 # Start time orders the list, and the stable identity breaks ties between equal starts
@@ -40,6 +44,13 @@ def bundle_moments(
         row["tag_ids"] = [tag for tag, _ in tags]
         names.update({tag: name for tag, name in tags})
         items.append(MomentRead.model_validate(row))
+    files = [catalog_file(db, file) for file in sorted({item.file_id for item in items})]
     return CatalogMomentPage(
-        items=items, next_offset=offset + limit if len(rows) > limit else None, tag_names=names
+        items=items,
+        next_offset=offset + limit if len(rows) > limit else None,
+        tag_names=names,
+        files=[
+            FileRead.model_validate(file)
+            for file in sorted(files, key=lambda file: (file.sequence, file.id))
+        ],
     )

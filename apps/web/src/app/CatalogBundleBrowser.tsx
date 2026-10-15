@@ -57,7 +57,8 @@ export function CatalogBundleBrowser({
   onSelect: (id: string) => void
   onReview: () => void
   onOpen: (id: string) => void
-  onOpenFile: (bundle: string, file: string) => void
+  /** Open one file in the viewer, at `time` seconds when it is given. */
+  onOpenFile: (bundle: string, file: string, time?: number) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
 }) {
@@ -525,6 +526,7 @@ export function CatalogBundleBrowser({
           onAlbum={albumEnabled ? () => openAlbum(detail.data.id) : undefined}
           onOpen={() => onOpen(detail.data.id)}
           onOpenFile={(file) => onOpenFile(detail.data.id, file)}
+          onPlayMoment={(file, time) => onOpenFile(detail.data.id, file, time)}
         />
       ) : (
         <aside className="inspector">

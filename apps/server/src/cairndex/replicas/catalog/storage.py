@@ -324,7 +324,7 @@ class CatalogStorage(PrivateStore):
                 "media_version": 1,
                 "export_version": 1,
                 "storyboard_version": 1,
-                "moments_version": 3,
+                "moments_version": 4,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(
                     "SELECT COUNT(*) FROM events WHERE local=1 AND published=0"

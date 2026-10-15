@@ -11,13 +11,8 @@ import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
 import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
 import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
-import {
-  catalogMomentPreviews,
-  useCatalogMomentMutations,
-  useCatalogMoments,
-} from '../../api/catalogMoments'
-import { CatalogMomentTags } from '../CatalogMomentTags'
-import { MomentSourceContext, type MomentSource } from '../momentSource'
+import { MomentSourceContext } from '../momentSource'
+import { useCatalogMomentSource } from '../useCatalogMomentSource'
 import type { ViewerInspectorTarget } from '../fileFacts'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
@@ -143,27 +138,14 @@ export function ReplicaViewer({
   })
   const storyboardUrl = storyboard.data?.url ? resolveAssetUrl(storyboard.data.url) : null
   // Moments belong to the bundle; a folder playlist shows the current file's bundle
-  // Version 2 adds moment tags, and version 3 private poster and clip previews
-  const momentsVersion = status.data?.moments_version ?? 0
-  const momentsEnabled = momentsVersion >= 1
   const momentBundle = (folder ? observation?.file.bundle_id : bundleId) ?? null
-  const catalogMoments = useCatalogMoments(library, momentsEnabled ? momentBundle : null)
-  const momentMutations = useCatalogMomentMutations(library, momentBundle)
-  const momentSource = useMemo<MomentSource>(() => {
-    const tagNames = catalogMoments.data?.tagNames ?? {}
-    return {
-      moments: catalogMoments.data?.moments ?? [],
-      mutations: momentMutations,
-      // Only the observed file has a current storyboard URL
-      storyboardUrl: (fileId) => (fileId === selected ? storyboardUrl : null),
-      renderTags:
-        momentsVersion >= 2
-          ? (moment) => <CatalogMomentTags library={library} moment={moment} names={tagNames} />
-          : undefined,
-      previews:
-        momentsVersion >= 3 ? (moment) => catalogMomentPreviews(library, moment) : undefined,
-    }
-  }, [catalogMoments.data, library, momentMutations, momentsVersion, selected, storyboardUrl])
+  const { version: momentsVersion, source: momentSource } = useCatalogMomentSource(
+    library,
+    momentBundle,
+    selected ?? null,
+    storyboardUrl,
+  )
+  const momentsEnabled = momentsVersion >= 1
   const momentFiles = useMemo(
     () => (folder ? (observation ? [observation.file] : []) : files),
     [files, folder, observation],

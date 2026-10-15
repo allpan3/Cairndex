@@ -84,9 +84,16 @@ moment's start, and a span plays a short muted clip. The server makes each
 preview once in the background, at most two at a time, from a pinned descriptor
 of the observed generation. The previews stay in the private cache, and a
 changed source never serves an old one. A portable span has no stream fallback:
-until its clip is ready, the row shows the poster or the storyboard tile. The
-browser inspector's moments section and the full bundle inspector in the viewer
-remain for later changes.
+until its clip is ready, the row shows the poster or the storyboard tile.
+
+The browser inspector's moments section (`feature/portable-inspector-moments`)
+follows for servers that advertise `moments_version: 4`. It lists the bundle's
+moments with the viewer rail's rows, and Play from opens the viewer on the
+moment's file at its start. Comment, tag and delete work there too. They are
+catalog jobs on the moment rows, so they never touch the bundle draft that the
+inspector owns. The moment page now names the files that its moments mark, so
+the section needs no playlist pages. The full bundle inspector in the viewer
+remains for a later change.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

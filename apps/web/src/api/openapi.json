@@ -2270,6 +2270,13 @@
       },
       "CatalogMomentPage": {
         "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileRead"
+            },
+            "title": "Files",
+            "type": "array"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/MomentRead"
@@ -2299,7 +2306,8 @@
         "required": [
           "items",
           "next_offset",
-          "tag_names"
+          "tag_names",
+          "files"
         ],
         "title": "CatalogMomentPage",
         "type": "object"

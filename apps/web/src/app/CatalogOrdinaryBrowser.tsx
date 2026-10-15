@@ -58,7 +58,8 @@ export function CatalogOrdinaryBrowser(props: {
   onReviewEntity: (family: string, id: string) => void
   onReview: () => void
   onOpen: (id: string) => void
-  onOpenFile: (bundle: string, file: string) => void
+  /** Open one file in the viewer, at `time` seconds when it is given. */
+  onOpenFile: (bundle: string, file: string, time?: number) => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
