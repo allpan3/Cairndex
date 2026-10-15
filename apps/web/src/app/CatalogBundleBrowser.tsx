@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
 import type { BundleSort, SortOrder, BundleSummary } from '../api/client'
 import { Browser, type BrowserNavigation } from './Browser'
@@ -20,7 +21,11 @@ import { useContextMenu } from './useContextMenu'
 import { captureRequestScope } from '../api/requestScope'
 
 type Page = components['schemas']['CatalogBrowsePage']
-const supportedSorts: BundleSort[] = ['title', 'rating', 'date_added']
+// Browse version 3 adds Manual and File count. A portable catalog records no file
+// sizes, change times or opening times, so Size, Date Modified and Date Opened stay
+// unavailable.
+const BASIC_SORTS: BundleSort[] = ['title', 'rating', 'date_added']
+const ORDERED_SORTS: BundleSort[] = [...BASIC_SORTS, 'manual', 'file_count']
 
 // The shared virtual listing and inspector controls receive catalog reads and causal saves.
 export function CatalogBundleBrowser({
@@ -67,6 +72,8 @@ export function CatalogBundleBrowser({
   viewerOpen?: boolean
 }) {
   const collections = useCollections()
+  const supportedSorts =
+    (useReplicaStatus(library).data?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
   const [includeDescendants, setIncludeDescendants] = useState(true)
   const expression = adHocFiltersToExpression(filters)
   const smart = useQuery({
@@ -84,7 +91,13 @@ export function CatalogBundleBrowser({
   const [sort, setSort] = useState<BundleSort>('title')
   const [order, setOrder] = useState<SortOrder>('asc')
   const activeSort = selection.view === 'recent' ? 'date_added' : sort
-  const activeOrder = selection.view === 'recent' && sort !== 'date_added' ? 'desc' : order
+  // Manual has no direction: the arrangement is the order, as in the legacy browser
+  const activeOrder =
+    activeSort === 'manual'
+      ? 'asc'
+      : selection.view === 'recent' && sort !== 'date_added'
+        ? 'desc'
+        : order
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
   const [album, setAlbum] = useState<{ id: string; scope: string } | null>(null)
   const [albumFile, setAlbumFile] = useState<string | null>(null)

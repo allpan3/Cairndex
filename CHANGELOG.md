@@ -38,6 +38,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Show the full bundle inspector in the portable viewer's rail. The browser's
   inspector steps aside while the viewer is open, so unsaved notes and titles
   move between them without being overwritten.
+- Add the Manual and File Count sorts to the portable Bundle Browser. Manual
+  uses a collection's own order inside that collection. Servers advertise the
+  sorts as `browse_version: 3`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

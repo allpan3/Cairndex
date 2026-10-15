@@ -103,6 +103,15 @@ the viewer. The rail's moments section uses the viewer's moment source, so `B`,
 the range loop and Play from work there as before. The File Browser's folder
 viewer has no bundle inspector to hand over and keeps the moments-only rail.
 
+Portable sorts (`feature/portable-sorts`) add Manual and File Count for servers
+that advertise `browse_version: 3`. Manual orders by the authored `manual_order`,
+or by one collection's membership order when the view excludes descendants. As in
+the legacy browser, bundles with equal Manual values show the newest first. Size,
+Date Modified and Date Opened stay unavailable and need an owner decision. A
+portable catalog records no file sizes. Its events carry no times, and the catalog
+never updates `updated_at` on an edit. Opening is an observation on each device,
+and recording it needs a new reviewed table in the private-store schema.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

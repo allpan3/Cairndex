@@ -4336,7 +4336,7 @@ export interface components {
              * @default title
              * @enum {string}
              */
-            sort: "title" | "rating" | "date_added";
+            sort: "title" | "rating" | "date_added" | "manual" | "file_count";
             /**
              * View
              * @default all
@@ -4498,7 +4498,7 @@ export interface components {
              * @default title
              * @enum {string}
              */
-            sort: "title" | "rating" | "date_added";
+            sort: "title" | "rating" | "date_added" | "manual" | "file_count";
             /**
              * Tag Include Descendants
              * @default true
