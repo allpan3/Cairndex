@@ -39,7 +39,8 @@ follow as separate changes: exports, storyboards and moments. Exports merged
 through [PR #64](https://github.com/allpan3/Cairndex/pull/64) as `f7a7d828`, and
 storyboards through [PR #65](https://github.com/allpan3/Cairndex/pull/65) as
 `25896d34`. Moments merged through
-[PR #66](https://github.com/allpan3/Cairndex/pull/66) as `23c10155`. The real-library owner test in step 6 remains the release checkpoint.
+[PR #66](https://github.com/allpan3/Cairndex/pull/66) as `23c10155`, and moment tags
+through [PR #67](https://github.com/allpan3/Cairndex/pull/67) as `4635b0da`. The real-library owner test in step 6 remains the release checkpoint.
 No release tag or production deployment was made.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
@@ -68,23 +69,33 @@ browser inspector under the viewer owns the bundle's private drafts; a second
 draft owner in one tab would overwrite them. Full gates passed in both guests,
 and all 16 hosted checks passed before the merge.
 
-Portable moment tags (`feature/portable-moment-tags`) follow for servers that
+Portable moment tags ([PR #67](https://github.com/allpan3/Cairndex/pull/67), merged as
+`4635b0da` after both VM gates and all 16 hosted checks passed) apply to servers that
 advertise `moments_version: 2`. Each rail row shows its first tag and a count, and
 its `+` opens a tag chooser that searches the library's tags on the server. One
 click commits a `moment_tag` preview with the observed bases of the moment, the
 tag and the edge, so a stale choice is refused. Under ADR-0025 an added tag also
 adds the bundle tag, or restores it from a tombstone. Removing the moment tag or
-deleting the moment leaves the bundle tag. The private poster and clip previews,
-the browser inspector's moments section and the full bundle inspector in the
-viewer remain for later changes.
+deleting the moment leaves the bundle tag.
+
+Portable moment previews (`feature/portable-moment-previews`) follow for servers
+that advertise `moments_version: 3`. Hovering a rail row shows the frame at the
+moment's start, and a span plays a short muted clip. The server makes each
+preview once in the background, at most two at a time, from a pinned descriptor
+of the observed generation. The previews stay in the private cache, and a
+changed source never serves an old one. A portable span has no stream fallback:
+until its clip is ready, the row shows the poster or the storyboard tile. The
+browser inspector's moments section and the full bundle inspector in the viewer
+remain for later changes.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.
 The existing glib exception and proc-macro-error maintenance warning remain.
-The rustls repair (`fix/rustls-audit`) updates rustls to 0.23.46. Four rustls
-advisories published on 2026-10-14 made the hosted dependency audit fail on
-every branch.
+The rustls repair [PR #68](https://github.com/allpan3/Cairndex/pull/68) merged as
+`4a685adc` after both VM gates and all 16 hosted checks passed. It updates rustls to
+0.23.46. Four rustls advisories published on 2026-10-14 made the hosted dependency
+audit fail on every branch.
 The screenshot prerequisite [PR #61](https://github.com/allpan3/Cairndex/pull/61)
 then merged as `ed40dd70` after its selected CI jobs and all six required checks
 passed. The feature includes its exact declared synthetic screenshot.

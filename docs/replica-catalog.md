@@ -362,8 +362,18 @@ the observed bases of the moment, the tag and the `moment_tags` edge. A
 `moment_tag` preview changes one edge and refuses stale or held choices. Under
 ADR-0025 an added tag also adds the `asset_bundle_tags` edge, or restores its
 tombstone, and a held bundle edge refuses the preview. Removing a moment tag or
-deleting the moment leaves the bundle tag. Private poster and clip previews and
-the moments section of the browser inspector are not part of this capability yet.
+deleting the moment leaves the bundle tag.
+
+Servers with `moments_version: 3` also make private moment previews.
+`/replica/media/moments/{id}/poster.jpg` returns the frame at the moment's start,
+and `/replica/media/moments/{id}/clip.mp4` returns a muted clip of a span, at
+most 60 seconds long and 480 pixels wide. A request never decodes: a missing
+preview answers 404 and queues one background build, at most two at a time. The
+build reads the source through a pinned descriptor and publishes the preview
+only when the observed generation is still current. The private cache name holds
+the generation and the marked times. Responses are `private, no-store`, because
+the URL does not name the generation. Release aborts a running build. The
+moments section of the browser inspector is not part of this capability yet.
 
 ## Conversion and evidence
 

@@ -1,7 +1,7 @@
 // Portable moments are catalog rows; every write is a catalog job with explicit bases
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, operationId, runJob, type Entity } from './catalog'
-import type { Moment, MomentCreate } from './client'
+import { resolveAssetUrl, type Moment, type MomentCreate } from './client'
 import { replicaRequest } from './replicas'
 import type { components } from './schema'
 
@@ -20,6 +20,23 @@ export const catalogMomentsKey = (library: string, bundleId: string | null) => [
   library,
   bundleId,
 ]
+
+/**
+ * A portable moment's private previews. The server answers 404 and makes the
+ * preview in the background until it is ready; a frame has no clip.
+ */
+export function catalogMomentPreviews(library: string, moment: Moment): MomentPreviews {
+  const base = `/api/v1/libraries/${library}/replica/media/moments/${encodeURIComponent(moment.id)}`
+  return {
+    poster: resolveAssetUrl(`${base}/poster.jpg`),
+    clip: moment.end_s === null ? null : resolveAssetUrl(`${base}/clip.mp4`),
+  }
+}
+
+export interface MomentPreviews {
+  poster: string
+  clip: string | null
+}
 
 /** Same order as the server: start time, then the stable identity. */
 function insertMoment(current: Moment[], saved: Moment): Moment[] {

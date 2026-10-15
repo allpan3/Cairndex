@@ -1,9 +1,12 @@
 """Portable moments are catalog rows: listed per bundle, written only through catalog jobs."""
 
 import json
+import shutil
+import threading
+import time
 
 from cairndex.replicas.catalog import jobs
-from tests.test_replica_media import media_api, specimen  # noqa: F401
+from tests.test_replica_media import authored, media_api, specimen  # noqa: F401
 
 BUNDLE = "bundle-000001"
 
@@ -49,7 +52,7 @@ def creation(client, base, file_id, start, end):
 
 def test_moments_are_listed_and_edited_through_catalog_jobs(media_api):  # noqa: F811
     client, base, store, _, _ = media_api
-    assert client.get(base + "/replica/status").json()["moments_version"] == 2
+    assert client.get(base + "/replica/status").json()["moments_version"] == 3
     seeded = listed(client, base)
     assert [item["id"] for item in seeded["items"]] == ["media-moment"]
     assert seeded["items"][0]["comment"] == "Synthetic moment"
@@ -185,3 +188,92 @@ def test_a_moment_tag_also_tags_the_bundle_one_way(media_api):  # noqa: F811
         ).fetchone()
     missing = client.get(base + "/replica/catalog/moments/media-moment/tags")
     assert missing.status_code >= 400
+
+
+def settled(client, url):
+    for _ in range(600):
+        response = client.get(url)
+        if response.status_code != 404:
+            return response
+        time.sleep(0.05)
+    raise AssertionError("moment preview was not built")
+
+
+# Tests share one private store, so each makes its own moment and counts only new previews
+def marked(client, base, store, operation, start, end):
+    command = creation(client, base, "media-direct", start, end)
+    assert preview_and_commit(client, base, store, operation, command)["state"] == "succeeded"
+    return json.loads(command["cells"]["id"])
+
+
+def previews(store, suffix):
+    return set((store.path.parent / "cache" / "moment-previews").glob(f"*/*{suffix}"))
+
+
+# A preview is made in the background from the observed generation, into the private cache
+def test_moment_previews_use_the_private_cache_and_current_generation(media_api):  # noqa: F811
+    client, base, store, _, roots = media_api
+    moment = marked(client, base, store, "mark-previewed", 20.0, 24.0)
+    before = authored(store)
+    posters, clips = previews(store, "-poster.jpg"), previews(store, "-clip.mp4")
+    poster = base + f"/replica/media/moments/{moment}/poster.jpg"
+    clip = base + f"/replica/media/moments/{moment}/clip.mp4"
+    queued = client.get(poster)
+    assert queued.status_code == 404
+    assert queued.json()["message"] == "Moment preview is not ready yet"
+    frame = settled(client, poster)
+    assert frame.status_code == 200 and frame.content.startswith(b"\xff\xd8")
+    assert frame.headers["cache-control"] == "private, no-store"
+    span = settled(client, clip)
+    assert span.status_code == 200 and span.headers["content-type"] == "video/mp4"
+    assert span.content[4:8] == b"ftyp"
+    assert len(previews(store, "-poster.jpg") - posters) == 1
+    assert len(previews(store, "-clip.mp4") - clips) == 1
+    assert not (roots[0] / ".cairndex/cache").exists()
+
+    # A changed source never serves the old preview; the next request makes a new one
+    source = roots[0] / "Playback/movie.mp4"
+    copy = source.with_suffix(".new")
+    shutil.copyfile(source, copy)
+    copy.replace(source)
+    assert client.get(poster).status_code == 404
+    assert settled(client, poster).status_code == 200
+    assert len(previews(store, "-poster.jpg") - posters) == 2
+    assert authored(store) == before
+
+    # A frame has no clip, and a missing moment has no preview
+    frame_moment = marked(client, base, store, "mark-unclipped", 10.5, None)
+    refused = client.get(base + f"/replica/media/moments/{frame_moment}/clip.mp4")
+    assert refused.status_code == 404
+    assert refused.json()["message"] == "Only range moments have a preview clip"
+    assert client.get(base + "/replica/media/moments/missing/poster.jpg").status_code == 404
+
+
+# Release takes a running preview away, and the next request after Reopen makes it
+def test_moment_preview_release_aborts_running_work(media_api, monkeypatch):  # noqa: F811
+    from cairndex.core.abort import OperationAborted, aborted
+    from cairndex.media import moment_previews
+
+    client, base, store, _, _ = media_api
+    moment = marked(client, base, store, "mark-released", 30.0, None)
+    started = threading.Event()
+    real = moment_previews._encode_poster
+
+    def wait_for_abort(*args, **kwargs):
+        started.set()
+        for _ in range(200):
+            if aborted():
+                raise OperationAborted
+            time.sleep(0.05)
+        raise AssertionError("release did not abort the preview")
+
+    monkeypatch.setattr(moment_previews, "_encode_poster", wait_for_abort)
+    poster = base + f"/replica/media/moments/{moment}/poster.jpg"
+    assert client.get(poster).status_code == 404
+    assert started.wait(timeout=10)
+    assert client.post(base + "/ownership/release").status_code == 200
+    assert client.post(base + "/ownership/reopen").status_code == 200
+    monkeypatch.setattr(moment_previews, "_encode_poster", real)
+    assert settled(client, poster).status_code == 200
+    cache = store.path.parent / "cache" / "moment-previews"
+    assert not list(cache.glob("*/*.partial.*"))

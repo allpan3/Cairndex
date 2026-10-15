@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
+import type { MomentPreviews } from '../api/catalogMoments'
 import type { EditVersion } from '../api/editBasis'
 import type { Moment, MomentCreate } from '../api/client'
 
@@ -33,6 +34,8 @@ export interface MomentSource {
   storyboardUrl: (fileId: string) => string | null
   /** The tag controls of one moment row; absent where this source cannot tag moments. */
   renderTags?: (moment: Moment) => ReactNode
+  /** The poster and clip of one moment; absent where this source has no previews. */
+  previews?: (moment: Moment) => MomentPreviews
 }
 
 export const MomentSourceContext = createContext<MomentSource | null>(null)

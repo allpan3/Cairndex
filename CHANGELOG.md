@@ -28,6 +28,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   a chooser that searches the library's tags. A tag added to a moment is also
   added to its bundle (ADR-0025); removing it from the moment leaves the bundle
   tag. Servers advertise the capability as `moments_version: 2`.
+- Restore moment hover previews in the portable viewer. A row shows the frame
+  at the moment's start, and a span plays a short muted clip. The server makes
+  each preview once in the background and keeps it in its private cache.
+  Servers advertise the capability as `moments_version: 3`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

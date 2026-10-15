@@ -200,22 +200,31 @@ function MomentRow({
   }, [moment.id, startEditing])
   const { time, length } = describeMoment(moment)
   const source = useMomentSource()
-  // A portable source has no private poster or clip previews yet
-  const posterUrl = source ? null : momentPosterUrl(moment.bundle_id, moment.id, moment.version)
+  // A portable source serves private previews only when its server makes them
+  const previews = source?.previews?.(moment) ?? null
+  const posterUrl = source
+    ? (previews?.poster ?? null)
+    : momentPosterUrl(moment.bundle_id, moment.id, moment.version)
   const isRange = moment.end_s !== null
   const range = isRange ? { start: moment.start_s, end: moment.end_s as number } : null
   // A range on a file the browser can decode plays itself on hover. `supported`
   // is the same flag the grid's card preview gates on: anything needing the
   // player's remux keeps the still tile rather than dragging that machinery into
-  // a hover.
-  const playableSpan =
-    range && playable && !source
-      ? {
-          clipUrl: momentClipUrl(moment.bundle_id, moment.id, moment.version),
-          streamUrl: fileStreamUrl(moment.file_id),
-          ...range,
-        }
-      : null
+  // a hover. A portable clip is always H.264, so it needs no such check, but it
+  // has no stream to fall back on.
+  const playableSpan = !range
+    ? null
+    : source
+      ? previews?.clip
+        ? { clipUrl: previews.clip, streamUrl: null, ...range }
+        : null
+      : playable
+        ? {
+            clipUrl: momentClipUrl(moment.bundle_id, moment.id, moment.version),
+            streamUrl: fileStreamUrl(moment.file_id),
+            ...range,
+          }
+        : null
 
   // The thumbnail is a storyboard tile — the sheet already exists for every
   // scanned video, and the crop is the same one the seek-bar tooltip does. No
@@ -433,7 +442,7 @@ function MomentPreview({
    * The span to play, for a range on a file the browser can decode. Null for a
    * frame, or a source that needs the player's remux — both show the still tile.
    */
-  span: { clipUrl: string; streamUrl: string; start: number; end: number } | null
+  span: { clipUrl: string; streamUrl: string | null; start: number; end: number } | null
   /** The frame this moment marks, decoded server-side. The honest still. */
   posterUrl: string | null
   storyboardUrl: string | null
@@ -543,19 +552,20 @@ function MomentPoster({ url }: { url: string }) {
 function SpanPlayback({
   span,
 }: {
-  span: { clipUrl: string; streamUrl: string; start: number; end: number }
+  span: { clipUrl: string; streamUrl: string | null; start: number; end: number }
 }) {
   const [ready, setReady] = useState(false)
   const [armed, setArmed] = useState(false)
   // The clip is tried first and demoted on error, which is the 404 it answers
   // while the cut is still queued. Keyed by span so a different row starts
   // hopeful again rather than inheriting this one's verdict.
-  const [source, setSource] = useState<'clip' | 'stream'>('clip')
+  // A portable span has no stream, so a missing clip leaves the still in place.
+  const [source, setSource] = useState<'clip' | 'stream' | 'none'>('clip')
   useEffect(() => {
     const timer = window.setTimeout(() => setArmed(true), PREVIEW_PLAY_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [])
-  if (!armed) return null
+  if (!armed || source === 'none') return null
 
   const shared = {
     className: `moment-preview__video${ready ? ' is-ready' : ''}`,
@@ -580,7 +590,7 @@ function SpanPlayback({
         preload="auto"
         onError={() => {
           setReady(false)
-          setSource('stream')
+          setSource(span.streamUrl ? 'stream' : 'none')
         }}
       />
     )
@@ -590,7 +600,7 @@ function SpanPlayback({
     <video
       {...shared}
       data-source="stream"
-      src={span.streamUrl}
+      src={span.streamUrl ?? undefined}
       preload="metadata"
       // Start at the in-point rather than at the file's, and keep to the span:
       // `loop` would replay the whole video, which is not what was marked.
