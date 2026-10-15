@@ -521,3 +521,90 @@ test('portable card menu locates files and organizes a collection @fullstack', a
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable sidebar creates, renames, arranges and deletes collections @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-collections-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    type Item = { id: string; parent_id: string | null; sort_order: number }
+    const forest = async () =>
+      JSON.parse(
+        (await (await fetch(`${base}/entities/collections/_`)).json()).fields.$forest.value,
+      ) as Item[]
+    const level = async (parent: string | null) =>
+      (await forest())
+        .filter((item) => item.parent_id === parent)
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((item) => item.id)
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    // The fixture names a tag and a collection alike; the collections section is first
+    const row = (name: RegExp) => page.getByRole('treeitem', { name }).first()
+    const menu = page.getByRole('menu')
+    await expect(row(/Synthetic child/)).toBeVisible()
+
+    await page.getByRole('button', { name: 'New collection' }).click()
+    const prompt = page.getByRole('dialog', { name: 'New Collection' })
+    await prompt.getByLabel('Collection name').fill('Zeta draft')
+    await prompt.getByRole('button', { name: 'Create' }).click()
+    await expect(row(/Zeta draft/)).toBeVisible()
+    const fixture = ['collections-root', 'collections-child']
+    const created = (await forest()).find((item) => !fixture.includes(item.id))!.id
+    expect(await level(null)).toEqual(['collections-root', created])
+
+    await row(/Zeta draft/).click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Rename Collection' }).click()
+    const rename = page.getByRole('textbox', { name: 'Rename Zeta draft' })
+    await rename.fill('Alpha')
+    await rename.press('Enter')
+    // The row names the typed value until the save lands and the field closes
+    await expect(rename).toBeHidden()
+    await expect(row(/Alpha/)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Collections', exact: true }).click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Clean Up Order…' }).click()
+    await page
+      .getByRole('dialog', { name: 'Clean up collection order' })
+      .getByRole('button', { name: 'Clean up' })
+      .click()
+    await expect.poll(() => level(null)).toEqual([created, 'collections-root'])
+
+    await row(/Alpha/).dragTo(row(/Synthetic child/))
+    await expect.poll(() => level('collections-child')).toEqual([created])
+
+    await row(/Synthetic child/).click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Delete Collection' }).click()
+    const remove = page.getByRole('dialog', { name: 'Delete Collection' })
+    await expect(remove.getByText('Subcollections move up one level.')).toBeVisible()
+    await remove.getByRole('button', { name: 'Delete', exact: true }).click()
+    // The deleted collection's child moves up, and its bundle stays in the catalog
+    await expect.poll(() => level('collections-root')).toEqual([created])
+    expect((await forest()).map((item) => item.id)).not.toContain('collections-child')
+    const bundle = await (await fetch(`${base}/entities/asset_bundles/bundle-000000`)).json()
+    expect(bundle.fields.$alive.value).toBe('true')
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

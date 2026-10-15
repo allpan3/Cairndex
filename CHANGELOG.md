@@ -53,6 +53,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Open `cairndex://` links in the portable workspace again. A bundle link
   selects the bundle in All bundles, and a collection link opens the
   collection. The desktop card menu has Copy URI again.
+- Restore collection organizing in the portable sidebar: New Collection, New
+  Subcollection, Rename, Delete, drag to reorder or reparent, and Clean Up
+  Order. Each change saves at once from the catalog's current hierarchy and is
+  refused for review when another device changed it first. Deleting a
+  collection keeps its bundles and moves its subcollections up one level. The
+  desktop collection menu has Copy URI again.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library
