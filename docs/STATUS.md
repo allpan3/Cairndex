@@ -174,6 +174,15 @@ so it offers neither. Clean Up Order has no Size choice, because portable
 libraries have no size data. A move from the end of a large scope to its start
 still rewrites every position between them, as in legacy.
 
+Portable collections from folders (`feature/portable-collection-from-folder`)
+restore the File Browser's New Collection from Folder…. A `collect_directory`
+preview creates the collection and its memberships in one commit, as legacy did
+in one transaction, so a collection never exists without its members. Members
+are the bundles the browser would show that have a file in the folder or below
+it, found by an indexed range on `catalog_paths.parent`. The reused dialog
+counts them first through `/replica/catalog/directories/bundle-count`. Like the
+sidebar's New Collection, it does not refuse a duplicate sibling name.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

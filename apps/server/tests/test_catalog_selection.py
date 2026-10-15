@@ -1,5 +1,7 @@
 """Bulk reviews retain displayed bases, exact targets and retry identities."""
 
+import json
+
 import pytest
 
 from cairndex.devtools.catalog_fixture import create_disposable
@@ -252,3 +254,57 @@ def test_manual_order_moves_and_cleanups_write_only_changed_positions(store):
     assert order() == ["bundle-000002", "bundle-000001", "bundle-000000"]
     with pytest.raises(ReplicaError, match="changed"):
         preview(store, child | {"moved": ["bundle-000002"], "before": None})
+
+
+def test_collect_directory_files_one_folder_into_a_new_collection(store):
+    from cairndex.replicas.catalog.browse import directory_bundles
+    from cairndex.replicas.catalog.projection import read_row
+
+    with store.connection(readonly=True) as db:
+        assert directory_bundles(db, "Synthetic") == ["bundle-000000"]
+        assert directory_bundles(db, "Synthetic/") == ["bundle-000000"]
+        # A sibling sharing the prefix is not inside the folder
+        assert directory_bundles(db, "Synth") == []
+        for invalid in ("", "/", "../Synthetic", "/abs"):
+            with pytest.raises(ReplicaError):
+                directory_bundles(db, invalid)
+    command = {
+        "action": "collect_directory",
+        "directory": "Synthetic",
+        "name": " Folder 雪 ",
+        "parent": "collections-root",
+    }
+    result = preview(store, command)
+    created = next(
+        item["unit"].split("/")[1]
+        for item in result["changes"]
+        if item["cohort"] == "domain"
+        and item["unit"].startswith("collections/")
+        and item["unit"].endswith("/$alive")
+    )
+    commit(store, result, "collect")
+    with store.connection(readonly=True) as db:
+        row = read_row(db, "collections", created)
+        assert (row["name"], row["parent_id"]) == ("Folder 雪", "collections-root")
+        siblings = [
+            item
+            for item in json.loads(
+                db.execute(
+                    "SELECT value FROM catalog_units WHERE unit='collections/_/$forest'"
+                ).fetchone()[0]
+            )
+            if item["parent_id"] == "collections-root"
+        ]
+        assert max(siblings, key=lambda item: item["sort_order"])["id"] == created
+        assert read_row(db, "asset_bundle_collections", f"bundle-000000~{created}") is not None
+    with pytest.raises(ReplicaError, match="parent"):
+        preview(store, command | {"parent": "collections-gone"})
+
+
+def test_api_directory_bundle_count(api):  # noqa: F811
+    client, base, _ = api
+    url = base + "/replica/catalog/directories/bundle-count"
+    assert client.get(url, params={"directory": "Synthetic"}).json() == {"bundle_count": 1}
+    refused = client.get(url, params={"directory": "../Synthetic"})
+    assert refused.status_code == 409
+    assert refused.json()["message"] == "Invalid library-relative directory"

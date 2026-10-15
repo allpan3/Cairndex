@@ -73,6 +73,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   menu. The server resolves each move against the complete scope and writes
   only the positions that change. Manual always reads ascending. Servers
   advertise the manual order as `browse_version: 6`.
+- Restore New Collection from Folder… in the portable File Browser. One commit
+  creates the collection and files every bundle with a file in that folder or
+  below it; the app then opens the collection. Servers advertise it as
+  `browse_version: 7`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

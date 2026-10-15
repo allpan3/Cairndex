@@ -797,3 +797,55 @@ test('portable Manual sort reorders by drag and cleans up the order @fullstack',
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable File Browser makes a collection from a folder @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-folder-collection-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    await page.getByRole('row').filter({ hasText: 'Playback' }).click({ button: 'right' })
+    await page
+      .getByRole('menu')
+      .getByRole('menuitem', { name: 'New Collection from Folder…' })
+      .click()
+    const dialog = page.getByRole('dialog', { name: 'New Collection from Folder' })
+    await expect(dialog).toContainText('The 1 bundle in this folder joins it.')
+    await dialog.getByRole('button', { name: 'Create Collection' }).click()
+    // The app lands in the new collection, which holds the folder's bundle
+    await expect(page.getByText('Created “Playback” with 1 bundle.')).toBeVisible()
+    await expect(page.getByRole('treeitem', { name: /Playback/ }).first()).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(
+      page
+        .getByRole('listbox', { name: 'Bundles', exact: true })
+        .getByRole('option')
+        .filter({ hasText: 'Synthetic playback' }),
+    ).toBeVisible()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

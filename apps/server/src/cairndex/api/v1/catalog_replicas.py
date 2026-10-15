@@ -9,9 +9,11 @@ from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.browse import (
     CatalogBrowsePage,
     CatalogBrowseRequest,
+    CatalogDirectoryBundleCount,
     CatalogUnbundledPage,
     CatalogUnbundledRequest,
     browse,
+    directory_bundles,
     unbundled,
 )
 from cairndex.replicas.catalog.inspector import (
@@ -237,3 +239,12 @@ def selected_memberships(
 def unbundled_files(payload: CatalogUnbundledRequest, store: Catalog) -> CatalogUnbundledPage:
     with store.connection(readonly=True) as db:
         return unbundled(db, payload)
+
+
+# The folder dialog states what Create will file before it is pressed
+@router.get("/directories/bundle-count", response_model=CatalogDirectoryBundleCount)
+def directory_bundle_count(
+    store: Catalog, directory: Annotated[str, Query(min_length=1, max_length=4096)]
+) -> CatalogDirectoryBundleCount:
+    with store.connection(readonly=True) as db:
+        return CatalogDirectoryBundleCount(bundle_count=len(directory_bundles(db, directory)))

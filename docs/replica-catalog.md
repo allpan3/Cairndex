@@ -81,6 +81,11 @@ memberships or the global `manual_order`. It takes a moved block and the bundle
 it lands before, or a sort for Clean Up Order, resolves it against the complete
 scope, and writes only changed positions. A held position refuses it for
 review. Servers advertise it as `browse_version: 6`.
+
+A `collect_directory` preview creates one collection, last among its siblings,
+with every browsable bundle that has a file in a library-relative folder or
+below it. `GET /replica/catalog/directories/bundle-count` reports that count
+first. Servers advertise it as `browse_version: 7`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the
