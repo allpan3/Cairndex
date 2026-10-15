@@ -1,5 +1,7 @@
 """Real HTTP capability fences and durable catalog jobs use isolated synthetic packages"""
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -40,8 +42,13 @@ def api(tmp_path):
         client.get(base + "/replica/status")
         store = service._handles[library][0]
         assert isinstance(store, CatalogStore)
-        for _ in range(8):
+        # The background worker can hold the replica lock, so an exchange call may
+        # return without work; wait for the imported seed instead of counting calls
+        deadline = time.monotonic() + 15
+        while not (status := store.status())["ready"] or status["waiting"]:
+            assert time.monotonic() < deadline, "the catalog seed did not import"
             service.exchange(library)
+            time.sleep(0.01)
         yield client, base, store
     service.close(library)
     engine.dispose()
