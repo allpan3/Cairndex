@@ -75,6 +75,12 @@ emptied bundle is deleted. Moments follow their file; a subtitle pairing of two
 files cannot follow both and is deleted. A bundle that is already an Unbundled
 staging bundle is deleted with its file. Servers advertise the Bundle Browser's
 Delete Bundle as `browse_version: 5`.
+
+An `order` preview rewrites one manual-order scope, either one collection's own
+memberships or the global `manual_order`. It takes a moved block and the bundle
+it lands before, or a sort for Clean Up Order, resolves it against the complete
+scope, and writes only changed positions. A held position refuses it for
+review. Servers advertise it as `browse_version: 6`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the

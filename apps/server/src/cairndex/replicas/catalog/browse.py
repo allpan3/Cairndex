@@ -166,8 +166,8 @@ ELIGIBLE = (
 )
 
 
-def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrowsePage:
-    """Search the complete eligible projection before SQL ordering and pagination."""
+def _scope(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[str, list[Any]]:
+    """The complete eligible population of one browse request, as a WHERE clause."""
     where = ELIGIBLE
     args: list[Any] = []
     expressions = [request.filter]
@@ -209,7 +209,11 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
     if match:
         where += " AND b.rowid IN (SELECT rowid FROM catalog_search WHERE catalog_search MATCH ?)"
         args.append(match)
-    total = db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0]
+    return where, args
+
+
+def _ordering(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[str, list[Any]]:
+    """The ORDER BY terms of one browse request, ending with the stable identity tie."""
     order_args: list[Any] = []
     column = {
         "title": "lower(json_extract(b.body,'$.title'))",
@@ -243,9 +247,42 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
         )
         column = "catalog_shuffle(b.entity)"
         order_args, tie = [], "ASC"
+    return f"{column} {request.order},b.entity {tie}", order_args
+
+
+def scope_order(
+    db: sqlite3.Connection,
+    collection_id: str | None,
+    sort: Literal["title", "rating", "date_added", "manual", "file_count"],
+    order: Literal["asc", "desc"],
+) -> list[str]:
+    """Every bundle of one manual-order scope, as the browser sorts it.
+
+    The scope is one collection's own bundles or, without one, All bundles, as
+    the legacy browser's manual order is.
+    """
+    request = CatalogBrowseRequest(
+        collection_id=collection_id, include_descendants=False, sort=sort, order=order
+    )
+    where, args = _scope(db, request)
+    ordering, order_args = _ordering(db, request)
+    return [
+        row[0]
+        for row in db.execute(
+            f"SELECT b.entity FROM catalog_rows b WHERE {where} ORDER BY {ordering}",
+            [*args, *order_args],
+        )
+    ]
+
+
+def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrowsePage:
+    """Search the complete eligible projection before SQL ordering and pagination."""
+    where, args = _scope(db, request)
+    total = db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0]
+    ordering, order_args = _ordering(db, request)
     rows = db.execute(
         f"SELECT b.entity,b.body FROM catalog_rows b WHERE {where} "
-        f"ORDER BY {column} {request.order},b.entity {tie} LIMIT ? OFFSET ?",
+        f"ORDER BY {ordering} LIMIT ? OFFSET ?",
         [*args, *order_args, request.limit, request.offset],
     ).fetchall()
     local = _local_facts(db, [row["entity"] for row in rows])

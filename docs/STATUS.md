@@ -164,6 +164,16 @@ moments follow their file instead of going with the bundle, and a file that
 this device has not found is staged too, because another device may have it.
 Create Bundle and Add Files still need portable manual bundling.
 
+Portable bundle order (`feature/portable-bundle-order`) adds an `order` catalog
+preview for Manual drag-reorder and bundle Clean Up Order. Like the legacy
+service, it resolves a move or a sort against the complete scope (one
+collection's own bundles, or All bundles), never the loaded page, and writes
+only the positions that change: edge `sort_order` in a collection, else
+`manual_order`. A view of several collections or a shuffle has no single order,
+so it offers neither. Clean Up Order has no Size choice, because portable
+libraries have no size data. A move from the end of a large scope to its start
+still rewrites every position between them, as in legacy.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

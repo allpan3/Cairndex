@@ -729,3 +729,71 @@ test('portable Delete Bundle returns its files to Unbundled @fullstack', async (
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable Manual sort reorders by drag and cleans up the order @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-bundle-order-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    const shown = () =>
+      grid.locator('[data-bundle-id]').evaluateAll((cards) => cards.map((card) => card.id))
+    const card = (id: string) => grid.locator(`[data-bundle-id="${id}"]`)
+    await page.getByRole('button', { name: 'Sort', exact: true }).click()
+    await page.getByRole('button', { name: 'Manual', exact: true }).click()
+    await expect
+      .poll(shown)
+      .toEqual(
+        ['bundle-000000', 'bundle-000001', 'bundle-000002'].map((id) => `bundle-option-${id}`),
+      )
+
+    // The leading edge of a card is the gap before it
+    const target = (await card('bundle-000000').boundingBox())!
+    await card('bundle-000002').dragTo(card('bundle-000000'), {
+      targetPosition: { x: 4, y: target.height / 2 },
+    })
+    await expect
+      .poll(shown)
+      .toEqual(
+        ['bundle-000002', 'bundle-000000', 'bundle-000001'].map((id) => `bundle-option-${id}`),
+      )
+
+    const box = (await grid.boundingBox())!
+    await grid.click({ button: 'right', position: { x: box.width - 12, y: box.height - 12 } })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Clean Up Order…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Clean up bundle order' })
+    await dialog.getByRole('combobox', { name: 'Clean-up order' }).selectOption('title:desc')
+    await dialog.getByRole('button', { name: 'Clean up' }).click()
+    await expect(page.getByText('Bundle order cleaned up.')).toBeVisible()
+    // Z–A by title; the untitled bundle sorts last
+    await expect
+      .poll(shown)
+      .toEqual(
+        ['bundle-000001', 'bundle-000002', 'bundle-000000'].map((id) => `bundle-option-${id}`),
+      )
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

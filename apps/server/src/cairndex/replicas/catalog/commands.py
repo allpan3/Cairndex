@@ -222,6 +222,49 @@ class Preview:
             self.row(family, row)
             self.rehomed.add((family, identity))
 
+    def order(self, command: dict[str, Any]) -> None:
+        """Rewrite one scope's manual order: a moved block, or a chosen sort.
+
+        The move is resolved against the complete scope, never the client's loaded
+        page, and only positions that change are written, as in the legacy browser.
+        A collection orders its own memberships; without one, the order is global.
+        """
+        from cairndex.replicas.catalog.browse import scope_order
+
+        collection = command.get("collection")
+        if collection is not None and read_row(self.db, "collections", collection) is None:
+            raise ReplicaError("Reorder target is unavailable")
+        if "moved" in command:
+            ids = scope_order(self.db, collection, "manual", "asc")
+            moved = set(command["moved"])
+            moving = [identity for identity in ids if identity in moved]
+            before = command.get("before")
+            if len(moving) != len(moved) or before in moved:
+                raise ReplicaError("Reorder selection changed; refresh the bundles")
+            rest = [identity for identity in ids if identity not in moved]
+            at = rest.index(before) if before in rest else len(rest)
+            ids = rest[:at] + moving + rest[at:]
+        else:
+            sort = command["sort"]
+            if sort not in ("title", "rating", "date_added", "file_count"):
+                raise ReplicaError("Unsupported clean-up order")
+            ids = scope_order(self.db, collection, sort, "desc" if command["descending"] else "asc")
+        for position, identity in enumerate(ids):
+            unit = (
+                key("asset_bundle_collections", f"{identity}~{collection}", "sort_order")
+                if collection
+                else key("asset_bundles", identity, "manual_order")
+            )
+            if self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone():
+                raise ReplicaError("The manual order needs metadata review first")
+            current = self.db.execute(
+                "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+            ).fetchone()
+            if current is None or current[0] != value_text(position):
+                self.put(unit, position)
+        if not self.values:
+            raise ReplicaError("The bundles are already in this order")
+
     def dissolve(self, identity: str) -> None:
         """Delete a bundle and return its files to Unbundled, keeping their identities.
 
@@ -453,6 +496,8 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             recover = builder.moment_tag(command)
         elif action == "delete":
             builder.delete(command["family"], command["entity"])
+        elif action == "order":
+            builder.order(command)
         elif action == "dissolve":
             from cairndex.replicas.catalog.selection import CatalogSelectionRequest
 

@@ -76,6 +76,29 @@ export function deleteBundles(library: string, ids: string[]): Promise<void> {
   return commit(library, { action: 'dissolve', ids })
 }
 
+/**
+ * Move bundles in front of `before` (null: the end) in one collection's manual
+ * order, or the global one without a collection; needs `browse_version: 6`.
+ */
+export function reorderBundles(
+  library: string,
+  collection: string | null,
+  moved: string[],
+  before: string | null,
+): Promise<void> {
+  return commit(library, { action: 'order', collection, moved, before })
+}
+
+/** Rewrite one scope's manual order from a sort; needs `browse_version: 6`. */
+export function cleanUpBundleOrder(
+  library: string,
+  collection: string | null,
+  sort: 'title' | 'rating' | 'date_added' | 'file_count',
+  descending: boolean,
+): Promise<void> {
+  return commit(library, { action: 'order', collection, sort, descending })
+}
+
 /** Make a bundle the cover of a collection whose tree holds it. */
 export async function setCollectionCover(
   library: string,
