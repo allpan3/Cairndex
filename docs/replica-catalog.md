@@ -167,6 +167,9 @@ Smart Collections and Tags. Empty collections remain visible. The sidebar
 creates, renames, deletes, reorders and reparents collections. Each hierarchy
 change rewrites the current `collections/_/$forest` value through one committed
 `arrange` preview, so a held or changed arrangement is refused for review.
+With `selection_version: 2`, cards dropped on a collection join it through the
+bulk membership command, and a move out of the open collection removes them
+from it in a second command.
 Tag selection uses the shared Any/All/Equal rules, exclusions and descendant
 toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.

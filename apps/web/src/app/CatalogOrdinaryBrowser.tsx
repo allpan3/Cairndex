@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import type { FileBrowserEntry, LibraryRead } from '../api/client'
 import { useTags } from '../api/hooks'
-import { getHostLabels } from '../platform'
+import { useReplicaStatus } from '../api/useReplicaStatus'
+import { getHostLabels, hostAltKeyHeld } from '../platform'
 import { CatalogBundleBrowser } from './CatalogBundleBrowser'
 import { CatalogNavigation } from './CatalogNavigation'
 import { FileBrowser } from './FileBrowser'
@@ -15,6 +16,7 @@ import { useLibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useHostFileMenu } from '../desktop/useHostFileMenu'
 import { useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
 import type { PendingDeepLink } from './deepLinkUri'
+import { installDragCopyTracking, setActiveDrag, type DragItem } from './dnd'
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   const tags = useTags()
@@ -85,6 +87,17 @@ export function CatalogOrdinaryBrowser(props: {
   const [incoming, setIncoming] = useState<File[] | null>(null)
   const [dropError, setDropError] = useState('')
   const [linkError, setLinkError] = useState('')
+  // A card drag's payload, for the sidebar's drop highlights; dnd.ts holds the live copy
+  const [dragItem, setDragItem] = useState<DragItem | null>(null)
+  const [newCollection, setNewCollection] = useState<{ parentId: string | null } | null>(null)
+  const updateDragItem = useCallback((item: DragItem | null) => {
+    setActiveDrag(item)
+    setDragItem(item)
+  }, [])
+  // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
+  useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
+  const bundleMoves =
+    (useReplicaStatus(props.library).data?.selection_version ?? 0) >= 2 && !props.blocked
   const { deepLink, onDeepLinkHandled, onSelect } = props
   // A bundle link selects and locates the bundle; a collection link opens the collection
   useEffect(() => {
@@ -155,6 +168,11 @@ export function CatalogOrdinaryBrowser(props: {
           onReview={props.onReview}
           onReviewEntity={props.onReviewEntity}
           blocked={props.blocked}
+          dragItem={dragItem}
+          onDragItem={updateDragItem}
+          bundleMovesEnabled={bundleMoves}
+          newCollectionRequest={newCollection}
+          onNewCollectionHandled={() => setNewCollection(null)}
         />
         <div className="catalog-ordinary-content">
           {dropError && (
@@ -198,6 +216,10 @@ export function CatalogOrdinaryBrowser(props: {
                 setUnbundled(false)
                 setMode('file')
               }}
+              onBundleDrag={
+                bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined
+              }
+              onNewCollection={(parentId) => setNewCollection({ parentId })}
               locateRequest={locateRequest}
               selection={selection}
               filters={filters}

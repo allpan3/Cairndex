@@ -27,12 +27,14 @@ async function commit(library: string, command: unknown): Promise<void> {
   )
 }
 
-/** Remove bundles from one collection; needs `selection_version: 2`. */
-export async function removeFromCollection(
+/** Add bundles to, or remove them from, one collection; needs `selection_version: 2`. */
+export async function setCollectionMembership(
   library: string,
   ids: string[],
   collection: string,
+  assigned: boolean,
 ): Promise<void> {
+  if (ids.length > 100) throw new Error('Choose at most 100 bundles at a time.')
   const page = await catalog<Choices>(library, '/bundles/selection/memberships', 'POST', {
     ids,
     family: 'collections',
@@ -40,15 +42,29 @@ export async function removeFromCollection(
   })
   const choice = page.items[0]
   if (!choice || choice.held) throw new Error(REVIEW)
-  if (choice.assigned_count === 0) return
+  if (choice.assigned_count === (assigned ? ids.length : 0)) return
   await commit(library, {
     action: 'bulk',
     ids,
     field: 'collections',
     target: collection,
-    assigned: false,
+    assigned,
     observed: choice.observed,
   })
+}
+
+/**
+ * Add bundles to `target` and, for a move, remove them from `source`. These are two
+ * commits, so a refused removal leaves the bundles in both collections, never in neither.
+ */
+export async function moveBundlesToCollection(
+  library: string,
+  ids: string[],
+  target: string,
+  source: string | null,
+): Promise<void> {
+  await setCollectionMembership(library, ids, target, true)
+  if (source && source !== target) await setCollectionMembership(library, ids, source, false)
 }
 
 /** Make a bundle the cover of a collection whose tree holds it. */
