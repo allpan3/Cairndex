@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { expect, test, vi } from 'vitest'
@@ -20,7 +21,7 @@ vi.mock('./ViewerShell', () => ({
     error: Error | null
     serverExports: boolean
     playable: { storyboard_url: string | null } | null
-    inspectorTarget: { kind: string } | null
+    inspectorTarget: { kind: string; inspector?: ReactNode } | null
     savedMoments?: unknown[]
   }) {
     const source = useMomentSource()
@@ -33,6 +34,7 @@ vi.mock('./ViewerShell', () => ({
         <p>{serverExports ? 'Media with exports' : 'Media'}</p>
         {playable && <p>Storyboard {playable.storyboard_url ?? 'none'}</p>}
         <p>Rail {inspectorTarget?.kind ?? 'none'}</p>
+        {inspectorTarget?.kind === 'catalog' && inspectorTarget.inspector}
         <p>
           {source
             ? `Catalog moments ${source.moments.length}${source.previews ? ' with previews' : ''}`
@@ -157,14 +159,8 @@ test('a queued storyboard reaches the shell once it is ready', async () => {
   setActiveLibraryId(null)
 }, 10_000)
 
-// The moments capability moves the rail and the seek marks to the catalog source
-test.each([
-  [1, 'Rail moments', 'Catalog moments 2'],
-  [2, 'Rail moments', 'Catalog moments 2'],
-  [3, 'Rail moments', 'Catalog moments 2 with previews'],
-  [null, 'Rail none', 'Saved moments 1'],
-])('moments capability %s shows %s', async (version, rail, moments) => {
-  setActiveLibraryId('synthetic')
+// A bundle with one video and two pages of catalog moments
+function mockMoments(version: number | null) {
   const file = {
     id: 'file',
     bundle_id: 'bundle',
@@ -194,6 +190,17 @@ test.each([
       next_offset: null,
     }
   })
+}
+
+// The moments capability moves the rail and the seek marks to the catalog source
+test.each([
+  [1, 'Rail moments', 'Catalog moments 2'],
+  [2, 'Rail moments', 'Catalog moments 2'],
+  [3, 'Rail moments', 'Catalog moments 2 with previews'],
+  [null, 'Rail none', 'Saved moments 1'],
+])('moments capability %s shows %s', async (version, rail, moments) => {
+  setActiveLibraryId('synthetic')
+  mockMoments(version)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const view = render(
     <QueryClientProvider client={client}>
@@ -202,6 +209,33 @@ test.each([
   )
   expect(await screen.findByText(rail)).toBeInTheDocument()
   expect(await screen.findByText(moments)).toBeInTheDocument()
+  view.unmount()
+  client.clear()
+  setActiveLibraryId(null)
+})
+
+// A workspace inspector replaces the moments-only rail and receives the moments section
+test('a workspace inspector fills the rail with the moments inside it', async () => {
+  setActiveLibraryId('synthetic')
+  mockMoments(4)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ReplicaViewer
+        library="synthetic"
+        target={{ bundleId: 'bundle' }}
+        onClose={() => {}}
+        renderInspector={(bundle, controls) => (
+          <p>
+            Inspector {bundle}
+            {controls.moments ? ' with moments' : ''}
+          </p>
+        )}
+      />
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('Rail catalog')).toBeInTheDocument()
+  expect(await screen.findByText('Inspector bundle with moments')).toBeInTheDocument()
   view.unmount()
   client.clear()
   setActiveLibraryId(null)

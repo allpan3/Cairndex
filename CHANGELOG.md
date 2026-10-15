@@ -35,6 +35,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Show a bundle's moments in the portable browser inspector. Play from opens
   the viewer at the moment, and comments, tags and deletes work as in the
   viewer rail. Servers advertise the capability as `moments_version: 4`.
+- Show the full bundle inspector in the portable viewer's rail. The browser's
+  inspector steps aside while the viewer is open, so unsaved notes and titles
+  move between them without being overwritten.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

@@ -385,7 +385,9 @@ export function ViewerShell({
   // or unindexed file gets the File Inspector, which has no moments section, so
   // marking one there would write a row nothing could show.
   const momentBundleId =
-    inspectorTarget?.kind === 'bundle' || inspectorTarget?.kind === 'moments'
+    inspectorTarget?.kind === 'bundle' ||
+    inspectorTarget?.kind === 'moments' ||
+    inspectorTarget?.kind === 'catalog'
       ? inspectorTarget.bundleId
       : null
   // A portable viewer supplies its catalog moments; the legacy hooks then stay idle
@@ -1243,14 +1245,22 @@ export function ViewerShell({
           <Inspector bundleId={inspectorTarget.bundleId} />
         </BundleInspectorActionsContext>
       )}
-      {/* The portable rail: the bundle's moments, read and written through the
-          viewer's moment source. Other bundle metadata stays in the browser's
-          inspector, which is mounted under this viewer and owns its drafts. */}
+      {/* The portable rail when no workspace supplies the full inspector: the
+          bundle's moments, read and written through the viewer's moment source.
+          Other bundle metadata stays in the browser's inspector, which is
+          mounted under this viewer and owns its drafts. */}
       {inspectorOpen && inspectorTarget?.kind === 'moments' && (
         <BundleInspectorActionsContext value={mergedInspectorActions}>
           <aside className="inspector" aria-label="Moments">
             <Moments bundleId={inspectorTarget.bundleId} files={inspectorTarget.files} />
           </aside>
+        </BundleInspectorActionsContext>
+      )}
+      {/* A portable bundle's full inspector, built by the workspace that owns
+          its drafts; its moments section uses this viewer's moment source. */}
+      {inspectorOpen && inspectorTarget?.kind === 'catalog' && (
+        <BundleInspectorActionsContext value={mergedInspectorActions}>
+          {inspectorTarget.inspector}
         </BundleInspectorActionsContext>
       )}
       {/* A file with no bundle worth naming — unbundled, or not indexed at all

@@ -63,6 +63,8 @@ export function CatalogOrdinaryBrowser(props: {
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
+  /** The workspace's viewer is open and shows the bundle inspector itself. */
+  viewerOpen?: boolean
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })

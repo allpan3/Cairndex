@@ -1,5 +1,5 @@
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { Entity } from '../api/catalog'
 import { BundleTitleEditor, NoteBox } from './Inspector'
 import { InspectorSection } from './InspectorSection'
@@ -10,7 +10,6 @@ import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
 import { CatalogMembershipPicker } from './CatalogMembershipPicker'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
-import { CatalogBundleMoments } from './CatalogBundleMoments'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
@@ -26,7 +25,7 @@ export function CatalogBundleInspector({
   onStartBundleDrag,
   onSelectHostFile,
   onOpenFile,
-  onPlayMoment,
+  moments,
   onAlbum,
   albumFile,
 }: {
@@ -40,10 +39,11 @@ export function CatalogBundleInspector({
   blocked: boolean
   refresh: () => void
   onReview: () => void
-  onOpen: () => void
+  /** Open the bundle in the viewer; absent inside the viewer itself. */
+  onOpen?: () => void
   onOpenFile: (file: string) => void
-  /** Open the viewer at a moment: its file, `time` seconds in. */
-  onPlayMoment?: (file: string, time: number) => void
+  /** The moments section; each surface supplies its own source and actions. */
+  moments?: ReactNode
   onAlbum?: () => void
   albumFile?: string | null
 }) {
@@ -83,7 +83,7 @@ export function CatalogBundleInspector({
           ) : (
             <p>Cover unavailable on this device.</p>
           ))}
-        <button onClick={onOpen}>Open media on this device</button>
+        {onOpen && <button onClick={onOpen}>Open media on this device</button>}
         {inspectorEnabled && coverFailed === coverUrl && (
           <button onClick={() => setCoverFailed('')}>Retry cover</button>
         )}
@@ -209,9 +209,7 @@ export function CatalogBundleInspector({
           onSelectHostFile={onSelectHostFile}
         />
       )}
-      {inspectorEnabled && onPlayMoment && (
-        <CatalogBundleMoments library={library} bundle={entity.id} onPlay={onPlayMoment} />
-      )}
+      {inspectorEnabled && moments}
       {!inspectorEnabled && (
         <p>Additional inspector controls require a server update. Use Metadata review.</p>
       )}
