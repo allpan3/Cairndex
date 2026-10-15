@@ -369,10 +369,8 @@ test('ordinary collection filters and File Browser share one library journey @fu
     await expect(page.getByText('0 items', { exact: true })).toBeVisible()
     await page.getByRole('checkbox', { name: 'Show subcollection contents' }).check()
     await page.getByRole('button', { name: 'All Tags', exact: true }).click()
-    await page
-      .getByRole('region', { name: 'Tags', exact: true })
-      .getByRole('button', { name: 'Synthetic root', exact: true })
-      .click()
+    // The All Tags page filters by a tag on a double-click, as in v0.2.1
+    await page.locator('.tagtile__head').filter({ hasText: 'Synthetic root' }).dblclick()
     await expect(page.getByText('1 items', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Filter by tags', exact: true }).click()
     await expect(page.getByRole('group', { name: 'Tag match rule' })).toBeVisible()
@@ -843,6 +841,95 @@ test('portable File Browser makes a collection from a folder @fullstack', async 
         .filter({ hasText: 'Synthetic playback' }),
     ).toBeVisible()
     await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+test('portable All Tags creates, groups, nests and deletes tags @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-all-tags-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    type Tag = { id: string; name: string; parent_id: string | null }
+    const tags = async () =>
+      ((await (await fetch(`${base}/navigation/tags?after=&limit=50`)).json()) as { items: Tag[] })
+        .items
+    const members = async () =>
+      (
+        (await (
+          await fetch(`${base}/navigation/tag_group_memberships?after=&limit=50`)
+        ).json()) as {
+          items: { group_id: string; tag_id: string }[]
+        }
+      ).items
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'All Tags' }).click()
+    const tile = (name: string) => page.locator('.tagtile__head').filter({ hasText: name })
+    const menu = page.getByRole('menu')
+    await expect(tile('Synthetic root')).toBeVisible()
+
+    await page.getByRole('button', { name: 'New Tag', exact: true }).click()
+    const prompt = page.getByRole('dialog', { name: 'New Tag' })
+    await prompt.getByLabel(/^Name/).fill('Studio/Season')
+    await prompt.getByRole('button', { name: 'Create' }).click()
+    await expect
+      .poll(async () => (await tags()).map((tag) => tag.name).sort())
+      .toEqual(['Season', 'Studio', 'Synthetic child', 'Synthetic root'])
+    const byName = async (name: string) => (await tags()).find((tag) => tag.name === name)!
+    const studio = await byName('Studio')
+    expect((await byName('Season')).parent_id).toBe(studio.id)
+
+    // A tag joins a group from its menu; the group itself is new
+    await page.getByRole('button', { name: 'New tag group' }).click()
+    const group = page.getByRole('dialog', { name: 'New Tag Group' })
+    await group.getByLabel('Name').fill('Shelf')
+    await group.getByRole('button', { name: 'Create' }).click()
+    // A new group opens its own panel, as in v0.2.1, so return to All first
+    await expect(page.locator('.alltags__title')).toHaveText('Shelf')
+    await page
+      .locator('.alltags__nav')
+      .filter({ hasText: /^All\d/ })
+      .click()
+    await tile('Studio').click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Add to Shelf' }).click()
+    await expect.poll(async () => (await members()).map((row) => row.tag_id)).toContain(studio.id)
+
+    // Dragging a tag onto another nests it under that tag
+    await tile('Studio').dragTo(tile('Synthetic root'))
+    await expect.poll(async () => (await byName('Studio')).parent_id).toBe('tags-root')
+
+    // Deleting a parent states its cost first, then takes the whole subtree
+    await tile('Synthetic root').click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Delete Tag' }).click()
+    const remove = page.getByRole('dialog', { name: 'Delete Tag and Its Children' })
+    await expect(remove).toContainText('This also deletes 3 child tags.')
+    await expect(remove).toContainText('1 bundle will lose the tag.')
+    await remove.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect.poll(async () => (await tags()).length).toBe(0)
+    expect(await members()).toEqual([])
+    const bundle = await (await fetch(`${base}/entities/asset_bundles/bundle-000000`)).json()
+    expect(bundle.fields.$alive.value).toBe('true')
   } finally {
     await page.close()
     await stopBackend(backend.child)

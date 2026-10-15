@@ -1,7 +1,16 @@
 import { useContext } from 'react'
 import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
 import { catalog } from './catalog'
-import { collectionFromFolder } from './catalogOrganize'
+import {
+  arrangeHierarchy,
+  collectionFromFolder,
+  createTag as createCatalogTag,
+  createTagGroup as createCatalogTagGroup,
+  groupTag,
+  moveCollections,
+  remove as removeCatalogItem,
+  rename as renameCatalogItem,
+} from './catalogOrganize'
 import {
   changeBundleTags,
   changeBundleCollections,
@@ -59,6 +68,7 @@ import {
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
   type TagCreate,
+  type TagGroupRead,
   type TagRead,
   type ViewCounts,
   addUnbundledFilesToBundle,
@@ -1397,6 +1407,7 @@ export function useCreateTag() {
  */
 export function useCreateTagPath() {
   const qc = useQueryClient()
+  const library = useContext(CatalogQueryContext)
   return useMutation({
     mutationFn: async ({
       path,
@@ -1408,13 +1419,24 @@ export function useCreateTagPath() {
       /** Create beneath this tag instead of at the top level. */
       parentId?: string | null
     }): Promise<TagRead> => {
-      const submit = bindEdit(createTag)
       const segments = path
         .split('/')
         .map((part) => part.trim())
         .filter(Boolean)
       if (segments.length === 0) throw new Error('tag name must not be empty')
       const known = [...existing]
+      // A portable tag goes last among its siblings; each new segment is its own save
+      const submit = library
+        ? ({ name, parent_id }: { name: string; parent_id: string | null }) =>
+            createCatalogTag(
+              library,
+              name,
+              parent_id,
+              known
+                .filter((tag) => (tag.parent_id ?? null) === parent_id)
+                .reduce((last, tag) => Math.max(last, tag.sort_order + 1), 0),
+            )
+        : bindEdit(createTag)
       let parentId: string | null = startParentId
       let leaf: TagRead | null = null
       for (const name of segments) {
@@ -1432,16 +1454,35 @@ export function useCreateTagPath() {
       }
       return leaf as TagRead
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: library ? ['catalog-navigation', library] : ['tags'] }),
   })
+}
+
+// A portable tag change can touch the tree, counts, groups and any browse by tag
+function invalidateCatalogTags(qc: ReturnType<typeof useQueryClient>, library: string) {
+  for (const key of [
+    'catalog-navigation',
+    'catalog-tag-counts',
+    'catalog-browse',
+    'catalog-detail',
+    'catalog-memberships',
+  ])
+    void qc.invalidateQueries({ queryKey: [key, library] })
+  void qc.invalidateQueries({ queryKey: ['tag-group-memberships', library] })
 }
 
 /** Rename/delete/reparent tags for the All Tags management page (Slice 3). */
 export function useTagMutations() {
   const qc = useQueryClient()
+  const library = useContext(CatalogQueryContext)
   // A tag change can affect the tree, its counts, group membership, and any
   // browse/filter that references tags.
   const invalidate = () => {
+    if (library) {
+      invalidateCatalogTags(qc, library)
+      return
+    }
     for (const key of [
       'tags',
       'tag-counts',
@@ -1454,21 +1495,33 @@ export function useTagMutations() {
   }
   return {
     rename: useMutation({
-      mutationFn: ({ id, name, version }: { id: string; name: string; version?: EditVersion }) =>
-        updateTag(id, { name }, version),
+      mutationFn: async ({
+        id,
+        name,
+        version,
+      }: {
+        id: string
+        name: string
+        version?: EditVersion
+      }) => {
+        if (library) await renameCatalogItem(library, 'tags', id, name)
+        else await updateTag(id, { name }, version)
+      },
       // onSettled so a 409 conflict also refetches the latest tag state.
       onSettled: invalidate,
     }),
     remove: useMutation({
       mutationFn: ({ id, cascade }: { id: string; cascade?: boolean }) =>
-        deleteTag(id, cascade ?? false),
+        library
+          ? removeCatalogItem(library, 'tags', id, cascade ?? false)
+          : deleteTag(id, cascade ?? false),
       onSuccess: invalidate,
     }),
     // Drag-to-reparent: move a tag under a new parent (null = top level). The tree
     // is ordered by name, so there's no manual sibling order to maintain.
     // Optimistic so the tag jumps to its new home immediately; roll back on error.
     reparent: useMutation({
-      mutationFn: ({
+      mutationFn: async ({
         id,
         parentId,
         version,
@@ -1476,8 +1529,20 @@ export function useTagMutations() {
         id: string
         parentId: string | null
         version?: EditVersion
-      }) => updateTag(id, { parent_id: parentId }, version),
+      }) => {
+        if (!library) {
+          await updateTag(id, { parent_id: parentId }, version)
+          return
+        }
+        // The page orders tags by name, so a moved tag simply joins the end of its group
+        const tags = qc.getQueryData<TagRead[]>(['catalog-navigation', library, 'tags']) ?? []
+        const names = Object.fromEntries(tags.map((tag) => [tag.id, tag.name]))
+        await arrangeHierarchy(library, 'tags', (forest) =>
+          moveCollections(forest, names, [id], parentId, null),
+        )
+      },
       onMutate: async ({ id, parentId }) => {
+        if (library) return { prev: undefined as TagRead[] | undefined }
         await qc.cancelQueries({ queryKey: ['tags'] })
         const prev = qc.getQueryData<TagRead[]>(['tags'])
         qc.setQueryData<TagRead[]>(['tags'], (old) =>
@@ -1509,42 +1574,69 @@ export function useTagGroups() {
 }
 
 export function useTagCounts() {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['tag-counts'],
-    queryFn: ({ signal }) => fetchTagCounts(signal),
+    queryKey: library ? ['catalog-tag-counts', library] : ['tag-counts'],
+    // Direct counts per tag; the All Tags page rolls up folded subtrees itself
+    queryFn: ({ signal }) =>
+      library
+        ? catalog<{ tags: Record<string, number> }>(library, '/bundles/facets', 'POST', {
+            facets: ['tags'],
+            tag_include_descendants: false,
+          }).then((result) => result.tags)
+        : fetchTagCounts(signal),
   })
 }
 
 // Group checkbox changes name independent edges and never replace unseen memberships
 export function useTagGroupMutations() {
   const qc = useQueryClient()
+  const library = useContext(CatalogQueryContext)
   // Group membership changes what the All Tags panels and the picker's group
   // tabs list; the tags themselves and their counts are untouched.
   const invalidate = () => {
+    if (library) {
+      invalidateCatalogTags(qc, library)
+      return
+    }
     for (const key of ['tag-groups', 'tag-group-memberships'])
       qc.invalidateQueries({ queryKey: [key] })
   }
   return {
     create: useMutation({
-      mutationFn: (name: string) => createTagGroup(name),
+      mutationFn: (name: string) => {
+        if (!library) return createTagGroup(name)
+        const groups =
+          qc.getQueryData<TagGroupRead[]>(['catalog-navigation', library, 'tag_groups']) ?? []
+        const next = groups.reduce((last, group) => Math.max(last, group.sort_order + 1), 0)
+        return createCatalogTagGroup(library, name, next)
+      },
       onSuccess: invalidate,
     }),
     rename: useMutation({
-      mutationFn: ({ id, name }: { id: string; name: string }) => renameTagGroup(id, name),
+      mutationFn: async ({ id, name }: { id: string; name: string }) => {
+        if (library) await renameCatalogItem(library, 'tag_groups', id, name)
+        else await renameTagGroup(id, name)
+      },
       onSuccess: invalidate,
     }),
     remove: useMutation({
-      mutationFn: (id: string) => deleteTagGroup(id),
+      mutationFn: (id: string) =>
+        library ? removeCatalogItem(library, 'tag_groups', id) : deleteTagGroup(id),
       onSuccess: invalidate,
     }),
     addTag: useMutation({
       mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
-        changeTagGroupTags(groupId, [tagId], []),
+        library
+          ? groupTag(library, groupId, tagId, true)
+          : changeTagGroupTags(groupId, [tagId], []),
       onSuccess: invalidate,
     }),
     removeTag: useMutation({
       mutationFn: ({ groupId, tagId }: { groupId: string; tagId: string }) =>
-        changeTagGroupTags(groupId, [], [tagId]),
+        library
+          ? groupTag(library, groupId, tagId, false)
+          : changeTagGroupTags(groupId, [], [tagId]),
       onSuccess: invalidate,
     }),
   }

@@ -308,3 +308,48 @@ def test_api_directory_bundle_count(api):  # noqa: F811
     refused = client.get(url, params={"directory": "../Synthetic"})
     assert refused.status_code == 409
     assert refused.json()["message"] == "Invalid library-relative directory"
+
+
+def test_group_tag_adds_restores_and_removes_one_membership(store):
+    from cairndex.replicas.catalog.projection import read_row
+
+    def run(assigned, operation):
+        command = {"action": "group_tag", "group": "group-one", "tag": "tags-root"}
+        commit(store, preview(store, command | {"assigned": assigned}), operation)
+
+    run(True, "add")
+    with store.connection(readonly=True) as db:
+        # The new member goes after the group's existing one
+        assert read_row(db, "tag_group_memberships", "group-one~tags-root")["sort_order"] == 8
+    with pytest.raises(ReplicaError, match="already present"):
+        run(True, "again")
+    run(False, "remove")
+    with pytest.raises(ReplicaError, match="already absent"):
+        run(False, "remove-again")
+    run(True, "restore")
+    alive = store.entity("tag_group_memberships", "group-one~tags-root")["fields"]["$alive"]
+    assert alive["value"] == "true"
+
+
+def test_cascading_delete_removes_a_tag_with_its_descendants(store):
+    commit(
+        store,
+        preview(
+            store, {"action": "delete", "family": "tags", "entity": "tags-root", "cascade": True}
+        ),
+        "delete-tree",
+    )
+    for family, identity in (
+        ("tags", "tags-root"),
+        ("tags", "tags-child"),
+        ("asset_bundle_tags", "bundle-000000~tags-child"),
+        ("moment_tags", "moment-one~tags-child"),
+        ("tag_group_memberships", "group-one~tags-child"),
+    ):
+        assert store.entity(family, identity)["fields"]["$alive"]["value"] == "false"
+    forest = store.entity("tags", "_")["fields"]["$forest"]["value"]
+    assert json.loads(forest) == []
+    with pytest.raises(ReplicaError, match="tree"):
+        preview(
+            store, {"action": "delete", "family": "asset_bundles", "entity": "x", "cascade": True}
+        )

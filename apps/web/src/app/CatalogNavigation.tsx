@@ -3,12 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalogNavigation } from '../api/catalogQuery'
 import type { CollectionRead, LibraryRead, SmartCollectionRead } from '../api/client'
 import {
-  arrangeCollections,
+  arrangeHierarchy,
   createCollection,
-  deleteCollection,
   moveBundlesToCollection,
   moveCollections,
-  renameCollection,
+  remove,
+  rename,
   sortCollectionsByName,
 } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
@@ -113,7 +113,7 @@ export function CatalogNavigation({
   }
   const arrange = (moved: string[], parent: string | null, before: string | null) =>
     run(() =>
-      arrangeCollections(library, (forest) =>
+      arrangeHierarchy(library, 'collections', (forest) =>
         moveCollections(forest, names, moved, parent, before),
       ),
     )
@@ -171,7 +171,7 @@ export function CatalogNavigation({
         }}
         onRenameCollection={(id, name, callbacks) => {
           const current = captureRequestScope()
-          void renameCollection(library, id, name)
+          void rename(library, 'collections', id, name)
             .then(async () => {
               current()
               await refresh()
@@ -220,7 +220,7 @@ export function CatalogNavigation({
             const target = deleting.id
             setDeleting(null)
             run(
-              () => deleteCollection(library, target),
+              () => remove(library, 'collections', target),
               () => {
                 if (selection.collectionId === target) onSelect({ view: 'all', collectionId: null })
               },
@@ -241,7 +241,7 @@ export function CatalogNavigation({
           onConfirm={(key) => {
             setCleaning(false)
             run(() =>
-              arrangeCollections(library, (forest) =>
+              arrangeHierarchy(library, 'collections', (forest) =>
                 sortCollectionsByName(forest, names, key as 'asc' | 'desc'),
               ),
             )

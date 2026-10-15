@@ -183,6 +183,16 @@ it, found by an indexed range on `catalog_paths.parent`. The reused dialog
 counts them first through `/replica/catalog/directories/bundle-count`. Like the
 sidebar's New Collection, it does not refuse a duplicate sibling name.
 
+Portable All Tags (`feature/portable-all-tags`) mounts the legacy All Tags page
+in the portable workspace. Its hooks now commit catalog previews: `create` for
+tags and tag groups, `rename`, `arrange` over `tags/_/$forest` for a drag, and
+a new `group_tag` preview for one group membership. A tag delete keeps the
+legacy cascade: the page states the subtree and bundle counts first, and the
+`delete` preview takes `cascade` to remove the descendants with the tag.
+Without `cascade`, children still move up one level. The portable collection
+delete always moves subcollections up, so the two deletes differ, as the legacy
+All Tags page and collection dialog also did.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

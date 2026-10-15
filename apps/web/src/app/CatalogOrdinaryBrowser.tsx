@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
+import { AllTagsPage } from './AllTagsPage'
 import type { FileBrowserEntry, LibraryRead } from '../api/client'
 import { useTags } from '../api/hooks'
 import { useReplicaStatus } from '../api/useReplicaStatus'
@@ -97,11 +98,20 @@ export function CatalogOrdinaryBrowser(props: {
     setActiveDrag(item)
     setDragItem(item)
   }, [])
+  const showTag = (id: string) => {
+    setFilters({
+      ...emptyAdHocFilters(),
+      tags: { ...emptyAdHocFilters().tags, include: [id] },
+    })
+    setSelection({ view: 'all', collectionId: null })
+    setMode('collection')
+  }
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const status = useReplicaStatus(props.library).data
   const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
   const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
+  const tagManagement = (status?.browse_version ?? 0) >= 8 && !props.blocked
   const { deepLink, onDeepLinkHandled, onSelect } = props
   // A bundle link selects and locates the bundle; a collection link opens the collection
   useEffect(() => {
@@ -235,18 +245,12 @@ export function CatalogOrdinaryBrowser(props: {
               onFilters={setFilters}
             />
           </div>
-          {mode === 'tags' && (
-            <TagNavigation
-              onSelect={(id) => {
-                setFilters({
-                  ...emptyAdHocFilters(),
-                  tags: { ...emptyAdHocFilters().tags, include: [id] },
-                })
-                setSelection({ view: 'all', collectionId: null })
-                setMode('collection')
-              }}
-            />
-          )}
+          {mode === 'tags' &&
+            (tagManagement ? (
+              <AllTagsPage onApplyTagFilter={showTag} />
+            ) : (
+              <TagNavigation onSelect={showTag} />
+            ))}
           {mode === 'file' && unbundled && (
             <CatalogUnbundledBrowser
               library={props.library}

@@ -77,6 +77,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   creates the collection and files every bundle with a file in that folder or
   below it; the app then opens the collection. Servers advertise it as
   `browse_version: 7`.
+- Restore the All Tags page for portable libraries: New Tag (with `/` to
+  nest), New Child Tag, Rename, Delete, drag to reparent, and tag groups with
+  their memberships. Each change saves at once. Deleting a parent states the
+  cost and then takes its child tags too, as in v0.2.1. Servers advertise it as
+  `browse_version: 8`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library
