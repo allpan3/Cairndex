@@ -1,6 +1,7 @@
 import { useContext } from 'react'
 import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
 import { catalog } from './catalog'
+import { collectionFromFolder } from './catalogOrganize'
 import {
   changeBundleTags,
   changeBundleCollections,
@@ -2614,9 +2615,18 @@ export function useCreateCollection() {
 /** How many bundles "Create Collection from Folder…" would file in, so the
  *  dialog can say what the button will do before it is pressed. */
 export function useDirectoryBundleCount(directory: string | null) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['directory-bundle-count', directory ?? ''],
-    queryFn: ({ signal }) => fetchDirectoryBundleCount(directory as string, signal),
+    queryKey: library
+      ? ['catalog-directory-count', library, directory ?? '']
+      : ['directory-bundle-count', directory ?? ''],
+    queryFn: ({ signal }) =>
+      library
+        ? catalog<{ bundle_count: number }>(
+            library,
+            `/directories/bundle-count?directory=${encodeURIComponent(directory as string)}`,
+          ).then((result) => result.bundle_count)
+        : fetchDirectoryBundleCount(directory as string, signal),
     enabled: directory !== null && directory !== '',
   })
 }
@@ -2625,10 +2635,23 @@ export function useDirectoryBundleCount(directory: string | null) {
  *  membership-derived surfaces too — the bundles just joined something. */
 export function useCreateCollectionFromDirectory() {
   const qc = useQueryClient()
+  const library = useContext(CatalogQueryContext)
   return useMutation({
     mutationFn: (payload: { directory: string; name: string; parent_id: string | null }) =>
-      createCollectionFromDirectory(payload),
+      library
+        ? collectionFromFolder(library, payload.directory, payload.name, payload.parent_id)
+        : createCollectionFromDirectory(payload),
     onSuccess: () => {
+      if (library) {
+        for (const key of [
+          'catalog-navigation',
+          'catalog-browse',
+          'catalog-detail',
+          'catalog-memberships',
+        ])
+          void qc.invalidateQueries({ queryKey: [key, library] })
+        return
+      }
       qc.invalidateQueries({ queryKey: ['collections'] })
       invalidateCollectionCounts(qc)
       qc.invalidateQueries({ queryKey: ['browse'] })

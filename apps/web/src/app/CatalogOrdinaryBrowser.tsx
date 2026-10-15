@@ -6,6 +6,7 @@ import { useReplicaStatus } from '../api/useReplicaStatus'
 import { getHostLabels, hostAltKeyHeld } from '../platform'
 import { CatalogBundleBrowser } from './CatalogBundleBrowser'
 import { CatalogNavigation } from './CatalogNavigation'
+import { CollectionFromFolderDialog } from './CollectionFromFolderDialog'
 import { FileBrowser } from './FileBrowser'
 import { emptyAdHocFilters } from './adHocFilters'
 import { DEFAULT_PLAYER_PREFS, type AppMode, type Selection } from './types'
@@ -90,14 +91,17 @@ export function CatalogOrdinaryBrowser(props: {
   // A card drag's payload, for the sidebar's drop highlights; dnd.ts holds the live copy
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [newCollection, setNewCollection] = useState<{ parentId: string | null } | null>(null)
+  const [folder, setFolder] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
   const updateDragItem = useCallback((item: DragItem | null) => {
     setActiveDrag(item)
     setDragItem(item)
   }, [])
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
-  const bundleMoves =
-    (useReplicaStatus(props.library).data?.selection_version ?? 0) >= 2 && !props.blocked
+  const status = useReplicaStatus(props.library).data
+  const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
+  const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
   const { deepLink, onDeepLinkHandled, onSelect } = props
   // A bundle link selects and locates the bundle; a collection link opens the collection
   useEffect(() => {
@@ -178,6 +182,11 @@ export function CatalogOrdinaryBrowser(props: {
           {dropError && (
             <p role="alert">
               {dropError} <button onClick={() => setDropError('')}>Dismiss</button>
+            </p>
+          )}
+          {notice && (
+            <p role="status">
+              {notice} <button onClick={() => setNotice('')}>Dismiss</button>
             </p>
           )}
           {linkError && (
@@ -265,6 +274,7 @@ export function CatalogOrdinaryBrowser(props: {
                   setLocated(null)
                   setFile(entry)
                 }}
+                onCollectionFromFolder={folderCollections ? setFolder : undefined}
                 onAddToBundle={props.onReview}
                 onCreateBundle={props.onReview}
                 hostLabels={getHostLabels()}
@@ -321,6 +331,24 @@ export function CatalogOrdinaryBrowser(props: {
           )}
         </div>
       </div>
+      {folder !== null && (
+        <CollectionFromFolderDialog
+          directory={folder}
+          onClose={() => setFolder(null)}
+          onCreated={(collection, added) => {
+            // The point of the action is the collection, so land in it, as legacy did
+            setFolder(null)
+            setUnbundled(false)
+            setSelection({ view: 'all', collectionId: collection.id })
+            setMode('collection')
+            setNotice(
+              added === 1
+                ? `Created “${collection.name}” with 1 bundle.`
+                : `Created “${collection.name}” with ${added} bundles.`,
+            )
+          }}
+        />
+      )}
     </CatalogQueryContext>
   )
 }

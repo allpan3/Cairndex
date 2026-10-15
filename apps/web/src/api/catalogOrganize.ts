@@ -99,6 +99,44 @@ export function cleanUpBundleOrder(
   return commit(library, { action: 'order', collection, sort, descending })
 }
 
+/**
+ * Create a collection holding every bundle with a file in `directory` or beneath
+ * it, in one commit; needs `browse_version: 7`. Reports what the commit added.
+ */
+export async function collectionFromFolder(
+  library: string,
+  directory: string,
+  name: string,
+  parent: string | null,
+): Promise<{ collection: CollectionRead; bundles_added: number }> {
+  const prepared = await runJob(
+    library,
+    'preview',
+    { action: 'collect_directory', directory, name, parent },
+    operationId(),
+  )
+  // A preview's result is its receipt. Its own changes, not the lifetime guards it
+  // adds for the parent and the bundles, are the new collection and its edges.
+  const receipt = prepared.result as unknown as {
+    changes: { unit: string; cohort: string | null }[]
+  }
+  const units = receipt.changes
+    .filter((change) => change.cohort === 'domain' && change.unit.endsWith('/$alive'))
+    .map((change) => change.unit)
+  const id = units.find((unit) => unit.startsWith('collections/'))?.split('/')[1]
+  if (!id) throw new Error('The collection could not be created.')
+  await runJob(
+    library,
+    'commit_preview',
+    { job: prepared.id, receipt: prepared.receipt },
+    `commit_${prepared.id}`,
+  )
+  return {
+    collection: { id, name: name.trim(), parent_id: parent } as CollectionRead,
+    bundles_added: units.filter((unit) => unit.startsWith('asset_bundle_collections/')).length,
+  }
+}
+
 /** Make a bundle the cover of a collection whose tree holds it. */
 export async function setCollectionCover(
   library: string,

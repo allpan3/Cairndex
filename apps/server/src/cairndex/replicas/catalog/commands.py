@@ -265,6 +265,40 @@ class Preview:
         if not self.values:
             raise ReplicaError("The bundles are already in this order")
 
+    def collect_directory(self, command: dict[str, Any]) -> None:
+        """Create a collection holding every bundle under one folder, in one commit.
+
+        A collection that exists without its members is worse than none, so the
+        collection and its memberships are one preview, as in legacy. The new
+        collection goes last among its siblings.
+        """
+        from cairndex.replicas.catalog.browse import directory_bundles
+        from cairndex.replicas.catalog.controls import creation
+
+        name, parent = command["name"], command.get("parent")
+        if not isinstance(name, str) or not name.strip():
+            raise ReplicaError("A collection needs a name")
+        if parent is not None and read_row(self.db, "collections", parent) is None:
+            raise ReplicaError("The parent collection is unavailable")
+        bundles = directory_bundles(self.db, command["directory"])
+        row = {column: json.loads(raw) for column, raw in creation("collections")["cells"].items()}
+        siblings = [
+            item["sort_order"]
+            for item in self.get("collections/_/$forest")
+            if item["parent_id"] == parent
+        ]
+        row |= {
+            "name": name.strip(),
+            "parent_id": parent,
+            "sort_order": max(siblings, default=-1) + 1,
+        }
+        self.create("collections", row)
+        for position, bundle in enumerate(bundles):
+            self.create(
+                "asset_bundle_collections",
+                {"bundle_id": bundle, "collection_id": row["id"], "sort_order": position},
+            )
+
     def dissolve(self, identity: str) -> None:
         """Delete a bundle and return its files to Unbundled, keeping their identities.
 
@@ -496,6 +530,8 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             recover = builder.moment_tag(command)
         elif action == "delete":
             builder.delete(command["family"], command["entity"])
+        elif action == "collect_directory":
+            builder.collect_directory(command)
         elif action == "order":
             builder.order(command)
         elif action == "dissolve":

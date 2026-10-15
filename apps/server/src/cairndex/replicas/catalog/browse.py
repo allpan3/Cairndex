@@ -13,7 +13,7 @@ from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
 from cairndex.media.image_support import is_openable_media
 from cairndex.replicas.catalog.query import matching, saved_filter
-from cairndex.replicas.protocol import StrictModel
+from cairndex.replicas.protocol import ReplicaError, StrictModel
 from cairndex.scanning.media_types import HIDDEN_NAMES, classify
 from cairndex.search import to_match_query
 
@@ -271,6 +271,39 @@ def scope_order(
         for row in db.execute(
             f"SELECT b.entity FROM catalog_rows b WHERE {where} ORDER BY {ordering}",
             [*args, *order_args],
+        )
+    ]
+
+
+class CatalogDirectoryBundleCount(StrictModel):
+    bundle_count: int
+
+
+def directory_bundles(db: sqlite3.Connection, directory: str) -> list[str]:
+    """Bundles with a file in ``directory`` or beneath it, as legacy collected them.
+
+    Staged Unbundled bundles and bundles that browsing hides are left out, so a
+    collection never gets members it cannot show. The subtree is a half-open
+    range on the indexed parent: every descendant starts with ``directory + "/"``,
+    and ``"0"`` is the byte after ``"/"``. The order is stable, by first file.
+    """
+    from cairndex.core.paths import PathSafetyError, normalize_relative_path
+
+    try:
+        directory = normalize_relative_path(directory) if directory.strip("/") else ""
+    except PathSafetyError as error:
+        raise ReplicaError("Invalid library-relative directory") from error
+    if not directory:
+        raise ReplicaError("Choose a folder inside the library")
+    return [
+        row[0]
+        for row in db.execute(
+            "SELECT b.entity FROM catalog_paths p "
+            "JOIN catalog_rows m ON m.family='asset_files' AND m.entity=p.entity "
+            "JOIN catalog_rows b ON b.entity=json_extract(m.body,'$.bundle_id') "
+            "WHERE p.family='asset_files' AND (p.parent=? OR (p.parent>=? AND p.parent<?)) "
+            f"AND {ELIGIBLE} GROUP BY b.entity ORDER BY min(m.entity)",
+            (directory, directory + "/", directory + "0"),
         )
     ]
 
