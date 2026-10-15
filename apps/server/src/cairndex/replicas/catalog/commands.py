@@ -27,6 +27,8 @@ class Preview:
     def __init__(self, store: CatalogStore, db: sqlite3.Connection) -> None:
         self.store, self.db = store, db
         self.values: MutableMapping[str, str] = {}
+        # Rows a transfer moved to another bundle; their stored references are stale
+        self.rehomed: set[tuple[str, str]] = set()
 
     # Stage a complete unit while keeping its original observed revisions for the receipt
     def put(self, unit: str, value: Any) -> None:
@@ -91,6 +93,8 @@ class Preview:
                 source_family, source_id = source.split("/", 1)
                 source_row = read_row(self.db, source_family, source_id)
                 if source_row is None or (source_family, source_id) in deleted:
+                    continue
+                if current_family == "asset_bundles" and (source_family, source_id) in self.rehomed:
                     continue
                 cascade = False
                 for column in Base.metadata.tables[source_family].columns:
@@ -194,10 +198,18 @@ class Preview:
                 "SELECT source FROM catalog_references WHERE target=?", (f"asset_files/{identity}",)
             )
         }
+        self.rehomed.update(("asset_files", identity) for identity in moved_files)
+        self.rehomed.update(
+            (item["family"], item["id"])
+            for item in selected
+            if item["family"] == "bundle_directory_members"
+        )
         for owner in dependents:
             family, identity = owner.split("/", 1)
             row = read_row(self.db, family, identity)
             if row is None or family not in ("moments", "subtitle_tracks"):
+                continue
+            if self.values.get(key(family, identity, "$alive")) == "false":
                 continue
             if family == "subtitle_tracks" and any(
                 row[field] and row[field] not in moved_files
@@ -208,6 +220,56 @@ class Preview:
                 )
             row["bundle_id"] = target
             self.row(family, row)
+            self.rehomed.add((family, identity))
+
+    def dissolve(self, identity: str) -> None:
+        """Delete a bundle and return its files to Unbundled, keeping their identities.
+
+        Each file moves into its own staged one-file bundle, as discovery stages it,
+        and its moments follow it. A subtitle pairing of two files cannot follow
+        both, so it is deleted, as the legacy delete did. A bundle that is already
+        an Unbundled staging bundle is deleted with its file, which is how a loose
+        file leaves the catalog.
+        """
+        from pathlib import PurePosixPath
+
+        from cairndex.replicas.catalog.controls import creation
+
+        bundle = read_row(self.db, "asset_bundles", identity)
+        if bundle is None:
+            raise ReplicaError("Deletion target is already absent")
+        staged = (bundle["grouping_state"], bundle["grouping_source"]) == (
+            "PROVISIONAL",
+            "SCAN_SUGGESTION",
+        )
+        if not staged:
+            for (source,) in self.db.execute(
+                "SELECT source FROM catalog_references WHERE target=?",
+                (f"asset_bundles/{identity}",),
+            ).fetchall():
+                family, track = source.split("/", 1)
+                row = read_row(self.db, family, track) if family == "subtitle_tracks" else None
+                if row and len({row["video_file_id"], row["source_file_id"]} - {None}) > 1:
+                    self.delete(family, track)
+            for member in self.get(key("asset_bundles", identity, "$members")):
+                if member["family"] != "asset_files":
+                    continue
+                file = read_row(self.db, "asset_files", member["id"])
+                if file is None:
+                    raise ReplicaError("Catalog arrangement is unavailable")
+                name = file["original_filename"]
+                row = {
+                    column: json.loads(raw)
+                    for column, raw in creation("asset_bundles")["cells"].items()
+                }
+                row |= {
+                    "title": PurePosixPath(name).stem or name,
+                    "grouping_state": "PROVISIONAL",
+                    "grouping_source": "SCAN_SUGGESTION",
+                }
+                self.create("asset_bundles", row)
+                self.transfer(identity, row["id"], [f"asset_files/{member['id']}"])
+        self.delete("asset_bundles", identity)
 
     # Creation requires every authored field plus an explicit complete placement when applicable
     def create(self, family: str, row: Row) -> None:
@@ -391,6 +453,11 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             recover = builder.moment_tag(command)
         elif action == "delete":
             builder.delete(command["family"], command["entity"])
+        elif action == "dissolve":
+            from cairndex.replicas.catalog.selection import CatalogSelectionRequest
+
+            for identity in CatalogSelectionRequest.model_validate({"ids": command["ids"]}).ids:
+                builder.dissolve(identity)
         elif action == "transfer":
             builder.transfer(command["source"], command["target"], command["members"])
         elif action == "create":

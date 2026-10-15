@@ -668,3 +668,64 @@ test('portable cards drag into sidebar collections @fullstack', async ({ page })
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable Delete Bundle returns its files to Unbundled @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-delete-bundle-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const card = page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic playback' })
+    await card.click({ button: 'right' })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Delete Bundle' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Delete bundle' })
+    await expect(dialog).toContainText('Their files fall back into Unbundled')
+    await expect(dialog).toContainText('The files stay where they are on disk.')
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(page.getByText('Bundle deleted.')).toBeVisible()
+    await expect(card).toHaveCount(0)
+    // Every file keeps its catalog identity in its own Unbundled staging bundle
+    const staged = await apiPost<{ items: { id: string; bundle_id: string }[] }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/replica/catalog/files/unbundled`,
+      {},
+    )
+    const playback = staged.items.filter((item) => item.id.startsWith('media-'))
+    expect(playback.map((item) => item.id).sort()).toEqual([
+      'media-direct',
+      'media-fallback',
+      'media-image',
+      'media-preview',
+      'media-remux',
+      'media-subtitle',
+    ])
+    expect(new Set(playback.map((item) => item.bundle_id)).size).toBe(6)
+    const bundle = await (await fetch(`${base}/entities/asset_bundles/bundle-000001`)).json()
+    expect(bundle.fields.$alive.value).toBe('false')
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

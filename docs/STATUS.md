@@ -152,9 +152,17 @@ Portable card drag (`feature/portable-bundle-drag`) restores dropping cards on a
 sidebar collection, with the legacy move and Option/Alt add rules. A move is two
 catalog commits, an add and then a removal, because one bulk command names one
 collection. A refused removal leaves the bundles in both collections, never in
-neither. The browser's empty-space menu creates a collection here. Delete Bundle
-and Create Bundle need an atomic server action that keeps file identities, so
-they follow separately.
+neither. The browser's empty-space menu creates a collection here.
+
+Portable Delete Bundle (`feature/portable-delete-bundle`) adds a `dissolve`
+catalog preview, because the generic delete cascades a bundle's file rows and
+would drop their identities. One commit stages each file into its own Unbundled
+bundle through `transfer` and then deletes the emptied bundles; `transfer` now
+records the rows it re-homed, so that delete does not cascade them through
+their old references. Two deliberate differences from legacy need owner review:
+moments follow their file instead of going with the bundle, and a file that
+this device has not found is staged too, because another device may have it.
+Create Bundle and Add Files still need portable manual bundling.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

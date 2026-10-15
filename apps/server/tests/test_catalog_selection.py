@@ -174,3 +174,39 @@ def test_bulk_remove_guards_absent_pairs_and_rejects_deleted_target(store):
     )
     with pytest.raises(ReplicaError, match="changed|unavailable"):
         preview(store, intent)
+
+
+def test_dissolve_returns_files_to_unbundled_with_their_identities(store):
+    from cairndex.replicas.catalog.browse import CatalogUnbundledRequest, unbundled
+    from cairndex.replicas.catalog.projection import read_row
+
+    commit(store, preview(store, {"action": "dissolve", "ids": IDS}), "dissolve")
+
+    def alive(family, identity):
+        return store.entity(family, identity)["fields"]["$alive"]["value"]
+
+    assert alive("asset_bundles", IDS[0]) == alive("asset_bundles", IDS[1]) == "false"
+    with store.connection(readonly=True) as db:
+        page = unbundled(db, CatalogUnbundledRequest())
+        staged = {item.id: item.bundle_id for item in page.items}
+        # Each file has its own staging bundle, named by its stem, and its moment follows it
+        assert set(staged) == {"file-video", "file-subtitle"}
+        assert len(set(staged.values())) == 2
+        assert read_row(db, "moments", "moment-one")["bundle_id"] == staged["file-video"]
+        bundle = read_row(db, "asset_bundles", staged["file-video"])
+        assert (bundle["title"], bundle["grouping_state"]) == ("雪", "PROVISIONAL")
+    # A pairing of two files cannot follow both, and the folder member goes with the bundle
+    assert alive("subtitle_tracks", "track-one") == "false"
+    assert alive("bundle_directory_members", "directory-one") == "false"
+    assert alive("moments", "moment-one") == "true"
+
+    # An Unbundled staging bundle is deleted with its file
+    commit(
+        store,
+        preview(store, {"action": "dissolve", "ids": [staged["file-subtitle"]]}),
+        "drop-loose-file",
+    )
+    assert alive("asset_files", "file-subtitle") == "false"
+    assert alive("asset_files", "file-video") == "true"
+    with pytest.raises(ReplicaError, match="absent"):
+        preview(store, {"action": "dissolve", "ids": [IDS[0]]})

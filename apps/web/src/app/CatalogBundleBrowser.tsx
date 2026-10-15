@@ -19,10 +19,11 @@ import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
-import { setCollectionCover, setCollectionMembership } from '../api/catalogOrganize'
+import { deleteBundles, setCollectionCover, setCollectionMembership } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import { getHostPlatform } from '../platform'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
+import { DeleteBundlesDialog } from './DeleteBundlesDialog'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 3 adds Manual and File count. A portable catalog records no file
@@ -117,6 +118,7 @@ export function CatalogBundleBrowser({
   const [albumFile, setAlbumFile] = useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  const [deleting, setDeleting] = useState<string[] | null>(null)
   const menu = useContextMenu()
   const [inspectorFile, setInspectorFile] = useState<{ bundle: string; file: string } | null>(null)
   const navigation = useRef<BrowserNavigation>(null)
@@ -401,6 +403,13 @@ export function CatalogBundleBrowser({
         })
     }
     items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
+    if ((status?.browse_version ?? 0) >= 5)
+      items.push(null, {
+        label: one ? 'Delete Bundle' : `Delete ${targets.length} Bundles`,
+        danger: true,
+        disabled: blocked || targets.length > 100,
+        onClick: () => setDeleting(targets),
+      })
     menu.open(event, items)
   }
   // Empty space means "here": under the open collection, else at the top level
@@ -656,6 +665,25 @@ export function CatalogBundleBrowser({
         </aside>
       )}
       <ContextMenu state={menu.state} onClose={menu.close} />
+      {deleting && (
+        <DeleteBundlesDialog
+          count={deleting.length}
+          pending={false}
+          filesReturnToUnbundled
+          writeMode={false}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            const targets = deleting
+            setDeleting(null)
+            setPicked({ scope, ids: new Set(), active: null, anchor: null })
+            setBulkOpen(false)
+            organize(
+              () => deleteBundles(library, targets),
+              targets.length === 1 ? 'Bundle deleted.' : `${targets.length} bundles deleted.`,
+            )
+          }}
+        />
+      )}
     </div>
   )
 }

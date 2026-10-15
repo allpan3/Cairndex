@@ -67,6 +67,15 @@ export async function moveBundlesToCollection(
   if (source && source !== target) await setCollectionMembership(library, ids, source, false)
 }
 
+/**
+ * Delete bundles in one commit; needs `browse_version: 5`. Each file of a bundle
+ * returns to Unbundled with its identity and moments, and no source file changes.
+ */
+export function deleteBundles(library: string, ids: string[]): Promise<void> {
+  if (ids.length > 100) throw new Error('Choose at most 100 bundles at a time.')
+  return commit(library, { action: 'dissolve', ids })
+}
+
 /** Make a bundle the cover of a collection whose tree holds it. */
 export async function setCollectionCover(
   library: string,
