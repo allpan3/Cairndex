@@ -314,7 +314,9 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
 })
 
 // Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
-test('portable viewer marks, comments on and deletes moments @fullstack', async ({ page }) => {
+test('portable viewer marks, comments on, tags and deletes moments @fullstack', async ({
+  page,
+}) => {
   test.setTimeout(180_000)
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-moments-'))
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
@@ -384,6 +386,29 @@ test('portable viewer marks, comments on and deletes moments @fullstack', async 
         [10, 'Synthetic mark'],
         [42, 'Synthetic moment'],
       ])
+
+    // A moment tag also tags the bundle, and removing it leaves the bundle tag (ADR-0025)
+    const seeded = rail.locator('.moment-row').filter({ hasText: '0:42' })
+    await seeded.getByRole('button', { name: 'Add tag' }).click()
+    const chooser = page.getByRole('listbox', { name: 'Moment tags' })
+    await chooser.getByRole('option', { name: /Synthetic root$/ }).click()
+    await expect(seeded.locator('.chip')).toHaveText(['Synthetic root'])
+    const bundleTags = () =>
+      page.evaluate(async (id) => {
+        const response = await fetch(
+          `/api/v1/libraries/${id}/replica/catalog/bundles/bundle-000001/memberships/tags?assigned=true`,
+        )
+        return ((await response.json()) as { items: { name: string }[] }).items.map(
+          (item) => item.name,
+        )
+      }, library.id)
+    await expect.poll(bundleTags).toEqual(['Synthetic root'])
+    await chooser.getByRole('option', { name: /✓\s*Synthetic root$/ }).click()
+    await expect(seeded.locator('.chip')).toHaveCount(0)
+    await expect.poll(bundleTags).toEqual(['Synthetic root'])
+    // Escape belongs to the viewer, so the chooser closes from its own button
+    await seeded.getByRole('button', { name: 'Add tag' }).click()
+    await expect(chooser).toHaveCount(0)
 
     // The seeded span arms the range loop, and the new frame can be forgotten
     await rail.getByRole('button', { name: 'Range loop from 0:42' }).click()

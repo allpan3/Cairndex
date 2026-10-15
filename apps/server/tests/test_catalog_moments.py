@@ -49,7 +49,7 @@ def creation(client, base, file_id, start, end):
 
 def test_moments_are_listed_and_edited_through_catalog_jobs(media_api):  # noqa: F811
     client, base, store, _, _ = media_api
-    assert client.get(base + "/replica/status").json()["moments_version"] == 1
+    assert client.get(base + "/replica/status").json()["moments_version"] == 2
     seeded = listed(client, base)
     assert [item["id"] for item in seeded["items"]] == ["media-moment"]
     assert seeded["items"][0]["comment"] == "Synthetic moment"
@@ -106,3 +106,82 @@ def test_a_moment_must_be_marked_on_a_file_of_its_bundle(media_api):  # noqa: F8
     assert prepared["state"] == "failed"
     assert prepared["error"] == "A moment must be marked on a file of its bundle"
     assert [item["id"] for item in listed(client, base)["items"]] == ["media-moment"]
+
+
+def bundle_tags(store):
+    with store.connection(readonly=True) as db:
+        return [
+            entity
+            for (entity,) in db.execute(
+                "SELECT entity FROM catalog_rows WHERE family='asset_bundle_tags' "
+                "AND json_extract(body,'$.bundle_id')=? ORDER BY entity",
+                (BUNDLE,),
+            )
+        ]
+
+
+def moment_tag(client, base, store, operation, tag, *, assigned):
+    choices = client.get(
+        base + "/replica/catalog/moments/media-moment/tags", params={"q": "Synthetic"}
+    ).json()["items"]
+    (choice,) = [item for item in choices if item["id"] == tag]
+    assert choice["assigned"] is not assigned
+    command = {
+        "action": "moment_tag",
+        "moment": "media-moment",
+        "target": tag,
+        "assigned": assigned,
+        "observed": choice["observed"],
+    }
+    return preview_and_commit(client, base, store, operation, command)
+
+
+# ADR-0025: a moment's tag is added to its bundle, and removing it leaves the bundle alone
+def test_a_moment_tag_also_tags_the_bundle_one_way(media_api):  # noqa: F811
+    client, base, store, _, _ = media_api
+    cells = client.get(base + "/replica/catalog/creation/tags").json()["cells"]
+    tag = json.loads(cells["id"])
+    create = {
+        "action": "create",
+        "family": "tags",
+        "cells": cells | {"name": json.dumps("Synthetic scene"), "parent_id": "null"},
+    }
+    assert preview_and_commit(client, base, store, "tag", create)["state"] == "succeeded"
+    before = bundle_tags(store)
+
+    assert moment_tag(client, base, store, "add", tag, assigned=True)["state"] == "succeeded"
+    page = listed(client, base)
+    assert page["items"][0]["tag_ids"] == [tag]
+    assert page["tag_names"] == {tag: "Synthetic scene"}
+    assert bundle_tags(store) == sorted([*before, f"{BUNDLE}~{tag}"])
+
+    assert moment_tag(client, base, store, "remove", tag, assigned=False)["state"] == "succeeded"
+    assert listed(client, base)["items"][0]["tag_ids"] == []
+    assert bundle_tags(store) == sorted([*before, f"{BUNDLE}~{tag}"])
+
+    # A stale choice is refused rather than applied over a change the owner did not see
+    stale = client.get(base + "/replica/catalog/moments/media-moment/tags").json()["items"]
+    (choice,) = [item for item in stale if item["id"] == tag]
+    assert moment_tag(client, base, store, "again", tag, assigned=True)["state"] == "succeeded"
+    command = {
+        "action": "moment_tag",
+        "moment": "media-moment",
+        "target": tag,
+        "assigned": True,
+        "observed": choice["observed"],
+    }
+    refused = run(client, base, store, "stale", "preview", command)
+    assert refused["state"] == "failed"
+    assert refused["error"] == "Membership changed or requires conflict review; refresh choices"
+
+    # Deleting the moment removes its tags with it; the bundle keeps the propagated tag
+    delete = {"action": "delete", "family": "moments", "entity": "media-moment"}
+    assert preview_and_commit(client, base, store, "forget-tagged", delete)["state"] == "succeeded"
+    assert bundle_tags(store) == sorted([*before, f"{BUNDLE}~{tag}"])
+    with store.connection(readonly=True) as db:
+        assert not db.execute(
+            "SELECT 1 FROM catalog_rows WHERE family='moment_tags' AND entity=?",
+            (f"media-moment~{tag}",),
+        ).fetchone()
+    missing = client.get(base + "/replica/catalog/moments/media-moment/tags")
+    assert missing.status_code >= 400

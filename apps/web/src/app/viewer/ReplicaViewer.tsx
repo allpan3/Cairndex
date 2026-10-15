@@ -12,6 +12,7 @@ import { ViewerShell } from './ViewerShell'
 import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
 import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
 import { useCatalogMomentMutations, useCatalogMoments } from '../../api/catalogMoments'
+import { CatalogMomentTags } from '../CatalogMomentTags'
 import { MomentSourceContext, type MomentSource } from '../momentSource'
 import type { ViewerInspectorTarget } from '../fileFacts'
 
@@ -138,19 +139,25 @@ export function ReplicaViewer({
   })
   const storyboardUrl = storyboard.data?.url ? resolveAssetUrl(storyboard.data.url) : null
   // Moments belong to the bundle; a folder playlist shows the current file's bundle
-  const momentsEnabled = status.data?.moments_version === 1
+  // Version 2 adds moment tags
+  const momentsVersion = status.data?.moments_version ?? 0
+  const momentsEnabled = momentsVersion >= 1
   const momentBundle = (folder ? observation?.file.bundle_id : bundleId) ?? null
   const catalogMoments = useCatalogMoments(library, momentsEnabled ? momentBundle : null)
   const momentMutations = useCatalogMomentMutations(library, momentBundle)
-  const momentSource = useMemo<MomentSource>(
-    () => ({
-      moments: catalogMoments.data ?? [],
+  const momentSource = useMemo<MomentSource>(() => {
+    const tagNames = catalogMoments.data?.tagNames ?? {}
+    return {
+      moments: catalogMoments.data?.moments ?? [],
       mutations: momentMutations,
       // Only the observed file has a current storyboard URL
       storyboardUrl: (fileId) => (fileId === selected ? storyboardUrl : null),
-    }),
-    [catalogMoments.data, momentMutations, selected, storyboardUrl],
-  )
+      renderTags:
+        momentsVersion >= 2
+          ? (moment) => <CatalogMomentTags library={library} moment={moment} names={tagNames} />
+          : undefined,
+    }
+  }, [catalogMoments.data, library, momentMutations, momentsVersion, selected, storyboardUrl])
   const momentFiles = useMemo(
     () => (folder ? (observation ? [observation.file] : []) : files),
     [files, folder, observation],

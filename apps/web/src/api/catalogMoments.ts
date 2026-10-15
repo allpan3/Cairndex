@@ -6,6 +6,14 @@ import { replicaRequest } from './replicas'
 import type { components } from './schema'
 
 type MomentPage = components['schemas']['CatalogMomentPage']
+type TagPage = components['schemas']['CatalogMembershipPage']
+export type MomentTagChoice = components['schemas']['CatalogMembershipChoice']
+
+/** One bundle's moments and the names of the tags they carry. */
+export interface CatalogMoments {
+  moments: Moment[]
+  tagNames: Record<string, string>
+}
 
 export const catalogMomentsKey = (library: string, bundleId: string | null) => [
   'catalog-moments',
@@ -28,8 +36,9 @@ export function useCatalogMoments(library: string, bundleId: string | null) {
   return useQuery({
     queryKey: catalogMomentsKey(library, bundleId),
     enabled: bundleId !== null,
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal }): Promise<CatalogMoments> => {
       const moments: Moment[] = []
+      const tagNames: Record<string, string> = {}
       let offset: number | null = 0
       while (offset !== null) {
         const page: MomentPage = await replicaRequest<MomentPage>(
@@ -40,9 +49,10 @@ export function useCatalogMoments(library: string, bundleId: string | null) {
           signal,
         )
         moments.push(...page.items)
+        Object.assign(tagNames, page.tag_names)
         offset = page.next_offset
       }
-      return moments
+      return { moments, tagNames }
     },
     // Another device's moments arrive through the exchange, not through this tab
     refetchInterval: 5000,
@@ -92,8 +102,9 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
       },
       onSuccess: (saved) => {
         // Only into a list that exists; a list seeded from one answer would hide the others
-        if (client.getQueryData<Moment[]>(key) === undefined) return
-        client.setQueryData<Moment[]>(key, (current) => insertMoment(current ?? [], saved))
+        client.setQueryData<CatalogMoments>(key, (current) =>
+          current ? { ...current, moments: insertMoment(current.moments, saved) } : current,
+        )
       },
       onSettled: refresh,
     }),
@@ -106,8 +117,8 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
         patch: { comment: string }
       }): Promise<void> => {
         const shown = client
-          .getQueryData<Moment[]>(key)
-          ?.find((moment) => moment.id === momentId)?.comment
+          .getQueryData<CatalogMoments>(key)
+          ?.moments.find((moment) => moment.id === momentId)?.comment
         const entity = await catalog<Entity>(library, `/entities/moments/${momentId}`)
         const comment = entity.fields.comment
         const alive = entity.fields.$alive
@@ -138,12 +149,17 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
       },
       // The saved comment is what the next edit must match before the list refetches
       onSuccess: (_saved, { momentId, patch }) =>
-        client.setQueryData<Moment[]>(key, (current) =>
-          current?.map((moment) =>
-            moment.id === momentId
-              ? { ...moment, comment: patch.comment.trim() ? patch.comment : null }
-              : moment,
-          ),
+        client.setQueryData<CatalogMoments>(key, (current) =>
+          current
+            ? {
+                ...current,
+                moments: current.moments.map((moment) =>
+                  moment.id === momentId
+                    ? { ...moment, comment: patch.comment.trim() ? patch.comment : null }
+                    : moment,
+                ),
+              }
+            : current,
         ),
       onSettled: refresh,
     }),
@@ -153,12 +169,12 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
       // The row goes on the click; a failed delete puts it back
       onMutate: async (momentId: string) => {
         await client.cancelQueries({ queryKey: key })
-        const previous = client.getQueryData<Moment[]>(key)
+        const previous = client.getQueryData<CatalogMoments>(key)
         if (previous)
-          client.setQueryData<Moment[]>(
-            key,
-            previous.filter((moment) => moment.id !== momentId),
-          )
+          client.setQueryData<CatalogMoments>(key, {
+            ...previous,
+            moments: previous.moments.filter((moment) => moment.id !== momentId),
+          })
         return { previous }
       },
       onError: (_error, _momentId, context) => {
@@ -167,4 +183,57 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
       onSettled: refresh,
     }),
   }
+}
+
+/** Tag choices for one moment, searched on the server, with the bases a change needs. */
+export function useMomentTagChoices(
+  library: string,
+  momentId: string,
+  search: string,
+  assigned: boolean,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['catalog-moment-tags', library, momentId, search, assigned],
+    enabled,
+    queryFn: ({ signal }) =>
+      replicaRequest<TagPage>(
+        library,
+        `/catalog/moments/${momentId}/tags?${new URLSearchParams({
+          q: search,
+          assigned: String(assigned),
+          limit: '50',
+        })}`,
+        'GET',
+        undefined,
+        signal,
+      ),
+  })
+}
+
+/**
+ * Add or remove one tag on a moment. An added tag is also added to the bundle
+ * (ADR-0025), so the bundle's tag lists and the browse results refresh too.
+ */
+export function useSetMomentTag(library: string, bundleId: string | null) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ momentId, choice }: { momentId: string; choice: MomentTagChoice }) =>
+      previewAndCommit(library, {
+        action: 'moment_tag',
+        moment: momentId,
+        target: choice.id,
+        assigned: !choice.assigned,
+        observed: choice.observed,
+      }),
+    onSettled: () =>
+      Promise.all(
+        [
+          catalogMomentsKey(library, bundleId),
+          ['catalog-moment-tags', library],
+          ['catalog-memberships', library],
+          ['catalog-browse', library],
+        ].map((queryKey) => client.invalidateQueries({ queryKey })),
+      ),
+  })
 }

@@ -39,17 +39,43 @@ def memberships(
     search: str,
     assigned: bool,
 ) -> CatalogMembershipPage:
+    return choices(
+        store, "asset_bundles", bundle, family, EDGES[family], after, limit, search, assigned
+    )
+
+
+def moment_tags(
+    store: "CatalogStore", moment: str, after: str, limit: int, search: str, assigned: bool
+) -> CatalogMembershipPage:
+    """Tag choices for one moment; an added tag also reaches the bundle (ADR-0025)."""
+    return choices(store, "moments", moment, "tags", "moment_tags", after, limit, search, assigned)
+
+
+def choices(
+    store: "CatalogStore",
+    owner_family: str,
+    owner: str,
+    family: str,
+    edge: str,
+    after: str,
+    limit: int,
+    search: str,
+    assigned: bool,
+) -> CatalogMembershipPage:
     """Search all destinations before pagination, with exact edge and lifetime bases."""
     with store.connection(readonly=True) as db:
-        if read_row(db, "asset_bundles", bundle) is None:
-            raise ReplicaError("Bundle is unavailable")
-        edge = EDGES[family]
+        if read_row(db, owner_family, owner) is None:
+            raise ReplicaError(
+                "Bundle is unavailable"
+                if owner_family == "asset_bundles"
+                else "Moment is unavailable"
+            )
         rows = db.execute(
             "SELECT c.entity,c.body FROM catalog_rows c WHERE c.family=? AND c.entity>? "
             "AND instr(lower(json_extract(c.body,'$.name')),lower(?))>0 "
             "AND (?=0 OR EXISTS (SELECT 1 FROM catalog_rows e WHERE e.family=? "
             "AND e.entity=? || '~' || c.entity)) ORDER BY c.entity LIMIT ?",
-            (family, after, search, int(assigned), edge, bundle, limit + 1),
+            (family, after, search, int(assigned), edge, owner, limit + 1),
         ).fetchall()
         items = []
         for row in rows[:limit]:
@@ -63,9 +89,9 @@ def memberships(
                 (family, row["entity"], family),
             ).fetchall()
             units = [
-                key("asset_bundles", bundle, "$alive"),
+                key(owner_family, owner, "$alive"),
                 key(family, row["entity"], "$alive"),
-                key(edge, f"{bundle}~{row['entity']}", "$alive"),
+                key(edge, f"{owner}~{row['entity']}", "$alive"),
             ]
             observed = {unit: [tip["event"] for tip in store.tips(db, unit)] for unit in units}
             held = any(
@@ -78,7 +104,7 @@ def memberships(
                     name=body["name"],
                     parent_id=body["parent_id"],
                     path=[ancestor[0] for ancestor in ancestors],
-                    assigned=read_row(db, edge, f"{bundle}~{row['entity']}") is not None,
+                    assigned=read_row(db, edge, f"{owner}~{row['entity']}") is not None,
                     observed=observed,
                     held=held,
                 )

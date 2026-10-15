@@ -248,15 +248,46 @@ class Preview:
         from cairndex.replicas.catalog.inspector import EDGES
 
         family = command["family"]
-        if family not in EDGES or type(command.get("assigned")) is not bool:
+        if family not in EDGES:
             raise ReplicaError("Unsupported membership choice")
-        bundle, target = command["bundle"], command["target"]
-        edge = EDGES[family]
-        identity = f"{bundle}~{target}"
+        return self.edge("asset_bundles", command["bundle"], family, EDGES[family], command)
+
+    def moment_tag(self, command: dict[str, Any]) -> bool:
+        """Change one moment tag; an added tag also becomes a bundle tag (ADR-0025)."""
+        moment = read_row(self.db, "moments", command["moment"])
+        if moment is None:
+            raise ReplicaError("Membership target is unavailable")
+        recover = self.edge("moments", command["moment"], "tags", "moment_tags", command)
+        if not command["assigned"]:
+            # Removal stays on the moment: a bundle tag does not record where it came from
+            return recover
+        unit = key("asset_bundle_tags", f"{moment['bundle_id']}~{command['target']}", "$alive")
+        if self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone():
+            raise ReplicaError("Membership changed or requires conflict review; refresh choices")
+        existing = self.db.execute(
+            "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+        ).fetchone()
+        if existing is None:
+            self.create(
+                "asset_bundle_tags", {"bundle_id": moment["bundle_id"], "tag_id": command["target"]}
+            )
+        elif existing[0] == "false":
+            self.put(unit, True)
+            return True
+        return recover
+
+    # One explicit edge change with the observed bases the owner saw; stale choices are refused
+    def edge(
+        self, owner_family: str, owner: str, family: str, edge: str, command: dict[str, Any]
+    ) -> bool:
+        if type(command.get("assigned")) is not bool:
+            raise ReplicaError("Unsupported membership choice")
+        target = command["target"]
+        identity = f"{owner}~{target}"
         unit = key(edge, identity, "$alive")
         expected = {
             unit,
-            key("asset_bundles", bundle, "$alive"),
+            key(owner_family, owner, "$alive"),
             key(family, target, "$alive"),
         }
         observed = command["observed"]
@@ -267,7 +298,7 @@ class Preview:
         ):
             raise ReplicaError("Membership changed or requires conflict review; refresh choices")
         if (
-            read_row(self.db, "asset_bundles", bundle) is None
+            read_row(self.db, owner_family, owner) is None
             or read_row(self.db, family, target) is None
         ):
             raise ReplicaError("Membership target is unavailable")
@@ -285,7 +316,8 @@ class Preview:
             # Explicit Add restores only this stable pair, never either referenced object.
             self.put(unit, True)
             return True
-        row = {"bundle_id": bundle, "tag_id" if family == "tags" else "collection_id": target}
+        owner_column = "moment_id" if owner_family == "moments" else "bundle_id"
+        row = {owner_column: owner, "tag_id" if family == "tags" else "collection_id": target}
         if family == "collections":
             row["sort_order"] = 0
         self.create(edge, row)
@@ -355,6 +387,8 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             recover = bulk(builder, command)
         elif action == "membership":
             recover = builder.membership(command)
+        elif action == "moment_tag":
+            recover = builder.moment_tag(command)
         elif action == "delete":
             builder.delete(command["family"], command["entity"])
         elif action == "transfer":

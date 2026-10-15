@@ -24,6 +24,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   rail's `+` mark a frame or a span; the docked Moments rail lists the bundle's
   moments, edits their comments, plays and loops them, and deletes them. Every
   write is a catalog job. Servers advertise the capability as `moments_version`.
+- Restore moment tags in the portable viewer. Each rail row shows its tags and
+  a chooser that searches the library's tags. A tag added to a moment is also
+  added to its bundle (ADR-0025); removing it from the moment leaves the bundle
+  tag. Servers advertise the capability as `moments_version: 2`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

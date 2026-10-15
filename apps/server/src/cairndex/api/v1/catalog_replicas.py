@@ -18,6 +18,7 @@ from cairndex.replicas.catalog.inspector import (
     CatalogMembershipPage,
     MembershipFamily,
     memberships,
+    moment_tags,
 )
 from cairndex.replicas.catalog.moments import CatalogMomentPage, bundle_moments
 from cairndex.replicas.catalog.navigation import (
@@ -192,6 +193,18 @@ def moment_page(
 ) -> CatalogMomentPage:
     with store.connection(readonly=True) as db:
         return bundle_moments(db, bundle_id, offset, limit)
+
+
+@router.get("/moments/{moment_id}/tags", response_model=CatalogMembershipPage)
+def moment_tag_choices(
+    moment_id: Token,
+    store: Catalog,
+    after: Cursor = "",
+    limit: Limit = 30,
+    q: Annotated[str, Query(max_length=1000)] = "",
+    assigned: bool = False,
+) -> CatalogMembershipPage:
+    return moment_tags(store, moment_id, after, limit, q, assigned)
 
 
 @router.get("/navigation/{family}", response_model=CatalogNavigationPage)
