@@ -82,6 +82,9 @@ The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.
 The existing glib exception and proc-macro-error maintenance warning remain.
+The rustls repair (`fix/rustls-audit`) updates rustls to 0.23.46. Four rustls
+advisories published on 2026-10-14 made the hosted dependency audit fail on
+every branch.
 The screenshot prerequisite [PR #61](https://github.com/allpan3/Cairndex/pull/61)
 then merged as `ed40dd70` after its selected CI jobs and all six required checks
 passed. The feature includes its exact declared synthetic screenshot.

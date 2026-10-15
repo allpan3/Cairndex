@@ -62,6 +62,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Update the Rust lockfile to rustls 0.23.46 for four TLS advisories published
+  on 2026-10-14, including a ServerHello downgrade and secrets in `Debug`
+  output.
+
 - Update the Rust lockfile to quinn-proto 0.11.18 for five denial-of-service
   advisories and event-listener 5.4.2 for its cross-thread tag safety fix.
   Replace the yanked chacha20 0.10.1 with 0.10.2.
