@@ -373,6 +373,60 @@ test('browser inspector plays a moment and hands its drafts to the viewer @fulls
   }
 })
 
+// Card badges and the hover preview use what this device last observed, never another device's bytes
+test('portable cards preview a video this device has observed @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-card-preview-'))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]), duration=60))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const card = page.getByRole('option').filter({ hasText: 'Synthetic playback' })
+    const thumb = card.locator('.card__thumb')
+    // Unobserved, the card has no duration and no preview
+    await expect(card.locator('.card__badge--review')).toBeVisible()
+    await expect(card.locator('.card__dur')).toHaveCount(0)
+    await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'none')
+    await card.click()
+    await page.getByRole('button', { name: 'Open media on this device', exact: true }).click()
+    await expect.poll(async () => (await picture(page)).frames).toBeGreaterThan(0)
+    const viewer = page.locator('.media-viewer')
+    await viewer.hover()
+    await viewer.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(viewer).toHaveCount(0)
+    await expect(card.locator('.card__dur')).toHaveText('1:00')
+    await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'direct')
+    const box = (await thumb.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.move(box.x + box.width / 2 + 4, box.y + box.height / 2)
+    const preview = thumb.getByTestId('hover-preview-video')
+    await expect(preview).toBeAttached()
+    await expect
+      .poll(() => preview.evaluate((video: HTMLVideoElement) => video.currentTime))
+      .toBeGreaterThan(0)
+    expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
 // Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
 test('portable viewer marks, comments on, tags, previews and deletes moments @fullstack', async ({
   page,

@@ -4402,15 +4402,54 @@ export interface components {
              * Format: date-time
              */
             date_added: string;
+            /** Duration */
+            duration?: number | null;
+            /** Extension */
+            extension?: string | null;
             /** File Count */
             file_count: number;
             grouping_state: components["schemas"]["GroupingState"];
+            /**
+             * Has Missing
+             * @default false
+             */
+            has_missing: boolean;
+            /** Height */
+            height?: number | null;
             /** Id */
             id: string;
+            /** Media Kind */
+            media_kind?: string | null;
             /** Rating */
             rating: number | null;
+            /** Resume Audio Codec */
+            resume_audio_codec?: string | null;
+            /** Resume Container */
+            resume_container?: string | null;
+            /** Resume Duration */
+            resume_duration?: number | null;
+            /** Resume File Id */
+            resume_file_id?: string | null;
+            /** Resume Generation */
+            resume_generation?: string | null;
+            /** Resume Media Kind */
+            resume_media_kind?: string | null;
+            /** Resume Mime Type */
+            resume_mime_type?: string | null;
+            /** Resume Position */
+            resume_position?: number | null;
+            /** Resume Relative Path */
+            resume_relative_path?: string | null;
+            /** Resume Storyboard Version */
+            resume_storyboard_version?: string | null;
+            /** Resume Video Codec */
+            resume_video_codec?: string | null;
+            /** Resume Video Codec Tag */
+            resume_video_codec_tag?: string | null;
             /** Title */
             title: string | null;
+            /** Width */
+            width?: number | null;
         };
         /** CatalogCandidate */
         CatalogCandidate: {

@@ -112,6 +112,16 @@ portable catalog records no file sizes. Its events carry no times, and the catal
 never updates `updated_at` on an edit. Opening is an observation on each device,
 and recording it needs a new reviewed table in the private-store schema.
 
+Portable card previews (`feature/portable-card-previews`) fill the card summary
+for servers that advertise `browse_version: 4`. One batched read per page takes
+each bundle's current file and its media details from this device's private
+observations, so browsing never reads source bytes. The current file is the
+cursor, then the first unfinished member, then the first member last seen
+available, as on the legacy card. Missing uses the Missing Files rule. A file
+this device has never opened has no duration, dimensions or hover preview; the
+viewer records them when it opens the file. A portable storyboard URL names the
+observed generation, so the summary also carries its storyboard version.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

@@ -4,7 +4,7 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useSt
 import type { BundleSort, BundleSummary, SortOrder } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
-import { BundleCard } from './BundleCard'
+import { BundleCard, type BundleCardItem } from './BundleCard'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
@@ -27,7 +27,7 @@ interface BrowserProps {
   unavailableSize?: boolean
   singleSelection?: boolean
 
-  items: BundleSummary[]
+  items: BundleCardItem[]
   total: number
   layout: LayoutMode
   zoom: number

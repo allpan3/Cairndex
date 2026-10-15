@@ -3,7 +3,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
-import type { BundleSort, SortOrder, BundleSummary } from '../api/client'
+import type { BundleSort, SortOrder } from '../api/client'
+import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
 import { Toolbar } from './Toolbar'
 import { DEFAULT_PREFS, type Selection } from './types'
@@ -149,30 +150,32 @@ export function CatalogBundleBrowser({
             ({
               ...item,
               total_size: 0,
-              has_missing: false,
+              has_missing: item.has_missing ?? false,
               has_cover: Boolean(item.cover_file_id),
               openable: item.file_count > 0,
               cover_key: item.cover_key ?? null,
               cover_width: null,
               cover_height: null,
               primary_relative_path: null,
-              resume_file_id: null,
-              resume_file_updated_at: null,
-              resume_media_kind: null,
-              resume_relative_path: null,
-              resume_mime_type: null,
-              resume_container: null,
-              resume_video_codec: null,
-              resume_video_codec_tag: null,
-              resume_audio_codec: null,
-              resume_duration: null,
-              resume_position: null,
-              media_kind: null,
-              width: null,
-              height: null,
-              duration: null,
-              extension: null,
-            }) satisfies BundleSummary,
+              resume_file_id: item.resume_file_id ?? null,
+              // The observed generation versions the file thumbnail URL
+              resume_file_updated_at: item.resume_generation ?? null,
+              resume_media_kind: item.resume_media_kind ?? null,
+              resume_relative_path: item.resume_relative_path ?? null,
+              resume_mime_type: item.resume_mime_type ?? null,
+              resume_container: item.resume_container ?? null,
+              resume_video_codec: item.resume_video_codec ?? null,
+              resume_video_codec_tag: item.resume_video_codec_tag ?? null,
+              resume_audio_codec: item.resume_audio_codec ?? null,
+              resume_duration: item.resume_duration ?? null,
+              resume_position: item.resume_position ?? null,
+              resume_storyboard_version: item.resume_storyboard_version ?? null,
+              media_kind: item.media_kind ?? null,
+              width: item.width ?? null,
+              height: item.height ?? null,
+              duration: item.duration ?? null,
+              extension: item.extension ?? null,
+            }) satisfies BundleCardItem,
         ),
       ) ?? [],
     [browse.data],
@@ -460,6 +463,7 @@ export function CatalogBundleBrowser({
             onSelect={select}
             onMarqueeSelect={many}
             onOpen={openAlbum}
+            contextMenuOpen={menu.state !== null}
             onContextMenu={(id, event) => {
               select(id, event)
               menu.open(event, [

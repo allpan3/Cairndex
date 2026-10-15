@@ -50,7 +50,10 @@ export function HoverPreview({
     onTimeUpdate,
     bind,
   } = useHoverPreview(source, videoRef, disabled, storyboardTimeForPosition)
-  const storyboardUrl = source?.mediaKind === 'video' ? fileStoryboardUrl(source.fileId) : null
+  const storyboardUrl =
+    source?.mediaKind === 'video'
+      ? fileStoryboardUrl(source.fileId, source.storyboardVersion ?? undefined)
+      : null
   const prefetchedStoryboardUrl = prefetchStoryboard ? storyboardUrl : null
   const { data: cues, isFetched } = useStoryboardCues(prefetchedStoryboardUrl, true, false)
   useLayoutEffect(() => {

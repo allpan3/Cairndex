@@ -71,7 +71,7 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     ):
         assert client.post(url, json=body).status_code == 422
     assert client.get(base + "/bundles/browse").status_code == 409
-    assert client.get(base + "/replica/status").json()["browse_version"] == 3
+    assert client.get(base + "/replica/status").json()["browse_version"] == 4
 
 
 # Manual follows the authored order, or one collection's own membership order
@@ -105,6 +105,94 @@ def test_manual_and_file_count_sorts(tmp_path):
     assert ids(sort="manual", **nested) == ["000001", "000000"]
     assert ids(sort="file_count", order="desc")[0] == "000000"
     assert ids(sort="file_count")[-1] == "000000"
+
+
+# Card facts come from this device's last observations, never from source bytes
+def test_card_facts_follow_local_observations(tmp_path):
+    import sqlite3
+
+    from cairndex.devtools.catalog_fixture import insert_row, synthetic_row
+    from cairndex.media.storyboards import storyboard_cache_key
+
+    fixture = create_disposable(parent=tmp_path, bundles=3)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        for identity, name, role, sequence in (
+            ("file-photo", "one.jpg", "IMAGE", 1),
+            ("file-clip", "two.mp4", "PRIMARY_VIDEO", 2),
+        ):
+            insert_row(
+                db,
+                "asset_files",
+                synthetic_row(
+                    "asset_files",
+                    identity,
+                    bundle_id="bundle-000001",
+                    relative_path=f"Synthetic/b/{name}",
+                    directory_path="Synthetic/b",
+                    original_filename=name,
+                    display_title=name,
+                    role=role,
+                    sequence=sequence,
+                ),
+            )
+    store = prepare_disposable(fixture).store
+
+    def card(identity):
+        return next(item for item in page(store).items if item.id == identity)
+
+    def observe(file_id, state, metadata=None, position=None, completed=0, generation="g1"):
+        with store.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO local_media VALUES (?,?,?,?,NULL)",
+                (file_id, generation, state, json.dumps(metadata) if metadata else None),
+            )
+            if position is not None:
+                db.execute(
+                    "INSERT OR REPLACE INTO local_progress VALUES (?,'g1',?,60,?)",
+                    (file_id, position, completed),
+                )
+
+    # A file this device never observed names its kind but offers no preview
+    first = card("bundle-000000")
+    facts = (first.media_kind, first.extension, first.resume_file_id)
+    assert facts == ("video", "mp4", "file-video")
+    assert first.resume_media_kind is None and first.duration is None and not first.has_missing
+    assert card("bundle-000002").resume_file_id is None
+
+    meta = {"duration": 60.0, "width": 640, "height": 360}
+    meta |= {"container": "mp4", "video_codec": "h264"}
+    observe("file-video", "available", meta, position=12.5)
+    first = card("bundle-000000")
+    assert (first.resume_media_kind, first.resume_duration, first.resume_position) == (
+        "video",
+        60.0,
+        12.5,
+    )
+    assert (first.width, first.height, first.resume_container) == (640, 360, "mp4")
+    assert first.resume_generation == "g1"
+    assert first.resume_storyboard_version == storyboard_cache_key("g1")
+    observe("file-video", "available", meta, position=60.0, completed=1)
+    assert card("bundle-000000").resume_position is None
+    # Progress of an earlier generation is not this file's resume position
+    observe("file-video", "available", meta, position=12.5, generation="g2")
+    assert card("bundle-000000").resume_position is None
+
+    # An unfinished member is current before the first one, and a lost file marks the card
+    observe("file-photo", "unavailable")
+    observe("file-clip", "available", meta, position=5.0)
+    second = card("bundle-000001")
+    assert (second.resume_file_id, second.has_missing) == ("file-clip", True)
+    # The cursor wins, but a file last seen unavailable has no preview
+    with store.connection() as db:
+        db.execute("INSERT INTO local_cursors VALUES ('bundle-000001','file-photo')")
+    second = card("bundle-000001")
+    assert (second.resume_file_id, second.media_kind, second.extension) == (
+        "file-photo",
+        "image",
+        "jpg",
+    )
+    assert second.resume_media_kind is None
+    assert [item.id for item in page(store, view="missing").items] == ["bundle-000001"]
 
 
 def test_browse_population_hidden_provisional_and_empty(tmp_path):

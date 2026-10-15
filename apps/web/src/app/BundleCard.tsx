@@ -7,8 +7,14 @@ import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
 import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundleFileDropTarget'
 
+/**
+ * One card's summary. A portable summary also names its storyboard version,
+ * because a portable storyboard URL names the observed source generation.
+ */
+export type BundleCardItem = BundleSummary & { resume_storyboard_version?: string | null }
+
 interface BundleCardProps {
-  item: BundleSummary
+  item: BundleCardItem
   selected: boolean
   showMeta: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
@@ -62,6 +68,7 @@ export function BundleCard({
               audioCodec: item.resume_audio_codec,
               duration: item.resume_duration,
               startTime: item.resume_position,
+              storyboardVersion: item.resume_storyboard_version,
             }
           : null,
     [
@@ -76,6 +83,7 @@ export function BundleCard({
       item.resume_mime_type,
       item.resume_position,
       item.resume_relative_path,
+      item.resume_storyboard_version,
       item.resume_video_codec,
     ],
   )

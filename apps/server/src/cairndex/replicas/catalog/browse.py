@@ -2,17 +2,19 @@
 
 import hashlib
 import json
+import mimetypes
 import sqlite3
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import Field
 
-from cairndex.domain.enums import GroupingState
+from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
+from cairndex.media.image_support import is_openable_media
 from cairndex.replicas.catalog.query import matching, saved_filter
 from cairndex.replicas.protocol import StrictModel
-from cairndex.scanning.media_types import HIDDEN_NAMES
+from cairndex.scanning.media_types import HIDDEN_NAMES, classify
 from cairndex.search import to_match_query
 
 
@@ -25,6 +27,26 @@ class CatalogBundleSummary(StrictModel):
     grouping_state: GroupingState
     cover_file_id: str | None = None
     cover_key: str | None = None
+    # Browse version 4: this device's last observations of the bundle's current
+    # file, for card badges and the hover preview. Nothing here reads source bytes.
+    has_missing: bool = False
+    media_kind: str | None = None
+    extension: str | None = None
+    width: int | None = None
+    height: int | None = None
+    duration: float | None = None
+    resume_file_id: str | None = None
+    resume_media_kind: str | None = None
+    resume_relative_path: str | None = None
+    resume_mime_type: str | None = None
+    resume_container: str | None = None
+    resume_video_codec: str | None = None
+    resume_video_codec_tag: str | None = None
+    resume_audio_codec: str | None = None
+    resume_duration: float | None = None
+    resume_position: float | None = None
+    resume_generation: str | None = None
+    resume_storyboard_version: str | None = None
 
 
 class CatalogBrowsePage(StrictModel):
@@ -225,7 +247,8 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
         f"SELECT b.entity,b.body FROM catalog_rows b WHERE {where} "
         f"ORDER BY {column} {request.order},b.entity {tie} LIMIT ? OFFSET ?",
         [*args, *order_args, request.limit, request.offset],
-    )
+    ).fetchall()
+    local = _local_facts(db, [row["entity"] for row in rows])
     items = []
     for row in rows:
         from cairndex.replicas.catalog.inspector import cover
@@ -247,9 +270,102 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
                 grouping_state=GroupingState[value["grouping_state"]],
                 cover_file_id=artwork["id"] if artwork else None,
                 cover_key=f"{artwork['id']}:{artwork['cover_time']}" if artwork else None,
+                **local.get(row["entity"], {}),
             )
         )
     return CatalogBrowsePage(items=items, total=total, offset=request.offset, limit=request.limit)
+
+
+# True when the shared viewer has a stage for this file type, as on the legacy card
+def _supported(path: str) -> bool:
+    kind = classify(path.rsplit("/", 1)[-1])
+    if kind is None or kind[0] not in (MediaKind.IMAGE, MediaKind.VIDEO):
+        return False
+    return is_openable_media(kind[0], path)
+
+
+def _local_facts(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:
+    """One page's card facts from this device's private observations, in three statements.
+
+    The current file follows the legacy card: the bundle's cursor, then the first
+    member with an unfinished resume position, then the first member last seen
+    available, then the first member the viewer can show. A file this device
+    never observed has no media details and no hover preview. Missing uses the
+    Missing Files view's rule: the last local check found a file unavailable.
+    """
+    from cairndex.media.storyboards import storyboard_cache_key
+    from cairndex.replicas.catalog.album import visible
+
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    owners = {f"asset_bundles/{identity}/$members": identity for identity in ids}
+    members: dict[str, list[sqlite3.Row]] = {}
+    for row in db.execute(
+        "SELECT p.owner,c.entity AS id,json_extract(c.body,'$.relative_path') AS path,"
+        "m.state,m.generation,m.metadata,g.position,g.completed "
+        "FROM catalog_placements p JOIN catalog_rows c ON p.family=c.family AND p.entity=c.entity "
+        "LEFT JOIN local_media m ON m.file_id=c.entity "
+        "LEFT JOIN local_progress g ON g.file_id=c.entity AND g.generation=m.generation "
+        f"WHERE p.owner IN ({marks}) AND c.family='asset_files' AND "
+        + visible("json_extract(c.body,'$.relative_path')")
+        + " ORDER BY CAST(json_extract(p.body,'$.sequence') AS INTEGER),c.entity",
+        list(owners),
+    ):
+        members.setdefault(owners[row["owner"]], []).append(row)
+    cursors = dict(
+        db.execute(f"SELECT bundle_id,file_id FROM local_cursors WHERE bundle_id IN ({marks})", ids)
+    )
+    missing = {
+        row[0]
+        for row in db.execute(
+            "SELECT DISTINCT json_extract(f.body,'$.bundle_id') FROM catalog_rows f "
+            "JOIN local_media m ON m.file_id=f.entity WHERE f.family='asset_files' "
+            f"AND json_extract(f.body,'$.bundle_id') IN ({marks}) AND m.state='unavailable'",
+            ids,
+        )
+    }
+    facts: dict[str, dict[str, Any]] = {}
+    for identity in ids:
+        supported = [row for row in members.get(identity, []) if _supported(row["path"])]
+        available = [row for row in supported if row["state"] == "available"]
+        current = (
+            next((row for row in supported if row["id"] == cursors.get(identity)), None)
+            or next((row for row in available if row["position"] and not row["completed"]), None)
+            or next(iter(available), None)
+            or next(iter(supported), None)
+        )
+        fact: dict[str, Any] = {"has_missing": identity in missing}
+        if current is not None:
+            kind = classify(current["path"].rsplit("/", 1)[-1])
+            meta = json.loads(current["metadata"]) if current["metadata"] else {}
+            fact |= {
+                "media_kind": str(kind[0]) if kind else None,
+                "extension": current["path"].rpartition(".")[2].lower() or None,
+                "width": meta.get("width"),
+                "height": meta.get("height"),
+                "duration": meta.get("duration"),
+                "resume_file_id": current["id"],
+            }
+            # Only a file last seen available previews; the routes check it again
+            if current["state"] == "available" and current["generation"]:
+                fact |= {
+                    "resume_media_kind": fact["media_kind"],
+                    "resume_relative_path": current["path"],
+                    "resume_mime_type": mimetypes.guess_type(current["path"])[0],
+                    "resume_container": meta.get("container"),
+                    "resume_video_codec": meta.get("video_codec"),
+                    "resume_video_codec_tag": meta.get("video_codec_tag"),
+                    "resume_audio_codec": meta.get("audio_codec"),
+                    "resume_duration": meta.get("duration"),
+                    "resume_position": None
+                    if current["completed"] or not current["position"]
+                    else current["position"],
+                    "resume_generation": current["generation"],
+                    "resume_storyboard_version": storyboard_cache_key(current["generation"]),
+                }
+        facts[identity] = fact
+    return facts
 
 
 class CatalogUnbundledRequest(StrictModel):
