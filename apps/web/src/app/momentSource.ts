@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 
 import type { EditVersion } from '../api/editBasis'
 import type { Moment, MomentCreate } from '../api/client'
@@ -31,6 +31,8 @@ export interface MomentSource {
   mutations: MomentMutations
   /** A storyboard index for this file, or null when none can be read here. */
   storyboardUrl: (fileId: string) => string | null
+  /** The tag controls of one moment row; absent where this source cannot tag moments. */
+  renderTags?: (moment: Moment) => ReactNode
 }
 
 export const MomentSourceContext = createContext<MomentSource | null>(null)

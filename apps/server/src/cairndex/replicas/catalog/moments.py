@@ -12,6 +12,8 @@ from cairndex.api.schemas.moments import MomentRead
 class CatalogMomentPage(BaseModel):
     items: list[MomentRead]
     next_offset: int | None
+    # Names of the tags on these moments, so a row can show them without a second request
+    tag_names: dict[str, str]
 
 
 # Start time orders the list, and the stable identity breaks ties between equal starts
@@ -25,16 +27,19 @@ def bundle_moments(
         (f"asset_bundles/{bundle_id}", limit + 1, offset),
     ).fetchall()
     items = []
+    names: dict[str, str] = {}
     for identity, body in rows[:limit]:
         row: dict[str, Any] = json.loads(body)
-        row["tag_ids"] = [
-            tag
-            for (tag,) in db.execute(
-                "SELECT json_extract(c.body,'$.tag_id') FROM catalog_references r "
-                "JOIN catalog_rows c ON r.source=c.family || '/' || c.entity "
-                "WHERE r.target=? AND c.family='moment_tags' ORDER BY 1",
-                (f"moments/{identity}",),
-            )
-        ]
+        tags = db.execute(
+            "SELECT json_extract(c.body,'$.tag_id'),json_extract(t.body,'$.name') "
+            "FROM catalog_references r JOIN catalog_rows c ON r.source=c.family || '/' || c.entity "
+            "JOIN catalog_rows t ON t.family='tags' AND t.entity=json_extract(c.body,'$.tag_id') "
+            "WHERE r.target=? AND c.family='moment_tags' ORDER BY 2, 1",
+            (f"moments/{identity}",),
+        ).fetchall()
+        row["tag_ids"] = [tag for tag, _ in tags]
+        names.update({tag: name for tag, name in tags})
         items.append(MomentRead.model_validate(row))
-    return CatalogMomentPage(items=items, next_offset=offset + limit if len(rows) > limit else None)
+    return CatalogMomentPage(
+        items=items, next_offset=offset + limit if len(rows) > limit else None, tag_names=names
+    )

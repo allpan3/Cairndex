@@ -160,6 +160,7 @@ test('a queued storyboard reaches the shell once it is ready', async () => {
 // The moments capability moves the rail and the seek marks to the catalog source
 test.each([
   [1, 'Rail moments', 'Catalog moments 2'],
+  [2, 'Rail moments', 'Catalog moments 2'],
   [null, 'Rail none', 'Saved moments 1'],
 ])('moments capability %s shows %s', async (version, rail, moments) => {
   setActiveLibraryId('synthetic')
@@ -178,8 +179,8 @@ test.each([
     if (path === '/status') return { moments_version: version }
     if (path.startsWith('/catalog/bundles/bundle/moments'))
       return path.endsWith('offset=0')
-        ? { items: [moment], next_offset: 1 }
-        : { items: [{ ...moment, id: 'n' }], next_offset: null }
+        ? { items: [moment], next_offset: 1, tag_names: {} }
+        : { items: [{ ...moment, id: 'n' }], next_offset: null, tag_names: {} }
     if (path.startsWith('/media/files/'))
       return { file, generation: 'g', state: 'available', message: null, playback: null }
     return {

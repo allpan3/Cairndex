@@ -38,7 +38,8 @@ Steps 1–3 are complete. In step 4, desktop file integration merged through
 follow as separate changes: exports, storyboards and moments. Exports merged
 through [PR #64](https://github.com/allpan3/Cairndex/pull/64) as `f7a7d828`, and
 storyboards through [PR #65](https://github.com/allpan3/Cairndex/pull/65) as
-`25896d34`. The real-library owner test in step 6 remains the release checkpoint.
+`25896d34`. Moments merged through
+[PR #66](https://github.com/allpan3/Cairndex/pull/66) as `23c10155`. The real-library owner test in step 6 remains the release checkpoint.
 No release tag or production deployment was made.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
@@ -58,15 +59,24 @@ for the current generation. Full gates passed in both guests, and all 16 hosted
 checks passed before the merge. Library-wide storyboard passes, which feed card
 hover previews, belong to the browsing group.
 
-Portable moments (`feature/portable-moments`) restore moment authoring in the
-viewer for servers that advertise `moments_version: 1`. `B`, Save Moment and the
+Portable moments restore moment authoring in the viewer for servers that
+advertise `moments_version: 1`. `B`, Save Moment and the
 rail's `+` mark a frame or a span through a catalog create preview that the viewer
 commits at once. The viewer's docked rail lists the bundle's moments and edits
 comments, plays, loops and deletes them. The rail shows only moments, because the
 browser inspector under the viewer owns the bundle's private drafts; a second
-draft owner in one tab would overwrite them. The full bundle inspector in the
-viewer, moment tags with ADR-0025 bundle-tag propagation, private poster and clip
-previews and the browser inspector's moments section remain for the next change.
+draft owner in one tab would overwrite them. Full gates passed in both guests,
+and all 16 hosted checks passed before the merge.
+
+Portable moment tags (`feature/portable-moment-tags`) follow for servers that
+advertise `moments_version: 2`. Each rail row shows its first tag and a count, and
+its `+` opens a tag chooser that searches the library's tags on the server. One
+click commits a `moment_tag` preview with the observed bases of the moment, the
+tag and the edge, so a stale choice is refused. Under ADR-0025 an added tag also
+adds the bundle tag, or restores it from a tombstone. Removing the moment tag or
+deleting the moment leaves the bundle tag. The private poster and clip previews,
+the browser inspector's moments section and the full bundle inspector in the
+viewer remain for later changes.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

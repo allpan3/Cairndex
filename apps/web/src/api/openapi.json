@@ -2287,11 +2287,19 @@
               }
             ],
             "title": "Next Offset"
+          },
+          "tag_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Tag Names",
+            "type": "object"
           }
         },
         "required": [
           "items",
-          "next_offset"
+          "next_offset",
+          "tag_names"
         ],
         "title": "CatalogMomentPage",
         "type": "object"
@@ -24588,6 +24596,134 @@
           }
         },
         "summary": "Job",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/moments/{moment_id}/tags": {
+      "get": {
+        "operationId": "moment_tag_choices_api_v1_libraries__library_id__replica_catalog_moments__moment_id__tags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "moment_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Moment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 256,
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1000,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Assigned",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMembershipPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Moment Tag Choices",
         "tags": [
           "replica-catalog"
         ]

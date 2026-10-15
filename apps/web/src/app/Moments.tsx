@@ -285,7 +285,10 @@ function MomentRow({
               2026-08-30). The region is width-capped and clips rather than
               wrapping, so a moment with many tags costs the same height as one
               with a single tag — the full set is still in the picker. */}
-          {mutations.setTags && (
+          {source?.renderTags && (
+            <div className="moment-row__tags">{source.renderTags(moment)}</div>
+          )}
+          {!source && mutations.setTags && (
             <div className="moment-row__tags">
               <TagPicker
                 addLabel="+"

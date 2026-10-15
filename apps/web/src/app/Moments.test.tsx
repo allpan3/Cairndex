@@ -579,7 +579,17 @@ test('a moment source supplies the rows and receives the writes', () => {
   expect(hooks.remove.mutate).not.toHaveBeenCalled()
 })
 
-// Portable moments have no tag edges or private posters yet, so neither is offered
+// A source that can tag moments draws its own controls; the legacy picker stays out
+test('a portable source draws the tag controls of each row', () => {
+  const renderTags = vi.fn((row: Moment) => <span>Tags of {row.id}</span>)
+  renderPortable({ ...portableSource([moment()]), renderTags })
+
+  expect(screen.getByText('Tags of moment-1')).toBeInTheDocument()
+  expect(renderTags).toHaveBeenCalledWith(expect.objectContaining({ id: 'moment-1' }))
+  expect(screen.queryByRole('button', { name: 'Add tag' })).not.toBeInTheDocument()
+})
+
+// Portable moments have no private posters yet, and an older server cannot tag them
 test('a portable row offers no tags and no poster', () => {
   renderPortable(portableSource([moment(), moment({ id: 'noted', start_s: 90, comment: 'note' })]))
 

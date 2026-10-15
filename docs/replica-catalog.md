@@ -353,9 +353,17 @@ once; a create preview refuses a file of another bundle. A comment edit is a
 `save` job with the observed bases of the comment and the moment. The viewer
 refuses it when the catalog comment differs from the one on screen. Delete
 Moment commits a `delete` preview. The viewer's docked rail shows only the
-bundle's moments; other bundle metadata stays in the browser inspector. Moment
-tags, private poster and clip previews and the moments section of the browser
-inspector are not part of this capability yet.
+bundle's moments; other bundle metadata stays in the browser inspector.
+
+Servers with `moments_version: 2` also tag moments. A moment page includes
+`tag_names` for the tags on its moments. `/replica/catalog/moments/{id}/tags`
+returns the same paginated, searched choices as the bundle membership route, with
+the observed bases of the moment, the tag and the `moment_tags` edge. A
+`moment_tag` preview changes one edge and refuses stale or held choices. Under
+ADR-0025 an added tag also adds the `asset_bundle_tags` edge, or restores its
+tombstone, and a held bundle edge refuses the preview. Removing a moment tag or
+deleting the moment leaves the bundle tag. Private poster and clip previews and
+the moments section of the browser inspector are not part of this capability yet.
 
 ## Conversion and evidence
 
