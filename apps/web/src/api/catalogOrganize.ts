@@ -145,6 +145,58 @@ export async function collectionFromFolder(
   }
 }
 
+/**
+ * Bundle Unbundled files, as legacy manual bundling did: into a new confirmed
+ * bundle when `target` is null, else into that confirmed bundle. Needs
+ * `browse_version: 9`; returns the bundle's id.
+ */
+export async function bundleFiles(
+  library: string,
+  files: string[],
+  target: string | null,
+  title: string | null = null,
+): Promise<string> {
+  const prepared = await runJob(
+    library,
+    'preview',
+    { action: 'bundle_files', files, target, title },
+    operationId(),
+  )
+  // A new bundle is the one whose grouping state the receipt confirms
+  const receipt = prepared.result as unknown as { changes: { unit: string }[] }
+  const id =
+    target ??
+    receipt.changes
+      .find((change) => /^asset_bundles\/[^/]+\/grouping_state$/.test(change.unit))
+      ?.unit.split('/')[1]
+  if (!id) throw new Error('The bundle could not be created.')
+  await runJob(
+    library,
+    'commit_preview',
+    { job: prepared.id, receipt: prepared.receipt },
+    `commit_${prepared.id}`,
+  )
+  return id
+}
+
+/** Create an empty confirmed bundle, as legacy Create Bundle… did; returns its id. */
+export async function createEmptyBundle(library: string, title: string | null): Promise<string> {
+  const { cells: template } = await catalog<{ cells: Record<string, string> }>(
+    library,
+    '/creation/asset_bundles',
+  )
+  const cells: Record<string, string> = {
+    ...template,
+    title: JSON.stringify(title),
+    grouping_state: JSON.stringify('CONFIRMED'),
+    grouping_source: JSON.stringify('MANUAL'),
+    // The server's creation time is also the moment the owner confirmed it
+    confirmed_at: template.created_at ?? JSON.stringify(null),
+  }
+  await commit(library, { action: 'create', family: 'asset_bundles', cells })
+  return JSON.parse(template.id ?? 'null') as string
+}
+
 /** Make a bundle the cover of a collection whose tree holds it. */
 export async function setCollectionCover(
   library: string,

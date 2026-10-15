@@ -31,6 +31,7 @@ import { getHostPlatform } from '../platform'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
 import { CleanupOrderDialog } from './CleanupOrderDialog'
 import { DeleteBundlesDialog } from './DeleteBundlesDialog'
+import { AddFilesToBundleDialog, CreateEmptyBundleDialog } from './ManualBundlingDialogs'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 3 adds Manual and File count. A portable catalog records no file
@@ -127,6 +128,8 @@ export function CatalogBundleBrowser({
   const [notice, setNotice] = useState('')
   const [deleting, setDeleting] = useState<string[] | null>(null)
   const [cleaning, setCleaning] = useState(false)
+  const [creatingBundle, setCreatingBundle] = useState(false)
+  const [addingFiles, setAddingFiles] = useState<{ id: string; title: string | null } | null>(null)
   const menu = useContextMenu()
   const [inspectorFile, setInspectorFile] = useState<{ bundle: string; file: string } | null>(null)
   const navigation = useRef<BrowserNavigation>(null)
@@ -423,6 +426,7 @@ export function CatalogBundleBrowser({
   // One collection's own bundles, or All bundles, have a manual order; a view of
   // several collections or a shuffle does not, so neither offers to rewrite it
   const ordering = (status?.browse_version ?? 0) >= 6 && !blocked
+  const bundling = (status?.browse_version ?? 0) >= 9 && !blocked
   const scoped = !(selection.collectionId && includeDescendants) && selection.view !== 'random'
   const reorder =
     ordering && scoped && activeSort === 'manual'
@@ -441,6 +445,8 @@ export function CatalogBundleBrowser({
         label: parent ? 'New Subcollection' : 'New Collection',
         onClick: () => onNewCollection(parent),
       })
+    // As in v0.2.1, an empty bundle comes first and its files are added next
+    if (bundling) entries.push({ label: 'Create Bundle…', onClick: () => setCreatingBundle(true) })
     if (ordering)
       entries.push(null, {
         label: 'Clean Up Order…',
@@ -670,6 +676,15 @@ export function CatalogBundleBrowser({
           albumFile={albumId ? albumFile : null}
           onAlbum={albumEnabled ? () => openAlbum(detail.data.id) : undefined}
           onOpen={() => onOpen(detail.data.id)}
+          onAddFiles={
+            bundling && detail.data.fields.grouping_state?.value === '"CONFIRMED"'
+              ? () =>
+                  setAddingFiles({
+                    id: detail.data.id,
+                    title: JSON.parse(detail.data.fields.title?.value ?? 'null') as string | null,
+                  })
+              : undefined
+          }
           onOpenFile={(file) => onOpenFile(detail.data.id, file)}
           moments={
             <CatalogBundleMoments
@@ -728,6 +743,26 @@ export function CatalogBundleBrowser({
                 ),
               'Bundle order cleaned up.',
             )
+          }}
+        />
+      )}
+      {creatingBundle && (
+        <CreateEmptyBundleDialog
+          onClose={() => setCreatingBundle(false)}
+          onCreated={(id) => {
+            setCreatingBundle(false)
+            setAddingFiles({ id, title: null })
+          }}
+        />
+      )}
+      {addingFiles && (
+        <AddFilesToBundleDialog
+          bundleId={addingFiles.id}
+          title={addingFiles.title}
+          onClose={() => setAddingFiles(null)}
+          onApplied={(message) => {
+            setAddingFiles(null)
+            setNotice(message)
           }}
         />
       )}

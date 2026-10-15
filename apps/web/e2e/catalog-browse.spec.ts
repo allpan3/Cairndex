@@ -936,3 +936,112 @@ test('portable All Tags creates, groups, nests and deletes tags @fullstack', asy
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable Unbundled files make and extend a bundle @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-manual-bundling-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const owner = async (file: string) =>
+      (
+        await apiPost<{ items: { id: string; bundle_id: string }[] }>(
+          backend.baseUrl,
+          `/api/v1/libraries/${library.id}/replica/catalog/files/unbundled`,
+          {},
+        )
+      ).items.find((item) => item.id === file)?.bundle_id ?? null
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    // Delete Bundle returns the playback files to Unbundled first
+    await page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic playback' })
+      .click({ button: 'right' })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Delete Bundle' }).click()
+    await page
+      .getByRole('dialog', { name: 'Delete bundle' })
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click()
+    await expect(page.getByText('Bundle deleted.')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Unbundled', exact: true }).click()
+    const files = page.getByRole('region', { name: 'Unbundled files' })
+    await files.getByRole('button', { name: 'Playback/movie.mp4' }).click()
+    await files
+      .getByRole('button', { name: 'Playback/captions.srt' })
+      .click({ modifiers: ['ControlOrMeta'] })
+    await expect(files.getByText('2 selected')).toBeVisible()
+    await files.getByRole('button', { name: 'Create Bundle…' }).click()
+    const create = page.getByRole('dialog', { name: 'Create bundle' })
+    await create.getByLabel('Title').fill('Rejoined')
+    await create.getByRole('button', { name: 'Create bundle' }).click()
+    await expect(files.getByText('Created a bundle from 2 files.')).toBeVisible()
+    await expect.poll(() => owner('media-direct')).toBeNull()
+    const found = await apiPost<{ items: { id: string }[] }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/replica/catalog/bundles/browse`,
+      { q: 'Rejoined' },
+    )
+    const bundle = found.items[0].id
+    const members = async () =>
+      (
+        JSON.parse(
+          (await (await fetch(`${base}/entities/asset_bundles/${bundle}`)).json()).fields.$members
+            .value,
+        ) as { id: string; role: string }[]
+      ).map((member) => `${member.id}:${member.role}`)
+    // The video leads, as the grouping heuristic orders a new bundle
+    expect(await members()).toEqual(['media-direct:PRIMARY_VIDEO', 'media-subtitle:SUBTITLE'])
+
+    await files.getByRole('button', { name: 'Playback/picture.png' }).click()
+    await files.getByRole('button', { name: 'Add to Bundle…' }).click()
+    const add = page.getByRole('dialog', { name: 'Add to bundle' })
+    await add.getByLabel('Search for a bundle').fill('Rejoined')
+    await add.getByRole('radio', { name: /Rejoined/ }).check()
+    await add.getByRole('button', { name: 'Add to bundle' }).click()
+    await expect(files.getByText('Added 1 file to the bundle.')).toBeVisible()
+    expect(await members()).toEqual([
+      'media-direct:PRIMARY_VIDEO',
+      'media-subtitle:SUBTITLE',
+      'media-image:IMAGE',
+    ])
+
+    // Create Bundle… in the browser's empty space makes an empty bundle, then adds files
+    await page.getByRole('button', { name: 'All', exact: true }).click()
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    const box = (await grid.boundingBox())!
+    await grid.click({ button: 'right', position: { x: box.width - 12, y: box.height - 12 } })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Create Bundle…' }).click()
+    const empty = page.getByRole('dialog', { name: 'Create empty bundle' })
+    await empty.getByLabel('Title').fill('Gathered')
+    await empty.getByRole('button', { name: 'Create', exact: true }).click()
+    const pick = page.getByRole('dialog', { name: 'Add files to bundle' })
+    await pick.getByRole('checkbox', { name: /remux\.mkv/ }).check()
+    await pick.getByRole('button', { name: 'Add files' }).click()
+    await expect(page.getByText('Added 1 file to the bundle.')).toBeVisible()
+    await expect(grid.getByRole('option').filter({ hasText: 'Gathered' })).toBeVisible()
+    await expect.poll(() => owner('media-remux')).toBeNull()
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

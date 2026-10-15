@@ -112,6 +112,7 @@ export function CatalogOrdinaryBrowser(props: {
   const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
   const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
   const tagManagement = (status?.browse_version ?? 0) >= 8 && !props.blocked
+  const manualBundling = (status?.browse_version ?? 0) >= 9 && !props.blocked
   const { deepLink, onDeepLinkHandled, onSelect } = props
   // A bundle link selects and locates the bundle; a collection link opens the collection
   useEffect(() => {
@@ -257,6 +258,7 @@ export function CatalogOrdinaryBrowser(props: {
               onReview={props.onReview}
               hostFiles={hostFiles}
               onHostPath={setUnbundledHostPath}
+              bundling={manualBundling}
             />
           )}
           {mode === 'file' && !unbundled && (
