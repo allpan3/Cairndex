@@ -4611,6 +4611,8 @@ export interface components {
         };
         /** CatalogMomentPage */
         CatalogMomentPage: {
+            /** Files */
+            files: components["schemas"]["FileRead"][];
             /** Items */
             items: components["schemas"]["MomentRead"][];
             /** Next Offset */

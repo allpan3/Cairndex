@@ -17,7 +17,7 @@ from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.playback import assess_playability
 from cairndex.replicas.catalog.album import CatalogAlbumPage, album, revision, visible
 from cairndex.replicas.catalog.projection import read_row
-from cairndex.replicas.media import ReplicaMedia
+from cairndex.replicas.media import ReplicaMedia, catalog_file
 from cairndex.replicas.protocol import ReplicaError
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/media", tags=["replica-media"])
@@ -100,10 +100,7 @@ def playlist(
             bundle_id=bundle_id,
             title=bundle["title"] or "Media",
             cursor=cursor[0] if cursor else None,
-            files=[
-                FileRead.model_validate(media.catalog_file(db, identity))
-                for identity in ids[:limit]
-            ],
+            files=[FileRead.model_validate(catalog_file(db, identity)) for identity in ids[:limit]],
             directories=[
                 DirectoryMemberRead.model_validate(row)
                 for row in related("bundle_directory_members")

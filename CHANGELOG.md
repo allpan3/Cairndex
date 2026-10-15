@@ -32,6 +32,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   at the moment's start, and a span plays a short muted clip. The server makes
   each preview once in the background and keeps it in its private cache.
   Servers advertise the capability as `moments_version: 3`.
+- Show a bundle's moments in the portable browser inspector. Play from opens
+  the viewer at the moment, and comments, tags and deletes work as in the
+  viewer rail. Servers advertise the capability as `moments_version: 4`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

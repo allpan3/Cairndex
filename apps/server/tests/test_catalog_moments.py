@@ -52,11 +52,14 @@ def creation(client, base, file_id, start, end):
 
 def test_moments_are_listed_and_edited_through_catalog_jobs(media_api):  # noqa: F811
     client, base, store, _, _ = media_api
-    assert client.get(base + "/replica/status").json()["moments_version"] == 3
+    assert client.get(base + "/replica/status").json()["moments_version"] == 4
     seeded = listed(client, base)
     assert [item["id"] for item in seeded["items"]] == ["media-moment"]
     assert seeded["items"][0]["comment"] == "Synthetic moment"
     assert seeded["items"][0]["tag_ids"] == [] and seeded["next_offset"] is None
+    # The page names the files its moments mark, so the inspector needs no playlist
+    assert [file["id"] for file in seeded["files"]] == ["media-direct"]
+    assert seeded["files"][0]["media_kind"] == "video"
 
     # A frame before the seeded span lists first: start time orders the rail
     command = creation(client, base, "media-direct", 10.5, None)

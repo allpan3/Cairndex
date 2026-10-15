@@ -313,6 +313,44 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
   }
 })
 
+// The browser inspector lists a bundle's moments, and Play from opens the viewer there
+test('browser inspector plays a portable moment from its time @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-inspector-moments-'))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]), duration=60))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
+    const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
+    await expect(inspector.getByText('Synthetic moment')).toBeVisible()
+    await inspector.getByRole('button', { name: 'Play from 0:42' }).click()
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(41)
+    expect((await picture(page)).time).toBeLessThan(48)
+    expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
+  } finally {
+    // The open workspace keeps polling, and a stopped backend fails its proxy
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
 // Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
 test('portable viewer marks, comments on, tags, previews and deletes moments @fullstack', async ({
   page,

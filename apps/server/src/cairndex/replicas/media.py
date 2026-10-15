@@ -73,6 +73,20 @@ def open_sources(root: Path, relative: str, count: int) -> Iterator[list[int]]:
             os.close(handle)
 
 
+def catalog_file(db: sqlite3.Connection, identity: str) -> AssetFile:
+    """Read playlist metadata from the caller's snapshot without observing bytes."""
+    row = read_row(db, "asset_files", identity)
+    if row is None:
+        raise NotFoundError("Catalog file is unavailable")
+    kind = classify(row["relative_path"])
+    return AssetFile(
+        **(row | {"role": FileRole[row["role"]]}),
+        media_kind=kind[0] if kind else MediaKind.OTHER,
+        mime_type=mimetypes.guess_type(row["relative_path"])[0],
+        availability=FileAvailability.MISSING,
+    )
+
+
 # A narrow adapter reads authored rows and writes only explicitly private observation tables
 class ReplicaMedia:
     # The store already validates the descriptor and private-directory identity
@@ -210,19 +224,6 @@ class ReplicaMedia:
             quick_fingerprint=token,
             size_bytes=size,
             tech_metadata=metadata,
-        )
-
-    def catalog_file(self, db: sqlite3.Connection, identity: str) -> AssetFile:
-        """Read playlist metadata from the caller's snapshot without observing bytes."""
-        row = read_row(db, "asset_files", identity)
-        if row is None:
-            raise NotFoundError("Catalog file is unavailable")
-        kind = classify(row["relative_path"])
-        return AssetFile(
-            **(row | {"role": FileRole[row["role"]]}),
-            media_kind=kind[0] if kind else MediaKind.OTHER,
-            mime_type=mimetypes.guess_type(row["relative_path"])[0],
-            availability=FileAvailability.MISSING,
         )
 
     # Validate the opening generation before every byte/cache/session/progress operation
