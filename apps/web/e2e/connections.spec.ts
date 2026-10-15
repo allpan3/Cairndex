@@ -1,66 +1,11 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { desktopBridge } from './desktopBridge'
 import { startBackend, stopBackend } from './realBackend'
-
-// The production entry and desktop adapter run unchanged; only native IPC is simulated in Chromium
-async function desktopBridge(page: Page, urls: string[]) {
-  await page.addInitScript(
-    ({ urls }) => {
-      const settings = 'synthetic-native-settings'
-      if (!localStorage.getItem(settings))
-        localStorage.setItem(
-          settings,
-          JSON.stringify({
-            connections: {
-              connections: urls.slice(0, 2).map((url) => ({
-                id: `remote:${url}`,
-                kind: 'remote',
-                label: new URL(url).host,
-                serverUrl: url,
-              })),
-              activeConnectionId: `remote:${urls[0]}`,
-            },
-          }),
-        )
-      let callback = 0
-      Object.assign(window, {
-        __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined },
-        __TAURI_INTERNALS__: {
-          metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-          transformCallback: () => ++callback,
-          unregisterCallback: () => undefined,
-          invoke: async (command: string, args: Record<string, unknown> = {}) => {
-            const values = JSON.parse(localStorage.getItem(settings)!) as Record<string, unknown>
-            if (command === 'plugin:store|load') return 1
-            if (command === 'plugin:store|get')
-              return [values[String(args.key)], String(args.key) in values]
-            if (command === 'plugin:store|set') {
-              values[String(args.key)] = args.value
-              localStorage.setItem(settings, JSON.stringify(values))
-            }
-            if (command === 'plugin:store|delete') {
-              delete values[String(args.key)]
-              localStorage.setItem(settings, JSON.stringify(values))
-            }
-            if (command === 'normalize_server_url_command')
-              return String(args.value).replace(/\/+$/, '')
-            if (command === 'configure_media_proxy') return 'http://127.0.0.1:9/synthetic-relay'
-            if (command === 'start_local_server')
-              return { base_url: urls[2], token: 'synthetic-local-token' }
-            if (command === 'plugin:event|listen') return ++callback
-            if (command === 'is_window_fullscreen') return false
-            return null
-          },
-        },
-      })
-    },
-    { urls },
-  )
-}
 
 // Real independent HTTP servers prove duplicate portable identity and private drafts across one active desktop session
 test('local and two remote connections preserve drafts, restart intent and cancelled targets @fullstack', async ({

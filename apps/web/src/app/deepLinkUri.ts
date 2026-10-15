@@ -6,7 +6,17 @@
  * This closes that gap.
  */
 
+import type { DeepLinkTarget } from '../platform'
+
 export type DeepLinkKind = 'bundle' | 'collection'
+
+/**
+ * A deep-link target awaiting the workspace, plus the library id the link named
+ * when this server has no such library (reported instead of silently ignored).
+ */
+export interface PendingDeepLink extends DeepLinkTarget {
+  unknownLibrary: string | null
+}
 
 /**
  * Builds the canonical URI for one target.

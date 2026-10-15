@@ -21,6 +21,8 @@ import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
 import { removeFromCollection, setCollectionCover } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
+import { getHostPlatform } from '../platform'
+import { buildDeepLinkUri, copyText } from './deepLinkUri'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 3 adds Manual and File count. A portable catalog records no file
@@ -346,6 +348,15 @@ export function CatalogBundleBrowser({
     const items: MenuEntry[] = [{ label: 'Play / View', onClick: () => onOpen(id), disabled: !one }]
     if (albumEnabled)
       items.push({ label: 'Open Bundle', onClick: () => openAlbum(id), disabled: !one })
+    // A browser has no handler for the scheme, so only the desktop app copies one
+    if (one && getHostPlatform().kind === 'desktop')
+      items.push({
+        label: 'Copy URI',
+        onClick: () =>
+          void copyText(buildDeepLinkUri('bundle', id, library)).then((copied) =>
+            setNotice(copied ? 'Bundle URI copied.' : 'Could not copy the URI.'),
+          ),
+      })
     if (one && onLocateFile)
       items.push(null, {
         label: 'Locate in File Browser',
