@@ -35,7 +35,7 @@ vi.mock('./ViewerShell', () => ({
         <p>Rail {inspectorTarget?.kind ?? 'none'}</p>
         <p>
           {source
-            ? `Catalog moments ${source.moments.length}`
+            ? `Catalog moments ${source.moments.length}${source.previews ? ' with previews' : ''}`
             : `Saved moments ${savedMoments?.length ?? 0}`}
         </p>
       </>
@@ -161,6 +161,7 @@ test('a queued storyboard reaches the shell once it is ready', async () => {
 test.each([
   [1, 'Rail moments', 'Catalog moments 2'],
   [2, 'Rail moments', 'Catalog moments 2'],
+  [3, 'Rail moments', 'Catalog moments 2 with previews'],
   [null, 'Rail none', 'Saved moments 1'],
 ])('moments capability %s shows %s', async (version, rail, moments) => {
   setActiveLibraryId('synthetic')

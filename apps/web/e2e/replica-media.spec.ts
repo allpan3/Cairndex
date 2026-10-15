@@ -314,7 +314,7 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
 })
 
 // Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
-test('portable viewer marks, comments on, tags and deletes moments @fullstack', async ({
+test('portable viewer marks, comments on, tags, previews and deletes moments @fullstack', async ({
   page,
 }) => {
   test.setTimeout(180_000)
@@ -409,6 +409,27 @@ test('portable viewer marks, comments on, tags and deletes moments @fullstack', 
     // Escape belongs to the viewer, so the chooser closes from its own button
     await seeded.getByRole('button', { name: 'Add tag' }).click()
     await expect(chooser).toHaveCount(0)
+
+    // The span's poster and clip are made in the background, then shown on hover
+    const preview = (name: string) =>
+      page.evaluate(
+        async ([id, name]) =>
+          (await fetch(`/api/v1/libraries/${id}/replica/media/moments/media-moment/${name}`))
+            .status,
+        [library.id, name] as const,
+      )
+    await expect.poll(() => preview('poster.jpg'), { timeout: 30_000 }).toBe(200)
+    await expect.poll(() => preview('clip.mp4'), { timeout: 30_000 }).toBe(200)
+    // The tag clicks left the pointer on the row; a new hover asks for the previews again
+    await page.mouse.move(5, 5)
+    await expect(page.getByTestId('moment-preview')).toHaveCount(0)
+    await seeded.locator('.moment-row__time').hover()
+    await expect(page.getByTestId('moment-preview-poster')).toHaveClass(/is-ready/)
+    const clip = page.getByTestId('moment-preview-video')
+    await expect(clip).toHaveAttribute('data-source', 'clip')
+    await expect(clip).toHaveClass(/is-ready/)
+    await page.mouse.move(5, 5)
+    await expect(page.getByTestId('moment-preview')).toHaveCount(0)
 
     // The seeded span arms the range loop, and the new frame can be forgotten
     await rail.getByRole('button', { name: 'Range loop from 0:42' }).click()

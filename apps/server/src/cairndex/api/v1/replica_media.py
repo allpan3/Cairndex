@@ -4,6 +4,7 @@ import json
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from cairndex.api.media_deps import MediaAccessDep
@@ -188,6 +189,35 @@ def storyboard(
 
     result = get_queue().request(media, file_id, payload.generation)
     return ReplicaStoryboardRead(state=result.state, url=result.url, message=result.message)
+
+
+# A preview is never made inside a request: a missing one is queued and answers 404.
+# The URL does not name the source generation, so the browser must not keep the bytes.
+def moment_preview(
+    media: ReplicaMedia, moment_id: str, kind: Literal["poster", "clip"]
+) -> Response:
+    from cairndex.replicas.moment_previews import request
+
+    path = request(media, moment_id, kind)
+    if path is None:
+        raise NotFoundError("Moment preview is not ready yet")
+    return FileResponse(
+        str(path),
+        media_type="image/jpeg" if kind == "poster" else "video/mp4",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@router.get("/moments/{moment_id}/poster.jpg")
+def moment_poster(moment_id: str, media: Media) -> Response:
+    """The frame a moment marks, decoded once in the background."""
+    return moment_preview(media, moment_id, "poster")
+
+
+@router.get("/moments/{moment_id}/clip.mp4")
+def moment_clip(moment_id: str, media: Media) -> Response:
+    """A short muted clip of a range moment, cut once in the background."""
+    return moment_preview(media, moment_id, "clip")
 
 
 # Remember a catalog member without publishing an authored event or needing source availability

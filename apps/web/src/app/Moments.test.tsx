@@ -589,7 +589,37 @@ test('a portable source draws the tag controls of each row', () => {
   expect(screen.queryByRole('button', { name: 'Add tag' })).not.toBeInTheDocument()
 })
 
-// Portable moments have no private posters yet, and an older server cannot tag them
+// A portable server makes private previews; a span plays only its clip, never the source
+test('a portable row shows its private poster and clip', async () => {
+  const previews = vi.fn((row: Moment) => ({
+    poster: `/previews/${row.id}/poster.jpg`,
+    clip: row.end_s === null ? null : `/previews/${row.id}/clip.mp4`,
+  }))
+  renderPortable({
+    ...portableSource([moment({ id: 'span', start_s: 9, end_s: 13.5 })]),
+    previews,
+  })
+  const [row] = screen.getAllByRole('listitem')
+  fireEvent.pointerEnter(row!)
+  expect(screen.getByTestId('moment-preview-poster')).toHaveAttribute(
+    'src',
+    '/previews/span/poster.jpg',
+  )
+  await act(async () => {
+    vi.advanceTimersByTime(400)
+  })
+  const media = screen.getByTestId('moment-preview-video') as HTMLVideoElement
+  expect(media.getAttribute('src')).toBe('/previews/span/clip.mp4')
+
+  // A clip that is not made yet leaves the poster rather than streaming the source
+  await act(async () => {
+    fireEvent.error(media)
+  })
+  expect(screen.queryByTestId('moment-preview-video')).not.toBeInTheDocument()
+  expect(screen.getByTestId('moment-preview-poster')).toBeInTheDocument()
+})
+
+// An older portable server makes no previews and cannot tag moments
 test('a portable row offers no tags and no poster', () => {
   renderPortable(portableSource([moment(), moment({ id: 'noted', start_s: 90, comment: 'note' })]))
 
