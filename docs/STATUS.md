@@ -122,6 +122,16 @@ this device has never opened has no duration, dimensions or hover preview; the
 viewer records them when it opens the file. A portable storyboard URL names the
 observed generation, so the summary also carries its storyboard version.
 
+Portable card menus (`feature/portable-context-menus`) restore the legacy card
+menu: Play / View, Open Bundle, Locate in File Browser, the host Open and Reveal
+entries, Set as Collection Cover and Remove from This Collection. Each collection
+change reads the current catalog bases and commits at once, so a change from
+another device is refused for review. Two legacy entries stay out. Forget Missing
+Files would remove shared catalog rows because of one device's observation, and
+the file may exist on another device. Delete Bundle and the empty-space menu
+need the dialogs that the next change restores. Copy URI waits for portable deep
+links: the app switches to a linked library but does not open the linked object.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.

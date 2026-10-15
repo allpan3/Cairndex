@@ -73,6 +73,8 @@ export function CatalogOrdinaryBrowser(props: {
   const [unbundled, setUnbundled] = useState(false)
   const [path, setPath] = useState('')
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
+  // A file the bundle menu asked to show; the File Browser selects it on arrival
+  const [located, setLocated] = useState<string | null>(null)
   const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
   const [bundleHostPath, setBundleHostPath] = useState<string | null>(null)
   const [unbundledHostPath, setUnbundledHostPath] = useState<string | null>(null)
@@ -155,6 +157,13 @@ export function CatalogOrdinaryBrowser(props: {
               {...props}
               hostFiles={hostFiles}
               onHostPath={setBundleHostPath}
+              onLocateFile={(relative) => {
+                setPath(relative.includes('/') ? relative.slice(0, relative.lastIndexOf('/')) : '')
+                setFile(null)
+                setLocated(relative)
+                setUnbundled(false)
+                setMode('file')
+              }}
               locateRequest={locateRequest}
               selection={selection}
               filters={filters}
@@ -190,12 +199,16 @@ export function CatalogOrdinaryBrowser(props: {
                 }
                 scope="browse"
                 path={path}
-                selectedPath={file?.relative_path ?? null}
+                selectedPath={located ?? file?.relative_path ?? null}
                 onNavigate={(next) => {
                   setPath(next)
                   setFile(null)
+                  setLocated(null)
                 }}
-                onSelectEntry={setFile}
+                onSelectEntry={(entry) => {
+                  setLocated(null)
+                  setFile(entry)
+                }}
                 onAddToBundle={props.onReview}
                 onCreateBundle={props.onReview}
                 hostLabels={getHostLabels()}
