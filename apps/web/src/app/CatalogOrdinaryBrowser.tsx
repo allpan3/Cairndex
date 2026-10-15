@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import type { FileBrowserEntry, LibraryRead } from '../api/client'
 import { useTags } from '../api/hooks'
@@ -14,6 +14,7 @@ import { CatalogFileDetails } from './CatalogFileDetails'
 import { useLibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useHostFileMenu } from '../desktop/useHostFileMenu'
 import { useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
+import type { PendingDeepLink } from './deepLinkUri'
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   const tags = useTags()
@@ -65,6 +66,9 @@ export function CatalogOrdinaryBrowser(props: {
   onSettings?: () => void
   /** The workspace's viewer is open and shows the bundle inspector itself. */
   viewerOpen?: boolean
+  /** A `cairndex://` link to open; reported handled once applied. */
+  deepLink?: PendingDeepLink | null
+  onDeepLinkHandled?: () => void
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
@@ -80,6 +84,30 @@ export function CatalogOrdinaryBrowser(props: {
   const [unbundledHostPath, setUnbundledHostPath] = useState<string | null>(null)
   const [incoming, setIncoming] = useState<File[] | null>(null)
   const [dropError, setDropError] = useState('')
+  const [linkError, setLinkError] = useState('')
+  const { deepLink, onDeepLinkHandled, onSelect } = props
+  // A bundle link selects and locates the bundle; a collection link opens the collection
+  useEffect(() => {
+    if (!deepLink) return
+    /* eslint-disable react-hooks/set-state-in-effect -- the OS delivers the link,
+       not a React event, and App clears it once handled, so this runs once. */
+    if (deepLink.unknownLibrary) {
+      setLinkError('This link points at a library that is not on this server.')
+    } else {
+      setLinkError('')
+      setUnbundled(false)
+      setMode('collection')
+      if (deepLink.kind === 'bundle') {
+        setSelection({ view: 'all', collectionId: null })
+        onSelect(deepLink.id)
+        setLocateRequest((value) => value + 1)
+      } else {
+        setSelection({ view: 'all', collectionId: deepLink.id })
+      }
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    onDeepLinkHandled?.()
+  }, [deepLink, onDeepLinkHandled, onSelect])
   const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
   const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, setDropError)
   const hostFiles = useLibraryHostFiles(
@@ -131,6 +159,11 @@ export function CatalogOrdinaryBrowser(props: {
           {dropError && (
             <p role="alert">
               {dropError} <button onClick={() => setDropError('')}>Dismiss</button>
+            </p>
+          )}
+          {linkError && (
+            <p role="alert">
+              {linkError} <button onClick={() => setLinkError('')}>Dismiss</button>
             </p>
           )}
           {sourceEnabled && (

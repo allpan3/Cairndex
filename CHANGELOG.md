@@ -50,6 +50,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   multi-selection acts for the whole selection. Collection changes save at once
   and are refused for review when another device changed them first. Removal
   needs `selection_version: 2`.
+- Open `cairndex://` links in the portable workspace again. A bundle link
+  selects the bundle in All bundles, and a collection link opens the
+  collection. The desktop card menu has Copy URI again.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

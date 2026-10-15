@@ -24,6 +24,7 @@ import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
 import { ReplicaDiscovery } from './ReplicaDiscovery'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
+import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
 
 // New identities are created from complete authored defaults and reviewed before saving
@@ -183,6 +184,8 @@ export function CatalogWorkspace({
   onChangeLibrary,
   onManage,
   onSettings,
+  deepLink = null,
+  onDeepLinkHandled,
 }: {
   ordinaryBrowse?: boolean
   libraryId: string
@@ -190,6 +193,9 @@ export function CatalogWorkspace({
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
+  /** A `cairndex://` link for the browser to open; the browser reports it handled. */
+  deepLink?: PendingDeepLink | null
+  onDeepLinkHandled?: () => void
 }) {
   const [editor, setEditor] = useState<string | null>(null)
   useEffect(() => holdEditor(setEditor), [])
@@ -202,6 +208,20 @@ export function CatalogWorkspace({
   const [selected, setSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
   const [creating, setCreating] = useState(false)
+  // A cairndex:// link opens in the browser, so it leaves metadata review and the viewer
+  useEffect(() => {
+    if (!deepLink) return
+    if (!ordinaryBrowse) {
+      onDeepLinkHandled?.()
+      return
+    }
+    /* eslint-disable react-hooks/set-state-in-effect -- the OS delivers the link,
+       not a React event. The browser reports it handled and App clears it, so
+       this runs once for each link. */
+    setReviewMode(false)
+    setMedia(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [deepLink, ordinaryBrowse, onDeepLinkHandled])
   const status = useQuery({
     queryKey: ['catalog-status', libraryId],
     queryFn: () => replicaRequest<ReplicaStatus>(libraryId, '/status'),
@@ -414,6 +434,8 @@ export function CatalogWorkspace({
           onOpen={(id) => setMedia({ bundleId: id })}
           onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
           viewerOpen={media !== null}
+          deepLink={deepLink}
+          onDeepLinkHandled={onDeepLinkHandled}
         />
       )}
       {!reviewMode && !state?.ready && (

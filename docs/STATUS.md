@@ -129,8 +129,14 @@ change reads the current catalog bases and commits at once, so a change from
 another device is refused for review. Two legacy entries stay out. Forget Missing
 Files would remove shared catalog rows because of one device's observation, and
 the file may exist on another device. Delete Bundle and the empty-space menu
-need the dialogs that the next change restores. Copy URI waits for portable deep
-links: the app switches to a linked library but does not open the linked object.
+need the dialogs that the next change restores.
+
+Portable deep links (`feature/portable-deep-links`) restore link handling. The app
+already switched to a linked library, but it discarded the target. The workspace
+now leaves metadata review and the viewer, and the browser opens the target: a
+bundle link selects and locates the bundle in All bundles, and a collection link
+opens the collection. The desktop card menu has Copy URI again. The collection
+Copy URI belongs to the collection menu, which the dialogs change restores.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

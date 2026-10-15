@@ -6,6 +6,7 @@ import type { components } from '../api/schema'
 import { holdEditor, replicaRequest, type ReplicaStatus } from '../api/replicas'
 import { ReplicaEditor } from './ReplicaEditor'
 import { CatalogWorkspace } from './CatalogWorkspace'
+import type { PendingDeepLink } from './deepLinkUri'
 
 // Keep library navigation available during incomplete delivery or recoverable storage errors
 function BoundedReplicaWorkspace({
@@ -178,6 +179,8 @@ export function ReplicaWorkspace(props: {
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
+  deepLink?: PendingDeepLink | null
+  onDeepLinkHandled?: () => void
 }) {
   const status = useQuery({
     queryKey: ['replica-capability', props.libraryId],

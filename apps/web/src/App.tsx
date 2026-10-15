@@ -17,6 +17,7 @@ import { LibraryManager } from './app/LibraryManager'
 import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
 import { LockScreen } from './app/LockScreen'
 import { ReplicaWorkspace } from './app/ReplicaWorkspace'
+import type { PendingDeepLink } from './app/deepLinkUri'
 import { SettingsDialog } from './app/SettingsDialog'
 import { Sidebar } from './app/Sidebar'
 import {
@@ -30,12 +31,7 @@ import {
 } from './desktop/connections'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
-import {
-  getHostPlatform,
-  hasHostDeviceAccess,
-  hasHostDeviceToken,
-  type DeepLinkTarget,
-} from './platform'
+import { getHostPlatform, hasHostDeviceAccess, hasHostDeviceToken } from './platform'
 import { usePersistentState } from './state/usePersistentState'
 
 /**
@@ -83,7 +79,7 @@ function LibraryApp() {
     error: string | null
   }>({ pending: false, error: null })
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | 'shortcuts' | null>(null)
-  const [, setDeepLink] = useState<PendingDeepLink | null>(null)
+  const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
   const defaultLibrary = libraries.find((library) => library.status === 'available') ?? libraries[0]
@@ -527,6 +523,8 @@ function LibraryApp() {
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
+        deepLink={deepLink}
+        onDeepLinkHandled={() => setDeepLink(null)}
       />
       {libraryDialog}
       {settingsDialog}
@@ -577,10 +575,4 @@ function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSetti
       <aside className="inspector" data-tauri-drag-region />
     </div>
   )
-}
-
-// A deep-link target awaiting the workspace, plus the library id the link named
-// when this server has no such library (reported instead of silently ignored).
-interface PendingDeepLink extends DeepLinkTarget {
-  unknownLibrary: string | null
 }
