@@ -18,7 +18,13 @@ def run(client, base, store, operation, action, body):
     )
     assert response.status_code == 202, response.text
     jobs.run_one(store)
-    return client.get(base + f"/replica/catalog/jobs/{operation}").json()
+    # The service's own exchange can claim the job first and still be running it
+    for _ in range(200):
+        result = client.get(base + f"/replica/catalog/jobs/{operation}").json()
+        if result["state"] not in ("queued", "running"):
+            return result
+        time.sleep(0.05)
+    raise AssertionError("catalog job did not finish")
 
 
 # The viewer commits its own preview at once, as the web client does

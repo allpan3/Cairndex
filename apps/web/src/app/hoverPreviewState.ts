@@ -21,6 +21,8 @@ export interface HoverPreviewSource {
   audioCodec?: string | null
   duration?: number | null
   startTime?: number | null
+  /** The storyboard version, when it is not the legacy library's constant one. */
+  storyboardVersion?: string | null
 }
 
 export type HoverPreviewMode = 'image' | 'direct' | 'storyboard' | 'none'

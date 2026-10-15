@@ -41,6 +41,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Add the Manual and File Count sorts to the portable Bundle Browser. Manual
   uses a collection's own order inside that collection. Servers advertise the
   sorts as `browse_version: 3`.
+- Restore the card hover preview, resume start and media badges in the portable
+  Bundle Browser. They use what this device last observed, so a video shows its
+  duration and preview after this device has opened it once. Servers advertise
+  the card facts as `browse_version: 4`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

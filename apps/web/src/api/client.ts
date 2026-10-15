@@ -1443,11 +1443,13 @@ export function momentPosterUrl(bundleId: string, momentId: string, version: num
   return resolveAssetUrl(`${lib()}/bundles/${bundleId}/moments/${momentId}/poster.jpg?v=${version}`)
 }
 
-// The version bypasses legacy immutable VTTs; current indexes revalidate via no-cache
-export function fileStoryboardUrl(fileId: string): string {
-  return resolveAssetUrl(
-    `${lib()}/files/${fileId}/storyboard.vtt?v=${STORYBOARD_INDEX_CACHE_VERSION}`,
-  )
+// The version bypasses legacy immutable VTTs; current indexes revalidate via no-cache.
+// A portable storyboard's version names its source generation instead.
+export function fileStoryboardUrl(
+  fileId: string,
+  version: string = STORYBOARD_INDEX_CACHE_VERSION,
+): string {
+  return resolveAssetUrl(`${lib()}/files/${fileId}/storyboard.vtt?v=${encodeURIComponent(version)}`)
 }
 
 // --- Taxonomy (for the tag editor) ------------------------------------------
