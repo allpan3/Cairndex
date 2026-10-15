@@ -92,8 +92,16 @@ moments with the viewer rail's rows, and Play from opens the viewer on the
 moment's file at its start. Comment, tag and delete work there too. They are
 catalog jobs on the moment rows, so they never touch the bundle draft that the
 inspector owns. The moment page now names the files that its moments mark, so
-the section needs no playlist pages. The full bundle inspector in the viewer
-remains for a later change.
+the section needs no playlist pages.
+
+The full bundle inspector in the viewer rail (`feature/portable-viewer-inspector`)
+follows. The workspace builds the inspector for the viewer, and the browser
+unmounts its own inspector while the viewer is open. One inspector therefore
+owns a bundle's private drafts at any time. Each inspector reads the stored
+drafts when it mounts, so an unsaved note or title moves between the browser and
+the viewer. The rail's moments section uses the viewer's moment source, so `B`,
+the range loop and Play from work there as before. The File Browser's folder
+viewer has no bundle inspector to hand over and keeps the moments-only rail.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

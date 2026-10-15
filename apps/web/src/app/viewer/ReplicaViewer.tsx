@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { replicaRequest } from '../../api/replicas'
 import { useReplicaStatus } from '../../api/useReplicaStatus'
@@ -10,7 +10,8 @@ import { DEFAULT_PLAYER_PREFS, type PlayerPrefs } from '../types'
 import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
 import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
-import { useLibraryHostFiles } from '../../desktop/useLibraryHostFiles'
+import { useLibraryHostFiles, type LibraryHostFiles } from '../../desktop/useLibraryHostFiles'
+import { Moments } from '../Moments'
 import { MomentSourceContext } from '../momentSource'
 import { useCatalogMomentSource } from '../useCatalogMomentSource'
 import type { ViewerInspectorTarget } from '../fileFacts'
@@ -25,17 +26,32 @@ export interface ReplicaOpen {
   time?: number
 }
 
+/** What the viewer hands to the bundle inspector that its workspace builds. */
+export interface ReplicaInspectorControls {
+  /** The moments section, inside this viewer's moment source and player actions. */
+  moments: ReactNode
+  /** Show another file of the bundle in this viewer. */
+  onOpenFile: (fileId: string) => void
+  hostFiles: LibraryHostFiles
+}
+
 // Resolve catalog identity first, then reuse the production shell with private media observations
 export function ReplicaViewer({
   library,
   target,
   onClose,
   folder,
+  renderInspector,
 }: {
   folder?: { entries: FileBrowserEntry[]; title: string }
   library: string
   target: ReplicaOpen
   onClose: () => void
+  /**
+   * The full bundle inspector for the rail, from the workspace that owns the
+   * bundle's drafts. Without it the rail shows only the bundle's moments.
+   */
+  renderInspector?: (bundleId: string, controls: ReplicaInspectorControls) => ReactNode
 }) {
   const [picked, setPicked] = useState<string | null>(null)
   const hostFiles = useLibraryHostFiles(library)
@@ -150,13 +166,21 @@ export function ReplicaViewer({
     () => (folder ? (observation ? [observation.file] : []) : files),
     [files, folder, observation],
   )
-  const inspectorTarget = useMemo<ViewerInspectorTarget | null>(
-    () =>
-      momentsEnabled && momentBundle && momentFiles.some((file) => file.media_kind === 'video')
-        ? { kind: 'moments', bundleId: momentBundle, files: momentFiles }
-        : null,
-    [momentBundle, momentFiles, momentsEnabled],
-  )
+  const inspectorTarget = useMemo<ViewerInspectorTarget | null>(() => {
+    const showMoments = momentsEnabled && momentFiles.some((file) => file.media_kind === 'video')
+    if (!momentBundle) return null
+    if (renderInspector)
+      return {
+        kind: 'catalog',
+        bundleId: momentBundle,
+        inspector: renderInspector(momentBundle, {
+          moments: showMoments ? <Moments bundleId={momentBundle} files={momentFiles} /> : null,
+          onOpenFile: setPicked,
+          hostFiles,
+        }),
+      }
+    return showMoments ? { kind: 'moments', bundleId: momentBundle, files: momentFiles } : null
+  }, [hostFiles, momentBundle, momentFiles, momentsEnabled, renderInspector])
   useEffect(() => {
     const owner = folder ? observation?.file.bundle_id : bundleId
     if (!owner || !selected) return

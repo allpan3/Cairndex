@@ -24,6 +24,7 @@ import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
 import { ReplicaDiscovery } from './ReplicaDiscovery'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
+import { CatalogViewerInspector } from './CatalogViewerInspector'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -340,6 +341,27 @@ export function CatalogWorkspace({
           library={libraryId}
           target={media}
           onClose={() => setMedia(null)}
+          renderInspector={
+            editor
+              ? (bundleId, controls) => (
+                  <CatalogViewerInspector
+                    key={`${libraryId}/${bundleId}/${editor}`}
+                    library={libraryId}
+                    bundle={bundleId}
+                    editor={editor}
+                    inspectorEnabled={state?.inspector_version === 1}
+                    blocked={!state?.ready || Boolean(state?.blocked)}
+                    onReview={() => {
+                      setMedia(null)
+                      setFamily('asset_bundles')
+                      setSelected(bundleId)
+                      setReviewMode(true)
+                    }}
+                    {...controls}
+                  />
+                )
+              : undefined
+          }
         />
       )}
       <button onClick={() => setShowJobs(!showJobs)}>Saved operations</button>
@@ -391,6 +413,7 @@ export function CatalogWorkspace({
           }}
           onOpen={(id) => setMedia({ bundleId: id })}
           onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
+          viewerOpen={media !== null}
         />
       )}
       {!reviewMode && !state?.ready && (

@@ -12,6 +12,7 @@ import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
 import { selectionRange, type SelectionModifiers } from './selection'
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
+import { CatalogBundleMoments } from './CatalogBundleMoments'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
@@ -41,6 +42,7 @@ export function CatalogBundleBrowser({
   onOpenFile,
   hostFiles,
   onHostPath,
+  viewerOpen = false,
 }: {
   library: string
   locateRequest: number
@@ -61,6 +63,8 @@ export function CatalogBundleBrowser({
   onOpenFile: (bundle: string, file: string, time?: number) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
+  /** The viewer is open over this browser and shows the bundle inspector itself. */
+  viewerOpen?: boolean
 }) {
   const collections = useCollections()
   const [includeDescendants, setIncludeDescendants] = useState(true)
@@ -503,6 +507,11 @@ export function CatalogBundleBrowser({
           onReview={onReview}
           onClose={() => setBulkOpen(false)}
         />
+      ) : viewerOpen ? (
+        // One inspector owns a bundle's drafts at a time, and the open viewer has it
+        <aside className="inspector">
+          <p>The bundle inspector is in the viewer.</p>
+        </aside>
       ) : detail.data && detail.data.fields.$alive?.value === 'true' ? (
         <CatalogBundleInspector
           key={`${library}/${single}/${editor}`}
@@ -526,7 +535,13 @@ export function CatalogBundleBrowser({
           onAlbum={albumEnabled ? () => openAlbum(detail.data.id) : undefined}
           onOpen={() => onOpen(detail.data.id)}
           onOpenFile={(file) => onOpenFile(detail.data.id, file)}
-          onPlayMoment={(file, time) => onOpenFile(detail.data.id, file, time)}
+          moments={
+            <CatalogBundleMoments
+              library={library}
+              bundle={detail.data.id}
+              onPlay={(file, time) => onOpenFile(detail.data.id, file, time)}
+            />
+          }
         />
       ) : (
         <aside className="inspector">

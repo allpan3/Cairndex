@@ -8,6 +8,8 @@
  * component instead of growing a second copy of it (owner, 2026-07-27).
  */
 
+import type { ReactNode } from 'react'
+
 import type { FileBrowserEntry, FileRead } from '../api/client'
 
 export interface FileFacts {
@@ -138,6 +140,11 @@ export type ViewerInspectorTarget =
   | { kind: 'file'; facts: FileFacts }
   /** Only the bundle's moments, from a viewer that supplies a moment source. */
   | { kind: 'moments'; bundleId: string; files: FileRead[] }
+  /**
+   * A portable bundle's inspector, built by the surface that owns its drafts.
+   * The browser's own inspector is unmounted while the viewer shows this one.
+   */
+  | { kind: 'catalog'; bundleId: string; inspector: ReactNode }
 
 /** For a File Browser row, indexed or not. */
 export function inspectorTargetForEntry(

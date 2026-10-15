@@ -313,8 +313,11 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
   }
 })
 
-// The browser inspector lists a bundle's moments, and Play from opens the viewer there
-test('browser inspector plays a portable moment from its time @fullstack', async ({ page }) => {
+// The browser inspector lists a bundle's moments, Play from opens the viewer there, and
+// the viewer's rail takes over the bundle inspector and its drafts until it closes
+test('browser inspector plays a moment and hands its drafts to the viewer @fullstack', async ({
+  page,
+}) => {
   test.setTimeout(120_000)
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-inspector-moments-'))
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
@@ -339,9 +342,28 @@ test('browser inspector plays a portable moment from its time @fullstack', async
     await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     await expect(inspector.getByText('Synthetic moment')).toBeVisible()
+    // An unsaved note follows the bundle into the viewer: one inspector owns its drafts
+    const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
+    await note.fill('Synthetic draft note')
     await inspector.getByRole('button', { name: 'Play from 0:42' }).click()
     await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(41)
     expect((await picture(page)).time).toBeLessThan(48)
+    await expect(page.getByText('The bundle inspector is in the viewer.')).toBeAttached()
+    const viewer = page.locator('.media-viewer')
+    // Wake auto-hidden controls before pointer hit testing
+    await viewer.hover()
+    await viewer.getByRole('button', { name: 'Show bundle inspector' }).click()
+    await expect(inspector).toHaveCount(1)
+    await expect(note).toHaveValue('Synthetic draft note')
+    await expect(inspector.getByText('Synthetic moment')).toBeVisible()
+    await inspector.getByRole('textbox', { name: 'Title' }).fill('Synthetic retitled')
+    await viewer.hover()
+    await viewer.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(viewer).toHaveCount(0)
+    await expect(inspector.getByRole('textbox', { name: 'Title' })).toHaveValue(
+      'Synthetic retitled',
+    )
+    await expect(note).toHaveValue('Synthetic draft note')
     expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
   } finally {
     // The open workspace keeps polling, and a stopped backend fails its proxy
@@ -397,7 +419,7 @@ test('portable viewer marks, comments on, tags, previews and deletes moments @fu
     // `b` saves the frame at the playhead and opens the rail on its comment box
     await page.locator('.media-viewer').press('b')
     await expect(page.locator('.mv-export-notice')).toContainText('Moment saved at 0:10')
-    const rail = page.getByRole('complementary', { name: 'Moments' })
+    const rail = page.getByRole('complementary', { name: 'Bundle inspector' })
     const comment = rail.getByLabel('Moment comment')
     await expect(comment).toBeFocused()
     await comment.fill('Synthetic mark')

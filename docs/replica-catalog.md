@@ -352,8 +352,10 @@ the rail's `+` make a moment through a `create` preview that the viewer commits 
 once; a create preview refuses a file of another bundle. A comment edit is a
 `save` job with the observed bases of the comment and the moment. The viewer
 refuses it when the catalog comment differs from the one on screen. Delete
-Moment commits a `delete` preview. The viewer's docked rail shows only the
-bundle's moments; other bundle metadata stays in the browser inspector.
+Moment commits a `delete` preview. In the workspace viewer, the docked rail
+shows the full bundle inspector with its moments section. The browser unmounts
+its own inspector while the viewer is open, so one inspector owns the bundle's
+private drafts. The File Browser's folder viewer shows only the moments.
 
 Servers with `moments_version: 2` also tag moments. A moment page includes
 `tag_names` for the tags on its moments. `/replica/catalog/moments/{id}/tags`
