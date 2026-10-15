@@ -4390,6 +4390,8 @@ export interface components {
              * @default
              */
             q: string;
+            /** Target */
+            target?: string | null;
         };
         /** CatalogBundleSummary */
         CatalogBundleSummary: {

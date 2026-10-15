@@ -45,6 +45,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Bundle Browser. They use what this device last observed, so a video shows its
   duration and preview after this device has opened it once. Servers advertise
   the card facts as `browse_version: 4`.
+- Restore the portable card menu: Play / View, Open Bundle, Locate in File
+  Browser, Set as Collection Cover and Remove from This Collection. A card in a
+  multi-selection acts for the whole selection. Collection changes save at once
+  and are refused for review when another device changed them first. Removal
+  needs `selection_version: 2`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

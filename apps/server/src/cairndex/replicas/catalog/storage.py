@@ -317,7 +317,7 @@ class CatalogStorage(PrivateStore):
                 "browse_version": 4,
                 "album_version": 1,
                 "inspector_version": 1,
-                "selection_version": 1,
+                "selection_version": 2,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
                 "source_operations_version": 1 if self.descriptor.format_version == 3 else None,

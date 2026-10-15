@@ -459,3 +459,65 @@ test('ordinary collection filters and File Browser share one library journey @fu
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+// The legacy card menu: locate, collection cover and removal save without a review step
+test('portable card menu locates files and organizes a collection @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-card-menu-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=20))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic playback' })
+      .click({ button: 'right' })
+    const menu = page.getByRole('menu')
+    await expect(menu.getByRole('menuitem', { name: 'Set as Collection Cover' })).toHaveCount(0)
+    await menu.getByRole('menuitem', { name: 'Locate in File Browser' }).click()
+    await expect(page.getByRole('row').filter({ hasText: 'movie.mp4' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await page
+      .getByRole('treeitem', { name: /Synthetic child/ })
+      .first()
+      .click()
+    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    const card = page.getByRole('listbox', { name: 'Bundles', exact: true }).getByRole('option')
+    await card.click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Set as Collection Cover' }).click()
+    await expect(page.getByText('Collection cover set.')).toBeVisible()
+    const cover = async () =>
+      (await (await fetch(`${base}/entities/collections/collections-child`)).json()).fields
+        .cover_bundle_id.value
+    expect(await cover()).toBe('"bundle-000000"')
+    await card.click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Remove from This Collection' }).click()
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
+    // Leaving the collection also clears the cover that required the membership
+    expect(await cover()).toBe('null')
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

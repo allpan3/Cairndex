@@ -1656,6 +1656,18 @@
             "maxLength": 1000,
             "title": "Q",
             "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [

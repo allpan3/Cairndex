@@ -213,7 +213,9 @@ fact. Title, notes, source, filename, extension, rating, file count, dates and
 membership use the established authored semantics.
 
 Servers with `selection_version: 1` support pointer toggles, Shift ranges, marquee
-selection, Up/Down, Home/End and Enter for one selected bundle. Cmd/Ctrl+A selects
+selection, Up/Down, Home/End and Enter for one selected bundle. With
+`selection_version: 2`, a destination page can name one `target`, which the card
+menu's Remove from This Collection uses. Cmd/Ctrl+A selects
 only the loaded bundle pages; Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.

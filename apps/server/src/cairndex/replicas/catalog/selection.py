@@ -41,6 +41,8 @@ class CatalogBulkMembershipRequest(CatalogSelectionRequest):
     after: str = Field(default="", max_length=256)
     q: str = Field(default="", max_length=1000)
     limit: int = Field(default=30, ge=1, le=50)
+    # Selection version 2: read one known destination, as a context menu does
+    target: Token | None = None
 
 
 class CatalogBulkMembershipChoice(StrictModel):
@@ -106,10 +108,18 @@ def choices(
         for identity in request.ids:
             if read_row(db, "asset_bundles", identity) is None:
                 raise ReplicaError("A selected bundle is unavailable; refresh the selection")
+        only = " AND entity=?" if request.target else ""
         rows = db.execute(
             "SELECT entity,body FROM catalog_rows WHERE family=? AND entity>? "
-            "AND instr(lower(json_extract(body,'$.name')),lower(?))>0 ORDER BY entity LIMIT ?",
-            (request.family, request.after, request.q, request.limit + 1),
+            f"AND instr(lower(json_extract(body,'$.name')),lower(?))>0{only} "
+            "ORDER BY entity LIMIT ?",
+            (
+                request.family,
+                request.after,
+                request.q,
+                *([request.target] if request.target else []),
+                request.limit + 1,
+            ),
         ).fetchall()
         items = []
         for row in rows[: request.limit]:

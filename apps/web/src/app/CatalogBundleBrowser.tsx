@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
@@ -11,14 +11,15 @@ import { DEFAULT_PREFS, type Selection } from './types'
 import { type AdHocFilters, adHocFiltersToExpression } from './adHocFilters'
 import { useCollections } from '../api/hooks'
 import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
-import { selectionRange, type SelectionModifiers } from './selection'
+import { selectionRange, selectionTargets, type SelectionModifiers } from './selection'
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 import { CatalogBundleMoments } from './CatalogBundleMoments'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
-import { useContextMenu } from './useContextMenu'
+import { useContextMenu, type MenuEntry } from './useContextMenu'
+import { removeFromCollection, setCollectionCover } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -48,6 +49,7 @@ export function CatalogBundleBrowser({
   onOpenFile,
   hostFiles,
   onHostPath,
+  onLocateFile,
   viewerOpen = false,
 }: {
   library: string
@@ -69,12 +71,15 @@ export function CatalogBundleBrowser({
   onOpenFile: (bundle: string, file: string, time?: number) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
+  /** Show one library-relative file in the File Browser. */
+  onLocateFile?: (path: string) => void
   /** The viewer is open over this browser and shows the bundle inspector itself. */
   viewerOpen?: boolean
 }) {
   const collections = useCollections()
-  const supportedSorts =
-    (useReplicaStatus(library).data?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
+  const client = useQueryClient()
+  const status = useReplicaStatus(library).data
+  const supportedSorts = (status?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
   const [includeDescendants, setIncludeDescendants] = useState(true)
   const expression = adHocFiltersToExpression(filters)
   const smart = useQuery({
@@ -299,7 +304,7 @@ export function CatalogBundleBrowser({
     )
       .then((paths) => {
         current()
-        if (!paths.length) throw new Error('This bundle has no file to hand to the desktop.')
+        if (!paths.length) throw new Error('This bundle has no file.')
         action(paths)
       })
       .catch((reason: Error) => {
@@ -310,6 +315,76 @@ export function CatalogBundleBrowser({
         }
         setNotice(reason.message)
       })
+  }
+  // A menu change saves at once; a reply after a library switch is dropped
+  function organize(action: () => Promise<void>, done: string) {
+    const current = captureRequestScope()
+    setNotice('')
+    void action()
+      .then(async () => {
+        current()
+        setNotice(done)
+        for (const key of ['catalog-browse', 'catalog-detail', 'catalog-memberships'])
+          await client.invalidateQueries({ queryKey: [key, library] })
+      })
+      .catch((reason: Error) => {
+        try {
+          current()
+        } catch {
+          return
+        }
+        setNotice(reason.message)
+      })
+  }
+  // The legacy card menu: a card inside a multi-selection acts for the selection
+  function bundleMenu(id: string, event: React.MouseEvent) {
+    const targets = selectionEnabled ? selectionTargets(id, selectedIds) : [id]
+    const one = targets.length === 1
+    // A Control-click opens this menu on macOS, so it must not toggle the selection
+    if (one) select(id, { shiftKey: false, metaKey: false, ctrlKey: false })
+    const collection = selection.collectionId
+    const items: MenuEntry[] = [{ label: 'Play / View', onClick: () => onOpen(id), disabled: !one }]
+    if (albumEnabled)
+      items.push({ label: 'Open Bundle', onClick: () => openAlbum(id), disabled: !one })
+    if (one && onLocateFile)
+      items.push(null, {
+        label: 'Locate in File Browser',
+        onClick: () => hostAction(id, (paths) => onLocateFile(paths[0]!)),
+      })
+    if (one && hostFiles?.onOpenFile)
+      items.push({
+        label: hostFiles.labels.openFile,
+        onClick: () => hostAction(id, (paths) => hostFiles.onOpenFile!(paths[0]!)),
+      })
+    if (one && hostFiles?.onRevealFile)
+      items.push({
+        label: hostFiles.labels.revealFile,
+        onClick: () => hostAction(id, (paths) => hostFiles.onRevealFile!(paths[0]!)),
+      })
+    if (collection) {
+      items.push(null, {
+        label: 'Set as Collection Cover',
+        disabled: !one || blocked,
+        onClick: () =>
+          organize(() => setCollectionCover(library, collection, id), 'Collection cover set.'),
+      })
+      if ((status?.selection_version ?? 0) >= 2)
+        items.push({
+          label: one
+            ? 'Remove from This Collection'
+            : `Remove ${targets.length} from This Collection`,
+          disabled: blocked || targets.length > 100,
+          onClick: () =>
+            organize(
+              () => removeFromCollection(library, targets, collection),
+              one
+                ? 'Removed from this collection.'
+                : `Removed ${targets.length} from this collection.`,
+            ),
+        })
+    }
+    items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
+    menu.open(event, items)
   }
   const changeSort = (next: BundleSort, direction: SortOrder) => {
     if (!supportedSorts.includes(next)) {
@@ -464,30 +539,7 @@ export function CatalogBundleBrowser({
             onMarqueeSelect={many}
             onOpen={openAlbum}
             contextMenuOpen={menu.state !== null}
-            onContextMenu={(id, event) => {
-              select(id, event)
-              menu.open(event, [
-                { label: 'Open in Cairndex', onClick: () => onOpen(id) },
-                ...(hostFiles?.onOpenFile
-                  ? [
-                      {
-                        label: hostFiles.labels.openFile,
-                        onClick: () => hostAction(id, (paths) => hostFiles.onOpenFile!(paths[0]!)),
-                      },
-                    ]
-                  : []),
-                ...(hostFiles?.onRevealFile
-                  ? [
-                      {
-                        label: hostFiles.labels.revealFile,
-                        onClick: () =>
-                          hostAction(id, (paths) => hostFiles.onRevealFile!(paths[0]!)),
-                      },
-                    ]
-                  : []),
-                { label: 'Review metadata and conflicts', onClick: onReview },
-              ])
-            }}
+            onContextMenu={bundleMenu}
             isLoading={browse.isPending}
             isError={browse.isError}
             error={browse.error}

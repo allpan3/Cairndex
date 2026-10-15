@@ -139,6 +139,14 @@ def test_bulk_api_bounds_and_membership_pages(api):  # noqa: F811
         ][0]["name"]
         == "Synthetic root"
     )
+    # A context menu reads one known destination without paging
+    target = second["items"][0]["id"]
+    only = client.post(
+        base + "/bundles/selection/memberships", json=body | {"target": target}
+    ).json()
+    assert ([item["id"] for item in only["items"]], only["next_cursor"]) == ([target], None)
+    status = client.get(base.removesuffix("/catalog") + "/status").json()
+    assert status["selection_version"] == 2
 
 
 @pytest.mark.parametrize(
