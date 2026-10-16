@@ -210,3 +210,45 @@ def test_dissolve_returns_files_to_unbundled_with_their_identities(store):
     assert alive("asset_files", "file-video") == "true"
     with pytest.raises(ReplicaError, match="absent"):
         preview(store, {"action": "dissolve", "ids": [IDS[0]]})
+
+
+def test_manual_order_moves_and_cleanups_write_only_changed_positions(store):
+    from cairndex.replicas.catalog.browse import scope_order
+
+    def order(collection=None):
+        with store.connection(readonly=True) as db:
+            return scope_order(db, collection, "manual", "asc")
+
+    def positions(result):
+        return sorted(
+            item["unit"] for item in result["changes"] if not item["unit"].endswith("/$alive")
+        )
+
+    assert order() == ["bundle-000000", "bundle-000001", "bundle-000002"]
+    moved = {"action": "order", "collection": None, "moved": ["bundle-000002"]}
+    commit(store, preview(store, moved | {"before": "bundle-000000"}), "move")
+    assert order() == ["bundle-000002", "bundle-000000", "bundle-000001"]
+    # The new first bundle keeps position 0, so only the other two are written
+    cleanup = preview(
+        store, {"action": "order", "collection": None, "sort": "title", "descending": True}
+    )
+    assert positions(cleanup) == [
+        "asset_bundles/bundle-000000/manual_order",
+        "asset_bundles/bundle-000001/manual_order",
+    ]
+    commit(store, cleanup, "cleanup")
+    assert order() == ["bundle-000002", "bundle-000001", "bundle-000000"]
+    again = {"action": "order", "collection": None, "sort": "title", "descending": True}
+    with pytest.raises(ReplicaError, match="already in this order"):
+        preview(store, again)
+
+    # A collection orders its own memberships, never the global order
+    commit(store, preview(store, membership(store, "collections")), "join")
+    child = {"action": "order", "collection": "collections-child", "moved": ["bundle-000001"]}
+    result = preview(store, child | {"before": "bundle-000000"})
+    assert all("asset_bundle_collections/" in unit for unit in positions(result))
+    commit(store, result, "collection-move")
+    assert order("collections-child") == ["bundle-000001", "bundle-000000"]
+    assert order() == ["bundle-000002", "bundle-000001", "bundle-000000"]
+    with pytest.raises(ReplicaError, match="changed"):
+        preview(store, child | {"moved": ["bundle-000002"], "before": None})

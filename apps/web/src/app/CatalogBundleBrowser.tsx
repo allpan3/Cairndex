@@ -19,10 +19,17 @@ import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
-import { deleteBundles, setCollectionCover, setCollectionMembership } from '../api/catalogOrganize'
+import {
+  cleanUpBundleOrder,
+  deleteBundles,
+  reorderBundles,
+  setCollectionCover,
+  setCollectionMembership,
+} from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import { getHostPlatform } from '../platform'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
+import { CleanupOrderDialog } from './CleanupOrderDialog'
 import { DeleteBundlesDialog } from './DeleteBundlesDialog'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -119,6 +126,7 @@ export function CatalogBundleBrowser({
   const [bulkOpen, setBulkOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [deleting, setDeleting] = useState<string[] | null>(null)
+  const [cleaning, setCleaning] = useState(false)
   const menu = useContextMenu()
   const [inspectorFile, setInspectorFile] = useState<{ bundle: string; file: string } | null>(null)
   const navigation = useRef<BrowserNavigation>(null)
@@ -412,16 +420,34 @@ export function CatalogBundleBrowser({
       })
     menu.open(event, items)
   }
+  // One collection's own bundles, or All bundles, have a manual order; a view of
+  // several collections or a shuffle does not, so neither offers to rewrite it
+  const ordering = (status?.browse_version ?? 0) >= 6 && !blocked
+  const scoped = !(selection.collectionId && includeDescendants) && selection.view !== 'random'
+  const reorder =
+    ordering && scoped && activeSort === 'manual'
+      ? ({ movedIds, beforeId }: { movedIds: string[]; beforeId: string | null }) =>
+          organize(
+            () => reorderBundles(library, selection.collectionId ?? null, movedIds, beforeId),
+            '',
+          )
+      : undefined
   // Empty space means "here": under the open collection, else at the top level
   const emptyMenu = (event: React.MouseEvent) => {
-    if (!onNewCollection || blocked) return
     const parent = selection.collectionId ?? null
-    menu.open(event, [
-      {
+    const entries: MenuEntry[] = []
+    if (onNewCollection && !blocked)
+      entries.push({
         label: parent ? 'New Subcollection' : 'New Collection',
         onClick: () => onNewCollection(parent),
-      },
-    ])
+      })
+    if (ordering)
+      entries.push(null, {
+        label: 'Clean Up Order…',
+        disabled: !scoped,
+        onClick: () => setCleaning(true),
+      })
+    if (entries.some(Boolean)) menu.open(event, entries)
   }
   const changeSort = (next: BundleSort, direction: SortOrder) => {
     if (!supportedSorts.includes(next)) {
@@ -578,6 +604,7 @@ export function CatalogBundleBrowser({
             contextMenuOpen={menu.state !== null}
             onContextMenu={bundleMenu}
             onEmptyContextMenu={emptyMenu}
+            onReorder={reorder}
             onBundleDragStart={onBundleDrag}
             onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
             isLoading={browse.isPending}
@@ -665,6 +692,45 @@ export function CatalogBundleBrowser({
         </aside>
       )}
       <ContextMenu state={menu.state} onClose={menu.close} />
+      {cleaning && (
+        <CleanupOrderDialog
+          title="Clean up bundle order"
+          description={
+            selection.collectionId
+              ? 'Overwrite this collection’s manual order with a chosen sort.'
+              : 'Overwrite the global manual order with a chosen sort.'
+          }
+          choices={[
+            { key: 'title:asc', label: 'Title (A–Z)' },
+            { key: 'title:desc', label: 'Title (Z–A)' },
+            { key: 'date_added:desc', label: 'Date Added (newest first)' },
+            { key: 'date_added:asc', label: 'Date Added (oldest first)' },
+            { key: 'rating:desc', label: 'Rating (high → low)' },
+            { key: 'rating:asc', label: 'Rating (low → high)' },
+            { key: 'file_count:desc', label: 'File Count (most first)' },
+            { key: 'file_count:asc', label: 'File Count (fewest first)' },
+          ]}
+          pending={false}
+          onCancel={() => setCleaning(false)}
+          onConfirm={(choice) => {
+            const [key, direction] = choice.split(':') as [
+              'title' | 'rating' | 'date_added' | 'file_count',
+              'asc' | 'desc',
+            ]
+            setCleaning(false)
+            organize(
+              () =>
+                cleanUpBundleOrder(
+                  library,
+                  selection.collectionId ?? null,
+                  key,
+                  direction === 'desc',
+                ),
+              'Bundle order cleaned up.',
+            )
+          }}
+        />
+      )}
       {deleting && (
         <DeleteBundlesDialog
           count={deleting.length}
