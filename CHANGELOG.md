@@ -64,6 +64,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   collection, and Option/Alt keeps them there. The browser's empty-space menu
   has New Collection, or New Subcollection inside a collection. Card drags need
   `selection_version: 2`.
+- Restore Delete Bundle in the portable card menu. One commit returns each
+  file to Unbundled in its own staging bundle, with its identity and moments,
+  and deletes the bundle; source files are never touched. Servers advertise it
+  as `browse_version: 5`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

@@ -68,6 +68,13 @@ cover belongs to the collection or a descendant. Removing its last membership
 previews the corresponding cover clear. Source bytes never move with membership.
 
 Deletion previews include the complete metadata cascade and retain deleted values.
+A `dissolve` preview deletes up to 100 bundles the way the legacy Delete Bundle
+did: each file of a bundle moves into its own staged one-file bundle (provisional,
+`scan_suggestion`, titled by the file's stem), keeping its identity, and the
+emptied bundle is deleted. Moments follow their file; a subtitle pairing of two
+files cannot follow both and is deleted. A bundle that is already an Unbundled
+staging bundle is deleted with its file. Servers advertise the Bundle Browser's
+Delete Bundle as `browse_version: 5`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the
