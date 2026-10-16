@@ -1,6 +1,20 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalogNavigation } from '../api/catalogQuery'
 import type { CollectionRead, LibraryRead, SmartCollectionRead } from '../api/client'
+import {
+  arrangeCollections,
+  createCollection,
+  deleteCollection,
+  moveCollections,
+  renameCollection,
+  sortCollectionsByName,
+} from '../api/catalogOrganize'
+import { captureRequestScope } from '../api/requestScope'
+import { getHostPlatform } from '../platform'
+import { CleanupOrderDialog } from './CleanupOrderDialog'
+import { buildDeepLinkUri, copyText } from './deepLinkUri'
+import { RemoveCollectionDialog } from './RemoveCollectionDialog'
 import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
 
@@ -19,6 +33,7 @@ export function CatalogNavigation({
   onSettings,
   onReview,
   onReviewEntity,
+  blocked,
 }: {
   systemViewsEnabled: boolean
   unbundled: boolean
@@ -34,6 +49,8 @@ export function CatalogNavigation({
   onSettings?: () => void
   onReviewEntity: (family: string, id: string) => void
   onReview: () => void
+  /** The catalog is not ready, or recovery holds it; collections stay read-only. */
+  blocked: boolean
 }) {
   const collections = useQuery({
     queryKey: ['catalog-navigation', library, 'collections'],
@@ -45,6 +62,46 @@ export function CatalogNavigation({
     queryFn: () => catalogNavigation<SmartCollectionRead>(library, 'smart_folders'),
     refetchInterval: 2000,
   })
+  const client = useQueryClient()
+  const [notice, setNotice] = useState('')
+  const [deleting, setDeleting] = useState<CollectionRead | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+  const items = collections.data ?? []
+  const names = Object.fromEntries(items.map((item) => [item.id, item.name]))
+  const refresh = async () => {
+    for (const key of [
+      'catalog-navigation',
+      'catalog-browse',
+      'catalog-detail',
+      'catalog-memberships',
+    ])
+      await client.invalidateQueries({ queryKey: [key, library] })
+  }
+  // Each change saves at once; a reply after a library switch is dropped
+  function run(action: () => Promise<void>, done?: () => void) {
+    const current = captureRequestScope()
+    setNotice('')
+    void action()
+      .then(async () => {
+        current()
+        await refresh()
+        done?.()
+      })
+      .catch((reason: Error) => {
+        try {
+          current()
+        } catch {
+          return
+        }
+        setNotice(reason.message)
+      })
+  }
+  const arrange = (moved: string[], parent: string | null, before: string | null) =>
+    run(() =>
+      arrangeCollections(library, (forest) =>
+        moveCollections(forest, names, moved, parent, before),
+      ),
+    )
   return (
     <>
       <Sidebar
@@ -74,16 +131,92 @@ export function CatalogNavigation({
         collectionCounts={Object.fromEntries(
           (collections.data ?? []).map((item) => [item.id, item.count]),
         )}
-        onDeleteCollection={onReview}
-        onCreateCollection={onReview}
-        onRenameCollection={onReview}
-        onReorderCollections={onReview}
+        collectionsEditable={!blocked}
+        onCopyCollectionUri={
+          getHostPlatform().kind === 'desktop'
+            ? (id) =>
+                void copyText(buildDeepLinkUri('collection', id, library)).then((copied) =>
+                  setNotice(copied ? 'Collection URI copied.' : 'Could not copy the URI.'),
+                )
+            : undefined
+        }
+        onDeleteCollection={setDeleting}
+        onCreateCollection={(payload, callbacks) => {
+          const current = captureRequestScope()
+          const order = items
+            .filter((item) => (item.parent_id ?? null) === payload.parent_id)
+            .reduce((last, item) => Math.max(last, item.sort_order + 1), 0)
+          void createCollection(library, payload.name, payload.parent_id, order)
+            .then(async (created) => {
+              current()
+              await refresh()
+              callbacks.onSuccess(created)
+            })
+            .catch(callbacks.onError)
+        }}
+        onRenameCollection={(id, name, callbacks) => {
+          const current = captureRequestScope()
+          void renameCollection(library, id, name)
+            .then(async () => {
+              current()
+              await refresh()
+              callbacks.onSuccess()
+            })
+            .catch(callbacks.onError)
+        }}
+        onReorderCollections={(parent, moved, before) => arrange(moved, parent, before)}
+        onReparentCollections={(moved, target) => arrange(moved, target, null)}
+        onCleanupCollections={() => setCleaning(true)}
         smartCollections={smart.data ?? []}
         onNewSmartCollection={onReview}
         onEditSmartCollection={(item) => onReviewEntity('smart_folders', item.id)}
         onDeleteSmartCollection={onReview}
         onOpenAllTags={() => onMode('tags')}
       />
+      {notice && (
+        <p role="alert">
+          {notice} <button onClick={() => setNotice('')}>Dismiss</button>
+        </p>
+      )}
+      {deleting && (
+        <RemoveCollectionDialog
+          collections={[deleting]}
+          hasChildren={items.some((item) => item.parent_id === deleting.id)}
+          subcollectionsMoveUp
+          pending={false}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            const target = deleting.id
+            setDeleting(null)
+            run(
+              () => deleteCollection(library, target),
+              () => {
+                if (selection.collectionId === target) onSelect({ view: 'all', collectionId: null })
+              },
+            )
+          }}
+        />
+      )}
+      {cleaning && (
+        <CleanupOrderDialog
+          title="Clean up collection order"
+          description="Overwrite the manual order of every collection level with alphabetical order by name."
+          choices={[
+            { key: 'asc', label: 'Title (A–Z)' },
+            { key: 'desc', label: 'Title (Z–A)' },
+          ]}
+          pending={false}
+          onCancel={() => setCleaning(false)}
+          onConfirm={(key) => {
+            setCleaning(false)
+            run(() =>
+              arrangeCollections(library, (forest) =>
+                sortCollectionsByName(forest, names, key as 'asc' | 'desc'),
+              ),
+            )
+          }}
+        />
+      )}
       {(collections.error || smart.error) && (
         <p role="alert">
           Navigation is unavailable.{' '}

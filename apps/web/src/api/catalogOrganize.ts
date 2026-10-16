@@ -1,12 +1,31 @@
-// One-gesture collection changes from the portable browser's context menu. Each
-// write reads the catalog's current bases first, so a change made on another
+// One-gesture collection changes from the portable browser's menus and drags.
+// Each write reads the catalog's current bases first, so a change made on another
 // device since is refused for review instead of overwritten.
 import { catalog, operationId, runJob, type Entity } from './catalog'
+import type { CollectionRead } from './client'
 import type { components } from './schema'
 
 type Choices = components['schemas']['CatalogBulkMembershipPage']
 
 const REVIEW = 'This collection needs metadata review first.'
+
+/** One collection's place in the shared `collections/_/$forest` arrangement. */
+export interface ForestItem {
+  id: string
+  parent_id: string | null
+  sort_order: number
+}
+
+// The menu or drag gesture is the review, so a preview commits at once
+async function commit(library: string, command: unknown): Promise<void> {
+  const prepared = await runJob(library, 'preview', command, operationId())
+  await runJob(
+    library,
+    'commit_preview',
+    { job: prepared.id, receipt: prepared.receipt },
+    `commit_${prepared.id}`,
+  )
+}
 
 /** Remove bundles from one collection; needs `selection_version: 2`. */
 export async function removeFromCollection(
@@ -22,26 +41,14 @@ export async function removeFromCollection(
   const choice = page.items[0]
   if (!choice || choice.held) throw new Error(REVIEW)
   if (choice.assigned_count === 0) return
-  // The menu gesture is the review, so the preview commits at once
-  const prepared = await runJob(
-    library,
-    'preview',
-    {
-      action: 'bulk',
-      ids,
-      field: 'collections',
-      target: collection,
-      assigned: false,
-      observed: choice.observed,
-    },
-    operationId(),
-  )
-  await runJob(
-    library,
-    'commit_preview',
-    { job: prepared.id, receipt: prepared.receipt },
-    `commit_${prepared.id}`,
-  )
+  await commit(library, {
+    action: 'bulk',
+    ids,
+    field: 'collections',
+    target: collection,
+    assigned: false,
+    observed: choice.observed,
+  })
 }
 
 /** Make a bundle the cover of a collection whose tree holds it. */
@@ -76,4 +83,124 @@ export async function setCollectionCover(
     },
     operationId(),
   )
+}
+
+/** Create a collection at the end of its parent's children; returns the new row. */
+export async function createCollection(
+  library: string,
+  name: string,
+  parent: string | null,
+  sortOrder: number,
+): Promise<CollectionRead> {
+  // The server assigns the identity and timestamps of a new catalog row
+  const template = await catalog<{ cells: Record<string, string> }>(
+    library,
+    '/creation/collections',
+  )
+  const cells = {
+    ...template.cells,
+    name: JSON.stringify(name),
+    parent_id: JSON.stringify(parent),
+    sort_order: JSON.stringify(sortOrder),
+  }
+  await commit(library, { action: 'create', family: 'collections', cells })
+  return Object.fromEntries(
+    Object.entries(cells).map(([column, raw]) => [column, JSON.parse(raw) as unknown]),
+  ) as unknown as CollectionRead
+}
+
+/** Rename a collection whose name this device has seen. */
+export async function renameCollection(library: string, id: string, name: string): Promise<void> {
+  const entity = await catalog<Entity>(library, `/entities/collections/${id}`)
+  const field = entity.fields.name
+  const alive = entity.fields.$alive
+  if (!field || field.held || alive?.value !== 'true' || alive.held) throw new Error(REVIEW)
+  await runJob(
+    library,
+    'save',
+    {
+      changes: [
+        { unit: field.unit, value: JSON.stringify(name), basis: field.basis },
+        { unit: alive.unit, value: 'true', basis: alive.basis },
+      ],
+      parents: entity.parents,
+      resolve: false,
+      recover: false,
+    },
+    operationId(),
+  )
+}
+
+/** Delete one collection; its bundles stay, and its subcollections move up one level. */
+export function deleteCollection(library: string, id: string): Promise<void> {
+  return commit(library, { action: 'delete', family: 'collections', entity: id })
+}
+
+/**
+ * Rewrite the collection hierarchy from the catalog's current arrangement, never
+ * from the browser's older copy, so the change applies to what another device left.
+ */
+export async function arrangeCollections(
+  library: string,
+  change: (items: ForestItem[]) => ForestItem[],
+): Promise<void> {
+  const entity = await catalog<Entity>(library, '/entities/collections/_')
+  const forest = entity.fields.$forest
+  if (!forest || forest.held) throw new Error('The collection order needs metadata review first.')
+  const items = JSON.parse(forest.value ?? '[]') as ForestItem[]
+  await commit(library, { action: 'arrange', unit: forest.unit, value: change(items) })
+}
+
+// Sibling order is sort order, then name, as the sidebar draws it
+function siblingOrder(names: Record<string, string>) {
+  return (a: ForestItem, b: ForestItem) =>
+    a.sort_order - b.sort_order || (names[a.id] ?? '').localeCompare(names[b.id] ?? '')
+}
+
+/**
+ * Place `moved` under `parent` before `before` (null: at the end), keeping their
+ * shown order, and renumber that one sibling group. Other groups keep their values.
+ */
+export function moveCollections(
+  items: ForestItem[],
+  names: Record<string, string>,
+  moved: string[],
+  parent: string | null,
+  before: string | null,
+): ForestItem[] {
+  const order = siblingOrder(names)
+  const movers = items.filter((item) => moved.includes(item.id)).sort(order)
+  const siblings = items
+    .filter((item) => item.parent_id === parent && !moved.includes(item.id))
+    .sort(order)
+  const found = before === null ? -1 : siblings.findIndex((item) => item.id === before)
+  const at = found < 0 ? siblings.length : found
+  const group = [
+    ...siblings.slice(0, at),
+    ...movers.map((item) => ({ ...item, parent_id: parent })),
+    ...siblings.slice(at),
+  ]
+  const placed = new Map(group.map((item, index) => [item.id, { ...item, sort_order: index }]))
+  return items.map((item) => placed.get(item.id) ?? item)
+}
+
+/** Order every sibling group by name, as the legacy Clean Up Order did. */
+export function sortCollectionsByName(
+  items: ForestItem[],
+  names: Record<string, string>,
+  direction: 'asc' | 'desc',
+): ForestItem[] {
+  const sign = direction === 'asc' ? 1 : -1
+  const groups = new Map<string | null, ForestItem[]>()
+  for (const item of items)
+    groups.set(item.parent_id, [...(groups.get(item.parent_id) ?? []), item])
+  const placed = new Map<string, ForestItem>()
+  for (const group of groups.values())
+    group
+      .sort(
+        (a, b) =>
+          sign * (names[a.id] ?? '').localeCompare(names[b.id] ?? '') || a.id.localeCompare(b.id),
+      )
+      .forEach((item, index) => placed.set(item.id, { ...item, sort_order: index }))
+  return items.map((item) => placed.get(item.id)!)
 }

@@ -154,6 +154,7 @@ export function CatalogOrdinaryBrowser(props: {
           onSettings={props.onSettings}
           onReview={props.onReview}
           onReviewEntity={props.onReviewEntity}
+          blocked={props.blocked}
         />
         <div className="catalog-ordinary-content">
           {dropError && (

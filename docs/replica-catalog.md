@@ -163,8 +163,12 @@ backup schema validation accepts the complete old or new schema. Recovery rebuil
 it from the validated projection. The index never enters shared history.
 
 The shared sidebar supplies the collection hierarchy, descendant counts, saved
-Smart Collections and Tags. Empty collections remain visible. Tag selection uses
-the shared Any/All/Equal rules, exclusions and descendant toggle. Queries, facet
+Smart Collections and Tags. Empty collections remain visible. The sidebar
+creates, renames, deletes, reorders and reparents collections. Each hierarchy
+change rewrites the current `collections/_/$forest` value through one committed
+`arrange` preview, so a held or changed arrangement is refused for review.
+Tag selection uses the shared Any/All/Equal rules, exclusions and descendant
+toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.
 Saved expression text is never rewritten by browsing or preview. The inspector's
 tag and collection pickers search the complete destination population before

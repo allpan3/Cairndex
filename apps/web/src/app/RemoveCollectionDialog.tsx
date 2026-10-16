@@ -10,6 +10,8 @@ interface RemoveCollectionDialogProps {
   collections: CollectionRead[]
   /** Whether any target has subcollections (controls the cascade checkbox). */
   hasChildren: boolean
+  /** Subcollections always move up one level (portable catalogs); no checkbox. */
+  subcollectionsMoveUp?: boolean
   pending: boolean
   onCancel: () => void
   /** `cascade` is true to also remove subcollections, false to float them up. */
@@ -24,6 +26,7 @@ interface RemoveCollectionDialogProps {
 export function RemoveCollectionDialog({
   collections,
   hasChildren,
+  subcollectionsMoveUp = false,
   pending,
   onCancel,
   onConfirm,
@@ -58,7 +61,10 @@ export function RemoveCollectionDialog({
           the collection{count > 1 ? 's are' : ' is'} deleted.
         </div>
 
-        {hasChildren && (
+        {hasChildren && subcollectionsMoveUp && (
+          <div className="modal__preview">Subcollections move up one level.</div>
+        )}
+        {hasChildren && !subcollectionsMoveUp && (
           <>
             <label className="check-row">
               <input
@@ -83,7 +89,7 @@ export function RemoveCollectionDialog({
           </button>
           <button
             className="btn btn--danger"
-            onClick={() => onConfirm(hasChildren ? cascade : false)}
+            onClick={() => onConfirm(hasChildren && !subcollectionsMoveUp ? cascade : false)}
             disabled={pending}
           >
             {pending ? 'Deleting…' : 'Delete'}

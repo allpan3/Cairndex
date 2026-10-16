@@ -65,6 +65,10 @@ function viewIcon(view: SystemView): ReactNode {
 
 export interface SidebarProps {
   navigationOnly?: boolean
+  /** Collection create, rename, delete, drag and order controls; defaults to `!navigationOnly`. */
+  collectionsEditable?: boolean
+  /** Copy a collection's `cairndex://` URI; offered first in its menu when set. */
+  onCopyCollectionUri?: (id: string) => void
   availableViews?: SystemView[]
   mode: AppMode
   onMode: (mode: AppMode) => void
@@ -228,6 +232,8 @@ function findRow(nodes: TreeNode[], id: string, depth = 0): TreeRow | null {
 
 export function Sidebar({
   navigationOnly = false,
+  collectionsEditable = !navigationOnly,
+  onCopyCollectionUri,
   availableViews,
   mode,
   onMode,
@@ -525,6 +531,9 @@ export function Sidebar({
 
   const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) => {
     const items: MenuEntry[] = [
+      ...(onCopyCollectionUri
+        ? [{ label: 'Copy URI', onClick: () => onCopyCollectionUri(collection.id) }, null]
+        : []),
       {
         label: 'New Subcollection',
         onClick: () => createCollectionUnder(collection.id),
@@ -871,7 +880,7 @@ export function Sidebar({
         onContextMenu={(e) => {
           const target = e.target as HTMLElement
           if (target.closest('.nav-item, button, input, select, textarea, label')) return
-          if (!navigationOnly) collectionsBackgroundMenu(e)
+          if (collectionsEditable) collectionsBackgroundMenu(e)
         }}
       >
         <SectionHeading
@@ -883,12 +892,12 @@ export function Sidebar({
           // unfolded as they get.
           showCaret={foldable.length > 0}
           toggleTitle={allCollapsed ? 'Expand all collections' : 'Collapse all collections'}
-          onAdd={navigationOnly ? undefined : () => createCollectionUnder(null)}
+          onAdd={collectionsEditable ? () => createCollectionUnder(null) : undefined}
           addLabel="New collection"
           // Always the top level, whatever is open. Nesting is the collection
           // row's own right-click menu.
           addTitle="New top-level collection"
-          onContextMenu={navigationOnly ? undefined : collectionsBackgroundMenu}
+          onContextMenu={collectionsEditable ? collectionsBackgroundMenu : undefined}
         />
         {createError && !collectionDraft && (
           <div className="sidebar__heading" role="alert">
@@ -898,7 +907,7 @@ export function Sidebar({
         {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
         {tree.map((node, i) => (
           <CollectionBranch
-            navigationOnly={navigationOnly}
+            navigationOnly={!collectionsEditable}
             key={node.collection.id}
             node={node}
             depth={0}
@@ -913,7 +922,7 @@ export function Sidebar({
             }}
             multiSelectedIds={multiSelectedIds}
             onModifierSelect={modifierSelectRow}
-            onContextMenu={navigationOnly ? (_c, e) => e.preventDefault() : collectionMenu}
+            onContextMenu={collectionsEditable ? collectionMenu : (_c, e) => e.preventDefault()}
             collectionCounts={collectionCounts}
             isExpanded={isExpanded}
             onToggle={toggleExpanded}

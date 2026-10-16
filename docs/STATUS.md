@@ -135,8 +135,19 @@ Portable deep links (`feature/portable-deep-links`) restore link handling. The a
 already switched to a linked library, but it discarded the target. The workspace
 now leaves metadata review and the viewer, and the browser opens the target: a
 bundle link selects and locates the bundle in All bundles, and a collection link
-opens the collection. The desktop card menu has Copy URI again. The collection
-Copy URI belongs to the collection menu, which the dialogs change restores.
+opens the collection. The desktop card menu has Copy URI again.
+
+Portable collection organizing (`feature/portable-collection-organizing`)
+restores the sidebar's collection editing. Create, rename, delete, drag to
+reorder or reparent, and Clean Up Order each save at once. A hierarchy change
+reads the current `collections/_/$forest` arrangement and rewrites only the
+affected sibling group, so a change from another device is kept or refused for
+review, never overwritten from the browser's older copy. The server refuses a
+cyclic result. Delete moves subcollections up one level, as the catalog's
+delete always does, so the dialog says so instead of offering the legacy
+"delete subcollections too" choice. The collection menu has Copy URI on the
+desktop. Dragging cards onto a collection, Delete Bundle and the empty-space
+menu follow in the next change.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
