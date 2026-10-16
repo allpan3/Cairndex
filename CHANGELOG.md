@@ -82,6 +82,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   their memberships. Each change saves at once. Deleting a parent states the
   cost and then takes its child tags too, as in v0.2.1. Servers advertise it as
   `browse_version: 8`.
+- Restore portable manual bundling: Create Bundle… and Add to Bundle… in the
+  Unbundled view, where Cmd/Ctrl-click selects several files; Create Bundle…
+  in the browser's empty space, which makes an empty bundle; and Add Files… in
+  the bundle inspector. One commit confirms the bundle or adds the files to a
+  confirmed one, with each file's identity, and links a new subtitle to the
+  video it names. Servers advertise it as `browse_version: 9`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

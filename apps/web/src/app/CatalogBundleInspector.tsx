@@ -28,6 +28,7 @@ export function CatalogBundleInspector({
   moments,
   onAlbum,
   albumFile,
+  onAddFiles,
 }: {
   hostFiles?: LibraryHostFiles
   onStartBundleDrag?: () => void
@@ -46,6 +47,8 @@ export function CatalogBundleInspector({
   moments?: ReactNode
   onAlbum?: () => void
   albumFile?: string | null
+  /** Add Unbundled files to this confirmed bundle. */
+  onAddFiles?: () => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
@@ -89,6 +92,7 @@ export function CatalogBundleInspector({
         )}
       </div>
       {onAlbum && <button onClick={onAlbum}>Browse bundle files</button>}
+      {onAddFiles && <button onClick={onAddFiles}>Add Files…</button>}
       {albumFile && (
         <CatalogFileDetails
           key={albumFile}

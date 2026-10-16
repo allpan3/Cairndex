@@ -1,5 +1,5 @@
 import { useModalDialog } from './useModalDialog'
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { FileSelection, FileSuggestion, TargetSuggestion } from '../api/client'
@@ -11,6 +11,7 @@ import {
   useTargetSuggestions,
   useUnbundledFileSuggestions,
 } from '../api/hooks'
+import { CatalogQueryContext } from '../api/catalogQuery'
 import { withSkipNote } from './manualBundlingSkipNote'
 import { usePinyinSearch } from './pinyin'
 
@@ -94,10 +95,13 @@ function FileCheckRow({
   suggestion,
   checked,
   onToggle,
+  ranked = true,
 }: {
   suggestion: FileSuggestion
   checked: boolean
   onToggle: () => void
+  /** Show the suggestion's reason and confidence; a portable list is not ranked. */
+  ranked?: boolean
 }) {
   const { name, dir } = pathParts(suggestion.relative_path)
   return (
@@ -106,9 +110,9 @@ function FileCheckRow({
       <span className="mb-row__main">
         <span className="mb-row__name">{name}</span>
         {dir && <span className="mb-row__dir">{dir}</span>}
-        <span className="mb-row__reason">{suggestion.reason}</span>
+        {ranked && <span className="mb-row__reason">{suggestion.reason}</span>}
       </span>
-      <Confidence value={suggestion.confidence} />
+      {ranked && <Confidence value={suggestion.confidence} />}
     </label>
   )
 }
@@ -151,6 +155,8 @@ export function AddToBundleDialog({
   onApplied: (message: string) => void
 }) {
   const suggestions = useTargetSuggestions(selection)
+  // A portable server makes no suggestions, so the dialog is a search alone
+  const portable = useContext(CatalogQueryContext) !== null
   const [targetId, setTargetId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const search = useConfirmedBundleSearch(query)
@@ -215,13 +221,17 @@ export function AddToBundleDialog({
         </>
       }
     >
-      <label className="mb-label">Suggested bundles</label>
-      <EmptyOrError
-        isLoading={suggestions.isLoading}
-        isError={suggestions.isError}
-        isEmpty={(suggestions.data?.length ?? 0) === 0 && !query.trim()}
-        emptyText="No likely bundles found — search for one below."
-      />
+      {!portable && (
+        <>
+          <label className="mb-label">Suggested bundles</label>
+          <EmptyOrError
+            isLoading={suggestions.isLoading}
+            isError={suggestions.isError}
+            isEmpty={(suggestions.data?.length ?? 0) === 0 && !query.trim()}
+            emptyText="No likely bundles found — search for one below."
+          />
+        </>
+      )}
       <div className="mb-list" role="radiogroup" aria-label="Target bundle">
         {options.map((o) => (
           <label className="mb-row" key={o.id}>
@@ -271,6 +281,7 @@ export function CreateBundleDialog({
   onApplied: (message: string) => void
 }) {
   const draft = useBundleDraft(selection)
+  const portable = useContext(CatalogQueryContext) !== null
   // `null` until the user types: the field then shows the suggested title as it
   // arrives, without a setState-in-effect (derived, not synced).
   const [typedTitle, setTypedTitle] = useState<string | null>(null)
@@ -351,31 +362,37 @@ export function CreateBundleDialog({
       <input
         id="mb-create-title"
         className="edit"
-        placeholder="Bundle title"
+        placeholder={portable ? 'The first media file’s name' : 'Bundle title'}
         value={title}
         onChange={(e) => setTypedTitle(e.target.value)}
       />
 
-      <label className="mb-label">
-        Also include these nearby files?{' '}
-        {additional.length > 0 && <span className="mb-hint">({additional.length} suggested)</span>}
-      </label>
-      <EmptyOrError
-        isLoading={draft.isLoading}
-        isError={draft.isError}
-        isEmpty={additional.length === 0}
-        emptyText="No related unbundled files found nearby."
-      />
-      <div className="mb-list">
-        {additional.map((s) => (
-          <FileCheckRow
-            key={s.file_id}
-            suggestion={s}
-            checked={extra.has(s.file_id)}
-            onToggle={() => toggle(s.file_id)}
+      {!portable && (
+        <>
+          <label className="mb-label">
+            Also include these nearby files?{' '}
+            {additional.length > 0 && (
+              <span className="mb-hint">({additional.length} suggested)</span>
+            )}
+          </label>
+          <EmptyOrError
+            isLoading={draft.isLoading}
+            isError={draft.isError}
+            isEmpty={additional.length === 0}
+            emptyText="No related unbundled files found nearby."
           />
-        ))}
-      </div>
+          <div className="mb-list">
+            {additional.map((s) => (
+              <FileCheckRow
+                key={s.file_id}
+                suggestion={s}
+                checked={extra.has(s.file_id)}
+                onToggle={() => toggle(s.file_id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {createFromFiles.isError && (
         <div className="mb-state mb-state--error">
@@ -392,14 +409,19 @@ export function CreateBundleDialog({
 // creating an empty bundle) ---------------------------------------------------
 export function AddFilesToBundleDialog({
   bundleId,
+  title: knownTitle,
   onClose,
   onApplied,
 }: {
   bundleId: string
+  /** The bundle's title when the caller has it; a portable library cannot fetch it here. */
+  title?: string | null
   onClose: () => void
   onApplied: (message: string) => void
 }) {
-  const bundle = useBundle(bundleId)
+  const portable = useContext(CatalogQueryContext) !== null
+  const bundle = useBundle(portable ? null : bundleId)
+  const bundleTitle = knownTitle ?? bundle.data?.title
   const suggestions = useUnbundledFileSuggestions(bundleId)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
@@ -437,7 +459,7 @@ export function AddFilesToBundleDialog({
 
   return (
     <Modal
-      title={`Add Files${bundle.data?.title ? ` to “${bundle.data.title}”` : ''}`}
+      title={`Add Files${bundleTitle ? ` to “${bundleTitle}”` : ''}`}
       label="Add files to bundle"
       pending={addFiles.isPending}
       onClose={onClose}
@@ -458,10 +480,12 @@ export function AddFilesToBundleDialog({
         </>
       }
     >
-      <label className="mb-label">Suggested unbundled files</label>
+      <label className="mb-label">
+        {portable ? 'Unbundled files' : 'Suggested unbundled files'}
+      </label>
       <input
         className="edit"
-        placeholder="Filter suggestions…"
+        placeholder={portable ? 'Filter files…' : 'Filter suggestions…'}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
@@ -480,6 +504,7 @@ export function AddFilesToBundleDialog({
             suggestion={s}
             checked={checked.has(s.file_id)}
             onToggle={() => toggle(s.file_id)}
+            ranked={!portable}
           />
         ))}
       </div>

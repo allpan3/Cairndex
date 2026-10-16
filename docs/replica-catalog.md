@@ -92,6 +92,13 @@ descendants with it, deepest first; without it, the children move up one
 level. A `group_tag` preview adds a tag to a tag group, after its existing
 members, or removes it; adding restores a deleted membership. Servers
 advertise the All Tags page as `browse_version: 8`.
+
+A `bundle_files` preview takes 1 to 100 Unbundled file IDs. Without a `target`,
+it confirms a new bundle, titled by `title` or else by the first media file's
+stem; with one, it adds the files to that confirmed bundle after its members.
+Each file keeps its identity, staging bundles that the move empties are
+deleted, and each new subtitle file gets a track for the video in its folder
+with the stem it names. Servers advertise it as `browse_version: 9`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the

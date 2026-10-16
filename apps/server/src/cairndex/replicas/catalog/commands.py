@@ -407,6 +407,156 @@ class Preview:
                 self.transfer(identity, row["id"], [f"asset_files/{member['id']}"])
         self.delete("asset_bundles", identity)
 
+    def bundle_files(self, command: dict[str, Any]) -> None:
+        """Bundle Unbundled files as legacy manual bundling did, keeping their identities.
+
+        Without a target, a selected file's staging bundle becomes the confirmed bundle,
+        so its identity survives, and roles follow the grouping heuristic. With a target,
+        the files join that confirmed bundle after its members, with addition roles.
+        Staging bundles the move empties are deleted, and each new subtitle file is
+        linked to the video it names, as legacy did.
+        """
+        from pathlib import PurePosixPath
+
+        from cairndex.core.time import utcnow
+        from cairndex.domain.enums import FileRole, MediaKind
+        from cairndex.grouping.suggester import (
+            SUGGESTER_RULE_VERSION,
+            FileObservation,
+            _addition_roles,
+            _assign_roles,
+        )
+        from cairndex.media.subtitles import format_for_path, is_subtitle_path, parse_subtitle_name
+        from cairndex.replicas.catalog.controls import creation
+        from cairndex.replicas.discovery import media_kind
+
+        files, target, title = command.get("files"), command.get("target"), command.get("title")
+        if (
+            not isinstance(files, list)
+            or not 0 < len(files) <= 100
+            or not all(isinstance(identity, str) for identity in files)
+            or len(set(files)) != len(files)
+        ):
+            raise ReplicaError("Select 1 to 100 distinct Unbundled files")
+        if title is not None and (not isinstance(title, str) or len(title) > 1024):
+            raise ReplicaError("A bundle title has at most 1024 characters")
+        rows: dict[str, Row] = {}
+        for identity in files:
+            row = read_row(self.db, "asset_files", identity)
+            bundle = read_row(self.db, "asset_bundles", row["bundle_id"]) if row else None
+            staged = ("PROVISIONAL", "SCAN_SUGGESTION")
+            if not bundle or (bundle["grouping_state"], bundle["grouping_source"]) != staged:
+                raise ReplicaError("Only Unbundled files can be bundled; refresh the files")
+            assert row is not None
+            rows[identity] = row
+        observed = [
+            FileObservation(identity, row["relative_path"], media_kind(row["relative_path"]))
+            for identity, row in rows.items()
+        ]
+
+        def files_of(bundle: str) -> list[str]:
+            members = self.get(key("asset_bundles", bundle, "$members"))
+            return [member["id"] for member in members if member["family"] == "asset_files"]
+
+        if target is None:
+            proposed = _assign_roles(observed)
+            # Reuse a staging bundle only when no unselected file would come along
+            target = next(
+                (
+                    rows[item.asset_file_id]["bundle_id"]
+                    for item in proposed
+                    if set(files_of(rows[item.asset_file_id]["bundle_id"])) <= set(files)
+                ),
+                None,
+            )
+            if target is None:
+                row = {
+                    column: json.loads(raw)
+                    for column, raw in creation("asset_bundles")["cells"].items()
+                }
+                self.create("asset_bundles", row)
+                target = row["id"]
+            cover = next((p.asset_file_id for p in proposed if p.role is FileRole.COVER), None)
+            fields = {
+                "grouping_state": "CONFIRMED",
+                "grouping_source": "MANUAL",
+                "grouping_rule_version": SUGGESTER_RULE_VERSION,
+                "confirmed_at": utcnow().replace(tzinfo=None).isoformat(sep=" "),
+                "cover_file_id": cover,
+            }
+            if title and title.strip():
+                fields["title"] = title.strip()
+            elif not self.get(key("asset_bundles", target, "title")):
+                fields["title"] = PurePosixPath(
+                    rows[proposed[0].asset_file_id]["relative_path"]
+                ).stem
+        else:
+            bundle = read_row(self.db, "asset_bundles", target)
+            if bundle is None or bundle["grouping_state"] != "CONFIRMED":
+                raise ReplicaError("Choose a confirmed bundle to add the files to")
+            proposed = _addition_roles(observed)
+            fields = {}
+        sources = []
+        for item in proposed:
+            source = rows[item.asset_file_id]["bundle_id"]
+            if source != target:
+                self.transfer(source, target, [f"asset_files/{item.asset_file_id}"])
+                sources.append(source)
+        unit = key("asset_bundles", target, "$members")
+        placed = {item.asset_file_id: item for item in proposed}
+        members = self.get(unit)
+        chosen = [m for m in members if m["family"] == "asset_files" and m["id"] in placed]
+        for member in chosen:
+            member["role"] = placed[member["id"]].role.name
+        if fields:
+            # A new bundle takes the proposed order, and anything else follows it
+            for member in chosen:
+                member["sequence"] = placed[member["id"]].sequence
+            rest = [member for member in members if member not in chosen]
+            for index, member in enumerate(rest):
+                member["sequence"] = len(proposed) + index
+        self.put(unit, sorted(members, key=lambda member: member["sequence"]))
+        for field, value in fields.items():
+            self.put(key("asset_bundles", target, field), value)
+        for source in dict.fromkeys(sources):
+            if not self.get(key("asset_bundles", source, "$members")):
+                self.delete("asset_bundles", source)
+
+        # Link each new subtitle file to the video in its folder with the stem it names
+        videos: dict[tuple[str, str], str] = {}
+        for identity in files_of(target):
+            path = (rows.get(identity) or read_row(self.db, "asset_files", identity) or {}).get(
+                "relative_path"
+            )
+            if path and media_kind(path) is MediaKind.VIDEO:
+                videos.setdefault(
+                    (str(PurePosixPath(path).parent), PurePosixPath(path).stem), identity
+                )
+        subtitles = [file for file in observed if is_subtitle_path(file.relative_path)]
+        for order, file in enumerate(subtitles):
+            if self.db.execute(
+                "SELECT 1 FROM catalog_rows WHERE family='subtitle_tracks' "
+                "AND json_extract(body,'$.source_file_id')=?",
+                (file.asset_file_id,),
+            ).fetchone():
+                continue
+            path = PurePosixPath(file.relative_path)
+            parsed = parse_subtitle_name(path.name)
+            track = {
+                column: json.loads(raw)
+                for column, raw in creation("subtitle_tracks")["cells"].items()
+            }
+            track |= {
+                "bundle_id": target,
+                "source_file_id": file.asset_file_id,
+                "video_file_id": videos.get((str(path.parent), parsed.video_stem)),
+                "language": parsed.language,
+                "is_forced": int(parsed.is_forced),
+                "format": format_for_path(file.relative_path),
+                "sort_order": order,
+            }
+            self.create("subtitle_tracks", track)
+
     # Creation requires every authored field plus an explicit complete placement when applicable
     def create(self, family: str, row: Row) -> None:
         if family not in AUTHORED:
@@ -598,6 +748,8 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             builder.collect_directory(command)
         elif action == "order":
             builder.order(command)
+        elif action == "bundle_files":
+            builder.bundle_files(command)
         elif action == "dissolve":
             from cairndex.replicas.catalog.selection import CatalogSelectionRequest
 

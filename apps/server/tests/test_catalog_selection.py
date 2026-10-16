@@ -353,3 +353,71 @@ def test_cascading_delete_removes_a_tag_with_its_descendants(store):
         preview(
             store, {"action": "delete", "family": "asset_bundles", "entity": "x", "cascade": True}
         )
+
+
+def test_bundle_files_confirms_and_extends_bundles_from_unbundled_files(store):
+    from cairndex.replicas.catalog.projection import read_row
+
+    def staging():
+        with store.connection(readonly=True) as db:
+            return {
+                file: read_row(db, "asset_files", file)["bundle_id"]
+                for file in ("file-video", "file-subtitle")
+            }
+
+    def bundle(command, operation):
+        commit(store, preview(store, {"action": "bundle_files"} | command), operation)
+
+    commit(store, preview(store, {"action": "dissolve", "ids": [IDS[0]]}), "dissolve")
+    loose = staging()
+    bundle({"files": ["file-subtitle", "file-video"], "title": " Rebundled "}, "create")
+    with store.connection(readonly=True) as db:
+        # The video's staging bundle is confirmed in place, and the other one is deleted
+        target = read_row(db, "asset_bundles", loose["file-video"])
+        assert (target["title"], target["grouping_state"], target["grouping_source"]) == (
+            "Rebundled",
+            "CONFIRMED",
+            "MANUAL",
+        )
+        assert target["confirmed_at"]
+        assert read_row(db, "asset_bundles", loose["file-subtitle"]) is None
+        members = store.entity("asset_bundles", target["id"])["fields"]["$members"]["value"]
+        assert [(m["id"], m["role"], m["sequence"]) for m in json.loads(members)] == [
+            ("file-video", "PRIMARY_VIDEO", 0),
+            ("file-subtitle", "SUBTITLE", 1),
+        ]
+        assert read_row(db, "moments", "moment-one")["bundle_id"] == target["id"]
+        tracks = db.execute(
+            "SELECT body FROM catalog_rows WHERE family='subtitle_tracks'"
+        ).fetchall()
+        linked = [json.loads(row[0]) for row in tracks]
+        assert [(t["source_file_id"], t["video_file_id"]) for t in linked] == [
+            ("file-subtitle", "file-video")
+        ]
+    with pytest.raises(ReplicaError, match="Only Unbundled"):
+        preview(store, {"action": "bundle_files", "files": ["file-video"]})
+
+    # A file added to a confirmed bundle goes after its members with an addition role
+    commit(store, preview(store, {"action": "dissolve", "ids": [target["id"]]}), "again")
+    loose = staging()
+    bundle({"files": ["file-video"]}, "single")
+    with pytest.raises(ReplicaError, match="confirmed bundle"):
+        preview(
+            store,
+            {
+                "action": "bundle_files",
+                "files": ["file-subtitle"],
+                "target": loose["file-subtitle"],
+            },
+        )
+    bundle({"files": ["file-subtitle"], "target": loose["file-video"]}, "add")
+    members = store.entity("asset_bundles", loose["file-video"])["fields"]["$members"]["value"]
+    assert [(m["id"], m["role"]) for m in json.loads(members)] == [
+        ("file-video", "PRIMARY_VIDEO"),
+        ("file-subtitle", "SUBTITLE"),
+    ]
+    with store.connection(readonly=True) as db:
+        assert read_row(db, "asset_bundles", loose["file-subtitle"]) is None
+        title = read_row(db, "asset_bundles", loose["file-video"])["title"]
+        # Without a title the confirmed bundle keeps its staging title, the file's stem
+        assert title == "雪"

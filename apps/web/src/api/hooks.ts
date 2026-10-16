@@ -1,8 +1,11 @@
 import { useContext } from 'react'
 import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
 import { catalog } from './catalog'
+import type { components } from './schema'
 import {
   arrangeHierarchy,
+  bundleFiles,
+  createEmptyBundle as createEmptyCatalogBundle,
   collectionFromFolder,
   createTag as createCatalogTag,
   createTagGroup as createCatalogTagGroup,
@@ -65,6 +68,7 @@ import {
   type LibraryCreate,
   type LibraryRead,
   type LibraryRegister,
+  type ManualBundleResult,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
   type TagCreate,
@@ -1269,62 +1273,128 @@ export function useUnbundledFiles(params: UnbundledFilesParams = {}, enabled = t
 
 /** Confirmed bundles the selected unbundled files most likely belong to. */
 export function useTargetSuggestions(sel: FileSelection, enabled = true) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
     queryKey: ['mb-target-suggestions', sel],
     queryFn: () => suggestTargetBundles(sel),
-    enabled: enabled && hasSelection(sel),
+    enabled: enabled && !library && hasSelection(sel),
   })
 }
 
 /** Unbundled files that most likely belong in a bundle. */
 export function useUnbundledFileSuggestions(bundleId: string | null) {
+  const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: ['mb-file-suggestions', bundleId],
-    queryFn: () => suggestUnbundledFilesForBundle(bundleId as string),
+    queryKey: ['mb-file-suggestions', library, bundleId],
+    // A portable server ranks nothing, so it offers the first Unbundled files by path
+    queryFn: () =>
+      library
+        ? catalog<components['schemas']['CatalogUnbundledPage']>(
+            library,
+            '/files/unbundled',
+            'POST',
+            { limit: 100 },
+          ).then((page) =>
+            page.items.map((item) => ({
+              file_id: item.id,
+              relative_path: item.relative_path,
+              media_kind: 'other' as const,
+              confidence: 0,
+              reason: '',
+            })),
+          )
+        : suggestUnbundledFilesForBundle(bundleId as string),
     enabled: bundleId !== null,
   })
 }
 
 /** A proposed title/roles for a seed selection, plus nearby unbundled files. */
 export function useBundleDraft(sel: FileSelection) {
+  // A portable server suggests no title or nearby files; the dialog hides them
+  const library = useContext(CatalogQueryContext)
   return useQuery({
     queryKey: ['mb-bundle-draft', sel],
     queryFn: () => suggestBundleFromFiles(sel),
-    enabled: hasSelection(sel),
+    enabled: !library && hasSelection(sel),
   })
 }
 
 /** Manual search fallback for a target bundle: whole-library FTS over confirmed
  * bundles (unbundled files are already excluded from the normal browse views). */
 export function useConfirmedBundleSearch(query: string) {
+  const library = useContext(CatalogQueryContext)
   const trimmed = query.trim()
   return useQuery({
-    queryKey: ['mb-bundle-search', trimmed],
+    queryKey: ['mb-bundle-search', library, trimmed],
     queryFn: ({ signal }) =>
-      browseBundles(
-        { view: 'all', sort: 'title', order: 'asc', offset: 0, limit: 20, search: trimmed },
-        signal,
-      ),
+      library
+        ? catalog<{ items: { id: string; title: string | null }[] }>(
+            library,
+            '/bundles/browse',
+            'POST',
+            { q: trimmed, sort: 'title', order: 'asc', limit: 20 },
+          )
+        : browseBundles(
+            { view: 'all', sort: 'title', order: 'asc', offset: 0, limit: 20, search: trimmed },
+            signal,
+          ),
     enabled: trimmed.length > 0,
   })
 }
 
 export function useManualBundling() {
   const qc = useQueryClient()
-  const invalidate = () => invalidateLibraryContent(qc)
+  const library = useContext(CatalogQueryContext)
+  const invalidate = () => {
+    if (!library) return invalidateLibraryContent(qc)
+    for (const key of [
+      'catalog-browse',
+      'catalog-detail',
+      'catalog-unbundled',
+      'catalog-navigation',
+    ])
+      void qc.invalidateQueries({ queryKey: [key, library] })
+  }
+  // A portable change refuses an invalid file instead of skipping it, so nothing is skipped
+  const done = (bundle: string, created: boolean, files: number): ManualBundleResult => ({
+    bundle_id: bundle,
+    created,
+    files_added: files,
+    bundles_removed: 0,
+    subtitles_linked: 0,
+    files_skipped: 0,
+    skipped_already_bundled: 0,
+    skipped_missing: 0,
+    skipped_non_media: 0,
+  })
+  // A portable library bundles only cataloged Unbundled files
+  const portable = async (
+    library: string,
+    sel: FileSelection,
+    target: string | null,
+    title?: string | null,
+  ) => {
+    const files = sel.fileIds ?? []
+    if (sel.relativePaths?.length) throw new Error('Choose files from Unbundled to bundle them.')
+    const bundle = await bundleFiles(library, files, target, title?.trim() || null)
+    return done(bundle, target === null, files.length)
+  }
   return {
     addFiles: useMutation({
       mutationFn: ({ bundleId, sel }: { bundleId: string; sel: FileSelection }) =>
-        addUnbundledFilesToBundle(bundleId, sel),
+        library ? portable(library, sel, bundleId) : addUnbundledFilesToBundle(bundleId, sel),
       onSuccess: invalidate,
     }),
     createFromFiles: useMutation({
       mutationFn: ({ sel, title }: { sel: FileSelection; title?: string | null }) =>
-        createBundleFromUnbundled(sel, title),
+        library ? portable(library, sel, null, title) : createBundleFromUnbundled(sel, title),
       onSuccess: invalidate,
     }),
     createEmpty: useMutation({
-      mutationFn: (title?: string | null) => createEmptyBundle(title),
+      mutationFn: async (title?: string | null) =>
+        library
+          ? done(await createEmptyCatalogBundle(library, title?.trim() || null), true, 0)
+          : createEmptyBundle(title),
       onSuccess: invalidate,
     }),
   }

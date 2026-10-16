@@ -193,6 +193,21 @@ Without `cascade`, children still move up one level. The portable collection
 delete always moves subcollections up, so the two deletes differ, as the legacy
 All Tags page and collection dialog also did.
 
+Portable manual bundling (`feature/portable-manual-bundling`) restores Create
+Bundle… and Add to Bundle… for Unbundled files, the empty-space Create Bundle…
+and the inspector's Add Files… through a `bundle_files` preview and an
+ordinary `create` of an empty confirmed bundle. It follows the legacy service: a new bundle reuses a selected file's
+staging bundle, so that identity survives, with the grouping heuristic's roles
+and order; an addition goes after the target's members with addition roles.
+Emptied staging bundles are deleted, and a new subtitle file is linked to the
+video in its folder with the stem it names. The legacy dialogs are reused, but
+a portable server has no title, nearby-file or target suggestions, so those
+sections are hidden, the target is found by search, and Add Files… lists the
+first 100 Unbundled files by path, with a filter. Unlike legacy, a portable
+selection holds only cataloged Unbundled files, and an invalid file refuses the
+whole change instead of being skipped; a file that is not yet cataloged goes
+through Update review.
+
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.
 It updates quinn-proto to 0.11.18, event-listener to 5.4.2 and chacha20 to 0.10.2.
