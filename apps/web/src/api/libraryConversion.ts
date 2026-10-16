@@ -62,3 +62,24 @@ export function saveConversion(key: string, history: ConversionHistory) {
     // A storage failure does not cancel an accepted server task.
   }
 }
+
+/** Where one server's conversion review is kept, by connection scope. */
+export const conversionStorageKey = (scope: string | null) =>
+  `cairndex.libraryConversion:${scope ?? 'web'}`
+
+/** Whether that server's Libraries dialog was showing a review, to show it again. */
+export function conversionVisible(key: string): boolean {
+  try {
+    return readConversion(key).task !== null && localStorage.getItem(`${key}:visible`) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function saveConversionVisible(key: string, visible: boolean) {
+  try {
+    localStorage.setItem(`${key}:visible`, JSON.stringify(visible))
+  } catch {
+    // The review stays reachable through Resume conversion.
+  }
+}

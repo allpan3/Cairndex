@@ -115,6 +115,17 @@ const VIDEO = {
   status: 'available',
 }
 
+// The inspection the shell started on the local server for an old library
+const OLD_INSPECTION = {
+  id: 'd'.repeat(32),
+  root_path: '/synthetic/old',
+  action: 'inspect',
+  attempt: 'e'.repeat(32),
+  state: 'running',
+  result: null,
+  error: null,
+}
+
 function mockApi(libraries: unknown[]) {
   vi.stubGlobal(
     'fetch',
@@ -125,6 +136,7 @@ function mockApi(libraries: unknown[]) {
       else if (url.includes('/ownership')) body = { mountable: true, state: 'own' }
       else if (url.includes('/bundles/browse'))
         body = { items: [], total: 0, offset: 0, limit: 100 }
+      else if (url.includes('/conversions/tasks/')) body = OLD_INSPECTION
       else if (url.includes('/counts') || url.includes('/facets')) body = {}
       else if (url.includes('/collections') || url.includes('/tags') || url.includes('/jobs'))
         body = { items: [] }
@@ -304,3 +316,45 @@ vi.mock('./app/ReplicaWorkspace', () => ({
     </div>
   ),
 }))
+
+test('on a remote connection, browsing to an old library opens its review on the local server', async () => {
+  // No server registers an old library (ADR-0035). The shell started the
+  // inspection locally, so the app switches there and the remounted App reopens
+  // the Libraries dialog on the review instead of selecting anything.
+  mockApi([PHOTOS, VIDEO])
+  host.loadConnections.mockResolvedValue({
+    connections: [
+      { id: 'remote:http://nas:8000', kind: 'remote', label: 'nas', serverUrl: 'http://nas:8000' },
+    ],
+    activeConnectionId: 'remote:http://nas:8000',
+  })
+  host.openLibraryFolder.mockResolvedValue({
+    needsConfirmation: false,
+    token: null,
+    folderName: null,
+    isLibrary: true,
+    alreadyAvailable: false,
+    libraryId: '',
+    libraryUuid: 'uuid-old',
+    displayName: 'Old',
+    needsConversion: true,
+    conversionTask: OLD_INSPECTION.id,
+  })
+
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <DesktopBootstrap>
+        <App />
+      </DesktopBootstrap>
+    </QueryClientProvider>,
+  )
+  await waitFor(() => expect(active).toBe(PHOTOS.id), { timeout: 3000 })
+
+  await browseForFolder()
+
+  await screen.findByRole('dialog', { name: 'Convert old library' }, { timeout: 3000 })
+  expect(await screen.findByText('/synthetic/old')).toBeInTheDocument()
+  expect(host.startLocalServer).toHaveBeenCalled()
+  expect(host.confirmPickedLibrary).not.toHaveBeenCalled()
+})

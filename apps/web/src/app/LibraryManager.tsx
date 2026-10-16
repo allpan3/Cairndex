@@ -5,9 +5,12 @@ import { captureRequestScope } from '../api/requestScope'
 import { LibraryPrivateControls } from './LibraryPrivateControls'
 import { LibraryConversionDialog } from './LibraryConversionDialog'
 import {
+  conversionStorageKey,
+  conversionVisible,
   emptyConversion,
   readConversion,
   saveConversion,
+  saveConversionVisible,
   type ConversionHistory,
 } from '../api/libraryConversion'
 import { useModalDialog } from './useModalDialog'
@@ -77,24 +80,14 @@ export function LibraryManager({
   // Covers the actions that are not plain mutations — the native picker and the
   // confirm step — which have no `isPending` of their own.
   const [hostBusy, setHostBusy] = useState(false)
-  const conversionKey = `cairndex.libraryConversion:${getConnectionScopeKey() ?? 'web'}`
+  const conversionKey = conversionStorageKey(getConnectionScopeKey())
   const [conversionHistory, setConversionHistory] = useState(() => readConversion(conversionKey))
-  const [conversion, setConversionState] = useState<{ root: string | null } | null>(() => {
-    try {
-      return conversionHistory.task && localStorage.getItem(`${conversionKey}:visible`) === 'true'
-        ? { root: null }
-        : null
-    } catch {
-      return null
-    }
-  })
+  const [conversion, setConversionState] = useState<{ root: string | null } | null>(() =>
+    conversionVisible(conversionKey) ? { root: null } : null,
+  )
   const setConversion = (value: { root: string | null } | null) => {
     // A registry refresh can remount this dialog. Keep its visibility, never its path.
-    try {
-      localStorage.setItem(`${conversionKey}:visible`, JSON.stringify(value !== null))
-    } catch {
-      /* best effort */
-    }
+    saveConversionVisible(conversionKey, value !== null)
     setConversionState(value)
   }
   const rememberConversion = (history: ConversionHistory) => {
@@ -200,6 +193,8 @@ export function LibraryManager({
     if (busy) return
     setError(null)
     setHostBusy(true)
+    // An old-library pick switches a remote connection to the local server
+    const onLocal = getActiveConnection()?.kind !== 'remote'
     try {
       // `stage: true` — the shell parks the pick instead of adding it, so Browse
       // only picks a folder and the deliberate Add is the confirm step below.
@@ -210,6 +205,16 @@ export function LibraryManager({
         { stage: true },
       )
       if (!opened) return // cancelled — nothing changed
+      if (opened.needsConversion) {
+        // An old library: the local server is inspecting it. On a remote
+        // connection the app switched there and this dialog remounts with the
+        // review; here, show it now
+        if (onLocal && opened.conversionTask) {
+          rememberConversion({ ...emptyConversion, task: opened.conversionTask })
+          setConversion({ root: null })
+        }
+        return
+      }
       if (opened.needsConfirmation && opened.token) {
         // A plain folder to name, or a library to add: both go to the confirm
         // step, where the button reads Create or Add accordingly.

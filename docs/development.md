@@ -709,7 +709,11 @@ folder that is not a library yet, the shell parks the path in a single
 pending-pick slot and returns `{ needs_confirmation, token, folder_name }`;
 `confirm_picked_library(token, name)` redeems it and creates the library through
 the sidecar. A token superseded by a later pick is refused and leaves the newer
-pick intact. Cancelling is simply never calling confirm. The macOS picker's own
+pick intact. Cancelling is simply never calling confirm. An old-format library
+is never registered (ADR-0035): the shell starts its read-only conversion
+inspection on the sidecar and returns `{ needs_conversion, conversion_task }`.
+The web layer switches to the local connection if needed, and the Libraries
+dialog opens on that task's review (ADR-0038). The macOS picker's own
 New Folder button covers creating a folder, so the shell adds no folder-creation
 UI. In the browser there is no picker at all: no browser can produce an absolute
 path on the server.

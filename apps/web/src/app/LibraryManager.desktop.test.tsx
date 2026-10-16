@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { LibraryRead } from '../api/client'
@@ -56,6 +56,28 @@ const NEEDS_NAME: OpenedLibrary = {
   displayName: null,
 }
 
+// The read-only inspection the shell started on the local server for an old library
+const INSPECTION = {
+  id: 'a'.repeat(32),
+  root_path: '/synthetic/old',
+  action: 'inspect',
+  attempt: 'b'.repeat(32),
+  state: 'succeeded',
+  result: {
+    inspection: {
+      library_uuid: 'uuid-old',
+      display_name: 'Old Library',
+      lease: 'absent',
+      passphrase: false,
+      caches: false,
+      converts: { bundles: 2 },
+      stays_in_backup: {},
+      blocking: [],
+    },
+  },
+  error: null,
+}
+
 let listedLibraries: LibraryRead[]
 let listFailures: number
 
@@ -74,6 +96,7 @@ beforeEach(() => {
           json: () => Promise.resolve(body),
         } as Response)
       if (url.startsWith('/api/v1/libraries/path-suggestions')) return reply({ suggestions: [] })
+      if (url === `/api/v1/libraries/conversions/tasks/${INSPECTION.id}`) return reply(INSPECTION)
       if (url === '/api/v1/libraries') {
         if (listFailures > 0) {
           listFailures -= 1
@@ -130,6 +153,28 @@ test('native confirmation refreshes the list, shows the library, and restores Ad
   await screen.findByLabelText('Library path')
   expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
   expect(onClose).not.toHaveBeenCalled()
+})
+
+test('browsing to an old library opens its review instead of adding it', async () => {
+  localStorage.clear()
+  openHostFolder.mockResolvedValue({
+    opened: {
+      ...NEEDS_NAME,
+      needsConfirmation: false,
+      isLibrary: true,
+      needsConversion: true,
+      conversionTask: INSPECTION.id,
+    },
+  })
+  renderManager()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+
+  const review = await screen.findByRole('dialog', { name: 'Convert old library' })
+  expect(await within(review).findByText('/synthetic/old')).toBeInTheDocument()
+  expect(await within(review).findByText('Inspection finished.')).toBeInTheDocument()
+  expect(confirmHostPick).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Library name')).not.toBeInTheDocument()
 })
 
 test('picking an existing library folder stages it, and Add registers without switching', async () => {

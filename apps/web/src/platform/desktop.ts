@@ -67,6 +67,8 @@ interface RawOpenedLibrary {
   library_id: string
   library_uuid: string
   display_name: string | null
+  needs_conversion: boolean
+  conversion_task: string | null
 }
 
 // Renames one pick/confirm outcome into the SPA's vocabulary. Shared by both
@@ -81,6 +83,8 @@ function toOpenedLibrary(raw: RawOpenedLibrary): OpenedLibrary {
     libraryId: raw.library_id,
     libraryUuid: raw.library_uuid,
     displayName: raw.display_name,
+    needsConversion: raw.needs_conversion,
+    conversionTask: raw.conversion_task,
   }
 }
 

@@ -283,6 +283,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   place. The import staging folder, an unused file cover column and the early
   Eagle import table now stay in the backup folder, as the unused single bundle
   note already did.
+- On desktop, **Browse…** in the Libraries dialog and **Manage Libraries…** on the
+  first-run screen now open the conversion review for an old library. They used to
+  refuse it with "Convert it before opening" and offer no way to convert.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.

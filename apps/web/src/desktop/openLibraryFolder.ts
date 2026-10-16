@@ -13,10 +13,17 @@
  * further — nothing switches until the user has confirmed.
  */
 
+import {
+  conversionStorageKey,
+  emptyConversion,
+  saveConversion,
+  saveConversionVisible,
+} from '../api/libraryConversion'
 import { confirmHostPickedLibrary, openHostLibraryFolder, type OpenedLibrary } from '../platform'
 import {
   activateConnection,
   ensureLocalConnection,
+  getActiveConnection,
   setPendingLibrarySelection,
   LOCAL_CONNECTION_ID,
 } from './connections'
@@ -50,6 +57,20 @@ export async function openLibraryFolder(
   // the user names it there is nothing to switch to, and cancelling the dialog
   // must be as free as cancelling the picker was.
   if (opened.needsConfirmation) return { opened }
+
+  // An old library, which no server registers (ADR-0035). The local server is
+  // inspecting it, so its Libraries dialog shows the review; the app switches
+  // there unless it is already on it. No library is selected.
+  if (opened.needsConversion && opened.conversionTask) {
+    const key = conversionStorageKey(LOCAL_CONNECTION_ID)
+    saveConversion(key, { ...emptyConversion, task: opened.conversionTask })
+    saveConversionVisible(key, true)
+    if (getActiveConnection()?.kind !== 'local') {
+      await ensureLocalConnection()
+      await activateConnection(LOCAL_CONNECTION_ID)
+    }
+    return { opened }
+  }
 
   // The current server already has it. Starting a local one would make a second
   // server for the same folder, which the lease refuses — so the useful action
