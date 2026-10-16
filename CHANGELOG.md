@@ -59,6 +59,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   refused for review when another device changed it first. Deleting a
   collection keeps its bundles and moves its subcollections up one level. The
   desktop collection menu has Copy URI again.
+- Drag portable cards onto a sidebar collection again. A drop adds the bundles
+  to it; out of an open collection, a plain drop also removes them from that
+  collection, and Option/Alt keeps them there. The browser's empty-space menu
+  has New Collection, or New Subcollection inside a collection. Card drags need
+  `selection_version: 2`.
 
 - Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
   in the portable browser, album, file details and bundle inspector. Library

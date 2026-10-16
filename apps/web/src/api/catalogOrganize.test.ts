@@ -1,6 +1,18 @@
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 
-import { moveCollections, sortCollectionsByName, type ForestItem } from './catalogOrganize'
+import { catalog, runJob } from './catalog'
+import {
+  moveBundlesToCollection,
+  moveCollections,
+  sortCollectionsByName,
+  type ForestItem,
+} from './catalogOrganize'
+
+vi.mock('./catalog', () => ({
+  catalog: vi.fn(),
+  runJob: vi.fn(),
+  operationId: () => 'synthetic-operation',
+}))
 
 const names = { a: 'Alpha', b: 'Beta', c: 'Gamma', d: 'Delta', e: 'Echo' }
 
@@ -52,4 +64,55 @@ test('name cleanup orders every group in either direction', () => {
   expect(order(descending, null)).toEqual(['b', 'a'])
   expect(order(descending, 'a')).toEqual(['c', 'e', 'd'])
   expect(descending.map((item) => item.id)).toEqual(forest.map((item) => item.id))
+})
+
+// One membership choice per target, as the selection read returns it
+function choices(assigned: Record<string, number>, held = false) {
+  vi.mocked(catalog).mockImplementation(async (_library, _path, _method, body) => {
+    const target = (body as { target: string }).target
+    return {
+      items: [{ id: target, name: target, assigned_count: assigned[target], observed: {}, held }],
+      next_cursor: null,
+    } as never
+  })
+}
+
+beforeEach(() => {
+  vi.mocked(catalog).mockReset()
+  vi.mocked(runJob).mockReset()
+  vi.mocked(runJob).mockResolvedValue({ id: 'job', receipt: 'receipt' } as never)
+})
+
+const bulk = () =>
+  vi
+    .mocked(runJob)
+    .mock.calls.filter(([, action]) => action === 'preview')
+    .map(([, , command]) => command as { target: string; assigned: boolean })
+
+test('a move adds to the target and then removes from the source', async () => {
+  choices({ target: 0, source: 2 })
+  await moveBundlesToCollection('library', ['one', 'two'], 'target', 'source')
+  expect(bulk().map(({ target, assigned }) => [target, assigned])).toEqual([
+    ['target', true],
+    ['source', false],
+  ])
+})
+
+test('a copy or an already complete side commits nothing for that side', async () => {
+  choices({ target: 2, source: 0 })
+  await moveBundlesToCollection('library', ['one', 'two'], 'target', 'source')
+  await moveBundlesToCollection('library', ['one', 'two'], 'target', null)
+  expect(bulk()).toEqual([])
+})
+
+test('a held choice or an oversized selection is refused before any write', async () => {
+  choices({ target: 0 }, true)
+  await expect(moveBundlesToCollection('library', ['one'], 'target', null)).rejects.toThrow(
+    'metadata review',
+  )
+  const many = Array.from({ length: 101 }, (_, index) => `bundle-${index}`)
+  await expect(moveBundlesToCollection('library', many, 'target', null)).rejects.toThrow(
+    'at most 100',
+  )
+  expect(runJob).not.toHaveBeenCalled()
 })

@@ -608,3 +608,63 @@ test('portable sidebar creates, renames, arranges and deletes collections @fulls
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('portable cards drag into sidebar collections @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-card-drag-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=5))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const row = (name: RegExp) => page.getByRole('treeitem', { name }).first()
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    const card = grid.getByRole('option').filter({ hasText: 'Synthetic playback' })
+    // A drop from All bundles adds the card without removing it anywhere
+    await card.dragTo(row(/Synthetic child/))
+    await row(/Synthetic child/).click()
+    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
+    await expect(page.getByText('2 items', { exact: true })).toBeVisible()
+    // A plain drop out of an open collection moves the card
+    await card.dragTo(row(/Synthetic root/))
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await row(/Synthetic root/).click()
+    await expect(grid.getByRole('option')).toHaveCount(1)
+    await expect(card).toBeVisible()
+
+    // Empty space inside a collection names a subcollection of it
+    const box = (await grid.boundingBox())!
+    await grid.click({ button: 'right', position: { x: box.width - 12, y: box.height - 12 } })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'New Subcollection' }).click()
+    const prompt = page.getByRole('dialog', { name: 'New Subcollection' })
+    await prompt.getByLabel('Collection name').fill('Nested draft')
+    await prompt.getByRole('button', { name: 'Create' }).click()
+    await expect(row(/Nested draft/)).toBeVisible()
+    const forest = JSON.parse(
+      (await (await fetch(`${base}/entities/collections/_`)).json()).fields.$forest.value,
+    ) as { id: string; parent_id: string | null }[]
+    expect(
+      forest.filter((item) => item.parent_id === 'collections-root').map((item) => item.id),
+    ).toHaveLength(2)
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

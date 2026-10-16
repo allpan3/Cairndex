@@ -6,6 +6,7 @@ import {
   arrangeCollections,
   createCollection,
   deleteCollection,
+  moveBundlesToCollection,
   moveCollections,
   renameCollection,
   sortCollectionsByName,
@@ -14,6 +15,7 @@ import { captureRequestScope } from '../api/requestScope'
 import { getHostPlatform } from '../platform'
 import { CleanupOrderDialog } from './CleanupOrderDialog'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
+import { getActiveDrag, type DragItem } from './dnd'
 import { RemoveCollectionDialog } from './RemoveCollectionDialog'
 import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
@@ -34,6 +36,11 @@ export function CatalogNavigation({
   onReview,
   onReviewEntity,
   blocked,
+  dragItem = null,
+  onDragItem,
+  bundleMovesEnabled = false,
+  newCollectionRequest = null,
+  onNewCollectionHandled,
 }: {
   systemViewsEnabled: boolean
   unbundled: boolean
@@ -51,6 +58,14 @@ export function CatalogNavigation({
   onReview: () => void
   /** The catalog is not ready, or recovery holds it; collections stay read-only. */
   blocked: boolean
+  /** A drag in progress, from the browser or the sidebar itself. */
+  dragItem?: DragItem | null
+  onDragItem?: (item: DragItem | null) => void
+  /** Cards dropped on a collection join it; needs `selection_version: 2`. */
+  bundleMovesEnabled?: boolean
+  /** The browser's empty-space menu asks for a new collection here. */
+  newCollectionRequest?: { parentId: string | null } | null
+  onNewCollectionHandled?: () => void
 }) {
   const collections = useQuery({
     queryKey: ['catalog-navigation', library, 'collections'],
@@ -167,6 +182,22 @@ export function CatalogNavigation({
         onReorderCollections={(parent, moved, before) => arrange(moved, parent, before)}
         onReparentCollections={(moved, target) => arrange(moved, target, null)}
         onCleanupCollections={() => setCleaning(true)}
+        dragItem={dragItem}
+        onDragItem={onDragItem}
+        newCollectionRequest={newCollectionRequest}
+        onNewCollectionHandled={onNewCollectionHandled}
+        onMoveBundlesInto={
+          bundleMovesEnabled
+            ? (target, copy) => {
+                // The live payload: a fast drop can arrive before React renders the drag
+                const live = getActiveDrag() ?? dragItem
+                if (live?.kind !== 'bundles' || live.ids.length === 0) return
+                // Option/Alt adds; a plain drop out of an open collection moves
+                const source = copy ? null : selection.collectionId
+                run(() => moveBundlesToCollection(library, live.ids, target, source))
+              }
+            : undefined
+        }
         smartCollections={smart.data ?? []}
         onNewSmartCollection={onReview}
         onEditSmartCollection={(item) => onReviewEntity('smart_folders', item.id)}

@@ -146,8 +146,15 @@ review, never overwritten from the browser's older copy. The server refuses a
 cyclic result. Delete moves subcollections up one level, as the catalog's
 delete always does, so the dialog says so instead of offering the legacy
 "delete subcollections too" choice. The collection menu has Copy URI on the
-desktop. Dragging cards onto a collection, Delete Bundle and the empty-space
-menu follow in the next change.
+desktop.
+
+Portable card drag (`feature/portable-bundle-drag`) restores dropping cards on a
+sidebar collection, with the legacy move and Option/Alt add rules. A move is two
+catalog commits, an add and then a removal, because one bulk command names one
+collection. A refused removal leaves the bundles in both collections, never in
+neither. The browser's empty-space menu creates a collection here. Delete Bundle
+and Create Bundle need an atomic server action that keeps file identities, so
+they follow separately.
 
 The Rust audit repair [PR #62](https://github.com/allpan3/Cairndex/pull/62)
 merged as `79fc2797` after both VM gates and the complete hosted matrix passed.

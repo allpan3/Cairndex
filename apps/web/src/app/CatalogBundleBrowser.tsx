@@ -19,7 +19,7 @@ import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
-import { removeFromCollection, setCollectionCover } from '../api/catalogOrganize'
+import { setCollectionCover, setCollectionMembership } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import { getHostPlatform } from '../platform'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
@@ -52,6 +52,8 @@ export function CatalogBundleBrowser({
   hostFiles,
   onHostPath,
   onLocateFile,
+  onBundleDrag,
+  onNewCollection,
   viewerOpen = false,
 }: {
   library: string
@@ -75,6 +77,10 @@ export function CatalogBundleBrowser({
   onHostPath?: (path: string | null) => void
   /** Show one library-relative file in the File Browser. */
   onLocateFile?: (path: string) => void
+  /** Cards drag into sidebar collections when set; `null` ends the drag. */
+  onBundleDrag?: (ids: string[] | null) => void
+  /** Start naming a new collection under `parent` (null: the top level). */
+  onNewCollection?: (parent: string | null) => void
   /** The viewer is open over this browser and shows the bundle inspector itself. */
   viewerOpen?: boolean
 }) {
@@ -387,7 +393,7 @@ export function CatalogBundleBrowser({
           disabled: blocked || targets.length > 100,
           onClick: () =>
             organize(
-              () => removeFromCollection(library, targets, collection),
+              () => setCollectionMembership(library, targets, collection, false),
               one
                 ? 'Removed from this collection.'
                 : `Removed ${targets.length} from this collection.`,
@@ -396,6 +402,17 @@ export function CatalogBundleBrowser({
     }
     items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
     menu.open(event, items)
+  }
+  // Empty space means "here": under the open collection, else at the top level
+  const emptyMenu = (event: React.MouseEvent) => {
+    if (!onNewCollection || blocked) return
+    const parent = selection.collectionId ?? null
+    menu.open(event, [
+      {
+        label: parent ? 'New Subcollection' : 'New Collection',
+        onClick: () => onNewCollection(parent),
+      },
+    ])
   }
   const changeSort = (next: BundleSort, direction: SortOrder) => {
     if (!supportedSorts.includes(next)) {
@@ -551,6 +568,9 @@ export function CatalogBundleBrowser({
             onOpen={openAlbum}
             contextMenuOpen={menu.state !== null}
             onContextMenu={bundleMenu}
+            onEmptyContextMenu={emptyMenu}
+            onBundleDragStart={onBundleDrag}
+            onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
             isLoading={browse.isPending}
             isError={browse.isError}
             error={browse.error}
