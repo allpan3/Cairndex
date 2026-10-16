@@ -24,7 +24,8 @@ endpoint. No production service, owner library or real conversion is part of the
 current extraction. Provider delivery, broad server compatibility, representative
 scale and power-loss safety remain unqualified.
 
-Mounted SMB requires a saved login for the exact server/account/share. Background
+Mounted SMB requires a saved login for the exact server/account/share, or a
+server/account login saved with no share path. Background
 work has prompts disabled; use the actual frozen executable's explicit
 `authorize-smb` command for its initial credential-access authorization.
 Credential values and private endpoint details must remain outside Git.

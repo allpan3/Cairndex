@@ -121,6 +121,74 @@ def mount_for(path: Path) -> Mount | None:
     return _parse_mount(_field(buffer.f_mntonname), _field(buffer.f_mntfromname))
 
 
+_SMB_PROTOCOL = int.from_bytes(b"smb ", "big")
+_PATH_ATTRIBUTE = int.from_bytes(b"path", "big")
+_LOGIN_NOT_FOUND = -25300
+
+
+class _KeychainAttribute(ctypes.Structure):
+    _fields_ = [("tag", ctypes.c_uint32), ("length", ctypes.c_uint32), ("data", ctypes.c_void_p)]
+
+
+class _KeychainAttributes(ctypes.Structure):
+    _fields_ = [("count", ctypes.c_uint32), ("attr", ctypes.POINTER(_KeychainAttribute))]
+
+
+def _server_login(security: Any, host: bytes, account: bytes) -> tuple[int, str | None]:
+    """Read the login that Finder saves for a whole server, which has no path.
+
+    A pathless search can return another share's item, so its own path attribute
+    must be empty before its password is read. When the search returns another
+    share's item, the lookup fails instead of enumerating Keychain.
+    """
+    item = ctypes.c_void_p()
+    status = security.SecKeychainFindInternetPassword(
+        None,
+        len(host),
+        host,
+        0,
+        None,
+        len(account),
+        account,
+        0,
+        None,
+        0,
+        _SMB_PROTOCOL,
+        0,
+        None,
+        None,
+        ctypes.byref(item),
+    )
+    if status != 0 or not item.value:
+        return status or _LOGIN_NOT_FOUND, None
+    try:
+        attribute = _KeychainAttribute(_PATH_ATTRIBUTE, 0, None)
+        attributes = _KeychainAttributes(1, ctypes.pointer(attribute))
+        status = security.SecKeychainItemCopyContent(
+            item, None, ctypes.byref(attributes), None, None
+        )
+        if status != 0:
+            return status, None
+        try:
+            pathless = attributes.attr[0].length == 0
+        finally:
+            security.SecKeychainItemFreeContent(ctypes.addressof(attributes), None)
+        if not pathless:
+            return _LOGIN_NOT_FOUND, None
+        length, data = ctypes.c_uint32(), ctypes.c_void_p()
+        status = security.SecKeychainItemCopyContent(
+            item, None, None, ctypes.byref(length), ctypes.byref(data)
+        )
+        if status != 0 or not data.value:
+            return status or _LOGIN_NOT_FOUND, None
+        try:
+            return 0, ctypes.string_at(data, length.value).decode("utf-8")
+        finally:
+            security.SecKeychainItemFreeContent(None, data)
+    finally:
+        security.CFRelease(item)
+
+
 # Retrieve one explicitly identified internet-password item without enumerating Keychain
 def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
     framework = ctypes.util.find_library("Security")
@@ -144,15 +212,25 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
         ctypes.c_uint32,
         ctypes.POINTER(ctypes.c_uint32),
         ctypes.POINTER(ctypes.c_void_p),
-        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
     ]
     security.SecKeychainFindInternetPassword.restype = ctypes.c_int32
+    security.SecKeychainItemCopyContent.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(_KeychainAttributes),
+        ctypes.POINTER(ctypes.c_uint32),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    security.SecKeychainItemCopyContent.restype = ctypes.c_int32
     security.SecKeychainItemFreeContent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    security.CFRelease.argtypes = [ctypes.c_void_p]
     host, account = mount.server.encode(), mount.account.encode()
     # macOS saves separate internet-password items for individual SMB shares.
     # An unspecified path can select another share's item and its access rules.
     share_path = mount.share.encode()
     length, data = ctypes.c_uint32(), ctypes.c_void_p()
+    server_password: str | None = None
     with _keychain_lock:
         security.SecKeychainSetUserInteractionAllowed(allow_prompt)
         try:
@@ -167,14 +245,19 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
                 len(share_path),
                 share_path,
                 0,
-                int.from_bytes(b"smb ", "big"),
+                _SMB_PROTOCOL,
                 0,
                 ctypes.byref(length),
                 ctypes.byref(data),
                 None,
             )
+            if status == _LOGIN_NOT_FOUND:
+                # A login saved for the whole server has no share path
+                status, server_password = _server_login(security, host, account)
         finally:
             security.SecKeychainSetUserInteractionAllowed(True)
+    if server_password is not None:
+        return server_password
     if status != 0 or not data.value:
         if data.value:
             security.SecKeychainItemFreeContent(None, data)
