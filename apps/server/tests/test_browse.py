@@ -1,9 +1,11 @@
 """Bundle browse: system views, sorting, pagination, summaries, counts."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
+from cairndex.core import ids
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
@@ -646,10 +648,17 @@ def test_date_modified_sort_follows_metadata_edits(session: Session) -> None:
     assert page.items[0].title == "older"
 
 
-def test_manual_sort_puts_a_newly_added_bundle_first(session: Session) -> None:
+def test_manual_sort_puts_a_newly_added_bundle_first(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Nothing has been dragged, so every bundle holds the same default order
     value and the tie-break decides. A bundle added just now belongs at the
     front — that is where someone looks for what they just imported."""
+    # ULIDs order by time only to the millisecond, and a fast machine creates
+    # these bundles within one, so give each a later millisecond.
+    created = iter(range(1, 4))
+    real_ulid = ids.ULID
+    monkeypatch.setattr(ids, "ULID", lambda: real_ulid.from_timestamp(next(created)))
     first = bundle_service.create_bundle(session, title="oldest")
     second = bundle_service.create_bundle(session, title="middle")
     session.commit()
