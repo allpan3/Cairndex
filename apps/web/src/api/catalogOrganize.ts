@@ -2,12 +2,20 @@
 // Each write reads the catalog's current bases first, so a change made on another
 // device since is refused for review instead of overwritten.
 import { catalog, operationId, runJob, type Entity } from './catalog'
-import type { CollectionRead } from './client'
+import { catalogNavigation } from './catalogQuery'
+import type { CollectionRead, TagGroupRead, TagRead } from './client'
 import type { components } from './schema'
 
 type Choices = components['schemas']['CatalogBulkMembershipPage']
 
 const REVIEW = 'This collection needs metadata review first.'
+
+type Named = 'collections' | 'tags' | 'tag_groups'
+const NOUN: Record<Named, string> = {
+  collections: 'collection',
+  tags: 'tag',
+  tag_groups: 'tag group',
+}
 
 /** One collection's place in the shared `collections/_/$forest` arrangement. */
 export interface ForestItem {
@@ -171,36 +179,62 @@ export async function setCollectionCover(
   )
 }
 
+// The server assigns the identity and timestamps of a new catalog row
+async function createNamed<T>(
+  library: string,
+  family: Named,
+  values: Record<string, unknown>,
+): Promise<T> {
+  const template = await catalog<{ cells: Record<string, string> }>(library, `/creation/${family}`)
+  const cells = { ...template.cells }
+  for (const [column, value] of Object.entries(values)) cells[column] = JSON.stringify(value)
+  await commit(library, { action: 'create', family, cells })
+  return Object.fromEntries(
+    Object.entries(cells).map(([column, raw]) => [column, JSON.parse(raw) as unknown]),
+  ) as T
+}
+
 /** Create a collection at the end of its parent's children; returns the new row. */
-export async function createCollection(
+export function createCollection(
   library: string,
   name: string,
   parent: string | null,
   sortOrder: number,
 ): Promise<CollectionRead> {
-  // The server assigns the identity and timestamps of a new catalog row
-  const template = await catalog<{ cells: Record<string, string> }>(
-    library,
-    '/creation/collections',
-  )
-  const cells = {
-    ...template.cells,
-    name: JSON.stringify(name),
-    parent_id: JSON.stringify(parent),
-    sort_order: JSON.stringify(sortOrder),
-  }
-  await commit(library, { action: 'create', family: 'collections', cells })
-  return Object.fromEntries(
-    Object.entries(cells).map(([column, raw]) => [column, JSON.parse(raw) as unknown]),
-  ) as unknown as CollectionRead
+  return createNamed(library, 'collections', { name, parent_id: parent, sort_order: sortOrder })
 }
 
-/** Rename a collection whose name this device has seen. */
-export async function renameCollection(library: string, id: string, name: string): Promise<void> {
-  const entity = await catalog<Entity>(library, `/entities/collections/${id}`)
+/** Create a tag at the end of its parent's children; returns the new row. */
+export function createTag(
+  library: string,
+  name: string,
+  parent: string | null,
+  sortOrder: number,
+): Promise<TagRead> {
+  return createNamed(library, 'tags', { name, parent_id: parent, sort_order: sortOrder })
+}
+
+/** Create a tag group after the others; returns the new row. */
+export function createTagGroup(
+  library: string,
+  name: string,
+  sortOrder: number,
+): Promise<TagGroupRead> {
+  return createNamed(library, 'tag_groups', { name, sort_order: sortOrder })
+}
+
+/** Rename a collection, tag or tag group whose name this device has seen. */
+export async function rename(
+  library: string,
+  family: Named,
+  id: string,
+  name: string,
+): Promise<void> {
+  const entity = await catalog<Entity>(library, `/entities/${family}/${id}`)
   const field = entity.fields.name
   const alive = entity.fields.$alive
-  if (!field || field.held || alive?.value !== 'true' || alive.held) throw new Error(REVIEW)
+  if (!field || field.held || alive?.value !== 'true' || alive.held)
+    throw new Error(`This ${NOUN[family]} needs metadata review first.`)
   await runJob(
     library,
     'save',
@@ -217,22 +251,53 @@ export async function renameCollection(library: string, id: string, name: string
   )
 }
 
-/** Delete one collection; its bundles stay, and its subcollections move up one level. */
-export function deleteCollection(library: string, id: string): Promise<void> {
-  return commit(library, { action: 'delete', family: 'collections', entity: id })
+/**
+ * Delete one collection, tag or tag group; bundles keep everything else. Without
+ * `cascade`, children move up one level; with it, the whole subtree goes.
+ */
+export function remove(library: string, family: Named, id: string, cascade = false) {
+  return commit(library, { action: 'delete', family, entity: id, cascade })
+}
+
+/** Add a tag to a tag group, or remove it; needs `browse_version: 8`. */
+/**
+ * What deleting a tag with its descendants takes: the tags, and the bundles that
+ * carry any. It reads the current catalog, not the page's copy, so the prompt
+ * cannot understate a subtree that changed a moment ago.
+ */
+export async function tagDeleteImpact(
+  library: string,
+  id: string,
+): Promise<{ tags: number; bundles: number }> {
+  // Each navigation row counts the bundles carrying the tag or a descendant
+  type Counted = Pick<TagRead, 'id' | 'parent_id'> & { count: number }
+  const tags = await catalogNavigation<Counted>(library, 'tags')
+  const children = new Map<string, string[]>()
+  for (const tag of tags)
+    if (tag.parent_id) children.set(tag.parent_id, [...(children.get(tag.parent_id) ?? []), tag.id])
+  const subtree = new Set([id])
+  for (const member of subtree) for (const child of children.get(member) ?? []) subtree.add(child)
+  return { tags: subtree.size, bundles: tags.find((tag) => tag.id === id)?.count ?? 0 }
+}
+
+export function groupTag(library: string, group: string, tag: string, assigned: boolean) {
+  return commit(library, { action: 'group_tag', group, tag, assigned })
 }
 
 /**
- * Rewrite the collection hierarchy from the catalog's current arrangement, never
- * from the browser's older copy, so the change applies to what another device left.
+ * Rewrite a collection or tag hierarchy from the catalog's current arrangement,
+ * never from the browser's older copy, so the change applies to what another
+ * device left.
  */
-export async function arrangeCollections(
+export async function arrangeHierarchy(
   library: string,
+  family: 'collections' | 'tags',
   change: (items: ForestItem[]) => ForestItem[],
 ): Promise<void> {
-  const entity = await catalog<Entity>(library, '/entities/collections/_')
+  const entity = await catalog<Entity>(library, `/entities/${family}/_`)
   const forest = entity.fields.$forest
-  if (!forest || forest.held) throw new Error('The collection order needs metadata review first.')
+  if (!forest || forest.held)
+    throw new Error(`The ${NOUN[family]} order needs metadata review first.`)
   const items = JSON.parse(forest.value ?? '[]') as ForestItem[]
   await commit(library, { action: 'arrange', unit: forest.unit, value: change(items) })
 }

@@ -265,6 +265,65 @@ class Preview:
         if not self.values:
             raise ReplicaError("The bundles are already in this order")
 
+    def delete_tree(self, family: str, identity: str) -> None:
+        """Delete a tag or collection with every descendant, as the legacy tag delete did.
+
+        Descendants go first, deepest first, so no child is moved up to a parent
+        that the same preview deletes.
+        """
+        if family not in ("tags", "collections"):
+            raise ReplicaError("Only a tag or collection hierarchy can be deleted as a tree")
+        children: dict[str | None, list[str]] = {}
+        for item in self.get(key(family, "_", "$forest")):
+            children.setdefault(item["parent_id"], []).append(item["id"])
+        order: list[str] = []
+        pending = [identity]
+        while pending:
+            current = pending.pop()
+            order.append(current)
+            pending.extend(children.get(current, []))
+        for current in reversed(order):
+            self.delete(family, current)
+
+    def group_tag(self, command: dict[str, Any]) -> bool:
+        """Add a tag to a tag group, restoring a deleted membership, or remove it.
+
+        Returns whether the save restores a tombstone, which needs explicit recovery.
+        """
+        group, tag, assigned = command["group"], command["tag"], command["assigned"]
+        if type(assigned) is not bool:
+            raise ReplicaError("Unsupported membership choice")
+        if read_row(self.db, "tag_groups", group) is None or read_row(self.db, "tags", tag) is None:
+            raise ReplicaError("Membership target is unavailable")
+        identity = f"{group}~{tag}"
+        unit = key("tag_group_memberships", identity, "$alive")
+        if self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone():
+            raise ReplicaError("Membership changed or requires conflict review; refresh choices")
+        existing = self.db.execute(
+            "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+        ).fetchone()
+        if not assigned:
+            if not existing or existing[0] != "true":
+                raise ReplicaError("Membership is already absent; refresh choices")
+            self.delete("tag_group_memberships", identity)
+        elif existing and existing[0] == "true":
+            raise ReplicaError("Membership is already present; refresh choices")
+        elif existing:
+            # Explicit Add restores only this stable pair, as a bundle membership does
+            self.put(unit, True)
+            return True
+        else:
+            last = self.db.execute(
+                "SELECT max(json_extract(body,'$.sort_order')) FROM catalog_rows "
+                "WHERE family='tag_group_memberships' AND json_extract(body,'$.group_id')=?",
+                (group,),
+            ).fetchone()[0]
+            self.create(
+                "tag_group_memberships",
+                {"group_id": group, "tag_id": tag, "sort_order": 0 if last is None else last + 1},
+            )
+        return False
+
     def collect_directory(self, command: dict[str, Any]) -> None:
         """Create a collection holding every bundle under one folder, in one commit.
 
@@ -529,7 +588,12 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
         elif action == "moment_tag":
             recover = builder.moment_tag(command)
         elif action == "delete":
-            builder.delete(command["family"], command["entity"])
+            if command.get("cascade"):
+                builder.delete_tree(command["family"], command["entity"])
+            else:
+                builder.delete(command["family"], command["entity"])
+        elif action == "group_tag":
+            recover = builder.group_tag(command)
         elif action == "collect_directory":
             builder.collect_directory(command)
         elif action == "order":

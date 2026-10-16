@@ -86,6 +86,12 @@ A `collect_directory` preview creates one collection, last among its siblings,
 with every browsable bundle that has a file in a library-relative folder or
 below it. `GET /replica/catalog/directories/bundle-count` reports that count
 first. Servers advertise it as `browse_version: 7`.
+
+A `delete` preview of a tag or collection takes `cascade: true` to delete its
+descendants with it, deepest first; without it, the children move up one
+level. A `group_tag` preview adds a tag to a tag group, after its existing
+members, or removes it; adding restores a deleted membership. Servers
+advertise the All Tags page as `browse_version: 8`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the

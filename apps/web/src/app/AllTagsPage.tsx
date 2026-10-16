@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 
 import { fetchTagDeleteImpact, type TagGroupRead, type TagRead } from '../api/client'
 import {
@@ -10,6 +10,8 @@ import {
   useTagMutations,
   useTags,
 } from '../api/hooks'
+import { CatalogQueryContext } from '../api/catalogQuery'
+import { tagDeleteImpact } from '../api/catalogOrganize'
 import { ConfirmDialog, PromptDialog } from './PromptDialog'
 import { ContextMenu } from './ContextMenu'
 import { IconPlus } from './icons'
@@ -53,6 +55,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const { rename, remove, reparent } = useTagMutations()
   const groupMutations = useTagGroupMutations()
   const createTagPath = useCreateTagPath()
+  const library = useContext(CatalogQueryContext)
   // The tag awaiting a delete confirmation, with what the delete would take.
   // The tag awaiting confirmation. `children`/`bundles` are null when the impact
   // lookup failed: the prompt then asks without claiming a cost it does not know.
@@ -297,7 +300,9 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     void (async () => {
       let impact: { tags: number; bundles: number } | null = null
       try {
-        impact = await fetchTagDeleteImpact(tag.id)
+        impact = library
+          ? await tagDeleteImpact(library, tag.id)
+          : await fetchTagDeleteImpact(tag.id)
       } catch {
         // Left null deliberately. Not knowing the cost is a reason to ask, not a
         // reason to skip asking — treating a failed lookup as "nothing to warn
