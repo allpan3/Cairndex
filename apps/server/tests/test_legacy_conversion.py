@@ -196,6 +196,29 @@ def test_older_schema_receives_the_defaults_of_its_upgrades(tmp_path):
     assert {row["manual_order"] for row in bundles.values()} == {0}
 
 
+def test_retired_metadata_of_older_versions_stays_in_the_backup(tmp_path):
+    """A library that older versions upgraded keeps metadata they stopped reading."""
+    root = _legacy(tmp_path)
+    metadata = root / ".cairndex"
+    (metadata / "tmp").mkdir()
+    (metadata / "tmp" / "import.part").write_bytes(b"synthetic staged bytes\n")
+    with closing(sqlite3.connect(metadata / "library.db")) as db:
+        db.execute("ALTER TABLE asset_files ADD COLUMN cover_previous_file_id VARCHAR(26)")
+        db.execute("UPDATE asset_files SET cover_previous_file_id='file-video'")
+        db.execute("CREATE TABLE import_records (id TEXT PRIMARY KEY, external_id TEXT)")
+        db.execute("INSERT INTO import_records VALUES ('import-one', 'synthetic')")
+        db.commit()
+    legacy = _tree(metadata)
+    assert conversion.inspect(root)["blocking"] == []
+    base = _base(tmp_path)
+    attempt = uuid4().hex
+    review = conversion.prepare(root, base, attempt)
+    assert conversion.activate(root, base, attempt, review["receipt"])["state"] == "converted"
+    assert _tree(root / review["backup_name"]) == legacy
+    files = _rows(_join(root, tmp_path / "joined"), "asset_files")
+    assert "cover_previous_file_id" not in files["file-video"]
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [

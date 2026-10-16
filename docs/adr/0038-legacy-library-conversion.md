@@ -57,9 +57,10 @@ Library IDs, bundle and file IDs, relative paths, relationships and authored
 values are kept. These do not convert, and stay only in the backup folder:
 resume positions and last-opened times (ADR-0035 leaves Recently Used and
 cross-device resume as separate work), pending grouping suggestions, derived
-caches, the old passphrase hash (ADR-0035: no legacy passphrase import) and
-files in the old in-package trash. The report lists each count, so the owner
-can decide before activation.
+caches, the old passphrase hash (ADR-0035: no legacy passphrase import),
+files in the old in-package trash and import staging folder, and tables and
+columns that earlier versions stopped reading. The report counts each kind of
+owner data among them, so the owner can decide before activation.
 
 Media files are never read for conversion, moved, renamed or deleted. Old
 versions of the app see a format they do not support and refuse the library,

@@ -18,7 +18,8 @@ from cairndex.search.index import FTS_TABLE
 LEGACY_FORMAT = "cairndex.library"
 METADATA = ".cairndex"
 
-# Entries a legacy package may hold. The cache, locks and trash stay in the backup.
+# Entries a legacy package may hold. The cache, locks, trash and the import staging
+# folder (``tmp``) stay in the backup.
 _PACKAGE_ENTRIES = {
     "manifest.json",
     "library.db",
@@ -26,6 +27,7 @@ _PACKAGE_ENTRIES = {
     "cache",
     "locks",
     "trash",
+    "tmp",
 }
 # Files that macOS and Windows file browsers add to any folder they display
 _OS_ENTRIES = {".DS_Store", "Thumbs.db", "desktop.ini"}
@@ -41,10 +43,11 @@ _MANIFEST_FIELDS = {
 }
 
 # Tables that earlier versions dropped or moved. They include bookkeeping,
-# grouping suggestions (ADR-0022), retired prototypes and SQLite statistics.
-# The backup folder keeps their rows unchanged.
+# grouping suggestions (ADR-0022), retired prototypes such as the Eagle import
+# map, and SQLite statistics. The backup folder keeps their rows unchanged.
 _RETIRED_TABLES = {
     "alembic_version",
+    "import_records",
     "grouping_plans",
     "grouping_proposals",
     "grouping_proposal_files",
@@ -58,9 +61,13 @@ _RETIRED_TABLES = {
     "sqlite_stat1",
     "sqlite_stat4",
 }
-# The single bundle note that ``asset_bundles.notes`` replaced; earlier versions
-# stopped reading it, so it carries no current value.
-_RETIRED_COLUMNS = {"asset_bundles": {"note"}}
+# Columns that earlier versions stopped reading, so they carry no current value:
+# the single bundle note that ``asset_bundles.notes`` replaced, and the cover that
+# a video frame displaced, which only an older reset restored.
+_RETIRED_COLUMNS = {
+    "asset_bundles": {"note"},
+    "asset_files": {"cover_previous_file_id"},
+}
 
 _LEASE_TTL = timedelta(seconds=300)
 

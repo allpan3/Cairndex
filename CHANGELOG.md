@@ -279,6 +279,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   under the name that recovery preparation gives it.
 - The recovery command-line `prepare` now refuses while a server still holds the
   library, as the interface already did. Finish Release or stop the server first.
+- Conversion no longer refuses old libraries that earlier versions upgraded in
+  place. The import staging folder, an unused file cover column and the early
+  Eagle import table now stay in the backup folder, as the unused single bundle
+  note already did.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.
