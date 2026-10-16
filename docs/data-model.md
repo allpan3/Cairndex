@@ -748,11 +748,11 @@ do not open the full VTT. These are reproducible cache artifacts, not
 
 Video `AssetFile` rows may store nullable `cover_time`; it selects the
 timestamp used whenever that file's thumbnail is regenerated. Clearing the
-field restores automatic representative-frame selection. A private nullable
-`cover_previous_file_id` remembers the bundle cover displaced by the first
-custom-frame selection so reset restores an image or automatic cover; a newer
-manual cover choice is never overwritten. These values are portable metadata in
-`library.db`; only the derived JPEG changes, never the original.
+field restores automatic representative-frame selection. Setting a frame
+does not change the bundle cover, so libraries created before that rule keep an
+unused `cover_previous_file_id` column, which conversion leaves in the backup.
+These values are portable metadata in `library.db`; only the derived JPEG
+changes, never the original.
 
 ## Deferred to later phases
 
