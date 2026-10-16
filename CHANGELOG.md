@@ -286,6 +286,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - On desktop, **Browse…** in the Libraries dialog and **Manage Libraries…** on the
   first-run screen now open the conversion review for an old library. They used to
   refuse it with "Convert it before opening" and offer no way to convert.
+- Mounted SMB publication now finds a login that Finder saved for the whole
+  server. It used to require a login saved for the mounted share, so a common
+  Finder login made conversion and file operations fail. A share's own login is
+  still preferred, and a login saved for another share is never used.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.

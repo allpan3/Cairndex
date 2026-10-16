@@ -18,61 +18,141 @@ class Function:
         return self.action(*args)
 
 
-def security(monkeypatch, status=0):
-    interactions, lookups, freed = [], [], []
-    buffers = []
+SHARE_LOGINS = {
+    (b"example.com", b"owner", b"fixtures"): b"synthetic-first-share",
+    (b"example.com", b"owner", "fixtures two é".encode()): b"synthetic-second-share",
+}
+
+
+def security(monkeypatch, status=0, logins=SHARE_LOGINS, read_status=0):
+    """Fake Security API whose items are keyed by server, account and path.
+
+    A server-level item has an empty path. A pathless query returns the first item
+    for the server and account, whichever share it belongs to, as macOS can.
+    """
+    interactions, lookups, freed, reads, released = [], [], [], [], []
+    buffers, items = [], list(logins.items())
+
+    def write(length, data, value):
+        buffer = ctypes.create_string_buffer(value)
+        buffers.append(buffer)
+        ctypes.cast(length, ctypes.POINTER(ctypes.c_uint32))[0] = len(value)
+        ctypes.cast(data, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.addressof(buffer)
 
     def find(*args):
-        key = (args[2][: args[1]], args[6][: args[5]], args[8][: args[7]])
+        path = None if args[8] is None else args[8][: args[7]]
+        key = (args[2][: args[1]], args[6][: args[5]], path)
         lookups.append(key)
         if status:
             return status
-        # A pathless query returns the wrong share's credential, as macOS can.
-        passwords = {
-            (b"example.com", b"owner", b"fixtures"): b"synthetic-first-share",
-            (b"example.com", b"owner", "fixtures two é".encode()): b"synthetic-second-share",
-        }
-        value = passwords.get(key, b"synthetic-wrong-share")
-        buffer = ctypes.create_string_buffer(value)
-        buffers.append(buffer)
-        ctypes.cast(args[12], ctypes.POINTER(ctypes.c_uint32))[0] = len(value)
-        ctypes.cast(args[13], ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.addressof(buffer)
+        if path is not None:
+            if key not in logins:
+                return -25300
+            write(args[12], args[13], logins[key])
+            return 0
+        for handle, ((host, account, _), _) in enumerate(items, 1):
+            if (host, account) == key[:2]:
+                ctypes.cast(args[14], ctypes.POINTER(ctypes.c_void_p))[0] = handle
+                return 0
+        return -25300
+
+    def copy_content(item, _, attributes, length, data):
+        (_, _, path), password = items[item.value - 1]
+        if attributes is not None:
+            reads.append("path")
+            listed = ctypes.cast(attributes, ctypes.POINTER(smb_transport._KeychainAttributes))
+            attribute = listed[0].attr[0]
+            attribute.length = len(path)
+            if path:
+                buffer = ctypes.create_string_buffer(path)
+                buffers.append(buffer)
+                attribute.data = ctypes.addressof(buffer)
+            return 0
+        reads.append("password")
+        if read_status:
+            return read_status
+        write(length, data, password)
         return 0
 
     api = SimpleNamespace(
         SecKeychainSetUserInteractionAllowed=Function(interactions.append),
         SecKeychainFindInternetPassword=Function(find),
-        SecKeychainItemFreeContent=Function(lambda _, data: freed.append(data.value)),
+        SecKeychainItemCopyContent=Function(copy_content),
+        SecKeychainItemFreeContent=Function(
+            lambda attributes, _: freed.append("attributes" if attributes else "password")
+        ),
+        CFRelease=Function(lambda item: released.append(item.value)),
     )
     monkeypatch.setattr(smb_transport.ctypes.util, "find_library", lambda _: "synthetic-security")
     monkeypatch.setattr(smb_transport.ctypes, "CDLL", lambda _: api)
-    return interactions, lookups, freed
+    return SimpleNamespace(
+        interactions=interactions, lookups=lookups, freed=freed, reads=reads, released=released
+    )
 
 
 def test_same_server_and_account_select_their_own_share_login(tmp_path, monkeypatch):
-    interactions, lookups, freed = security(monkeypatch)
+    server_login = {(b"example.com", b"owner", b""): b"synthetic-server-login"}
+    keychain = security(monkeypatch, logins=server_login | SHARE_LOGINS)
     first = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
     second = smb_transport.Mount(tmp_path, "example.com", "fixtures two é", "owner")
     assert smb_transport._password_sync(first, allow_prompt=False) == "synthetic-first-share"
     assert smb_transport._password_sync(second, allow_prompt=False) == "synthetic-second-share"
-    assert [query[2] for query in lookups] == [b"fixtures", "fixtures two é".encode()]
-    assert interactions == [False, True, False, True]
-    assert len(freed) == 2
+    assert [query[2] for query in keychain.lookups] == [b"fixtures", "fixtures two é".encode()]
+    assert keychain.interactions == [False, True, False, True]
+    assert keychain.freed == ["password", "password"]
+
+
+def test_a_login_saved_for_the_whole_server_serves_a_share_without_its_own(tmp_path, monkeypatch):
+    server_login = {(b"example.com", b"owner", b""): b"synthetic-server-login"}
+    keychain = security(monkeypatch, logins=server_login)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    assert smb_transport._password_sync(mount, allow_prompt=False) == "synthetic-server-login"
+    assert [query[2] for query in keychain.lookups] == [b"fixtures", None]
+    assert keychain.reads == ["path", "password"]
+    assert keychain.freed == ["attributes", "password"]
+    assert keychain.released == [1]
+    assert keychain.interactions == [False, True]
+
+
+@pytest.mark.parametrize("read_status", [0, -25308])
+def test_a_pathless_match_never_reads_another_shares_login(tmp_path, monkeypatch, read_status):
+    other_share = {(b"example.com", b"owner", b"other"): b"synthetic-other-share"}
+    keychain = security(monkeypatch, logins=other_share, read_status=read_status)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    with pytest.raises(smb_transport.SmbTransportError) as caught:
+        smb_transport._password_sync(mount, allow_prompt=False)
+    assert caught.value.keychain_status == -25300
+    assert keychain.reads == ["path"]
+    assert keychain.released == [1]
+
+
+def test_a_server_level_login_that_refuses_the_application_is_reported(tmp_path, monkeypatch):
+    server_login = {(b"example.com", b"owner", b""): b"synthetic-server-login"}
+    keychain = security(monkeypatch, logins=server_login, read_status=-25308)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    with pytest.raises(smb_transport.SmbTransportError) as caught:
+        smb_transport._password_sync(mount, allow_prompt=False)
+    assert caught.value.keychain_status == -25308
+    assert "cannot read the saved SMB login" in str(caught.value)
+    assert keychain.freed == ["attributes"]
+    assert keychain.released == [1]
 
 
 @pytest.mark.parametrize("status", [-25300, -25293, -25308])
 def test_keychain_status_distinguishes_missing_login_from_denied_access(
     tmp_path, monkeypatch, status
 ):
-    interactions, _, freed = security(monkeypatch, status)
+    keychain = security(monkeypatch, status)
     mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
     with pytest.raises(smb_transport.SmbTransportError) as caught:
         smb_transport._password_sync(mount, allow_prompt=False)
     assert caught.value.errno == errno.EACCES
     assert caught.value.keychain_status == status
     assert ("No saved SMB login" in str(caught.value)) == (status == -25300)
-    assert interactions == [False, True]
-    assert not freed
+    # Only a missing share login falls back to the server's login
+    assert len(keychain.lookups) == (2 if status == -25300 else 1)
+    assert keychain.interactions == [False, True]
+    assert not keychain.freed
 
 
 def test_sidecar_authorization_does_not_start_a_server_or_require_its_token(

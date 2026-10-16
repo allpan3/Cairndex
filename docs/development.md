@@ -495,7 +495,9 @@ mounted-SMB workflow can be qualified.
 Authorize the built sidecar explicitly with
 `packaging/dist/cairndex-sidecar/cairndex-sidecar authorize-smb <mounted-directory>`.
 The command selects the exact mounted server, account and share's saved login.
-The Keychain path is the share name, without an added leading slash. The command
+The Keychain path is the share name, without an added leading slash. Without a
+share login, the command accepts a server login that has no path, never another
+share's login. The command
 permits a bounded Keychain prompt and verifies signed, encrypted SMB3. It starts
 no HTTP server and writes no library files. Complete the secure Keychain approval when required. Authorization failure output includes only a numeric Security status or a timeout
 message; it excludes private paths and credential values. Background publication

@@ -30,7 +30,10 @@ nonce bytes read through the mount. Recheck held parent paths after publication.
 Background work retrieves only the saved login for the exact mounted server,
 account and share path, with interaction disabled. The Keychain path is the
 mounted share name, without an added leading slash. A pathless lookup must not
-select another share's item or its application access rules. The signed sidecar's
+select another share's item or its application access rules. Without a share
+item, the lookup accepts the server-level item that Finder saves with no path,
+after it reads that item's path attribute and before it reads its password.
+The signed sidecar's
 explicit `authorize-smb` command can request access and verify signed, encrypted
 SMB3 without opening a library or starting an HTTP server.
 Missing authorization is a recoverable unavailable state. Creation and serving
