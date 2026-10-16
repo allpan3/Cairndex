@@ -544,11 +544,17 @@ pub(crate) struct OpenedLibrary {
     pub(crate) library_uuid: String,
     /// `None` when the manifest omits a name; the caller picks its own fallback.
     pub(crate) display_name: Option<String>,
+    /// `true` when the picked folder is an old-format library. Nothing was
+    /// registered: the local server is inspecting it for conversion, and the web
+    /// layer shows the review of `conversion_task` (ADR-0038).
+    pub(crate) needs_conversion: bool,
+    /// The local server's inspection task. Only set with `needs_conversion`.
+    pub(crate) conversion_task: Option<String>,
 }
 
 /// Pick a library folder and open it through the local server (plan 3 D6).
 ///
-/// Three outcomes, and which one you get depends only on the folder:
+/// Four outcomes, and which one you get depends only on the folder:
 ///
 /// - a library the caller's current server already serves → `already_available`,
 ///   because starting a local server would register a *second* server against
@@ -559,9 +565,11 @@ pub(crate) struct OpenedLibrary {
 /// - a folder that is not a library → parked with a token, for the web layer to
 ///   confirm a name and call [`confirm_picked_library`]. Nothing is created
 ///   until it does, so cancelling the dialog costs nothing but the parked path,
-///   which the next pick replaces.
+///   which the next pick replaces;
+/// - an old-format library → inspected for conversion by the local server, and
+///   never registered (ADR-0035, ADR-0038).
 ///
-/// The absolute path never crosses into the web layer in any of the three: the
+/// The absolute path never crosses into the web layer in any of the four: the
 /// shell picks it, holds it, and sends it to the sidecar whose address it reads
 /// from its *own* state — so "could this path reach a remote server?" is not a
 /// discipline to audit but a thing that cannot happen.
@@ -598,6 +606,24 @@ pub(crate) async fn open_library_folder<R: Runtime>(
             display_name: picked.display_name,
             ..OpenedLibrary::default()
         }));
+    }
+
+    // An old-format library is never registered (ADR-0035). The local server
+    // starts its read-only inspection instead, so the review opens with this
+    // folder without the path crossing into the web layer.
+    if picked.legacy {
+        return tauri::async_runtime::spawn_blocking(move || {
+            let info = start(&app)?;
+            Ok(Some(OpenedLibrary {
+                needs_conversion: true,
+                conversion_task: Some(start_inspection(&info, &picked.root)?),
+                library_uuid: picked.library_uuid,
+                display_name: picked.display_name,
+                ..OpenedLibrary::default()
+            }))
+        })
+        .await
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
     }
 
     // Open-and-switch an existing library right away (the non-staging callers).
@@ -774,6 +800,44 @@ fn register_library(info: &LocalServerInfo, root: &Path) -> Result<String, Sidec
         .json::<LibraryRow>()
         .map(|row| row.id)
         .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))
+}
+
+/// Start the read-only conversion inspection of an old library on the sidecar.
+///
+/// Returns the task id, which the web layer follows like any conversion task
+/// it started itself; the task, not the web layer, carries the path.
+fn start_inspection(info: &LocalServerInfo, root: &Path) -> Result<String, SidecarError> {
+    // Conversion operations are 32 hex digits; the token generator makes 64
+    let mut operation = random_token()?;
+    operation.truncate(32);
+    let response = http_client()?
+        .post(format!(
+            "{}/api/v1/libraries/conversions/tasks",
+            info.base_url
+        ))
+        .bearer_auth(&info.token)
+        .json(&serde_json::json!({
+            "operation": operation,
+            "action": "inspect",
+            "root_path": root,
+        }))
+        .send()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+    if !response.status().is_success() {
+        return Err(SidecarError::new(
+            SidecarErrorCode::OpenFailed,
+            server_error_message(response),
+        ));
+    }
+    response
+        .json::<ConversionTaskRow>()
+        .map(|row| row.id)
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))
+}
+
+#[derive(Deserialize)]
+struct ConversionTaskRow {
+    id: String,
 }
 
 // Reads the server's structured message, falling back when the body is not one
@@ -1060,6 +1124,53 @@ mod tests {
             "unhelpful message: {}",
             error.message
         );
+
+        terminate(&mut child);
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn an_old_library_is_inspected_by_the_local_server_not_registered() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let work =
+            std::env::temp_dir().join(format!("cairndex-inspect-test-{}", std::process::id()));
+        let data = work.join("data");
+        let old = work.join("old");
+        std::fs::create_dir_all(&data).expect("data dir");
+        std::fs::create_dir_all(old.join(".cairndex")).expect("marker dir");
+        std::fs::write(
+            old.join(".cairndex").join("manifest.json"),
+            br#"{"format":"cairndex.library","format_version":1,"library_uuid":"synthetic-old","display_name":"Old"}"#,
+        )
+        .expect("manifest");
+
+        let (mut child, info) = launch(&binary, &data).expect("launch");
+
+        let task = start_inspection(&info, &old).expect("inspection starts");
+        let client = reqwest::blocking::Client::new();
+        let row: serde_json::Value = client
+            .get(format!(
+                "{}/api/v1/libraries/conversions/tasks/{task}",
+                info.base_url
+            ))
+            .bearer_auth(&info.token)
+            .send()
+            .expect("task")
+            .json()
+            .expect("task json");
+        assert_eq!(row["action"], "inspect");
+        // The review starts from the task; the registry stays empty (ADR-0035)
+        let libraries: Vec<serde_json::Value> = client
+            .get(format!("{}/api/v1/libraries", info.base_url))
+            .bearer_auth(&info.token)
+            .send()
+            .expect("libraries")
+            .json()
+            .expect("libraries json");
+        assert!(libraries.is_empty());
 
         terminate(&mut child);
         let _ = std::fs::remove_dir_all(&work);

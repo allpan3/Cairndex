@@ -104,6 +104,14 @@ export interface OpenedLibrary {
   libraryId: string
   libraryUuid: string
   displayName: string | null
+  /**
+   * True when the picked folder is an old-format library. Nothing was
+   * registered: the local server is inspecting it, and the Libraries dialog
+   * shows the review of `conversionTask` (ADR-0038).
+   */
+  needsConversion?: boolean
+  /** The local server's inspection task. Only set with `needsConversion`. */
+  conversionTask?: string | null
 }
 
 /** One saved connection (plan 3 §7.1). */

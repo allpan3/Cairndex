@@ -11,6 +11,7 @@ import {
   takePendingLibrarySelection,
   LOCAL_CONNECTION_ID,
 } from './connections'
+import { conversionStorageKey, conversionVisible, readConversion } from '../api/libraryConversion'
 import { confirmPickedLibrary, openLibraryFolder } from './openLibraryFolder'
 import { resetJobNotificationsForTests } from './useJobNotifications'
 
@@ -92,6 +93,32 @@ describe('openLibraryFolder', () => {
     expect(result.opened).toEqual(OPENED)
     expect(getActiveConnection()?.id).toBe(LOCAL_CONNECTION_ID)
     expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBe(OPENED.libraryId)
+  })
+
+  it('queues the review of an old library on the local server and selects nothing', async () => {
+    // No server registers an old library (ADR-0035): the shell started its
+    // inspection, and the local Libraries dialog shows it after the switch
+    await loadConnections()
+    localStorage.clear()
+    const task = 'c'.repeat(32)
+    const key = conversionStorageKey(LOCAL_CONNECTION_ID)
+    openHostLibraryFolder.mockResolvedValue({
+      ...OPENED,
+      libraryId: '',
+      needsConversion: true,
+      conversionTask: task,
+    })
+    const queuedAtConfigure: boolean[] = []
+    configureHostServer.mockImplementation(async () => {
+      queuedAtConfigure.push(conversionVisible(key))
+    })
+
+    await openLibraryFolder()
+
+    expect(getActiveConnection()?.id).toBe(LOCAL_CONNECTION_ID)
+    expect(queuedAtConfigure).toEqual([true])
+    expect(readConversion(key).task).toBe(task)
+    expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBeNull()
   })
 
   it('changes nothing at all when the picker is dismissed', async () => {

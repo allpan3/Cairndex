@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { ConnectionControls } from './desktop/ConnectionControls'
 
 import { setActiveLibraryId } from './api/client'
+import { conversionStorageKey, conversionVisible } from './api/libraryConversion'
+import { getConnectionScopeKey } from './api/requestScope'
 import {
   resetLibraryContentQueries,
   useLibraries,
@@ -71,7 +73,10 @@ function LibraryApp() {
   const [linkedUuid, setLinkedUuid] = useState(() =>
     new URLSearchParams(window.location.search).get('library_uuid'),
   )
-  const [managing, setManaging] = useState(false)
+  // A conversion review left open, or queued by an old-library pick, reopens
+  const [managing, setManaging] = useState(() =>
+    conversionVisible(conversionStorageKey(getConnectionScopeKey())),
+  )
   // Following a lease redirect ("Connect to <holder>"): in flight, and why it
   // failed. Both only matter on the ownership notice below.
   const [connectRedirect, setConnectRedirect] = useState<{

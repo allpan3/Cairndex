@@ -101,7 +101,14 @@ struct LibraryManifest {
     // predates the field must still validate for reveal/open.
     #[serde(default)]
     display_name: Option<String>,
+    // Only the folder picker reads it, to tell an old-format library from a
+    // portable one.
+    #[serde(default)]
+    format: Option<String>,
 }
+
+/// The manifest `format` of a library that only conversion can open (ADR-0038).
+const LEGACY_FORMAT: &str = "cairndex.library";
 
 // Couples one stored local root to the portable identity proven at locate time
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -480,6 +487,9 @@ pub(crate) struct PickedFolder {
     /// The basename, which prefills the name field when a plain folder is about
     /// to become a library. Empty for a filesystem root, which has none.
     pub(crate) folder_name: String,
+    /// The library uses the old format, which no server registers or serves
+    /// (ADR-0035); it opens only after conversion (ADR-0038).
+    pub(crate) legacy: bool,
 }
 
 impl PickedFolder {
@@ -534,6 +544,7 @@ fn describe_picked_folder(selected: &Path) -> Result<PickedFolder, MappingError>
             library_uuid: String::new(),
             display_name: None,
             folder_name,
+            legacy: false,
         });
     };
     validate_library_uuid(&manifest.library_uuid)?;
@@ -542,6 +553,7 @@ fn describe_picked_folder(selected: &Path) -> Result<PickedFolder, MappingError>
         library_uuid: manifest.library_uuid,
         display_name: manifest.display_name,
         folder_name,
+        legacy: manifest.format.as_deref() == Some(LEGACY_FORMAT),
     })
 }
 
@@ -1112,6 +1124,25 @@ mod tests {
         // the name it travels with.
         assert_eq!(picked.display_name.as_deref(), Some("Photos"));
         assert_eq!(picked.folder_name, "Family Photos");
+        assert!(!picked.legacy);
+    }
+
+    #[test]
+    fn describes_an_old_format_library_as_needing_conversion() {
+        let parent = TestDir::new();
+        let root = named_folder(&parent, "Old Library");
+        let marker = root.join(".cairndex");
+        fs::create_dir_all(&marker).expect("create marker directory");
+        fs::write(
+            marker.join("manifest.json"),
+            br#"{"format":"cairndex.library","library_uuid":"library-old"}"#,
+        )
+        .expect("write manifest");
+
+        let picked = describe_picked_folder(&root).expect("an old library folder");
+
+        assert!(picked.is_library());
+        assert!(picked.legacy);
     }
 
     #[test]
