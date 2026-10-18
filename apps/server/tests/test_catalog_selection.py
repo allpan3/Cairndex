@@ -147,8 +147,17 @@ def test_bulk_api_bounds_and_membership_pages(api):  # noqa: F811
         base + "/bundles/selection/memberships", json=body | {"target": target}
     ).json()
     assert ([item["id"] for item in only["items"]], only["next_cursor"]) == ([target], None)
+    # Selection version 3: the inspector's chips read only what a selected bundle has
+    every = client.post(base + "/bundles/selection/memberships", json=body | {"limit": 50}).json()[
+        "items"
+    ]
+    mine = client.post(
+        base + "/bundles/selection/memberships", json=body | {"limit": 50, "assigned": True}
+    ).json()["items"]
+    assert any(item["assigned_count"] == 0 for item in every)
+    assert mine == [item for item in every if item["assigned_count"]]
     status = client.get(base.removesuffix("/catalog") + "/status").json()
-    assert status["selection_version"] == 2
+    assert status["selection_version"] == 3
 
 
 @pytest.mark.parametrize(

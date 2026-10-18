@@ -54,33 +54,43 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     await inspector
       .getByRole('textbox', { name: 'Note', exact: true })
       .fill('Retained inspector draft')
-    for (const family of ['Tags', 'Collections']) {
-      const section = inspector.getByRole('region', { name: `${family} membership`, exact: true })
-      await section.getByRole('checkbox').uncheck()
-      await section.getByRole('searchbox').fill('child')
-      await section.getByRole('button', { name: 'Add Synthetic child', exact: true }).click()
-      await section.getByRole('button', { name: 'Apply membership change' }).click()
-      await expect(
-        section.getByRole('button', { name: 'Remove Synthetic child', exact: true }),
-      ).toBeEnabled()
-      await expect(inspector.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
-        'Retained inspector draft',
-      )
+    const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
+    const section = (family: string) => inspector.locator(`[data-section="${family}"]`)
+    const choose = async (family: 'tags' | 'collections', name: string) => {
+      await section(family)
+        .getByRole('button', { name: family === 'tags' ? '+ Tag' : '+ Collection' })
+        .click()
+      const picker = page.getByRole('dialog', { name: `Choose ${family}` })
+      await picker.getByRole('textbox', { name: `Search ${family}` }).fill(name)
+      await picker.getByRole('button', { name: new RegExp(name) }).click()
+      await page.keyboard.press('Escape')
     }
-    const tags = inspector.getByRole('region', { name: 'Tags membership', exact: true })
-    await tags.getByRole('button', { name: 'Remove Synthetic child' }).click()
-    await expect(tags.getByRole('button', { name: 'Apply membership change' })).toBeEnabled()
+    // A chip saves at once, and the unsaved note draft stays as it was
+    for (const family of ['tags', 'collections'] as const) {
+      await choose(family, 'Synthetic child')
+      await expect(
+        section(family).getByRole('button', { name: 'Remove Synthetic child', exact: true }),
+      ).toBeEnabled()
+      await expect(note).toHaveValue('Retained inspector draft')
+    }
+    await section('tags').getByRole('button', { name: 'Remove Synthetic child' }).click()
+    await expect(
+      section('tags').getByRole('button', { name: 'Remove Synthetic child' }),
+    ).toHaveCount(0)
     await page.reload()
     await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
-    await tags.getByRole('button', { name: 'Apply membership change' }).click()
-    await expect(tags.getByText('No matching tags.')).toBeVisible()
-    await tags.getByRole('checkbox').uncheck()
-    await tags.getByRole('searchbox').fill('child')
-    await tags.getByRole('button', { name: 'Add Synthetic child' }).click()
-    await tags.getByRole('button', { name: 'Apply membership change' }).click()
-    await expect(tags.getByRole('button', { name: 'Remove Synthetic child' })).toBeEnabled()
-    const files = inspector.getByRole('region', { name: 'Files in bundle', exact: true })
-    await files.getByRole('button', { name: 'Playback/movie.mp4', exact: true }).click()
+    await expect(
+      section('collections').getByRole('button', { name: 'Remove Synthetic child' }),
+    ).toBeEnabled()
+    await expect(
+      section('tags').getByRole('button', { name: 'Remove Synthetic child' }),
+    ).toHaveCount(0)
+    await choose('tags', 'Synthetic child')
+    await expect(
+      section('tags').getByRole('button', { name: 'Remove Synthetic child' }),
+    ).toBeEnabled()
+    const files = inspector.locator('[data-section="files"]')
+    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
     const facts = files.getByRole('region', { name: 'Local file details' })
     await expect(facts).toContainText('320 × 180')
     await expect(facts).toContainText('Observed on this device')
@@ -91,7 +101,9 @@ test('ordinary inspector saves membership and covers while local facts stay priv
       inspector.getByRole('button', { name: 'Save changes', exact: true }),
     ).toBeInViewport()
     await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(inspector.locator(':scope > [role="status"]')).toHaveText('Saved here')
+    await expect(inspector.locator('.catalog-inspector-actions [role="status"]')).toHaveText(
+      'Saved here',
+    )
     await page.setViewportSize({ width: 1200, height: 900 })
     const entityUrl = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog/entities/asset_bundles/bundle-000001`
     await expect
@@ -105,12 +117,13 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     await expect(inspector.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
       'Retained inspector draft',
     )
-    await files.getByRole('button', { name: 'Use automatic cover' }).click()
+    // The current cover's ★ returns to the automatic cover
+    await files.getByRole('button', { name: 'Set Playback/movie.mp4 as cover' }).click()
     await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect
       .poll(async () => (await (await fetch(entityUrl)).json()).fields.cover_file_id.value)
       .toBe('null')
-    await files.getByRole('button', { name: 'Playback/movie.mp4', exact: true }).click()
+    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
     await expect(facts).toContainText('320 × 180')
     await inspector.screenshot({ path: test.info().outputPath('synthetic-inspector.png') })
     await inspector.evaluate((node) => {
@@ -121,13 +134,13 @@ test('ordinary inspector saves membership and covers while local facts stay priv
       join(root, 'Playback/movie.mp4'),
       join(root, 'Playback/temporarily-unavailable.mp4'),
     )
-    await facts.getByRole('button', { name: 'Retry local file details' }).click()
+    await facts.getByRole('button', { name: 'Check Again' }).click()
     await expect(facts).toContainText('Unavailable on this device')
     await rename(
       join(root, 'Playback/temporarily-unavailable.mp4'),
       join(root, 'Playback/movie.mp4'),
     )
-    await facts.getByRole('button', { name: 'Retry local file details' }).click()
+    await facts.getByRole('button', { name: 'Check Again' }).click()
     await expect(facts).toContainText('Observed on this device')
     expect(await hash()).toBe(original)
     await page.route('**/replica/status', async (route) => {
@@ -143,7 +156,7 @@ test('ordinary inspector saves membership and covers while local facts stay priv
         'Additional inspector controls require a server update. Use Metadata review.',
       ),
     ).toBeVisible()
-    await expect(inspector.getByRole('region', { name: 'Tags membership' })).toHaveCount(0)
+    await expect(section('tags')).toHaveCount(0)
     await expect(inspector.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
       'Retained inspector draft',
     )

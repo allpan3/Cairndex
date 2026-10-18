@@ -24,15 +24,65 @@ export interface ForestItem {
   sort_order: number
 }
 
-// The menu or drag gesture is the review, so a preview commits at once
-async function commit(library: string, command: unknown): Promise<void> {
-  const prepared = await runJob(library, 'preview', command, operationId())
+/**
+ * The menu or drag gesture is the review, so a preview commits at once. Passing
+ * a retained `operation` again resumes the same preview and commit, so a retry
+ * after a lost reply cannot apply the change twice.
+ */
+export async function commit(
+  library: string,
+  command: unknown,
+  operation = operationId(),
+): Promise<void> {
+  const prepared = await runJob(library, 'preview', command, operation)
   await runJob(
     library,
     'commit_preview',
     { job: prepared.id, receipt: prepared.receipt },
     `commit_${prepared.id}`,
   )
+}
+
+/** The bases a membership choice was read with, which its change must still match. */
+export interface MembershipChoice {
+  id: string
+  observed: Record<string, string[]>
+}
+
+/** Add one bundle to a tag or collection, or remove it, from the choice the inspector read. */
+export function setMembership(
+  library: string,
+  bundle: string,
+  family: 'tags' | 'collections',
+  choice: MembershipChoice,
+  assigned: boolean,
+): Promise<void> {
+  return commit(library, {
+    action: 'membership',
+    bundle,
+    family,
+    target: choice.id,
+    assigned,
+    observed: choice.observed,
+  })
+}
+
+/** Add every selected bundle to a tag or collection, or remove them all. */
+export function setBulkMembership(
+  library: string,
+  ids: string[],
+  family: 'tags' | 'collections',
+  choice: MembershipChoice,
+  assigned: boolean,
+): Promise<void> {
+  return commit(library, {
+    action: 'bulk',
+    ids,
+    field: family,
+    target: choice.id,
+    assigned,
+    observed: choice.observed,
+  })
 }
 
 /** Add bundles to, or remove them from, one collection; needs `selection_version: 2`. */
@@ -51,14 +101,7 @@ export async function setCollectionMembership(
   const choice = page.items[0]
   if (!choice || choice.held) throw new Error(REVIEW)
   if (choice.assigned_count === (assigned ? ids.length : 0)) return
-  await commit(library, {
-    action: 'bulk',
-    ids,
-    field: 'collections',
-    target: collection,
-    assigned,
-    observed: choice.observed,
-  })
+  await setBulkMembership(library, ids, 'collections', choice, assigned)
 }
 
 /**

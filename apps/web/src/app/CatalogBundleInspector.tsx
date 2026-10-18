@@ -7,7 +7,8 @@ import { StarRating } from './Stars'
 import { IconPlus } from './icons'
 import { useCatalogBundleDraft } from './useCatalogBundleDraft'
 import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
-import { CatalogMembershipPicker } from './CatalogMembershipPicker'
+import { formatDate } from '../lib/format'
+import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
 
@@ -26,9 +27,10 @@ export function CatalogBundleInspector({
   onSelectHostFile,
   onOpenFile,
   moments,
-  onAlbum,
   albumFile,
   onAddFiles,
+  summary,
+  onOpenCollection,
 }: {
   hostFiles?: LibraryHostFiles
   onStartBundleDrag?: () => void
@@ -45,10 +47,12 @@ export function CatalogBundleInspector({
   onOpenFile: (file: string) => void
   /** The moments section; each surface supplies its own source and actions. */
   moments?: ReactNode
-  onAlbum?: () => void
   albumFile?: string | null
   /** Add Unbundled files to this confirmed bundle. */
   onAddFiles?: () => void
+  /** The browser's card for this bundle, for the facts the entity does not carry. */
+  summary?: { file_count: number; date_added: string }
+  onOpenCollection?: (id: string) => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
@@ -71,10 +75,12 @@ export function CatalogBundleInspector({
     ;[next[index], next[target]] = [next[target]!, next[index]!]
     setNotes(next)
   }
+  // The footer appears once there is something to save, recover or report
+  const footer = unsaved || draft.busy || draft.copies.length > 0 || Boolean(draft.message)
   return (
     <aside className="inspector" aria-label="Bundle inspector">
       <div
-        className="catalog-inspector-cover"
+        className="inspector__cover catalog-inspector-cover"
         draggable={Boolean(onStartBundleDrag)}
         onDragStart={(event) => {
           event.preventDefault()
@@ -85,15 +91,19 @@ export function CatalogBundleInspector({
           (coverFailed !== coverUrl ? (
             <img src={coverUrl} alt="Bundle cover" onError={() => setCoverFailed(coverUrl)} />
           ) : (
-            <p>Cover unavailable on this device.</p>
+            <span className="catalog-inspector-cover__note">
+              Cover unavailable on this device.{' '}
+              <button className="btn btn--sm" onClick={() => setCoverFailed('')}>
+                Try Again
+              </button>
+            </span>
           ))}
-        {onOpen && <button onClick={onOpen}>Open media on this device</button>}
-        {inspectorEnabled && coverFailed === coverUrl && (
-          <button onClick={() => setCoverFailed('')}>Retry cover</button>
+        {onOpen && (
+          <button className="inspector__play" onClick={onOpen} aria-label="Play" title="Play">
+            ▶
+          </button>
         )}
       </div>
-      {onAlbum && <button onClick={onAlbum}>Browse bundle files</button>}
-      {onAddFiles && <button onClick={onAddFiles}>Add Files…</button>}
       {albumFile && (
         <CatalogFileDetails
           key={albumFile}
@@ -102,9 +112,15 @@ export function CatalogBundleInspector({
           hostFiles={hostFiles}
         />
       )}
-      <p role="status">{draft.message}</p>
       {draft.error && <p role="alert">{draft.error}</p>}
-      {entity.has_conflicts && <p role="alert">Competing metadata requires review.</p>}
+      {entity.has_conflicts && (
+        <p className="catalog-inspector-conflict" role="alert">
+          <span>Competing metadata requires review.</span>{' '}
+          <button className="btn btn--sm" onClick={onReview}>
+            Review Conflicts
+          </button>
+        </p>
+      )}
       <BundleTitleEditor
         value={title ?? ''}
         onChange={(value) => draft.change('title', JSON.stringify(value || null))}
@@ -121,6 +137,18 @@ export function CatalogBundleInspector({
           onChange={(value) => draft.change('rating', JSON.stringify(value || null))}
         />
       </div>
+      {summary && (
+        <>
+          <div className="prop">
+            <span className="prop__k">Files</span>
+            <span className="prop__v">{summary.file_count}</span>
+          </div>
+          <div className="prop">
+            <span className="prop__k">Date Added</span>
+            <span className="prop__v">{formatDate(summary.date_added)}</span>
+          </div>
+        </>
+      )}
       <InspectorSection
         id="notes"
         title="Notes"
@@ -163,69 +191,68 @@ export function CatalogBundleInspector({
       </InspectorSection>
       {inspectorEnabled &&
         (['tags', 'collections'] as const).map((family) => (
-          <CatalogMembershipPicker
+          <CatalogBundleMemberships
             key={family}
             library={library}
-            bundle={entity.id}
-            editor={editor}
+            ids={[entity.id]}
             family={family}
             blocked={blocked}
             onReview={onReview}
+            onOpenCollection={onOpenCollection}
           />
         ))}
+      {inspectorEnabled && moments}
       {inspectorEnabled && (
         <CatalogBundleFiles
           library={library}
           bundle={entity.id}
           cover={cover}
           blocked={blocked || draft.busy}
+          fileCount={summary?.file_count}
           onCover={(file, reference) =>
             draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
           }
           onOpen={onOpenFile}
+          onAddFiles={onAddFiles}
           hostFiles={hostFiles}
           onSelectHostFile={onSelectHostFile}
         />
       )}
-      {inspectorEnabled && moments}
       {!inspectorEnabled && (
         <p>Additional inspector controls require a server update. Use Metadata review.</p>
       )}
-      <button className="btn" onClick={onReview}>
-        Review metadata and conflicts
-      </button>
-      <p>
-        File order, structural changes and history use metadata review. Use File Browser for
-        reviewed source file operations.
-      </p>
       {/* A footer pinned to the inspector's bottom edge: in a short window the
-          inspector scrolls, and Save must stay in view wherever it is scrolled. */}
-      <div className="catalog-inspector-actions">
-        <button
-          className="btn"
-          disabled={blocked || draft.busy || !unsaved}
-          onClick={() => void draft.save()}
-        >
-          {draft.draft.pending && !draft.busy ? 'Retry save' : 'Save changes'}
-        </button>
-        <button
-          className="btn"
-          disabled={draft.busy || Boolean(draft.draft.pending)}
-          onClick={() => void draft.discard()}
-        >
-          Discard draft
-        </button>
-        {draft.copies.map((copy) => (
+          inspector scrolls, and Save must stay in view wherever it is scrolled.
+          Edits wait here as a private draft until they are saved. */}
+      {footer && (
+        <div className="catalog-inspector-actions">
           <button
             className="btn"
-            key={copy.id}
-            disabled={draft.busy || Boolean(draft.draft.pending)}
-            onClick={() => draft.recover(copy.body.data)}
+            disabled={blocked || draft.busy || !unsaved}
+            onClick={() => void draft.save()}
           >
-            Recover private draft {copy.revision}
+            {draft.draft.pending && !draft.busy ? 'Retry save' : 'Save changes'}
           </button>
-        ))}
-      </div>
+          <button
+            className="btn"
+            disabled={draft.busy || Boolean(draft.draft.pending) || !unsaved}
+            onClick={() => void draft.discard()}
+          >
+            Discard draft
+          </button>
+          {draft.copies.map((copy) => (
+            <button
+              className="btn"
+              key={copy.id}
+              disabled={draft.busy || Boolean(draft.draft.pending)}
+              onClick={() => draft.recover(copy.body.data)}
+            >
+              Recover private draft {copy.revision}
+            </button>
+          ))}
+          <p role="status">{draft.message}</p>
+        </div>
+      )}
     </aside>
   )
 }

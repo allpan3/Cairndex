@@ -214,16 +214,23 @@ from it in a second command.
 Tag selection uses the shared Any/All/Equal rules, exclusions and descendant
 toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.
-Saved expression text is never rewritten by browsing or preview. The inspector's
-tag and collection pickers search the complete destination population before
-pagination. Add/Remove prepares one stable pair for explicit Apply. The preview
-retains the displayed edge and lifetime bases, refuses stale or held choices and
-shows any collection-cover clearing. Explicit Add can restore a removed pair but
-cannot restore a deleted bundle or destination. Prepared reviews and exact commit
-identities survive reload and response loss. Membership saves leave scalar drafts
-intact. Hierarchy edits remain in Metadata review.
+Saved expression text is never rewritten by browsing or preview. The inspector
+shows a bundle's tags and collections as chips, as v0.2.1 did. Its "+ Tag" and
+"+ Collection" pickers search the complete destination population before
+pagination. Picking a destination or removing a chip commits one stable pair at
+once: the preview retains the displayed edge and lifetime bases, refuses stale or
+held choices and clears any collection cover that needs the removed pair. A held
+choice opens Metadata review instead. Explicit Add can restore a removed pair but
+cannot restore a deleted bundle or destination. After a lost reply the chips show
+whether the change applied. Membership saves leave scalar drafts intact.
+Hierarchy edits remain in Metadata review.
 
-Cover selection uses the retained inspector draft and observed file lifetime.
+Cover selection uses the retained inspector draft and observed file lifetime. A
+file row's ★ chooses that file; the current cover's ★ returns to the automatic
+cover. Title, rating, notes and cover wait in that private draft until **Save
+changes**, which is the one deliberate difference from v0.2.1's inspector: the
+draft survives reload and response loss, and a save is refused for review when
+another device changed the same field.
 These controls require `inspector_version: 1`; older servers retain scalar editing
 and Metadata review without calls to unsupported inspector routes.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
@@ -231,7 +238,7 @@ local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and
 shows the shared file inspector. Video facts use a bounded probe; image dimensions
 use a guarded header read. Unknown or unavailable facts do not become zero-size or
-shared availability claims. Retry checks the selected file again. The shared File
+shared availability claims. Check Again reads the selected file again. The shared File
 Browser uses the same details for cataloged files. Cover choice does not change
 the playback cursor or file order.
 
@@ -263,23 +270,27 @@ membership use the established authored semantics.
 Servers with `selection_version: 1` support pointer toggles, Shift ranges, marquee
 selection, Up/Down, Home/End and Enter for one selected bundle. With
 `selection_version: 2`, a destination page can name one `target`, which the card
-menu's Remove from This Collection uses. Cmd/Ctrl+A selects
+menu's Remove from This Collection uses. With `selection_version: 3`, the page can
+ask for only the destinations at least one selected bundle has (`assigned: true`),
+which the bulk inspector shows as chips. Cmd/Ctrl+A selects
 only the loaded bundle pages; Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.
 
-The bulk inspector accepts 1–100 explicit bundle IDs for each reviewed title,
-rating, tag or collection change. Title and rating replace one field on all listed
-bundles; Add/Remove changes only the selected membership pair. Notes are not a bulk
-field. Membership counts show all/partial/absent assignment. Destination search
-covers the catalog before pagination. A retained draft keeps its original IDs and
-displayed bases even when the browser selection changes. Preview rejects stale or
-held bases, including changed lifetimes, without automatically refreshing them.
-Apply uses one causal transaction and includes dependent collection-cover clears.
-Later competing changes remain in Metadata review. An uncertain response keeps the
-exact operation and request for Retry; it cannot be discarded until its receipt is
-known. Scalar inspector drafts stay separate. Bulk fields remain disabled while
-a prepared review is pending. Malformed retained bytes remain available for recovery.
+The bulk inspector has v0.2.1's layout and accepts 1–100 explicit bundle IDs. A
+title (saved on Enter or leaving the field) or a rating replaces one field on all
+listed bundles; picking a destination or removing a chip changes only that
+membership pair. Each change commits at once. Notes are not a bulk field. A chip
+that only some selected bundles have is dashed. Destination search covers the
+catalog before pagination. Preview rejects stale or held bases, including changed
+lifetimes, without automatically refreshing them. Apply uses one causal
+transaction and includes dependent collection-cover clears. Later competing
+changes remain in Metadata review. A title or rating save retains its IDs,
+displayed bases, operation and request before it is sent. An uncertain response
+keeps them for Retry, even when the browser selection changes or the page
+reloads; it cannot be discarded until its receipt is known. Bulk fields remain
+disabled while such a save is pending. Scalar inspector drafts stay separate.
+Malformed retained bytes remain available for recovery.
 
 Servers with `system_views_version: 1` also expose Random, Missing Files and
 Unbundled. Random uses a seed and stable bundle IDs before pagination; Reshuffle
@@ -303,8 +314,8 @@ library queries and mutations retain their existing routes and behavior.
 
 ## Bundle albums
 
-Servers with `album_version: 1` open bundle contents from the Bundle Browser or
-**Browse bundle files** in the inspector. The shared album tiles and rows support
+Servers with `album_version: 1` open bundle contents from the Bundle Browser: a
+double-click, Enter, or **Open Bundle** in the card menu. The shared album tiles and rows support
 grid/list layout, item size, pointer toggles, Shift ranges, marquee selection,
 arrows, Home/End and Enter. Command/Ctrl+A selects loaded album items only.
 Escape clears selection, then returns to the parent view. Bundle metadata drafts

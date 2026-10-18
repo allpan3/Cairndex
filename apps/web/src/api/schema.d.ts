@@ -4451,6 +4451,11 @@ export interface components {
              */
             after: string;
             /**
+             * Assigned
+             * @default false
+             */
+            assigned: boolean;
+            /**
              * Family
              * @enum {string}
              */

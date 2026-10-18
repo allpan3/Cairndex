@@ -48,7 +48,7 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
     await note.fill('Album draft remains available')
-    await inspector.getByRole('button', { name: 'Browse bundle files' }).click()
+    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
     const listing = page.getByRole('list', { name: 'Album items' })
     await expect(listing.locator('[data-file-id="album-folder"]')).toBeVisible()
     await expect(listing.locator('[data-file-id="gallery-000"]')).toHaveCount(0)
@@ -113,7 +113,7 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await page.locator('.media-viewer').press('Escape')
     await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     await expect(note).toHaveValue('Album draft remains available')
-    await inspector.getByRole('button', { name: 'Browse bundle files' }).click()
+    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'Synthetic' }).dblclick()
     await page.getByRole('row').filter({ hasText: '雪.mp4' }).click()
@@ -200,7 +200,9 @@ test('album rejects changed pages and ignores a late response after navigation @
     )
     await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await saved
-    await expect(inspector.locator(':scope > [role="status"]')).toHaveText('Saved here')
+    await expect(inspector.locator('.catalog-inspector-actions [role="status"]')).toHaveText(
+      'Saved here',
+    )
     release()
     await expect(
       page.getByText('Album changed. Reload the album before loading more items.'),
@@ -229,7 +231,7 @@ test('album rejects changed pages and ignores a late response after navigation @
       },
       { times: 1 },
     )
-    await inspector.getByRole('button', { name: 'Browse bundle files' }).click()
+    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
     await waiting
     await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     await page.locator('[data-bundle-id="bundle-000002"]').dblclick()

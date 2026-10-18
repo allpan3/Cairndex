@@ -224,6 +224,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The portable bundle inspectors have v0.2.1's layout again.** The cover has a
+  ▶ Play button over it, followed by the title, rating, Files and Date Added.
+  Tags and collections are chips with ×, and **+ Tag** / **+ Collection** search
+  the whole catalog; each pick or removal saves at once. A collection chip opens
+  that collection. **Files in bundle** lists each file's name, kind and size with
+  a ★ that makes it the cover (the current cover's ★ returns to the automatic
+  cover) and ▶ to open it, and **+** in its header adds Unbundled files. A file
+  row shows this device's details for the file. The Browse bundle files, Open
+  media, Add Files… and Review buttons and the explanatory paragraphs are gone;
+  a bundle with competing values shows a Review Conflicts link instead. Save
+  changes appears only once there is a draft, because the portable inspector
+  keeps edits as a private draft until they are saved. Selecting several bundles
+  shows **N bundles selected** with Clear, one title field ("Multiple titles —
+  type to rename all"), one rating, the Files total and chips that change every
+  selected bundle; each change saves at once, and a save whose reply was lost
+  offers Retry, even after a reload. Servers advertise the selection's own
+  destinations as `selection_version: 3`.
 - **The portable Bundle Browser, File Browser and Unbundled view have v0.2.1's
   layout again.** Nothing sits between the toolbar and the grid any more: the
   file-size note, **Bulk changes**, the Missing Files paragraph and the Files

@@ -41,10 +41,14 @@ export function CatalogFileDetails({
           onStartFileDrag={hostFiles?.onStartFileDrag}
         />
       )}
-      <button disabled={detail.isFetching} onClick={() => void detail.refetch()}>
-        Retry local file details
+      {/* What this device last saw; opening media checks the file again anyway */}
+      <button
+        className="btn btn--sm"
+        disabled={detail.isFetching}
+        onClick={() => void detail.refetch()}
+      >
+        Check Again
       </button>
-      <p>These observations apply to this device. Opening media checks the file again.</p>
     </section>
   )
 }

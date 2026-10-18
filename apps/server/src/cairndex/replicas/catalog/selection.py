@@ -43,6 +43,9 @@ class CatalogBulkMembershipRequest(CatalogSelectionRequest):
     limit: int = Field(default=30, ge=1, le=50)
     # Selection version 2: read one known destination, as a context menu does
     target: Token | None = None
+    # Selection version 3: only destinations at least one selected bundle has,
+    # which the inspector shows as chips
+    assigned: bool = False
 
 
 class CatalogBulkMembershipChoice(StrictModel):
@@ -108,16 +111,23 @@ def choices(
         for identity in request.ids:
             if read_row(db, "asset_bundles", identity) is None:
                 raise ReplicaError("A selected bundle is unavailable; refresh the selection")
-        only = " AND entity=?" if request.target else ""
+        only = " AND c.entity=?" if request.target else ""
+        having = (
+            " AND EXISTS (SELECT 1 FROM catalog_rows e, json_each(?) b WHERE e.family=? "
+            "AND e.entity=b.value || '~' || c.entity)"
+            if request.assigned
+            else ""
+        )
         rows = db.execute(
-            "SELECT entity,body FROM catalog_rows WHERE family=? AND entity>? "
-            f"AND instr(lower(json_extract(body,'$.name')),lower(?))>0{only} "
-            "ORDER BY entity LIMIT ?",
+            "SELECT c.entity,c.body FROM catalog_rows c WHERE c.family=? AND c.entity>? "
+            f"AND instr(lower(json_extract(c.body,'$.name')),lower(?))>0{only}{having} "
+            "ORDER BY c.entity LIMIT ?",
             (
                 request.family,
                 request.after,
                 request.q,
                 *([request.target] if request.target else []),
+                *([json.dumps(request.ids), EDGES[request.family]] if request.assigned else []),
                 request.limit + 1,
             ),
         ).fetchall()
