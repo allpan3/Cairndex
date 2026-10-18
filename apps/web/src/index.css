@@ -2390,7 +2390,19 @@ button {
   border-radius: 3px;
   background: var(--scrollbar-thumb);
   pointer-events: auto;
-  transition: background 120ms ease;
+  /* Hidden until the panel scrolls, as macOS overlay scrollbars are */
+  opacity: 0;
+  transition:
+    opacity 300ms ease,
+    background 120ms ease;
+}
+.oscroll__thumb--scrolling,
+.oscroll__thumb--dragging,
+.oscroll__thumb:hover {
+  opacity: 1;
+  transition:
+    opacity 80ms ease,
+    background 120ms ease;
 }
 /* Legible while the pointer is anywhere in the panel, and firmer while dragging;
    otherwise quiet enough to sit over text. */

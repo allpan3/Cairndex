@@ -224,6 +224,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The side panels' scrollbars hide until you scroll.** As macOS overlay
+  scrollbars do, the sidebar's and inspector's thumb appears while the panel
+  scrolls and fades a second later; it stays while the pointer is on it or
+  drags it.
 - **The portable bundle inspectors have v0.2.1's layout again.** The cover has a
   ▶ Play button over it, followed by the title, rating, Files and Date Added.
   Tags and collections are chips with ×, and **+ Tag** / **+ Collection** search
