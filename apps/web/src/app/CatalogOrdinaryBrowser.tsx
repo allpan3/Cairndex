@@ -99,8 +99,9 @@ export function CatalogOrdinaryBrowser(props: {
   update?: { running: boolean; disabled: boolean; onClick: () => void }
   /** The ⋯ menu's library-wide entries, after this browser's file entries. */
   libraryMenu: MenuEntry[]
-  /** Status that needs the owner, shown under Update. */
-  libraryNotices?: ReactNode
+  /** Update's progress and status that needs the owner, in the sidebar footer;
+   *  a result goes to the browser's message. */
+  libraryNotices?: (onNotice: (notice: CatalogNotice) => void) => ReactNode
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
   const [fileOperations, setFileOperations] = useState(false)
@@ -252,9 +253,19 @@ export function CatalogOrdinaryBrowser(props: {
           collections={collections}
           showSubContents={showSubContents}
           onNotice={setNotice}
+          activity={props.libraryNotices?.(setNotice)}
           libraryActions={
             <CatalogLibraryActions
-              update={props.update}
+              update={
+                props.update && {
+                  ...props.update,
+                  // A new run replaces the last run's result
+                  onClick: () => {
+                    setNotice(null)
+                    props.update?.onClick()
+                  },
+                }
+              }
               items={[
                 ...(sourceEnabled
                   ? [
@@ -265,9 +276,7 @@ export function CatalogOrdinaryBrowser(props: {
                   : []),
                 ...props.libraryMenu,
               ]}
-            >
-              {props.libraryNotices}
-            </CatalogLibraryActions>
+            />
           }
         />
         <div className="catalog-ordinary-content">

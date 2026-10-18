@@ -1,21 +1,18 @@
-import type { ReactNode } from 'react'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
 
 /**
  * The library's Update button and its ⋯ menu, at the top of the sidebar where
- * v0.2.1 kept them. `children` is status that needs the owner, shown below them;
- * when nothing needs attention the sidebar shows only the two buttons.
+ * v0.2.1 kept them. Their progress and status sit in the sidebar footer, as
+ * v0.2.1's job rows did.
  */
 export function CatalogLibraryActions({
   update,
   items,
-  children,
 }: {
   /** Absent when this server cannot run Update for the library. */
   update?: { running: boolean; disabled: boolean; onClick: () => void }
   items: MenuEntry[]
-  children?: ReactNode
 }) {
   const menu = useContextMenu()
   return (
@@ -47,7 +44,6 @@ export function CatalogLibraryActions({
           {update ? '⋯' : 'Library actions ⋯'}
         </button>
       </div>
-      {children}
       <ContextMenu state={menu.state} onClose={menu.close} />
     </>
   )

@@ -5895,6 +5895,22 @@ code {
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
 }
+/* A portable library's Update: discovered files that wait for review, and a
+   problem reading the run, in the same footer rows */
+.sidebar__job-review {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sidebar__job-progress p[role='alert'] {
+  margin: 0;
+  font-size: 11px;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
 .sidebar__job-error {
   /* Sits inside the sidebar foot beside the job rows, so it carries their
      padding rather than the standalone margin it had further up the panel. */

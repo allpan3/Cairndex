@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { operationId } from '../api/catalog'
 import {
@@ -18,8 +18,9 @@ import {
 export function useReplicaDiscovery(library: string, enabled: boolean, refresh: () => void) {
   // The review is a dialog, so it opens only when the owner asks for it
   const [open, setOpen] = useState(false)
-  // The run this window started, whose result the sidebar reports
+  // The run this window started, until the sidebar has reported its result
   const [started, setStarted] = useState<string | null>(null)
+  const acknowledge = useCallback(() => setStarted(null), [])
   const [after, setAfter] = useState('')
   const [candidate, setCandidate] = useState<DiscoveryCandidate | null>(null)
   const [reviewId, setReviewId] = useState<string | null>(null)
@@ -106,6 +107,7 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
     open: enabled && open,
     setOpen,
     started,
+    acknowledge,
     pending: Boolean(candidates.data?.items.length),
     after,
     setAfter,

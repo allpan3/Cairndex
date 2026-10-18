@@ -1,4 +1,5 @@
 // Manual Update keeps pending discoveries and grouping review separate from catalog editors
+import { useEffect } from 'react'
 import { CandidateReview } from './DiscoveryCandidateReview'
 import { DiscoveryPrepared } from './DiscoveryPrepared'
 import { useModalDialog } from './useModalDialog'
@@ -53,34 +54,83 @@ export function DiscoveryControls({ discovery: d }: { discovery: ReplicaDiscover
 }
 
 /**
- * The sidebar's Update status: a run in progress, the result of the run this
- * window started, discovered files that wait for review, or a problem. Nothing
- * while Update sits idle with nothing to review.
+ * The sidebar footer's Update row, as v0.2.1 showed a running job: what it is
+ * doing, a count, × to stop it and a bar. A run leaves the footer when it
+ * finishes, and `onComplete` reports the result of a run this window started,
+ * as v0.2.1's scan-complete message did; a cancelled or failed run stays until
+ * the next one, because it needs the owner. Discovered files that wait for
+ * review keep a row of their own.
  */
-export function DiscoveryNotice({ discovery: d }: { discovery: ReplicaDiscoveryState }) {
+export function DiscoveryNotice({
+  discovery: d,
+  onComplete,
+}: {
+  discovery: ReplicaDiscoveryState
+  onComplete: (text: string) => void
+}) {
   const state = d.run.data?.state
-  const shown =
-    d.running ||
-    state === 'failed' ||
-    state === 'cancelled' ||
-    (state === 'succeeded' && d.run.data?.id === d.started)
+  const stopped = state === 'failed' || state === 'cancelled'
+  const finished = state === 'succeeded' && Boolean(d.started) && d.run.data?.id === d.started
+  const result = finished ? runStatus(d.run) : null
+  // The hook forgets the run once it is reported, not this row: the row
+  // unmounts with the sidebar, and showing it again must not repeat the result
+  const { acknowledge } = d
+  useEffect(() => {
+    if (!result) return
+    acknowledge()
+    onComplete(result)
+  }, [result, acknowledge, onComplete])
   const problem = Boolean(d.error || d.run.error || d.run.data?.error)
-  if (!shown && !problem && !d.pending) return null
+  if (!d.running && !stopped && !problem && !d.pending) return null
   return (
-    <section className="sidebar__notice" aria-label="Library Update">
-      {shown && <p role="status">{runStatus(d.run)}</p>}
-      {d.running && (
-        <button className="btn" disabled={d.busy} onClick={d.cancel}>
-          Cancel Update
-        </button>
+    <section className="sidebar__job-progress" aria-label="Library Update">
+      {(d.running || stopped) && (
+        <div className="job-progress" role="status" aria-live="polite">
+          <div className="job-progress__row">
+            <span className="job-progress__label">
+              {d.running
+                ? 'Updating'
+                : state === 'cancelled'
+                  ? 'Update cancelled'
+                  : 'Update failed'}
+            </span>
+            {d.running && (
+              <span className="job-progress__count" title="Files checked">
+                {d.run.data?.observed ?? 0}
+              </span>
+            )}
+            {d.running && (
+              <button
+                type="button"
+                className="job-progress__cancel"
+                disabled={d.busy}
+                onClick={d.cancel}
+                title="Stop Update"
+                aria-label="Cancel Update"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <div
+            className={`job-progress__track${
+              d.running ? ' job-progress__track--indeterminate' : ' job-progress__track--error'
+            }`}
+            role="progressbar"
+            aria-label="Update progress"
+          >
+            <div className="job-progress__bar" />
+          </div>
+          {stopped && <div className="job-progress__error">Run Update to retry.</div>}
+        </div>
       )}
       {d.pending && !d.running && (
-        <>
-          <p>Discovered files wait for your review.</p>
-          <button className="btn" onClick={() => d.setOpen(true)}>
+        <div className="sidebar__job-review">
+          <span>Discovered files wait for your review.</span>
+          <button className="btn btn--sm" onClick={() => d.setOpen(true)}>
             Review Discoveries…
           </button>
-        </>
+        </div>
       )}
       <RunProblem discovery={d} />
     </section>

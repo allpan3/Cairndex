@@ -257,7 +257,9 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     )
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await page.getByRole('button', { name: 'Cancel Update', exact: true }).click()
-    await expect(page.getByText('Update cancelled. Run Update to retry.')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Library Update' })).toContainText(
+      'Update cancelled',
+    )
     await rm(join(roots[0], 'Temporary'), { recursive: true })
     const parked = join(scratch, 'parked')
     await rename(roots[0], parked)
