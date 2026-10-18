@@ -6,11 +6,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
 
-// The discovery review is a dialog that the owner opens; it never opens by itself.
-// Metadata review offers "Review discoveries"; the bundle browser's sidebar,
-// where a library switch lands, offers "Review Discoveries…".
+// The discovery review is a dialog. As v0.2.1's grouping review did, it opens
+// by itself when an Update this window started leaves discoveries to decide.
+// Otherwise the owner opens it: Metadata review offers "Review discoveries",
+// and the bundle browser's sidebar, where a library switch lands, offers
+// "Review Discoveries…".
 const reviewDiscoveries = (page: Page) =>
   page.getByRole('button', { name: /^Review (discoveries|Discoveries…)$/ }).click()
+const reviewOpened = (page: Page) =>
+  expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
 const closeDiscoveries = (page: Page) =>
   page
     .getByRole('dialog', { name: 'Discovery review' })
@@ -77,7 +81,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
       await expect(existingTitle).toHaveValue('Unrelated private catalog draft')
-      await reviewDiscoveries(page)
+      await reviewOpened(page)
       await page
         .getByRole('navigation', { name: 'Discovery suggestions' })
         .getByRole('button')
@@ -271,7 +275,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await writeFile(join(roots[0], 'new.png'), 'synthetic retry image')
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
-    await reviewDiscoveries(page)
+    await reviewOpened(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button')
@@ -507,7 +511,7 @@ test('large Update review keeps later pages and partial acceptance complete @ful
     await expect(page.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 60_000 })
-    await reviewDiscoveries(page)
+    await reviewOpened(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button', { name: 'Gallery · 201 files', exact: true })

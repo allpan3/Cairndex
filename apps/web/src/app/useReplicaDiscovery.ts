@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { operationId } from '../api/catalog'
 import {
@@ -16,11 +16,14 @@ import {
  * the selected editor's draft.
  */
 export function useReplicaDiscovery(library: string, enabled: boolean, refresh: () => void) {
-  // The review is a dialog, so it opens only when the owner asks for it
+  // The review is a dialog. The owner opens it, and so does an Update this
+  // window started that leaves discoveries to decide (below).
   const [open, setOpen] = useState(false)
-  // The run this window started, until the sidebar has reported its result
+  // The run this window started, until it finishes
   const [started, setStarted] = useState<string | null>(null)
-  const acknowledge = useCallback(() => setStarted(null), [])
+  // That run once it succeeded, until a view has reported its result
+  const [finished, setFinished] = useState<DiscoveryRun | null>(null)
+  const clearFinished = useCallback(() => setFinished(null), [])
   const [after, setAfter] = useState('')
   const [candidate, setCandidate] = useState<DiscoveryCandidate | null>(null)
   const [reviewId, setReviewId] = useState<string | null>(null)
@@ -47,6 +50,23 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
     enabled,
     refetchInterval: 1500,
   })
+  // As v0.2.1's grouping review after Update: a run this window started opens
+  // the review when it leaves discoveries to decide, and only then. The hook
+  // does it, not a view, so it happens in either view and only once.
+  const succeeded = run.data?.state === 'succeeded' && run.data.id === started ? run.data : null
+  const { refetch: refetchCandidates } = candidates
+  const handled = useRef<string | null>(null)
+  useEffect(() => {
+    if (!succeeded?.id || handled.current === succeeded.id) return
+    handled.current = succeeded.id
+    // The candidates are fetched again first: the list polled before the run
+    // finished cannot say what it left
+    void refetchCandidates().then(({ data }) => {
+      setStarted(null)
+      setFinished(succeeded)
+      if (data?.items.length) setOpen(true)
+    })
+  }, [succeeded, refetchCandidates])
   const reviews = useQuery({
     queryKey: ['discovery-reviews', library, reviewsAfter],
     queryFn: ({ signal }) =>
@@ -106,8 +126,8 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
     review,
     open: enabled && open,
     setOpen,
-    started,
-    acknowledge,
+    finished,
+    clearFinished,
     pending: Boolean(candidates.data?.items.length),
     after,
     setAfter,

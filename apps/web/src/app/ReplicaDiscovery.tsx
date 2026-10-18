@@ -1,9 +1,14 @@
 // Manual Update keeps pending discoveries and grouping review separate from catalog editors
 import { useEffect } from 'react'
+import type { DiscoveryRun } from '../api/discovery'
 import { CandidateReview } from './DiscoveryCandidateReview'
 import { DiscoveryPrepared } from './DiscoveryPrepared'
 import { useModalDialog } from './useModalDialog'
 import type { ReplicaDiscoveryState } from './useReplicaDiscovery'
+
+function completeStatus(run: DiscoveryRun): string {
+  return `Update complete · ${run.observed} files checked · ${run.repaired} links repaired`
+}
 
 function runStatus(run: ReplicaDiscoveryState['run']): string {
   if (run.isPending) return 'Loading Update status…'
@@ -11,7 +16,7 @@ function runStatus(run: ReplicaDiscoveryState['run']): string {
     case 'running':
       return `Updating · ${run.data.observed} files checked · ${run.data.repaired} links repaired`
     case 'succeeded':
-      return `Update complete · ${run.data.observed} files checked · ${run.data.repaired} links repaired`
+      return completeStatus(run.data)
     case 'cancelled':
       return 'Update cancelled. Run Update to retry.'
     case 'failed':
@@ -36,6 +41,11 @@ function RunProblem({ discovery: d }: { discovery: ReplicaDiscoveryState }) {
 
 /** Metadata review's Update controls, with the last run's state always in view. */
 export function DiscoveryControls({ discovery: d }: { discovery: ReplicaDiscoveryState }) {
+  // The status line below reports the result, so the browser need not repeat it
+  const { finished, clearFinished } = d
+  useEffect(() => {
+    if (finished) clearFinished()
+  }, [finished, clearFinished])
   return (
     <section className="replica-discovery" aria-label="Library Update">
       <button disabled={!d.canStart} onClick={() => void d.start()}>
@@ -70,16 +80,14 @@ export function DiscoveryNotice({
 }) {
   const state = d.run.data?.state
   const stopped = state === 'failed' || state === 'cancelled'
-  const finished = state === 'succeeded' && Boolean(d.started) && d.run.data?.id === d.started
-  const result = finished ? runStatus(d.run) : null
   // The hook forgets the run once it is reported, not this row: the row
   // unmounts with the sidebar, and showing it again must not repeat the result
-  const { acknowledge } = d
+  const { finished, clearFinished } = d
   useEffect(() => {
-    if (!result) return
-    acknowledge()
-    onComplete(result)
-  }, [result, acknowledge, onComplete])
+    if (!finished) return
+    clearFinished()
+    onComplete(completeStatus(finished))
+  }, [finished, clearFinished, onComplete])
   const problem = Boolean(d.error || d.run.error || d.run.data?.error)
   if (!d.running && !stopped && !problem && !d.pending) return null
   return (

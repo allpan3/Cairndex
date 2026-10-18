@@ -32,8 +32,8 @@ test('the library menu lists its entries and runs the chosen one', () => {
 function discovery(overrides: Partial<ReplicaDiscoveryState>): ReplicaDiscoveryState {
   return {
     run: { isPending: false, error: null, data: { id: 'run-1', state: 'idle' } },
-    started: null,
-    acknowledge: vi.fn(),
+    finished: null,
+    clearFinished: vi.fn(),
     error: '',
     busy: false,
     running: false,
@@ -72,25 +72,25 @@ test('a running Update shows its progress and can be cancelled', () => {
   expect(cancel).toHaveBeenCalledOnce()
 })
 
-// As v0.2.1's job rows: a finished run leaves the footer, and only the window
-// that started it reports the result, once
-test('a finished run leaves the footer and is reported once by the window that started it', () => {
+// As v0.2.1's job rows: a finished run leaves the footer, and its result is
+// reported once
+test('a finished run leaves the footer and is reported once', () => {
   const run = {
     isPending: false,
     error: null,
     data: { id: 'run-1', state: 'succeeded', observed: 3, repaired: 1 },
   } as ReplicaDiscoveryState['run']
   const onComplete = vi.fn()
-  const acknowledge = vi.fn()
+  const clearFinished = vi.fn()
   const { container, rerender } = render(
-    <DiscoveryNotice discovery={discovery({ run, acknowledge })} onComplete={onComplete} />,
+    <DiscoveryNotice discovery={discovery({ run, clearFinished })} onComplete={onComplete} />,
   )
   expect(container).toBeEmptyDOMElement()
   expect(onComplete).not.toHaveBeenCalled()
 
   rerender(
     <DiscoveryNotice
-      discovery={discovery({ run, acknowledge, started: 'run-1' })}
+      discovery={discovery({ run, clearFinished, finished: run.data! })}
       onComplete={onComplete}
     />,
   )
@@ -99,7 +99,7 @@ test('a finished run leaves the footer and is reported once by the window that s
     'Update complete · 3 files checked · 1 links repaired',
   )
   // The row unmounts with the sidebar, so the hook is what forgets the run
-  expect(acknowledge).toHaveBeenCalledOnce()
+  expect(clearFinished).toHaveBeenCalledOnce()
 })
 
 test('a cancelled run stays until the next one', () => {

@@ -7,9 +7,11 @@ capabilities; real-library conversion remains unavailable.
 
 In the bundle browser, **Update** sits at the top of the sidebar. The sidebar says
 when discovered files wait for review; that notice and **Review Discoveries…** in
-the ⋯ menu open the review as a dialog. It never opens by itself, so an Update
-does not interrupt other work. Metadata review keeps Update, Review discoveries
-and the last run's status above its editors.
+the ⋯ menu open the review as a dialog. As v0.2.1's grouping review did, the
+review also opens by itself when an Update this window started finishes and
+leaves discovered files to decide; an Update that leaves nothing to decide only
+reports its result. Metadata review keeps Update, Review discoveries and the
+last run's status above its editors.
 
 ## Review and identity
 

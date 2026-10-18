@@ -273,9 +273,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bar, and leaves when it finishes; the result appears briefly at the bottom of
   the window. The footer also shows what needs the owner: a failed or cancelled
   Update, discovered files that wait for review, a metadata exchange problem, or
-  a network share that needs **Allow Access…**. The discovery review opens as a
-  dialog when the owner asks for it, and **Saved operations** moved into
-  Metadata review.
+  a network share that needs **Allow Access…**. The discovery review is a
+  dialog. As v0.2.1's grouping review did, it opens by itself when an Update you
+  started leaves discovered files to decide, and **Review Discoveries…** opens it
+  at any time. **Saved operations** moved into Metadata review.
 - Container deployments keep private snapshots in a separate writable backup
   volume, including the bare image default. Registry backup/restore helpers reject
   legacy shared `library.db`; portable library recovery uses its private stores.
