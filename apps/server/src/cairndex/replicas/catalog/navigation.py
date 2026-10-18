@@ -7,7 +7,12 @@ from typing import Any, Literal
 from pydantic import Field
 
 from cairndex.filters.ast import FilterExpression
-from cairndex.replicas.catalog.browse import CatalogBrowseRequest, browse
+from cairndex.replicas.catalog.browse import (
+    CatalogBrowseRequest,
+    CatalogUnbundledRequest,
+    browse,
+    unbundled,
+)
 from cairndex.replicas.protocol import StrictModel
 
 NavigationFamily = Literal[
@@ -31,27 +36,58 @@ def navigation(
     for row in rows[:limit]:
         item = json.loads(row["body"])
         if family in ("collections", "tags"):
-            item["count"] = browse(
-                db,
-                CatalogBrowseRequest(
-                    filter=FilterExpression.model_validate(
-                        {
-                            "root": {
-                                "field": family,
-                                "operator": "contains_any",
-                                "value": [row["entity"]],
-                                "include_descendants": True,
-                            },
-                        }
-                    ),
-                    limit=1,
-                ),
-            ).total
+            item["count"] = _count(db, family, row["entity"], descendants=True)
+        if family == "collections":
+            # Browse version 10: the sidebar shows the count that opening the
+            # collection lists, which is only its own bundles until "Show
+            # subcollection contents" is on
+            item["direct_count"] = _count(db, family, row["entity"], descendants=False)
         if family == "smart_folders":
             item["filter"] = json.loads(item["filter_json"])
         items.append(item)
     return CatalogNavigationPage(
         items=items, next_cursor=rows[limit - 1]["entity"] if len(rows) > limit else None
+    )
+
+
+def _count(db: sqlite3.Connection, family: str, identity: str, *, descendants: bool) -> int:
+    expression = FilterExpression.model_validate(
+        {
+            "root": {
+                "field": family,
+                "operator": "contains_any",
+                "value": [identity],
+                "include_descendants": descendants,
+            },
+        }
+    )
+    return browse(db, CatalogBrowseRequest(filter=expression, limit=1)).total
+
+
+class CatalogViewCounts(StrictModel):
+    all: int
+    recent: int
+    uncategorized: int
+    untagged: int
+    missing: int
+    unbundled: int
+
+
+def view_counts(db: sqlite3.Connection) -> CatalogViewCounts:
+    """Browse version 10: the sidebar's system-view counts, from one snapshot."""
+
+    def total(view: Literal["all", "uncategorized", "untagged", "missing"]) -> int:
+        return browse(db, CatalogBrowseRequest(view=view, limit=1)).total
+
+    everything = total("all")
+    return CatalogViewCounts(
+        all=everything,
+        # Recent lists every bundle, newest first
+        recent=everything,
+        uncategorized=total("uncategorized"),
+        untagged=total("untagged"),
+        missing=total("missing"),
+        unbundled=unbundled(db, CatalogUnbundledRequest(limit=1)).total,
     )
 
 

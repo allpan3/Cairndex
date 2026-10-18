@@ -354,6 +354,11 @@ def _supported(path: str) -> bool:
     return is_openable_media(kind[0], path)
 
 
+def _media_kind(path: str) -> str | None:
+    kind = classify(path.rsplit("/", 1)[-1])
+    return str(kind[0]) if kind else None
+
+
 def _local_facts(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:
     """One page's card facts from this device's private observations, in three statements.
 
@@ -448,6 +453,8 @@ class CatalogUnbundledFile(StrictModel):
     id: str
     bundle_id: str
     relative_path: str
+    # Browse version 10: the path's media classification, for the shared file list
+    media_kind: str | None = None
 
 
 class CatalogUnbundledPage(StrictModel):
@@ -483,7 +490,10 @@ def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> Catal
     )
     return CatalogUnbundledPage(
         items=[
-            CatalogUnbundledFile(id=row[0], bundle_id=row[1], relative_path=row[2]) for row in rows
+            CatalogUnbundledFile(
+                id=row[0], bundle_id=row[1], relative_path=row[2], media_kind=_media_kind(row[2])
+            )
+            for row in rows
         ],
         total=total,
         offset=request.offset,

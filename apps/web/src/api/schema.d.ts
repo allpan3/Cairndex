@@ -1260,7 +1260,8 @@ export interface paths {
          *     Scoped like the other file-serving routes: generation can shell out to
          *     ffmpeg, and a grid of collections asks for many of these at once, so the
          *     session must not stay checked out for either the generation or the transfer
-         *     (see ``LibraryAccess``).
+         *     (see ``LibraryAccess``). A portable library resolves the cover from its
+         *     private catalog and serves this device's cached frame, as bundle covers do.
          */
         get: operations["get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get"];
         put?: never;
@@ -2790,6 +2791,23 @@ export interface paths {
         put?: never;
         /** Browse Bundles */
         post: operations["browse_bundles_api_v1_libraries__library_id__replica_catalog_bundles_browse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bundle View Counts */
+        get: operations["bundle_view_counts_api_v1_libraries__library_id__replica_catalog_bundles_counts_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4774,6 +4792,8 @@ export interface components {
             bundle_id: string;
             /** Id */
             id: string;
+            /** Media Kind */
+            media_kind?: string | null;
             /** Relative Path */
             relative_path: string;
         };
@@ -4805,6 +4825,21 @@ export interface components {
              * @default
              */
             q: string;
+        };
+        /** CatalogViewCounts */
+        CatalogViewCounts: {
+            /** All */
+            all: number;
+            /** Missing */
+            missing: number;
+            /** Recent */
+            recent: number;
+            /** Unbundled */
+            unbundled: number;
+            /** Uncategorized */
+            uncategorized: number;
+            /** Untagged */
+            untagged: number;
         };
         /** Change */
         Change: {
@@ -13026,6 +13061,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogBrowsePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bundle_view_counts_api_v1_libraries__library_id__replica_catalog_bundles_counts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogViewCounts"];
                 };
             };
             /** @description Validation Error */

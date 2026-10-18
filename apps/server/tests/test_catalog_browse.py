@@ -71,7 +71,7 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     ):
         assert client.post(url, json=body).status_code == 422
     assert client.get(base + "/bundles/browse").status_code == 409
-    assert client.get(base + "/replica/status").json()["browse_version"] == 9
+    assert client.get(base + "/replica/status").json()["browse_version"] == 10
 
 
 # Manual follows the authored order, or one collection's own membership order
@@ -293,6 +293,7 @@ def test_unbundled_file_population_search_and_hidden_paths(tmp_path):
         assert first.items[0].id != second.items[0].id
         assert unbundled(db, CatalogUnbundledRequest(q=second.items[0].relative_path)).total == 1
         assert all(item.bundle_id == "bundle-000000" for item in complete.items)
+        assert {item.media_kind for item in complete.items} == {"video", "subtitle"}
     assert "bundle-000000" not in {item.id for item in page(store).items}
     save(
         store,
@@ -301,3 +302,63 @@ def test_unbundled_file_population_search_and_hidden_paths(tmp_path):
     )
     with store.connection(readonly=True) as db:
         assert unbundled(db, CatalogUnbundledRequest()).total == complete.total - 1
+
+
+# Browse version 10: the sidebar's view counts, and a collection's own and subtree counts
+def test_view_counts_and_direct_collection_counts(api, tmp_path):  # noqa: F811
+    import sqlite3
+
+    from cairndex.devtools.catalog_fixture import insert_row, synthetic_row
+    from cairndex.replicas.catalog.navigation import navigation, view_counts
+
+    fixture = create_disposable(parent=tmp_path, bundles=4)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        db.execute(
+            "INSERT INTO asset_bundle_collections (bundle_id,collection_id,sort_order) "
+            "VALUES ('bundle-000001','collections-root',1)"
+        )
+        db.execute(
+            "UPDATE asset_bundles SET grouping_state='PROVISIONAL', "
+            "grouping_source='SCAN_SUGGESTION' WHERE id='bundle-000003'"
+        )
+        insert_row(
+            db,
+            "asset_files",
+            synthetic_row(
+                "asset_files",
+                "file-staged",
+                bundle_id="bundle-000003",
+                relative_path="Staged/clip.mp4",
+                directory_path="Staged",
+                original_filename="clip.mp4",
+                display_title="clip.mp4",
+                role="PRIMARY_VIDEO",
+                tech_metadata="{}",
+            ),
+        )
+    store = prepare_disposable(fixture).store
+    with store.connection(readonly=True) as db:
+        counts = view_counts(db).model_dump()
+        collections = {item["id"]: item for item in navigation(db, "collections", "", 50).items}
+    # The staged bundle is Unbundled, not a browsable bundle; Recent lists every bundle
+    assert counts == {
+        "all": 3,
+        "recent": 3,
+        "uncategorized": 1,
+        "untagged": 2,
+        "missing": 0,
+        "unbundled": 1,
+    }
+    assert (
+        collections["collections-root"]["count"],
+        collections["collections-root"]["direct_count"],
+    ) == (2, 1)
+    assert (
+        collections["collections-child"]["count"],
+        collections["collections-child"]["direct_count"],
+    ) == (1, 1)
+    client, base, _ = api
+    served = client.get(base + "/replica/catalog/bundles/counts")
+    assert served.status_code == 200
+    assert set(served.json()) == set(counts)
+    assert served.json()["all"] == page(api[2]).total

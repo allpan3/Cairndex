@@ -4,12 +4,15 @@ Operate on the library DB selected by ``{library_id}`` via ``LibrarySession``,
 so a collection created in one library is invisible to another.
 """
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
+from cairndex.api.media_deps import MediaAccessDep
+from cairndex.api.media_work import run_derivative
 from cairndex.api.schemas.browse import CollectionCountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
@@ -162,7 +165,7 @@ def update_collection(
 
 
 @router.get("/{collection_id}/thumbnail")
-def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> FileResponse:
+async def get_collection_thumbnail(collection_id: str, access: MediaAccessDep) -> FileResponse:
     """Serve the collection's cover thumbnail — the chosen cover bundle's cover,
     or an auto-picked bundle from the subtree. 404 if the collection has no
     thumbnailable bundle; 503 if ffmpeg is unavailable.
@@ -170,18 +173,32 @@ def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> Fi
     Scoped like the other file-serving routes: generation can shell out to
     ffmpeg, and a grid of collections asks for many of these at once, so the
     session must not stay checked out for either the generation or the transfer
-    (see ``LibraryAccess``).
+    (see ``LibraryAccess``). A portable library resolves the cover from its
+    private catalog and serves this device's cached frame, as bundle covers do.
     """
-    with access.session() as db:
-        bundle_id = service.resolve_cover_bundle_id(db, collection_id)
-        if bundle_id is None:
-            raise NotFoundError(f"collection {collection_id!r} has no cover")
-        try:
-            path = thumbnails.generate_for_bundle(db, bundle_id)
-        except thumbnails.ThumbnailError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Resolve and build inside one bounded worker, as bundle thumbnails do
+    def generate() -> Path | None:
+        if access.replica is not None:
+            from cairndex.replicas.catalog.inspector import collection_cover
+            from cairndex.replicas.media_cache import thumbnail
+
+            with access.replica.store.connection(readonly=True) as catalog:
+                selected = collection_cover(catalog, collection_id)
+            return thumbnail(access.replica, selected["id"]) if selected else None
+        assert access.legacy is not None
+        with access.legacy.session() as db:
+            bundle_id = service.resolve_cover_bundle_id(db, collection_id)
+            return thumbnails.generate_for_bundle(db, bundle_id) if bundle_id else None
+
+    try:
+        path = await run_derivative(generate)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"collection {collection_id!r} has no cover")
+    if access.replica is not None:
+        return FileResponse(path, headers={"Cache-Control": "private, no-store"})
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(path))
 
 

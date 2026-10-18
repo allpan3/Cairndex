@@ -134,3 +134,22 @@ def cover(db: sqlite3.Connection, bundle: str) -> dict[str, Any] | None:
         (bundle,),
     ).fetchone()
     return json.loads(found[0]) if found else None
+
+
+def collection_cover(db: sqlite3.Connection, collection: str) -> dict[str, Any] | None:
+    """A collection's artwork: its chosen cover bundle's, else the earliest browsable
+    bundle in its subtree that has any, as legacy folder cards resolved it."""
+    from cairndex.replicas.catalog.browse import CatalogBrowseRequest, browse
+
+    row = read_row(db, "collections", collection)
+    if row is None:
+        raise ReplicaError("Collection is unavailable")
+    chosen = row["cover_bundle_id"]
+    if chosen and read_row(db, "asset_bundles", chosen):
+        return cover(db, chosen)
+    request = CatalogBrowseRequest(collection_id=collection, sort="date_added", limit=20)
+    # Bounded: a subtree whose first page has no artwork shows the folder glyph
+    for item in browse(db, request).items:
+        if item.cover_file_id:
+            return read_row(db, "asset_files", item.cover_file_id)
+    return None
