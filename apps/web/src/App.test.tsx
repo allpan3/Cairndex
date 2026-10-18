@@ -336,6 +336,16 @@ test('retry recovers an unavailable library without navigation', async () => {
   expect(screen.getByText('Nothing here yet.')).toBeInTheDocument()
 })
 
+// A full-window screen covers the window's top edge, and the desktop window
+// has no system title bar, so its background is what moves the window
+test('a locked library moves the window from its background', async () => {
+  mockApi([LIBRARY], { locked: true })
+  renderApp()
+
+  const title = await screen.findByText(/Test Library is locked/)
+  expect(title.closest('.lockscreen')).toHaveAttribute('data-tauri-drag-region', 'true')
+})
+
 test('opens native settings over a locked library', async () => {
   mockApi([LIBRARY], { locked: true })
   renderApp()
@@ -353,7 +363,8 @@ test('offers pairing instead of a dead passphrase form for protected desktop lib
   mockApi([LIBRARY], { locked: true })
   renderApp()
 
-  expect(await screen.findByText(/Test Library needs device access/)).toBeInTheDocument()
+  const title = await screen.findByText(/Test Library needs device access/)
+  expect(title.closest('.lockscreen')).toHaveAttribute('data-tauri-drag-region', 'true')
   expect(screen.queryByLabelText('Owner passphrase')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Pair again' })).toBeInTheDocument()
 })
@@ -444,7 +455,6 @@ test('surfaces authorization loss after a successful session', async () => {
   })
   expect(await screen.findByText('Could not verify library access')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled()
-  expect(screen.getByRole('button', { name: 'Servers…' })).toBeEnabled()
 })
 
 // These tests cover admission and connection routing; catalog UI has its own tests.

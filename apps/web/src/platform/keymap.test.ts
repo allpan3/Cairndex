@@ -13,6 +13,7 @@ const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'settings',
   'keyboard-shortcuts',
   'manage-libraries',
+  'servers',
   'pair-device',
   'new-bundle',
   'new-collection',

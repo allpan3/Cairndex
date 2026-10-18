@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { ConnectionControls } from './desktop/ConnectionControls'
 
 import { setActiveLibraryId } from './api/client'
 import { conversionStorageKey, conversionVisible } from './api/libraryConversion'
@@ -44,15 +43,7 @@ import { usePersistentState } from './state/usePersistentState'
  * neither server state nor local UI state can bleed across libraries.
  */
 export default function App() {
-  if (getHostPlatform().kind === 'desktop') return <LibraryApp />
-  return (
-    <div className="connection-shell">
-      <ConnectionControls />
-      <div className="connection-content">
-        <LibraryApp />
-      </div>
-    </div>
-  )
+  return <LibraryApp />
 }
 
 // Resolves the intended library without silently substituting a different destination
@@ -244,7 +235,9 @@ function LibraryApp() {
   if (librariesQuery.isLoading) {
     return (
       <>
-        <div className="app-loading">Loading…</div>
+        <div className="app-loading" data-tauri-drag-region>
+          Loading…
+        </div>
         {libraryDialog}
       </>
     )
@@ -355,7 +348,9 @@ function LibraryApp() {
   if (auth.isPending) {
     return (
       <>
-        <div className="app-loading">Checking library access…</div>
+        <div className="app-loading" data-tauri-drag-region>
+          Checking library access…
+        </div>
         {settingsDialog}
         {libraryDialog}
       </>
@@ -485,7 +480,9 @@ function LibraryApp() {
   if (ownership.isPending) {
     return (
       <>
-        <div className="app-loading">Checking library ownership…</div>
+        <div className="app-loading" data-tauri-drag-region>
+          Checking library ownership…
+        </div>
         {settingsDialog}
         {libraryDialog}
       </>

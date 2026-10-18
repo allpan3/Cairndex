@@ -4,7 +4,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { desktopBridge } from './desktopBridge'
+import { desktopBridge, desktopMenu } from './desktopBridge'
 import { startBackend, stopBackend } from './realBackend'
 
 // Real independent HTTP servers prove duplicate portable identity and private drafts across one active desktop session
@@ -63,7 +63,7 @@ test('local and two remote connections preserve drafts, restart intent and cance
 
     // Choose servers through the normal visible controls, including the managed-local choice
     async function choose(index: number) {
-      await page.getByRole('button', { name: 'Servers…' }).click()
+      await desktopMenu(page, 'servers')
       const dialog = page.getByRole('dialog', { name: 'Servers' })
       await dialog
         .getByRole('button', {
@@ -86,7 +86,11 @@ test('local and two remote connections preserve drafts, restart intent and cance
     await expect(title).toHaveValue('Unsent on the first server')
     await page.reload()
     await expect(title).toHaveValue('Unsent on the first server')
-    await expect(page.locator('.connection-bar')).toContainText(new URL(urls[0]).host)
+    await desktopMenu(page, 'servers')
+    await expect(
+      page.getByRole('dialog', { name: 'Servers' }).locator('[aria-current="true"]'),
+    ).toContainText(new URL(urls[0]).host)
+    await page.keyboard.press('Escape')
 
     // An aborted preparation cannot commit when its delayed health response finally arrives
     let release!: () => void
@@ -101,7 +105,7 @@ test('local and two remote connections preserve drafts, restart intent and cance
         })
         .catch(() => undefined)
     })
-    await page.getByRole('button', { name: 'Servers…' }).click()
+    await desktopMenu(page, 'servers')
     const dialog = page.getByRole('dialog', { name: 'Servers' })
     await dialog
       .getByRole('button', { name: new RegExp(new URL(urls[1]).host.replaceAll('.', '\\.')) })
@@ -117,7 +121,7 @@ test('local and two remote connections preserve drafts, restart intent and cance
     await page.route('http://127.0.0.1:9/api/v1/health', (route) =>
       route.fulfill({ json: { status: 'ok' } }),
     )
-    await page.getByRole('button', { name: 'Servers…' }).click()
+    await desktopMenu(page, 'servers')
     await dialog.getByLabel('Add a server').fill('http://127.0.0.1:9')
     await dialog.getByRole('button', { name: 'Add and connect' }).click()
     await expect(dialog.getByRole('alert')).toContainText('not a compatible')
@@ -130,7 +134,8 @@ test('local and two remote connections preserve drafts, restart intent and cance
     await expect(page.getByLabel('Server URL')).toHaveValue(urls[0])
     await choose(1)
     await expect(title).toHaveValue('Saved on the second server')
-    await page.getByRole('button', { name: 'Reconnect', exact: true }).click()
+    // Choosing the selected server again reconnects it
+    await choose(1)
     await expect(title).toHaveValue('Saved on the second server')
 
     expect(pageErrors).toEqual([])

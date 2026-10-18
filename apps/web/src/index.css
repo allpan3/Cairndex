@@ -7407,42 +7407,7 @@ code {
   padding-block: 0.8rem;
 }
 
-/* Server choice remains reachable outside library and authentication gates */
-.connection-shell {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-.connection-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-.connection-bar > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.connection-bar [role='alert'] {
-  color: var(--danger);
-}
-.connection-content {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-.connection-content .app {
-  height: 100%;
-}
-.connection-content .lockscreen {
-  min-height: 100%;
-}
+/* File ▸ Servers… */
 .connection-dialog {
   color: var(--text);
   background: var(--panel);
@@ -7469,15 +7434,6 @@ code {
 .connection-choices [aria-current='true'] {
   outline: 1px solid var(--accent);
 }
-:root[data-titlebar='overlay'] .connection-bar {
-  padding-left: 90px;
-}
-
-:root[data-titlebar='overlay'] .connection-content .sidebar__titlebar {
-  min-height: 28px;
-  padding-left: 8px;
-}
-
 .connection-dialog:not([open]) {
   display: none;
 }
@@ -7660,14 +7616,14 @@ code {
   overflow-y: auto;
 }
 
+/* Edge to edge, as v0.2.1's `.app`: the sidebar and inspector meet the window's
+   edges, and on macOS the traffic lights sit over the sidebar's top row. */
 .catalog-browser-workspace {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
   min-height: 0;
   overflow: auto;
-  padding: 8px 12px;
-  gap: 6px;
 }
 .catalog-browser-workspace > header {
   display: flex;

@@ -10,6 +10,7 @@ export type DesktopWorkspaceAction =
   | 'settings'
   | 'keyboard-shortcuts'
   | 'manage-libraries'
+  | 'servers'
   | 'pair-device'
   | 'new-bundle'
   | 'new-collection'

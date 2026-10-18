@@ -315,6 +315,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The window's top edge is the app again, as in v0.2.1.** A "Server:" bar with
+  *Servers…* and *Reconnect* sat above the whole app, pushed the sidebar down
+  below the window buttons and could not move the window. The server choice is
+  now **File ▸ Servers…** (choosing the selected server reconnects it), and the
+  bar is gone in the desktop app and the browser. The background of the
+  first-run, lock and loading screens now moves the window, which it could not
+  do before. The portable browser also fills the window edge to edge again,
+  instead of sitting inside an 8–12 px margin.
 - **A portable library shows Date Added in local time.** Its catalog keeps the
   legacy database's timestamps, which are UTC without an offset, and the browser
   read them as local time, so a bundle or file added in the evening showed the
