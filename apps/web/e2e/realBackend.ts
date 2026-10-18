@@ -29,7 +29,21 @@ export async function startBackend(dataDir: string, environment: Record<string, 
     const baseUrl = `http://127.0.0.1:${port}`
     const child = spawn(
       'uv',
-      ['run', 'uvicorn', 'cairndex.main:app', '--host', '127.0.0.1', '--port', String(port)],
+      // Uvicorn drops an idle connection after 5 s. A test that blocks Node's event
+      // loop longer, such as `execFileSync` of a recovery command, cannot see the
+      // close, and its next fetch fails on the dead pooled socket ("other side
+      // closed"). Node's own idle timer closes these connections once it runs.
+      [
+        'run',
+        'uvicorn',
+        'cairndex.main:app',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(port),
+        '--timeout-keep-alive',
+        '600',
+      ],
       {
         cwd: serverDir,
         env: {
