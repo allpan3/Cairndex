@@ -343,12 +343,10 @@ test('ordinary collection filters and File Browser share one library journey @fu
     const legacyRequests: string[] = []
     page.on('request', (request) => {
       const url = new URL(request.url())
-      if (request.method() === 'GET' && /\/bundles\/[^/]+\/thumbnail$/.test(url.pathname)) return
-      // The shared thumbnail route validates catalog identity and local generation.
+      // The shared thumbnail routes read the private catalog for a portable library
       if (
         request.method() === 'GET' &&
-        /\/bundles\/[^/]+\/files\/[^/]+\/thumbnail$/.test(url.pathname) &&
-        url.searchParams.has('source_generation')
+        /\/(bundles|collections)\/[^/]+(\/files\/[^/]+)?\/thumbnail$/.test(url.pathname)
       )
         return
       if (
@@ -364,10 +362,12 @@ test('ordinary collection filters and File Browser share one library journey @fu
       .getByRole('treeitem', { name: /Synthetic root/ })
       .first()
       .click()
+    // As in v0.2.1, a collection lists its own bundles until the switch adds its subtree's
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Subcollections (1)' })).toBeVisible()
+    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).check()
     await expect(page.getByText('1 items', { exact: true })).toBeVisible()
     await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
-    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
-    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).check()
     await page.getByRole('button', { name: 'All Tags', exact: true }).click()
     // The All Tags page filters by a tag on a double-click, as in v0.2.1
     await page.locator('.tagtile__head').filter({ hasText: 'Synthetic root' }).dblclick()
@@ -383,7 +383,7 @@ test('ordinary collection filters and File Browser share one library journey @fu
       .getByRole('treeitem', { name: /Synthetic root/ })
       .first()
       .click()
-    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Clear all', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'All Tags', exact: true }).click()
     await page.locator('.tagtile__head').filter({ hasText: 'Synthetic root' }).dblclick()
@@ -400,12 +400,12 @@ test('ordinary collection filters and File Browser share one library journey @fu
         request.url().endsWith('/replica/catalog/bundles/browse') &&
         request.postDataJSON()?.view === 'recent',
     )
-    await page.getByRole('button', { name: 'Recent', exact: true }).click()
+    await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
     expect((await recentRequest).postDataJSON()).toMatchObject({
       sort: 'date_added',
       order: 'desc',
     })
-    await page.getByRole('button', { name: 'All', exact: true }).click()
+    await page.getByRole('button', { name: /^All( \d+)?$/ }).click()
     await openBundle(page, 'Synthetic playback')
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     await inspector
@@ -508,7 +508,6 @@ test('portable card menu locates files and organizes a collection @fullstack', a
       .getByRole('treeitem', { name: /Synthetic child/ })
       .first()
       .click()
-    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
     await expect(page.getByText('1 items', { exact: true })).toBeVisible()
     const card = page.getByRole('listbox', { name: 'Bundles', exact: true }).getByRole('option')
     await card.click({ button: 'right' })
@@ -647,7 +646,6 @@ test('portable cards drag into sidebar collections @fullstack', async ({ page })
     // A drop from All bundles adds the card without removing it anywhere
     await card.dragTo(row(/Synthetic child/))
     await row(/Synthetic child/).click()
-    await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
     await expect(page.getByText('2 items', { exact: true })).toBeVisible()
     // A plain drop out of an open collection moves the card
     await card.dragTo(row(/Synthetic root/))
@@ -767,8 +765,8 @@ test('portable Manual sort reorders by drag and cleans up the order @fullstack',
     const shown = () =>
       grid.locator('[data-bundle-id]').evaluateAll((cards) => cards.map((card) => card.id))
     const card = (id: string) => grid.locator(`[data-bundle-id="${id}"]`)
-    await page.getByRole('button', { name: 'Sort', exact: true }).click()
-    await page.getByRole('button', { name: 'Manual', exact: true }).click()
+    // All Bundles opens in Manual order, as in v0.2.1
+    await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveText('Manual')
     await expect
       .poll(shown)
       .toEqual(
@@ -992,18 +990,20 @@ test('portable Unbundled files make and extend a bundle @fullstack', async ({ pa
       .click()
     await expect(page.getByText('Bundle deleted.')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Unbundled', exact: true }).click()
-    const files = page.getByRole('region', { name: 'Unbundled files' })
-    await files.getByRole('button', { name: 'Playback/movie.mp4' }).click()
-    await files
-      .getByRole('button', { name: 'Playback/captions.srt' })
-      .click({ modifiers: ['ControlOrMeta'] })
-    await expect(files.getByText('2 selected')).toBeVisible()
-    await files.getByRole('button', { name: 'Create Bundle…' }).click()
+    await page.getByRole('button', { name: /^Unbundled( \d+)?$/ }).click()
+    // The list layout is a grid of rows, as in the File Browser
+    const files = page.getByRole('grid', { name: 'Files', exact: true })
+    await files.getByRole('row', { name: /movie\.mp4/ }).click()
+    await files.getByRole('row', { name: /captions\.srt/ }).click({ modifiers: ['ControlOrMeta'] })
+    await files.getByRole('row', { name: /captions\.srt/ }).click({ button: 'right' })
+    await page
+      .getByRole('menu')
+      .getByRole('menuitem', { name: 'Create Bundle from 2 Files…' })
+      .click()
     const create = page.getByRole('dialog', { name: 'Create bundle' })
     await create.getByLabel('Title').fill('Rejoined')
     await create.getByRole('button', { name: 'Create bundle' }).click()
-    await expect(files.getByText('Created a bundle from 2 files.')).toBeVisible()
+    await expect(page.getByText('Created a bundle from 2 files.')).toBeVisible()
     await expect.poll(() => owner('media-direct')).toBeNull()
     const found = await apiPost<{ items: { id: string }[] }>(
       backend.baseUrl,
@@ -1021,13 +1021,13 @@ test('portable Unbundled files make and extend a bundle @fullstack', async ({ pa
     // The video leads, as the grouping heuristic orders a new bundle
     expect(await members()).toEqual(['media-direct:PRIMARY_VIDEO', 'media-subtitle:SUBTITLE'])
 
-    await files.getByRole('button', { name: 'Playback/picture.png' }).click()
-    await files.getByRole('button', { name: 'Add to Bundle…' }).click()
+    await files.getByRole('row', { name: /picture\.png/ }).click({ button: 'right' })
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Add to Bundle…' }).click()
     const add = page.getByRole('dialog', { name: 'Add to bundle' })
     await add.getByLabel('Search for a bundle').fill('Rejoined')
     await add.getByRole('radio', { name: /Rejoined/ }).check()
     await add.getByRole('button', { name: 'Add to bundle' }).click()
-    await expect(files.getByText('Added 1 file to the bundle.')).toBeVisible()
+    await expect(page.getByText('Added 1 file to the bundle.')).toBeVisible()
     expect(await members()).toEqual([
       'media-direct:PRIMARY_VIDEO',
       'media-subtitle:SUBTITLE',
@@ -1035,7 +1035,7 @@ test('portable Unbundled files make and extend a bundle @fullstack', async ({ pa
     ])
 
     // Create Bundle… in the browser's empty space makes an empty bundle, then adds files
-    await page.getByRole('button', { name: 'All', exact: true }).click()
+    await page.getByRole('button', { name: /^All( \d+)?$/ }).click()
     const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
     const box = (await grid.boundingBox())!
     await grid.click({ button: 'right', position: { x: box.width - 12, y: box.height - 12 } })

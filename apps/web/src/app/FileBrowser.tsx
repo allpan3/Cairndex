@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { catalog } from '../api/catalog'
 import { replicaRequest } from '../api/replicas'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { useLocalContactSheet } from './useLocalContactSheet'
@@ -112,9 +113,10 @@ interface FileBrowserProps {
   selectedPath: string | null
   onNavigate: (path: string) => void
   onSelectEntry: (entry: FileBrowserEntry | null) => void
-  // Manual bundling actions on selected file paths (unlinked ones auto-linked).
-  onAddToBundle: (relativePaths: string[]) => void
-  onCreateBundle: (relativePaths: string[]) => void
+  // Manual bundling actions on selected file paths (unlinked ones auto-linked),
+  // with the indexed files' ids for a portable library, which bundles by id
+  onAddToBundle: (relativePaths: string[], fileIds: string[]) => void
+  onCreateBundle: (relativePaths: string[], fileIds: string[]) => void
   hostLabels: HostLabels
   playerPrefs: PlayerPrefs
   onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
@@ -156,14 +158,17 @@ function crumbs(path: string): { label: string; path: string }[] {
  * directories) has neither and keeps its icon.
  */
 function thumbnailFor(entry: FileBrowserEntry): string | null {
-  if (entry.kind === 'directory' || entry.local_state != null) return null
+  // A portable entry carries `local_state`; one this device cannot read has no image
+  if (entry.kind === 'directory' || entry.local_state === 'unavailable') return null
   if (entry.file_id && entry.bundle_id)
     return fileThumbnailUrl(
       entry.bundle_id,
       entry.file_id,
       `${entry.size_bytes}:${entry.modified_at}`,
     )
-  if (entry.media_kind === 'image') return fileBrowserPreviewUrl(entry.relative_path, 640)
+  // The path-scoped preview reads the legacy library's files only
+  if (entry.local_state == null && entry.media_kind === 'image')
+    return fileBrowserPreviewUrl(entry.relative_path, 640)
   return null
 }
 
@@ -310,7 +315,11 @@ function FileBrowserControls(props: FileBrowserProps) {
     setSearch: (search: string) => setCriteria({ path: props.path, search }),
   }
   return props.catalogLibrary ? (
-    <CatalogBrowseScope {...props} {...controls} />
+    props.scope === 'unbundled' ? (
+      <CatalogUnbundledScope {...props} {...controls} />
+    ) : (
+      <CatalogBrowseScope {...props} {...controls} />
+    )
   ) : props.scope === 'unbundled' ? (
     <UnbundledScope {...props} {...controls} />
   ) : (
@@ -330,31 +339,26 @@ function CatalogBrowseScope(props: FileScopeProps) {
   })
   return (
     <div className="file-browser">
-      <p className="catalog-capabilities">
-        Files are checked on this device. Unavailable catalog paths remain listed. Unlinked files
-        must be cataloged before they can open here.
-      </p>
-      {query.data?.local_state === 'unavailable' && (
-        <p role="status">This directory is unavailable on this device. Showing cataloged paths.</p>
-      )}
       <FileList
         {...props}
         key={`${props.catalogLibrary}/${props.path}`}
         header={
-          <nav className="file-browser__crumbs" aria-label="Breadcrumb">
-            <button className="crumb" onClick={() => props.onNavigate('')}>
-              {props.libraryName}
-            </button>
-            {crumbs(props.path).map((crumb) => (
-              <button
-                className="crumb"
-                key={crumb.path}
-                onClick={() => props.onNavigate(crumb.path)}
-              >
-                {crumb.label}
+          <>
+            {props.headerLeading}
+            <nav className="file-browser__crumbs" aria-label="Breadcrumb">
+              <button className="crumb" onClick={() => props.onNavigate('')} disabled={!props.path}>
+                {props.libraryName}
               </button>
-            ))}
-          </nav>
+              {crumbs(props.path).map((crumb) => (
+                <span key={crumb.path}>
+                  <span className="crumb__sep">/</span>
+                  <button className="crumb" onClick={() => props.onNavigate(crumb.path)}>
+                    {crumb.label}
+                  </button>
+                </span>
+              ))}
+            </nav>
+          </>
         }
         entries={query.data?.entries ?? []}
         isLoading={query.isLoading}
@@ -362,7 +366,94 @@ function CatalogBrowseScope(props: FileScopeProps) {
         complete={!!query.data && !query.isFetching && !query.isError}
         onRetry={() => void query.refetch()}
         errorText={query.error?.message}
-        emptyText="This folder is empty."
+        emptyText={
+          query.data?.local_state === 'unavailable'
+            ? 'This folder is unavailable on this device.'
+            : 'This folder is empty.'
+        }
+      />
+    </div>
+  )
+}
+
+const PLAYABLE = new Set(['video', 'image', 'audio'])
+
+/** The portable library's queue: cataloged files whose bundle is still unconfirmed. */
+function CatalogUnbundledScope(props: FileScopeProps) {
+  const q = props.search.trim()
+  const query = useInfiniteQuery({
+    queryKey: ['catalog-unbundled', props.catalogLibrary, q],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      catalog<components['schemas']['CatalogUnbundledPage']>(
+        props.catalogLibrary!,
+        '/files/unbundled',
+        'POST',
+        { q, offset: pageParam, limit: 100 },
+      ),
+    getNextPageParam: (page) =>
+      page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
+    refetchInterval: 4000,
+  })
+  const entries = useMemo(
+    () =>
+      query.data?.pages.flatMap((page) =>
+        page.items.map((item): FileBrowserEntry => {
+          const name = item.relative_path.split('/').pop() ?? item.relative_path
+          const dot = name.lastIndexOf('.')
+          // The catalog records no sizes or dates; the inspector checks this device
+          return {
+            kind: 'file',
+            name,
+            relative_path: item.relative_path,
+            file_id: item.id,
+            bundle_id: item.bundle_id,
+            linked: true,
+            unbundled: true,
+            local_state: 'unknown',
+            media_kind: item.media_kind ?? null,
+            supported: PLAYABLE.has(item.media_kind ?? ''),
+            extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : null,
+            size_bytes: null,
+            created_at: null,
+            modified_at: null,
+            duration: null,
+            mime_type: null,
+            container: null,
+            video_codec: null,
+            video_codec_tag: null,
+            audio_codec: null,
+            resume_position: null,
+          }
+        }),
+      ) ?? [],
+    [query.data],
+  )
+  return (
+    <div className="file-browser">
+      <FileList
+        {...props}
+        key={`${props.catalogLibrary}/unbundled`}
+        header={
+          <>
+            {props.headerLeading}
+            <span className="toolbar__title">Unbundled</span>
+          </>
+        }
+        entries={entries}
+        isLoading={query.isLoading}
+        isError={query.isError}
+        complete={!!query.data && !query.isFetching && !query.isError && !query.hasNextPage}
+        onRetry={() => void query.refetch()}
+        errorText={query.error?.message}
+        emptyText={
+          q
+            ? `No files match “${props.search}”.`
+            : 'Nothing to bundle — every file is already in a bundle.'
+        }
+        hasMore={query.hasNextPage}
+        isFetchingMore={query.isFetchingNextPage}
+        onLoadMore={() => void query.fetchNextPage()}
       />
     </div>
   )
@@ -552,6 +643,8 @@ function FileList({
    * always uses the global sort and is not offered the choice.
    */
   const folderKey = scope === 'browse' ? currentPath : null
+  // The portable queue pages in path order and has no other order to offer
+  const fixedOrder = Boolean(catalogLibrary) && scope === 'unbundled'
   const folderScoped = prefs.sortScope === 'folder' && folderKey !== null
   const activeSort: SortPref<FileSort> = folderScoped
     ? (prefs.folderSorts?.[folderKey] ?? { sort: prefs.sort, order: prefs.order })
@@ -760,17 +853,22 @@ function FileList({
       }
     }
     if (items.length > 0) items.push(null)
-    if (!catalogLibrary)
+    // A portable library bundles cataloged files by id, so only from its queue
+    if (!catalogLibrary || scope === 'unbundled') {
+      const ids = targets.flatMap(
+        (target) => visible.find((item) => item.relative_path === target)?.file_id ?? [],
+      )
       items.push(
         {
           label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
-          onClick: () => onCreateBundle(targets),
+          onClick: () => onCreateBundle(targets, ids),
         },
         {
           label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
-          onClick: () => onAddToBundle(targets),
+          onClick: () => onAddToBundle(targets, ids),
         },
       )
+    }
     if (n === 1) {
       const owningBundleId = entry.bundle_id
       if (onLocateBundle && owningBundleId && !entry.unbundled) {
@@ -1135,19 +1233,21 @@ function FileList({
         {/* The same control the Bundle Browser uses, so the two toolbars are one
             row of controls at one size — this was a bare select plus a separate
             arrow button (owner, 2026-09-01). */}
-        <SortControl
-          sort={activeSort.sort}
-          order={activeSort.order}
-          options={FILE_SORTS}
-          onChange={setActiveSort}
-          perCollection={folderKey === null ? undefined : prefs.sortScope === 'folder'}
-          onPerCollection={
-            folderKey === null
-              ? undefined
-              : (value) => setPrefs({ ...prefs, sortScope: value ? 'folder' : 'global' })
-          }
-          scopeLabel="Remember sort per folder"
-        />
+        {!fixedOrder && (
+          <SortControl
+            sort={activeSort.sort}
+            order={activeSort.order}
+            options={FILE_SORTS}
+            onChange={setActiveSort}
+            perCollection={folderKey === null ? undefined : prefs.sortScope === 'folder'}
+            onPerCollection={
+              folderKey === null
+                ? undefined
+                : (value) => setPrefs({ ...prefs, sortScope: value ? 'folder' : 'global' })
+            }
+            scopeLabel="Remember sort per folder"
+          />
+        )}
 
         <div className="seg toolbar__layouts" role="group" aria-label="Layout">
           <button
@@ -1278,17 +1378,27 @@ function FileList({
                       manager's list view does (owner, 2026-09-01); the toolbar
                       control and these are one preference. */}
                   <div className="file-table__head" role="row">
-                    {FILE_SORTS.map((column) => (
-                      <SortHeaderCell
-                        key={column.value}
-                        label={column.label}
-                        value={column.value}
-                        sort={activeSort.sort}
-                        order={activeSort.order}
-                        onSort={setActiveSort}
-                        className={column.value === 'size' ? 'file-table__num' : undefined}
-                      />
-                    ))}
+                    {FILE_SORTS.map((column) =>
+                      fixedOrder ? (
+                        <span
+                          key={column.value}
+                          role="columnheader"
+                          className={column.value === 'size' ? 'file-table__num' : undefined}
+                        >
+                          <span className="colhead">{column.label}</span>
+                        </span>
+                      ) : (
+                        <SortHeaderCell
+                          key={column.value}
+                          label={column.label}
+                          value={column.value}
+                          sort={activeSort.sort}
+                          order={activeSort.order}
+                          onSort={setActiveSort}
+                          className={column.value === 'size' ? 'file-table__num' : undefined}
+                        />
+                      ),
+                    )}
                   </div>
                   {visible.map((entry) => (
                     <FileRow

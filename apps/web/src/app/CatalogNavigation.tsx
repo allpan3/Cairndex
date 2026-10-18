@@ -1,24 +1,20 @@
-import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { catalog } from '../api/catalog'
 import { catalogNavigation } from '../api/catalogQuery'
-import type { CollectionRead, LibraryRead, SmartCollectionRead } from '../api/client'
-import {
-  arrangeHierarchy,
-  createCollection,
-  moveBundlesToCollection,
-  moveCollections,
-  remove,
-  rename,
-  sortCollectionsByName,
-} from '../api/catalogOrganize'
+import type { LibraryRead, SmartCollectionRead } from '../api/client'
+import { createCollection, rename } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
+import type { components } from '../api/schema'
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import { getHostPlatform } from '../platform'
-import { CleanupOrderDialog } from './CleanupOrderDialog'
+import type { CatalogNotice } from './CatalogToast'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
-import { getActiveDrag, type DragItem } from './dnd'
-import { RemoveCollectionDialog } from './RemoveCollectionDialog'
+import type { DragItem } from './dnd'
 import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
+import type { CatalogCollections } from './useCatalogCollections'
+
+type ViewCounts = components['schemas']['CatalogViewCounts']
 
 export function CatalogNavigation({
   systemViewsEnabled,
@@ -41,7 +37,12 @@ export function CatalogNavigation({
   bundleMovesEnabled = false,
   newCollectionRequest = null,
   onNewCollectionHandled,
+  renameCollectionRequest = null,
+  onRenameCollectionHandled,
   libraryActions,
+  collections,
+  showSubContents,
+  onNotice,
 }: {
   systemViewsEnabled: boolean
   unbundled: boolean
@@ -67,59 +68,31 @@ export function CatalogNavigation({
   /** The browser's empty-space menu asks for a new collection here. */
   newCollectionRequest?: { parentId: string | null } | null
   onNewCollectionHandled?: () => void
+  /** A folder card's menu asks the sidebar to rename this collection in place. */
+  renameCollectionRequest?: { id: string } | null
+  onRenameCollectionHandled?: () => void
   /** Update, the library menu and any status that needs the owner. */
   libraryActions?: React.ReactNode
+  collections: CatalogCollections
+  /** A collection's badge counts its subtree only while the browser lists it. */
+  showSubContents: boolean
+  onNotice: (notice: CatalogNotice) => void
 }) {
-  const collections = useQuery({
-    queryKey: ['catalog-navigation', library, 'collections'],
-    queryFn: () => catalogNavigation<CollectionRead & { count: number }>(library, 'collections'),
-    refetchInterval: 2000,
+  const status = useReplicaStatus(library).data
+  // Browse version 10 counts the system views, as the legacy sidebar did
+  const counted = (status?.browse_version ?? 0) >= 10
+  const counts = useQuery({
+    queryKey: ['catalog-view-counts', library],
+    enabled: counted,
+    queryFn: () => catalog<ViewCounts>(library, '/bundles/counts'),
+    refetchInterval: 5000,
   })
   const smart = useQuery({
     queryKey: ['catalog-navigation', library, 'smart_folders'],
     queryFn: () => catalogNavigation<SmartCollectionRead>(library, 'smart_folders'),
     refetchInterval: 2000,
   })
-  const client = useQueryClient()
-  const [notice, setNotice] = useState('')
-  const [deleting, setDeleting] = useState<CollectionRead | null>(null)
-  const [cleaning, setCleaning] = useState(false)
-  const items = collections.data ?? []
-  const names = Object.fromEntries(items.map((item) => [item.id, item.name]))
-  const refresh = async () => {
-    for (const key of [
-      'catalog-navigation',
-      'catalog-browse',
-      'catalog-detail',
-      'catalog-memberships',
-    ])
-      await client.invalidateQueries({ queryKey: [key, library] })
-  }
-  // Each change saves at once; a reply after a library switch is dropped
-  function run(action: () => Promise<void>, done?: () => void) {
-    const current = captureRequestScope()
-    setNotice('')
-    void action()
-      .then(async () => {
-        current()
-        await refresh()
-        done?.()
-      })
-      .catch((reason: Error) => {
-        try {
-          current()
-        } catch {
-          return
-        }
-        setNotice(reason.message)
-      })
-  }
-  const arrange = (moved: string[], parent: string | null, before: string | null) =>
-    run(() =>
-      arrangeHierarchy(library, 'collections', (forest) =>
-        moveCollections(forest, names, moved, parent, before),
-      ),
-    )
+  const items = collections.items
   return (
     <>
       <Sidebar
@@ -146,20 +119,28 @@ export function CatalogNavigation({
         onReviewGrouping={onReview}
         selection={selection}
         onSelect={onSelect}
-        collections={collections.data ?? []}
+        counts={counts.data}
+        collections={items}
         collectionCounts={Object.fromEntries(
-          (collections.data ?? []).map((item) => [item.id, item.count]),
+          items.map((item) => [
+            item.id,
+            showSubContents ? item.count : (item.direct_count ?? item.count),
+          ]),
         )}
         collectionsEditable={!blocked}
         onCopyCollectionUri={
           getHostPlatform().kind === 'desktop'
             ? (id) =>
                 void copyText(buildDeepLinkUri('collection', id, library)).then((copied) =>
-                  setNotice(copied ? 'Collection URI copied.' : 'Could not copy the URI.'),
+                  onNotice(
+                    copied
+                      ? { text: 'Collection URI copied.' }
+                      : { text: 'Could not copy the URI.', alert: true },
+                  ),
                 )
             : undefined
         }
-        onDeleteCollection={setDeleting}
+        onDeleteCollection={(item) => collections.requestDelete([item])}
         onCreateCollection={(payload, callbacks) => {
           const current = captureRequestScope()
           const order = items
@@ -168,7 +149,7 @@ export function CatalogNavigation({
           void createCollection(library, payload.name, payload.parent_id, order)
             .then(async (created) => {
               current()
-              await refresh()
+              await collections.refresh()
               callbacks.onSuccess(created)
             })
             .catch(callbacks.onError)
@@ -178,86 +159,34 @@ export function CatalogNavigation({
           void rename(library, 'collections', id, name)
             .then(async () => {
               current()
-              await refresh()
+              await collections.refresh()
               callbacks.onSuccess()
             })
             .catch(callbacks.onError)
         }}
-        onReorderCollections={(parent, moved, before) => arrange(moved, parent, before)}
-        onReparentCollections={(moved, target) => arrange(moved, target, null)}
-        onCleanupCollections={() => setCleaning(true)}
+        onReorderCollections={(parent, moved, before) => collections.arrange(moved, parent, before)}
+        onReparentCollections={(moved, target) => collections.arrange(moved, target, null)}
+        onCleanupCollections={collections.requestCleanup}
+        renameCollectionRequest={renameCollectionRequest}
+        onRenameCollectionHandled={onRenameCollectionHandled}
         dragItem={dragItem}
         onDragItem={onDragItem}
         newCollectionRequest={newCollectionRequest}
         onNewCollectionHandled={onNewCollectionHandled}
-        onMoveBundlesInto={
-          bundleMovesEnabled
-            ? (target, copy) => {
-                // The live payload: a fast drop can arrive before React renders the drag
-                const live = getActiveDrag() ?? dragItem
-                if (live?.kind !== 'bundles' || live.ids.length === 0) return
-                // Option/Alt adds; a plain drop out of an open collection moves
-                const source = copy ? null : selection.collectionId
-                run(() => moveBundlesToCollection(library, live.ids, target, source))
-              }
-            : undefined
-        }
+        onMoveBundlesInto={bundleMovesEnabled ? collections.moveBundlesInto : undefined}
         smartCollections={smart.data ?? []}
         onNewSmartCollection={onReview}
         onEditSmartCollection={(item) => onReviewEntity('smart_folders', item.id)}
         onDeleteSmartCollection={onReview}
         onOpenAllTags={() => onMode('tags')}
       />
-      {notice && (
-        <p role="alert">
-          {notice} <button onClick={() => setNotice('')}>Dismiss</button>
-        </p>
-      )}
-      {deleting && (
-        <RemoveCollectionDialog
-          collections={[deleting]}
-          hasChildren={items.some((item) => item.parent_id === deleting.id)}
-          subcollectionsMoveUp
-          pending={false}
-          onCancel={() => setDeleting(null)}
-          onConfirm={() => {
-            const target = deleting.id
-            setDeleting(null)
-            run(
-              () => remove(library, 'collections', target),
-              () => {
-                if (selection.collectionId === target) onSelect({ view: 'all', collectionId: null })
-              },
-            )
-          }}
-        />
-      )}
-      {cleaning && (
-        <CleanupOrderDialog
-          title="Clean up collection order"
-          description="Overwrite the manual order of every collection level with alphabetical order by name."
-          choices={[
-            { key: 'asc', label: 'Title (A–Z)' },
-            { key: 'desc', label: 'Title (Z–A)' },
-          ]}
-          pending={false}
-          onCancel={() => setCleaning(false)}
-          onConfirm={(key) => {
-            setCleaning(false)
-            run(() =>
-              arrangeHierarchy(library, 'collections', (forest) =>
-                sortCollectionsByName(forest, names, key as 'asc' | 'desc'),
-              ),
-            )
-          }}
-        />
-      )}
+      {collections.dialogs}
       {(collections.error || smart.error) && (
         <p role="alert">
           Navigation is unavailable.{' '}
           <button
             onClick={() => {
-              void collections.refetch()
+              collections.retry()
               void smart.refetch()
             }}
           >

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
@@ -7,14 +7,21 @@ import type { BundleSort, SortOrder } from '../api/client'
 import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
 import { Toolbar } from './Toolbar'
-import { DEFAULT_PREFS, type Selection } from './types'
+import {
+  type BrowsePrefs,
+  DEFAULT_PREFS,
+  type Selection,
+  type SortPref,
+  SYSTEM_VIEWS,
+} from './types'
+import { usePersistentState } from '../state/usePersistentState'
+import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import {
   type AdHocFilters,
   adHocFiltersToExpression,
   anyAdHocActive,
   emptyAdHocFilters,
 } from './adHocFilters'
-import { useCollections } from '../api/hooks'
 import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
 import { selectionRange, selectionTargets, type SelectionModifiers } from './selection'
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
@@ -32,11 +39,17 @@ import {
   setCollectionMembership,
 } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
+import { draftKey } from '../api/replicas'
 import { getHostPlatform } from '../platform'
 import { buildDeepLinkUri, copyText } from './deepLinkUri'
 import { CleanupOrderDialog } from './CleanupOrderDialog'
 import { DeleteBundlesDialog } from './DeleteBundlesDialog'
 import { AddFilesToBundleDialog, CreateEmptyBundleDialog } from './ManualBundlingDialogs'
+import { CatalogCollectionInspector } from './CatalogCollectionInspector'
+import type { CatalogNotice } from './CatalogToast'
+import { CollectionHeader } from './CollectionHeader'
+import type { DragItem } from './dnd'
+import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 3 adds Manual and File count. A portable catalog records no file
@@ -44,6 +57,46 @@ type Page = components['schemas']['CatalogBrowsePage']
 // unavailable.
 const BASIC_SORTS: BundleSort[] = ['title', 'rating', 'date_added']
 const ORDERED_SORTS: BundleSort[] = [...BASIC_SORTS, 'manual', 'file_count']
+const NO_IDS: ReadonlySet<string> = new Set()
+
+// A prepared bulk review or an interrupted save owns its own targets, so it
+// stays open (and reopens after a reload) once the selection it came from is gone
+function pendingBulkSave(library: string, editor: string): boolean {
+  try {
+    const raw = localStorage.getItem(draftKey(library, 'bulk', editor))
+    return Boolean(raw && (JSON.parse(raw) as { body?: { operation?: string } }).body?.operation)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The folder cards above the grid, as in v0.2.1: All shows the top-level
+ * collections; an open collection shows its children, or every descendant in
+ * tree order while its contents include them. Other views show none.
+ */
+function folderCards(
+  all: CatalogCollection[],
+  parent: string | null,
+  topLevel: boolean,
+  flattened: boolean,
+): CatalogCollection[] {
+  if (parent === null && !topLevel) return []
+  const byOrder = (a: CatalogCollection, b: CatalogCollection) =>
+    a.sort_order - b.sort_order || a.name.localeCompare(b.name)
+  const children = (id: string | null) =>
+    all.filter((item) => (item.parent_id ?? null) === id).sort(byOrder)
+  if (!flattened || parent === null) return children(parent)
+  const flat: CatalogCollection[] = []
+  const walk = (id: string) => {
+    for (const child of children(id)) {
+      flat.push(child)
+      walk(child.id)
+    }
+  }
+  walk(parent)
+  return flat
+}
 
 // The shared virtual listing and inspector controls receive catalog reads and causal saves.
 export function CatalogBundleBrowser({
@@ -69,6 +122,16 @@ export function CatalogBundleBrowser({
   onBundleDrag,
   onNewCollection,
   viewerOpen = false,
+  collections,
+  showSubContents,
+  onShowSubContents,
+  onOpenCollection,
+  onRenameCollection,
+  dragItem,
+  onDragItem,
+  bundleMovesEnabled,
+  onNotice,
+  headerLeading,
 }: {
   library: string
   locateRequest: number
@@ -97,12 +160,24 @@ export function CatalogBundleBrowser({
   onNewCollection?: (parent: string | null) => void
   /** The viewer is open over this browser and shows the bundle inspector itself. */
   viewerOpen?: boolean
+  collections: CatalogCollections
+  /** An open collection lists its subcollections' bundles too, as v0.2.1's switch did. */
+  showSubContents: boolean
+  onShowSubContents: (value: boolean) => void
+  onOpenCollection: (id: string) => void
+  /** A folder card's Rename asks the sidebar to rename in place. */
+  onRenameCollection: (id: string) => void
+  dragItem: DragItem | null
+  onDragItem: (item: DragItem | null) => void
+  /** Bundles dropped on a folder card join it; needs `selection_version: 2`. */
+  bundleMovesEnabled: boolean
+  onNotice: (notice: CatalogNotice) => void
+  /** Back/Forward, ahead of the toolbar's title. */
+  headerLeading?: ReactNode
 }) {
-  const collections = useCollections()
-  const client = useQueryClient()
   const status = useReplicaStatus(library).data
   const supportedSorts = (status?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
-  const [includeDescendants, setIncludeDescendants] = useState(true)
+  const includeDescendants = Boolean(selection.collectionId) && showSubContents
   const expression = adHocFiltersToExpression(filters)
   const smart = useQuery({
     queryKey: ['catalog-detail', library, 'smart_folders', selection.smartCollectionId],
@@ -115,22 +190,43 @@ export function CatalogBundleBrowser({
   const smartFilter = smartValue ? JSON.parse(JSON.parse(smartValue).filter_json) : null
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
-  const [prefs, setPrefs] = useState(DEFAULT_PREFS)
-  const [sort, setSort] = useState<BundleSort>('title')
-  const [order, setOrder] = useState<SortOrder>('asc')
-  const activeSort = selection.view === 'recent' ? 'date_added' : sort
+  // v0.2.1's stored preferences, so layout, zoom and sort survive a restart
+  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS, {
+    debounceMs: 300,
+  })
+  const prefs = useMemo(
+    () => ({
+      ...DEFAULT_PREFS,
+      ...storedPrefs,
+      zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, storedPrefs.zoom ?? DEFAULT_PREFS.zoom)),
+    }),
+    [storedPrefs],
+  )
+  // With "remember per collection" each collection or view keeps its own sort
+  const sortKey = selection.smartCollectionId
+    ? `smart:${selection.smartCollectionId}`
+    : selection.collectionId
+      ? `coll:${selection.collectionId}`
+      : `view:${selection.view}`
+  const allowedSorts: BundleSort[] = selection.view === 'recent' ? ['date_added'] : supportedSorts
+  const stored: SortPref =
+    prefs.sortScope === 'collection'
+      ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
+      : { sort: prefs.sort, order: prefs.order }
+  // A sort this view or server cannot run falls back as v0.2.1 did: Recent to
+  // newest first, everything else to Manual, or Title before Manual existed
+  const resolved: SortPref = allowedSorts.includes(stored.sort)
+    ? stored
+    : selection.view === 'recent'
+      ? { sort: 'date_added', order: 'desc' }
+      : { sort: allowedSorts.includes('manual') ? 'manual' : 'title', order: 'asc' }
+  const activeSort = resolved.sort
   // Manual has no direction: the arrangement is the order, as in the legacy browser
-  const activeOrder =
-    activeSort === 'manual'
-      ? 'asc'
-      : selection.view === 'recent' && sort !== 'date_added'
-        ? 'desc'
-        : order
+  const activeOrder: SortOrder = activeSort === 'manual' ? 'asc' : resolved.order
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
   const [album, setAlbum] = useState<{ id: string; scope: string } | null>(null)
   const [albumFile, setAlbumFile] = useState<string | null>(null)
-  const [bulkOpen, setBulkOpen] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [bulkRetained, setBulkRetained] = useState(() => pendingBulkSave(library, editor))
   const [deleting, setDeleting] = useState<string[] | null>(null)
   const [cleaning, setCleaning] = useState(false)
   const [creatingBundle, setCreatingBundle] = useState(false)
@@ -147,8 +243,8 @@ export function CatalogBundleBrowser({
       'catalog-browse',
       library,
       query,
-      sort,
-      order,
+      activeSort,
+      activeOrder,
       selection,
       includeDescendants,
       seed,
@@ -214,8 +310,8 @@ export function CatalogBundleBrowser({
   const scope = JSON.stringify([
     library,
     query,
-    sort,
-    order,
+    activeSort,
+    activeOrder,
     selection,
     includeDescendants,
     expression,
@@ -229,11 +325,19 @@ export function CatalogBundleBrowser({
   })
   const outgoing = useRef(selected)
   const lastLocate = useRef(locateRequest)
+  // Folder cards select apart from bundles: acting on both at once means nothing
+  const [pickedFolders, setPickedFolders] = useState({
+    scope,
+    ids: NO_IDS,
+    anchor: null as string | null,
+  })
   if (picked.scope !== scope) {
     setPicked({ scope, ids: new Set(), active: null, anchor: null })
     setAlbum(null)
     setAlbumFile(null)
   }
+  const folderIds = pickedFolders.scope === scope ? pickedFolders.ids : NO_IDS
+  const clearFolders = () => setPickedFolders({ scope, ids: NO_IDS, anchor: null })
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
       lastLocate.current = locateRequest
@@ -244,7 +348,6 @@ export function CatalogBundleBrowser({
         active: selected,
         anchor: selected,
       }))
-      setBulkOpen(false)
       setAlbum(null)
       setAlbumFile(null)
     }
@@ -253,6 +356,13 @@ export function CatalogBundleBrowser({
   const active = picked.scope === scope ? picked.active : null
   const albumId = album?.scope === scope ? album.id : null
   const single = albumId ?? (selectedIds.size === 1 ? [...selectedIds][0]! : null)
+  // A selected card's collection, else the open one when nothing else is picked
+  const inspectedFolder =
+    folderIds.size === 1 ? (collections.items.find((item) => folderIds.has(item.id)) ?? null) : null
+  const openFolder =
+    selectedIds.size === 0 && folderIds.size === 0 && selection.collectionId
+      ? (collections.items.find((item) => item.id === selection.collectionId) ?? null)
+      : null
   const openAlbum = (id: string) => {
     if (!albumEnabled) {
       onOpen(id)
@@ -260,7 +370,6 @@ export function CatalogBundleBrowser({
     }
     setAlbum({ id, scope })
     setAlbumFile(null)
-    setBulkOpen(false)
   }
   function select(id: string, modifiers: SelectionModifiers) {
     let ids = new Set([id])
@@ -277,18 +386,53 @@ export function CatalogBundleBrowser({
       else ids.add(id)
     }
     setPicked({ scope, ids, active: id, anchor: modifiers.shiftKey ? picked.anchor : id })
+    clearFolders()
     outgoing.current = id
     onSelect(id)
-    setBulkOpen(ids.size > 1)
   }
   function many(ids: string[]) {
     const active = ids.at(-1) ?? null
     setPicked({ scope, ids: new Set(ids), active, anchor: active })
+    if (ids.length > 0) clearFolders()
     if (active) {
       outgoing.current = active
       onSelect(active)
     }
-    setBulkOpen(ids.length > 1)
+  }
+  const isAll = selection.view === 'all' && !selection.collectionId && !selection.smartCollectionId
+  const folders = useMemo(
+    () => folderCards(collections.items, selection.collectionId ?? null, isAll, includeDescendants),
+    [collections.items, selection.collectionId, isAll, includeDescendants],
+  )
+  const subcounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const item of collections.items)
+      if (item.parent_id) counts[item.parent_id] = (counts[item.parent_id] ?? 0) + 1
+    return counts
+  }, [collections.items])
+  const [foldersFolded, setFoldersFolded] = useState(false)
+  const [contentsFolded, setContentsFolded] = useState(false)
+  // Cmd toggles and Shift extends, as in v0.2.1; Ctrl-click is the macOS menu chord
+  function pickFolders(ids: ReadonlySet<string>, anchor: string | null) {
+    setPickedFolders({ scope, ids, anchor })
+    if (ids.size > 0) setPicked({ scope, ids: new Set(), active: null, anchor: null })
+  }
+  function selectFolder(id: string, modifiers: SelectionModifiers) {
+    const anchor = pickedFolders.scope === scope ? pickedFolders.anchor : null
+    if (modifiers.shiftKey && anchor) {
+      const order = folders.map((item) => item.id)
+      return pickFolders(
+        selectionRange(order, anchor, id, modifiers.metaKey ? folderIds : undefined),
+        anchor,
+      )
+    }
+    if (modifiers.metaKey) {
+      const ids = new Set(folderIds)
+      if (ids.has(id)) ids.delete(id)
+      else ids.add(id)
+      return pickFolders(ids, id)
+    }
+    pickFolders(new Set([id]), id)
   }
   const detail = useQuery({
     queryKey: ['catalog-detail', library, 'asset_bundles', single],
@@ -339,29 +483,12 @@ export function CatalogBundleBrowser({
         } catch {
           return
         }
-        setNotice(reason.message)
+        onNotice({ text: reason.message, alert: true })
       })
   }
-  // A menu change saves at once; a reply after a library switch is dropped
-  function organize(action: () => Promise<void>, done: string) {
-    const current = captureRequestScope()
-    setNotice('')
-    void action()
-      .then(async () => {
-        current()
-        setNotice(done)
-        for (const key of ['catalog-browse', 'catalog-detail', 'catalog-memberships'])
-          await client.invalidateQueries({ queryKey: [key, library] })
-      })
-      .catch((reason: Error) => {
-        try {
-          current()
-        } catch {
-          return
-        }
-        setNotice(reason.message)
-      })
-  }
+  // A menu change saves at once and refreshes every count it can move
+  const organize = (action: () => Promise<void>, done: string) =>
+    collections.run(action, () => done && onNotice({ text: done }))
   // The legacy card menu: a card inside a multi-selection acts for the selection
   function bundleMenu(id: string, event: React.MouseEvent) {
     const targets = selectionEnabled ? selectionTargets(id, selectedIds) : [id]
@@ -378,7 +505,11 @@ export function CatalogBundleBrowser({
         label: 'Copy URI',
         onClick: () =>
           void copyText(buildDeepLinkUri('bundle', id, library)).then((copied) =>
-            setNotice(copied ? 'Bundle URI copied.' : 'Could not copy the URI.'),
+            onNotice(
+              copied
+                ? { text: 'Bundle URI copied.' }
+                : { text: 'Could not copy the URI.', alert: true },
+            ),
           ),
       })
     if (one && onLocateFile)
@@ -428,6 +559,40 @@ export function CatalogBundleBrowser({
       })
     menu.open(event, items)
   }
+  // v0.2.1's folder card menu; a card inside a multi-selection acts for all of it
+  function folderMenu(id: string, event: React.MouseEvent) {
+    const targets = selectionTargets(id, folderIds)
+    if (targets.length === 1) pickFolders(new Set([id]), id)
+    const entries: MenuEntry[] = []
+    if (targets.length === 1 && getHostPlatform().kind === 'desktop')
+      entries.push(
+        {
+          label: 'Copy URI',
+          onClick: () =>
+            void copyText(buildDeepLinkUri('collection', id, library)).then((copied) =>
+              onNotice(
+                copied
+                  ? { text: 'Collection URI copied.' }
+                  : { text: 'Could not copy the URI.', alert: true },
+              ),
+            ),
+        },
+        null,
+      )
+    if (targets.length === 1)
+      entries.push(
+        { label: 'Rename Collection', disabled: blocked, onClick: () => onRenameCollection(id) },
+        null,
+      )
+    entries.push({
+      label: targets.length > 1 ? `Delete ${targets.length} Collections` : 'Delete Collection',
+      danger: true,
+      disabled: blocked,
+      onClick: () =>
+        collections.requestDelete(collections.items.filter((item) => targets.includes(item.id))),
+    })
+    menu.open(event, entries)
+  }
   // One collection's own bundles, or All bundles, have a manual order; a view of
   // several collections or a shuffle does not, so neither offers to rewrite it
   const ordering = (status?.browse_version ?? 0) >= 6 && !blocked
@@ -461,13 +626,22 @@ export function CatalogBundleBrowser({
     if (entries.some(Boolean)) menu.open(event, entries)
   }
   const changeSort = (next: BundleSort, direction: SortOrder) => {
-    if (!supportedSorts.includes(next)) {
-      setNotice('This sort is not available for this library.')
+    if (!allowedSorts.includes(next)) {
+      onNotice({ text: 'This sort is not available here.', alert: true })
       return
     }
-    setNotice('')
-    setSort(next)
-    setOrder(direction)
+    setPrefs((previous) =>
+      previous.sortScope === 'collection'
+        ? {
+            ...DEFAULT_PREFS,
+            ...previous,
+            collectionSorts: {
+              ...previous.collectionSorts,
+              [sortKey]: { sort: next, order: direction },
+            },
+          }
+        : { ...DEFAULT_PREFS, ...previous, sort: next, order: direction },
+    )
   }
   const refresh = () => {
     void browse.refetch()
@@ -485,7 +659,6 @@ export function CatalogBundleBrowser({
         ) {
           event.preventDefault()
           many(items.map((item) => item.id))
-          setNotice('Selected loaded bundles. Load more bundles to extend the selection.')
           return
         }
         if (event.key === 'Escape') {
@@ -511,26 +684,16 @@ export function CatalogBundleBrowser({
     >
       <div className="center">
         <Toolbar
-          allowCollectionSort={false}
+          leading={headerLeading}
           title={
             selection.collectionId
-              ? (collections.data?.find((item) => item.id === selection.collectionId)?.name ??
+              ? (collections.items.find((item) => item.id === selection.collectionId)?.name ??
                 'Collection')
               : selection.smartCollectionId
                 ? smart.data?.fields.name?.value
                   ? JSON.parse(smart.data.fields.name.value)
                   : 'Smart Collection'
-                : selection.view === 'all'
-                  ? 'All bundles'
-                  : selection.view === 'uncategorized'
-                    ? 'Uncategorized'
-                    : selection.view === 'untagged'
-                      ? 'Untagged'
-                      : selection.view === 'random'
-                        ? 'Random'
-                        : selection.view === 'missing'
-                          ? 'Missing Files'
-                          : 'Recently added'
+                : (SYSTEM_VIEWS.find((item) => item.view === selection.view)?.label ?? 'All')
           }
           total={browse.data?.pages[0]?.total ?? 0}
           search={search}
@@ -545,10 +708,14 @@ export function CatalogBundleBrowser({
               ? () => setSeed(Math.floor(Math.random() * 2147483647))
               : undefined
           }
-          allowedSorts={selection.view === 'recent' ? ['date_added'] : supportedSorts}
-          perCollectionSort={false}
-          onPerCollectionSort={() =>
-            setNotice('Collection sorting is not available for this library.')
+          allowedSorts={allowedSorts}
+          perCollectionSort={prefs.sortScope === 'collection'}
+          onPerCollectionSort={(value) =>
+            setPrefs((previous) => ({
+              ...DEFAULT_PREFS,
+              ...previous,
+              sortScope: value ? 'collection' : 'global',
+            }))
           }
           adHocFilters={filters}
           onAdHocFilters={onFilters}
@@ -560,82 +727,119 @@ export function CatalogBundleBrowser({
             smartFilter,
           }}
         />
-        <p className="catalog-capabilities">
-          File size and availability are unknown in bundle filters. Open Files or media to check
-          local bytes.
-        </p>
-        {!selectionEnabled && (
-          <p>Update the server to use multiple selection and bulk metadata changes.</p>
-        )}
-        {selectionEnabled && !albumId && (
-          <button className="btn catalog-bulk-open" onClick={() => setBulkOpen(true)}>
-            Bulk changes ({selectedIds.size})
-          </button>
-        )}
-        {selection.view === 'missing' && (
-          <p>
-            Last recorded local checks found unavailable files in these bundles. Unknown files are
-            excluded. Open file details to check again.
-          </p>
-        )}
-        {selection.collectionId && (
-          <label>
-            <input
-              type="checkbox"
-              checked={includeDescendants}
-              onChange={(event) => setIncludeDescendants(event.target.checked)}
-            />
-            Show subcollection contents
-          </label>
-        )}
         {smart.error && <p role="alert">Saved conditions are unavailable.</p>}
-        {notice && <p role="alert">{notice}</p>}
-        {browse.error && (
-          <button className="btn" onClick={() => void browse.refetch()}>
-            Retry bundles
-          </button>
-        )}
         <div hidden={Boolean(albumId)} className="catalog-album-browser-return">
-          <Browser
-            navigationRef={navigation}
-            unavailableSize
-            singleSelection={!selectionEnabled}
-            items={items}
-            total={browse.data?.pages[0]?.total ?? 0}
-            layout={prefs.layout}
-            zoom={prefs.zoom}
-            sort={activeSort}
-            order={activeOrder}
-            onSort={changeSort}
-            selectedIds={selectedIds}
-            activeId={active}
-            onSelect={select}
-            onMarqueeSelect={many}
-            onOpen={openAlbum}
-            contextMenuOpen={menu.state !== null}
-            onContextMenu={bundleMenu}
-            onEmptyContextMenu={emptyMenu}
-            onReorder={reorder}
-            onBundleDragStart={onBundleDrag}
-            onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
-            isLoading={browse.isPending}
-            isError={browse.isError}
-            error={browse.error}
-            hasNextPage={browse.hasNextPage}
-            isFetchingNextPage={browse.isFetchingNextPage}
-            fetchNextPage={() => void browse.fetchNextPage()}
-            searchQuery={query}
-            emptyState={
-              anyAdHocActive(filters) ? (
-                <>
-                  <div>No bundles here match the filters.</div>
-                  <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
-                    Clear Filters
-                  </button>
-                </>
-              ) : undefined
-            }
-          />
+          {folders.length > 0 && (
+            <CollectionHeader
+              subcollections={folders}
+              layout={prefs.layout}
+              sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
+              counts={Object.fromEntries(
+                folders.map((item) => [
+                  item.id,
+                  showSubContents ? item.count : (item.direct_count ?? item.count),
+                ]),
+              )}
+              subcounts={subcounts}
+              showContents={selection.collectionId ? showSubContents : undefined}
+              onToggleShowContents={selection.collectionId ? onShowSubContents : undefined}
+              onSelectSubcollection={selectFolder}
+              onMarqueeSelect={(ids) => pickFolders(new Set(ids), ids.at(-1) ?? null)}
+              onOpenSubcollection={onOpenCollection}
+              onContextMenuSubcollection={folderMenu}
+              onSectionContextMenu={(event) => {
+                const parent = selection.collectionId ?? null
+                menu.open(event, [
+                  {
+                    label: parent ? 'New Subcollection' : 'New Collection',
+                    disabled: blocked || !onNewCollection,
+                    onClick: () => onNewCollection?.(parent),
+                  },
+                  null,
+                  {
+                    label: 'Clean Up Order…',
+                    disabled: blocked || includeDescendants,
+                    onClick: collections.requestCleanup,
+                  },
+                ])
+              }}
+              // A flattened view spans several parents, so it has no one order
+              onReorderCollections={
+                blocked || includeDescendants
+                  ? undefined
+                  : (moved, before) =>
+                      collections.arrange(moved, selection.collectionId ?? null, before)
+              }
+              onReparentCollections={(moved, target) =>
+                !blocked && collections.arrange(moved, target, null)
+              }
+              onMoveBundlesInto={(target, copy) =>
+                bundleMovesEnabled && collections.moveBundlesInto(target, copy)
+              }
+              dragItem={dragItem}
+              onDragItem={onDragItem}
+              selectedIds={folderIds as Set<string>}
+              zoom={prefs.zoom}
+              subcollapsed={foldersFolded}
+              onToggleSubcollapsed={() => setFoldersFolded((value) => !value)}
+              contentsCount={browse.data?.pages[0]?.total ?? 0}
+              contentsCollapsed={contentsFolded}
+              onToggleContents={() => setContentsFolded((value) => !value)}
+            />
+          )}
+          {!(folders.length > 0 && contentsFolded) && (
+            <Browser
+              navigationRef={navigation}
+              unavailableSize
+              singleSelection={!selectionEnabled}
+              items={items}
+              total={browse.data?.pages[0]?.total ?? 0}
+              layout={prefs.layout}
+              zoom={prefs.zoom}
+              sort={activeSort}
+              order={activeOrder}
+              onSort={changeSort}
+              selectedIds={selectedIds}
+              activeId={active}
+              onSelect={select}
+              onMarqueeSelect={many}
+              onOpen={openAlbum}
+              contextMenuOpen={menu.state !== null}
+              onContextMenu={bundleMenu}
+              onEmptyContextMenu={emptyMenu}
+              onReorder={reorder}
+              onBundleDragStart={onBundleDrag}
+              onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
+              isLoading={browse.isPending}
+              isError={browse.isError}
+              error={browse.error}
+              hasNextPage={browse.hasNextPage}
+              isFetchingNextPage={browse.isFetchingNextPage}
+              fetchNextPage={() => void browse.fetchNextPage()}
+              searchQuery={query}
+              onRetry={() => void browse.refetch()}
+              emptyState={
+                anyAdHocActive(filters) ? (
+                  <>
+                    <div>No bundles here match the filters.</div>
+                    <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
+                      Clear Filters
+                    </button>
+                  </>
+                ) : selection.collectionId && folders.length > 0 && !showSubContents ? (
+                  <>
+                    <div>No bundles directly in this collection.</div>
+                    <div>Open a subcollection above, or tick “Show subcollection contents”.</div>
+                  </>
+                ) : selection.collectionId ? (
+                  <>
+                    <div>This collection is empty.</div>
+                    <div>Add bundles to it from the grid or file view.</div>
+                  </>
+                ) : undefined
+              }
+            />
+          )}
         </div>
         {albumId && (
           <CatalogBundleAlbum
@@ -654,7 +858,20 @@ export function CatalogBundleBrowser({
           />
         )}
       </div>
-      {bulkOpen && selectionEnabled ? (
+      {!albumId && inspectedFolder ? (
+        <CatalogCollectionInspector
+          key={inspectedFolder.id}
+          library={library}
+          collection={inspectedFolder}
+          subcollections={subcounts[inspectedFolder.id] ?? 0}
+          collections={collections}
+          editable={!blocked}
+        />
+      ) : !albumId && folderIds.size > 1 ? (
+        <aside className="inspector">
+          <div className="state">{folderIds.size} collections selected</div>
+        </aside>
+      ) : !albumId && selectionEnabled && (bulkRetained || selectedIds.size > 1) ? (
         <CatalogMultiBundleInspector
           key={`${library}/${editor}`}
           library={library}
@@ -662,7 +879,11 @@ export function CatalogBundleBrowser({
           ids={[...selectedIds].sort()}
           blocked={blocked}
           onReview={onReview}
-          onClose={() => setBulkOpen(false)}
+          onRetain={() => setBulkRetained(true)}
+          onClose={() => {
+            setBulkRetained(false)
+            many([])
+          }}
         />
       ) : viewerOpen ? (
         // One inspector owns a bundle's drafts at a time, and the open viewer has it
@@ -709,16 +930,29 @@ export function CatalogBundleBrowser({
             />
           }
         />
+      ) : !single && openFolder ? (
+        <CatalogCollectionInspector
+          key={openFolder.id}
+          library={library}
+          collection={openFolder}
+          subcollections={subcounts[openFolder.id] ?? 0}
+          collections={collections}
+          editable={!blocked}
+        />
       ) : (
         <aside className="inspector">
-          <p>
+          <div className="state">
             {detail.error
               ? 'Bundle details are unavailable.'
               : single
-                ? 'Waiting for bundle details. Deleted objects remain in metadata review.'
+                ? 'Loading bundle details…'
                 : 'Select a bundle to see its details.'}
-          </p>
-          {detail.error && <button onClick={() => void detail.refetch()}>Retry details</button>}
+          </div>
+          {detail.error && (
+            <button className="btn" onClick={() => void detail.refetch()}>
+              Try Again
+            </button>
+          )}
         </aside>
       )}
       <ContextMenu state={menu.state} onClose={menu.close} />
@@ -777,7 +1011,7 @@ export function CatalogBundleBrowser({
           onClose={() => setAddingFiles(null)}
           onApplied={(message) => {
             setAddingFiles(null)
-            setNotice(message)
+            onNotice({ text: message })
           }}
         />
       )}
@@ -792,7 +1026,6 @@ export function CatalogBundleBrowser({
             const targets = deleting
             setDeleting(null)
             setPicked({ scope, ids: new Set(), active: null, anchor: null })
-            setBulkOpen(false)
             organize(
               () => deleteBundles(library, targets),
               targets.length === 1 ? 'Bundle deleted.' : `${targets.length} bundles deleted.`,

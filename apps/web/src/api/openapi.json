@@ -2695,6 +2695,17 @@
             "title": "Id",
             "type": "string"
           },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
           "relative_path": {
             "title": "Relative Path",
             "type": "string"
@@ -2764,6 +2775,45 @@
           }
         },
         "title": "CatalogUnbundledRequest",
+        "type": "object"
+      },
+      "CatalogViewCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "all": {
+            "title": "All",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "recent": {
+            "title": "Recent",
+            "type": "integer"
+          },
+          "unbundled": {
+            "title": "Unbundled",
+            "type": "integer"
+          },
+          "uncategorized": {
+            "title": "Uncategorized",
+            "type": "integer"
+          },
+          "untagged": {
+            "title": "Untagged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "recent",
+          "uncategorized",
+          "untagged",
+          "missing",
+          "unbundled"
+        ],
+        "title": "CatalogViewCounts",
         "type": "object"
       },
       "Change": {
@@ -16136,7 +16186,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}/thumbnail": {
       "get": {
-        "description": "Serve the collection's cover thumbnail \u2014 the chosen cover bundle's cover,\nor an auto-picked bundle from the subtree. 404 if the collection has no\nthumbnailable bundle; 503 if ffmpeg is unavailable.\n\nScoped like the other file-serving routes: generation can shell out to\nffmpeg, and a grid of collections asks for many of these at once, so the\nsession must not stay checked out for either the generation or the transfer\n(see ``LibraryAccess``).",
+        "description": "Serve the collection's cover thumbnail \u2014 the chosen cover bundle's cover,\nor an auto-picked bundle from the subtree. 404 if the collection has no\nthumbnailable bundle; 503 if ffmpeg is unavailable.\n\nScoped like the other file-serving routes: generation can shell out to\nffmpeg, and a grid of collections asks for many of these at once, so the\nsession must not stay checked out for either the generation or the transfer\n(see ``LibraryAccess``). A portable library resolves the cover from its\nprivate catalog and serves this device's cached frame, as bundle covers do.",
         "operationId": "get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get",
         "parameters": [
           {
@@ -23022,6 +23072,80 @@
           }
         },
         "summary": "Browse Bundles",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/counts": {
+      "get": {
+        "operationId": "bundle_view_counts_api_v1_libraries__library_id__replica_catalog_bundles_counts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogViewCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bundle View Counts",
         "tags": [
           "replica-catalog"
         ]

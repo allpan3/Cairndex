@@ -46,7 +46,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await bulk.getByRole('textbox', { name: 'Bulk title' }).fill('Selected synthetic title')
     await bulk.getByRole('button', { name: 'Review bulk change' }).click()
     await expect(bulk.getByRole('button', { name: 'Apply bulk change' })).toBeEnabled()
-    await page.getByRole('button', { name: 'Recent', exact: true }).click()
+    await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
     await expect(bulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
     await expect(bulk.getByText('2 bundles in this retained review.')).toBeVisible()
     const requests: string[] = []
@@ -78,7 +78,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await bulk.getByRole('button', { name: 'Apply bulk change' }).click()
     await expect(bulk.getByRole('button', { name: 'Retry bulk save' })).toBeEnabled()
     await page.reload()
-    await page.getByRole('button', { name: /^Bulk changes/ }).click()
+    // The interrupted save reopens its inspector without the lost selection
     await bulk.getByRole('button', { name: 'Retry bulk save' }).click()
     await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
     expect(requests).toHaveLength(2)
@@ -145,14 +145,15 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(keyboardBulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
     await expect(keyboardBundles.getByRole('option')).toHaveCount(1)
     await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
-    await keyboardPage.getByRole('button', { name: 'Random', exact: true }).click()
+    await keyboardPage.getByRole('button', { name: /^Random( \d+)?$/ }).click()
     await expect(keyboardPage.getByRole('button', { name: 'Reshuffle' })).toBeVisible()
     await keyboardPage.getByRole('button', { name: 'Reshuffle' }).click()
-    await keyboardPage.getByRole('button', { name: 'Missing Files', exact: true }).click()
-    await expect(keyboardPage.getByText(/Last recorded local checks/)).toBeVisible()
-    await keyboardPage.getByRole('button', { name: 'Unbundled', exact: true }).click()
-    await expect(keyboardPage.getByRole('region', { name: 'Unbundled files' })).toBeVisible()
-    await expect(keyboardPage.getByText('No unbundled files match this search.')).toBeVisible()
+    await keyboardPage.getByRole('button', { name: /^Missing Files( \d+)?$/ }).click()
+    await expect(keyboardPage.locator('.toolbar__title')).toHaveText('Missing Files')
+    await keyboardPage.getByRole('button', { name: /^Unbundled( \d+)?$/ }).click()
+    await expect(
+      keyboardPage.getByText('Nothing to bundle — every file is already in a bundle.'),
+    ).toBeVisible()
     await keyboardPage.screenshot({ path: join(scratch, 'unbundled.png') })
     // Older servers do not receive the new reads or view requests.
     await keyboardPage.route('**/replica/status', async (route) => {
@@ -168,16 +169,16 @@ test('catalog selection retains exact bulk reviews across navigation, response l
       })
     })
     await keyboardPage.reload()
-    await expect(
-      keyboardPage.getByText(
-        'Update the server to use multiple selection and bulk metadata changes.',
-      ),
-    ).toBeVisible()
+    await expect(keyboardBundles.getByRole('option').first()).toBeVisible()
+    await keyboardBundles.focus()
+    await keyboardPage.keyboard.press('Home')
+    await keyboardPage.keyboard.press('Shift+ArrowDown')
+    await expect(keyboardBundles.locator('[aria-selected="true"]')).toHaveCount(1)
     await expect(
       keyboardPage.getByRole('button', { name: 'Browse bundle files', exact: true }),
     ).toHaveCount(0)
-    await expect(keyboardPage.getByRole('button', { name: 'Random', exact: true })).toHaveCount(0)
-    await expect(keyboardPage.getByRole('button', { name: /^Bulk changes/ })).toHaveCount(0)
+    await expect(keyboardPage.getByRole('button', { name: /^Random( \d+)?$/ })).toHaveCount(0)
+    await expect(keyboardBulk).toHaveCount(0)
   } finally {
     releaseNextPage?.()
     await context.close()
@@ -200,7 +201,7 @@ fixture = create_disposable(parent=Path(sys.argv[1]), bundles=3)
 with sqlite3.connect(fixture.source / '.cairndex/library.db') as db:
     db.row_factory = sqlite3.Row
     template = dict(db.execute("SELECT * FROM asset_files WHERE id='file-video'").fetchone())
-    for index in range(60):
+    for index in range(120):
         insert_row(db, 'asset_files', template | {'id': f'staged-{index:03}', 'relative_path': f'Unbundled/clip-{index:03}.mp4', 'sequence': index + 10})
     db.execute("UPDATE asset_bundles SET grouping_state='PROVISIONAL', grouping_source='SCAN_SUGGESTION' WHERE id='bundle-000000'")
 print(prepare_disposable(fixture).package)
@@ -219,20 +220,21 @@ print(prepare_disposable(fixture).package)
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Unbundled', exact: true }).click()
-    const files = page.getByRole('region', { name: 'Unbundled files' })
-    await expect(files.getByRole('listitem')).toHaveCount(50)
-    await files.getByRole('button', { name: 'More files' }).click()
-    await expect(
-      files.getByRole('button', { name: 'Unbundled/clip-059.mp4', exact: true }),
-    ).toBeVisible()
-    await files.getByRole('searchbox').fill('clip-059')
-    await expect(files.getByRole('listitem')).toHaveCount(1)
-    await files.getByRole('button', { name: 'Unbundled/clip-059.mp4', exact: true }).click()
-    await expect(
-      page.getByRole('complementary', { name: 'Unbundled file inspector' }),
-    ).toContainText('Unavailable on this device')
-    await page.getByRole('button', { name: 'Missing Files', exact: true }).click()
+    await page.getByRole('button', { name: /^Unbundled( \d+)?$/ }).click()
+    const files = page.getByRole('grid', { name: 'Files', exact: true })
+    const rows = files.locator('[data-relpath]')
+    // The queue pages from the server in path order: one page, then the rest
+    await expect(rows).toHaveCount(100)
+    await page.getByRole('button', { name: 'Load more', exact: true }).click()
+    // The 120 staged files and the provisional bundle's two
+    await expect(rows).toHaveCount(122)
+    await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('clip-119')
+    await expect(rows).toHaveCount(1)
+    await files.getByRole('row', { name: /clip-119\.mp4/ }).click()
+    await expect(page.getByRole('complementary', { name: 'File inspector' })).toContainText(
+      'Unavailable on this device',
+    )
+    await page.getByRole('button', { name: /^Missing Files( \d+)?$/ }).click()
     await expect(page.getByRole('listbox', { name: 'Bundles' }).getByRole('option')).toHaveCount(0)
     // A recorded unavailable provisional file never appears as a confirmed bundle.
     const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
@@ -242,7 +244,7 @@ print(prepare_disposable(fixture).package)
       body: JSON.stringify({}),
     })
     expect((await response.json()).total).toBe(2)
-    await page.getByRole('button', { name: 'Unbundled', exact: true }).click()
+    await page.getByRole('button', { name: /^Unbundled( \d+)?$/ }).click()
     await page.screenshot({ path: '/tmp/cairndex-unbundled-proof.png' })
   } finally {
     await context.close()

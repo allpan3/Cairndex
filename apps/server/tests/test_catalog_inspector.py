@@ -98,3 +98,86 @@ def test_bundle_cover_derivative_is_private_and_source_guarded(media_api):  # no
     (roots[0] / "Playback/picture.png").symlink_to(roots[0] / "Playback/movie.mp4")
     assert client.get(base + "/bundles/bundle-000001/thumbnail").status_code == 404
     assert authored(store) == before
+
+
+# A folder card's cover: the chosen bundle's artwork, else the subtree's earliest artwork
+def test_collection_cover_follows_choice_and_subtree(tmp_path):
+    import sqlite3
+
+    from cairndex.devtools.catalog_fixture import create_disposable, insert_row, synthetic_row
+    from cairndex.replicas.catalog.conversion import prepare_disposable
+    from cairndex.replicas.catalog.inspector import collection_cover
+
+    fixture = create_disposable(parent=tmp_path, bundles=3)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        db.execute(
+            "INSERT INTO asset_bundle_collections (bundle_id,collection_id,sort_order) "
+            "VALUES ('bundle-000001','collections-root',1)"
+        )
+        insert_row(
+            db,
+            "asset_files",
+            synthetic_row(
+                "asset_files",
+                "file-picture",
+                bundle_id="bundle-000001",
+                relative_path="Pictures/cover.png",
+                directory_path="Pictures",
+                original_filename="cover.png",
+                display_title="cover.png",
+                role="IMAGE",
+                tech_metadata="{}",
+            ),
+        )
+        insert_row(
+            db, "collections", synthetic_row("collections", "collections-empty", name="Empty")
+        )
+    store = prepare_disposable(fixture).store
+
+    def resolved(collection):
+        with store.connection(readonly=True) as db:
+            found = collection_cover(db, collection)
+        return found["id"] if found else None
+
+    # Equal dates fall back to identity order, so the child's bundle comes first
+    assert resolved("collections-child") == "file-video"
+    assert resolved("collections-root") == "file-video"
+    assert resolved("collections-empty") is None
+    save(
+        store,
+        edit(store, "collections", "collections-root", "cover_bundle_id", "bundle-000001"),
+        "cover",
+    )
+    assert resolved("collections-root") == "file-picture"
+    with pytest.raises(ReplicaError, match="Collection is unavailable"):
+        resolved("collections-missing")
+
+
+def test_collection_thumbnail_is_private(media_api):  # noqa: F811
+    client, base, store, _, _ = media_api
+    from cairndex.replicas.catalog.inspector import memberships as choices
+
+    observed = next(
+        item.observed
+        for item in choices(store, "bundle-000001", "collections", "", 30, "", False).items
+        if item.id == "collections-root"
+    )
+    intent = {
+        "action": "membership",
+        "family": "collections",
+        "bundle": "bundle-000001",
+        "target": "collections-root",
+        "assigned": True,
+        "observed": observed,
+    }
+    commit(store, preview(store, intent), "file-playback")
+    save(
+        store,
+        edit(store, "collections", "collections-root", "cover_bundle_id", "bundle-000001"),
+        "cover",
+    )
+    before = authored(store)
+    response = client.get(base + "/collections/collections-root/thumbnail")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert authored(store) == before

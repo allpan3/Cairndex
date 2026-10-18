@@ -99,6 +99,16 @@ stem; with one, it adds the files to that confirmed bundle after its members.
 Each file keeps its identity, staging bundles that the move empties are
 deleted, and each new subtitle file gets a track for the video in its folder
 with the stem it names. Servers advertise it as `browse_version: 9`.
+
+`GET /replica/catalog/bundles/counts` returns the sidebar's view counts from one
+snapshot: All, Recent (every bundle), Uncategorized, Untagged, recorded local
+Missing Files and Unbundled files. Each collection in `/navigation/collections`
+also carries `direct_count`, its own bundles, beside the subtree `count`; the
+sidebar shows the one that opening the collection lists. A collection thumbnail
+resolves the chosen cover bundle's artwork, or else the earliest browsable bundle
+in the subtree that has any, and serves this device's cached frame with
+`no-store`. Unbundled files carry their `media_kind`. Servers advertise these as
+`browse_version: 10`.
 Concurrent delete/edit or delete/reference intent becomes an explicit lifetime
 choice. An ordinary save cannot resurrect an observed tombstone. Recovery selects a
 retained causal branch, reconstructs it in a separate private store and prepares the

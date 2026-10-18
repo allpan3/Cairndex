@@ -27,9 +27,11 @@ from cairndex.replicas.catalog.navigation import (
     CatalogFacetRequest,
     CatalogFacetResponse,
     CatalogNavigationPage,
+    CatalogViewCounts,
     NavigationFamily,
     facets,
     navigation,
+    view_counts,
 )
 from cairndex.replicas.catalog.schemas import (
     CatalogDraftRequest,
@@ -215,6 +217,13 @@ def navigation_page(
 ) -> CatalogNavigationPage:
     with store.connection(readonly=True) as db:
         return navigation(db, family, after, limit)
+
+
+# The sidebar's system views; every count reads the same snapshot
+@router.get("/bundles/counts", response_model=CatalogViewCounts)
+def bundle_view_counts(store: Catalog) -> CatalogViewCounts:
+    with store.connection(readonly=True) as db:
+        return view_counts(db)
 
 
 @router.post("/bundles/facets", response_model=CatalogFacetResponse)

@@ -276,14 +276,24 @@ export function createTagGroup(
 }
 
 /** Rename a collection, tag or tag group whose name this device has seen. */
-export async function rename(
+export function rename(library: string, family: Named, id: string, name: string): Promise<void> {
+  return saveField(library, family, id, 'name', name)
+}
+
+/** Replace a collection's description; an empty one is stored as none. */
+export function describeCollection(library: string, id: string, note: string): Promise<void> {
+  return saveField(library, 'collections', id, 'note', note.trim() || null)
+}
+
+async function saveField(
   library: string,
   family: Named,
   id: string,
-  name: string,
+  column: string,
+  value: string | null,
 ): Promise<void> {
   const entity = await catalog<Entity>(library, `/entities/${family}/${id}`)
-  const field = entity.fields.name
+  const field = entity.fields[column]
   const alive = entity.fields.$alive
   if (!field || field.held || alive?.value !== 'true' || alive.held)
     throw new Error(`This ${NOUN[family]} needs metadata review first.`)
@@ -292,7 +302,7 @@ export async function rename(
     'save',
     {
       changes: [
-        { unit: field.unit, value: JSON.stringify(name), basis: field.basis },
+        { unit: field.unit, value: JSON.stringify(value), basis: field.basis },
         { unit: alive.unit, value: 'true', basis: alive.basis },
       ],
       parents: entity.parents,

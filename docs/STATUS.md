@@ -51,11 +51,18 @@ PR #87 lets the app ask macOS for the share's saved login (Allow Access…).
 [PR #88](https://github.com/allpan3/Cairndex/pull/88), merged as `391e71ff`,
 counts a folded parent tag's bundles once, clears filters when the sidebar
 opens another place, and keeps the inspector's Save in view in a short window.
-`fix/library-actions-sidebar` moves the library's actions back into the
-sidebar, as in v0.2.1, and stops sidebar rows showing through below Settings.
-The owner tests the whole app after that merge. Two items stay below the
-browser toolbar: the note about file sizes, and Bulk changes, which reopens a
-pending bulk draft.
+[PR #89](https://github.com/allpan3/Cairndex/pull/89), merged as `892e3503`,
+moves the library's actions back into the sidebar, as in v0.2.1.
+`fix/browser-layout-v021` finishes the browser layout against v0.2.1 on the
+same synthetic library: folder cards and the subcollection switch, the
+collection inspector, sidebar counts (`browse_version: 10`), Back/Forward, the
+foot-of-window message, Unbundled in the File Browser's listing, and a single
+not-ready card. An interrupted bulk save now reopens its inspector after a
+reload, which was the last use of Bulk changes. Back/Forward does not record
+opening a bundle album; the album keeps its own Back. The inspectors' own
+layout (chips, Files/Size/Date Added rows, the file inspector's property table)
+follows in a separate PR. The owner tests the whole app on their own Mac after
+both merge.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server

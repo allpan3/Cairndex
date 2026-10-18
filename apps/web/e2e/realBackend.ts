@@ -157,7 +157,7 @@ export async function libraryMenu(page: Page, item: string) {
  */
 export async function openMetadataReview(page: Page) {
   const menu = page.getByRole('button', { name: 'More library actions', exact: true })
-  const direct = page.getByRole('button', { name: 'Metadata review', exact: true })
+  const direct = page.getByRole('button', { name: /^Metadata review$/i })
   await expect(menu.or(direct)).toBeVisible()
   if (await menu.isVisible()) await libraryMenu(page, 'Metadata Review')
   else await direct.click()
