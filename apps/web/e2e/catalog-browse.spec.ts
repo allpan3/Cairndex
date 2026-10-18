@@ -377,6 +377,16 @@ test('ordinary collection filters and File Browser share one library journey @fu
     await page.getByRole('button', { name: 'Equal', exact: true }).click()
     await expect(page.getByText('0 items', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
+    await expect(page.getByText('No bundles here match the filters.')).toBeVisible()
+    // Another sidebar destination starts without the last place's filters
+    await page
+      .getByRole('treeitem', { name: /Synthetic root/ })
+      .first()
+      .click()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Clear all', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'All Tags', exact: true }).click()
+    await page.locator('.tagtile__head').filter({ hasText: 'Synthetic root' }).dblclick()
     await page.getByRole('button', { name: 'Clear all', exact: true }).click()
     await page
       .getByRole('button', { name: 'Synthetic name Edit Synthetic name', exact: true })

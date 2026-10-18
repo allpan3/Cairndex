@@ -8,7 +8,12 @@ import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
 import { Toolbar } from './Toolbar'
 import { DEFAULT_PREFS, type Selection } from './types'
-import { type AdHocFilters, adHocFiltersToExpression } from './adHocFilters'
+import {
+  type AdHocFilters,
+  adHocFiltersToExpression,
+  anyAdHocActive,
+  emptyAdHocFilters,
+} from './adHocFilters'
 import { useCollections } from '../api/hooks'
 import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
 import { selectionRange, selectionTargets, type SelectionModifiers } from './selection'
@@ -620,6 +625,16 @@ export function CatalogBundleBrowser({
             isFetchingNextPage={browse.isFetchingNextPage}
             fetchNextPage={() => void browse.fetchNextPage()}
             searchQuery={query}
+            emptyState={
+              anyAdHocActive(filters) ? (
+                <>
+                  <div>No bundles here match the filters.</div>
+                  <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
+                    Clear Filters
+                  </button>
+                </>
+              ) : undefined
+            }
           />
         </div>
         {albumId && (

@@ -132,6 +132,7 @@ export function CatalogOrdinaryBrowser(props: {
       } else {
         setSelection({ view: 'all', collectionId: deepLink.id })
       }
+      setFilters(emptyAdHocFilters())
     }
     /* eslint-enable react-hooks/set-state-in-effect */
     onDeepLinkHandled?.()
@@ -175,6 +176,8 @@ export function CatalogOrdinaryBrowser(props: {
           onSelect={(next) => {
             setUnbundled(false)
             setSelection(next)
+            // A filter left over from the last place would quietly empty this one
+            setFilters(emptyAdHocFilters())
             setMode('collection')
           }}
           onChangeLibrary={props.onChangeLibrary}

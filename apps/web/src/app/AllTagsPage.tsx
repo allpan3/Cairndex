@@ -37,7 +37,8 @@ type Panel = 'all' | 'uncategorized' | { groupId: string }
  * expands in place to a full-width row listing its children (recursively). Drag
  * a tag onto another to nest it (reparent); drop on empty space to make it
  * top-level — the tree is name-ordered, so there's no manual sibling order.
- * Folded a parent shows its rolled-up subtree count; expanded, its direct count.
+ * Folded, a parent shows the distinct bundles under its subtree; expanded, its
+ * direct count.
  * Double-click a tag to filter; right-click for the rest.
  *
  * It is also where tags and tag groups are *made*, not just tidied: the toolbar
@@ -52,6 +53,9 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const { data: groups = [] } = useTagGroups()
   const { data: memberships = {} } = useTagGroupMemberships()
   const { data: counts = {} } = useTagCounts()
+  // A folded parent shows what double-clicking it finds: the distinct bundles
+  // under it or any descendant. Summing the children counted shared bundles twice.
+  const { data: subtreeCounts = {} } = useTagCounts(true)
   const { rename, remove, reparent } = useTagMutations()
   const groupMutations = useTagGroupMutations()
   const createTagPath = useCreateTagPath()
@@ -121,22 +125,6 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     rootList.sort(byName)
     return { childrenOf: kids, roots: rootList }
   }, [scopeTags])
-
-  // Rolled-up counts: a folded parent shows the sum of its subtree's direct
-  // counts (within scope). Fast client-side aggregate — no extra request.
-  const rolledUp = useMemo(() => {
-    const memo = new Map<string, number>()
-    const calc = (id: string): number => {
-      const cached = memo.get(id)
-      if (cached !== undefined) return cached
-      let sum = counts[id] ?? 0
-      for (const c of childrenOf.get(id) ?? []) sum += calc(c.id)
-      memo.set(id, sum)
-      return sum
-    }
-    for (const t of scopeTags) calc(t.id)
-    return memo
-  }, [scopeTags, childrenOf, counts])
 
   // Section buckets for the top-level tags (pinyin initial / '#' / 'Others').
   const sections = useMemo(() => {
@@ -411,7 +399,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     const kids = childrenOf.get(tag.id) ?? []
     const hasKids = !flat && kids.length > 0
     const open = hasKids && expanded.has(tag.id)
-    const count = open ? (counts[tag.id] ?? 0) : (rolledUp.get(tag.id) ?? 0)
+    const count = open ? (counts[tag.id] ?? 0) : (subtreeCounts[tag.id] ?? 0)
     return (
       <div
         key={tag.id}

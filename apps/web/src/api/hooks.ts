@@ -1643,18 +1643,27 @@ export function useTagGroups() {
   })
 }
 
-export function useTagCounts() {
+/**
+ * Bundles per tag. Direct by default; with `includeDescendants`, the distinct
+ * bundles a tag filter finds, which counts a bundle under two child tags once.
+ */
+export function useTagCounts(includeDescendants = false) {
   const library = useContext(CatalogQueryContext)
   return useQuery({
-    queryKey: library ? ['catalog-tag-counts', library] : ['tag-counts'],
-    // Direct counts per tag; the All Tags page rolls up folded subtrees itself
+    queryKey: library
+      ? ['catalog-tag-counts', library, includeDescendants]
+      : ['tag-counts', ...(includeDescendants ? ['descendants'] : [])],
     queryFn: ({ signal }) =>
       library
         ? catalog<{ tags: Record<string, number> }>(library, '/bundles/facets', 'POST', {
             facets: ['tags'],
-            tag_include_descendants: false,
+            tag_include_descendants: includeDescendants,
           }).then((result) => result.tags)
-        : fetchTagCounts(signal),
+        : includeDescendants
+          ? fetchFacets({ view: 'all', facets: ['tags'] }, signal).then(
+              (result) => result.tags ?? {},
+            )
+          : fetchTagCounts(signal),
   })
 }
 
