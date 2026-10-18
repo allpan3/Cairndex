@@ -323,6 +323,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   first-run, lock and loading screens now moves the window, which it could not
   do before. The portable browser also fills the window edge to edge again,
   instead of sitting inside an 8–12 px margin.
+- **The Libraries dialog's rows are tidier.** A row shows a status only when
+  the library is unavailable, and that status is the height of the buttons
+  beside it. Open sits with the other buttons, *Access and backups* is now
+  *Settings…*, and every button explains itself in a tooltip.
 - **A portable library shows Date Added in local time.** Its catalog keeps the
   legacy database's timestamps, which are UTC without an offset, and the browser
   read them as local time, so a bundle or file added in the evening showed the
