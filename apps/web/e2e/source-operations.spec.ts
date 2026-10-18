@@ -2,7 +2,7 @@ import { expect as playwrightExpect, test } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, proxyApi, startBackend, stopBackend, libraryMenu } from './realBackend'
 
 // Opt-in mounted runs exercise asynchronous storage under real network load.
 // Match the HTTP acceptance bound; ordinary local assertions keep their budget.
@@ -47,7 +47,7 @@ test('portable source reviews retain lost replies, collisions and Undo @fullstac
     )
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'amber.txt' }).click()
-    await page.getByRole('button', { name: 'Copy, Rename and Move', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     const dialog = page.getByRole('dialog', { name: 'File operations and recovery' })
     await dialog.getByRole('button', { name: 'Enable file operations', exact: true }).click()
     await dialog.getByRole('button', { name: 'Copy selected file', exact: true }).click()
@@ -68,7 +68,7 @@ test('portable source reviews retain lost replies, collisions and Undo @fullstac
     await expect(dialog.getByRole('alert')).toContainText(/fetch|network/i)
     await page.reload()
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
-    await page.getByRole('button', { name: 'Copy, Rename and Move', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     await expect(dialog.getByLabel('Destination path', { exact: true })).toHaveValue('copied.txt')
     const firstOperation = operation
     await dialog.getByRole('button', { name: 'Prepare operation', exact: true }).click()
@@ -93,7 +93,7 @@ test('portable source reviews retain lost replies, collisions and Undo @fullstac
       .toBe(false)
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'amber.txt' }).click()
-    await page.getByRole('button', { name: 'Copy, Rename and Move', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     await dialog.getByRole('button', { name: 'Copy selected file', exact: true }).click()
     await dialog.getByLabel('Destination path', { exact: true }).fill('blue.txt')
     await dialog.getByRole('button', { name: 'Prepare operation', exact: true }).click()
@@ -105,7 +105,7 @@ test('portable source reviews retain lost replies, collisions and Undo @fullstac
     ).toBeVisible()
     expect(await readFile(join(root, 'blue.txt'), 'utf8')).toBe('Synthetic amber')
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-    await page.getByRole('button', { name: 'Trash and Undo', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     await dialog.press('Escape')
     await expect(dialog).toBeHidden()
   } catch (error) {
@@ -144,7 +144,7 @@ test('portable folder recovery and picker Copy use normal reviews @fullstack', a
     )
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'Folder' }).click()
-    await page.getByRole('button', { name: 'Copy, Rename and Move', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     const dialog = page.getByRole('dialog', { name: 'File operations and recovery' })
     async function apply(action: string) {
       await dialog.getByRole('button', { name: 'Prepare operation', exact: true }).click()
@@ -162,7 +162,7 @@ test('portable folder recovery and picker Copy use normal reviews @fullstack', a
     )
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'Renamed' }).click()
-    await page.getByRole('button', { name: 'Trash and Undo', exact: true }).click()
+    await libraryMenu(page, 'File Operations…')
     await dialog.getByRole('button', { name: 'Move to Trash', exact: true }).click()
     await apply('trash')
     await dialog.getByRole('button', { name: 'Undo trash', exact: true }).click()

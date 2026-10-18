@@ -291,6 +291,14 @@ probe continues in the shared background-job area; storyboard generation is
 chained for the same library after successful probe because eligibility and
 sampling need duration.
 
+A portable library's sidebar has the same shape: **Update** runs replica
+discovery, and its ⋯ menu holds **Add Files…**, **File Operations…**, **Review
+Discoveries…** and **Metadata Review**. Below them the sidebar shows only status
+that needs the owner — a running or failed Update, discovered files that wait
+for review, a metadata exchange problem, or a network share that needs Allow
+Access. Metadata review keeps the full delivery status, Update controls and
+Saved operations above its editors.
+
 **Scan new files is discovery on its own.** The grouping pass is a separate item
 in the same menu, so the scan job takes `suggest_grouping`
 (`POST …/jobs/scan?suggest_grouping=false`) and reports a null

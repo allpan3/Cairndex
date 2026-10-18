@@ -65,6 +65,11 @@ function viewIcon(view: SystemView): ReactNode {
 
 export interface SidebarProps {
   navigationOnly?: boolean
+  /**
+   * Replaces the Update row and its ⋯ menu below the library picker. A portable
+   * library supplies its own; without it, the row is the legacy job controls.
+   */
+  libraryActions?: React.ReactNode
   /** Collection create, rename, delete, drag and order controls; defaults to `!navigationOnly`. */
   collectionsEditable?: boolean
   /** Copy a collection's `cairndex://` URI; offered first in its menu when set. */
@@ -232,6 +237,7 @@ function findRow(nodes: TreeNode[], id: string, depth = 0): TreeRow | null {
 
 export function Sidebar({
   navigationOnly = false,
+  libraryActions,
   collectionsEditable = !navigationOnly,
   onCopyCollectionUri,
   availableViews,
@@ -653,7 +659,8 @@ export function Sidebar({
         </button>
       </div>
 
-      {!navigationOnly && (
+      {libraryActions}
+      {!libraryActions && !navigationOnly && (
         <div className="sidebar__jobs" role="group" aria-label="Library actions">
           <button
             className="sidebar__job"

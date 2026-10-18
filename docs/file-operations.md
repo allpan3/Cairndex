@@ -1,6 +1,6 @@
 # Portable source operations
 
-The ordinary browser provides **Add Files…**, **Copy, Rename and Move** and **Trash and Undo**. Each opens file
+The sidebar's ⋯ library menu provides **Add Files…** and **File Operations…**. Both open file
 operations and recovery for the selected library. Enable file operations on that serving
 instance first. The deployment must permit writes. A protected library requires its
 passphrase when enabling writes.

@@ -1,10 +1,21 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
+
+// The discovery review is a dialog that the owner opens; it never opens by itself.
+// Metadata review offers "Review discoveries"; the bundle browser's sidebar,
+// where a library switch lands, offers "Review Discoveries…".
+const reviewDiscoveries = (page: Page) =>
+  page.getByRole('button', { name: /^Review (discoveries|Discoveries…)$/ }).click()
+const closeDiscoveries = (page: Page) =>
+  page
+    .getByRole('dialog', { name: 'Discovery review' })
+    .getByRole('button', { name: 'Close', exact: true })
+    .click()
 
 // Independent servers use real queues/catalog events; only synthetic bytes are copied between roots
 test('Update reviews private discoveries, preserves drafts and repairs a moved file @fullstack', async ({
@@ -53,7 +64,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
       const page = pages[index]
       await proxyApi(page, backends[index].baseUrl)
       await page.goto('/')
-      await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+      await openMetadataReview(page)
       await expect(
         page.getByRole('heading', { name: 'Library catalog', exact: true }),
       ).toBeVisible()
@@ -66,6 +77,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
       await expect(existingTitle).toHaveValue('Unrelated private catalog draft')
+      await reviewDiscoveries(page)
       await page
         .getByRole('navigation', { name: 'Discovery suggestions' })
         .getByRole('button')
@@ -73,8 +85,8 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
         .click()
       const choice = page.getByRole('region', { name: 'Discovery grouping choice' })
       await choice.getByLabel('Bundle title', { exact: true }).fill('Synthetic discovery')
-      await page.getByRole('button', { name: 'Close discovery review', exact: true }).click()
-      await page.getByRole('button', { name: 'Review discoveries', exact: true }).click()
+      await closeDiscoveries(page)
+      await reviewDiscoveries(page)
       await expect(choice.getByLabel('Bundle title', { exact: true })).toHaveValue(
         'Synthetic discovery',
       )
@@ -124,7 +136,8 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
           {},
         )
         await page.reload()
-        await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+        await openMetadataReview(page)
+        await reviewDiscoveries(page)
         await page.getByText('Saved discovery reviews', { exact: true }).click()
         await page
           .getByRole('button', { name: 'Synthetic discovery · failed', exact: true })
@@ -143,6 +156,7 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
           .getByRole('navigation', { name: 'Bundles', exact: true })
           .getByRole('button', { name: 'Synthetic discovery', exact: true }),
       ).toBeVisible()
+      await closeDiscoveries(page)
     }
     // Both accepted the same discovered bytes/group; exchange converges without duplicate objects
     await cp(
@@ -158,7 +172,9 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
     for (const page of pages) {
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+      await reviewDiscoveries(page)
       await expect(page.getByText('No new files or identity choices on this page.')).toBeVisible()
+      await closeDiscoveries(page)
     }
     const catalogFiles = await Promise.all(
       libraries.map(async (library, index) => {
@@ -231,7 +247,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
     await page.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[0].id)
     await mkdir(join(roots[0], 'Temporary'))
     await Promise.all(
@@ -253,6 +269,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await writeFile(join(roots[0], 'new.png'), 'synthetic retry image')
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+    await reviewDiscoveries(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button')
@@ -263,6 +280,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await page.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[1].id)
     await expect(choice).toHaveCount(0)
     await page.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[0].id)
+    await reviewDiscoveries(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button')
@@ -281,7 +299,8 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
       return { key, raw }
     })
     await page.reload()
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
+    await reviewDiscoveries(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button')
@@ -302,7 +321,8 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await prepared.getByRole('button', { name: 'Revalidate saved review', exact: true }).click()
     await expect(prepared.getByText('Ready for your confirmation')).toBeVisible()
     await page.reload()
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
+    await reviewDiscoveries(page)
     await page.getByText('Saved discovery reviews', { exact: true }).click()
     await page
       .getByRole('button', { name: 'Recovered valid selection · ready', exact: true })
@@ -359,7 +379,7 @@ test('competing source identities are reviewable on both replicas @fullstack', a
       page.setDefaultTimeout(15_000)
       await proxyApi(page, backends[i].baseUrl)
       await page.goto('/')
-      await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+      await openMetadataReview(page)
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
       await writeFile(join(roots[i], 'Synthetic/雪.mp4'), `synthetic competing source ${i}`)
@@ -369,6 +389,7 @@ test('competing source identities are reviewable on both replicas @fullstack', a
       )
       await page.getByRole('button', { name: 'Update', exact: true }).click()
       await enqueued
+      await reviewDiscoveries(page)
       await expect(
         page.getByRole('navigation', { name: 'Discovery suggestions' }).getByRole('button'),
       ).toHaveCount(1, { timeout: 30_000 })
@@ -397,6 +418,7 @@ test('competing source identities are reviewable on both replicas @fullstack', a
             ).outbox,
         )
         .toBe(0)
+      await closeDiscoveries(page)
     }
     await cp(
       join(roots[0], '.cairndex/replica/objects'),
@@ -479,10 +501,11 @@ test('large Update review keeps later pages and partial acceptance complete @ful
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
     await expect(page.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 60_000 })
+    await reviewDiscoveries(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
       .getByRole('button', { name: 'Gallery · 201 files', exact: true })

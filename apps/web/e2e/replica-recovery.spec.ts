@@ -4,7 +4,7 @@ import { cp, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
 
 // A fresh browser/device recovers server-received work through the supported local command
 test('private backup activates a new device and preserves recoverable drafts @fullstack', async ({
@@ -54,7 +54,7 @@ test('private backup activates a new device and preserves recoverable drafts @fu
     const a = await contexts[0].newPage()
     await proxyApi(a, first.baseUrl)
     await a.goto('/')
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     const title = a.getByRole('textbox', { name: 'Title', exact: true })
     await a
       .getByRole('group', { name: 'Title', exact: true })
@@ -95,7 +95,7 @@ test('private backup activates a new device and preserves recoverable drafts @fu
     const b = await contexts[1].newPage()
     await proxyApi(b, second.baseUrl)
     await b.goto('/')
-    await b.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(b)
     await expect(b.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
       'Saved before recovery',
     )

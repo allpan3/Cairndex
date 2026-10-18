@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, readdir } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, openMetadataReview, proxyApi, startBackend, stopBackend } from './realBackend'
 
 test('access and private backup controls complete reviewed recovery @fullstack', async ({
   page,
@@ -101,14 +101,16 @@ test('normal Create preserves source bytes and opens one portable library @fulls
       if (/\/entities\/asset_bundles\/(undefined|null)(?:\?|$)/.test(request.url()))
         invalidDetails.push(request.url())
     })
+    await expect(
+      page.getByText('Select a bundle to see its details.', { exact: true }),
+    ).toBeVisible()
+    // Metadata review's Refresh reloads its list and detail; an empty library has no detail
+    await openMetadataReview(page)
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith('/replica/status')),
       page.getByRole('button', { name: 'Refresh catalog status', exact: true }).click(),
     ])
     expect(invalidDetails).toEqual([])
-    await expect(
-      page.getByText('Select a bundle to see its details.', { exact: true }),
-    ).toBeVisible()
     const manifest = JSON.parse(await readFile(join(root, '.cairndex', 'manifest.json'), 'utf8'))
     expect(manifest.format).toBe('cairndex.replica-library')
     expect(manifest.format_version).toBe(3)

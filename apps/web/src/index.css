@@ -5830,6 +5830,23 @@ code {
   opacity: 0.5;
   cursor: default;
 }
+/* Under the library actions, only status that needs the owner */
+.sidebar__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0 12px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sidebar__notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.sidebar__notice p[role='alert'] {
+  color: var(--error);
+}
 .sidebar__job-popover {
   position: absolute;
   top: calc(100% + 4px);
@@ -7751,19 +7768,17 @@ code {
   height: auto;
   min-height: 0;
 }
-.source-operation-toolbar {
-  flex-wrap: wrap;
-  height: auto;
-  min-height: var(--toolbar-h, 44px);
-}
 
-.source-operation-panel {
+/* Long review dialogs: wide, scrolling, with plain buttons drawn as the app's buttons */
+.source-operation-panel,
+.discovery-review-dialog {
   width: min(780px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
 }
 
-.source-operation-panel .modal__head {
+.source-operation-panel .modal__head,
+.discovery-review-dialog .modal__head {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -7771,11 +7786,13 @@ code {
   padding-bottom: 12px;
 }
 
-.source-operation-panel > * {
+.source-operation-panel > *,
+.discovery-review-dialog > * {
   flex-shrink: 0;
 }
 
-.source-operation-panel button:not([class]) {
+.source-operation-panel button:not([class]),
+.discovery-review-dialog button:not([class]) {
   font: inherit;
   color: inherit;
   background: transparent;
@@ -7786,7 +7803,8 @@ code {
   cursor: pointer;
 }
 
-.source-operation-panel button:disabled {
+.source-operation-panel button:disabled,
+.discovery-review-dialog button:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -7798,13 +7816,15 @@ code {
   margin-block: 16px;
 }
 
-.source-operation-panel section {
+.source-operation-panel section,
+.discovery-review-dialog section {
   border-top: 1px solid var(--border);
   margin-top: 16px;
   padding-top: 12px;
 }
 
-.source-operation-panel label {
+.source-operation-panel label,
+.discovery-review-dialog label {
   display: grid;
   gap: 6px;
   margin-block: 12px;

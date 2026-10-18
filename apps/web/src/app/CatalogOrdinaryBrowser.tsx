@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import { AllTagsPage } from './AllTagsPage'
 import type { FileBrowserEntry, LibraryRead } from '../api/client'
@@ -47,6 +47,8 @@ function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
 }
 
 import { SourceOperations } from './SourceOperations'
+import { CatalogLibraryActions } from './CatalogLibraryActions'
+import type { MenuEntry } from './useContextMenu'
 
 export function CatalogOrdinaryBrowser(props: {
   library: string
@@ -73,8 +75,15 @@ export function CatalogOrdinaryBrowser(props: {
   /** A `cairndex://` link to open; reported handled once applied. */
   deepLink?: PendingDeepLink | null
   onDeepLinkHandled?: () => void
+  /** The sidebar's Update button; absent when this server cannot run Update. */
+  update?: { running: boolean; disabled: boolean; onClick: () => void }
+  /** The ⋯ menu's library-wide entries, after this browser's file entries. */
+  libraryMenu: MenuEntry[]
+  /** Status that needs the owner, shown under Update. */
+  libraryNotices?: ReactNode
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
+  const [fileOperations, setFileOperations] = useState(false)
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [filters, setFilters] = useState(emptyAdHocFilters)
   const [locateRequest, setLocateRequest] = useState(0)
@@ -191,6 +200,23 @@ export function CatalogOrdinaryBrowser(props: {
           bundleMovesEnabled={bundleMoves}
           newCollectionRequest={newCollection}
           onNewCollectionHandled={() => setNewCollection(null)}
+          libraryActions={
+            <CatalogLibraryActions
+              update={props.update}
+              items={[
+                ...(sourceEnabled
+                  ? [
+                      { label: 'Add Files…', onClick: () => setFileOperations(true) },
+                      { label: 'File Operations…', onClick: () => setFileOperations(true) },
+                      null,
+                    ]
+                  : []),
+                ...props.libraryMenu,
+              ]}
+            >
+              {props.libraryNotices}
+            </CatalogLibraryActions>
+          }
         />
         <div className="catalog-ordinary-content">
           {dropError && (
@@ -217,6 +243,9 @@ export function CatalogOrdinaryBrowser(props: {
               onReviewEntity={props.onReviewEntity}
               incoming={incoming}
               onDismissIncoming={() => setIncoming(null)}
+              open={fileOperations}
+              onOpen={() => setFileOperations(true)}
+              onClose={() => setFileOperations(false)}
             />
           )}
           {hostFiles.error && (

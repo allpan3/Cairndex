@@ -4,7 +4,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
 
 // Complete disposable catalogs exercise shared application flows through independent real servers
 test('complete catalogs preserve fields, drafts, structural operations and recovery @fullstack', async ({
@@ -46,11 +46,11 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     for (let index = 0; index < pages.length; index++) {
       await proxyApi(pages[index], backends[index].baseUrl)
       await pages[index].goto('/')
+      await openMetadataReview(pages[index])
       // Baseline import is asynchronous; the editor is checked after readiness.
       await expect(
         pages[index].getByRole('region', { name: 'Metadata delivery status' }),
       ).toContainText('Saved here · available metadata published', { timeout: 30_000 })
-      await pages[index].getByRole('button', { name: 'Metadata review', exact: true }).click()
       await expect(
         pages[index].getByRole('heading', { name: 'Library catalog', exact: true }),
       ).toBeVisible()
@@ -93,7 +93,7 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     )
     await a.getByRole('textbox', { name: 'Comment', exact: true }).fill('Private unsaved moment 雪')
     await a.reload()
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     await a
       .getByRole('navigation', { name: 'Catalog families' })
       .getByRole('button', { name: 'Moments', exact: true })
@@ -162,7 +162,7 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     await creation.getByRole('textbox', { name: 'Name', exact: true }).fill('Created group 雪')
     await draftDelivered
     await a.reload()
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     await a
       .getByRole('navigation', { name: 'Catalog families' })
       .getByRole('button', { name: 'Tag groups', exact: true })
@@ -175,7 +175,7 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     await expect(creation.getByRole('button', { name: 'Create reviewed object' })).toBeVisible()
     // A queued preview remains discoverable even after all browser UI state is lost
     await a.reload()
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     await a.getByRole('button', { name: 'Saved operations', exact: true }).click()
     const operations = a.getByRole('region', { name: 'Saved operations', exact: true })
     await operations
@@ -211,7 +211,7 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     const replacement = await filter.inputValue()
     expect(replacement).toContain('雪 match')
     await a.reload()
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     await a
       .getByRole('navigation', { name: 'Catalog families' })
       .getByRole('button', { name: 'Smart Collections', exact: true })
@@ -256,7 +256,7 @@ test('complete catalogs preserve fields, drafts, structural operations and recov
     await review.getByRole('radio', { name: /Blue reviewed comment/ }).check()
     await reviewDelivered
     await a.reload()
-    await a.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(a)
     await a
       .getByRole('navigation', { name: 'Catalog families' })
       .getByRole('button', { name: 'Moments', exact: true })
