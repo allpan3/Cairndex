@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from cairndex.api.schemas.common import UtcDatetime
 from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
 from cairndex.media.image_support import is_openable_media
@@ -23,7 +24,7 @@ class CatalogBundleSummary(StrictModel):
     title: str | None
     rating: float | None
     file_count: int
-    date_added: datetime
+    date_added: UtcDatetime
     grouping_state: GroupingState
     cover_file_id: str | None = None
     cover_key: str | None = None

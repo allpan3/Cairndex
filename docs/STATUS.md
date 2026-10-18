@@ -53,16 +53,22 @@ counts a folded parent tag's bundles once, clears filters when the sidebar
 opens another place, and keeps the inspector's Save in view in a short window.
 [PR #89](https://github.com/allpan3/Cairndex/pull/89), merged as `892e3503`,
 moves the library's actions back into the sidebar, as in v0.2.1.
-`fix/browser-layout-v021` finishes the browser layout against v0.2.1 on the
-same synthetic library: folder cards and the subcollection switch, the
-collection inspector, sidebar counts (`browse_version: 10`), Back/Forward, the
-foot-of-window message, Unbundled in the File Browser's listing, and a single
-not-ready card. An interrupted bulk save now reopens its inspector after a
-reload, which was the last use of Bulk changes. Back/Forward does not record
-opening a bundle album; the album keeps its own Back. The inspectors' own
-layout (chips, Files/Size/Date Added rows, the file inspector's property table)
-follows in a separate PR. The owner tests the whole app on their own Mac after
-both merge.
+[PR #90](https://github.com/allpan3/Cairndex/pull/90)
+finishes the browser layout against v0.2.1 on the same synthetic library:
+folder cards and the subcollection switch, the collection inspector, sidebar
+counts (`browse_version: 10`), Back/Forward, the foot-of-window message,
+Unbundled in the File Browser's listing, and a single not-ready card.
+Back/Forward does not record opening a bundle album; the album keeps its own
+Back. `fix/inspectors-v021` gives the bundle inspectors v0.2.1's layout: the
+cover with ▶, Files and Date Added rows, tag and collection chips that save at
+once, file rows with ★ and ▶, and the multi-bundle inspector with one title,
+one rating and chips (`selection_version: 3`). Two differences from v0.2.1 are
+deliberate. The single-bundle inspector keeps **Save changes**, because its
+edits are a private draft that survives reload and refuses to overwrite another
+device's change. It shows no Size, because a portable catalog does not claim
+sizes it has not observed on this device. The same branch sends the catalog's
+timestamps with their UTC offset; Date Added had shown UTC as local time. The
+owner tests the whole app on their own Mac after this merges.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server

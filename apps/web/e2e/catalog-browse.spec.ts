@@ -159,9 +159,7 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await expect(
       inspector.getByText('Competing metadata requires review.', { exact: true }),
     ).toBeVisible()
-    await inspector
-      .getByRole('button', { name: 'Review metadata and conflicts', exact: true })
-      .click()
+    await inspector.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
     await a.getByRole('button', { name: 'Review Title', exact: true }).click()
     const review = a.getByRole('region', { name: 'Complete conflict review', exact: true })
     await review.getByRole('radio', { name: /Amber conflict/ }).check()

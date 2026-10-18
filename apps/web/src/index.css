@@ -7724,9 +7724,6 @@ code {
 .catalog-bundle-browser .inspector p {
   margin: 8px 12px;
 }
-.catalog-bundle-browser .inspector > .btn {
-  margin: 4px 8px;
-}
 /* Flush with the inspector's edges: sticky offsets count from inside its 14px padding */
 .catalog-inspector-actions {
   position: sticky;
@@ -7853,124 +7850,104 @@ code {
   height: 100%;
 }
 
+/* The cover fills v0.2.1's 16:9 frame, with the play button over it */
 .catalog-inspector-cover {
-  margin: 10px 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
 }
 .catalog-inspector-cover img {
   width: 100%;
-  max-height: 160px;
-  object-fit: contain;
-  background: var(--bg-raised);
-  border-radius: 6px;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
-.catalog-membership-picker {
-  display: grid;
-  gap: 8px;
+.catalog-inspector-cover__note {
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
-.catalog-bulk-inspector button,
-.catalog-membership-picker button,
-.catalog-inspector-cover button,
-.catalog-inspector-file button,
-.catalog-file-details > button,
-[aria-label='Files in bundle'] > button {
-  color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 5px 8px;
-  font: inherit;
-  cursor: pointer;
+.catalog-inspector-conflict,
+.catalog-bulk-inspector__retry {
+  margin: 0 0 10px;
+  font-size: 12px;
 }
-.catalog-bulk-inspector button:disabled,
-.catalog-membership-picker button:disabled,
-[aria-label='Files in bundle'] button:disabled {
-  opacity: 0.5;
+/* A row opens the file's local details; the portable rail does not reorder */
+.catalog-files .file-row {
   cursor: default;
 }
-.catalog-membership-picker input[type='search'] {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
+.catalog-files .file-row--selected {
+  background: var(--accent-soft);
 }
-.catalog-membership-row {
+.catalog-files .file-row__main {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.catalog-membership-row > span,
-.catalog-inspector-file > button {
-  overflow-wrap: anywhere;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   min-width: 0;
-}
-.catalog-membership-path {
-  display: block;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.catalog-inspector-file {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-.catalog-inspector-file > button {
-  width: 100%;
+  padding: 0 0 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   text-align: left;
+  cursor: pointer;
 }
-.catalog-inspector-file > div {
+.catalog-files .file-row__name {
+  max-width: 100%;
+}
+.catalog-files__status {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.catalog-files__pages {
   display: flex;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 .catalog-file-details > .inspector {
   width: auto;
   border: 0;
   padding: 0;
 }
+.catalog-file-details > .btn {
+  margin-top: 6px;
+}
 .catalog-file-surface > .inspector {
   overflow-y: auto;
 }
-.catalog-bulk-inspector {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* A destination only some selected bundles have */
+.chip--partial {
+  background: transparent;
+  border-style: dashed;
 }
-.catalog-bulk-inspector h2,
-.catalog-bulk-inspector p {
-  margin: 0;
+.catalog-chips-more {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
 }
-.catalog-bulk-inspector label,
-.catalog-bulk-inspector section {
-  display: grid;
-  gap: 6px;
-}
-.catalog-bulk-inspector input,
-.catalog-bulk-inspector select {
+/* The chip picker's rows are toggle buttons */
+button.pick-row {
   width: 100%;
-  box-sizing: border-box;
-  color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   font: inherit;
+  text-align: left;
 }
-.catalog-bulk-inspector .catalog-membership-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
+button.pick-row:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
-.catalog-bulk-inspector .catalog-membership-row > span {
-  grid-column: 1 / -1;
+.pick-row--more {
+  color: var(--text-muted);
 }
-.catalog-bulk-inspector ul {
-  max-height: 160px;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  padding-left: 20px;
+.catalog-bulk-inspector h2 {
+  margin: 0;
+  font: inherit;
 }
 
 .catalog-album-page,

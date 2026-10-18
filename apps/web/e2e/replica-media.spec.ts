@@ -403,7 +403,10 @@ test('portable cards preview a video this device has observed @fullstack', async
     await expect(card.locator('.card__dur')).toHaveCount(0)
     await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'none')
     await card.click()
-    await page.getByRole('button', { name: 'Open media on this device', exact: true }).click()
+    await page
+      .getByRole('complementary', { name: 'Bundle inspector' })
+      .getByRole('button', { name: 'Play', exact: true })
+      .click()
     await expect.poll(async () => (await picture(page)).frames).toBeGreaterThan(0)
     const viewer = page.locator('.media-viewer')
     await viewer.hover()

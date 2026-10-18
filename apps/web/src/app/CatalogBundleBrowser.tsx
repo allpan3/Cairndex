@@ -877,7 +877,12 @@ export function CatalogBundleBrowser({
           library={library}
           editor={editor}
           ids={[...selectedIds].sort()}
+          fileCount={items.reduce(
+            (total, item) => total + (selectedIds.has(item.id) ? item.file_count : 0),
+            0,
+          )}
           blocked={blocked}
+          memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
           onRetain={() => setBulkRetained(true)}
           onClose={() => {
@@ -910,7 +915,8 @@ export function CatalogBundleBrowser({
           refresh={refresh}
           onReview={onReview}
           albumFile={albumId ? albumFile : null}
-          onAlbum={albumEnabled ? () => openAlbum(detail.data.id) : undefined}
+          summary={items.find((item) => item.id === detail.data.id)}
+          onOpenCollection={onOpenCollection}
           onOpen={() => onOpen(detail.data.id)}
           onAddFiles={
             bundling && detail.data.fields.grouping_state?.value === '"CONFIRMED"'

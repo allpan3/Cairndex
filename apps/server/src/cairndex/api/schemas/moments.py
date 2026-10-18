@@ -5,9 +5,9 @@ distinction is the null, not a discriminator field: ``start == end`` would be
 neither, and admitting it would need a minimum length to adjudicate.
 """
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from cairndex.api.schemas.common import UtcDatetime
 
 
 class MomentCreate(BaseModel):
@@ -70,8 +70,8 @@ class MomentRead(BaseModel):
     #: are: the inspector draws every moment at once, so a request each would be
     #: N+1 on a pane that is docked beside a playing video. Filled by the route.
     tag_ids: list[str] = Field(default_factory=list)
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     version: int
 
 

@@ -43,12 +43,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await second.click({ modifiers: ['ControlOrMeta'] })
     const bulk = page.getByRole('complementary', { name: 'Selected bundles inspector' })
     await expect(bulk.getByRole('heading', { name: '2 bundles selected' })).toBeVisible()
-    await bulk.getByRole('textbox', { name: 'Bulk title' }).fill('Selected synthetic title')
-    await bulk.getByRole('button', { name: 'Review bulk change' }).click()
-    await expect(bulk.getByRole('button', { name: 'Apply bulk change' })).toBeEnabled()
-    await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
-    await expect(bulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
-    await expect(bulk.getByText('2 bundles in this retained review.')).toBeVisible()
+    // The first commit's reply is lost; the retained save retries the same request
     const requests: string[] = []
     let lose = true
     await page.route('**/replica/catalog/jobs', async (route) => {
@@ -75,10 +70,15 @@ test('catalog selection retains exact bulk reviews across navigation, response l
         body: await response.text(),
       })
     })
-    await bulk.getByRole('button', { name: 'Apply bulk change' }).click()
+    const title = bulk.getByRole('textbox', { name: 'Title', exact: true })
+    await title.fill('Selected synthetic title')
+    await title.press('Enter')
     await expect(bulk.getByRole('button', { name: 'Retry bulk save' })).toBeEnabled()
+    // The interrupted save outlives the selection, and then a reload
+    await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
+    await expect(bulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
+    await expect(bulk.getByText(/did not finish saving/)).toContainText('for 2 bundles')
     await page.reload()
-    // The interrupted save reopens its inspector without the lost selection
     await bulk.getByRole('button', { name: 'Retry bulk save' }).click()
     await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
     expect(requests).toHaveLength(2)
@@ -91,28 +91,39 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     expect((await entity('bundle-000003')).fields.title.value).not.toBe(
       '"Selected synthetic title"',
     )
-    await bulk.getByRole('button', { name: 'Close bulk editor' }).click()
+    await bulk.getByRole('button', { name: 'Clear', exact: true }).click()
     const changed = bundles.getByRole('option').filter({ hasText: 'Selected synthetic title' })
     await changed.first().click()
     await expect(single.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
       'Private single draft',
     )
     await changed.last().click({ modifiers: ['ControlOrMeta'] })
-    const memberships = bulk.getByRole('region', { name: 'Bulk membership' })
-    await memberships.getByRole('searchbox').fill('child')
-    await memberships.getByRole('button', { name: 'Add to all' }).click()
-    await bulk.getByRole('button', { name: 'Apply bulk change' }).click()
-    await expect(memberships.getByText('Synthetic child · 2/2')).toBeVisible()
-    await memberships.getByRole('button', { name: 'Remove from all' }).click()
-    await bulk.getByRole('button', { name: 'Apply bulk change' }).click()
-    await expect(memberships.getByText('Synthetic child · 0/2')).toBeVisible()
-    await bulk.getByRole('combobox', { name: 'Bulk field' }).selectOption('rating')
-    await bulk.getByRole('combobox', { name: 'Bulk rating' }).selectOption('3.5')
-    await bulk.getByRole('button', { name: 'Review bulk change' }).click()
-    await bulk.getByRole('button', { name: 'Apply bulk change' }).click()
+    // A chip adds to or removes from every selected bundle at once
+    const tags = bulk.locator('[data-section="tags"]')
+    const tagged = async () =>
+      (
+        await apiPost<{ items: { name: string; assigned_count: number }[] }>(
+          backend.baseUrl,
+          `/api/v1/libraries/${library.id}/replica/catalog/bundles/selection/memberships`,
+          { ids: ['bundle-000001', 'bundle-000002'], family: 'tags', q: 'child' },
+        )
+      ).items.find((item) => item.name === 'Synthetic child')?.assigned_count
+    await tags.getByRole('button', { name: '+ Tag', exact: true }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose tags' })
+    await picker.getByRole('textbox', { name: 'Search tags' }).fill('child')
+    await picker.getByRole('button', { name: /Synthetic child/ }).click()
+    await page.keyboard.press('Escape')
+    await expect(tags.getByRole('button', { name: 'Remove Synthetic child' })).toBeEnabled()
+    await expect.poll(tagged).toBe(2)
+    await tags.getByRole('button', { name: 'Remove Synthetic child' }).click()
+    await expect(tags.getByRole('button', { name: 'Remove Synthetic child' })).toHaveCount(0)
+    await expect.poll(tagged).toBe(0)
+    // The stars show the rating the selected bundles share
+    await expect(bulk.getByRole('radio', { name: '3½ stars' })).toBeChecked()
+    await bulk.getByRole('radio', { name: '4½ stars' }).click()
     await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
-    await expect.poll(async () => (await entity('bundle-000002')).fields.rating.value).toBe('3.5')
-    await bulk.getByRole('button', { name: 'Close bulk editor' }).click()
+    await expect.poll(async () => (await entity('bundle-000002')).fields.rating.value).toBe('4.5')
+    await bulk.getByRole('button', { name: 'Clear', exact: true }).click()
     await page.close()
     const keyboardPage = await context.newPage()
     await proxyApi(keyboardPage, backend.baseUrl)
@@ -174,9 +185,6 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await keyboardPage.keyboard.press('Home')
     await keyboardPage.keyboard.press('Shift+ArrowDown')
     await expect(keyboardBundles.locator('[aria-selected="true"]')).toHaveCount(1)
-    await expect(
-      keyboardPage.getByRole('button', { name: 'Browse bundle files', exact: true }),
-    ).toHaveCount(0)
     await expect(keyboardPage.getByRole('button', { name: /^Random( \d+)?$/ })).toHaveCount(0)
     await expect(keyboardBulk).toHaveCount(0)
   } finally {
