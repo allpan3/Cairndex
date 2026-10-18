@@ -27,7 +27,7 @@ export function LibraryAccessNotice({
   children?: ReactNode
 }) {
   return (
-    <div className="lockscreen">
+    <div className="lockscreen" data-tauri-drag-region>
       <section className="lockscreen__card">
         <div className="lockscreen__brand">
           <span>🍃</span> Cairndex

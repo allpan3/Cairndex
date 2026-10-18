@@ -68,6 +68,9 @@ function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
 
 import { SourceOperations } from './SourceOperations'
 import { CatalogLibraryActions } from './CatalogLibraryActions'
+import { InspectorToggle, SidebarToggle } from './PanelToggles'
+import { PanelResizer } from './PanelResizer'
+import { useDesktopMenu } from '../desktop/useDesktopMenu'
 import type { MenuEntry } from './useContextMenu'
 
 export function CatalogOrdinaryBrowser(props: {
@@ -99,8 +102,9 @@ export function CatalogOrdinaryBrowser(props: {
   update?: { running: boolean; disabled: boolean; onClick: () => void }
   /** The ⋯ menu's library-wide entries, after this browser's file entries. */
   libraryMenu: MenuEntry[]
-  /** Status that needs the owner, shown under Update. */
-  libraryNotices?: ReactNode
+  /** Update's progress and status that needs the owner, in the sidebar footer;
+   *  a result goes to the browser's message. */
+  libraryNotices?: (onNotice: (notice: CatalogNotice) => void) => ReactNode
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
   const [fileOperations, setFileOperations] = useState(false)
@@ -129,6 +133,17 @@ export function CatalogOrdinaryBrowser(props: {
     'cairndex.showSubcollectionContents',
     false,
   )
+  // The panels as v0.2.1 kept them: shown or hidden from the View menu and
+  // their toggles, and resized by dragging their inner edge
+  const [panels, setPanels] = usePersistentState('cairndex.panels', {
+    sidebar: true,
+    inspector: true,
+  })
+  const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
+  const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
+  const toggleSidebar = () => setPanels((previous) => ({ ...previous, sidebar: !previous.sidebar }))
+  const toggleInspector = () =>
+    setPanels((previous) => ({ ...previous, inspector: !previous.inspector }))
   const updateDragItem = useCallback((item: DragItem | null) => {
     setActiveDrag(item)
     setDragItem(item)
@@ -167,6 +182,30 @@ export function CatalogOrdinaryBrowser(props: {
     setPath(next.path)
     setFile(null)
     setLocated(null)
+  })
+  // The sidebar's toggle rides in its own top row while it is open, and moves
+  // into the toolbar when it is not; the inspector's ends the toolbar
+  const headerLeading = (
+    <>
+      {!panels.sidebar && <SidebarToggle visible={false} onToggle={toggleSidebar} />}
+      {history}
+    </>
+  )
+  const headerTrailing = <InspectorToggle visible={panels.inspector} onToggle={toggleInspector} />
+  useDesktopMenu((action) => {
+    if (action === 'toggle-sidebar') toggleSidebar()
+    else if (action === 'toggle-inspector') toggleInspector()
+    else if (action === 'show-bundles' || action === 'new-bundle') {
+      setUnbundled(false)
+      setMode('collection')
+    } else if (action === 'show-files') {
+      setUnbundled(false)
+      setMode('file')
+    } else if (action === 'new-collection' && !props.blocked) {
+      // The sidebar asks for the name, so it must be open
+      setPanels((previous) => ({ ...previous, sidebar: true }))
+      setNewCollection({ parentId: null })
+    }
   })
   const status = useReplicaStatus(props.library).data
   const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
@@ -219,57 +258,79 @@ export function CatalogOrdinaryBrowser(props: {
   )
   return (
     <CatalogQueryContext value={props.library}>
-      <div className="catalog-ordinary-layout" {...incomingDrop}>
-        <CatalogNavigation
-          library={props.library}
-          libraries={props.libraries}
-          mode={mode}
-          onMode={(next) => {
-            setMode(next)
-            setUnbundled(false)
-          }}
-          systemViewsEnabled={props.systemViewsEnabled}
-          unbundled={unbundled}
-          onUnbundled={() => {
-            setUnbundled(true)
-            setMode('file')
-          }}
-          selection={selection}
-          onSelect={openPlace}
-          onChangeLibrary={props.onChangeLibrary}
-          onManage={props.onManage}
-          onSettings={props.onSettings}
-          onReview={props.onReview}
-          onReviewEntity={props.onReviewEntity}
-          blocked={props.blocked}
-          dragItem={dragItem}
-          onDragItem={updateDragItem}
-          bundleMovesEnabled={bundleMoves}
-          newCollectionRequest={newCollection}
-          onNewCollectionHandled={() => setNewCollection(null)}
-          renameCollectionRequest={renameCollection}
-          onRenameCollectionHandled={() => setRenameCollection(null)}
-          collections={collections}
-          showSubContents={showSubContents}
-          onNotice={setNotice}
-          libraryActions={
-            <CatalogLibraryActions
-              update={props.update}
-              items={[
-                ...(sourceEnabled
-                  ? [
-                      { label: 'Add Files…', onClick: () => setFileOperations(true) },
-                      { label: 'File Operations…', onClick: () => setFileOperations(true) },
-                      null,
-                    ]
-                  : []),
-                ...props.libraryMenu,
-              ]}
-            >
-              {props.libraryNotices}
-            </CatalogLibraryActions>
-          }
-        />
+      <div
+        className={`catalog-ordinary-layout${panels.sidebar ? '' : ' catalog-ordinary-layout--no-sidebar'}${
+          panels.inspector && mode !== 'tags' ? '' : ' catalog-ordinary-layout--no-inspector'
+        }`}
+        style={
+          {
+            '--sidebar-w': `${sidebarW}px`,
+            '--inspector-w': `${inspectorW}px`,
+          } as React.CSSProperties
+        }
+        {...incomingDrop}
+      >
+        {panels.sidebar && (
+          <CatalogNavigation
+            library={props.library}
+            libraries={props.libraries}
+            mode={mode}
+            onMode={(next) => {
+              setMode(next)
+              setUnbundled(false)
+            }}
+            systemViewsEnabled={props.systemViewsEnabled}
+            unbundled={unbundled}
+            onUnbundled={() => {
+              setUnbundled(true)
+              setMode('file')
+            }}
+            selection={selection}
+            onSelect={openPlace}
+            onChangeLibrary={props.onChangeLibrary}
+            onManage={props.onManage}
+            onSettings={props.onSettings}
+            onReview={props.onReview}
+            onReviewEntity={props.onReviewEntity}
+            blocked={props.blocked}
+            dragItem={dragItem}
+            onDragItem={updateDragItem}
+            bundleMovesEnabled={bundleMoves}
+            newCollectionRequest={newCollection}
+            onNewCollectionHandled={() => setNewCollection(null)}
+            renameCollectionRequest={renameCollection}
+            onRenameCollectionHandled={() => setRenameCollection(null)}
+            collections={collections}
+            showSubContents={showSubContents}
+            onNotice={setNotice}
+            activity={props.libraryNotices?.(setNotice)}
+            libraryActions={
+              <CatalogLibraryActions
+                update={
+                  props.update && {
+                    ...props.update,
+                    // A new run replaces the last run's result
+                    onClick: () => {
+                      setNotice(null)
+                      props.update?.onClick()
+                    },
+                  }
+                }
+                items={[
+                  ...(sourceEnabled
+                    ? [
+                        { label: 'Add Files…', onClick: () => setFileOperations(true) },
+                        { label: 'File Operations…', onClick: () => setFileOperations(true) },
+                        null,
+                      ]
+                    : []),
+                  ...props.libraryMenu,
+                ]}
+              />
+            }
+            onToggleSidebar={toggleSidebar}
+          />
+        )}
         <div className="catalog-ordinary-content">
           {sourceEnabled && (
             <SourceOperations
@@ -310,7 +371,9 @@ export function CatalogOrdinaryBrowser(props: {
               onDragItem={updateDragItem}
               bundleMovesEnabled={bundleMoves}
               onNotice={setNotice}
-              headerLeading={history}
+              headerLeading={headerLeading}
+              headerTrailing={headerTrailing}
+              onScreen={mode === 'collection'}
               locateRequest={locateRequest}
               selection={selection}
               filters={filters}
@@ -331,7 +394,8 @@ export function CatalogOrdinaryBrowser(props: {
               onNotice={setNotice}
               hostFiles={hostFiles}
               onHostPath={setUnbundledHostPath}
-              headerLeading={history}
+              headerLeading={headerLeading}
+              headerTrailing={headerTrailing}
               bundling={manualBundling}
             />
           )}
@@ -340,7 +404,8 @@ export function CatalogOrdinaryBrowser(props: {
               <FileBrowser
                 catalogLibrary={props.library}
                 libraryName={libraryName}
-                headerLeading={history}
+                headerLeading={headerLeading}
+                headerTrailing={headerTrailing}
                 onFlash={(text) => setNotice({ text })}
                 scope="browse"
                 path={path}
@@ -410,6 +475,18 @@ export function CatalogOrdinaryBrowser(props: {
             </div>
           )}
         </div>
+        {panels.sidebar && (
+          <PanelResizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
+        )}
+        {panels.inspector && mode !== 'tags' && (
+          <PanelResizer
+            side="right"
+            width={inspectorW}
+            setWidth={setInspectorW}
+            min={220}
+            max={480}
+          />
+        )}
       </div>
       {folder !== null && (
         <CollectionFromFolderDialog

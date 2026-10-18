@@ -59,7 +59,8 @@ folder cards and the subcollection switch, the collection inspector, sidebar
 counts (`browse_version: 10`), Back/Forward, the foot-of-window message,
 Unbundled in the File Browser's listing, and a single not-ready card.
 Back/Forward does not record opening a bundle album; the album keeps its own
-Back. `fix/inspectors-v021` gives the bundle inspectors v0.2.1's layout: the
+Back. [PR #91](https://github.com/allpan3/Cairndex/pull/91), merged as
+`d6caa4ba`, gives the bundle inspectors v0.2.1's layout: the
 cover with ▶, Files and Date Added rows, tag and collection chips that save at
 once, file rows with ★ and ▶, and the multi-bundle inspector with one title,
 one rating and chips (`selection_version: 3`). Two differences from v0.2.1 are
@@ -67,8 +68,21 @@ deliberate. The single-bundle inspector keeps **Save changes**, because its
 edits are a private draft that survives reload and refuses to overwrite another
 device's change. It shows no Size, because a portable catalog does not claim
 sizes it has not observed on this device. The same branch sends the catalog's
-timestamps with their UTC offset; Date Added had shown UTC as local time. The
-owner tests the whole app on their own Mac after this merges.
+timestamps with their UTC offset; Date Added had shown UTC as local time.
+
+The owner's test on their own Mac began on 2026-10-18. Its first round found the
+"Server:" bar above the app (it took the window's top edge and could not move
+the window), an empty band at the top of the sidebar, an 8–12 px margin around
+the browser, untidy Libraries rows, Update status under its button that never
+left, a discovery review that no longer opened after Update, and always-visible
+panel scrollbars. Tracing them found more v0.2.1 losses:
+the View menu's panel, mode and zoom commands and New Collection/New Empty
+Bundle did nothing in a portable library, the panels could not be hidden or
+resized, and its selects had lost their colours. `fix/shell-and-sidebar-v021`
+fixes all of these: **File ▸ Servers…** replaces the bar, the browser fills the
+window, Update runs in the sidebar footer as v0.2.1's job rows did and reports
+its result in the window's message, the panels hide, return and resize, and
+their scrollbars show only while they scroll.
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server

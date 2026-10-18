@@ -20,11 +20,15 @@ import { scrollTopForDrag, thumbGeometry } from './scrollThumb'
  * the top of the *visible* area of the scroller — an absolutely positioned child
  * would scroll away with the content, since a scroller's containing block is its
  * full scroll height rather than its viewport.
+ *
+ * Like a macOS overlay scrollbar, it shows only while the panel scrolls, for a
+ * moment after, and while the pointer is on it or drags it (owner, 2026-10-18).
  */
 export function OverlayScrollbar() {
   const anchor = useRef<HTMLDivElement>(null)
   const [thumb, setThumb] = useState<{ height: number; offset: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [scrolling, setScrolling] = useState(false)
 
   useLayoutEffect(() => {
     const scroller = anchor.current?.parentElement
@@ -38,8 +42,15 @@ export function OverlayScrollbar() {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(measure)
     }
+    let hide = 0
+    const reveal = () => {
+      setScrolling(true)
+      clearTimeout(hide)
+      hide = window.setTimeout(() => setScrolling(false), 1000)
+    }
     measure()
     scroller.addEventListener('scroll', schedule, { passive: true })
+    scroller.addEventListener('scroll', reveal, { passive: true })
     // The panel's own box, for a window or splitter resize…
     const resize = new ResizeObserver(schedule)
     resize.observe(scroller)
@@ -49,7 +60,9 @@ export function OverlayScrollbar() {
     mutate.observe(scroller, { childList: true, subtree: true })
     return () => {
       cancelAnimationFrame(frame)
+      clearTimeout(hide)
       scroller.removeEventListener('scroll', schedule)
+      scroller.removeEventListener('scroll', reveal)
       resize.disconnect()
       mutate.disconnect()
     }
@@ -92,7 +105,9 @@ export function OverlayScrollbar() {
     <div ref={anchor} className="oscroll" aria-hidden="true">
       {thumb && (
         <div
-          className={`oscroll__thumb${dragging ? ' oscroll__thumb--dragging' : ''}`}
+          className={`oscroll__thumb${dragging ? ' oscroll__thumb--dragging' : ''}${
+            scrolling ? ' oscroll__thumb--scrolling' : ''
+          }`}
           style={{ height: `${thumb.height}px`, transform: `translateY(${thumb.offset}px)` }}
           onPointerDown={(event) => {
             event.preventDefault()

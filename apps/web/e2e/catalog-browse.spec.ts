@@ -593,6 +593,11 @@ test('portable sidebar creates, renames, arranges and deletes collections @fulls
       .getByRole('button', { name: 'Clean up' })
       .click()
     await expect.poll(() => level(null)).toEqual([created, 'collections-root'])
+    // The server's order lands before the sidebar's. A drag while the rows still
+    // move would drop on whichever row had slid under the target position.
+    await expect(
+      page.getByRole('treeitem', { name: /Alpha|Synthetic root/ }).first(),
+    ).toHaveAccessibleName(/Alpha/)
 
     await row(/Alpha/).dragTo(row(/Synthetic child/))
     await expect.poll(() => level('collections-child')).toEqual([created])
@@ -1047,6 +1052,74 @@ test('portable Unbundled files make and extend a bundle @fullstack', async ({ pa
     await expect(page.getByText('Added 1 file to the bundle.')).toBeVisible()
     await expect(grid.getByRole('option').filter({ hasText: 'Gathered' })).toBeVisible()
     await expect.poll(() => owner('media-remux')).toBeNull()
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+// v0.2.1's panels: each hides from its toggle and comes back, and a drag on its
+// inner edge resizes it; both survive a reload
+test('portable sidebar and inspector hide, return and resize @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-panels-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=20))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    await proxyApi(page, backend.baseUrl)
+    await page.setViewportSize({ width: 1280, height: 760 })
+    await page.goto('/')
+    const sidebar = page.locator('.sidebar')
+    const inspector = page.locator('.catalog-bundle-browser > .inspector')
+    await expect(sidebar).toBeVisible()
+    await expect(inspector).toBeVisible()
+
+    // The sidebar's toggle moves into the toolbar while the sidebar is hidden
+    await sidebar.getByRole('button', { name: 'Toggle Sidebar' }).click()
+    await expect(sidebar).toHaveCount(0)
+    await page.getByRole('button', { name: 'Toggle Inspector' }).click()
+    await expect(inspector).toBeHidden()
+    await page.reload()
+    await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
+    await expect(sidebar).toHaveCount(0)
+    await expect(inspector).toBeHidden()
+    await page.getByRole('button', { name: 'Toggle Sidebar' }).click()
+    await page.getByRole('button', { name: 'Toggle Inspector' }).click()
+    await expect(sidebar).toBeVisible()
+    await expect(inspector).toBeVisible()
+
+    const width = async (locator: typeof sidebar) => (await locator.boundingBox())!.width
+    expect(await width(sidebar)).toBe(240)
+    const handle = (await page.getByRole('separator', { name: 'Resize sidebar' }).boundingBox())!
+    await page.mouse.move(handle.x + 3, handle.y + 200)
+    await page.mouse.down()
+    await page.mouse.move(handle.x + 63, handle.y + 200, { steps: 4 })
+    await page.mouse.up()
+    expect(await width(sidebar)).toBe(300)
+    const edge = (await page.getByRole('separator', { name: 'Resize inspector' }).boundingBox())!
+    await page.mouse.move(edge.x + 3, edge.y + 200)
+    await page.mouse.down()
+    await page.mouse.move(edge.x - 37, edge.y + 200, { steps: 4 })
+    await page.mouse.up()
+    expect(await width(inspector)).toBe(340)
+    await page.reload()
+    await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
+    expect(await width(sidebar)).toBe(300)
+    expect(await width(inspector)).toBe(340)
   } finally {
     await page.close()
     await stopBackend(backend.child)

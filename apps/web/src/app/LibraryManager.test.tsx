@@ -512,6 +512,6 @@ test('the browser has no Browse… button, because it cannot produce a server pa
 
 test('offers private controls without legacy write mode', async () => {
   renderManager()
-  expect(await screen.findAllByRole('button', { name: 'Access and backups' })).not.toHaveLength(0)
+  expect(await screen.findAllByRole('button', { name: 'Settings…' })).not.toHaveLength(0)
   expect(screen.queryByRole('button', { name: /Write mode/ })).not.toBeInTheDocument()
 })

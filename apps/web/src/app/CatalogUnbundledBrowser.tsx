@@ -17,6 +17,7 @@ export function CatalogUnbundledBrowser({
   hostFiles,
   onHostPath,
   headerLeading,
+  headerTrailing,
   bundling = false,
 }: {
   library: string
@@ -26,6 +27,7 @@ export function CatalogUnbundledBrowser({
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
   headerLeading?: ReactNode
+  headerTrailing?: ReactNode
   /** Offer Create Bundle and Add to Bundle; the server needs `browse_version: 9`. */
   bundling?: boolean
 }) {
@@ -58,6 +60,7 @@ export function CatalogUnbundledBrowser({
         onCreateBundle={ask('create')}
         onAddToBundle={ask('add')}
         headerLeading={headerLeading}
+        headerTrailing={headerTrailing}
         hostLabels={getHostLabels()}
         onRevealFile={hostFiles?.onRevealFile}
         onOpenFile={hostFiles?.onOpenFile}

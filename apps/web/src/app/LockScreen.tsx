@@ -34,7 +34,7 @@ export function LockScreen({
   }
 
   return (
-    <div className="lockscreen">
+    <div className="lockscreen" data-tauri-drag-region>
       <form className="lockscreen__card" onSubmit={submit}>
         <div className="lockscreen__brand">
           <span>🍃</span> Cairndex

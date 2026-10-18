@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { ConnectionControls } from './ConnectionControls'
 import { QueryScope } from '../QueryScope'
 import { NewLibraryDialog } from '../app/LibraryManager'
+import { ServersDialog } from './ServersDialog'
 import { INCOMPATIBLE_SERVER_ERROR, unreachableServerMessage } from './verifyServer'
 import { confirmPickedLibrary, openLibraryFolder } from './openLibraryFolder'
 import {
@@ -66,6 +66,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [naming, setNaming] = useState<NamingState | null>(null)
   const [saving, setSaving] = useState(false)
+  const [serversOpen, setServersOpen] = useState(false)
   const serverInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -79,6 +80,29 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
       })
       .catch((error: unknown) =>
         reportDesktopBridgeError('Could not start desktop lifecycle handling', error),
+      )
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [])
+
+  // File ▸ Servers… in every state: first run, a lock screen, recovery and browsing
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void initializeHostPlatform()
+      .then(() =>
+        listenHostMenu((action) => {
+          if (action === 'servers') setServersOpen(true)
+        }),
+      )
+      .then((stop) => {
+        if (disposed) stop()
+        else unlisten = stop
+      })
+      .catch((error: unknown) =>
+        reportDesktopBridgeError('Could not start desktop Servers menu handling', error),
       )
     return () => {
       disposed = true
@@ -274,27 +298,35 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   // previous server's cache and any request still in flight against it are
   // discarded rather than left to resolve into the new connection's cache
   // (plan 3 §7.1 — library ids are per-server and not globally unique).
+  const servers = (
+    <ServersDialog
+      open={serversOpen}
+      onClose={() => setServersOpen(false)}
+      onConnected={() => setReady(true)}
+    />
+  )
   if (ready)
     return (
-      <div className="connection-shell">
-        <ConnectionControls />
-        <div className="connection-content">
-          <QueryScope key={`${activeConnectionId}:${session}`}>{children}</QueryScope>
-        </div>
-      </div>
+      <>
+        <QueryScope key={`${activeConnectionId}:${session}`}>{children}</QueryScope>
+        {servers}
+      </>
     )
   if (!setup)
     return (
       <>
-        <div className="app-loading">Loading desktop settings…</div>
+        <div className="app-loading" data-tauri-drag-region>
+          Loading desktop settings…
+        </div>
         {namingDialog}
       </>
     )
 
   return (
-    <div className="connection-shell">
-      <ConnectionControls onConnected={() => setReady(true)} />
-      <main className="desktop-setup connection-content">
+    <>
+      {/* The window has no title bar of its own on macOS, so the background
+          around the card moves it; the card's own text stays selectable */}
+      <main className="desktop-setup" data-tauri-drag-region>
         <form className="desktop-setup__card" onSubmit={connect}>
           <img src="/favicon.svg" alt="" className="desktop-setup__mark" />
           <p className="desktop-setup__eyebrow">Cairndex desktop</p>
@@ -351,6 +383,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         </form>
         {namingDialog}
       </main>
-    </div>
+      {servers}
+    </>
   )
 }

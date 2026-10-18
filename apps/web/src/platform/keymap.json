@@ -117,6 +117,14 @@
           "keys": []
         },
         {
+          "id": "servers",
+          "label": "Servers…",
+          "accelerator": null,
+          "browserReserved": false,
+          "requires": null,
+          "keys": []
+        },
+        {
           "id": "new-bundle",
           "label": "New Empty Bundle…",
           "accelerator": "CmdOrCtrl+N",

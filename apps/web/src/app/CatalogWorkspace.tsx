@@ -476,9 +476,11 @@ export function CatalogWorkspace({
               : []),
             { label: 'Metadata Review', onClick: () => setReviewMode(true) },
           ]}
-          libraryNotices={
+          libraryNotices={(onNotice) => (
             <>
-              {discovery.enabled && <DiscoveryNotice discovery={discovery} />}
+              {discovery.enabled && (
+                <DiscoveryNotice discovery={discovery} onComplete={(text) => onNotice({ text })} />
+              )}
               {(attention || storageAccess) && (
                 <section className="sidebar__notice" aria-label="Metadata delivery status">
                   {attention && <p role="alert">{attention}</p>}
@@ -491,7 +493,7 @@ export function CatalogWorkspace({
                 </section>
               )}
             </>
-          }
+          )}
         />
       )}
       {!reviewMode && notReady && (

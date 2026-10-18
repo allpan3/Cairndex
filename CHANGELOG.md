@@ -224,6 +224,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The side panels' scrollbars hide until you scroll.** As macOS overlay
+  scrollbars do, the sidebar's and inspector's thumb appears while the panel
+  scrolls and fades a second later; it stays while the pointer is on it or
+  drags it.
 - **The portable bundle inspectors have v0.2.1's layout again.** The cover has a
   ▶ Play button over it, followed by the title, rating, Files and Date Added.
   Tags and collections are chips with ×, and **+ Tag** / **+ Collection** search
@@ -264,11 +268,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **A portable library's actions are back in the sidebar, as in v0.2.1.** The
   rows of buttons and status lines above the bundle browser are gone. The sidebar
   shows **Update** and a ⋯ menu with **Add Files…**, **File Operations…**,
-  **Review Discoveries…** and **Metadata Review**. Below them it shows status
-  only when it needs the owner: a running or failed Update, discovered files that
-  wait for review, a metadata exchange problem, or a network share that needs
-  **Allow Access…**. The discovery review opens as a dialog when the owner asks
-  for it, and **Saved operations** moved into Metadata review.
+  **Review Discoveries…** and **Metadata Review**. As v0.2.1's job rows did, the
+  sidebar's footer shows a running Update with its count, × to stop it and a
+  bar, and leaves when it finishes; the result appears briefly at the bottom of
+  the window. The footer also shows what needs the owner: a failed or cancelled
+  Update, discovered files that wait for review, a metadata exchange problem, or
+  a network share that needs **Allow Access…**. The discovery review is a
+  dialog. As v0.2.1's grouping review did, it opens by itself when an Update you
+  started leaves discovered files to decide, and **Review Discoveries…** opens it
+  at any time. **Saved operations** moved into Metadata review.
 - Container deployments keep private snapshots in a separate writable backup
   volume, including the bare image default. Registry backup/restore helpers reject
   legacy shared `library.db`; portable library recovery uses its private stores.
@@ -315,6 +323,29 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The window's top edge is the app again, as in v0.2.1.** A "Server:" bar with
+  *Servers…* and *Reconnect* sat above the whole app, pushed the sidebar down
+  below the window buttons and could not move the window. The server choice is
+  now **File ▸ Servers…** (choosing the selected server reconnects it), and the
+  bar is gone in the desktop app and the browser. The background of the
+  first-run, lock and loading screens now moves the window, which it could not
+  do before. The portable browser also fills the window edge to edge again,
+  instead of sitting inside an 8–12 px margin.
+- **A portable library's panels and View menu work again, as in v0.2.1.**
+  **View ▸ Toggle Sidebar** and **Toggle Inspector**, and the toggle buttons in
+  the sidebar's top row and at the toolbar's end, hide and show the panels; a
+  drag on a panel's inner edge resizes it; both are remembered. **Show
+  Bundles**, **Show Files**, **Zoom In** and **Zoom Out** for bundles, **New
+  Collection** and **New Empty Bundle…** act again. In a portable library they
+  did nothing, and the sidebar's top row stood empty without its toggle.
+- **The Libraries dialog's rows are tidier.** A row shows a status only when
+  the library is unavailable, and that status is the height of the buttons
+  beside it. Open sits with the other buttons, *Access and backups* is now
+  *Settings…*, and every button explains itself in a tooltip.
+- **Selects in a portable library look as in v0.2.1 again.** The sidebar's
+  library picker and the other selects in the bundle browser had lost their
+  background and bright text to a style meant for Metadata review's header.
+  The Servers dialog also had no background of its own.
 - **A portable library shows Date Added in local time.** Its catalog keeps the
   legacy database's timestamps, which are UTC without an offset, and the browser
   read them as local time, so a bundle or file added in the evening showed the

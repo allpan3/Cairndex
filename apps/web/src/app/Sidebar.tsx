@@ -70,6 +70,8 @@ export interface SidebarProps {
    * library supplies its own; without it, the row is the legacy job controls.
    */
   libraryActions?: React.ReactNode
+  /** A portable library's running work and status, docked with the job rows. */
+  activity?: React.ReactNode
   /** Collection create, rename, delete, drag and order controls; defaults to `!navigationOnly`. */
   collectionsEditable?: boolean
   /** Copy a collection's `cairndex://` URI; offered first in its menu when set. */
@@ -238,6 +240,7 @@ function findRow(nodes: TreeNode[], id: string, depth = 0): TreeRow | null {
 export function Sidebar({
   navigationOnly = false,
   libraryActions,
+  activity,
   collectionsEditable = !navigationOnly,
   onCopyCollectionUri,
   availableViews,
@@ -984,6 +987,7 @@ export function Sidebar({
             work: the message outlives the button (a storyboard pass reports
             long after Update is done), and "what is happening" and "what went
             wrong" reading as one place beats two. */}
+        {activity}
         {activeImports.length === 0 && activeJobs.length === 0 && maintenanceError && (
           <div className="sidebar__job-error" role="alert">
             {maintenanceError}

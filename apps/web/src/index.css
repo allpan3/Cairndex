@@ -454,6 +454,9 @@ button {
      wider than the field ever needs to be in a tight row. Overriding it is what
      lets the search box give up space before the breadcrumb trail does. */
   min-width: 80px;
+  /* Shrink weighs by width, so a short title would otherwise be cut while the
+     field still had room to give: the field gives first */
+  flex-shrink: 100;
 }
 /* Back/Forward history — a compact seg pair leading each surface's top bar. */
 .nav-history button {
@@ -2390,7 +2393,19 @@ button {
   border-radius: 3px;
   background: var(--scrollbar-thumb);
   pointer-events: auto;
-  transition: background 120ms ease;
+  /* Hidden until the panel scrolls, as macOS overlay scrollbars are */
+  opacity: 0;
+  transition:
+    opacity 300ms ease,
+    background 120ms ease;
+}
+.oscroll__thumb--scrolling,
+.oscroll__thumb--dragging,
+.oscroll__thumb:hover {
+  opacity: 1;
+  transition:
+    opacity 80ms ease,
+    background 120ms ease;
 }
 /* Legible while the pointer is anywhere in the panel, and firmer while dragging;
    otherwise quiet enough to sit over text. */
@@ -5895,6 +5910,22 @@ code {
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
 }
+/* A portable library's Update: discovered files that wait for review, and a
+   problem reading the run, in the same footer rows */
+.sidebar__job-review {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sidebar__job-progress p[role='alert'] {
+  margin: 0;
+  font-size: 11px;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
 .sidebar__job-error {
   /* Sits inside the sidebar foot beside the job rows, so it carries their
      padding rather than the standalone margin it had further up the panel. */
@@ -6373,6 +6404,15 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Sized like the row's small buttons, so the status lines up with them */
+.lib-row .badge {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
 }
 .lib-row--confirm {
   background: rgba(251, 191, 36, 0.08);
@@ -7407,45 +7447,10 @@ code {
   padding-block: 0.8rem;
 }
 
-/* Server choice remains reachable outside library and authentication gates */
-.connection-shell {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-.connection-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-.connection-bar > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.connection-bar [role='alert'] {
-  color: var(--danger);
-}
-.connection-content {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-.connection-content .app {
-  height: 100%;
-}
-.connection-content .lockscreen {
-  min-height: 100%;
-}
+/* File ▸ Servers… */
 .connection-dialog {
   color: var(--text);
-  background: var(--panel);
+  background: var(--bg-2);
   padding: 20px;
   max-height: 85vh;
   overflow: auto;
@@ -7469,15 +7474,6 @@ code {
 .connection-choices [aria-current='true'] {
   outline: 1px solid var(--accent);
 }
-:root[data-titlebar='overlay'] .connection-bar {
-  padding-left: 90px;
-}
-
-:root[data-titlebar='overlay'] .connection-content .sidebar__titlebar {
-  min-height: 28px;
-  padding-left: 8px;
-}
-
 .connection-dialog:not([open]) {
   display: none;
 }
@@ -7548,7 +7544,7 @@ code {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--bg-2);
 }
 .metadata-compatibility p {
   flex: 1 1 280px;
@@ -7655,66 +7651,19 @@ code {
   min-width: 0;
 }
 .catalog-bundle-browser > .inspector {
-  width: 300px;
+  width: var(--inspector-w, 300px);
   flex-shrink: 0;
   overflow-y: auto;
 }
 
+/* Edge to edge, as v0.2.1's `.app`: the sidebar and inspector meet the window's
+   edges, and on macOS the traffic lights sit over the sidebar's top row. */
 .catalog-browser-workspace {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
   min-height: 0;
   overflow: auto;
-  padding: 8px 12px;
-  gap: 6px;
-}
-.catalog-browser-workspace > header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.catalog-browser-workspace > header > div {
-  flex: 1;
-}
-.catalog-browser-workspace h1 {
-  font-size: 16px;
-  margin: 0;
-}
-.catalog-browser-workspace > header p {
-  display: none;
-}
-.catalog-browser-workspace > header label {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.catalog-browser-workspace > section[aria-label='Metadata delivery status'] {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-}
-.catalog-browser-workspace > section[aria-label='Metadata delivery status'] p {
-  margin: 0;
-}
-.catalog-browser-workspace > :is(header, nav, section) button,
-.catalog-browser-workspace > button,
-.catalog-browser-workspace select {
-  background: var(--bg-raised);
-  color: inherit;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-.catalog-browser-workspace > button {
-  align-self: start;
-}
-.catalog-browser-workspace > nav {
-  display: flex;
-  gap: 6px;
 }
 .catalog-browser-workspace .catalog-bundle-browser {
   flex: 1;
@@ -7739,13 +7688,29 @@ code {
 }
 
 .catalog-ordinary-layout {
+  /* The offset parent of the panels' resize handles */
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
 }
 .catalog-ordinary-layout > .sidebar {
-  width: 220px;
+  width: var(--sidebar-w, 240px);
   flex-shrink: 0;
+}
+.catalog-ordinary-layout--no-inspector .catalog-bundle-browser > .inspector,
+.catalog-ordinary-layout--no-inspector .catalog-file-surface > .inspector {
+  display: none;
+}
+/* With the sidebar hidden the traffic lights sit over the first toolbar, as
+   `.app--no-sidebar` arranged for v0.2.1's grid */
+:root[data-titlebar='overlay'] .catalog-ordinary-layout--no-sidebar .center > .toolbar:first-child,
+:root[data-titlebar='overlay']
+  .catalog-ordinary-layout--no-sidebar
+  .file-browser
+  > .toolbar:first-child,
+:root[data-titlebar='overlay'] .catalog-ordinary-layout--no-sidebar .alltags__toolbar {
+  padding-left: 100px;
 }
 .catalog-ordinary-content {
   display: flex;
@@ -7839,7 +7804,7 @@ code {
   min-width: 0;
 }
 .catalog-file-surface > .inspector {
-  width: 260px;
+  width: var(--inspector-w, 300px);
   flex-shrink: 0;
 }
 .catalog-bundle-surface[hidden] {

@@ -697,41 +697,50 @@ function LibraryRow({
       <div className="lib-row__main">
         <span className="lib-row__name">{library.name}</span>
         <span className="lib-row__path">{library.root_path}</span>
+        {released && <span className="lib-row__note">Released on this server</span>}
       </div>
+      {/* Only a problem is shown: an available library is the normal case */}
+      {!available && <span className="badge badge--warn">Unavailable</span>}
+      {serving.error && <span role="alert">{serving.error.message}</span>}
       <button
         className="btn btn--sm"
         disabled={busy}
         onClick={legacy ? onConvert : onSelect}
         aria-label={`${legacy ? 'Convert' : 'Open'} ${library.name}`}
+        title={
+          legacy
+            ? 'Convert this library from an earlier version of Cairndex'
+            : 'Show this library in the browser'
+        }
       >
         {legacy ? 'Convert' : 'Open'}
       </button>
-      <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
-        {available ? 'available' : 'unavailable'}
-      </span>
       <button
         className="btn btn--sm"
         disabled={legacy || busy || serving.isPending}
-        title="Release stops this server from serving the library to all clients; registration and content remain"
+        title={
+          released
+            ? 'Serve this library here again'
+            : 'Stop serving this library here, so that another computer can open it. Nothing is deleted.'
+        }
         onClick={() => serving.mutate(released ? 'reopen' : 'release')}
       >
         {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
       </button>
-      {released && <span className="lib-row__note">Released on this server</span>}
       <button
         className="btn btn--sm"
         disabled={legacy || busy}
+        title="Access passphrase, private backups and recovery for this library"
         onClick={() => setPrivatePanel(true)}
       >
-        Access and backups
+        Settings…
       </button>
-      {serving.error && <span role="alert">{serving.error.message}</span>}
-
       <button
         className="btn btn--sm"
         onClick={() => setAsking('remove')}
         disabled={busy}
         aria-label={`Remove ${library.name}`}
+        title="Remove this library from the list. The folder and its files are not touched."
       >
         Remove
       </button>

@@ -32,7 +32,7 @@ test('access and private backup controls complete reviewed recovery @fullstack',
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
     await page.getByRole('button', { name: 'Manage libraries', exact: true }).click()
-    await page.getByRole('button', { name: 'Access and backups', exact: true }).click()
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click()
     await page.getByLabel('New passphrase', { exact: true }).fill('Synthetic guard')
     await page.getByLabel('Confirm passphrase', { exact: true }).fill('Synthetic guard')
     await page.getByRole('button', { name: 'Set passphrase', exact: true }).click()

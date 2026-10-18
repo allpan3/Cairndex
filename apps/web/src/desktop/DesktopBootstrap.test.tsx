@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { resetConnectionsForTests } from './connections'
@@ -107,6 +107,79 @@ test('stores a verified first-run server URL', async () => {
 
   await waitFor(() => expect(saveHostServerUrl).toHaveBeenCalledWith('http://nas.local:8000'))
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
+})
+
+// The window has no system title bar on macOS, so first run must still offer
+// somewhere to move it from: the background behind the card
+test('lets the first-run screen move the window', async () => {
+  vi.mocked(loadHostServerUrl).mockResolvedValue(null)
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  await screen.findByLabelText('Server URL')
+  expect(screen.getByRole('main')).toHaveAttribute('data-tauri-drag-region', 'true')
+})
+
+// The server choice is a menu item, so it stays reachable before and after a
+// workspace mounts, with no bar above the app
+test('opens Servers from the File menu during first run and while browsing', async () => {
+  const handlers: ((action: string) => void)[] = []
+  vi.mocked(listenHostMenu).mockImplementation(async (handler) => {
+    handlers.push(handler as (action: string) => void)
+    return () => handlers.splice(handlers.indexOf(handler as (action: string) => void), 1)
+  })
+  vi.mocked(loadHostServerUrl).mockResolvedValue(null)
+  vi.mocked(startHostLocalServer).mockResolvedValue({
+    baseUrl: 'http://127.0.0.1:54321',
+    token: 'local-tok',
+  })
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  await screen.findByLabelText('Server URL')
+  expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+  act(() => handlers.forEach((handler) => handler('servers')))
+  const dialog = await screen.findByRole('dialog', { name: 'Servers' })
+  fireEvent.click(within(dialog).getByRole('button', { name: /This Computer/ }))
+
+  expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'Servers' })).not.toBeInTheDocument()
+  act(() => handlers.forEach((handler) => handler('servers')))
+  expect(await screen.findByRole('dialog', { name: 'Servers' })).toBeVisible()
+})
+
+// Escape's native close queues a `close` event, which can arrive after the
+// menu has already reopened the dialog; it must not close it again
+test('Servers reopens from the menu straight after Escape', async () => {
+  const handlers: ((action: string) => void)[] = []
+  vi.mocked(listenHostMenu).mockImplementation(async (handler) => {
+    handlers.push(handler as (action: string) => void)
+    return () => handlers.splice(handlers.indexOf(handler as (action: string) => void), 1)
+  })
+  vi.mocked(loadHostServerUrl).mockResolvedValue(null)
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  await screen.findByLabelText('Server URL')
+  act(() => handlers.forEach((handler) => handler('servers')))
+  const dialog = await screen.findByRole('dialog', { name: 'Servers' })
+  fireEvent(dialog, new Event('cancel', { cancelable: true }))
+  await waitFor(() => expect(dialog).not.toBeVisible())
+  act(() => handlers.forEach((handler) => handler('servers')))
+  fireEvent(dialog, new Event('close'))
+  expect(await screen.findByRole('dialog', { name: 'Servers' })).toBeVisible()
 })
 
 // A generic HTTP 200 endpoint is not persisted as a compatible Cairndex server

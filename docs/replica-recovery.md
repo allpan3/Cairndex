@@ -6,7 +6,7 @@ background recovery operation remains a separate task state.
 
 ## Normal controls
 
-Open **Manage libraries → Access and backups**. Unlock the library if needed.
+Open **Manage libraries → Settings…**. Unlock the library if needed.
 Choose **Create private snapshot**, then **Use this snapshot** and **Verify snapshot**.
 Choose **Release library**, **Prepare separate recovery**, and **Review this recovery**.
 Inspect received drafts, saved jobs and history. After review, select

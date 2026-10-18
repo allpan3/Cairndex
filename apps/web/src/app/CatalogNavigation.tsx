@@ -40,6 +40,8 @@ export function CatalogNavigation({
   renameCollectionRequest = null,
   onRenameCollectionHandled,
   libraryActions,
+  activity,
+  onToggleSidebar,
   collections,
   showSubContents,
   onNotice,
@@ -71,8 +73,11 @@ export function CatalogNavigation({
   /** A folder card's menu asks the sidebar to rename this collection in place. */
   renameCollectionRequest?: { id: string } | null
   onRenameCollectionHandled?: () => void
-  /** Update, the library menu and any status that needs the owner. */
+  /** Update and the library menu. */
   libraryActions?: React.ReactNode
+  /** Running work and status that needs the owner, in the sidebar footer. */
+  activity?: React.ReactNode
+  onToggleSidebar?: () => void
   collections: CatalogCollections
   /** A collection's badge counts its subtree only while the browser lists it. */
   showSubContents: boolean
@@ -98,6 +103,8 @@ export function CatalogNavigation({
       <Sidebar
         navigationOnly
         libraryActions={libraryActions}
+        activity={activity}
+        onToggleSidebar={onToggleSidebar}
         availableViews={
           systemViewsEnabled
             ? ['all', 'uncategorized', 'untagged', 'recent', 'random', 'missing', 'unbundled']

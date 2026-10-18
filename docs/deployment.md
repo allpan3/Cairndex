@@ -377,7 +377,7 @@ selected mounted-SMB topology, rather than arbitrary nested mounts or providers.
 
 ### Backups
 
-Use **Manage libraries → Access and backups** for private snapshots, verification,
+Use **Manage libraries → Settings…** for private snapshots, verification,
 Release, preparation, exact review, activation and Reopen. Both production compose
 files mount a separate private `cairndex-backups` volume at `/backups` and set
 `CAIRNDEX_PRIVATE_BACKUP_DIR` there. The image also defaults to `/backups`;
@@ -443,7 +443,7 @@ Tailscale, or front it with a reverse proxy that adds authentication.
 
 An **optional per-library owner passphrase lock** (ADR-0010) is available as a
 lightweight guardrail. Each library independently chooses no lock or a passphrase;
-configure it in **Manage libraries → Access and backups**. For local
+configure it in **Manage libraries → Settings…**. For local
 administration, stop the server before this command and restart afterwards:
 
 ```bash

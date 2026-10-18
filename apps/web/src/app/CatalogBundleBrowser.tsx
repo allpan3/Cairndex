@@ -48,6 +48,7 @@ import { AddFilesToBundleDialog, CreateEmptyBundleDialog } from './ManualBundlin
 import { CatalogCollectionInspector } from './CatalogCollectionInspector'
 import type { CatalogNotice } from './CatalogToast'
 import { CollectionHeader } from './CollectionHeader'
+import { useDesktopMenu } from '../desktop/useDesktopMenu'
 import type { DragItem } from './dnd'
 import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
 
@@ -132,6 +133,8 @@ export function CatalogBundleBrowser({
   bundleMovesEnabled,
   onNotice,
   headerLeading,
+  headerTrailing,
+  onScreen = true,
 }: {
   library: string
   locateRequest: number
@@ -174,6 +177,10 @@ export function CatalogBundleBrowser({
   onNotice: (notice: CatalogNotice) => void
   /** Back/Forward, ahead of the toolbar's title. */
   headerLeading?: ReactNode
+  /** The inspector's toggle, at the toolbar's far end. */
+  headerTrailing?: ReactNode
+  /** On screen; the View menu's zoom applies only then. */
+  onScreen?: boolean
 }) {
   const status = useReplicaStatus(library).data
   const supportedSorts = (status?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
@@ -597,6 +604,21 @@ export function CatalogBundleBrowser({
   // several collections or a shuffle does not, so neither offers to rewrite it
   const ordering = (status?.browse_version ?? 0) >= 6 && !blocked
   const bundling = (status?.browse_version ?? 0) >= 9 && !blocked
+  useDesktopMenu((action) => {
+    if ((action === 'zoom-in' || action === 'zoom-out') && onScreen)
+      setPrefs((previous) => ({
+        ...previous,
+        zoom: Math.max(
+          ZOOM_MIN,
+          Math.min(
+            ZOOM_MAX,
+            (previous.zoom ?? DEFAULT_PREFS.zoom) + (action === 'zoom-in' ? 10 : -10),
+          ),
+        ),
+      }))
+    // The workspace shows the bundles first, so this is not limited to `onScreen`
+    else if (action === 'new-bundle' && bundling) setCreatingBundle(true)
+  })
   const scoped = !(selection.collectionId && includeDescendants) && selection.view !== 'random'
   const reorder =
     ordering && scoped && activeSort === 'manual'
@@ -685,6 +707,7 @@ export function CatalogBundleBrowser({
       <div className="center">
         <Toolbar
           leading={headerLeading}
+          trailing={headerTrailing}
           title={
             selection.collectionId
               ? (collections.items.find((item) => item.id === selection.collectionId)?.name ??
