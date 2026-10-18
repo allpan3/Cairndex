@@ -1,4 +1,4 @@
-import { type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -143,4 +143,22 @@ export async function apiPost<T>(baseUrl: string, path: string, body?: unknown):
   })
   if (!response.ok) throw new Error(`POST ${path} failed with ${response.status}`)
   return (await response.json()) as T
+}
+
+/** Choose an entry from the sidebar's ⋯ library menu: Metadata Review, discoveries, file operations. */
+export async function libraryMenu(page: Page, item: string) {
+  await page.getByRole('button', { name: 'More library actions', exact: true }).click()
+  await page.getByRole('menuitem', { name: item, exact: true }).click()
+}
+
+/**
+ * Leave the bundle browser for metadata review. A ready library offers it in the
+ * library menu; one still waiting for its baseline shows the views buttons instead.
+ */
+export async function openMetadataReview(page: Page) {
+  const menu = page.getByRole('button', { name: 'More library actions', exact: true })
+  const direct = page.getByRole('button', { name: 'Metadata review', exact: true })
+  await expect(menu.or(direct)).toBeVisible()
+  if (await menu.isVisible()) await libraryMenu(page, 'Metadata Review')
+  else await direct.click()
 }

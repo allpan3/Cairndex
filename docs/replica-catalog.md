@@ -147,8 +147,8 @@ Editors provide reference pickers, exact numeric input, ordered notes and comple
 operation previews. Provenance/identity controls are available under advanced options.
 Smart Collections preserve arbitrary supported AST text and offer an explicit
 structured replacement builder. History offers field restoration and named branch
-recovery. **Saved operations** recovers a prepared review after a lost response,
-reload or restart. The indexed File Browser shows cataloged paths beneath the active
+recovery. **Saved operations**, under Metadata review, recovers a prepared review
+after a lost response, reload or restart. The indexed File Browser shows cataloged paths beneath the active
 root; it does not browse arbitrary server paths or prove local media availability.
 
 ## Ordinary browse and edit boundary
@@ -287,6 +287,7 @@ Older servers keep single selection, scalar editing and their existing views.
 Unsupported bulk or system-view endpoints are not called.
 Notes retain exact list values; arrow keys on each reorder control move a note.
 Metadata review retains the all-family controls, saved jobs and deleted objects.
+The bundle browser opens it from **Metadata Review** in the sidebar's ⋯ menu.
 Servers without browse version two keep the complete catalog controls. Legacy
 library queries and mutations retain their existing routes and behavior.
 

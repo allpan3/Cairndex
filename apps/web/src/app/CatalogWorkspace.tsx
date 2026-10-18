@@ -27,7 +27,8 @@ import { CatalogEditor } from './CatalogEditor'
 import { CatalogFileBrowser } from './CatalogFileBrowser'
 import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
-import { ReplicaDiscovery } from './ReplicaDiscovery'
+import { DiscoveryControls, DiscoveryNotice, DiscoveryReviewDialog } from './ReplicaDiscovery'
+import { useReplicaDiscovery } from './useReplicaDiscovery'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
@@ -233,6 +234,12 @@ export function CatalogWorkspace({
     queryFn: () => replicaRequest<ReplicaStatus>(libraryId, '/status'),
     refetchInterval: 1000,
   })
+  const state = status.data
+  const discovery = useReplicaDiscovery(
+    libraryId,
+    state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
+    refresh,
+  )
   const page = useQuery({
     queryKey: ['catalog-page', libraryId, family, after, deleted],
     queryFn: () =>
@@ -260,7 +267,17 @@ export function CatalogWorkspace({
     }
     void status.refetch()
   }
-  const state = status.data
+  // Known only once status answers, so loading does not flash the not-ready view
+  const notReady = (state !== undefined || status.error !== null) && !state?.ready
+  // The bundle browser shows the library's status only when it needs the owner
+  const attention = status.error?.message ?? state?.exchange_error ?? state?.blocked ?? null
+  const storageAccess = state?.storage_access && (
+    <StorageAccessNotice
+      access={state.storage_access}
+      authorize={() => authorizeLibraryStorage(libraryId)}
+      onAuthorized={refresh}
+    />
+  )
   return (
     <main
       className={reviewMode ? 'replica-workspace catalog-workspace' : 'catalog-browser-workspace'}
@@ -293,52 +310,46 @@ export function CatalogWorkspace({
           {onSettings && <button onClick={onSettings}>Settings</button>}
         </header>
       )}
-      <nav aria-label="Library views">
-        <button
-          disabled={!ordinaryBrowse}
-          aria-pressed={!reviewMode}
-          onClick={() => {
-            setReviewMode(false)
-            setFamily('asset_bundles')
-            setSelected(null)
-          }}
-        >
-          Bundle Browser
-        </button>
-        <button aria-pressed={reviewMode} onClick={() => setReviewMode(true)}>
-          Metadata review
-        </button>
-      </nav>
-      <section aria-label="Metadata delivery status">
-        <p role="status">
-          {state?.blocked
-            ? 'Recovery or upgrade required'
-            : !state?.ready
-              ? 'Waiting for the complete library baseline'
-              : state.outbox
-                ? `${state.outbox} saved here · waiting to exchange`
-                : 'Saved here · available metadata published'}
-        </p>
-        <p>Peer delivery unknown · {state?.waiting ?? 0} deliveries waiting</p>
-        {(status.error || state?.exchange_error || state?.blocked) && (
-          <p role="alert">{status.error?.message ?? state?.exchange_error ?? state?.blocked}</p>
-        )}
-        {state?.storage_access && (
-          <StorageAccessNotice
-            access={state.storage_access}
-            authorize={() => authorizeLibraryStorage(libraryId)}
-            onAuthorized={refresh}
-          />
-        )}
-        <button onClick={refresh}>Refresh catalog status</button>
-      </section>
-      {state?.discovery_version === 1 && state.ready && editor && (
-        <ReplicaDiscovery
-          key={`${libraryId}/${editor}`}
-          library={libraryId}
-          editor={editor}
-          refresh={refresh}
-        />
+      {(reviewMode || notReady) && (
+        <nav aria-label="Library views">
+          <button
+            disabled={!ordinaryBrowse}
+            aria-pressed={!reviewMode}
+            onClick={() => {
+              setReviewMode(false)
+              setFamily('asset_bundles')
+              setSelected(null)
+            }}
+          >
+            Bundle Browser
+          </button>
+          <button aria-pressed={reviewMode} onClick={() => setReviewMode(true)}>
+            Metadata review
+          </button>
+        </nav>
+      )}
+      {/* Metadata review always shows delivery status; the bundle browser only
+          until the library is ready, then its sidebar shows what needs the owner. */}
+      {(reviewMode || notReady) && (
+        <section aria-label="Metadata delivery status">
+          <p role="status">
+            {state?.blocked
+              ? 'Recovery or upgrade required'
+              : !state?.ready
+                ? 'Waiting for the complete library baseline'
+                : state.outbox
+                  ? `${state.outbox} saved here · waiting to exchange`
+                  : 'Saved here · available metadata published'}
+          </p>
+          <p>Peer delivery unknown · {state?.waiting ?? 0} deliveries waiting</p>
+          {attention && <p role="alert">{attention}</p>}
+          {storageAccess}
+          <button onClick={refresh}>Refresh catalog status</button>
+        </section>
+      )}
+      {reviewMode && discovery.enabled && <DiscoveryControls discovery={discovery} />}
+      {discovery.open && editor && (
+        <DiscoveryReviewDialog discovery={discovery} library={libraryId} editor={editor} />
       )}
       {reviewMode &&
         state?.media_version === 1 &&
@@ -397,8 +408,8 @@ export function CatalogWorkspace({
           }
         />
       )}
-      <button onClick={() => setShowJobs(!showJobs)}>Saved operations</button>
-      {showJobs && (
+      {reviewMode && <button onClick={() => setShowJobs(!showJobs)}>Saved operations</button>}
+      {reviewMode && showJobs && (
         <CatalogJobs
           key={libraryId}
           library={libraryId}
@@ -449,9 +460,40 @@ export function CatalogWorkspace({
           viewerOpen={media !== null}
           deepLink={deepLink}
           onDeepLinkHandled={onDeepLinkHandled}
+          update={
+            discovery.enabled
+              ? {
+                  running: discovery.running,
+                  disabled: !discovery.canStart,
+                  onClick: () => void discovery.start(),
+                }
+              : undefined
+          }
+          libraryMenu={[
+            ...(discovery.enabled
+              ? [{ label: 'Review Discoveries…', onClick: () => discovery.setOpen(true) }]
+              : []),
+            { label: 'Metadata Review', onClick: () => setReviewMode(true) },
+          ]}
+          libraryNotices={
+            <>
+              {discovery.enabled && <DiscoveryNotice discovery={discovery} />}
+              {(attention || storageAccess) && (
+                <section className="sidebar__notice" aria-label="Metadata delivery status">
+                  {attention && <p role="alert">{attention}</p>}
+                  {storageAccess}
+                  {attention && (
+                    <button className="btn" onClick={refresh}>
+                      Refresh Status
+                    </button>
+                  )}
+                </section>
+              )}
+            </>
+          }
         />
       )}
-      {!reviewMode && !state?.ready && (
+      {!reviewMode && notReady && (
         <p role="status">
           Waiting for complete library metadata. Retry status when the missing metadata is
           available.

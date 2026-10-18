@@ -41,6 +41,7 @@ export function CatalogNavigation({
   bundleMovesEnabled = false,
   newCollectionRequest = null,
   onNewCollectionHandled,
+  libraryActions,
 }: {
   systemViewsEnabled: boolean
   unbundled: boolean
@@ -66,6 +67,8 @@ export function CatalogNavigation({
   /** The browser's empty-space menu asks for a new collection here. */
   newCollectionRequest?: { parentId: string | null } | null
   onNewCollectionHandled?: () => void
+  /** Update, the library menu and any status that needs the owner. */
+  libraryActions?: React.ReactNode
 }) {
   const collections = useQuery({
     queryKey: ['catalog-navigation', library, 'collections'],
@@ -121,6 +124,7 @@ export function CatalogNavigation({
     <>
       <Sidebar
         navigationOnly
+        libraryActions={libraryActions}
         availableViews={
           systemViewsEnabled
             ? ['all', 'uncategorized', 'untagged', 'recent', 'random', 'missing', 'unbundled']

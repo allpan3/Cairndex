@@ -5,6 +5,12 @@ starts a private, cancellable job against the serving device's library root. Nor
 metadata exchange remains automatic. Formats one and two retain their existing
 capabilities; real-library conversion remains unavailable.
 
+In the bundle browser, **Update** sits at the top of the sidebar. The sidebar says
+when discovered files wait for review; that notice and **Review Discoveries…** in
+the ⋯ menu open the review as a dialog. It never opens by itself, so an Update
+does not interrupt other work. Metadata review keeps Update, Review discoveries
+and the last run's status above its editors.
+
 ## Review and identity
 
 Update observes existing paths, repairs unambiguous external moves and proposes

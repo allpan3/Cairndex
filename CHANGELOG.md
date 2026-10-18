@@ -224,6 +224,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **A portable library's actions are back in the sidebar, as in v0.2.1.** The
+  rows of buttons and status lines above the bundle browser are gone. The sidebar
+  shows **Update** and a ⋯ menu with **Add Files…**, **File Operations…**,
+  **Review Discoveries…** and **Metadata Review**. Below them it shows status
+  only when it needs the owner: a running or failed Update, discovered files that
+  wait for review, a metadata exchange problem, or a network share that needs
+  **Allow Access…**. The discovery review opens as a dialog when the owner asks
+  for it, and **Saved operations** moved into Metadata review.
 - Container deployments keep private snapshots in a separate writable backup
   volume, including the bare image default. Registry backup/restore helpers reject
   legacy shared `library.db`; portable library recovery uses its private stores.
@@ -308,6 +316,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Save changes** and **Discard draft** now stay at the bottom edge of the
   inspector. In a short window they used to be out of sight below the cover and
   notes.
+- Sidebar rows no longer show through below **Settings** when the sidebar
+  scrolls.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.

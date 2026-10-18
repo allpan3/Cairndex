@@ -4,7 +4,7 @@ import { mkdtemp, realpath, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { proxyApi, startBackend, stopBackend } from './realBackend'
+import { proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
 
 test('legacy review survives a lost reply and retains later edits through Undo @fullstack', async ({
   page,
@@ -66,7 +66,7 @@ test('legacy review survives a lost reply and retains later edits through Undo @
     }
     expect(published.format).toBe('cairndex.replica-library')
     await page.getByRole('button', { name: 'Open converted library', exact: true }).click()
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
     const title = page.getByRole('textbox', { name: 'Title', exact: true })
     await title.fill('Saved after synthetic conversion')
     await page.getByRole('button', { name: 'Save catalog changes', exact: true }).click()

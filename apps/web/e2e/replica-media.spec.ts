@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
+import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from './realBackend'
 
 test.use({ actionTimeout: 15_000 })
 
@@ -110,7 +110,7 @@ test('replica media keeps local availability, playback and exchange independent 
     for (let index = 0; index < pages.length; index++) {
       await proxyApi(pages[index], backends[index].baseUrl)
       await pages[index].goto('/')
-      await pages[index].getByRole('button', { name: 'Metadata review', exact: true }).click()
+      await openMetadataReview(pages[index])
       await expect(
         pages[index].getByRole('heading', { name: 'Library catalog', exact: true }),
       ).toBeVisible()
@@ -249,7 +249,7 @@ test('portable viewer scrubs a storyboard and exports a contact sheet and a GIF 
     await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
     await expect(
       page
         .getByRole('navigation', { name: 'Bundles', exact: true })
@@ -454,7 +454,7 @@ test('portable viewer marks, comments on, tags, previews and deletes moments @fu
     })
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Metadata review', exact: true }).click()
+    await openMetadataReview(page)
     await expect(
       page
         .getByRole('navigation', { name: 'Bundles', exact: true })

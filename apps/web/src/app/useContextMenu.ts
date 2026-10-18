@@ -31,7 +31,8 @@ export interface MenuState {
  */
 export function useContextMenu() {
   const [state, setState] = useState<MenuState | null>(null)
-  const open = (e: React.MouseEvent, items: MenuEntry[]) => {
+  // `at` places a menu that a button opens, which a keyboard press reports at 0, 0
+  const open = (e: React.MouseEvent, items: MenuEntry[], at?: { x: number; y: number }) => {
     e.preventDefault()
     // WebKit selected the word under the cursor on the way here; the menu that
     // replaces the native one has no use for it. Done before the empty-menu
@@ -42,7 +43,8 @@ export function useContextMenu() {
     if (!items.some((i) => i && !i.disabled)) return
     const element = e.target instanceof Element ? e.target : null
     const returnFocus = element?.closest<HTMLElement>('button, [tabindex]') ?? null
-    setState({ x: e.clientX, y: e.clientY, items, returnFocus, editBasis: currentDisplayedBasis() })
+    const { x, y } = at ?? { x: e.clientX, y: e.clientY }
+    setState({ x, y, items, returnFocus, editBasis: currentDisplayedBasis() })
   }
   const close = () => setState(null)
   return { state, open, close }

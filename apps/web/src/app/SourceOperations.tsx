@@ -59,31 +59,19 @@ function validInput(body: { request: string }) {
   }
 }
 
-export function SourceOperations(props: Props) {
-  const [open, setOpen] = useState(false)
+// The sidebar's library menu and the desktop File menu open the panel; dropped files open it too
+export function SourceOperations(
+  props: Props & { open: boolean; onOpen: () => void; onClose: () => void },
+) {
+  const { open, onOpen, onClose, ...panel } = props
   useDesktopMenu((action) => {
-    if (action === 'add-files' && !isBlockingSurfaceOpen()) setOpen(true)
+    if (action === 'add-files' && !isBlockingSurfaceOpen()) onOpen()
   })
   const close = () => {
-    setOpen(false)
+    onClose()
     props.onDismissIncoming?.()
   }
-  return (
-    <>
-      <div className="toolbar source-operation-toolbar" aria-label="File operations">
-        <button className="btn" onClick={() => setOpen(true)}>
-          Add Files…
-        </button>
-        <button className="btn" onClick={() => setOpen(true)}>
-          Copy, Rename and Move
-        </button>
-        <button className="btn" onClick={() => setOpen(true)}>
-          Trash and Undo
-        </button>
-      </div>
-      {(open || props.incoming) && <SourceOperationPanel {...props} onClose={close} />}
-    </>
-  )
+  return open || props.incoming ? <SourceOperationPanel {...panel} onClose={close} /> : null
 }
 
 function SourceOperationPanel({
