@@ -308,6 +308,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Save changes** and **Discard draft** now stay at the bottom edge of the
   inspector. In a short window they used to be out of sight below the cover and
   notes.
+- Sidebar rows no longer show through below **Settings** when the sidebar
+  scrolls.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.
