@@ -330,6 +330,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   first-run, lock and loading screens now moves the window, which it could not
   do before. The portable browser also fills the window edge to edge again,
   instead of sitting inside an 8–12 px margin.
+- **A portable library's panels and View menu work again, as in v0.2.1.**
+  **View ▸ Toggle Sidebar** and **Toggle Inspector**, and the toggle buttons in
+  the sidebar's top row and at the toolbar's end, hide and show the panels; a
+  drag on a panel's inner edge resizes it; both are remembered. **Show
+  Bundles**, **Show Files**, **Zoom In** and **Zoom Out** for bundles, **New
+  Collection** and **New Empty Bundle…** act again. In a portable library they
+  did nothing, and the sidebar's top row stood empty without its toggle.
 - **The Libraries dialog's rows are tidier.** A row shows a status only when
   the library is unavailable, and that status is the height of the buttons
   beside it. Open sits with the other buttons, *Access and backups* is now

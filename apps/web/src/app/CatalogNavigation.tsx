@@ -41,6 +41,7 @@ export function CatalogNavigation({
   onRenameCollectionHandled,
   libraryActions,
   activity,
+  onToggleSidebar,
   collections,
   showSubContents,
   onNotice,
@@ -76,6 +77,7 @@ export function CatalogNavigation({
   libraryActions?: React.ReactNode
   /** Running work and status that needs the owner, in the sidebar footer. */
   activity?: React.ReactNode
+  onToggleSidebar?: () => void
   collections: CatalogCollections
   /** A collection's badge counts its subtree only while the browser lists it. */
   showSubContents: boolean
@@ -102,6 +104,7 @@ export function CatalogNavigation({
         navigationOnly
         libraryActions={libraryActions}
         activity={activity}
+        onToggleSidebar={onToggleSidebar}
         availableViews={
           systemViewsEnabled
             ? ['all', 'uncategorized', 'untagged', 'recent', 'random', 'missing', 'unbundled']
