@@ -301,6 +301,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - In All Tags, a folded parent tag now counts each bundle once, as its filter
   does. It used to add up its children's counts, so a bundle with two child
   tags was counted twice.
+- Choosing another place in the sidebar now clears the tag and rating filters.
+  A filter left over from the last place made the next collection look empty.
+  An empty filtered view now says that the filters hide its bundles and offers
+  **Clear Filters**.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.
