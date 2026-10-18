@@ -1,156 +1,93 @@
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { catalog } from '../api/catalog'
-import type { components } from '../api/schema'
-import { CatalogFileDetails } from './CatalogFileDetails'
-import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
+import { type ReactNode, useEffect, useState } from 'react'
+import type { FileBrowserEntry } from '../api/client'
+import { getHostLabels } from '../platform'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
+import { CatalogFileDetails } from './CatalogFileDetails'
+import type { CatalogNotice } from './CatalogToast'
+import { FileBrowser } from './FileBrowser'
+import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
+import { DEFAULT_PLAYER_PREFS } from './types'
 
+/** The Unbundled queue, in the File Browser's own listing as v0.2.1 showed it. */
 export function CatalogUnbundledBrowser({
   library,
+  libraryName,
   onReview,
+  onNotice,
   hostFiles,
   onHostPath,
+  headerLeading,
   bundling = false,
 }: {
   library: string
+  libraryName: string
   onReview: () => void
+  onNotice: (notice: CatalogNotice) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
+  headerLeading?: ReactNode
   /** Offer Create Bundle and Add to Bundle; the server needs `browse_version: 9`. */
   bundling?: boolean
 }) {
-  const [search, setSearch] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [selected, setSelected] = useState<string | null>(null)
-  // The files the bundling actions take; Cmd/Ctrl-click adds or removes one
-  const [chosen, setChosen] = useState<string[]>([])
-  const [dialog, setDialog] = useState<'create' | 'add' | null>(null)
-  const [notice, setNotice] = useState('')
-  const reset = () => {
-    setSelected(null)
-    setChosen([])
-  }
-  const applied = (message: string) => {
-    setNotice(message)
-    setDialog(null)
-    reset()
-  }
-  const page = useQuery({
-    queryKey: ['catalog-unbundled', library, search, offset],
-    queryFn: () =>
-      catalog<components['schemas']['CatalogUnbundledPage']>(library, '/files/unbundled', 'POST', {
-        q: search,
-        offset,
-        limit: 50,
-      }),
-    refetchInterval: 2000,
-  })
-  const path = page.data?.items.find((item) => item.id === selected)?.relative_path ?? null
+  const [file, setFile] = useState<FileBrowserEntry | null>(null)
+  const [dialog, setDialog] = useState<{ kind: 'create' | 'add'; ids: string[] } | null>(null)
+  const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
+  const path = file?.kind === 'file' ? file.relative_path : null
   useEffect(() => {
     onHostPath?.(path)
   }, [path, onHostPath])
+  const ask = (kind: 'create' | 'add') => (_paths: string[], ids: string[]) => {
+    if (!bundling) onReview()
+    else if (ids.length > 0) setDialog({ kind, ids })
+  }
+  const applied = (message: string) => {
+    setDialog(null)
+    setFile(null)
+    onNotice({ text: message })
+  }
   return (
     <div className="catalog-file-surface">
-      <section className="catalog-unbundled" aria-label="Unbundled files">
-        <h2>Unbundled</h2>
-        <p>
-          Cataloged files awaiting bundle confirmation. New Update suggestions remain in grouping
-          review until accepted.
-        </p>
-        <label>
-          Search files
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setOffset(0)
-              reset()
-            }}
-          />
-        </label>
-        <button onClick={onReview}>Review grouping and metadata</button>
-        {bundling && (
-          <div className="catalog-unbundled__actions">
-            <span>{chosen.length} selected</span>
-            <button disabled={chosen.length === 0} onClick={() => setDialog('create')}>
-              Create Bundle…
-            </button>
-            <button disabled={chosen.length === 0} onClick={() => setDialog('add')}>
-              Add to Bundle…
-            </button>
-          </div>
-        )}
-        {notice && <p role="status">{notice}</p>}
-        {page.isPending && <p>Loading files…</p>}
-        {page.error && <button onClick={() => void page.refetch()}>Retry unbundled files</button>}
-        <ul>
-          {page.data?.items.map((item) => (
-            <li key={item.id}>
-              <button
-                aria-pressed={chosen.includes(item.id)}
-                onClick={(event) => {
-                  setSelected(item.id)
-                  setChosen((prior) =>
-                    !(event.metaKey || event.ctrlKey)
-                      ? [item.id]
-                      : prior.includes(item.id)
-                        ? prior.filter((id) => id !== item.id)
-                        : [...prior, item.id],
-                  )
-                }}
-              >
-                {item.relative_path}
-              </button>
-            </li>
-          ))}
-        </ul>
-        {page.data?.total === 0 && <p>No unbundled files match this search.</p>}
-        {page.data && <p>{page.data.total} files</p>}
-        {offset > 0 && (
-          <button
-            onClick={() => {
-              setOffset(Math.max(0, offset - 50))
-              reset()
-            }}
-          >
-            Previous files
-          </button>
-        )}
-        {page.data && offset + page.data.items.length < page.data.total && (
-          <button
-            onClick={() => {
-              setOffset(offset + 50)
-              reset()
-            }}
-          >
-            More files
-          </button>
-        )}
-      </section>
-      <aside className="inspector" aria-label="Unbundled file inspector">
-        {selected ? (
+      <FileBrowser
+        catalogLibrary={library}
+        libraryName={libraryName}
+        scope="unbundled"
+        path=""
+        selectedPath={file?.relative_path ?? null}
+        onNavigate={() => undefined}
+        onSelectEntry={setFile}
+        onCreateBundle={ask('create')}
+        onAddToBundle={ask('add')}
+        headerLeading={headerLeading}
+        hostLabels={getHostLabels()}
+        onRevealFile={hostFiles?.onRevealFile}
+        onOpenFile={hostFiles?.onOpenFile}
+        onStartFileDrag={hostFiles?.onStartFileDrag}
+        onFlash={(text) => onNotice({ text })}
+        playerPrefs={player}
+        onPlayerPrefs={setPlayer}
+      />
+      <aside className="inspector" aria-label="File inspector">
+        {file?.file_id ? (
           <CatalogFileDetails
-            key={selected}
+            key={file.file_id}
             library={library}
-            file={selected}
+            file={file.file_id}
             hostFiles={hostFiles}
           />
         ) : (
-          <p>Select a file to see its details.</p>
+          <div className="state">Select a file to see its details.</div>
         )}
       </aside>
-      {dialog === 'create' && (
+      {dialog?.kind === 'create' && (
         <CreateBundleDialog
-          selection={{ fileIds: chosen }}
+          selection={{ fileIds: dialog.ids }}
           onClose={() => setDialog(null)}
           onApplied={applied}
         />
       )}
-      {dialog === 'add' && (
+      {dialog?.kind === 'add' && (
         <AddToBundleDialog
-          selection={{ fileIds: chosen }}
+          selection={{ fileIds: dialog.ids }}
           onClose={() => setDialog(null)}
           onApplied={applied}
         />

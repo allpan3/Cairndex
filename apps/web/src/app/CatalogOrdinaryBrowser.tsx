@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import { AllTagsPage } from './AllTagsPage'
 import type { FileBrowserEntry, LibraryRead } from '../api/client'
@@ -19,6 +19,26 @@ import { useHostFileMenu } from '../desktop/useHostFileMenu'
 import { useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
 import type { PendingDeepLink } from './deepLinkUri'
 import { installDragCopyTracking, setActiveDrag, type DragItem } from './dnd'
+import { usePersistentState } from '../state/usePersistentState'
+import { CatalogToast, type CatalogNotice } from './CatalogToast'
+import { useCatalogCollections } from './useCatalogCollections'
+import { useNavigationHistory } from './useNavigationHistory'
+
+/** One navigable place, for Back/Forward. */
+interface Place {
+  mode: AppMode
+  selection: Selection
+  unbundled: boolean
+  path: string
+}
+
+const samePlace = (a: Place, b: Place) =>
+  a.mode === b.mode &&
+  a.selection.view === b.selection.view &&
+  (a.selection.collectionId ?? null) === (b.selection.collectionId ?? null) &&
+  (a.selection.smartCollectionId ?? null) === (b.selection.smartCollectionId ?? null) &&
+  a.unbundled === b.unbundled &&
+  a.path === b.path
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   const tags = useTags()
@@ -96,13 +116,19 @@ export function CatalogOrdinaryBrowser(props: {
   const [bundleHostPath, setBundleHostPath] = useState<string | null>(null)
   const [unbundledHostPath, setUnbundledHostPath] = useState<string | null>(null)
   const [incoming, setIncoming] = useState<File[] | null>(null)
-  const [dropError, setDropError] = useState('')
-  const [linkError, setLinkError] = useState('')
+  // The one transient message, at the foot of the window as v0.2.1 showed it
+  const [notice, setNotice] = useState<CatalogNotice | null>(null)
+  const dismissNotice = useCallback(() => setNotice(null), [])
   // A card drag's payload, for the sidebar's drop highlights; dnd.ts holds the live copy
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [newCollection, setNewCollection] = useState<{ parentId: string | null } | null>(null)
+  const [renameCollection, setRenameCollection] = useState<{ id: string } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
-  const [notice, setNotice] = useState('')
+  // Off by default, as in v0.2.1: a collection lists its own bundles, like a folder
+  const [showSubContents, setShowSubContents] = usePersistentState(
+    'cairndex.showSubcollectionContents',
+    false,
+  )
   const updateDragItem = useCallback((item: DragItem | null) => {
     setActiveDrag(item)
     setDragItem(item)
@@ -117,6 +143,31 @@ export function CatalogOrdinaryBrowser(props: {
   }
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
+  const openPlace = (next: Selection) => {
+    setUnbundled(false)
+    setSelection(next)
+    // A filter left over from the last place would quietly empty this one
+    setFilters(emptyAdHocFilters())
+    setMode('collection')
+  }
+  const collections = useCatalogCollections(props.library, {
+    selection,
+    onSelect: openPlace,
+    onNotice: setNotice,
+    dragItem,
+  })
+  const place = useMemo(
+    () => ({ mode, selection, unbundled, path }),
+    [mode, selection, unbundled, path],
+  )
+  const history = useNavigationHistory(place, samePlace, (next) => {
+    setMode(next.mode)
+    setSelection(next.selection)
+    setUnbundled(next.unbundled)
+    setPath(next.path)
+    setFile(null)
+    setLocated(null)
+  })
   const status = useReplicaStatus(props.library).data
   const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
   const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
@@ -129,9 +180,8 @@ export function CatalogOrdinaryBrowser(props: {
     /* eslint-disable react-hooks/set-state-in-effect -- the OS delivers the link,
        not a React event, and App clears it once handled, so this runs once. */
     if (deepLink.unknownLibrary) {
-      setLinkError('This link points at a library that is not on this server.')
+      setNotice({ text: 'This link points at a library that is not on this server.', alert: true })
     } else {
-      setLinkError('')
       setUnbundled(false)
       setMode('collection')
       if (deepLink.kind === 'bundle') {
@@ -147,7 +197,10 @@ export function CatalogOrdinaryBrowser(props: {
     onDeepLinkHandled?.()
   }, [deepLink, onDeepLinkHandled, onSelect])
   const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
-  const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, setDropError)
+  const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
+  const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, (text) =>
+    setNotice(text ? { text, alert: true } : null),
+  )
   const hostFiles = useLibraryHostFiles(
     props.library,
     props.libraries.find((item) => item.id === props.library),
@@ -182,13 +235,7 @@ export function CatalogOrdinaryBrowser(props: {
             setMode('file')
           }}
           selection={selection}
-          onSelect={(next) => {
-            setUnbundled(false)
-            setSelection(next)
-            // A filter left over from the last place would quietly empty this one
-            setFilters(emptyAdHocFilters())
-            setMode('collection')
-          }}
+          onSelect={openPlace}
           onChangeLibrary={props.onChangeLibrary}
           onManage={props.onManage}
           onSettings={props.onSettings}
@@ -200,6 +247,11 @@ export function CatalogOrdinaryBrowser(props: {
           bundleMovesEnabled={bundleMoves}
           newCollectionRequest={newCollection}
           onNewCollectionHandled={() => setNewCollection(null)}
+          renameCollectionRequest={renameCollection}
+          onRenameCollectionHandled={() => setRenameCollection(null)}
+          collections={collections}
+          showSubContents={showSubContents}
+          onNotice={setNotice}
           libraryActions={
             <CatalogLibraryActions
               update={props.update}
@@ -219,21 +271,6 @@ export function CatalogOrdinaryBrowser(props: {
           }
         />
         <div className="catalog-ordinary-content">
-          {dropError && (
-            <p role="alert">
-              {dropError} <button onClick={() => setDropError('')}>Dismiss</button>
-            </p>
-          )}
-          {notice && (
-            <p role="status">
-              {notice} <button onClick={() => setNotice('')}>Dismiss</button>
-            </p>
-          )}
-          {linkError && (
-            <p role="alert">
-              {linkError} <button onClick={() => setLinkError('')}>Dismiss</button>
-            </p>
-          )}
           {sourceEnabled && (
             <SourceOperations
               library={props.library}
@@ -247,14 +284,6 @@ export function CatalogOrdinaryBrowser(props: {
               onOpen={() => setFileOperations(true)}
               onClose={() => setFileOperations(false)}
             />
-          )}
-          {hostFiles.error && (
-            <p role="alert">
-              {hostFiles.error}{' '}
-              <button className="btn" onClick={hostFiles.dismissError}>
-                Dismiss
-              </button>
-            </p>
           )}
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
             <CatalogBundleBrowser
@@ -272,6 +301,16 @@ export function CatalogOrdinaryBrowser(props: {
                 bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined
               }
               onNewCollection={(parentId) => setNewCollection({ parentId })}
+              collections={collections}
+              showSubContents={showSubContents}
+              onShowSubContents={setShowSubContents}
+              onOpenCollection={(id) => openPlace({ view: 'all', collectionId: id })}
+              onRenameCollection={(id) => setRenameCollection({ id })}
+              dragItem={dragItem}
+              onDragItem={updateDragItem}
+              bundleMovesEnabled={bundleMoves}
+              onNotice={setNotice}
+              headerLeading={history}
               locateRequest={locateRequest}
               selection={selection}
               filters={filters}
@@ -287,9 +326,12 @@ export function CatalogOrdinaryBrowser(props: {
           {mode === 'file' && unbundled && (
             <CatalogUnbundledBrowser
               library={props.library}
+              libraryName={libraryName}
               onReview={props.onReview}
+              onNotice={setNotice}
               hostFiles={hostFiles}
               onHostPath={setUnbundledHostPath}
+              headerLeading={history}
               bundling={manualBundling}
             />
           )}
@@ -297,9 +339,9 @@ export function CatalogOrdinaryBrowser(props: {
             <div className="catalog-file-surface">
               <FileBrowser
                 catalogLibrary={props.library}
-                libraryName={
-                  props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
-                }
+                libraryName={libraryName}
+                headerLeading={history}
+                onFlash={(text) => setNotice({ text })}
                 scope="browse"
                 path={path}
                 selectedPath={located ?? file?.relative_path ?? null}
@@ -379,14 +421,19 @@ export function CatalogOrdinaryBrowser(props: {
             setUnbundled(false)
             setSelection({ view: 'all', collectionId: collection.id })
             setMode('collection')
-            setNotice(
-              added === 1
-                ? `Created “${collection.name}” with 1 bundle.`
-                : `Created “${collection.name}” with ${added} bundles.`,
-            )
+            setNotice({
+              text:
+                added === 1
+                  ? `Created “${collection.name}” with 1 bundle.`
+                  : `Created “${collection.name}” with ${added} bundles.`,
+            })
           }}
         />
       )}
+      <CatalogToast
+        notice={notice ?? (hostFiles.error ? { text: hostFiles.error, alert: true } : null)}
+        onDismiss={notice ? dismissNotice : hostFiles.dismissError}
+      />
     </CatalogQueryContext>
   )
 }

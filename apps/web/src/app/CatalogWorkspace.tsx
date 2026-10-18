@@ -33,6 +33,7 @@ import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
 import { StorageAccessNotice } from './StorageAccessNotice'
+import { LibraryAccessNotice } from './LibraryAccessNotice'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -310,7 +311,7 @@ export function CatalogWorkspace({
           {onSettings && <button onClick={onSettings}>Settings</button>}
         </header>
       )}
-      {(reviewMode || notReady) && (
+      {reviewMode && (
         <nav aria-label="Library views">
           <button
             disabled={!ordinaryBrowse}
@@ -328,9 +329,9 @@ export function CatalogWorkspace({
           </button>
         </nav>
       )}
-      {/* Metadata review always shows delivery status; the bundle browser only
-          until the library is ready, then its sidebar shows what needs the owner. */}
-      {(reviewMode || notReady) && (
+      {/* Metadata review always shows delivery status; the bundle browser's
+          sidebar shows only what needs the owner. */}
+      {reviewMode && (
         <section aria-label="Metadata delivery status">
           <p role="status">
             {state?.blocked
@@ -494,10 +495,36 @@ export function CatalogWorkspace({
         />
       )}
       {!reviewMode && notReady && (
-        <p role="status">
-          Waiting for complete library metadata. Retry status when the missing metadata is
-          available.
-        </p>
+        <LibraryAccessNotice
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={onChangeLibrary}
+          title={
+            status.error
+              ? 'Library status unavailable'
+              : state?.blocked
+                ? 'Library needs recovery'
+                : 'Preparing the library'
+          }
+          message={
+            status.error
+              ? `${status.error.message} Check the server, then try again.`
+              : state?.blocked
+                ? `${state.blocked} Metadata Review shows what needs attention.`
+                : 'This device is still receiving the library’s metadata. The browser opens when it is complete.'
+          }
+        >
+          {storageAccess}
+          <button className="lockscreen__submit" onClick={refresh}>
+            Try Again
+          </button>
+          <button className="btn" onClick={onManage}>
+            Manage Libraries
+          </button>
+          <button className="btn" onClick={() => setReviewMode(true)}>
+            Metadata Review
+          </button>
+        </LibraryAccessNotice>
       )}
       {reviewMode && (
         <>

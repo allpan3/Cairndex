@@ -7659,11 +7659,6 @@ code {
   flex-shrink: 0;
   overflow-y: auto;
 }
-.catalog-capabilities {
-  font-size: 12px;
-  padding: 0 12px;
-  color: var(--text-muted);
-}
 
 .catalog-browser-workspace {
   display: flex;
@@ -7876,7 +7871,6 @@ code {
   gap: 8px;
 }
 .catalog-bulk-inspector button,
-.catalog-unbundled button,
 .catalog-membership-picker button,
 .catalog-inspector-cover button,
 .catalog-inspector-file button,
@@ -7938,11 +7932,6 @@ code {
 .catalog-file-surface > .inspector {
   overflow-y: auto;
 }
-
-.catalog-bulk-open {
-  align-self: flex-start;
-  margin: 0 12px 8px;
-}
 .catalog-bulk-inspector {
   display: flex;
   flex-direction: column;
@@ -7953,14 +7942,12 @@ code {
   margin: 0;
 }
 .catalog-bulk-inspector label,
-.catalog-bulk-inspector section,
-.catalog-unbundled label {
+.catalog-bulk-inspector section {
   display: grid;
   gap: 6px;
 }
 .catalog-bulk-inspector input,
-.catalog-bulk-inspector select,
-.catalog-unbundled input {
+.catalog-bulk-inspector select {
   width: 100%;
   box-sizing: border-box;
   color: var(--text);
@@ -7984,25 +7971,6 @@ code {
   overflow-y: auto;
   overflow-wrap: anywhere;
   padding-left: 20px;
-}
-.catalog-unbundled {
-  flex: 1;
-  min-width: 0;
-  padding: 12px;
-  overflow-y: auto;
-}
-.catalog-unbundled ul {
-  list-style: none;
-  padding: 0;
-}
-.catalog-unbundled li button {
-  width: 100%;
-  text-align: left;
-  overflow-wrap: anywhere;
-  margin-bottom: 4px;
-}
-.catalog-unbundled button[aria-pressed='true'] {
-  outline: 2px solid var(--accent);
 }
 
 .catalog-album-page,

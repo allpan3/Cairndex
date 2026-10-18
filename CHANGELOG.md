@@ -224,6 +224,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **The portable Bundle Browser, File Browser and Unbundled view have v0.2.1's
+  layout again.** Nothing sits between the toolbar and the grid any more: the
+  file-size note, **Bulk changes**, the Missing Files paragraph and the Files
+  note are gone, and results and errors appear as a message at the foot of the
+  window. All shows the top-level collections as folder cards, and an open
+  collection shows its subcollections, with **Show subcollection contents** and
+  fold carets in the section header. The switch is off by default and
+  remembered, as in v0.2.1. Folder cards select, open on double-click, drag,
+  take dropped bundles and have Copy URI, Rename and Delete. A selected or open
+  collection shows its cover, name, description and counts in the inspector,
+  where the name and description can be edited. The sidebar shows counts for
+  every view and collection again; a collection's count follows the switch.
+  **‹ ›** go back and forward between places. Layout, zoom and sort are remembered
+  again, Manual is the default sort, and **Remember sort per collection** works.
+  The toolbar names views as the sidebar does. Unbundled uses the File Browser's
+  listing, thumbnails and menu, with Create Bundle… and Add to Bundle…. A
+  library that is not ready shows one card with Try Again, Manage Libraries and
+  Metadata Review. An interrupted bulk save reopens its inspector after a
+  reload. Servers advertise the counts and collection covers as
+  `browse_version: 10`.
 - **A portable library's actions are back in the sidebar, as in v0.2.1.** The
   rows of buttons and status lines above the bundle browser are gone. The sidebar
   shows **Update** and a ⋯ menu with **Add Files…**, **File Operations…**,

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, CatalogJobError, operationId, runJob, type Job } from '../api/catalog'
 import type { components } from '../api/schema'
@@ -24,6 +24,7 @@ export function CatalogMultiBundleInspector({
   ids,
   blocked,
   onReview,
+  onRetain,
   onClose,
 }: {
   library: string
@@ -31,6 +32,8 @@ export function CatalogMultiBundleInspector({
   ids: string[]
   blocked: boolean
   onReview: () => void
+  /** A review was prepared, so the inspector stays open once the selection changes. */
+  onRetain: () => void
   onClose: () => void
 }) {
   const client = useQueryClient()
@@ -73,6 +76,9 @@ export function CatalogMultiBundleInspector({
     : undefined
   const targets = retained?.items ?? snapshot.data?.items ?? []
   const locked = busy || blocked || Boolean(draft.body.operation)
+  useEffect(() => {
+    if (draft.body.operation) onRetain()
+  }, [draft.body.operation, onRetain])
   function change(field: string, value: string) {
     if (!snapshot.data || locked) return
     draft.update({

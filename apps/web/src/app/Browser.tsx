@@ -60,6 +60,8 @@ interface BrowserProps {
   isLoading: boolean
   isError: boolean
   error?: unknown
+  /** Offered beside a failed load. */
+  onRetry?: () => void
   hasNextPage: boolean
   isFetchingNextPage: boolean
   fetchNextPage: () => void
@@ -415,6 +417,11 @@ export function Browser(props: BrowserProps) {
         <div className="state state--error">
           <div>Couldn’t load the library.</div>
           <code>{props.error instanceof Error ? props.error.message : 'Unknown error'}</code>
+          {props.onRetry && (
+            <button className="btn" onClick={props.onRetry}>
+              Try Again
+            </button>
+          )}
         </div>
       )}
       {props.isLoading && (
