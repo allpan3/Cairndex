@@ -9,6 +9,7 @@ const hooks = vi.hoisted(() => ({
   groups: [] as unknown[],
   memberships: {} as Record<string, string[]>,
   counts: {} as Record<string, number>,
+  subtreeCounts: {} as Record<string, number>,
   tagMutations: {
     rename: { mutate: vi.fn() },
     remove: { mutate: vi.fn(), isPending: false },
@@ -28,7 +29,9 @@ vi.mock('../api/hooks', () => ({
   useTags: () => ({ data: hooks.tags }),
   useTagGroups: () => ({ data: hooks.groups }),
   useTagGroupMemberships: () => ({ data: hooks.memberships }),
-  useTagCounts: () => ({ data: hooks.counts }),
+  useTagCounts: (descendants?: boolean) => ({
+    data: descendants ? hooks.subtreeCounts : hooks.counts,
+  }),
   useTagMutations: () => hooks.tagMutations,
   useTagGroupMutations: () => hooks.groupMutations,
   useCreateTagPath: () => hooks.createTagPath,
@@ -66,6 +69,7 @@ beforeEach(() => {
   hooks.groups = [group('shelf', 'Shelf')]
   hooks.memberships = { shelf: ['mood'] }
   hooks.counts = { studio: 2, series: 3, mood: 1 }
+  hooks.subtreeCounts = { studio: 4, series: 3, mood: 1 }
 })
 
 /** Right-click a tag tile by name and return the menu items it offers. */
@@ -213,6 +217,17 @@ test('expands and collapses every tag with children in one action', async () => 
 
   fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
   await waitFor(() => expect(screen.queryByText('Series')).not.toBeInTheDocument())
+})
+
+test('a folded parent counts distinct bundles, not the sum of its tags', () => {
+  // One bundle carries both Studio and Series, so the subtree holds 4, not 2 + 3.
+  render(<AllTagsPage onApplyTagFilter={vi.fn()} />)
+  const studioCount = () =>
+    screen.getByText('Studio').parentElement!.querySelector('.tagtile__count')!.textContent
+
+  expect(studioCount()).toBe('4')
+  fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+  expect(studioCount()).toBe('2')
 })
 
 test('has nothing to expand when no tag in scope has children', () => {
