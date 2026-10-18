@@ -593,6 +593,11 @@ test('portable sidebar creates, renames, arranges and deletes collections @fulls
       .getByRole('button', { name: 'Clean up' })
       .click()
     await expect.poll(() => level(null)).toEqual([created, 'collections-root'])
+    // The server's order lands before the sidebar's. A drag while the rows still
+    // move would drop on whichever row had slid under the target position.
+    await expect(
+      page.getByRole('treeitem', { name: /Alpha|Synthetic root/ }).first(),
+    ).toHaveAccessibleName(/Alpha/)
 
     await row(/Alpha/).dragTo(row(/Synthetic child/))
     await expect.poll(() => level('collections-child')).toEqual([created])
