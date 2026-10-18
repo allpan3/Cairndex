@@ -341,6 +341,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   the library is unavailable, and that status is the height of the buttons
   beside it. Open sits with the other buttons, *Access and backups* is now
   *Settings…*, and every button explains itself in a tooltip.
+- **Selects in a portable library look as in v0.2.1 again.** The sidebar's
+  library picker and the other selects in the bundle browser had lost their
+  background and bright text to a style meant for Metadata review's header.
+  The Servers dialog also had no background of its own.
 - **A portable library shows Date Added in local time.** Its catalog keeps the
   legacy database's timestamps, which are UTC without an offset, and the browser
   read them as local time, so a bundle or file added in the evening showed the

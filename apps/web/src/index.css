@@ -7450,7 +7450,7 @@ code {
 /* File ▸ Servers… */
 .connection-dialog {
   color: var(--text);
-  background: var(--panel);
+  background: var(--bg-2);
   padding: 20px;
   max-height: 85vh;
   overflow: auto;
@@ -7544,7 +7544,7 @@ code {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--bg-2);
 }
 .metadata-compatibility p {
   flex: 1 1 280px;
@@ -7664,53 +7664,6 @@ code {
   height: 100vh;
   min-height: 0;
   overflow: auto;
-}
-.catalog-browser-workspace > header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.catalog-browser-workspace > header > div {
-  flex: 1;
-}
-.catalog-browser-workspace h1 {
-  font-size: 16px;
-  margin: 0;
-}
-.catalog-browser-workspace > header p {
-  display: none;
-}
-.catalog-browser-workspace > header label {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.catalog-browser-workspace > section[aria-label='Metadata delivery status'] {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-}
-.catalog-browser-workspace > section[aria-label='Metadata delivery status'] p {
-  margin: 0;
-}
-.catalog-browser-workspace > :is(header, nav, section) button,
-.catalog-browser-workspace > button,
-.catalog-browser-workspace select {
-  background: var(--bg-raised);
-  color: inherit;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-.catalog-browser-workspace > button {
-  align-self: start;
-}
-.catalog-browser-workspace > nav {
-  display: flex;
-  gap: 6px;
 }
 .catalog-browser-workspace .catalog-bundle-browser {
   flex: 1;
