@@ -7712,6 +7712,19 @@ code {
 .catalog-bundle-browser .inspector > .btn {
   margin: 4px 8px;
 }
+/* Flush with the inspector's edges: sticky offsets count from inside its 14px padding */
+.catalog-inspector-actions {
+  position: sticky;
+  bottom: -14px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 -14px -14px;
+  padding: 10px 22px 14px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+}
 
 .catalog-ordinary-layout {
   display: flex;

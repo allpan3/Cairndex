@@ -63,6 +63,7 @@ export function CatalogBundleInspector({
   const savedNotes = (notesText ? JSON.parse(notesText) : []) as string[] | null
   const notes = savedNotes?.length ? savedNotes : ['']
   const setNotes = (value: string[]) => draft.change('notes', JSON.stringify(JSON.stringify(value)))
+  const unsaved = Boolean(draft.draft.pending) || Object.keys(draft.draft.inputs).length > 0
   const move = (index: number, delta: number) => {
     const next = [...notes]
     const target = index + delta
@@ -160,33 +161,6 @@ export function CatalogBundleInspector({
           ))}
         </div>
       </InspectorSection>
-      <button
-        className="btn"
-        disabled={
-          blocked || draft.busy || (!draft.draft.pending && !Object.keys(draft.draft.inputs).length)
-        }
-        onClick={() => void draft.save()}
-      >
-        {draft.draft.pending && !draft.busy ? 'Retry save' : 'Save changes'}
-      </button>
-      <button
-        className="btn"
-        disabled={draft.busy || Boolean(draft.draft.pending)}
-        onClick={() => void draft.discard()}
-      >
-        Discard draft
-      </button>
-      {draft.copies.map((copy) => (
-        <button
-          className="btn"
-          key={copy.id}
-          disabled={draft.busy || Boolean(draft.draft.pending)}
-          onClick={() => draft.recover(copy.body.data)}
-        >
-          Recover private draft {copy.revision}
-        </button>
-      ))}
-
       {inspectorEnabled &&
         (['tags', 'collections'] as const).map((family) => (
           <CatalogMembershipPicker
@@ -224,6 +198,34 @@ export function CatalogBundleInspector({
         File order, structural changes and history use metadata review. Use File Browser for
         reviewed source file operations.
       </p>
+      {/* A footer pinned to the inspector's bottom edge: in a short window the
+          inspector scrolls, and Save must stay in view wherever it is scrolled. */}
+      <div className="catalog-inspector-actions">
+        <button
+          className="btn"
+          disabled={blocked || draft.busy || !unsaved}
+          onClick={() => void draft.save()}
+        >
+          {draft.draft.pending && !draft.busy ? 'Retry save' : 'Save changes'}
+        </button>
+        <button
+          className="btn"
+          disabled={draft.busy || Boolean(draft.draft.pending)}
+          onClick={() => void draft.discard()}
+        >
+          Discard draft
+        </button>
+        {draft.copies.map((copy) => (
+          <button
+            className="btn"
+            key={copy.id}
+            disabled={draft.busy || Boolean(draft.draft.pending)}
+            onClick={() => draft.recover(copy.body.data)}
+          >
+            Recover private draft {copy.revision}
+          </button>
+        ))}
+      </div>
     </aside>
   )
 }

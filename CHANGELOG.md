@@ -305,6 +305,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   A filter left over from the last place made the next collection look empty.
   An empty filtered view now says that the filters hide its bundles and offers
   **Clear Filters**.
+- **Save changes** and **Discard draft** now stay at the bottom edge of the
+  inspector. In a short window they used to be out of sight below the cover and
+  notes.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.

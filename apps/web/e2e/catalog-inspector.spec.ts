@@ -84,9 +84,15 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     const facts = files.getByRole('region', { name: 'Local file details' })
     await expect(facts).toContainText('320 × 180')
     await expect(facts).toContainText('Observed on this device')
+    // In a short window the inspector scrolls to the file list, and Save stays in view
+    await page.setViewportSize({ width: 1200, height: 640 })
     await files.getByRole('button', { name: 'Set Playback/movie.mp4 as cover' }).click()
+    await expect(
+      inspector.getByRole('button', { name: 'Save changes', exact: true }),
+    ).toBeInViewport()
     await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(inspector.locator(':scope > [role="status"]')).toHaveText('Saved here')
+    await page.setViewportSize({ width: 1200, height: 900 })
     const entityUrl = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog/entities/asset_bundles/bundle-000001`
     await expect
       .poll(async () => (await (await fetch(entityUrl)).json()).fields.cover_file_id.value)
