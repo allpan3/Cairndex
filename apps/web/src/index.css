@@ -8048,6 +8048,16 @@ code {
 .conversion-warning {
   color: var(--warn);
 }
+.storage-access {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.storage-access p {
+  margin: 0;
+}
 .conversion-dialog .modal__actions {
   flex-wrap: wrap;
 }

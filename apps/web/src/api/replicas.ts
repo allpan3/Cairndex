@@ -41,6 +41,10 @@ export async function replicaRequest<T>(
   return result
 }
 
+/** Ask macOS for the library's network-share login. Waits while the owner answers. */
+export const authorizeLibraryStorage = (libraryId: string) =>
+  replicaRequest<ReplicaStatus>(libraryId, '/storage-authorization', 'POST')
+
 // A browser lock separates duplicated tabs that initially inherit the same session storage
 export function holdEditor(onReady: (id: string) => void): () => void {
   const key = 'cairndex.replica.editor'

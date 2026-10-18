@@ -681,9 +681,12 @@ An unanswered request times out after 20 seconds and preserves recoverable
 intent for an explicit retry; background recovery does not prompt.
 
 The signed backend supports `cairndex-sidecar authorize-smb <mounted-directory>`
-for explicit saved-login authorization. The command permits one bounded prompt
-and verifies signed, encrypted SMB3. It starts no HTTP server and changes no
-library files. Use the actual sidecar executable that will serve the library.
+for explicit saved-login authorization. The command permits one prompt, waits up
+to two minutes for an answer, and verifies signed, encrypted SMB3. It starts no
+HTTP server and changes no library files. The app offers the same request: when
+conversion or metadata exchange stops because the server may not read the
+share's saved login, the conversion review and the library's status show
+**Allow Access…**. A missing login instead asks the owner to save one in Finder. Use the actual sidecar executable that will serve the library.
 Its lookup uses the mounted share name as the Keychain path, without an added
 leading slash. When that share has no saved login, it accepts the server's login
 that Finder saves without a path. It reads that item's path first and refuses an

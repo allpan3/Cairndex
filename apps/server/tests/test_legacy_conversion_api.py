@@ -1,5 +1,7 @@
 """Public conversion steps use exact receipts and survive a stopped worker."""
 
+import errno
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -7,12 +9,14 @@ from fastapi.testclient import TestClient
 
 from cairndex.api.deps import get_registry_db
 from cairndex.domain.enums import LibraryStatus
+from cairndex.file_ops import smb_transport
 from cairndex.main import create_app
 from cairndex.registry import library_package as pkg
 from cairndex.registry import services
 from cairndex.registry.models import ConversionTask, RegisteredLibrary
 from cairndex.replicas import conversion_tasks, service
 from cairndex.replicas.catalog import legacy_conversion
+from cairndex.replicas.protocol import ReplicaError
 from tests.test_legacy_conversion import _legacy, _tree
 from tests.test_replica_recovery_binary import eventually
 
@@ -166,6 +170,65 @@ def test_activation_restart_and_missing_metadata_admission(conversion_api, monke
     final = client.get(TASKS + "/" + failed["id"]).json()
     assert final["state"] == "succeeded", final
     assert pkg.read_manifest(root).replica is not None
+
+
+def test_a_swap_that_needs_share_access_offers_it_then_retries(conversion_api, monkeypatch):
+    client, root, _, worker = conversion_api
+    review = _step(conversion_api, "prepare")
+    activate = legacy_conversion.activate
+
+    def refuse(*args, **kwargs):
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = -25308
+        # Callers wrap storage failures in their own errors
+        raise ReplicaError("Synthetic swap stopped") from error
+
+    monkeypatch.setattr(legacy_conversion, "activate", refuse)
+    failed = _step(
+        conversion_api, "activate", attempt=review["id"], receipt=review["result"]["receipt"]
+    )
+    assert failed["state"] == "failed"
+    assert failed["error_code"] == "storage_authorization"
+    assert "Allow access" in failed["error"]
+    assert "synthetic private" not in failed["error"]
+    assert (root / ".cairndex").is_dir()
+
+    asked = []
+    monkeypatch.setattr(smb_transport, "authorize", asked.append)
+    response = client.post(f"{TASKS}/{failed['id']}/authorize-storage")
+    assert response.status_code == 204, response.text
+    assert asked == [Path(failed["root_path"])]
+
+    monkeypatch.setattr(legacy_conversion, "activate", activate)
+    retried = client.post(f"{TASKS}/{failed['id']}/retry").json()
+    assert (retried["state"], retried["error"], retried["error_code"]) == ("queued", None, None)
+    assert worker.run_one()
+    assert client.get(f"{TASKS}/{failed['id']}").json()["state"] == "succeeded"
+
+
+@pytest.mark.parametrize(
+    "status,message",
+    [(-25300, "No saved login"), (-25308, "needs your permission"), (None, "unavailable")],
+)
+def test_conversion_storage_authorization_says_what_to_do(
+    conversion_api, monkeypatch, status, message
+):
+    client, _, _, _ = conversion_api
+    inspected = _step(conversion_api, "inspect")
+
+    def refuse(path):
+        if status is None:
+            raise smb_transport.SmbTransportError(errno.ENODEV, "synthetic private path")
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = status
+        raise error
+
+    monkeypatch.setattr(smb_transport, "authorize", refuse)
+    response = client.post(f"{TASKS}/{inspected['id']}/authorize-storage")
+    assert response.status_code == 409
+    assert message in response.text
+    assert "synthetic private" not in response.text
+    assert client.post(f"{TASKS}/{'0' * 32}/authorize-storage").status_code == 409
 
 
 def test_restart_does_not_abandon_queued_preparation(conversion_api):

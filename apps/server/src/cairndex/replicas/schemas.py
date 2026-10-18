@@ -57,6 +57,8 @@ class ReplicaStatus(StrictModel):
     invalid: int
     peer_delivery: Literal["unknown"]
     exchange_error: str | None = None
+    # authorization: allow access with storage-authorization; login: save the share's login
+    storage_access: Literal["authorization", "login"] | None = None
 
 
 # Equal values retain all contributing revisions without unnecessary conflict prompts

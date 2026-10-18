@@ -1,5 +1,6 @@
 """Owner-setup conversion controls. Slow inspection and swaps run in one worker."""
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter
@@ -71,6 +72,8 @@ class ConversionTaskRead(BaseModel):
     state: Literal["queued", "running", "succeeded", "failed", "interrupted"]
     result: ConversionResultRead | None = None
     error: str | None = None
+    # storage_authorization: allow access with authorize-storage; storage_login: save a login
+    error_code: Literal["storage_authorization", "storage_login"] | None = None
 
 
 @router.post("/tasks", response_model=ConversionTaskRead, status_code=202)
@@ -89,6 +92,17 @@ def task(identity: Identity, registry: RegistryDbSession) -> ConversionTask:
     if row is None:
         raise ReplicaError("Conversion operation is not available on this server")
     return row
+
+
+@router.post("/tasks/{identity}/authorize-storage", status_code=204)
+def authorize_storage(identity: Identity, registry: RegistryDbSession) -> None:
+    """Ask macOS for the step's network-share login, while the owner watches.
+
+    The request waits up to two minutes for the owner to answer the macOS dialog.
+    """
+    root = Path(task(identity, registry).root_path)
+    registry.commit()  # Hold no registry transaction while the owner answers
+    conversion_tasks.authorize_storage(root)
 
 
 @router.post("/tasks/{identity}/retry", response_model=ConversionTaskRead)

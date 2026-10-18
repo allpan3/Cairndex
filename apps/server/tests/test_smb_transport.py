@@ -128,10 +128,12 @@ def test_keychain_authorization_is_bounded(tmp_path, monkeypatch):
         smb_transport, "_password_sync", lambda *a, **kw: release.wait(1) or "secret"
     )
     try:
-        with pytest.raises(smb_transport.SmbTransportError, match="timed out"):
+        with pytest.raises(smb_transport.SmbTransportError, match="timed out") as caught:
             smb_transport._password(mount, allow_prompt=True)
     finally:
         release.set()
+    # Nobody answered, so the owner is asked to allow access again
+    assert smb_transport.access_problem(caught.value) == "authorization"
 
 
 # New receipts bind account and server GUID while old receipts keep their original comparison

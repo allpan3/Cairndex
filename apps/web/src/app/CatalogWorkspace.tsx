@@ -14,7 +14,12 @@ import {
   type Job,
   type Page,
 } from '../api/catalog'
-import { holdEditor, replicaRequest, type ReplicaStatus } from '../api/replicas'
+import {
+  authorizeLibraryStorage,
+  holdEditor,
+  replicaRequest,
+  type ReplicaStatus,
+} from '../api/replicas'
 import type { LibraryRead } from '../api/client'
 import { CatalogFilter } from './CatalogFilter'
 import { CatalogJobs } from './CatalogJobs'
@@ -26,6 +31,7 @@ import { ReplicaDiscovery } from './ReplicaDiscovery'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
+import { StorageAccessNotice } from './StorageAccessNotice'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -316,6 +322,13 @@ export function CatalogWorkspace({
         <p>Peer delivery unknown · {state?.waiting ?? 0} deliveries waiting</p>
         {(status.error || state?.exchange_error || state?.blocked) && (
           <p role="alert">{status.error?.message ?? state?.exchange_error ?? state?.blocked}</p>
+        )}
+        {state?.storage_access && (
+          <StorageAccessNotice
+            access={state.storage_access}
+            authorize={() => authorizeLibraryStorage(libraryId)}
+            onAuthorized={refresh}
+          />
         )}
         <button onClick={refresh}>Refresh catalog status</button>
       </section>

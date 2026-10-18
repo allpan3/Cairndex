@@ -250,6 +250,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/conversions/tasks/{identity}/authorize-storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Authorize Storage
+         * @description Ask macOS for the step's network-share login, while the owner watches.
+         *
+         *     The request waits up to two minutes for the owner to answer the macOS dialog.
+         */
+        post: operations["authorize_storage_api_v1_libraries_conversions_tasks__identity__authorize_storage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/conversions/tasks/{identity}/retry": {
         parameters: {
             query?: never;
@@ -3533,6 +3555,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/storage-authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Authorize Storage
+         * @description Ask macOS for the network share's saved login; waits up to two minutes for an answer.
+         */
+        post: operations["authorize_storage_api_v1_libraries__library_id__replica_storage_authorization_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/smart-collections": {
         parameters: {
             query?: never;
@@ -5144,6 +5186,8 @@ export interface components {
             attempt: string;
             /** Error */
             error?: string | null;
+            /** Error Code */
+            error_code?: ("storage_authorization" | "storage_login") | null;
             /** Id */
             id: string;
             result?: components["schemas"]["ConversionResultRead"] | null;
@@ -6832,6 +6876,8 @@ export interface components {
             selection_version?: number | null;
             /** Source Operations Version */
             source_operations_version?: number | null;
+            /** Storage Access */
+            storage_access?: ("authorization" | "login") | null;
             /** Storyboard Version */
             storyboard_version?: number | null;
             /** System Views Version */
@@ -7711,6 +7757,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversionTaskRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_storage_api_v1_libraries_conversions_tasks__identity__authorize_storage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -14817,6 +14892,41 @@ export interface operations {
         };
     };
     status_api_v1_libraries__library_id__replica_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_storage_api_v1_libraries__library_id__replica_storage_authorization_post: {
         parameters: {
             query?: never;
             header?: {

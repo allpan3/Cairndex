@@ -1,5 +1,10 @@
 import { useState } from 'react'
-import type { ConversionHistory, ConversionInspection } from '../api/libraryConversion'
+import {
+  authorizeConversionStorage,
+  type ConversionHistory,
+  type ConversionInspection,
+} from '../api/libraryConversion'
+import { StorageAccessNotice } from './StorageAccessNotice'
 import { useLibraryConversion } from './useLibraryConversion'
 import { useModalDialog } from './useModalDialog'
 
@@ -195,6 +200,14 @@ export function LibraryConversionDialog({
           <p className="modal__error" role="alert">
             {conversion.error}
           </p>
+        )}
+        {failedSwap && current.error_code === 'storage_authorization' && (
+          <StorageAccessNotice
+            access="authorization"
+            showMessage={false}
+            authorize={() => authorizeConversionStorage(current.id)}
+            onAuthorized={conversion.retry}
+          />
         )}
         {conversion.task.isError && (
           <p>

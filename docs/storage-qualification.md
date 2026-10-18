@@ -27,5 +27,6 @@ scale and power-loss safety remain unqualified.
 Mounted SMB requires a saved login for the exact server/account/share, or a
 server/account login saved with no share path. Background
 work has prompts disabled; use the actual frozen executable's explicit
-`authorize-smb` command for its initial credential-access authorization.
+`authorize-smb` command, or the app's Allow Access, for its initial
+credential-access authorization.
 Credential values and private endpoint details must remain outside Git.

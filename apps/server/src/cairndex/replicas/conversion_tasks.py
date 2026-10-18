@@ -9,11 +9,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
+from cairndex.file_ops import smb_transport
 from cairndex.registry import services
 from cairndex.registry.models import ConversionTask, RegisteredLibrary
 from cairndex.replicas.catalog import legacy_conversion
 from cairndex.replicas.catalog.legacy_input import METADATA
 from cairndex.replicas.protocol import ReplicaError
+
+
+def authorize_storage(root: Path) -> None:
+    """Ask macOS, on this computer's screen, to let the server use the share's saved login."""
+    try:
+        smb_transport.authorize(root)
+    except OSError as error:
+        raise ReplicaError(smb_transport.access_message(error)) from None
 
 
 def enqueue(
@@ -69,7 +78,7 @@ def retry(session: Session, task: ConversionTask) -> ConversionTask:
     """Retry the exact accepted swap. A preparation needs a fresh attempt."""
     if task.action not in {"activate", "undo"} or task.state not in {"failed", "interrupted"}:
         raise ReplicaError("Prepare or inspect again; only an interrupted swap can be retried")
-    task.state, task.error, task.result = "queued", None, None
+    task.state, task.error, task.error_code, task.result = "queued", None, None, None
     try:
         session.flush()
     except IntegrityError as error:
@@ -195,8 +204,13 @@ class ConversionWorker:
                 session.rollback()
                 task.state = "failed"
                 # Never copy storage paths, SQLite values or arbitrary exception text to the API
+                # A step the share's saved login stopped tells the owner how to allow it
+                problem = smb_transport.access_problem(error)
+                task.error_code = None if problem is None else f"storage_{problem}"
                 task.error = (
-                    error.message
+                    smb_transport.access_message(error)
+                    if problem
+                    else error.message
                     if isinstance(error, ReplicaError)
                     else "Conversion stopped. Check storage and retry this step."
                 )

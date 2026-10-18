@@ -165,12 +165,13 @@ def test_sidecar_authorization_does_not_start_a_server_or_require_its_token(
     monkeypatch.setattr(
         smb_transport,
         "_connect",
-        lambda target, *, allow_prompt: connected.append((target, allow_prompt)),
+        lambda target, *, allow_prompt, timeout: connected.append((target, allow_prompt, timeout)),
     )
     monkeypatch.setattr(smb_transport, "close_sessions", lambda: closed.append(True))
     monkeypatch.setattr(sidecar, "bind_loopback_socket", lambda: pytest.fail("HTTP server started"))
     assert sidecar.main(["authorize-smb", str(tmp_path)]) == 0
-    assert connected == [(mount, True)]
+    # The owner asked, so the request waits long enough to type a password
+    assert connected == [(mount, True, smb_transport._AUTHORIZATION_TIMEOUT)]
     assert closed == [True]
     assert "signed, encrypted SMB3 connection verified" in capsys.readouterr().out
     assert not list(tmp_path.iterdir())
@@ -219,3 +220,32 @@ def test_authorization_reports_safe_failure_codes(tmp_path, monkeypatch, capsys,
     assert "synthetic-private-credential-detail" not in output.err
     assert ("Security status: -25293" in output.err) == (status == -25293)
     assert ("timed out" in output.err) == (code == errno.ETIMEDOUT)
+
+
+@pytest.mark.parametrize("status,problem", [(-25300, "login"), (-25308, "authorization")])
+def test_a_keychain_failure_names_what_the_owner_can_do(tmp_path, monkeypatch, status, problem):
+    security(monkeypatch, status)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    with pytest.raises(smb_transport.KeychainError) as caught:
+        smb_transport._password_sync(mount, allow_prompt=False)
+    # Callers wrap storage failures, so the cause is followed
+    wrapped = RuntimeError("synthetic wrapper")
+    wrapped.__cause__ = caught.value
+    assert smb_transport.access_problem(wrapped) == problem
+    assert ("Finder" in smb_transport.access_message(wrapped)) == (problem == "login")
+    plain = smb_transport.SmbTransportError(errno.EIO, "synthetic transport failure")
+    assert smb_transport.access_problem(plain) is None
+    assert "unavailable" in smb_transport.access_message(plain)
+
+
+def test_authorization_needs_a_mounted_share_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(smb_transport, "mount_for", lambda _: None)
+    monkeypatch.setattr(smb_transport, "_connect", lambda *_, **__: pytest.fail("asked macOS"))
+    with pytest.raises(smb_transport.SmbTransportError) as unmounted:
+        smb_transport.authorize(tmp_path)
+    assert smb_transport.access_problem(unmounted.value) is None
+    (tmp_path / "file").write_bytes(b"")
+    with pytest.raises(smb_transport.SmbTransportError):
+        smb_transport.authorize(tmp_path / "file")
+    with pytest.raises(FileNotFoundError):
+        smb_transport.authorize(tmp_path / "missing")

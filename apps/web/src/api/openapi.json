@@ -3943,6 +3943,21 @@
             ],
             "title": "Error"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "storage_authorization",
+                  "storage_login"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "id": {
             "pattern": "^[a-f0-9]{32}$",
             "title": "Id",
@@ -8837,6 +8852,21 @@
             ],
             "title": "Source Operations Version"
           },
+          "storage_access": {
+            "anyOf": [
+              {
+                "enum": [
+                  "authorization",
+                  "login"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Access"
+          },
           "storyboard_version": {
             "anyOf": [
               {
@@ -10890,6 +10920,43 @@
           }
         },
         "summary": "Task",
+        "tags": [
+          "library-conversions"
+        ]
+      }
+    },
+    "/api/v1/libraries/conversions/tasks/{identity}/authorize-storage": {
+      "post": {
+        "description": "Ask macOS for the step's network-share login, while the owner watches.\n\nThe request waits up to two minutes for the owner to answer the macOS dialog.",
+        "operationId": "authorize_storage_api_v1_libraries_conversions_tasks__identity__authorize_storage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Identity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorize Storage",
         "tags": [
           "library-conversions"
         ]
@@ -27620,6 +27687,81 @@
           }
         },
         "summary": "Status",
+        "tags": [
+          "replicas"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/storage-authorization": {
+      "post": {
+        "description": "Ask macOS for the network share's saved login; waits up to two minutes for an answer.",
+        "operationId": "authorize_storage_api_v1_libraries__library_id__replica_storage_authorization_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorize Storage",
         "tags": [
           "replicas"
         ]
