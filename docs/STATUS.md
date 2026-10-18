@@ -43,6 +43,20 @@ storyboards through [PR #65](https://github.com/allpan3/Cairndex/pull/65) as
 through [PR #67](https://github.com/allpan3/Cairndex/pull/67) as `4635b0da`. The real-library owner test in step 6 remains the release checkpoint.
 No release tag or production deployment was made.
 
+Steps 4 and 5 are complete (2026-10-17). The remaining restorations merged
+through PRs #69–#82. The SMB share tests led to the conversion and login fixes
+in PRs #83–#85 and #87. Step 6 is in progress: the owner's real library is
+converted and stays converted. The owner's first look found five problems.
+PR #87 lets the app ask macOS for the share's saved login (Allow Access…).
+[PR #88](https://github.com/allpan3/Cairndex/pull/88), merged as `391e71ff`,
+counts a folded parent tag's bundles once, clears filters when the sidebar
+opens another place, and keeps the inspector's Save in view in a short window.
+`fix/library-actions-sidebar` moves the library's actions back into the
+sidebar, as in v0.2.1, and stops sidebar rows showing through below Settings.
+The owner tests the whole app after that merge. Two items stay below the
+browser toolbar: the note about file sizes, and Bulk changes, which reopens a
+pending bulk draft.
+
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server
 observes the selected file on this device and pins its descriptors. A contact
