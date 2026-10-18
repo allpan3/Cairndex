@@ -5,6 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
+from typing import Literal
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import DomainError, LibraryReleasedError
@@ -24,6 +25,9 @@ from cairndex.replicas.transport import Transport
 _handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str, BindingLock]] = {}
 _lock = threading.RLock()
 _source_transports: dict[str, SourceTransport] = {}
+# Libraries whose last exchange needs the owner to allow or save the share's login.
+# Runtime state: after a restart the next exchange finds the same problem again.
+_storage_access: dict[str, Literal["authorization", "login"]] = {}
 
 
 # Cache only handles, never authoritative metadata or an in-memory causal history
@@ -118,7 +122,13 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                 source_transport.tick()
             with handle[0].connection() as db:
                 db.execute("DELETE FROM config WHERE key='exchange_error'")
+            _storage_access.pop(library_id, None)
     except (OSError, DomainError) as error:
+        problem = smb_transport.access_problem(error)
+        if problem is None:
+            _storage_access.pop(library_id, None)
+        else:
+            _storage_access[library_id] = problem
         with handle[0].connection() as db:
             db.execute(
                 "INSERT OR REPLACE INTO config VALUES ('exchange_error', ?)",
@@ -163,6 +173,24 @@ def pending(library_id: str) -> bool:
         return any(db.execute(query).fetchone() for query in _PENDING_WORK)
 
 
+def storage_access(library_id: str) -> Literal["authorization", "login"] | None:
+    """What the owner must do before exchange can reach the library's network share."""
+    return _storage_access.get(library_id)
+
+
+def authorize_storage(library_id: str) -> None:
+    """Ask macOS, on this computer's screen, to let the server use the share's saved login."""
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is None:
+        raise ReplicaError("Open the library on this server first")
+    try:
+        smb_transport.authorize(handle[1].root)
+    except OSError as error:
+        raise ReplicaError(smb_transport.access_message(error)) from None
+    _storage_access.pop(library_id, None)
+
+
 def serving(library_id: str, store: Store | CatalogStore) -> bool:
     """Report whether this exact store still serves the library on this server."""
     with _lock:
@@ -175,6 +203,7 @@ def close(library_id: str) -> None:
     with _lock:
         handle = _handles.pop(library_id, None)
         source_transport = _source_transports.pop(library_id, None)
+        _storage_access.pop(library_id, None)
     if handle:
         if source_transport:
             source_transport.close()

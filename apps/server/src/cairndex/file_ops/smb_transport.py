@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
 
 import smbclient  # type: ignore[import-untyped]
@@ -27,6 +27,10 @@ class SmbTransportError(OSError):
 
     ntstatus: int | None = None
     keychain_status: int | None = None
+
+
+class KeychainError(SmbTransportError):
+    """The mounted share's saved login is missing, refused or still waiting for an answer"""
 
 
 class _FileAbsent(FileNotFoundError):
@@ -74,6 +78,8 @@ _connections: dict[tuple[str, str], dict[str, Any]] = {}
 _roots: dict[Path, Mount] = {}
 _root_users: dict[Path, int] = {}
 _KEYCHAIN_TIMEOUT = 20.0
+# An owner who asked for access needs time to read the request and type a password
+_AUTHORIZATION_TIMEOUT = 120.0
 
 
 # Decode the kernel's nul-terminated fixed-size string fields
@@ -266,7 +272,7 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
             if status == -25300
             else "The application cannot read the saved SMB login; authorize it and retry"
         )
-        error = SmbTransportError(errno.EACCES, message)
+        error = KeychainError(errno.EACCES, message)
         error.keychain_status = status
         raise error
     try:
@@ -276,7 +282,7 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
 
 
 # Bound an unanswered SecurityAgent prompt so requests and shutdown can recover
-def _password(mount: Mount, *, allow_prompt: bool) -> str:
+def _password(mount: Mount, *, allow_prompt: bool, timeout: float | None = None) -> str:
     done = threading.Event()
     result: list[str] = []
     failure: list[Exception] = []
@@ -290,8 +296,8 @@ def _password(mount: Mount, *, allow_prompt: bool) -> str:
             done.set()
 
     threading.Thread(target=retrieve, name="smb-keychain", daemon=True).start()
-    if not done.wait(_KEYCHAIN_TIMEOUT):
-        raise SmbTransportError(
+    if not done.wait(_KEYCHAIN_TIMEOUT if timeout is None else timeout):
+        raise KeychainError(
             errno.ETIMEDOUT,
             "SMB Keychain authorization timed out; allow access and retry",
         )
@@ -335,7 +341,7 @@ def _errors(
 
 # Establish an isolated signed, encrypted SMB3 session for the mounted account
 # Failed connections are discarded so the next attempt retrieves the exact login again
-def _connect(mount: Mount, *, allow_prompt: bool) -> Any:
+def _connect(mount: Mount, *, allow_prompt: bool, timeout: float | None = None) -> Any:
     key = (mount.server, mount.account)
     with _lock:
         session = _connected.get(key)
@@ -345,7 +351,7 @@ def _connect(mount: Mount, *, allow_prompt: bool) -> Any:
         cache: dict[str, Any] = {}
         _connections[key] = cache
         try:
-            password = _password(mount, allow_prompt=allow_prompt)
+            password = _password(mount, allow_prompt=allow_prompt, timeout=timeout)
             try:
                 session = smbclient.register_session(
                     mount.server,
@@ -651,6 +657,57 @@ def remove_published_source(path: Path, expected: dict[str, Any]) -> bool:
     except _FileAbsent:
         pass
     return True
+
+
+def authorize(path: Path) -> None:
+    """Ask macOS for the saved login of the share that holds ``path``, then verify SMB3.
+
+    Only an owner's explicit request calls this, because macOS shows its Keychain
+    request on this computer's screen. Choosing Always Allow lets later background
+    work read the login without a request. The verified session stays open, so a
+    retry that follows reuses it even after a one-time Allow.
+    """
+    root = path.resolve(strict=True)
+    if not root.is_dir():
+        raise SmbTransportError(errno.ENOTDIR, "Authorization requires a mounted directory")
+    mount = mount_for(root)
+    if mount is None:
+        raise SmbTransportError(errno.ENODEV, "Authorization requires a macOS SMB mount")
+    _connect(mount, allow_prompt=True, timeout=_AUTHORIZATION_TIMEOUT)
+
+
+def access_problem(error: BaseException) -> Literal["authorization", "login"] | None:
+    """What the owner must do when ``error`` came from reading the share's saved login.
+
+    ``login``: no saved login matches the mounted share, so the owner saves one.
+    ``authorization``: macOS refused this application or nobody answered its
+    request, so the owner allows access. ``None`` for every other failure. Causes
+    are followed because callers wrap storage errors in their own.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, KeychainError):
+            return "login" if current.keychain_status == _LOGIN_NOT_FOUND else "authorization"
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def access_message(error: BaseException) -> str:
+    """What the owner reads about a failure to reach a share; it names no path or login."""
+    problem = access_problem(error)
+    if problem == "authorization":
+        return (
+            "Cairndex needs your permission to use the login saved for this network share. "
+            "Allow access, then retry."
+        )
+    if problem == "login":
+        return (
+            "No saved login matches this network share. Connect to it in Finder, choose to "
+            "remember the password in your keychain, then retry."
+        )
+    return "The network share is unavailable. Check that it is mounted, then retry."
 
 
 # Release all private pools during server shutdown

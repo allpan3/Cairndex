@@ -35,6 +35,7 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # ADR-0013: an existing registry row predates write mode and must come back
     # read-only, which is exactly what defaulting to 0 gives.
     ("registered_libraries", "write_mode_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("conversion_tasks", "error_code", "VARCHAR(32)"),
 )
 
 

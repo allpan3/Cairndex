@@ -70,8 +70,8 @@ Limit = Annotated[int, Query(ge=1, le=50)]
 
 # Honest local durability and transport status without a global synced claim
 @router.get("/status", response_model=ReplicaStatus)
-def status(store: CommonReplicaStore) -> ReplicaStatus:
-    return ReplicaStatus.model_validate(store.status())
+def status(library_id: str, store: CommonReplicaStore) -> ReplicaStatus:
+    return _status(library_id, store)
 
 
 # Each explicit retry performs one bounded exchange slice
@@ -79,7 +79,21 @@ def status(store: CommonReplicaStore) -> ReplicaStatus:
 def exchange(library_id: str, store: CommonReplicaStore) -> ReplicaStatus:
     if isinstance(store, Store):
         service.exchange(library_id)
-    return ReplicaStatus.model_validate(store.status())
+    return _status(library_id, store)
+
+
+# The owner asked for access, so macOS may show its Keychain request on this computer
+@router.post("/storage-authorization", response_model=ReplicaStatus)
+def authorize_storage(library_id: str, store: CommonReplicaStore) -> ReplicaStatus:
+    """Ask macOS for the network share's saved login; waits up to two minutes for an answer."""
+    service.authorize_storage(library_id)
+    return _status(library_id, store)
+
+
+def _status(library_id: str, store: Store | CatalogStore) -> ReplicaStatus:
+    return ReplicaStatus.model_validate(
+        store.status() | {"storage_access": service.storage_access(library_id)}
+    )
 
 
 # No catalog scan or complete-history reconstruction on this listing

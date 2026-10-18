@@ -1,5 +1,6 @@
 """Production replica acceptance using generated libraries and ordinary local file delivery"""
 
+import errno
 import json
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from cairndex.api.deps import get_registry_db
 from cairndex.devtools.replica_fixture import create_fixture
+from cairndex.file_ops import smb_transport
 from cairndex.main import create_app
 from cairndex.registry import library_package as pkg
 from cairndex.registry.engine import create_registry_engine
@@ -467,6 +469,59 @@ def test_background_descriptor_fence(api):
         service.exchange(library["id"])
     assert store.status()["outbox"] == 1
     assert store.status()["exchange_error"]
+
+
+# A share that refuses its saved login says so, and the owner's authorization clears it
+def test_exchange_reports_and_clears_missing_share_access(api, monkeypatch):
+    client, base, root, library, _ = api
+    transport = service._handles[library["id"]][1]
+    tick = transport.tick
+
+    def refuse():
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = -25308
+        raise error
+
+    monkeypatch.setattr(transport, "tick", refuse)
+    with pytest.raises(ReplicaError):
+        service.exchange(library["id"])
+    status = client.get(base + "/replica/status").json()
+    assert status["storage_access"] == "authorization"
+    assert "synthetic private" not in json.dumps(status)
+
+    asked = []
+    monkeypatch.setattr(smb_transport, "authorize", asked.append)
+    reply = client.post(base + "/replica/storage-authorization")
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["storage_access"] is None
+    assert asked == [transport.root]
+
+    # A login that is still missing stays reported until an exchange succeeds
+    service._storage_access[library["id"]] = "login"
+    monkeypatch.setattr(transport, "tick", tick)
+    service.exchange(library["id"])
+    assert client.get(base + "/replica/status").json()["storage_access"] is None
+
+
+@pytest.mark.parametrize(
+    "status,message",
+    [(-25300, "No saved login"), (-25308, "needs your permission"), (None, "unavailable")],
+)
+def test_storage_authorization_failure_says_what_to_do(api, monkeypatch, status, message):
+    client, base, _, _, _ = api
+
+    def refuse(path):
+        if status is None:
+            raise smb_transport.SmbTransportError(errno.ENODEV, "synthetic private path")
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = status
+        raise error
+
+    monkeypatch.setattr(smb_transport, "authorize", refuse)
+    reply = client.post(base + "/replica/storage-authorization")
+    assert reply.status_code == 409
+    assert message in reply.text
+    assert "synthetic private" not in reply.text
 
 
 # Malformed values are structured client errors and preserve the prior committed projection

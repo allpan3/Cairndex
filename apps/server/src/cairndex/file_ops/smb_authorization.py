@@ -14,13 +14,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("path", type=Path, help="an existing directory on the mounted SMB share")
     args = parser.parse_args(argv)
     try:
-        root = args.path.resolve(strict=True)
-        if not root.is_dir():
-            raise OSError("Authorization requires a mounted directory")
-        mount = smb_transport.mount_for(root)
-        if mount is None:
-            raise OSError("Authorization requires a macOS SMB mount")
-        smb_transport._connect(mount, allow_prompt=True)
+        smb_transport.authorize(args.path)
     except OSError as error:
         # Report only numeric codes, never exception text containing private paths.
         status = getattr(error, "keychain_status", None)

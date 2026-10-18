@@ -290,6 +290,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   server. It used to require a login saved for the mounted share, so a common
   Finder login made conversion and file operations fail. A share's own login is
   still preferred, and a login saved for another share is never used.
+- When the server may not read a network share's saved login, conversion and the
+  library's status now say so and offer **Allow Access…**. It asks macOS for
+  permission, which asks for the Mac's login password; Always Allow lets
+  background work read the login from then on. Conversion used to stop with
+  "Check storage and retry", which only the `authorize-smb` command could fix.
+  Conversion tasks report an `error_code`, replica status reports
+  `storage_access`, and two endpoints ask macOS: the conversion task's
+  `authorize-storage` and the library's `replica/storage-authorization`.
 - Restore consistent WAL-format registry backups from read-only backup mounts
   using an independently validated private copy. Refuse incomplete backups with
   SQLite companions and preserve the original snapshot and rollback database.

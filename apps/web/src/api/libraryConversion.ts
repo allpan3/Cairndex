@@ -14,6 +14,10 @@ export const startConversion = (body: ConversionRequest) =>
 export const conversionTask = (id: string, signal?: AbortSignal) =>
   getJson<ConversionTask>(`${tasks}/${id}`, signal, false)
 
+/** Ask macOS for the task's network-share login. Waits while the owner answers. */
+export const authorizeConversionStorage = (id: string) =>
+  sendDirect<void>(`${tasks}/${id}/authorize-storage`, 'POST', undefined, undefined, false)
+
 export const retryConversion = (id: string) =>
   sendDirect<ConversionTask>(`${tasks}/${id}/retry`, 'POST', undefined, undefined, false)
 

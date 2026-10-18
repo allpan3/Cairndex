@@ -35,7 +35,9 @@ item, the lookup accepts the server-level item that Finder saves with no path,
 after it reads that item's path attribute and before it reads its password.
 The signed sidecar's
 explicit `authorize-smb` command can request access and verify signed, encrypted
-SMB3 without opening a library or starting an HTTP server.
+SMB3 without opening a library or starting an HTTP server. The app's Allow Access
+action makes the same request from the server process, and only when the owner
+starts it from a conversion or library status that reports missing access.
 Missing authorization is a recoverable unavailable state. Creation and serving
 register roots; the last use of an account releases its private SMB session.
 

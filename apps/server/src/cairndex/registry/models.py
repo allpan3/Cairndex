@@ -178,4 +178,6 @@ class ConversionTask(RegistryBase):
     body: Mapped[dict[str, Any]] = mapped_column(JSON)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the owner can do about a failure, for the client to offer; see conversion_tasks
+    error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[CreatedAt]
