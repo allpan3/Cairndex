@@ -1,6 +1,17 @@
-from typing import Any
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+#: A timestamp the API always sends with its UTC offset. Stored timestamps are
+#: UTC (ADR-0002), but a portable catalog keeps the legacy database's naive
+#: strings, and a browser reads a naive timestamp as local time.
+UtcDatetime = Annotated[datetime, AfterValidator(_as_utc)]
 
 
 class Page[T](BaseModel):

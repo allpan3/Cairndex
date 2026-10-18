@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from cairndex.api.schemas.common import UtcDatetime
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
@@ -238,8 +239,8 @@ class FileRead(BaseModel):
     # Normalized ffprobe output (dimensions/duration/codecs/streams), or null
     # until the file has been probed (Phase 2 scanner/probe jobs).
     tech_metadata: dict[str, Any] | None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
     version: int
 
@@ -282,7 +283,7 @@ class DirectoryMemberRead(BaseModel):
     #: Files *from this bundle* inside the folder — not the count on disk, which
     #: can be larger (plan 6 §4.2). Filled by the route.
     file_count: int = 0
-    created_at: datetime
+    created_at: UtcDatetime
 
     @model_validator(mode="after")
     def derive_name(self) -> "DirectoryMemberRead":

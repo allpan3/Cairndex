@@ -62,6 +62,8 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     assert result.status_code == 200
     assert result.json()["total"] == 3
     assert len(result.json()["items"]) == 2
+    # A naive stored timestamp is UTC; without the offset a browser reads local time
+    assert all(item["date_added"].endswith("Z") for item in result.json()["items"])
     for body in (
         {"filter": {"version": 1, "root": {"field": "codec", "operator": "equals", "value": "x"}}},
         {"sort": "size"},

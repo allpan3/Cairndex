@@ -298,6 +298,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A portable library shows Date Added in local time.** Its catalog keeps the
+  legacy database's timestamps, which are UTC without an offset, and the browser
+  read them as local time, so a bundle or file added in the evening showed the
+  next day. Bundle summaries, files, folder members and moments now send their
+  timestamps with the UTC offset.
 - **Update no longer pauses after every batch.** The background worker waited one
   second after each 32-entry step.
   It now continues after 25 ms while an Update, review, verification, save job or

@@ -126,6 +126,9 @@ def test_direct_bytes_derivatives_and_authored_choices(media_api):
     page = client.get(base + "/replica/media/bundles/bundle-000001?limit=2").json()
     assert len(page["files"]) == 2 and page["next_offset"] == 2
     assert page["moments"][0]["start_s"] == 42
+    # The catalog's naive stored timestamps are UTC, and the API says so
+    assert page["files"][0]["created_at"].endswith("Z")
+    assert page["moments"][0]["created_at"].endswith("Z")
     assert list((store.path.parent / "cache").rglob("*.vtt"))
     assert list((store.path.parent / "cache").rglob("*.webp"))
     assert not (roots[0] / ".cairndex/cache").exists()
