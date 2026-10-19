@@ -156,7 +156,7 @@ Run `uv run python -m cairndex.devtools.benchmark_sqlite_durability` from
 `apps/server` to reproduce. Gates and benchmarks use isolated synthetic temp
 state; the owner's library, registry and private store are outside the tests.
 
-Qualification exposed four test assumptions about fast I/O. Source API tests
+Qualification exposed five test assumptions about fast I/O. Source API tests
 manually advanced work while their lifespan worker could claim it through the
 default registry. Large discovery tests allowed only 100 time-limited worker
 ticks. The test fixtures now keep source execution under manual control and
@@ -168,8 +168,24 @@ reproduced that failure and passed after the setup repair. Two API cleanup paths
 also closed transports while their worker could still execute a generator. They
 now use the existing lifecycle drain. Pausing a synthetic generator reproduced
 the old failure, and the repaired case and all 40 affected module tests passed.
+The private-controls browser test also waits up to 30 seconds for a terminal
+background recovery state, then requires success. Its five-second UI assertion
+expired while preparation still reported running in a three-worker VM run.
 The shipping worker and its time budget are unchanged. These repairs have
 separate commits from the durability change.
+
+Both full VM gates ended with `Final result: 0`. macOS passed 1,954 backend
+tests and 137 Rust tests; Linux passed 1,788 + 165 backend tests and 135 Rust
+tests. Both passed 4 frozen binary tests, 154 web test files, all 47 browser
+tests, static checks, sidecar smoke and the web build. The macOS app build and
+distribution check passed too. The documented ARM manifest assertion is
+excluded in the Linux guest and remains covered by hosted x86 CI.
+Docker context/image privacy, API/restart/arbitrary-UID smoke, registry
+backup/restore and private recovery smoke also ended with `Final result: 0`
+against the local test VM daemon. Receipts:
+`fullfsync-ack-final-mac-20261018-230329`,
+`fullfsync-ack-final-linux-20261018-230705` and
+`fullfsync-docker-20261018-230350`.
 
 ### Earlier portable feature qualification
 

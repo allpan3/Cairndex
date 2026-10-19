@@ -155,6 +155,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for background recovery tasks to reach a terminal state in the private
+  controls browser test, then require success. Its default five-second UI
+  assertion could expire while durable preparation was still running.
 - Drain background replica work before API-test cleanup closes its transport.
   Direct close could interrupt an executing transport generator on slow storage.
 - Wait for the synthetic media catalog before the streaming connection-pool
