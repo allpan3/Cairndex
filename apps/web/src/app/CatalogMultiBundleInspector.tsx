@@ -37,6 +37,7 @@ export function CatalogMultiBundleInspector({
   onReview,
   onRetainedChange,
   onClose,
+  onFilterTag,
 }: {
   library: string
   editor: string
@@ -50,6 +51,7 @@ export function CatalogMultiBundleInspector({
   /** Retain only unfinished work after its original selection changes. */
   onRetainedChange: (retained: boolean) => void
   onClose: () => void
+  onFilterTag?: (id: string) => void
 }) {
   const client = useQueryClient()
   const draft = useCatalogDraft(library, 'bulk', editor, empty, validCatalogBulkDraft)
@@ -206,6 +208,7 @@ export function CatalogMultiBundleInspector({
                 family={family}
                 blocked={blocked || retained}
                 onReview={onReview}
+                onFilterTag={onFilterTag}
               />
             ))}
         </>

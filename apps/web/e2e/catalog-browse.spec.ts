@@ -374,11 +374,18 @@ test('ordinary collection filters and File Browser share one library journey @fu
     await expect(page.getByText('1 items', { exact: true })).toBeVisible()
     await page.getByRole('checkbox', { name: 'Show subcollection contents' }).uncheck()
     await page.getByRole('button', { name: 'All Tags', exact: true }).click()
-    // The All Tags page filters by a tag on a double-click, as in v0.2.1
+    // All Tags starts with Equal/direct, independently of the inspector's Any/subtags.
     await page.locator('.tagtile__head').filter({ hasText: 'Synthetic root' }).dblclick()
-    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
+    await expect(page.getByText('0 items', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Filter by tags', exact: true }).click()
     await expect(page.getByRole('group', { name: 'Tag match rule' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Equal', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await page.getByRole('button', { name: 'Any', exact: true }).click()
+    await page.getByRole('checkbox', { name: 'subtags', exact: true }).check()
+    await expect(page.getByText('1 items', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Equal', exact: true }).click()
     await expect(page.getByText('0 items', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')

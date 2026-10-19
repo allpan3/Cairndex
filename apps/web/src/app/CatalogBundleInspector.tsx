@@ -1,5 +1,5 @@
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { Entity } from '../api/catalog'
 import { BundleTitleEditor, NoteBox } from './Inspector'
 import { InspectorSection } from './InspectorSection'
@@ -11,6 +11,7 @@ import { formatBytes, formatDate } from '../lib/format'
 import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
+import { moveTo } from './reorder'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
@@ -31,6 +32,7 @@ export function CatalogBundleInspector({
   onAddFiles,
   summary,
   onOpenCollection,
+  onFilterTag,
 }: {
   hostFiles?: LibraryHostFiles
   onStartBundleDrag?: () => void
@@ -58,6 +60,7 @@ export function CatalogBundleInspector({
     size_known?: boolean
   }
   onOpenCollection?: (id: string) => void
+  onFilterTag?: (id: string) => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
@@ -73,12 +76,34 @@ export function CatalogBundleInspector({
   const notes = savedNotes?.length ? savedNotes : ['']
   const setNotes = (value: string[]) => draft.change('notes', JSON.stringify(JSON.stringify(value)))
   const unsaved = Boolean(draft.draft.pending) || Object.keys(draft.draft.inputs).length > 0
-  const move = (index: number, delta: number) => {
-    const next = [...notes]
-    const target = index + delta
-    if (target < 0 || target >= next.length) return
-    ;[next[index], next[target]] = [next[target]!, next[index]!]
-    setNotes(next)
+  const move = (from: number, target: number, before: boolean) => {
+    const order = notes.map((_, index) => String(index))
+    const moved = moveTo(order, String(from), String(target), before).map(Number)
+    if (moved.every((index, at) => index === at)) return
+    setNotes(moved.map((index) => notes[index]!))
+    setHeights(Object.fromEntries(moved.map((index, at) => [at, heights[index] ?? null])))
+  }
+  const [draggingNote, setDraggingNote] = useState<number | null>(null)
+  const [noteDrop, setNoteDrop] = useState<{ index: number; before: boolean } | null>(null)
+  const dropRef = useRef(noteDrop)
+  const notesRef = useRef<HTMLDivElement>(null)
+  function clearDrag() {
+    dropRef.current = null
+    setNoteDrop(null)
+    setDraggingNote(null)
+  }
+  function hoverNote(from: number, x: number, y: number) {
+    const row = document.elementFromPoint(x, y)?.closest<HTMLElement>('.note-row')
+    const index = row ? Number(row.dataset.noteIndex) : NaN
+    const next =
+      row && notesRef.current?.contains(row) && Number.isInteger(index) && index !== from
+        ? {
+            index,
+            before: y < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2,
+          }
+        : null
+    dropRef.current = next
+    setNoteDrop(next)
   }
   // The footer appears once there is something to save, recover or report
   const footer = unsaved || draft.busy || draft.copies.length > 0 || Boolean(draft.message)
@@ -179,6 +204,7 @@ export function CatalogBundleInspector({
         }
       >
         <div
+          ref={notesRef}
           className="notes-list"
           onFocus={() => {
             if (!draft.draft.inputs[entity.fields.notes!.unit]) setNotes(notes)
@@ -186,7 +212,6 @@ export function CatalogBundleInspector({
         >
           {notes.map((note, index) => (
             <NoteBox
-              keyboardReorderOnly
               key={index}
               value={note}
               index={index}
@@ -194,13 +219,27 @@ export function CatalogBundleInspector({
               height={heights[index] ?? null}
               onChange={(value) => setNotes(notes.map((old, at) => (at === index ? value : old)))}
               onCommit={() => {}}
-              onRemove={() => setNotes(notes.filter((_, at) => at !== index))}
+              onRemove={() => {
+                setNotes(notes.filter((_, at) => at !== index))
+                setHeights(
+                  Object.fromEntries(
+                    notes.flatMap((_, at) =>
+                      at === index ? [] : [[at < index ? at : at - 1, heights[at] ?? null]],
+                    ),
+                  ),
+                )
+              }}
               onResize={(height) => setHeights({ ...heights, [index]: height })}
-              dragging={false}
-              onDragStart={() => {}}
-              onDragMove={() => {}}
-              onDragEnd={() => {}}
-              onMoveBy={(delta) => move(index, delta)}
+              dragging={draggingNote === index}
+              drop={noteDrop?.index === index ? (noteDrop.before ? 'before' : 'after') : undefined}
+              onDragStart={() => setDraggingNote(index)}
+              onDragMove={(x, y) => hoverNote(index, x, y)}
+              onDragEnd={() => {
+                const target = dropRef.current
+                if (target) move(index, target.index, target.before)
+                clearDrag()
+              }}
+              onMoveBy={(delta) => move(index, index + delta, delta < 0)}
             />
           ))}
         </div>
@@ -215,6 +254,7 @@ export function CatalogBundleInspector({
             blocked={blocked}
             onReview={onReview}
             onOpenCollection={onOpenCollection}
+            onFilterTag={onFilterTag}
           />
         ))}
       {inspectorEnabled && moments}

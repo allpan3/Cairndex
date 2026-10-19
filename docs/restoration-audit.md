@@ -79,6 +79,22 @@ snapshots to the shared notification hook. Restore that connection for discovery
 and explicit media passes, preserving the existing long-run, away-window and
 permission rules. This is a disconnected feature, not a documented replacement.
 
+The final ordinary-interaction comparison found further controls disconnected
+from the portable path. Tag chips lack Filter, Rename, Copy and Paste, and the
+desktop copy/paste shortcuts have no caller. Bundle cards handle vertical keys
+but omit horizontal movement and traversal between folder cards and bundles.
+Note grips explicitly disable pointer reordering. The ordinary file rail also
+omits order changes, metadata-only removal and collapsed-directory controls;
+Metadata Review is not an equivalent ordinary workflow. These controls remain
+restoration work. File note/source editing, by contrast, has no caller in the
+pre-PR-45 frontend either and is not a migration regression.
+
+Keep the documented exception for Forget Missing Files. One device's missing
+observation cannot establish that a shared catalog record should be deleted;
+the file can still exist on another device. Explicit source operations retain
+their reviewed journal workflow. This changes the earlier local-only action's
+safety meaning, rather than merely hiding its button.
+
 ## Owner scope decisions (2026-10-19)
 
 Restore Recently Used, Size, Date Modified and Date Opened from this device's
@@ -624,6 +640,31 @@ normal type and missing-state labels. Both complete combined restoration receipt
 The card and its regression case match that qualified source. Publication and
 the final merged-main owner build remain separate.
 This implements the accepted decision and does not need another ADR.
+
+The ordinary inspector interaction slice restores the tag-chip menu, complete
+paged tag copying, additive guarded pasting, desktop clipboard shortcuts, note
+dragging and horizontal bundle keys. A session clipboard cannot cross server
+or library identities. Private note drafts and explicit Save remain in use.
+Browser and viewer tag chips retain the current browsing context and use Any
+with subtags. All Tags keeps its separate global Equal/direct action. The viewer
+returns through the same inspector action. Linux passes lint/type checks
+and 22 focused clipboard/note/inspector cases. The existing inspector browser
+scenario passes; the new scenario passes in 17.5 seconds, including note-draft
+reload/save, tag union without losing existing tags, rename, filtering and
+Left/Right. Source bytes remain unchanged. Its first run used a textbox locator
+for the search input's searchbox role; the corrected locator passes. Both complete
+combined restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The already-qualified viewer handoff moves into this slice from the later viewer
+restoration. A new browser assertion checks that returning from the viewer keeps
+the search and the inspector's tag rule. It fails with the former global callback
+at the cleared search field. The corrected scenario, the separate All Tags
+journey, 31 focused cases, lint, formatting and types pass on both guests in
+`inspector-filter-20261020-031041` on macOS and
+`inspector-filter-20261020-031241` on Linux. Ordinary file-rail controls, mixed
+navigation, publication and the final merged-main owner build follow separately.
+This restores existing interactions without storage or API changes and
+does not need another ADR.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
