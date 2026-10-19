@@ -155,6 +155,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Keep portable source API tests under manual worker control. The lifespan
+  worker could claim the same synthetic intent through the default registry
+  while a test drove it against its isolated registry on slower storage.
 - Wait for the path suggestion menu's measured layout in its browser test.
   Keep both edge hit tests so persistent clipping still fails.
 
