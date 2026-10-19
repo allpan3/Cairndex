@@ -130,6 +130,22 @@
       ],
       "purpose": "Document ordinary portable Smart Collection controls and their live match preview",
       "provenance": "Playwright capture of a fresh synthetic catalog, retained draft and invented rating filter; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "9e374bfa59677bac4777815915efbda1b8ab24765cb970a87563b8065161bcbb",
+      "paths": [
+        "docs/screenshots/portable-path-viewer.png"
+      ],
+      "purpose": "Document unindexed portable File Browser playback and mixed folder viewing",
+      "provenance": "Playwright capture from a full Linux gate using only generated video, audio and image fixtures; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "771f8abf214829e7d8c4915a387493612086a7f3d9d48be714f75afd63396263",
+      "paths": [
+        "docs/screenshots/portable-private-unbundled.png"
+      ],
+      "purpose": "Document fresh private discoveries in paged manual file choices",
+      "provenance": "Playwright capture of a fresh synthetic discovery fixture and checked paths across pages and search; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
