@@ -48,8 +48,13 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
     entries: dict[str, FileBrowserEntryRead] = {}
     with media.store.connection(readonly=True) as db:
         rows = db.execute(
-            "SELECT p.path,p.entity,c.body FROM catalog_paths p JOIN catalog_rows c "
+            "SELECT p.path,p.entity,c.body,"
+            "(json_extract(b.body,'$.grouping_state')='PROVISIONAL' AND "
+            "json_extract(b.body,'$.grouping_source')='SCAN_SUGGESTION') AS unbundled "
+            "FROM catalog_paths p JOIN catalog_rows c "
             "ON c.family=p.family AND c.entity=p.entity "
+            "JOIN catalog_rows b ON b.family='asset_bundles' "
+            "AND b.entity=json_extract(c.body,'$.bundle_id') "
             "WHERE p.parent=? AND p.family='asset_files' ORDER BY p.path",
             (relative,),
         )
@@ -57,6 +62,7 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
             if visible(row["path"]):
                 body = json.loads(row["body"])
                 entries[row["path"]] = entry(row["path"], "file", row["entity"], body["bundle_id"])
+                entries[row["path"]].unbundled = bool(row["unbundled"])
         for row in db.execute(
             "SELECT path FROM catalog_directories WHERE parent=? ORDER BY path", (relative,)
         ):

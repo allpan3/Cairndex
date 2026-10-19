@@ -102,6 +102,8 @@ const FILE_SORTS: SortOption<FileSort>[] = [
 
 interface FileBrowserProps {
   catalogLibrary?: string
+  /** The server can privately prepare unlinked selections (`browse_version: 13`). */
+  catalogPathBundling?: boolean
   /** Leading header controls — the sidebar toggle and Back/Forward buttons. */
   headerLeading?: ReactNode
   /** Trailing toolbar controls — the inspector toggle. */
@@ -581,6 +583,7 @@ interface FileListProps extends FileScopeProps {
  * participate in the bundling context menu and drag-select. */
 function FileList({
   catalogLibrary,
+  catalogPathBundling = false,
   prefs,
   setPrefs,
   search,
@@ -853,19 +856,22 @@ function FileList({
       }
     }
     if (items.length > 0) items.push(null)
-    // A portable library bundles cataloged files by id, so only from its queue
-    if (!catalogLibrary || scope === 'unbundled') {
-      const ids = targets.flatMap(
-        (target) => visible.find((item) => item.relative_path === target)?.file_id ?? [],
-      )
+    const selectedEntries = visible.filter((item) => targets.includes(item.relative_path))
+    const eligiblePaths =
+      catalogPathBundling && selectedEntries.every((item) => !item.linked || item.unbundled)
+    if (!catalogLibrary || scope === 'unbundled' || eligiblePaths) {
+      const ids = selectedEntries.flatMap((item) => item.file_id ?? [])
+      const paths = catalogLibrary
+        ? selectedEntries.filter((item) => !item.file_id).map((item) => item.relative_path)
+        : targets
       items.push(
         {
           label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
-          onClick: () => onCreateBundle(targets, ids),
+          onClick: () => onCreateBundle(paths, ids),
         },
         {
           label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
-          onClick: () => onAddToBundle(targets, ids),
+          onClick: () => onAddToBundle(paths, ids),
         },
       )
     }

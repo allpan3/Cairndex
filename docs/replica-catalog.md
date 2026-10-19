@@ -103,6 +103,39 @@ Each file keeps its identity, staging bundles that the move empties are
 deleted, and each new subtitle file gets a track for the video in its folder
 with the stem it names. Servers advertise it as `browse_version: 9`.
 
+With `browse_version: 12`, manual-bundling dialogs restore ranked targets,
+draft title/role defaults and related Unbundled files. Read-only routes under
+`/replica/catalog/manual-bundling` provide `POST /suggest-targets`,
+`POST /suggest-bundle` and `GET /bundles/{id}/suggest-files`. Seed requests take
+1–100 distinct current Unbundled file IDs and a bounded result limit. Folder
+probes, the catalog search index and a separate private filename index gather
+at most 200 candidates per query; the established manual-bundling rules score
+them. The dialog does not read source files or inspect only the first Unbundled
+page. Filename-index construction uses bounded startup batches, follows path
+projection changes and is rebuilt from the catalog during recovery. Earlier
+private stores without the complete derived index remain recoverable.
+Confirmation still uses the existing guarded `bundle_files` preview and commit.
+Older servers retain their search-only target picker and unranked file list.
+
+Add Files supplements recommendations with a paged Unbundled picker. It opens
+that picker when there are no recommendations, including an empty bundle with
+an unrelated title. Browse all Unbundled files switches to complete server-side
+path search before paging. The selection retains exact IDs across pages and
+searches, and the selected count remains visible before explicit Apply.
+
+With `browse_version: 13`, the same dialogs also accept visible unlinked
+File Browser paths, mixed with current Unbundled IDs, up to 100 files total.
+Read-only suggestions use their names without opening source files. A catalog
+preview job inspects only the selected paths, using no-follow descriptors and
+bounded fingerprints. Its private receipt retains those observations. Commit
+rechecks source generations before the guarded save; changed bytes, occupied
+paths and stale catalog bases refuse the operation. A lost completion reply
+can retry its already-committed receipt even if the source later changes.
+Fresh files enter the confirmed bundle directly, without authored staging
+bundles or a prior Update. Source media is never moved or modified.
+Content identity requires format three; earlier formats retain version 12 and
+their existing ID-based bundling actions.
+
 `GET /replica/catalog/bundles/counts` returns the sidebar's view counts from one
 snapshot: All, Recent (every bundle), Uncategorized, Untagged, recorded local
 Missing Files and Unbundled files. Each collection in `/navigation/collections`

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from cairndex.api.v1 import (
     auth,
     bundles,
+    catalog_manual_bundling,
     catalog_replicas,
     conversions,
     devices,
@@ -39,6 +40,7 @@ router.include_router(conversions.router)
 router.include_router(libraries.router)
 router.include_router(replicas.router)
 router.include_router(catalog_replicas.router)
+router.include_router(catalog_manual_bundling.router)
 router.include_router(replica_discovery.router)
 router.include_router(replica_grouping.router)
 router.include_router(source_operations.router)

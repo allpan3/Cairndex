@@ -347,6 +347,66 @@ plus the desktop app build and distribution verification. Receipt
 unchanged guest source. Both VM gates now qualify this grouping slice; the
 broader restoration remains open.
 
+Manual-bundling recommendations are implemented separately on
+`fix/portable-bundling-recommendations`. Nine backend cases pass for parity with
+the earlier scoring, root and distant-folder matches, roles/title defaults,
+stale paths, refusal of invalid seeds and older private-schema recognition.
+The 57-case recovery suite also passed with the derived filename index. A
+full-stack Linux scenario passed with 120 unrelated earlier-path files, then
+added a subtitle to a suggested target and created a bundle from the suggested
+title, cover and subtitles. Backend and web lint/type checks passed; API
+artifacts are regenerated. Full qualification remains outstanding. Direct
+manual bundling of unlinked File Browser paths is a separate remaining loss;
+this slice restores recommendations for cataloged Unbundled files.
+
+The following local slice also prepares selected unlinked File Browser paths
+through the existing catalog preview/commit jobs, without authored provisional
+bundles or an Update prerequisite. Bounded source reads pin observations; commit
+rechecks them and preserves exact retry receipts. Mixed selections retain
+existing file IDs, and the shared bundling rules provide roles and subtitle
+links. Fifty focused backend cases and both full-stack browser scenarios pass
+on Linux, including unsafe paths, changed sources, append order, metadata
+preservation, private receipt validation and the ordinary File Browser workflow.
+Backend and web static checks pass. Direct path identities require format three;
+format two retains its existing version-12 ID-based controls. The expanded
+manual/recovery slice passes 79 cases, including actual backup and activation
+with a pending source commit. Reopening retains its private preview without
+applying it; an explicit exact retry completes the commit. Both full VM gates
+remain pending for this slice.
+This extends the existing ADR-0032 boundary; it does not need another ADR.
+
+The first complete Linux manual-bundling gate passed 2,009 backend tests,
+packaging, frontend checks and 135 Rust tests. It passed 53 of 54 browser
+scenarios. The existing empty-bundle workflow exposed a real loss: ranked
+recommendations offered no files for an unrelated title. Add Files now also
+pages and searches the complete Unbundled population, opening that picker
+automatically when there are no recommendations. Exact checked IDs survive
+paging and search changes. All three focused browser scenarios and web static
+checks pass, including a later-page choice and selection retained through search.
+The [synthetic picker capture](screenshots/portable-manual-file-picker.png) was
+reviewed edge to edge. Renewed full qualification remains pending; that failed
+gate does not qualify the feature.
+PR #102 merged the capture's declaration after every applicable hosted check
+passed. The functional branch still awaits qualification before publishing it.
+
+The corrected Linux manual-bundling gate passed 2,009 backend tests, all
+54 browser scenarios, 159 web test files, four frozen checks and 135 Rust tests.
+Receipt `restoration-manual-bundling-v2-linux-20261019-094245` ends in
+`Final result: 0`. The renewed run including the parent's test synchronization
+repairs passed every stage, including all 54 browser scenarios. Receipt
+`restoration-manual-bundling-v3-linux-20261019-104050` ends in
+`Final result: 0` on unchanged guest source. Initial macOS qualification remains
+required.
+
+The first full macOS manual run passed 2,010 backend tests, web/static checks,
+four frozen checks, 137 Rust tests and app build/distribution, but failed one
+of 54 browser scenarios. The album's pagination check treated an absent loading
+label as completion before the pending state had rendered. Its failure context
+still showed 100 of 125 items with a running request. A controlled six-second
+page delay reproduces the original failure; waiting for the complete item count
+passes on the same schedule. This changes test synchronization only. Both
+corrected full gates remain required.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

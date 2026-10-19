@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Restore ranked manual-bundling targets, suggested draft titles/roles and
+  related Unbundled files for portable libraries. Recommendations use indexed
+  metadata and filenames, including files outside the first page. Apply remains
+  an explicit guarded catalog change. Add Files also pages and searches the
+  complete Unbundled population alongside recommendations.
+
 - Restore local Date Opened and Date Modified sorts, including Recent's date
   choices, and Size from this device's file observations. Opening and editing
   have separate private history; unknown sizes and opening times sort last.
@@ -352,6 +358,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Restore Create Bundle and Add to Bundle for unlinked files selected in
+  File Browser, with title/target suggestions, unchanged source bytes and
+  source revalidation before the guarded catalog commit.
 
 - Restore editable grouping review for portable libraries: tree selection,
   rename, Narrow/Widen, file moves/order, bundle/collection conversion and

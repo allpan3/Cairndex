@@ -208,6 +208,48 @@ plus the desktop app build and distribution verification. Receipt
 unchanged guest source. Both VM gates now qualify this grouping slice; the
 broader restoration remains open.
 
+Manual-bundling recommendations are implemented on
+`fix/portable-bundling-recommendations` with `browse_version: 12`. Nine focused
+backend cases, the recovery suite and a synthetic full-stack Linux scenario
+passed, with backend/web static checks and regenerated API artifacts. The
+recommendations use bounded indexed metadata and filename lookups, followed
+by the earlier scoring rules. Apply keeps the existing guarded catalog path.
+This work has not passed full gates or merged. Grouping review, direct bundling
+of unlinked File Browser files, maintenance controls and broader search/behavior
+comparison remain open.
+
+The manual-bundling branch now also implements direct unlinked File Browser
+selection with private preparation and source revalidation (`browse_version: 13`).
+It publishes no provisional groupings. Fifty focused backend tests, both
+manual-bundling browser scenarios and backend/web static checks pass on Linux.
+Format two retains ID-based bundling at version 12. The expanded manual/recovery
+slice passes 79 cases, including actual backup/activation and explicit retry of
+a pending source commit. Full VM qualification remains pending; restoration is
+incomplete.
+
+The first full Linux manual-bundling run passed 2,009 backend tests and 53 of
+54 browser scenarios. The remaining scenario found that ranking could leave
+an empty bundle without file choices. Add Files now supplements suggestions
+with a paged, whole-Unbundled search and retains selected IDs across pages and
+searches. All three focused browser scenarios and web static checks now pass;
+corrected full gates remain required.
+
+The corrected Linux manual-bundling gate passed 2,009 backend tests, all
+54 browser scenarios, 159 web test files, four frozen checks and 135 Rust tests.
+Receipt `restoration-manual-bundling-v2-linux-20261019-094245` ends in
+`Final result: 0`. The renewed run including the parent's test synchronization
+repairs also passed every stage, with all 54 browser scenarios. Receipt
+`restoration-manual-bundling-v3-linux-20261019-104050` ends in
+`Final result: 0`. Initial macOS qualification remains required.
+
+The first macOS manual-bundling gate passed 2,010 backend tests, all web
+checks, four frozen checks, 137 Rust tests and app build/distribution. It passed
+53 of 54 browser scenarios; the album test checked the last page before its
+request had completed. Absence of a loading label can also precede React's
+pending state. A controlled six-second response delay reproduces the failure;
+waiting for the actual complete item count passes the same macOS scenario.
+Both corrected full gates remain required before publication.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

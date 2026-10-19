@@ -91,7 +91,7 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
             if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
                 raise ReplicaError("Library descriptor changed; recovery review required")
             if isinstance(handle[0], CatalogStore):
-                run_one(handle[0])
+                run_one(handle[0], handle[1].root)
                 from cairndex.replicas.discovery import tick
 
                 tick(handle[0], handle[1].root)

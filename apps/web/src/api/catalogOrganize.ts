@@ -198,11 +198,18 @@ export async function bundleFiles(
   files: string[],
   target: string | null,
   title: string | null = null,
+  relativePaths: string[] = [],
 ): Promise<string> {
   const prepared = await runJob(
     library,
     'preview',
-    { action: 'bundle_files', files, target, title },
+    {
+      action: 'bundle_files',
+      files,
+      target,
+      title,
+      ...(relativePaths.length ? { relative_paths: relativePaths } : {}),
+    },
     operationId(),
   )
   // A new bundle is the one whose grouping state the receipt confirms

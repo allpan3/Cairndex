@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import { AllTagsPage } from './AllTagsPage'
-import type { FileBrowserEntry, LibraryRead } from '../api/client'
+import type { FileBrowserEntry, FileSelection, LibraryRead } from '../api/client'
 import { useTags } from '../api/hooks'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { getHostLabels, hostAltKeyHeld } from '../platform'
@@ -23,6 +23,7 @@ import { usePersistentState } from '../state/usePersistentState'
 import { CatalogToast, type CatalogNotice } from './CatalogToast'
 import { useCatalogCollections } from './useCatalogCollections'
 import { useNavigationHistory } from './useNavigationHistory'
+import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
 
 /** One navigable place, for Back/Forward. */
 interface Place {
@@ -128,6 +129,17 @@ export function CatalogOrdinaryBrowser(props: {
   const [newCollection, setNewCollection] = useState<{ parentId: string | null } | null>(null)
   const [renameCollection, setRenameCollection] = useState<{ id: string } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
+  const [bundling, setBundling] = useState<{
+    kind: 'create' | 'add'
+    selection: FileSelection
+  } | null>(null)
+  const bundleSelection = (kind: 'create' | 'add') => (paths: string[], ids: string[]) =>
+    setBundling({ kind, selection: { fileIds: ids, relativePaths: paths } })
+  const bundled = (message: string) => {
+    setBundling(null)
+    setFile(null)
+    setNotice({ text: message })
+  }
   // Off by default, as in v0.2.1: a collection lists its own bundles, like a folder
   const [showSubContents, setShowSubContents] = usePersistentState(
     'cairndex.showSubcollectionContents',
@@ -402,6 +414,7 @@ export function CatalogOrdinaryBrowser(props: {
             <div className="catalog-file-surface">
               <FileBrowser
                 catalogLibrary={props.library}
+                catalogPathBundling={(status?.browse_version ?? 0) >= 13 && !props.blocked}
                 libraryName={libraryName}
                 headerLeading={headerLeading}
                 headerTrailing={headerTrailing}
@@ -419,8 +432,8 @@ export function CatalogOrdinaryBrowser(props: {
                   setFile(entry)
                 }}
                 onCollectionFromFolder={folderCollections ? setFolder : undefined}
-                onAddToBundle={props.onReview}
-                onCreateBundle={props.onReview}
+                onAddToBundle={bundleSelection('add')}
+                onCreateBundle={bundleSelection('create')}
                 hostLabels={getHostLabels()}
                 onRevealFile={hostFiles.onRevealFile}
                 onOpenFile={hostFiles.onOpenFile}
@@ -504,6 +517,20 @@ export function CatalogOrdinaryBrowser(props: {
                   : `Created “${collection.name}” with ${added} bundles.`,
             })
           }}
+        />
+      )}
+      {bundling?.kind === 'create' && (
+        <CreateBundleDialog
+          selection={bundling.selection}
+          onClose={() => setBundling(null)}
+          onApplied={bundled}
+        />
+      )}
+      {bundling?.kind === 'add' && (
+        <AddToBundleDialog
+          selection={bundling.selection}
+          onClose={() => setBundling(null)}
+          onApplied={bundled}
         />
       )}
       <CatalogToast
