@@ -2318,7 +2318,8 @@
               "save",
               "preview",
               "commit_preview",
-              "recover"
+              "recover",
+              "media_maintenance"
             ],
             "title": "Action",
             "type": "string"
@@ -2423,7 +2424,8 @@
               "save",
               "preview",
               "commit_preview",
-              "recover"
+              "recover",
+              "media_maintenance"
             ],
             "title": "Action",
             "type": "string"
@@ -7078,6 +7080,65 @@
         "title": "LocalMediaRead",
         "type": "object"
       },
+      "MaintenanceRead": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "probe",
+                  "storyboards"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "required": [
+          "job",
+          "kind"
+        ],
+        "title": "MaintenanceRead",
+        "type": "object"
+      },
+      "MaintenanceStart": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "probe",
+              "storyboards"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "operation": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Operation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "operation"
+        ],
+        "title": "MaintenanceStart",
+        "type": "object"
+      },
       "MakeDirectoryRequest": {
         "description": "Create one new directory at a library-relative path.",
         "properties": {
@@ -9360,6 +9421,17 @@
           "invalid": {
             "title": "Invalid",
             "type": "integer"
+          },
+          "maintenance_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Version"
           },
           "media_version": {
             "anyOf": [
@@ -29828,6 +29900,162 @@
           }
         },
         "summary": "Storyboard",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/maintenance": {
+      "get": {
+        "operationId": "maintenance_status_api_v1_libraries__library_id__replica_media_maintenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Maintenance Status",
+        "tags": [
+          "replica-media"
+        ]
+      },
+      "post": {
+        "operationId": "start_maintenance_api_v1_libraries__library_id__replica_media_maintenance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Maintenance",
         "tags": [
           "replica-media"
         ]

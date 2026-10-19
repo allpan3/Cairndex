@@ -461,6 +461,12 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
     for row in db.execute("SELECT * FROM catalog_jobs"):
         intent = json.loads(row["intent"])
         CatalogJobRequest.model_validate({"operation": row["id"], **intent})
+        if intent["action"] == "media_maintenance":
+            from cairndex.replicas.maintenance import MaintenanceIntent, MaintenanceProgress
+
+            MaintenanceIntent.model_validate(intent["body"])
+            if row["result"]:
+                MaintenanceProgress.model_validate_json(row["result"])
         if row["result"]:
             result = json.loads(row["result"])
             if "sources" in result:

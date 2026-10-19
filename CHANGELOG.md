@@ -370,6 +370,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore separate Scan, Suggest grouping, Collect metadata and Generate
+  storyboards controls in portable libraries. Explicit media passes run in the
+  background with progress, cancellation and retained private work.
+
 - Restore ordinary Smart Collection creation, editing and deletion in portable
   libraries, with live match counts and private retained drafts. Renaming keeps
   advanced rules unchanged. Saves and deletion retain the editor's opening

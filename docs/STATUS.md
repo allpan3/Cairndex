@@ -344,6 +344,24 @@ with the same editor, guarded command and regression scenarios. The capability
 check accepts supported later browse versions. Other restoration slices and
 the final merged-main owner build remain separate.
 
+Branch `fix/portable-maintenance` restores separate Scan, Suggest grouping,
+Collect metadata and Generate storyboards controls. Media passes reuse durable
+private catalog jobs and the bounded background source/storyboard workers, with
+progress and cancellation. On-demand generation remains available. Eight focused
+Linux backend/worker cases and backend/web static checks pass. The synthetic
+maintenance and grouping-menu browser scenarios pass, including unchanged source
+hashes and authored file values. The full Linux gate passed 2,023 backend
+tests, all 57 browser scenarios, four frozen checks and 135 Rust tests. Receipt
+`restoration-maintenance-v1-linux-20261019-121536` ends in `Final result: 0`
+with unchanged guest source. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in `Final result: 0`
+with this maintenance implementation. Publication review then corrected the
+browser test's cleanup to close its page and stop its child server. The unchanged
+application passes that scenario again on both guests, with lint and formatting,
+in the `maintenance-cleanup-20261020-015257` receipts. Publication and the final
+merged-main owner build remain separate.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

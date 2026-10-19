@@ -337,6 +337,7 @@ class CatalogStorage(PrivateStore):
                 "grouping_version": 1 if self.descriptor.format_version == 3 else None,
                 "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
+                "maintenance_version": 1,
                 "export_version": 1,
                 "storyboard_version": 1,
                 "moments_version": 4,

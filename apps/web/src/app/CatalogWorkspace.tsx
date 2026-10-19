@@ -35,6 +35,8 @@ import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
 import { StorageAccessNotice } from './StorageAccessNotice'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
+import { useCatalogMaintenance } from './useCatalogMaintenance'
+import { CatalogMaintenanceNotice } from './CatalogMaintenanceNotice'
 import {
   getConnections,
   getPendingSelectionVersion,
@@ -243,6 +245,10 @@ export function CatalogWorkspace({
     refetchInterval: 1000,
   })
   const state = status.data
+  const maintenance = useCatalogMaintenance(
+    libraryId,
+    state?.maintenance_version === 1 && Boolean(state.ready) && Boolean(editor),
+  )
   const discovery = useReplicaDiscovery(
     libraryId,
     state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
@@ -490,7 +496,32 @@ export function CatalogWorkspace({
           }
           libraryMenu={[
             ...(discovery.enabled
-              ? [{ label: 'Review Discoveries…', onClick: () => discovery.setOpen(true) }]
+              ? [
+                  {
+                    label: 'Scan new files',
+                    disabled: !discovery.canStart,
+                    onClick: () => void discovery.start({ openReview: false }),
+                  },
+                  {
+                    label:
+                      state?.grouping_version === 1 ? 'Suggest grouping…' : 'Review Discoveries…',
+                    onClick: () => discovery.setOpen(true),
+                  },
+                ]
+              : []),
+            ...(state?.maintenance_version === 1
+              ? [
+                  {
+                    label: 'Collect metadata',
+                    disabled: !maintenance.canStart,
+                    onClick: () => void maintenance.start('probe'),
+                  },
+                  {
+                    label: 'Generate storyboards',
+                    disabled: !maintenance.canStart,
+                    onClick: () => void maintenance.start('storyboards'),
+                  },
+                ]
               : []),
             { label: 'Metadata Review', onClick: () => setReviewMode(true) },
           ]}
@@ -498,6 +529,12 @@ export function CatalogWorkspace({
             <>
               {discovery.enabled && (
                 <DiscoveryNotice discovery={discovery} onComplete={(text) => onNotice({ text })} />
+              )}
+              {state?.maintenance_version === 1 && (
+                <CatalogMaintenanceNotice
+                  maintenance={maintenance}
+                  onComplete={(text) => onNotice({ text })}
+                />
               )}
               {(attention || storageAccess) && (
                 <section className="sidebar__notice" aria-label="Metadata delivery status">

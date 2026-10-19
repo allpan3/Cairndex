@@ -432,9 +432,24 @@ HLS startup failure frees its reservation, and release stops local sessions.
 Private observations and resume tables live beside authored projection in the
 private DB. Image/subtitle derivatives live under its `cache` directory; HLS stays
 in the server's private transcode directory. None becomes an authored event or a
-synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Library-wide
-storyboard passes, audio-only viewing, cross-device resume, source discovery and
-physical source operations are outside this media capability.
+synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Audio-only viewing, cross-device resume,
+source discovery and physical source operations are outside this media capability.
+
+Servers advertising `maintenance_version: 1` also offer explicit **Collect
+metadata** and **Generate storyboards** passes through `/replica/media/maintenance`.
+The HTTP request only retains a `media_maintenance` catalog job. The background
+source worker inspects one cataloged file at a time; normal exchange and status
+requests never execute probes or whole-library media work. Storyboard preparation
+uses the existing bounded queue after probing duration. Progress retains a cursor,
+completed/total counts and skipped/failed counts, with no raw exception text.
+The pass captures an upper file identity and an initial total once, then uses
+indexed cursor reads. Completion reconciles the total if files changed during
+the pass. A new pass covers files added after its boundary.
+
+Cancellation stops subsequent files and aborts an in-flight probe. An already
+queued storyboard may finish because it also serves viewers. Restart retains
+progress; private recovery requires a new explicit pass. Media bytes,
+shared metadata, playback progress and bundle cursors remain unchanged.
 
 Servers with `export_version: 1` offer contact sheets and GIF exports through the
 shared `/files/{id}/contact-sheet` and `/files/{id}/exports` routes. Both observe

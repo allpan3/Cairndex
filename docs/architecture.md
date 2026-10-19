@@ -312,8 +312,13 @@ chained for the same library after successful probe because eligibility and
 sampling need duration.
 
 A portable library's sidebar has the same shape: **Update** runs replica
-discovery, and its ⋯ menu holds **Add Files…**, **File Operations…**, **Review
-Discoveries…** and **Metadata Review**. Below them the sidebar shows only status
+discovery, and its ⋯ menu holds **Add Files…**, **File Operations…**, **Scan
+new files**, **Collect metadata**, **Suggest grouping…**, **Generate storyboards**
+and **Metadata Review**. Scan discovers privately without opening review; Suggest
+grouping opens the retained editable tree. Explicit metadata and storyboard passes
+use durable private jobs on the background worker, with counts and cancellation.
+On-demand probes and storyboards remain available. Below them the sidebar shows
+only status
 that needs the owner — a running or failed Update, discovered files that wait
 for review, a metadata exchange problem, or a network share that needs Allow
 Access. Metadata review keeps the full delivery status, Update controls and

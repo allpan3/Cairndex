@@ -3788,6 +3788,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Maintenance Status */
+        get: operations["maintenance_status_api_v1_libraries__library_id__replica_media_maintenance_get"];
+        put?: never;
+        /** Start Maintenance */
+        post: operations["start_maintenance_api_v1_libraries__library_id__replica_media_maintenance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/media/moments/{moment_id}/clip.mp4": {
         parameters: {
             query?: never;
@@ -4951,7 +4969,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "save" | "preview" | "commit_preview" | "recover";
+            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance";
             /** Error */
             error: string | null;
             /** Id */
@@ -4981,7 +4999,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "save" | "preview" | "commit_preview" | "recover";
+            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance";
             /** Body */
             body: {
                 [key: string]: unknown;
@@ -6576,6 +6594,22 @@ export interface components {
             /** State */
             state: string;
         };
+        /** MaintenanceRead */
+        MaintenanceRead: {
+            job: components["schemas"]["CatalogJob"] | null;
+            /** Kind */
+            kind: ("probe" | "storyboards") | null;
+        };
+        /** MaintenanceStart */
+        MaintenanceStart: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "probe" | "storyboards";
+            /** Operation */
+            operation: string;
+        };
         /**
          * MakeDirectoryRequest
          * @description Create one new directory at a library-relative path.
@@ -7334,6 +7368,8 @@ export interface components {
             inspector_version?: number | null;
             /** Invalid */
             invalid: number;
+            /** Maintenance Version */
+            maintenance_version?: number | null;
             /** Media Version */
             media_version?: number | null;
             /** Moments Version */
@@ -15973,6 +16009,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplicaStoryboardRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    maintenance_status_api_v1_libraries__library_id__replica_media_maintenance_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_maintenance_api_v1_libraries__library_id__replica_media_maintenance_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRead"];
                 };
             };
             /** @description Validation Error */

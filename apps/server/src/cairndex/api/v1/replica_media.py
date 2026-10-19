@@ -17,8 +17,10 @@ from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.playback import assess_playability
 from cairndex.replicas.catalog.album import CatalogAlbumPage, album, revision, visible
 from cairndex.replicas.catalog.projection import read_row
+from cairndex.replicas.catalog.schemas import CatalogJob
+from cairndex.replicas.maintenance import MaintenanceIntent
 from cairndex.replicas.media import ReplicaMedia, catalog_file
-from cairndex.replicas.protocol import ReplicaError
+from cairndex.replicas.protocol import ReplicaError, Token
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/media", tags=["replica-media"])
 
@@ -31,6 +33,30 @@ def replica_media(access: MediaAccessDep) -> ReplicaMedia:
 
 
 Media = Annotated[ReplicaMedia, Depends(replica_media)]
+
+
+class MaintenanceStart(MaintenanceIntent):
+    operation: Token
+
+
+class MaintenanceRead(BaseModel):
+    job: CatalogJob | None
+    kind: Literal["probe", "storyboards"] | None
+
+
+@router.get("/maintenance", response_model=MaintenanceRead)
+def maintenance_status(media: Media) -> MaintenanceRead:
+    from cairndex.replicas.maintenance import latest
+
+    return MaintenanceRead.model_validate(latest(media.store))
+
+
+@router.post("/maintenance", response_model=MaintenanceRead, status_code=202)
+def start_maintenance(payload: MaintenanceStart, media: Media) -> MaintenanceRead:
+    from cairndex.replicas.catalog.jobs import enqueue
+
+    job = enqueue(media.store, payload.operation, "media_maintenance", {"kind": payload.kind})
+    return MaintenanceRead(job=CatalogJob.model_validate(job), kind=payload.kind)
 
 
 # The media view adds only device-local observations to the existing immutable catalog identity
