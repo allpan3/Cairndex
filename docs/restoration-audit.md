@@ -614,6 +614,17 @@ The notification hook, adapter and regression cases match that qualified source.
 Publication and the final merged-main owner build remain separate.
 No new ADR is needed for restoring this existing desktop policy.
 
+The final badge correction removes the card's user-facing review state under
+ADR-0011 while preserving internal grouping confirmation. Source history shows
+this deviation predates PR #45. The normal type and missing-file badges remain;
+Linux web lint/type checks and the focused presentation case pass, including
+normal type and missing-state labels. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The card and its regression case match that qualified source. Publication and
+the final merged-main owner build remain separate.
+This implements the accepted decision and does not need another ADR.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

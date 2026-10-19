@@ -370,6 +370,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Remove the obsolete bundle-card review badge, as ADR-0011 requires. Internal
+  grouping confirmation still controls future suggestions.
+
 - Show fresh private discoveries in Unbundled and manual-bundling choices,
   including ranked nearby files and complete paged search. Confirmation keeps
   the existing source checks and creates no shared staging bundles.

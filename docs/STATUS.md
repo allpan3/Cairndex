@@ -419,6 +419,15 @@ receipts, `restoration-combined-v4-mac-20261019-165332` and
 The notification hook, adapter and regression cases match that qualified source.
 Publication and the final merged-main owner build remain separate.
 
+Branch `fix/retire-bundle-review-badge` removes the old card review badge
+under ADR-0011. The deviation already existed before the portable replacement;
+it was not caused by conversion. Ordinary type and missing-file badges remain.
+Linux web lint/type checks and the focused presentation case pass. Both complete
+combined restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The card and its regression case match that qualified source. Publication and
+the final merged-main owner build remain separate.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through
