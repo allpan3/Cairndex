@@ -359,6 +359,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Preserve job arrival order when two jobs are created in the same millisecond.
+  Scheduling and active-job listings now use the recorded creation time, with
+  stable IDs only for exact timestamp ties. Work-class priorities stay the same.
+
 - Keep grouping keyboard focus on a requested virtual row until it mounts,
   without taking focus after the owner moves to another control.
 

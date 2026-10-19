@@ -94,6 +94,24 @@ additional missing behavior and stopped before acceptance.
 
 ### Completing behavior restoration (2026-10-19)
 
+A delayed CI result for PR #106's superseded head exposed a separate registry
+queue bug: sorting solely by ULID can reverse arrivals within one millisecond.
+The local `fix/job-queue-arrival-order` repair uses recorded creation time for
+scheduling and active-job listings, with IDs only for exact timestamp ties.
+Priority classes are unchanged. The deterministic same-millisecond case fails
+against the old code; the fix, exact-tie case and all 33 focused job/Smart
+Collection cases pass on both guests, with static checks. No schema migration
+is needed.
+
+The exact queue implementation and regression tests also pass within the
+complete restoration gates. Receipts
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332` both end in `Final result: 0`
+on unchanged source: 2,060/2,059 backend tests, 1,366 frontend tests, all 62
+browser scenarios, four packaged checks and 137/135 Rust tests. macOS app
+build/distribution and both platforms' static/build checks pass. Other
+restoration slices remain separate; this queue branch does not contain them.
+
 Branch `fix/complete-portable-restoration` compares the application before
 PR #45 with the current implementation, the decision timeline and the owner's
 feedback. It covers discovery/grouping review, Update progress, collection
