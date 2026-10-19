@@ -160,6 +160,16 @@ a publication receipt. A temporary write-denied synthetic provider reproduces
 the old peer-value failure. Waiting for fresh HTTP outbox status before copying
 passes that same macOS scenario. Both full gates must pass the corrected test.
 
+Both corrected full gates passed on the browsing/history implementation, with
+synthetic temporary libraries only. macOS passed 1,960 backend tests, 155 web
+test files, all 49 browser scenarios, four frozen checks, 137 Rust tests and
+packaged-app distribution. Linux passed 1,959 backend tests, all 49 browser
+scenarios, four frozen checks and 135 Rust tests, with its unsupported-platform
+manifest check deselected. Receipts are
+`restoration-browsing-history-v6-mac-20261019-060149` and
+`restoration-browsing-history-v6-linux-20261019-060218`. Editable grouping and
+the remaining restoration rows still require separate qualification.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed
