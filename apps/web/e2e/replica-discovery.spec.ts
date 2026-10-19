@@ -11,10 +11,20 @@ import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from
 // Otherwise the owner opens it: Metadata review offers "Review discoveries",
 // and the bundle browser's sidebar, where a library switch lands, offers
 // "Review Discoveries…".
-const reviewDiscoveries = (page: Page) =>
-  page.getByRole('button', { name: /^Review (discoveries|Discoveries…)$/ }).click()
-const reviewOpened = (page: Page) =>
-  expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
+// These scenarios keep coverage of retained earlier candidate drafts and
+// prepared reviews. replica-grouping.spec.ts exercises the active editable tree.
+async function reviewOpened(page: Page) {
+  await expect(page.getByRole('dialog', { name: /^(Discovery|Grouping) review$/ })).toBeVisible()
+  if (await page.getByRole('dialog', { name: 'Grouping review' }).isVisible()) {
+    await page.getByRole('button', { name: 'File changes and saved reviews…' }).click()
+    await page.getByRole('button', { name: 'Earlier grouping choices…' }).click()
+  }
+  await expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
+}
+async function reviewDiscoveries(page: Page) {
+  await page.getByRole('button', { name: /^Review (discoveries|Discoveries…)$/ }).click()
+  await reviewOpened(page)
+}
 const closeDiscoveries = (page: Page) =>
   page
     .getByRole('dialog', { name: 'Discovery review' })

@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from cairndex.devtools.catalog_fixture import create_disposable
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.catalog.conversion import prepare_disposable
 from cairndex.replicas.catalog.protocol import DISCOVERY_CAPABILITIES, CatalogDescriptor
 
@@ -17,6 +18,8 @@ def create_discovery(*, parent: Path | None = None, playable: bool = False) -> P
         root = create_playable(parent=parent, duration=18)
     else:
         fixture = create_disposable(parent=parent, bundles=3)
+        with connect_writable(fixture.source / ".cairndex/library.db") as db:
+            db.execute("UPDATE asset_bundles SET grouping_state='CONFIRMED'")
         root = prepare_disposable(fixture).package
         shutil.copytree(fixture.source / "Synthetic", root / "Synthetic")
     marker = root / ".cairndex/manifest.json"

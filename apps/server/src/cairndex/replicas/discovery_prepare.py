@@ -96,7 +96,7 @@ def copy(db: sqlite3.Connection, operation: str, intent: dict[str, Any], cursor:
             "SELECT 1 FROM discovery_accepted_files WHERE path=? AND generation=?",
             (original["path"], original["generation"]),
         ).fetchone()
-        if accepted:
+        if accepted and not original.get("staged"):
             continue
         db.execute(
             "INSERT INTO discovery_review_files VALUES (?,?,?,?,NULL,?)",
@@ -156,11 +156,16 @@ def verify(
         file = json.loads(row["original"])
         if sources.inspect(root, file["path"])["generation"] != file["generation"]:
             raise ReplicaError("Local files changed; run Update before reviewing")
+        if file.get("staged"):
+            from cairndex.replicas.discovery_staged import validate
+
+            validate(DiscoveryPreview(store, db, operation), file)
         if intent.get("verification"):
             file = verified_file(db, root, file)
-            file["id"] = sources.file_id(
-                store.descriptor.library_uuid, store.descriptor.epoch, file
-            )
+            if not file.get("staged"):
+                file["id"] = sources.file_id(
+                    store.descriptor.library_uuid, store.descriptor.epoch, file
+                )
         db.execute(
             "UPDATE discovery_review_files SET body=? WHERE operation=? AND position=?",
             (value_text(file), operation, row["position"]),
@@ -241,20 +246,28 @@ def groups(builder: DiscoveryPreview, intent: dict[str, Any], candidate: dict[st
             raise ReplicaError("The target bundle is unavailable; review another destination")
         builder.get(key("asset_bundles", target, "$alive"))
     else:
-        target = identity(db, operation, row["id"])
-        builder.create(
-            "asset_bundles",
-            defaults(
+        from cairndex.replicas.discovery_staged import reusable
+
+        target = reusable(builder, row["id"])
+        if target:
+            builder.put(key("asset_bundles", target, "title"), title)
+            builder.put(key("asset_bundles", target, "grouping_state"), "CONFIRMED")
+            builder.put(key("asset_bundles", target, "grouping_source"), "MANUAL")
+        else:
+            target = identity(db, operation, row["id"])
+            builder.create(
                 "asset_bundles",
-                id=target,
-                title=title,
-                grouping_state="CONFIRMED",
-                grouping_source="MANUAL",
-                imported_at=stamp,
-                created_at=stamp,
-                updated_at=stamp,
-            ),
-        )
+                defaults(
+                    "asset_bundles",
+                    id=target,
+                    title=title,
+                    grouping_state="CONFIRMED",
+                    grouping_source="MANUAL",
+                    imported_at=stamp,
+                    created_at=stamp,
+                    updated_at=stamp,
+                ),
+            )
     builder.members(target)
     placement = place(
         builder,
@@ -288,9 +301,12 @@ def files(builder: DiscoveryPreview, cursor: int, intent: dict[str, Any]) -> Non
     ).fetchall()
     for row in rows:
         file, group, target = json.loads(row["body"]), json.loads(row["grouping"]), row["target"]
-        if db.execute(
-            "SELECT 1 FROM catalog_paths WHERE family='asset_files' AND path=?", (file["path"],)
-        ).fetchone():
+        if (
+            not file.get("staged")
+            and db.execute(
+                "SELECT 1 FROM catalog_paths WHERE family='asset_files' AND path=?", (file["path"],)
+            ).fetchone()
+        ):
             raise ReplicaError(
                 "This path is already cataloged; run Update to reconcile its identity"
             )
@@ -299,27 +315,36 @@ def files(builder: DiscoveryPreview, cursor: int, intent: dict[str, Any]) -> Non
             "WHERE operation=? AND bundle=?",
             (operation, target),
         ).fetchone()[0]
-        builder.create(
-            "asset_files",
-            defaults(
+        if file.get("staged"):
+            from cairndex.replicas.discovery_staged import transfer
+
+            transfer(builder, file, target, sequence)
+        else:
+            builder.create(
                 "asset_files",
-                id=file["id"],
-                bundle_id=target,
-                relative_path=file["path"],
-                original_filename=Path(file["path"]).name,
-                role=file.get("role", "OTHER"),
-                sequence=sequence,
-                created_at=group["stamp"],
-                updated_at=group["stamp"],
-            ),
-        )
+                defaults(
+                    "asset_files",
+                    id=file["id"],
+                    bundle_id=target,
+                    relative_path=file["path"],
+                    original_filename=Path(file["path"]).name,
+                    role=file.get("role", "OTHER"),
+                    sequence=sequence,
+                    created_at=group["stamp"],
+                    updated_at=group["stamp"],
+                ),
+            )
         builder.put(key("asset_files", file["id"], "$content"), file["evidence"])
-        if not group["addition"] and file.get("role") == "COVER":
+        if (
+            not group["addition"]
+            and file.get("role") == "COVER"
+            and not builder.get(key("asset_bundles", target, "cover_file_id"))
+        ):
             builder.put(key("asset_bundles", target, "cover_file_id"), file["id"])
         db.execute("INSERT INTO discovery_review_done VALUES (?,?)", (operation, row["position"]))
     db.execute(
         "UPDATE discovery_review_work SET phase=?,progress=progress+? WHERE operation=?",
-        ("files" if rows else "extras", len(rows), operation),
+        ("files" if rows else "dependents", len(rows), operation),
     )
 
 
@@ -401,6 +426,21 @@ def extras(builder: DiscoveryPreview) -> None:
             file = json.loads(member["body"])
             suffix = Path(file["path"]).suffix.lower()
             if suffix in (".srt", ".vtt"):
+                existing_track = False
+                for track in db.execute(
+                    "SELECT entity FROM catalog_rows WHERE family='subtitle_tracks' "
+                    "AND json_extract(body,'$.source_file_id')=?",
+                    (file["id"],),
+                ):
+                    current = builder.get(key("subtitle_tracks", track[0], "$source"))
+                    if (
+                        current["bundle_id"] == target
+                        and current["video_file_id"] == group["videos"][0]
+                    ):
+                        existing_track = True
+                        break
+                if existing_track:
+                    continue
                 builder.create(
                     "subtitle_tracks",
                     defaults(
@@ -465,6 +505,19 @@ def step(store: CatalogStore, db: sqlite3.Connection, root: Path, row: sqlite3.R
         groups(builder, intent, json.loads(work["header"]))
     elif phase == "files":
         files(builder, cursor, intent)
+    elif phase in ("dependents", "cleanup"):
+        from cairndex.replicas import discovery_staged
+
+        done = (
+            discovery_staged.dependents(builder, cursor)
+            if phase == "dependents"
+            else discovery_staged.cleanup(builder, cursor)
+        )
+        if done:
+            db.execute(
+                "UPDATE discovery_review_work SET phase=?,cursor=-1 WHERE operation=?",
+                ("cleanup" if phase == "dependents" else "extras", operation),
+            )
     elif phase == "extras":
         extras(builder)
     elif phase == "guards":

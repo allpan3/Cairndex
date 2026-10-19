@@ -63,6 +63,16 @@ for removing those fields. Restore their indexed search while keeping file notes
 and moment comments searchable. Manual grouping's filename candidates must also
 work at the library root and across folders, independently of the first page.
 
+The broader source comparison also finds unlinked media opening disconnected
+in File Browser: portable entries require a catalog ID, while the earlier
+viewer could open a supported relative path without indexing it. New-library
+creation also no longer invokes the earlier indexing callback; desktop index
+requests have no active consumer. Verify and restore initial private discovery
+without publishing provisional groupings. Smart Collection creation/deletion
+currently opens Metadata Review instead of the earlier filter editor and
+explicit deletion. These ordinary workflows remain open in the final comparison;
+their underlying portable safeguards do not require losing the controls.
+
 ## Owner scope decisions (2026-10-19)
 
 Restore Recently Used, Size, Date Modified and Date Opened from this device's
@@ -169,6 +179,127 @@ manifest check deselected. Receipts are
 `restoration-browsing-history-v6-mac-20261019-060149` and
 `restoration-browsing-history-v6-linux-20261019-060218`. Editable grouping and
 the remaining restoration rows still require separate qualification.
+
+The browsing/history slice merged through PR #99 after all 16 hosted checks
+passed. The trusted privacy gate required its reviewed synthetic image declaration
+on main first; prerequisite PR #100 registered the exact image without changing
+scanner rules or private patterns. Bringing that main into the feature branch
+preserved the qualified file tree exactly, and renewed hosted CI passed.
+
+Staged-file eligibility and identity-preserving acceptance are implemented on
+`fix/portable-grouping-identities`. The planner now settles confirmed owners
+only, and captures the observed path, lifetime and arrangement bases of eligible
+cataloged files. Acceptance reuses one complete provisional source where possible,
+keeps file IDs and dependent moments/subtitle choices, and serializes emptied
+source memberships. Sources with their own metadata or collection/tag membership
+cannot be silently discarded when combining groups. This is a safety constraint
+on cleanup; keep those sources as separate groups. Discovery fixtures now mark
+their settled examples confirmed explicitly.
+
+Three focused cases pass for preserved metadata/IDs, changed confirmation and
+refusal to discard another source's notes. The wider discovery/planner/large-review
+slice passed 41 cases, and media plus structural recovery passed 28. Backend lint,
+format and type checks passed. Full qualification and the editable review UI remain
+outstanding. This implements ADR-0011 through the current private review model;
+it does not need a new architecture decision.
+
+The private editable grouping engine is implemented on
+`fix/portable-grouping-review`, with paged logical nodes, persistent file selection,
+idempotent revision-guarded commands and bounded role recomputation. Rename,
+file moves/order, reparenting, reversible additions, existing collection context,
+bundle/collection conversion and per-folder Narrow/Widen operate on this private
+draft. Regrouping copies only affected members into bounded planner pages before
+an atomic splice; unrelated edits and dragged-out files remain in place. Private
+schema validation and recovery inventory include the graph and command receipts.
+
+The initial engine slice added private API and lifecycle integration, immutable
+export and guarded acceptance before advertising a capability. The application
+tree follows in the later slice described below.
+Ten focused cases passed for paging, exact retries, restart, stem-rule parity,
+strict sidecar splitting, collection placement and recovery detecting lost choices.
+The broader grouping/planner/recovery slice passed 99 cases on Linux. Backend
+lint, format and type checks passed; full feature qualification remains open.
+
+The next slice passed 18 grouping acceptance, paging, API and worker cases.
+Checks cover edited membership/order and existing collection placement, stale
+source refusal, exact retry, partial acceptance retaining IDs/moments and refusing
+later competing confirmation, and the registered worker completing queued edits.
+Captured collection bases are checked again before acceptance. The graph freezes
+during review and retains unchecked files after acceptance. Remaining staged bases
+advance only through that exact accepted event and its ancestry. Backend lint,
+format and type checks pass. API artifacts are regenerated; UI and full feature
+qualification remain open. These controls extend the existing guarded review
+contract, so a new ADR is not needed.
+
+Optional complete-content verification now runs against the immutable edited
+grouping snapshot before preparation. Cancellation retains the original draft.
+The ordinary and edited review paths share the same verification enqueue logic;
+14 verification and grouping-acceptance cases pass on Linux, along with backend
+lint, formatting and type checks. The editable interface remains unfinished.
+
+The first application tree is now wired behind `grouping_version: 1`. It retains
+private selection and edited names across reopening, supports file moves/order,
+Narrow/Widen, kind conversion, persisted collection placement and guarded
+preparation/acceptance. Complete-content verification remains available. The
+uncertain view queries the complete draft; file-change categories filter before
+pagination, and earlier candidate drafts remain accessible.
+
+Linux checks pass for 29 backend workspace/acceptance/verification/recovery cases,
+six focused web cases and the 60 legacy reference cases. Two new live scenarios
+pass for exact edited membership/order, verification, unchanged source bytes and
+201-file partial acceptance. The latter keeps the last file visible after edits
+and adds the remaining file to the same settled bundle. The earlier retained
+candidate/recovery scenario also passes after preserving its selection across
+the compatibility view. Loaded pages remain visible but read-only while their
+revisions refresh, using fresh cursors for the complete loaded prefix.
+
+Recovery now pauses unfinished grouping commands at their original phase and
+cursor. Only an explicit exact resume continues them. Both queued and partially
+executed edits pass actual backup/prepare/activate checks without automatically
+changing the recovered draft. Existing safety decisions cover this private edit
+lifecycle; a separate ADR would repeat ADR-0035's explicit-retry requirement.
+
+The next slice implements media summaries and repeated-sibling rollups over
+loaded node pages. Runs contain at least three matching bundles and at most
+fifty, so one revision-guarded checkbox command captures the exact displayed
+members. Uncertain groups, additions and different shapes stay visible. Opening
+or folding a run never changes selection. Show files applies to later requested
+pages with per-row fold overrides; dragging temporarily reveals individual file
+targets without changing that preference. Arrow navigation also works from row
+controls. Twenty-five focused backend cases, 69 focused web/reference cases and
+static checks pass on Linux. An ordering regression failed before the fix:
+regrouping one folder could renumber unrelated siblings against positions already
+changed by the same SQL update. Materializing the old positions preserves natural
+and manually chosen order across Narrow/Widen. The certainty comparison also
+failed before its fix at all three stem levels; automatic regeneration now uses
+the earlier evidence rules, while explicit type splits inherit parent certainty.
+
+All seven focused Linux browser scenarios pass. The combined interaction case
+covers sibling summaries and mixed selection, row keys, Narrow/Widen, file and proposal drags,
+type conversion, keyboard placement, retained reopening in the ordinary browser
+and unchanged source bytes. Portal options keep their keyboard navigation instead
+of bubbling into tree movement. Proposal drags keep file lists folded so their
+targets remain in place; only file drags reveal those lists. Filtering an empty uncertain view shows a clear
+message and keeps selection unchanged. The other cases cover earlier discovery
+drafts, repairs, cancellation, competing identities and 201-file partial acceptance.
+
+The shown-collection expansion controls intentionally preserve paging; they do
+not download the whole draft. The [synthetic review capture](screenshots/portable-grouping-review.png)
+has been inspected for privacy. Both full VM gates remain required before publication.
+
+The first full Linux grouping gate failed when prior synthetic test directories
+left its 4 GiB tmpfs without room for the complete backend suite. It also found
+an outdated preview test expecting a provisional badge on the now-confirmed
+playback fixture. The assertion now separates confirmed grouping from local
+media observations. Its other 51 browser scenarios passed. The obsolete macOS
+run was cancelled before qualification because it retained that same assertion.
+Neither run qualifies the feature; corrected full gates are required.
+
+The corrected Linux full gate passed with 1,987 backend tests, all 52 browser
+scenarios, four frozen checks, 159 web test files and 135 Rust tests. Its receipt
+is `restoration-grouping-v2-linux-20261019-084004`, with `Final result: 0`.
+macOS qualification remains pending. PR #101 registered the exact reviewed
+synthetic grouping capture on main before any image publication.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.

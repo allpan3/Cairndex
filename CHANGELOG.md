@@ -348,6 +348,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore editable grouping review for portable libraries: tree selection,
+  rename, Narrow/Widen, file moves/order, bundle/collection conversion and
+  collection placement, media summaries and expandable same-shape sibling runs.
+  Keyboard navigation works from row controls; file drags reveal their targets.
+  Drafts stay private until guarded acceptance; partial
+  acceptance retains remaining choices. Complete-content verification and
+  identity-change review remain available. Servers advertise `grouping_version: 1`.
+
+- Include still-unconfirmed catalog files in grouping suggestions and preserve
+  their file identities, notes, moments and subtitle selections when accepted.
+  Reuse a complete provisional source bundle where possible; retain its metadata
+  and refuse to discard metadata from another source. Confirmed groupings stay
+  settled, and changed identities require fresh review.
+
 - Release the bulk inspector after a completed save, while retaining interrupted
   saves for exact retry. Collection badges now show direct membership while
   expanded and unique membership across descendants while collapsed.

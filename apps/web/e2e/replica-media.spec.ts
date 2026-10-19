@@ -474,8 +474,9 @@ test('portable cards preview a video this device has observed @fullstack', async
     await page.goto('/')
     const card = page.getByRole('option').filter({ hasText: 'Synthetic playback' })
     const thumb = card.locator('.card__thumb')
-    // Unobserved, the card has no duration and no preview
-    await expect(card.locator('.card__badge--review')).toBeVisible()
+    // Confirmed grouping is independent of this device's media observations.
+    await expect(card).toBeVisible()
+    await expect(card.locator('.card__badge--review')).toHaveCount(0)
     await expect(card.locator('.card__dur')).toHaveCount(0)
     await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'none')
     await card.click()

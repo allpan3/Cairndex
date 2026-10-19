@@ -74,9 +74,12 @@ def cancel(operation: Token, store: Catalog) -> Response:
 # Pending suggestions remain paged and isolated from the authored catalog
 @router.get("/candidates")
 def candidates(
-    store: Catalog, after: str = "", limit: int = Query(default=30, ge=1, le=50)
+    store: Catalog,
+    after: str = "",
+    limit: int = Query(default=30, ge=1, le=50),
+    file_changes: bool = False,
 ) -> dict[str, Any]:
-    return state.candidates(store, after, limit)
+    return state.candidates(store, after, limit, file_changes=file_changes)
 
 
 # Source pages retain the complete candidate identity while allowing arbitrarily many members

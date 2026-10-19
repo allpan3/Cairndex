@@ -5999,6 +5999,227 @@
         "title": "Grouping",
         "type": "string"
       },
+      "GroupingCancelReview": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "cancel_review",
+            "title": "Action",
+            "type": "string"
+          },
+          "review": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Review",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "review"
+        ],
+        "title": "GroupingCancelReview",
+        "type": "object"
+      },
+      "GroupingCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "intent": {
+            "discriminator": {
+              "mapping": {
+                "cancel_review": "#/components/schemas/GroupingCancelReview",
+                "destination": "#/components/schemas/GroupingDestination",
+                "folder": "#/components/schemas/GroupingFolder",
+                "kind": "#/components/schemas/GroupingKind",
+                "move_file": "#/components/schemas/GroupingMoveFile",
+                "prepare": "#/components/schemas/GroupingPrepare",
+                "rename": "#/components/schemas/GroupingRename",
+                "reparent": "#/components/schemas/GroupingReparent",
+                "select": "#/components/schemas/GroupingSelect",
+                "stem": "#/components/schemas/GroupingStem"
+              },
+              "propertyName": "action"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GroupingRename"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingSelect"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingMoveFile"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingReparent"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingDestination"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingFolder"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingKind"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingStem"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingPrepare"
+              },
+              {
+                "$ref": "#/components/schemas/GroupingCancelReview"
+              }
+            ],
+            "title": "Intent"
+          },
+          "operation": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation",
+          "revision",
+          "intent"
+        ],
+        "title": "GroupingCommand",
+        "type": "object"
+      },
+      "GroupingDestination": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "destination",
+            "title": "Action",
+            "type": "string"
+          },
+          "create_new": {
+            "title": "Create New",
+            "type": "boolean"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "node",
+          "create_new"
+        ],
+        "title": "GroupingDestination",
+        "type": "object"
+      },
+      "GroupingFolder": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "folder",
+            "title": "Action",
+            "type": "string"
+          },
+          "expanded": {
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "folder": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Folder",
+            "type": "string"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "node",
+          "folder",
+          "expanded"
+        ],
+        "title": "GroupingFolder",
+        "type": "object"
+      },
+      "GroupingKind": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "kind",
+            "title": "Action",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bundle",
+              "container"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "node",
+          "kind"
+        ],
+        "title": "GroupingKind",
+        "type": "object"
+      },
+      "GroupingMoveFile": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "move_file",
+            "title": "Action",
+            "type": "string"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "file": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "File",
+            "type": "string"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "file",
+          "node"
+        ],
+        "title": "GroupingMoveFile",
+        "type": "object"
+      },
       "GroupingPlanStatus": {
         "description": "Lifecycle of a durable grouping plan (ADR-0009).\n\nA plan is a snapshot of suggestions: ``open`` until the user applies it\n(``applied``), regeneration ``superseded`` it, or it was ``cancelled``.",
         "enum": [
@@ -6009,6 +6230,184 @@
         ],
         "title": "GroupingPlanStatus",
         "type": "string"
+      },
+      "GroupingPrepare": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "prepare",
+            "title": "Action",
+            "type": "string"
+          },
+          "verify_content": {
+            "default": false,
+            "title": "Verify Content",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "GroupingPrepare",
+        "type": "object"
+      },
+      "GroupingRename": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "rename",
+            "title": "Action",
+            "type": "string"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "node",
+          "title"
+        ],
+        "title": "GroupingRename",
+        "type": "object"
+      },
+      "GroupingReparent": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "reparent",
+            "title": "Action",
+            "type": "string"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "collection": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          }
+        },
+        "required": [
+          "action",
+          "node"
+        ],
+        "title": "GroupingReparent",
+        "type": "object"
+      },
+      "GroupingSelect": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "select",
+            "title": "Action",
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodes"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "selected"
+        ],
+        "title": "GroupingSelect",
+        "type": "object"
       },
       "GroupingSource": {
         "description": "What produced a bundle's current grouping (ADR-0009).\n\n``legacy`` backfills bundles created before grouping state existed (they are\ntreated as already confirmed). ``scan_suggestion`` marks provisional bundles\nstaged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user\ndecided directly, so they confirm immediately.",
@@ -6030,6 +6429,33 @@
         ],
         "title": "GroupingState",
         "type": "string"
+      },
+      "GroupingStem": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "stem",
+            "title": "Action",
+            "type": "string"
+          },
+          "level": {
+            "minimum": 0.0,
+            "title": "Level",
+            "type": "integer"
+          },
+          "node": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "node",
+          "level"
+        ],
+        "title": "GroupingStem",
+        "type": "object"
       },
       "HTTPValidationError": {
         "properties": {
@@ -8908,6 +9334,17 @@
               }
             ],
             "title": "Export Version"
+          },
+          "grouping_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouping Version"
           },
           "inspector_version": {
             "anyOf": [
@@ -25463,6 +25900,16 @@
             }
           },
           {
+            "in": "query",
+            "name": "file_changes",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "File Changes",
+              "type": "boolean"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -25844,6 +26291,1364 @@
         "summary": "Candidate Groups",
         "tags": [
           "replica-discovery"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/commands/{operation}": {
+      "get": {
+        "operationId": "command_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Operation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Command Api V1 Libraries  Library Id  Replica Discovery Grouping Commands  Operation  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Command",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/commands/{operation}/retry": {
+      "post": {
+        "operationId": "retry_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Operation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retry Api V1 Libraries  Library Id  Replica Discovery Grouping Commands  Operation  Retry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces": {
+      "get": {
+        "operationId": "workspaces_api_v1_libraries__library_id__replica_discovery_grouping_workspaces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Workspaces Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Workspaces",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{run}": {
+      "post": {
+        "operationId": "open_workspace_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__run__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Run",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Open Workspace Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Run  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Workspace",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}": {
+      "get": {
+        "operationId": "status_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Status Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/attention": {
+      "get": {
+        "operationId": "attention_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__attention_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Attention Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Attention Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attention",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/commands": {
+      "post": {
+        "operationId": "enqueue_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__commands_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupingCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Enqueue Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Commands Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enqueue",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/destinations": {
+      "get": {
+        "operationId": "destinations_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__destinations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "container",
+              "enum": [
+                "bundle",
+                "container"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 512,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Destinations Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Destinations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Destinations",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes": {
+      "get": {
+        "operationId": "nodes_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": -1,
+              "minimum": -1,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Nodes Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Nodes Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Nodes",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes/{node}/files": {
+      "get": {
+        "operationId": "files_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Node",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": -1,
+              "minimum": -1,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visible_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Visible Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Files Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Nodes  Node  Files Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Files",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes/{node}/folders": {
+      "get": {
+        "operationId": "folders_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__folders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Node",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visible_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Visible Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Folders Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Nodes  Node  Folders Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Folders",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/stems": {
+      "get": {
+        "operationId": "stems_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__stems_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "directory",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Directory"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stems Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Stems Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stems",
+        "tags": [
+          "replica-grouping"
         ]
       }
     },

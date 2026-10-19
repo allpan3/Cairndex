@@ -22,6 +22,7 @@ from cairndex.api.v1 import (
     playback_sessions,
     private_recovery,
     replica_discovery,
+    replica_grouping,
     replica_media,
     replicas,
     smart_collections,
@@ -39,6 +40,7 @@ router.include_router(libraries.router)
 router.include_router(replicas.router)
 router.include_router(catalog_replicas.router)
 router.include_router(replica_discovery.router)
+router.include_router(replica_grouping.router)
 router.include_router(source_operations.router)
 router.include_router(replica_media.router)
 router.include_router(private_recovery.router)

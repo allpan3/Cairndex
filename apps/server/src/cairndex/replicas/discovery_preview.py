@@ -241,10 +241,12 @@ class DiscoveryPreview(Preview):
 
     # Serialize each complete arrangement once after all selected members have been prepared
     def arrangements(self) -> None:
-        for (bundle,) in self.db.execute(
-            "SELECT DISTINCT bundle FROM discovery_review_members WHERE operation=?",
+        for (unit,) in self.db.execute(
+            "SELECT unit FROM discovery_review_arrangements WHERE operation=? "
+            "AND unit LIKE 'asset_bundles/%/$members'",
             (self.operation,),
         ):
+            bundle = unit.split("/")[1]
             raw = self.db.execute(
                 "SELECT json_group_array(json(body)) FROM (SELECT body FROM "
                 "discovery_review_members "

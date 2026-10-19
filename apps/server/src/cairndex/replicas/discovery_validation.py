@@ -28,6 +28,27 @@ def observation(body: dict[str, Any], *, physical: bool = True) -> None:
         or any(type(body[name]) is not int for name in ("device", "inode", "mtime"))
     ):
         raise ReplicaError("Invalid private discovery observation")
+    if "staged" in body:
+        staged = body["staged"]
+        if (
+            not isinstance(staged, dict)
+            or set(staged) != {"bundle", "bases"}
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", staged["bundle"])
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", body["id"])
+            or set(staged["bases"])
+            != {
+                *(
+                    f"asset_files/{body['id']}/{field}"
+                    for field in ("$alive", "relative_path", "$content")
+                ),
+                *(
+                    f"asset_bundles/{staged['bundle']}/{field}"
+                    for field in ("$alive", "$members", "grouping_state")
+                ),
+            }
+            or any(not isinstance(events, list) for events in staged["bases"].values())
+        ):
+            raise ReplicaError("Invalid staged discovery identity")
 
 
 # Every captured causal base must still be recoverable from retained immutable history

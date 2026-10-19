@@ -14,7 +14,7 @@ from cairndex.replicas.protocol import ReplicaError, canonical, checksum
 
 # Normalized candidate headers bind every group and file independently of transport page boundaries
 def candidate(db: sqlite3.Connection, row: sqlite3.Row, body: dict[str, Any]) -> None:
-    from cairndex.replicas.discovery_validation import observation
+    from cairndex.replicas.discovery_validation import observation, references
 
     if (
         body["kind"] not in {"new", "collection"}
@@ -30,6 +30,9 @@ def candidate(db: sqlite3.Connection, row: sqlite3.Row, body: dict[str, Any]) ->
     ):
         original = json.loads(file["body"])
         observation(original)
+        if original.get("staged"):
+            for bases in original["staged"]["bases"].values():
+                references(db, bases)
         if (
             file["position"] != count
             or not db.execute(
@@ -54,6 +57,10 @@ def candidate(db: sqlite3.Connection, row: sqlite3.Row, body: dict[str, Any]) ->
         "ORDER BY json_extract(body,'$.directory'),id",
         (row["id"],),
     ):
+        if body.get("workspace"):
+            for ancestor in json.loads(group[0])["ancestors"]:
+                for basis in ancestor.get("basis", {}).values():
+                    references(db, basis)
         digest.update(group[0].encode() + b"\n")
     if digest.hexdigest() != body["groups_digest"]:
         raise ReplicaError("Normalized discovery grouping context changed")
@@ -66,6 +73,10 @@ def source(
     from cairndex.replicas.discovery_validation import observation
 
     observation(file)
+    if original.get("staged") and (
+        file.get("id") != original["id"] or file.get("staged") != original["staged"]
+    ):
+        raise ReplicaError("A staged file changed its original catalog identity")
     if any(
         file[name] != original[name] for name in ("path", "generation", "mtime", "device", "inode")
     ):
@@ -112,6 +123,8 @@ def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> Non
             "verify",
             "groups",
             "files",
+            "dependents",
+            "cleanup",
             "extras",
             "guards",
             "finish",

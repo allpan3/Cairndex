@@ -49,6 +49,7 @@ class ReplicaStatus(StrictModel):
     storyboard_version: int | None = None
     moments_version: int | None = None
     discovery_version: int | None = None
+    grouping_version: int | None = None
     source_operations_version: int | None = None
     ready: bool
     blocked: str | None

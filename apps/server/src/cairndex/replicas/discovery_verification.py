@@ -46,51 +46,56 @@ def enqueue(store: CatalogStore, operation: str, candidate: str) -> dict[str, An
 
     capable(store)
     with store.connection() as db:
-        original = db.execute(
-            "SELECT body FROM discovery_candidates WHERE id=?", (candidate,)
-        ).fetchone()
-        if original is None:
-            raise ReplicaError("Discovery candidate is unavailable")
-        prior = db.execute(
-            "SELECT candidate FROM discovery_verifications WHERE id=?", (operation,)
-        ).fetchone()
-        if prior and prior[0] != candidate:
-            raise ReplicaError("Verification retry identity was reused for different files")
-        if not prior:
+        enqueue_in(db, operation, candidate)
+    return status(store, operation)
+
+
+def enqueue_in(db: sqlite3.Connection, operation: str, candidate: str) -> None:
+    """Queue the same verification atomically with its grouping export."""
+    original = db.execute(
+        "SELECT body FROM discovery_candidates WHERE id=?", (candidate,)
+    ).fetchone()
+    if original is None:
+        raise ReplicaError("Discovery candidate is unavailable")
+    prior = db.execute(
+        "SELECT candidate FROM discovery_verifications WHERE id=?", (operation,)
+    ).fetchone()
+    if prior and prior[0] != candidate:
+        raise ReplicaError("Verification retry identity was reused for different files")
+    if not prior:
+        db.execute(
+            "INSERT INTO discovery_verifications VALUES (?,?,'queued',NULL)",
+            (operation, candidate),
+        )
+        if json.loads(original[0]).get("version") == 2:
             db.execute(
-                "INSERT INTO discovery_verifications VALUES (?,?,'queued',NULL)",
+                "INSERT INTO discovery_hash_files(operation,path,original,state) "
+                "SELECT ?,json_extract(body,'$.path'),body,'queued' "
+                "FROM discovery_candidate_files WHERE candidate=?",
                 (operation, candidate),
-            )
-            if json.loads(original[0]).get("version") == 2:
-                db.execute(
-                    "INSERT INTO discovery_hash_files(operation,path,original,state) "
-                    "SELECT ?,json_extract(body,'$.path'),body,'queued' "
-                    "FROM discovery_candidate_files WHERE candidate=?",
-                    (operation, candidate),
-                )
-            else:
-                db.execute(
-                    "INSERT INTO discovery_hash_files(operation,path,original,state) "
-                    "SELECT ?,json_extract(value,'$.path'),value,'queued' "
-                    "FROM json_each(?, '$.files')",
-                    (operation, original[0]),
-                )
-            # Small candidates already contain complete hashes; worker generation checks trust them
-            db.execute(
-                "UPDATE discovery_hash_files SET state='verified',"
-                "offset=json_extract(original,'$.evidence.size'),"
-                "evidence=json_extract(original,'$.evidence') WHERE operation=? "
-                "AND json_extract(original,'$.evidence.algorithm')='sha256' "
-                "AND json_extract(original,'$.evidence.size')<=196608",
-                (operation,),
             )
         else:
             db.execute(
-                "UPDATE discovery_verifications SET state='queued',error=NULL "
-                "WHERE id=? AND state IN ('failed','cancelled','succeeded')",
-                (operation,),
+                "INSERT INTO discovery_hash_files(operation,path,original,state) "
+                "SELECT ?,json_extract(value,'$.path'),value,'queued' "
+                "FROM json_each(?, '$.files')",
+                (operation, original[0]),
             )
-    return status(store, operation)
+        # Small candidates already contain complete hashes; worker generation checks trust them
+        db.execute(
+            "UPDATE discovery_hash_files SET state='verified',"
+            "offset=json_extract(original,'$.evidence.size'),"
+            "evidence=json_extract(original,'$.evidence') WHERE operation=? "
+            "AND json_extract(original,'$.evidence.algorithm')='sha256' "
+            "AND json_extract(original,'$.evidence.size')<=196608",
+            (operation,),
+        )
+    else:
+        db.execute(
+            "UPDATE discovery_verifications SET state='queued',error=NULL "
+            "WHERE id=? AND state IN ('failed','cancelled','succeeded')",
+            (operation,),
+        )
 
 
 # Progress is durable and computes only indexed job rows, without inspecting source media

@@ -1,9 +1,9 @@
 # Manual replica Update
 
-New format-three synthetic packages advertise `discovery_version: 1`. **Update**
-starts a private, cancellable job against the serving device's library root. Normal
-metadata exchange remains automatic. Formats one and two retain their existing
-capabilities; real-library conversion remains unavailable.
+Format-three libraries advertise `discovery_version: 1`. **Update** starts a
+private, cancellable job against the serving device's library root. Normal
+metadata exchange remains automatic. Earlier formats retain their existing
+capabilities; old libraries use the [reviewed conversion workflow](replica-migration.md).
 
 In the bundle browser, **Update** sits at the top of the sidebar. The sidebar says
 when discovered files wait for review; that notice and **Review Discoveries…** in
@@ -25,7 +25,8 @@ available throughout.
 
 Update observes existing paths, repairs unambiguous external moves and proposes
 new files using the existing grouping rules. Pending files and grouping suggestions
-remain private until **Prepare grouping review** and **Accept reviewed changes**.
+remain private until **Prepare selected grouping** and **Accept reviewed grouping**.
+Servers without editable grouping retain the earlier candidate review controls.
 Review can change title, destination, selection and order. Additions append to a
 confirmed bundle without regrouping its existing members or replacing its cover.
 Unambiguous video/subtitle additions create authored subtitle links. Collection
@@ -57,6 +58,64 @@ Detected replacement bytes cannot inherit that identity's playback state before
 review. Local absence, incomplete reads and unavailable roots never delete shared
 catalog entries. No discovery operation renames, moves, overwrites or deletes media.
 
+## Editable grouping review
+
+The private store now contains an editable draft graph, separate from immutable
+candidate and prepared-review tables. Its API and lifecycle worker are wired;
+the application opens its paged tree when `grouping_version: 1` is available.
+Feature qualification is still in progress. Its `grouping_*` tables retain logical placement independently of
+physical source directories, file selection, folder display choices, per-folder
+stem levels and exact edit receipts. The revision counter guards concurrent edits;
+it does not version the library format.
+
+Rename and drag commands change private rows only. Narrow/Widen prepares bounded
+planner pages for the chosen folder before replacing that folder's suggestions
+atomically. Bundle-to-collection conversion splits video subjects with strict
+sidecar matching; the inverse keeps file identities and folder display choices.
+Recovery validates the graph and detects missing private decisions. Preparing a
+graph exports its selected files, order and logical ancestors into an immutable
+candidate, then uses the existing guarded discovery preparation and acceptance.
+The graph stays frozen until its review is cancelled or accepted. Partial
+acceptance removes only sources covered by that exact accepted receipt and
+refreshes remaining staged bases only from its event and ancestry. Newer
+competing edits remain stale for explicit review. Read-only collection context
+keeps its captured name, lifetime and hierarchy bases.
+
+The strict, paged API lives under `/replica/discovery/grouping`: workspaces,
+revision-bound nodes/files/folders/stems, uncertain bundles, searchable move
+destinations and idempotent edit commands. Opening a
+workspace queues private initialization; request handlers never enumerate media.
+The tree fetches only opened branches and requested pages and virtualizes its
+visible rows. Loaded pages stay visible during edits, but controls wait until
+fresh revision-bound pages arrive. Refresh restarts each loaded prefix with fresh
+cursors, retaining later-page context without reusing stale page boundaries.
+Expand shown collections acts on loaded suggestions; later pages remain explicit.
+Show files also applies to newly requested pages, with individual folds retained.
+Bundle rows summarize media kinds without downloading their file lists. Runs of
+three or more matching sibling bundles fold into an expandable summary; uncertain
+groups and existing-bundle additions remain individual. A run checkbox changes
+only its displayed members, at most fifty per saved command. File drags temporarily
+reveal individual targets without changing the Show files preference. Arrows
+navigate from row controls as well as row whitespace; text editors retain their
+normal keys. Rename keeps the clicked caret position. Narrow/Widen uses the
+established stem rules. File and proposal drags, keyboard move choices, file
+ordering and persisted collection placement all change private draft rows only.
+
+Needs a look pages uncertain bundles across the complete draft, including folded
+branches. Filtering never changes what Accept selects. File changes and saved
+reviews opens identity repair/replacement and retained prepared reviews; its
+category filter runs before server pagination. Earlier grouping choices remains
+available there for candidate drafts created before the editable tree.
+
+Optional complete-content verification operates on the immutable exported graph
+before review preparation. Its byte progress and cancellation remain available
+after reopening the dialog. Cancelling verification or returning from a prepared
+review retains the editable draft. A newer Update does not discard earlier
+retained grouping choices; the owner can choose that run explicitly.
+Recovery pauses queued and running grouping edits with their original phase,
+cursor and intent intact. Resume retained grouping edit retries that exact
+operation. Merely reopening a recovered library never submits the edit.
+
 ## Evidence and limits
 
 An ordinary scan touches at most three 64 KiB regions per file. Files up to 192 KiB
@@ -87,7 +146,7 @@ Timestamps never establish ancestry or authorize a move.
 
 Enumeration yields every 32 entries, including ignored hidden/symlink entries.
 The worker starts its next pass after 25 ms while a run, review, verification,
-catalog job or unpublished event is queued, and after 1 second when every open
+grouping edit, catalog job or unpublished event is queued, and after 1 second when every open
 library is idle. Each pass keeps the bounded steps, so Release drains promptly.
 Private disk-backed planning indexes every fresh source and settled catalog owner
 before classifying complete directories. Assignment and role work advances in
@@ -100,6 +159,18 @@ multi-terabyte readiness claim is implied. Continuous watchers, provider hydrati
 and directory-browser pagination remain outside this workflow.
 
 ## Private work and recovery
+
+Still-unconfirmed catalog files remain eligible for grouping. Their fresh local
+observations carry the existing file ID and opening path, lifetime and membership
+bases. Preparation refuses a later confirmed boundary or changed arrangement.
+Acceptance moves these existing identities through disk-backed arrangements,
+including dependent moments and subtitle selections, rather than creating new
+file rows. A complete provisional source can supply the resulting bundle's ID,
+notes, rating and other metadata. Empty sources with independent notes, ratings,
+extra metadata or collection/tag membership cannot be silently removed; keep them
+as separate groupings. Existing selected covers and subtitle choices survive.
+Only newly discovered files receive new identities. The same reviewed catalog
+validator and exact retry receipt cover the complete change.
 
 Progress, errors, observations, missing-file candidates, grouping drafts, identity
 mappings and exact prepared reviews live in the private DB. Completed scans

@@ -21,6 +21,32 @@ def existing(builder: DiscoveryPreview, identity: str) -> None:
         builder.get(key("collections", identity, field))
 
 
+def captured(builder: DiscoveryPreview, node: dict[str, Any], parent: str | None) -> str:
+    """A selected live collection keeps its reviewed identity and original hierarchy."""
+    identity = node["collection"]
+    required = {
+        key("collections", identity, "$alive"),
+        key("collections", identity, "name"),
+        "collections/_/$forest",
+    }
+    if set(node.get("basis", {})) != required:
+        raise ReplicaError("The collection placement is missing its original observed choices")
+    for unit, expected in node["basis"].items():
+        if set(expected) != {tip["event"] for tip in builder.store.tips(builder.db, unit)}:
+            raise ReplicaError("The selected collection changed; review its placement again")
+        builder.get(unit)
+    existing(builder, identity)
+    row = builder.db.execute(
+        "SELECT body FROM discovery_review_forest WHERE operation=? AND id=?",
+        (builder.operation, identity),
+    ).fetchone()
+    if not row or json.loads(row[0])["parent_id"] != parent:
+        raise ReplicaError("The selected collection hierarchy differs from its grouping placement")
+    if node.get("editable"):
+        builder.put(key("collections", identity, "name"), node["title"])
+    return str(identity)
+
+
 # Reuse an exact sibling name or stage a deterministic new collection without changing source paths
 def ensure(builder: DiscoveryPreview, name: str, parent: str | None, stamp: str) -> str:
     from cairndex.replicas.discovery_review import defaults
@@ -105,6 +131,9 @@ def place(
     ):
         raise ReplicaError("Resolve the current collection hierarchy before preparing grouping")
     for node in ancestors:
+        if node.get("collection"):
+            parent = captured(builder, node, parent)
+            continue
         name = (
             intent.get("title", node["title"])
             if candidate["kind"] == "collection" and node["directory"] == candidate["directory"]

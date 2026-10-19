@@ -109,20 +109,69 @@ are in scope. Importing saved positions from conversion backups and cross-device
 resume are excluded. The first slice fixes bulk-inspector retention, fold-based
 collection badges and viewer entry/resume, with focused macOS web and full-stack
 checks recorded in the audit. Phase-aware Update counters and bounded Unbundled
-availability checks are also implemented; full qualification remains pending.
+availability checks are also implemented. Both complete VM gates passed for
+this browsing/history slice; broader restoration qualification remains pending.
 Local history and sorts now use private opening/edit times and file observations
 (`browse_version: 11`, ADR-0040). The focused macOS backend and full-stack checks
 passed, including recovery and older-server handling. Grouping review,
 manual-bundling suggestions, maintenance controls and the broader comparison
 remain open; this branch is not ready for another owner build.
 
-The corrected Linux full gate passed, including 1,957 backend tests (one
-platform-specific manifest check deselected), 49 browser scenarios, four frozen
-checks and 135 Rust tests. macOS qualification is still running. Its restart
-test exhausted a fixed worker-iteration limit; a Linux reproducer now forces
-one durable phase per tick and passes with the same allowance as the scan
-helper. This changes test scheduling only. The full macOS result and subsequent
-qualification remain pending.
+The final browsing/history gates passed with 1,960 backend tests on macOS and
+1,959 on Linux, all 49 browser scenarios in each guest, packaged checks and
+137/135 Rust tests respectively. Linux deselects the unsupported-platform
+manifest assertion. [PR #99](https://github.com/allpan3/Cairndex/pull/99) merged
+as `8a292cd2` after all 16 hosted checks passed. Its reviewed synthetic screenshot
+declaration reached main through prerequisite PR #100. The audit records receipts
+and the test-scheduling repairs.
+
+Branch `fix/portable-grouping-identities` restores eligibility for still-unconfirmed
+catalog files and preserves their IDs and dependent metadata through private
+review. It reuses a complete provisional source where possible and refuses to
+discard another source's notes or memberships. Confirmed groupings remain settled.
+The focused discovery/planner slice passed 41 tests; media and structural recovery
+passed 28, with backend static checks. Full qualification and editable grouping
+review remain open. See the [audit](restoration-audit.md) for the scope and safety
+constraint. This branch has not merged.
+
+Branch `fix/portable-grouping-review` adds a durable private grouping draft,
+paged edit APIs, guarded snapshot acceptance and the application tree behind
+`grouping_version: 1`. Rename, Narrow/Widen, selection, moves/order, type conversion
+and collection placement use private revision-guarded commands. Complete-content
+verification remains explicit and cancellable. Identity-change review and older
+candidate drafts remain accessible. Twenty-one backend workspace/acceptance
+cases initially passed on Linux. The expanded slice now passes 29 workspace,
+acceptance, verification and recovery cases, including paused queued/running
+edits requiring exact explicit resume after restoration. Six focused web tests
+pass alongside the 60 legacy reference tests. Two new full-stack scenarios pass
+for renamed-draft reopening, keyboard moves/order, verification and partial
+acceptance, including a 201-file review retaining later-page context. The older
+retained candidate/recovery scenario also passes. Full qualification and the
+remaining presentation/interaction comparison are still open. This branch has
+not been published or merged.
+
+The next grouping slice adds media summaries and expandable runs of three or
+more same-shape siblings. Uncertain groups and additions stay individual. Run
+checkboxes save exact displayed membership in one guarded command; folding and
+filtering do not change selection. File drags reveal their targets temporarily.
+Show files applies to later requested pages while preserving individual folds.
+Twenty-five focused backend cases, 69 focused web/reference cases and static
+checks pass on Linux. A regression reproduces unrelated sibling reordering
+during Narrow/Widen; renumbering now captures prior positions before updating.
+All seven focused Linux browser scenarios pass, including both workspace views,
+keyboard placement, file and proposal drags, type changes and 201-file partial acceptance.
+The certainty comparison also matches the earlier suggester at all three stem
+levels. Full VM qualification and the broader restoration remain open.
+
+The first full Linux grouping gate failed after old synthetic test directories
+filled its 4 GiB tmpfs. A browser assertion also still expected a provisional
+badge on the explicitly confirmed playback fixture. That assertion is corrected;
+the other 51 browser scenarios passed. Full qualification remains outstanding.
+
+The corrected Linux full gate passed with 1,987 backend tests, all 52 browser
+scenarios, four frozen checks and 135 Rust tests, ending in `Final result: 0`.
+macOS qualification remains pending. Prerequisite PR #101 merged the reviewed
+grouping screenshot declaration after every applicable hosted check passed.
 
 ### macOS SQLite durability (2026-10-18)
 

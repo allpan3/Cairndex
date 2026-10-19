@@ -29,6 +29,7 @@ import { CatalogValue } from './CatalogControls'
 import { useCatalogDraft } from './useCatalogDraft'
 import { DiscoveryControls, DiscoveryNotice, DiscoveryReviewDialog } from './ReplicaDiscovery'
 import { useReplicaDiscovery } from './useReplicaDiscovery'
+import { GroupingReviewDialog } from './grouping/GroupingReviewDialog'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
@@ -349,9 +350,13 @@ export function CatalogWorkspace({
         </section>
       )}
       {reviewMode && discovery.enabled && <DiscoveryControls discovery={discovery} />}
-      {discovery.open && editor && (
-        <DiscoveryReviewDialog discovery={discovery} library={libraryId} editor={editor} />
-      )}
+      {discovery.open &&
+        editor &&
+        (state?.grouping_version === 1 ? (
+          <GroupingReviewDialog discovery={discovery} library={libraryId} editor={editor} />
+        ) : (
+          <DiscoveryReviewDialog discovery={discovery} library={libraryId} editor={editor} />
+        ))}
       {reviewMode &&
         state?.media_version === 1 &&
         detail.data &&

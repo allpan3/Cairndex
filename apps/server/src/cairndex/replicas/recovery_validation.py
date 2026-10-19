@@ -448,6 +448,11 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
 
         validate_discovery(db, store)
 
+    if "grouping_workspaces" in media_tables:
+        from cairndex.replicas.grouping.validation import validate as validate_grouping
+
+        validate_grouping(db)
+
     if "source_operations" in media_tables:
         from cairndex.replicas.source_receipts import validate_private
 

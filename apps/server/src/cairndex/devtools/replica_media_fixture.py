@@ -90,6 +90,7 @@ def create_playable(*, parent: Path | None = None, duration: int = 150) -> Path:
         encoding="utf-8",
     )
     with connect_writable(fixture.source / ".cairndex/library.db") as db:
+        db.execute("UPDATE asset_bundles SET grouping_state='CONFIRMED'")
         db.execute("UPDATE asset_bundles SET title='Synthetic playback' WHERE id='bundle-000001'")
         for order, (identity, filename, role) in enumerate(
             [

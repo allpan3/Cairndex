@@ -58,7 +58,7 @@ class CatalogStorage(PrivateStore):
             from cairndex.replicas.catalog.local_history import SCHEMA as LOCAL_HISTORY_SCHEMA
             from cairndex.replicas.discovery_state import SCHEMA as DISCOVERY_SCHEMA
             from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
-            from cairndex.replicas.private_layout import SOURCE_SCHEMA
+            from cairndex.replicas.private_layout import GROUPING_SCHEMA, SOURCE_SCHEMA
 
             db.executescript(
                 projection.SCHEMA
@@ -67,6 +67,7 @@ class CatalogStorage(PrivateStore):
                 + DISCOVERY_SCHEMA
                 + SOURCE_SCHEMA
                 + LOCAL_HISTORY_SCHEMA
+                + GROUPING_SCHEMA
             )
             install(db)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
@@ -330,6 +331,7 @@ class CatalogStorage(PrivateStore):
                 "selection_version": 3,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
+                "grouping_version": 1 if self.descriptor.format_version == 3 else None,
                 "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "media_version": 1,
                 "export_version": 1,

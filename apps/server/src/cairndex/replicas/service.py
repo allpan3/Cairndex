@@ -95,6 +95,9 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                 from cairndex.replicas.discovery import tick
 
                 tick(handle[0], handle[1].root)
+                from cairndex.replicas.grouping.worker import step as edit_grouping
+
+                edit_grouping(handle[0])
                 from cairndex.file_ops.gate import ensure_portable_write_mode
                 from cairndex.media.hls import close_library_sessions
                 from cairndex.registry.engine import registry_session_scope
@@ -148,6 +151,10 @@ _PENDING_WORK = (
     "SELECT 1 FROM catalog_jobs WHERE state='queued' LIMIT 1",
     "SELECT 1 FROM discovery_reviews WHERE state IN ('queued','apply_queued') LIMIT 1",
     "SELECT 1 FROM discovery_verifications WHERE state IN ('queued','running') LIMIT 1",
+    "SELECT 1 FROM grouping_commands WHERE state IN ('queued','running') LIMIT 1",
+    "SELECT 1 FROM grouping_workspaces WHERE state='building' LIMIT 1",
+    "SELECT 1 FROM grouping_workspaces w JOIN discovery_reviews r ON r.id=w.accepting "
+    "WHERE w.accepting IS NOT NULL AND r.state='applied' LIMIT 1",
     "SELECT 1 FROM events WHERE local=1 AND published=0 LIMIT 1",
 )
 
