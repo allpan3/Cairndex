@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
 import { catalogNavigation } from '../api/catalogQuery'
 import type { LibraryRead, SmartCollectionRead } from '../api/client'
@@ -13,6 +14,7 @@ import type { DragItem } from './dnd'
 import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
 import type { CatalogCollections } from './useCatalogCollections'
+import { CatalogSmartCollectionEditor } from './CatalogSmartCollectionEditor'
 
 type ViewCounts = components['schemas']['CatalogViewCounts']
 
@@ -21,6 +23,7 @@ export function CatalogNavigation({
   unbundled,
   onUnbundled,
   library,
+  editor,
   libraries,
   selection,
   mode,
@@ -49,6 +52,7 @@ export function CatalogNavigation({
   unbundled: boolean
   onUnbundled: () => void
   library: string
+  editor: string
   libraries: LibraryRead[]
   selection: Selection
   mode: AppMode
@@ -81,6 +85,11 @@ export function CatalogNavigation({
   onNotice: (notice: CatalogNotice) => void
 }) {
   const status = useReplicaStatus(library).data
+  const smartEditing = (status?.browse_version ?? 0) >= 14 && !blocked
+  const client = useQueryClient()
+  const [editingSmart, setEditingSmart] = useState<{ id: string | null; deleting: boolean } | null>(
+    null,
+  )
   // Browse version 10 counts the system views, as the legacy sidebar did
   const counted = (status?.browse_version ?? 0) >= 10
   const counts = useQuery({
@@ -177,12 +186,35 @@ export function CatalogNavigation({
         onNewCollectionHandled={onNewCollectionHandled}
         onMoveBundlesInto={bundleMovesEnabled ? collections.moveBundlesInto : undefined}
         smartCollections={smart.data ?? []}
-        onNewSmartCollection={onReview}
-        onEditSmartCollection={(item) => onReviewEntity('smart_folders', item.id)}
-        onDeleteSmartCollection={onReview}
+        smartCollectionsEditable={smartEditing}
+        onNewSmartCollection={() => setEditingSmart({ id: null, deleting: false })}
+        onEditSmartCollection={(item) => setEditingSmart({ id: item.id, deleting: false })}
+        onDeleteSmartCollection={(item) => setEditingSmart({ id: item.id, deleting: true })}
         onOpenAllTags={() => onMode('tags')}
       />
       {collections.dialogs}
+      {editingSmart && (
+        <CatalogSmartCollectionEditor
+          key={editingSmart.id ?? 'new'}
+          library={library}
+          editor={editor}
+          {...editingSmart}
+          onClose={() => setEditingSmart(null)}
+          onReview={() => {
+            if (editingSmart.id) onReviewEntity('smart_folders', editingSmart.id)
+            else onReview()
+          }}
+          onSaved={async (id) => {
+            await client.invalidateQueries({
+              queryKey: ['catalog-navigation', library, 'smart_folders'],
+            })
+            await client.invalidateQueries({ queryKey: ['catalog-browse', library] })
+            if (id || selection.smartCollectionId === editingSmart.id)
+              onSelect({ view: 'all', collectionId: null, smartCollectionId: id })
+            setEditingSmart(null)
+          }}
+        />
+      )}
       {(collections.error || smart.error) && (
         <p role="alert">
           Navigation is unavailable.{' '}

@@ -284,6 +284,7 @@ export function CatalogOrdinaryBrowser(props: {
       >
         {panels.sidebar && (
           <CatalogNavigation
+            editor={props.editor}
             library={props.library}
             libraries={props.libraries}
             mode={mode}

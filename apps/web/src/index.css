@@ -8060,3 +8060,10 @@ button.pick-row:disabled {
     gap: 8px;
   }
 }
+/* The shared filter builder supplies its own condition borders. */
+.smart-collection__conditions {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

@@ -139,6 +139,17 @@ matches everything.
 
 ## Endpoints
 
+Portable libraries with `browse_version: 14` use the ordinary sidebar editor
+for Smart Collection creation, editing and explicit deletion. Preview runs
+through `/api/v1/libraries/{library_id}/replica/catalog/bundles/browse`.
+Creation and revision-guarded changes use the private catalog job API. The
+editor retains its opening bases and private draft across closing and reopening.
+Renaming an advanced expression preserves its exact stored text; changing
+ordinary conditions replaces the filter explicitly. Deletion removes the saved
+filter only. Older servers keep their metadata-review workflow.
+
+The following endpoints describe the retained ORM/reference workflow:
+
 - `POST /api/v1/filters/preview` — `{ "filter": <expr> }` → `{ "count": n }`.
 - `POST /api/v1/bundles/browse` — same params as `GET /browse` plus an
   optional `filter`; this is the shared path for ad-hoc filters and Smart

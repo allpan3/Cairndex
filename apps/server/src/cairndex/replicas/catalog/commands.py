@@ -779,6 +779,10 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
                 builder.delete_tree(command["family"], command["entity"])
             else:
                 builder.delete(command["family"], command["entity"])
+        elif action == "smart_collection":
+            from cairndex.replicas.catalog.smart_collections import prepare
+
+            prepare(builder, command)
         elif action == "group_tag":
             recover = builder.group_tag(command)
         elif action == "collect_directory":

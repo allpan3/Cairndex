@@ -370,6 +370,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore ordinary Smart Collection creation, editing and deletion in portable
+  libraries, with live match counts and private retained drafts. Renaming keeps
+  advanced rules unchanged. Saves and deletion retain the editor's opening
+  bases; deletion leaves bundles and source files in place.
+
 - Start initial private discovery after creating a portable library, including
   native creates that switch servers. Keep discovered files private until
   reviewed; registering or reopening an existing library does not rescan it.
