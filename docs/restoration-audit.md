@@ -459,6 +459,31 @@ They exercise the same index module and search regression scenarios, alongside
 the remaining restoration work. This search branch contains only its own slice;
 the other branches and final merged-main owner build remain separate.
 
+The local initial-discovery slice reconnects Create and native destination
+requests to the admitted portable workspace. Each server/library request is
+consumed once; unrelated libraries leave it queued. Discovery uses existing
+bounded jobs, while registration and reopening enqueue nothing. Initial work
+keeps pending suggestions private and does not open grouping review. The
+Linux checks pass 86 focused web cases, lint/type checks and the normal-Create
+browser scenario. They cover native destination isolation, pending admission,
+private candidates without authored file rows, unchanged source bytes and
+reopening without a second scan. A delayed initial-result test failed before
+its originating-run guard was added; it now passes and preserves the later
+manual Update. Receipt `initial-discovery-focused-20261019-101927` records the
+passing run. An additional browser check holds catalog admission, verifies
+that discovery remains idle, then admits the workspace and confirms one private
+scan. It passes in `initial-discovery-admission-v2-20261019.log`. Full
+Linux qualification passed 2,012 backend tests, all 55 browser scenarios,
+159 web test files, four frozen checks and 135 Rust tests. Receipt
+`restoration-initial-discovery-v1-linux-20261019-113016` ends in
+`Final result: 0` with unchanged guest source. Both complete combined receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in `Final result: 0`,
+with the same initial-discovery hooks and browser scenarios. Other restoration
+branches and the final merged-main owner build remain separate.
+This restores the earlier initial indexing outcome within ADR-0032,
+so another ADR is unnecessary.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

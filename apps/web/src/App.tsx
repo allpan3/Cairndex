@@ -27,6 +27,7 @@ import {
   getConnections,
   getPendingSelectionVersion,
   libraryStorageKey,
+  queueLibraryIndex,
   subscribeConnections,
   takePendingLibrarySelection,
 } from './desktop/connections'
@@ -229,6 +230,7 @@ function LibraryApp() {
       onClose={() => setManaging(false)}
       onSelect={changeLibrary}
       onRemoved={forgetRemovedLibrary}
+      onCreated={(id) => queueLibraryIndex(activeConnectionId, id)}
     />
   )
 

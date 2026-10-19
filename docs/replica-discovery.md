@@ -13,6 +13,12 @@ leaves discovered files to decide; an Update that leaves nothing to decide only
 reports its result. Metadata review keeps Update, Review discoveries and the
 last run's status above its editors.
 
+Creating a new library also schedules initial private discovery after its
+workspace is ready. Its pending files remain available for review, without
+opening the grouping dialog automatically. Registration and ordinary reopening
+do not schedule a scan. Native creates retain their request across the server
+switch, scoped to the intended server and library.
+
 The footer names the current phase. Finding files reports the observed count
 and states that the total is not yet known. Catalog checks, moved-file checks
 and grouping indexes show completed/total with a determinate bar. Grouping and

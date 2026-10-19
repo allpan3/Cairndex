@@ -326,14 +326,15 @@ in the same menu, so the scan job takes `suggest_grouping`
 key, so a scan-only run cannot open a dialog nobody asked for. Update sends the
 default and is unchanged.
 
-**Creating a library indexes it.** A folder that has only become a library holds
-no rows, so every surface is empty and the playback decision has no metadata to
-work from. `useIndexNewLibrary` enqueues discovery (without the grouping pass)
-then metadata, scoped to the new library id rather than the active one, and
-nudges the active-jobs query so the sidebar reports it like any other job.
-Storyboards stay deliberate. *Registering* an existing library does not trigger
-this: it arrives with its own database, and re-reading a large tree unasked is
-what Update is for.
+**Creating a portable library indexes it privately.** Create queues initial
+discovery for that server and library, including a native create that switches
+connections. The workspace consumes the request only after catalog and editor
+readiness. Discovery uses the bounded, cancellable Update worker and reports
+progress in the sidebar. It retains pending files and grouping suggestions
+privately without opening review or accepting them. Probing and derived media
+keep their on-demand behavior. Registering or reopening an existing library
+does not enqueue discovery. An already started manual Update satisfies the
+initial request.
 
 ## 4. Library package and registry
 

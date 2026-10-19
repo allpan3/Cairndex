@@ -13,6 +13,8 @@ import {
   loadConnections,
   resetConnectionsForTests,
   LOCAL_CONNECTION_ID,
+  queueLibraryIndex,
+  takeLibraryIndex,
 } from './connections'
 import {
   peekJobRunForTests,
@@ -102,6 +104,28 @@ describe('migration', () => {
   it('starts empty when nothing was ever configured', async () => {
     const state = await loadConnections()
     expect(state).toEqual({ connections: [], activeConnectionId: null })
+  })
+})
+
+describe('initial library discovery requests', () => {
+  it('retains every created library until its own destination consumes it', () => {
+    queueLibraryIndex('local', 'first')
+    queueLibraryIndex('local', 'second')
+    queueLibraryIndex('remote:a', 'first')
+    expect(takeLibraryIndex('remote:b', 'first')).toBe(false)
+    expect(takeLibraryIndex('local', 'unrelated')).toBe(false)
+    expect(takeLibraryIndex('local', 'first')).toBe(true)
+    expect(takeLibraryIndex('local', 'first')).toBe(false)
+    expect(takeLibraryIndex('local', 'second')).toBe(true)
+    expect(takeLibraryIndex('remote:a', 'first')).toBe(true)
+  })
+
+  it('keeps browser creation separate from native connection requests', () => {
+    queueLibraryIndex(null, 'created')
+    queueLibraryIndex('local', 'created')
+    expect(takeLibraryIndex(null, 'created')).toBe(true)
+    expect(takeLibraryIndex(null, 'created')).toBe(false)
+    expect(takeLibraryIndex('local', 'created')).toBe(true)
   })
 })
 

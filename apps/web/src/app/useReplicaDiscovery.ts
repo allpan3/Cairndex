@@ -56,15 +56,20 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
   const succeeded = run.data?.state === 'succeeded' && run.data.id === started ? run.data : null
   const { refetch: refetchCandidates } = candidates
   const handled = useRef<string | null>(null)
+  const startedIntent = useRef<{ id: string; openReview: boolean } | null>(null)
   useEffect(() => {
     if (!succeeded?.id || handled.current === succeeded.id) return
+    const intent = startedIntent.current
+    if (!intent || intent.id !== succeeded.id) return
     handled.current = succeeded.id
     // The candidates are fetched again first: the list polled before the run
     // finished cannot say what it left
     void refetchCandidates().then(({ data }) => {
+      if (startedIntent.current !== intent) return
+      startedIntent.current = null
       setStarted(null)
       setFinished(succeeded)
-      if (data?.items.length) setOpen(true)
+      if (intent.openReview && data?.items.length) setOpen(true)
     })
   }, [succeeded, refetchCandidates])
   const reviews = useQuery({
@@ -88,11 +93,12 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
     refetchInterval: 500,
   })
   // A failed network request retains its operation ID; only a successful enqueue starts a new one
-  async function start() {
+  async function start({ openReview = true }: { openReview?: boolean } = {}) {
     setBusy(true)
     setError('')
     try {
       await discovery(library, '/runs', 'POST', { operation: startOperation })
+      startedIntent.current = { id: startOperation, openReview }
       setStarted(startOperation)
       setStartOperation(operationId())
       void run.refetch()
