@@ -146,6 +146,14 @@
       ],
       "purpose": "Document fresh private discoveries in paged manual file choices",
       "provenance": "Playwright capture of a fresh synthetic discovery fixture and checked paths across pages and search; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "b1c228bff3a694a61f9110d155d4771f7ee65cd5a12de829e413ce5ff967a6e8",
+      "paths": [
+        "docs/screenshots/portable-bundle-file-controls.png"
+      ],
+      "purpose": "Document portable bundle file ordering and reversible folder rows",
+      "provenance": "Playwright capture of the generated synthetic album fixture; reviewed edge to edge with no owner media, paths, account state or desktop content"
     }
   ],
   "vendored_trees": []
