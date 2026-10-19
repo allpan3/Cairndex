@@ -173,6 +173,41 @@ scenarios, four frozen checks and 135 Rust tests, ending in `Final result: 0`.
 macOS qualification remains pending. Prerequisite PR #101 merged the reviewed
 grouping screenshot declaration after every applicable hosted check passed.
 
+The macOS grouping run passed 1,988 backend tests, four frozen checks, 137 Rust
+tests and distribution verification, but failed one web test and four of
+52 browser scenarios. The failures used incomplete-work signals: workspace
+mounting before dialog closure, an old checked row during refresh, and dialog
+closure or a changed button label before durable work completed. The checks
+now wait for the relevant completed state. Disposable fixture setup also batches
+its schema and rows in one transaction, preserving production durability.
+All 78 focused macOS web/reference tests and all four affected browser
+scenarios now pass. Renewed full qualification remains required.
+
+The final-source Linux grouping gate passed 1,987 backend tests, all 1,338 web
+tests in 159 files, all 52 browser scenarios, four frozen checks and 135 Rust
+tests. Receipt `restoration-grouping-v4-linux-20261019-102313` ends in
+`Final result: 0`. macOS qualification remains pending.
+
+The renewed macOS run found a backend test starting Update before catalog seed
+import finished. Fifteen exchange calls can all skip work while the background
+worker holds the replica lock. A controlled Linux schedule reproduces that
+failure; waiting for actual readiness passes the same schedule and all ten
+grouping acceptance cases. Production behavior is unchanged. The renewed macOS
+run ended with `Final result: 1`. It also passed all 1,338 web tests and 51 of
+52 browser scenarios; Create's remaining five-second assertion expired while
+the application was still opening library metadata. That assertion now waits
+up to 30 seconds for the actual admitted library. Packaged checks, 137 Rust
+tests, the app build and distribution passed. Both corrected cases now pass on
+macOS, including the controlled busy-lock schedule. Another full run remains
+required.
+
+The corrected macOS full gate passed 1,988 backend tests, all 1,338 web tests
+in 159 files, all 52 browser scenarios, four frozen checks and 137 Rust tests,
+plus the desktop app build and distribution verification. Receipt
+`restoration-grouping-v4-mac-20261019-111211` ends in `Final result: 0` with
+unchanged guest source. Both VM gates now qualify this grouping slice; the
+broader restoration remains open.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

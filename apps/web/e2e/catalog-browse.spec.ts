@@ -904,11 +904,9 @@ test('portable All Tags creates, groups, nests and deletes tags @fullstack', asy
     const prompt = page.getByRole('dialog', { name: 'New Tag' })
     await prompt.getByLabel(/^Name/).fill('Studio/Season')
     await prompt.getByRole('button', { name: 'Create' }).click()
-    // Each path segment is a separate guarded save. Wait for the dialog's
-    // completed operation before asserting the resulting catalog population.
-    await expect(prompt).toHaveCount(0, { timeout: 30_000 })
+    // The dialog closes optimistically; each path segment still needs its guarded save.
     await expect
-      .poll(async () => (await tags()).map((tag) => tag.name).sort())
+      .poll(async () => (await tags()).map((tag) => tag.name).sort(), { timeout: 30_000 })
       .toEqual(['Season', 'Studio', 'Synthetic child', 'Synthetic root'])
     const byName = async (name: string) => (await tags()).find((tag) => tag.name === name)!
     const studio = await byName('Studio')

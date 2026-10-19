@@ -161,6 +161,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for completed dialog closure, pagination, nested tag saves and grouping
+  work in UI checks. Refreshing controls and changed button labels are not
+  completion receipts. Batch synthetic fixture schema and rows in one
+  transaction to avoid per-DDL durable commits.
+
 - Make the discovery restart test exercise one durable phase per worker tick,
   so its completion check does not depend on disk commit latency.
 

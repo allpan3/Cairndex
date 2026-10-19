@@ -1,6 +1,7 @@
 """Edited private grouping uses the existing immutable review and exact catalog receipts."""
 
 import json
+import time
 
 import pytest
 
@@ -251,9 +252,15 @@ def test_grouping_api_pages_private_edits_and_rejects_ambiguous_scope(replicas, 
     assert registered.status_code == 201
     library = registered.json()["id"]
     raw_client.get(f"/api/v1/libraries/{library}/replica/status")
-    for _ in range(15):
-        service.exchange(library)
     store = service._handles[library][0]
+    # Exchange may skip a pass while the background worker holds the replica
+    # lock. Count completed seed import, rather than attempts to acquire it.
+    deadline = time.monotonic() + 30
+    while not (status := store.status())["ready"] or status["waiting"]:
+        assert not status["blocked"], status
+        assert time.monotonic() < deadline, "The catalog seed did not finish importing"
+        service.exchange(library)
+        time.sleep(0.01)
     run = scan(store, root)["id"]
     base = f"/api/v1/libraries/{library}/replica/discovery/grouping"
     frontier = store.frontier()

@@ -63,7 +63,10 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await page.getByRole('button', { name: 'Load more album items' }).click()
     await expect(page.getByText('100 of 125 items', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Load more album items' }).click()
-    await expect(page.getByRole('button', { name: 'Load more album items' })).toHaveCount(0)
+    // The button changes its name when fetching starts. Wait for that work to finish.
+    await expect(page.getByRole('button', { name: 'Loading more items…' })).toHaveCount(0, {
+      timeout: 30_000,
+    })
     await expect(page.getByText('125 of 125 items', { exact: true })).toBeVisible()
     await listing.focus()
     await listing.press('End')

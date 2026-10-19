@@ -301,6 +301,52 @@ is `restoration-grouping-v2-linux-20261019-084004`, with `Final result: 0`.
 macOS qualification remains pending. PR #101 registered the exact reviewed
 synthetic grouping capture on main before any image publication.
 
+The macOS v2 run passed 1,988 backend tests, four frozen checks, 137 Rust tests
+and distribution verification. It ended with `Final result: 1` after one of
+1,338 web tests and four of 52 browser scenarios failed. The Servers check
+assumed workspace mounting also completed the dialog close effect. Album
+pagination checked a button name that changes before the response arrives.
+Nested tag creation closes its dialog before its two guarded saves finish.
+Grouping selection needed to wait for refreshed, enabled rows, because
+Playwright skips `check()` when an older disabled row is still checked. The
+201-file Update also needed its existing long-job completion signal before
+checking automatic review opening. These checks now wait for completed work.
+Synthetic fixture setup batches DDL and rows in one transaction; production
+durability is unchanged. The focused macOS rerun passes all 78 web/reference
+cases and all four affected browser scenarios, including the 201-file partial
+acceptance. Receipt `grouping-mac-repair-focused-20261019-100709` records the
+results. A corrected full run remains required.
+
+The final-source Linux gate passed after the synchronization repairs: 1,987
+backend tests, all 1,338 web tests in 159 files, all 52 browser scenarios, four
+frozen checks and 135 Rust tests. Receipt
+`restoration-grouping-v4-linux-20261019-102313` ends in `Final result: 0` with
+unchanged guest source. macOS qualification remains required.
+
+The renewed macOS run passed 1,987 backend cases but failed the grouping API
+test's initialization. The test counted fifteen exchange attempts; the
+nonblocking lock allows all of them to skip work while the background worker
+imports the catalog seed. A controlled Linux schedule that holds the lock for
+those attempts reproduces the same readiness error. Waiting for actual seed
+readiness passes that schedule and all ten grouping acceptance cases. Only the
+test changes; production locking and durability remain unchanged. This macOS
+run does not qualify the feature. Receipt
+`restoration-grouping-v3-mac-20261019-101050` ended in `Final result: 1`.
+All 1,338 web tests and 51 browser scenarios passed. The remaining Create
+assertion expired after five seconds while the UI still said it was opening
+library metadata. It now waits up to 30 seconds for the admitted library's
+selector. Packaged checks, 137 Rust tests, app build and distribution passed.
+Both corrected cases pass on macOS, including the controlled busy-lock schedule
+and the real Create flow. The latter receipt is
+`grouping-readiness-create-mac.log`. A renewed full gate remains required.
+
+The corrected macOS full gate passed 1,988 backend tests, all 1,338 web tests
+in 159 files, all 52 browser scenarios, four frozen checks and 137 Rust tests,
+plus the desktop app build and distribution verification. Receipt
+`restoration-grouping-v4-mac-20261019-111211` ends in `Final result: 0` with
+unchanged guest source. Both VM gates now qualify this grouping slice; the
+broader restoration remains open.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

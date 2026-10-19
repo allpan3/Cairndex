@@ -63,7 +63,11 @@ test('editable grouping retains renamed drafts and accepts exact files after key
     await expect(
       dialog.getByText('0 / 6 files selected · 2 bundles', { exact: true }),
     ).toBeVisible()
-    await dialog.getByRole('checkbox', { name: 'Accept Reviewed Alpha', exact: true }).check()
+    const alpha = dialog.getByRole('checkbox', { name: 'Accept Reviewed Alpha', exact: true })
+    // check() skips its action when an old checked row is still disabled during refresh.
+    await expect(alpha).not.toBeChecked()
+    await expect(alpha).toBeEnabled()
+    await alpha.check()
     await expect(
       dialog.getByText('3 / 6 files selected · 2 bundles', { exact: true }),
     ).toBeVisible()
@@ -200,6 +204,7 @@ test('large editable grouping keeps later files in view through edits and partia
     await page.goto('/')
     await openMetadataReview(page)
     await page.getByRole('button', { name: 'Update', exact: true }).click()
+    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 60_000 })
     const dialog = page.getByRole('dialog', { name: 'Grouping review' })
     await expect(dialog).toBeVisible({ timeout: 30_000 })
     await dialog.getByRole('button', { name: 'Expand suggestion Gallery', exact: true }).click()
