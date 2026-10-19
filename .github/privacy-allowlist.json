@@ -98,6 +98,14 @@
       ],
       "purpose": "Document reviewed file copies from the picker and HTML drops",
       "provenance": "Playwright capture of fresh synthetic folder, picker and drop fixtures; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "89bef834cf7d7f44c467e5e8eb6c497e5fda6c393791e7d450759b4869e646f3",
+      "paths": [
+        "docs/screenshots/portable-selection.png"
+      ],
+      "purpose": "Document portable selection and inspector restoration",
+      "provenance": "Playwright capture from the Linux full gate on the published restoration slice, using only fresh synthetic catalog fixtures; visually reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
