@@ -843,6 +843,11 @@ Clients declare a capability profile (containers, video/audio codecs,
   needs a row is absent rather than faked: subtitles, storyboards, resume, and
   cover frames. Path safety is the File Browser's own — relative only, no
   traversal, no symlink escape — and non-video paths are refused.
+  Portable libraries use no-follow source descriptors and generation-fenced
+  streams, previews and HLS artifacts. `/replica/media/path` observes one chosen
+  path without creating a catalog identity. Its bounded runtime probe cache
+  avoids repeating a probe for the following decision. Mixed folder playlists
+  retain cataloged files' progress, cursors and viewer tools.
 - Sessions are interactive in-process runtime state, **not** background jobs
   (`media/hls.SessionManager` — a dict guarded by locks, not the `job_queue`).
   `POST .../playback-sessions` starts one explicitly (e.g. a mid-play

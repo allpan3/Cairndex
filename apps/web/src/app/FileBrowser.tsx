@@ -168,8 +168,8 @@ function thumbnailFor(entry: FileBrowserEntry): string | null {
       entry.file_id,
       `${entry.size_bytes}:${entry.modified_at}`,
     )
-  // The path-scoped preview reads the legacy library's files only
-  if (entry.local_state == null && entry.media_kind === 'image')
+  // Older portable servers mark bare paths unsupported and have no path preview.
+  if ((entry.local_state == null || entry.supported) && entry.media_kind === 'image')
     return fileBrowserPreviewUrl(entry.relative_path, 640)
   return null
 }
@@ -1496,11 +1496,14 @@ function FileList({
           />
         )}
 
-        {openIndex >= 0 && catalogLibrary && openable[openIndex]?.file_id && (
+        {openIndex >= 0 && catalogLibrary && (
           <ReplicaViewer
             library={catalogLibrary}
             folder={{ entries: openable, title: viewerTitle }}
-            target={{ fileId: openable[openIndex]!.file_id! }}
+            target={{
+              fileId: openable[openIndex]!.file_id ?? undefined,
+              relativePath: openable[openIndex]!.relative_path,
+            }}
             onClose={() => setOpenKey(null)}
           />
         )}

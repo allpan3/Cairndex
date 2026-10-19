@@ -1,7 +1,7 @@
 """Pinned-descriptor range reads for local replica bytes with generation checks"""
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from starlette.responses import Response, StreamingResponse
@@ -14,22 +14,25 @@ from cairndex.replicas.protocol import ReplicaError
 
 
 # Open and validate before response headers; always close the descriptor after cancellation
-class ReplicaFileResponse(Response):
-    # Keep only validated identity and media type while waiting to send the response
+class PinnedFileResponse(Response):
     def __init__(
-        self, media: ReplicaMedia, file_id: str, token: str, mime: str, range_header: str | None
+        self,
+        root: Path,
+        relative: str,
+        token: str,
+        mime: str,
+        range_header: str | None,
+        validate: Callable[[], None],
     ) -> None:
         super().__init__()
-        self.media, self.file_id, self.token = media, file_id, token
-        self.mime, self.range_header = mime, range_header
+        self.root, self.relative, self.token = root, relative, token
+        self.mime, self.range_header, self.validate = mime, range_header, validate
 
-    # Direct reads remain bounded and cannot follow a source symlink introduced after resolution
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        row = self.media.row("asset_files", self.file_id)
-        self.media.validate(self.file_id, self.token)
-        with open_source(self.media.root, row["relative_path"]) as handle:
+        self.validate()
+        with open_source(self.root, self.relative) as handle:
             info = os.fstat(handle)
-            if generation(row["relative_path"], info) != self.token:
+            if generation(self.relative, info) != self.token:
                 raise ReplicaError("Local media changed; retry playback")
             relabel = hevc_relabel.relabel_for(Path(f"/dev/fd/{handle}"))
             size = info.st_size
@@ -52,8 +55,8 @@ class ReplicaFileResponse(Response):
                 os.lseek(handle, start, os.SEEK_SET)
                 remaining = end - start + 1
                 while remaining:
-                    self.media.validate(self.file_id, self.token)
-                    if generation(row["relative_path"], os.fstat(handle)) != self.token:
+                    self.validate()
+                    if generation(self.relative, os.fstat(handle)) != self.token:
                         raise OSError("Local media changed during playback")
                     data = os.read(handle, min(remaining, _CHUNK_BYTES))
                     if not data:
@@ -68,3 +71,15 @@ class ReplicaFileResponse(Response):
                 media_type=self.mime,
                 headers=headers,
             )(scope, receive, send)
+
+
+class ReplicaFileResponse(PinnedFileResponse):
+    def __init__(
+        self, media: ReplicaMedia, file_id: str, token: str, mime: str, range_header: str | None
+    ) -> None:
+        relative = media.row("asset_files", file_id)["relative_path"]
+
+        def validate() -> None:
+            media.validate(file_id, token)
+
+        super().__init__(media.root, relative, token, mime, range_header, validate)

@@ -451,6 +451,21 @@ queued storyboard may finish because it also serves viewers. Restart retains
 progress; private recovery requires a new explicit pass. Media bytes,
 shared metadata, playback progress and bundle cursors remain unchanged.
 
+Servers with `path_media_version: 1` also open supported unindexed File Browser
+paths in the shared viewer. `/replica/media/path?path=...` returns a physical
+entry and source generation, with no file or bundle identity. Only the selected
+path is inspected. The observation and its playback decision share a bounded
+runtime probe cache; image previews use private `cache/path-previews` storage.
+
+The shared `/file`, `/file/preview` and path playback/session routes use portable
+media admission. No-follow descriptors fence raw ranges and decoder inputs;
+source generations are rechecked for previews and every HLS artifact. Release
+closes these sessions with the library's other playback sessions. Unindexed
+paths retain their earlier limits: no saved progress, subtitles, storyboards or
+cover-frame edits. Linked entries in the same folder keep those features and
+local history. Missing paths show an error with retry, and older servers show
+an explicit unsupported state. No catalog rows or authored events are created.
+
 Servers with `export_version: 1` offer contact sheets and GIF exports through the
 shared `/files/{id}/contact-sheet` and `/files/{id}/exports` routes. Both observe
 the selected file on this device first. A contact sheet opens one pinned

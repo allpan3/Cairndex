@@ -3846,6 +3846,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Local Path */
+        get: operations["local_path_api_v1_libraries__library_id__replica_media_path_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/status": {
         parameters: {
             query?: never;
@@ -5902,6 +5919,8 @@ export interface components {
             max_height?: number | null;
             /** Path */
             path: string;
+            /** Source Generation */
+            source_generation?: string | null;
             /** Start S */
             start_s?: number | null;
         };
@@ -6866,6 +6885,12 @@ export interface components {
             /** Poll Key */
             poll_key: string;
         };
+        /** PathMediaRead */
+        PathMediaRead: {
+            entry: components["schemas"]["FileBrowserEntryRead"];
+            /** Generation */
+            generation: string;
+        };
         /**
          * PathProbeRead
          * @description What a candidate path is, before anything is created or registered.
@@ -7376,6 +7401,8 @@ export interface components {
             moments_version?: number | null;
             /** Outbox */
             outbox: number;
+            /** Path Media Version */
+            path_media_version?: number | null;
             /**
              * Peer Delivery
              * @constant
@@ -10705,6 +10732,7 @@ export interface operations {
         parameters: {
             query: {
                 path: string;
+                source_generation?: string | null;
             };
             header?: {
                 authorization?: string | null;
@@ -11304,6 +11332,7 @@ export interface operations {
             query: {
                 path: string;
                 size?: 640 | 1600 | 2560;
+                source_generation?: string | null;
             };
             header?: {
                 authorization?: string | null;
@@ -16155,6 +16184,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_path_api_v1_libraries__library_id__replica_media_path_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PathMediaRead"];
                 };
             };
             /** @description Validation Error */

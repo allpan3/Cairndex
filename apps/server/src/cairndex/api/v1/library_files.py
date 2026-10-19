@@ -13,7 +13,8 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import FileResponse, Response
 
-from cairndex.api.deps import LibraryAccessDep, LibrarySession, RegistryDbSession
+from cairndex.api.deps import LibrarySession, RegistryDbSession
+from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
@@ -49,9 +50,10 @@ def list_file_browser_entries(
 
 @router.get("/file/preview")
 def serve_file_preview(
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     path: Annotated[str, Query()],
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
+    source_generation: str | None = None,
 ) -> FileResponse:
     """Serve a path-scoped WebP preview for a File Browser image.
 
@@ -62,19 +64,32 @@ def serve_file_preview(
     Scoped like the other streaming routes: the session closes before the body
     streams, so no connection is pinned for the transfer (see ``LibraryAccess``).
     """
-    with access.session() as db:
-        target = previews.preview_for_path(db, path, size)
+    if access.replica is not None:
+        from cairndex.replicas.path_media import PathMedia
+
+        target = PathMedia(access.replica, path, source_generation).preview(size)
+    else:
+        assert access.legacy is not None
+        with access.legacy.session() as db:
+            target = previews.preview_for_path(db, path, size)
     return FileResponse(
         str(target),
         media_type="image/webp",
         filename=target.name,
-        headers={"Cache-Control": previews.PREVIEW_CACHE_CONTROL},
+        headers={
+            "Cache-Control": "private, no-store"
+            if access.replica
+            else previews.PREVIEW_CACHE_CONTROL
+        },
     )
 
 
 @router.get("/file")
 def serve_file(
-    access: LibraryAccessDep, path: Annotated[str, Query()], request: Request
+    access: MediaAccessDep,
+    path: Annotated[str, Query()],
+    request: Request,
+    source_generation: str | None = None,
 ) -> Response:
     """Serve the raw bytes of a file under the library root (File Browser preview).
 
@@ -92,7 +107,21 @@ def serve_file(
     (``media/hevc_relabel``). An unindexed path benefits most — it has no row to
     hang a session's metadata on in the first place.
     """
-    with access.session() as db:
+    if access.replica is not None:
+        from cairndex.media.replica_stream import PinnedFileResponse
+        from cairndex.replicas.path_media import PathMedia
+
+        source = PathMedia(access.replica, path, source_generation)
+        return PinnedFileResponse(
+            access.replica.root,
+            source.relative,
+            source.token,
+            source.mime,
+            request.headers.get("range"),
+            source.validate,
+        )
+    assert access.legacy is not None
+    with access.legacy.session() as db:
         target = file_browser_service.resolve_entry_path(db, path)
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     relabel = hevc_relabel.relabel_for(target)

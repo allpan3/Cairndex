@@ -45,6 +45,7 @@ class ReplicaStatus(StrictModel):
     system_views_version: int | None = None
     catalog_version: int | None = None
     media_version: int | None = None
+    path_media_version: int | None = None
     maintenance_version: int | None = None
     export_version: int | None = None
     storyboard_version: int | None = None

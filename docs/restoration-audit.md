@@ -347,6 +347,10 @@ plus the desktop app build and distribution verification. Receipt
 unchanged guest source. Both VM gates now qualify this grouping slice; the
 broader restoration remains open.
 
+Grouping review merged through PR #104 after both VM gates and all 16 hosted
+checks passed. This completes that slice's qualification, while the remaining
+restoration rows stay open.
+
 Manual-bundling recommendations are implemented separately on
 `fix/portable-bundling-recommendations`. Nine backend cases pass for parity with
 the earlier scoring, root and distant-folder matches, roles/title defaults,
@@ -533,6 +537,34 @@ ordering mistake. The corrected scenario, lint and formatting pass on both guest
 in `maintenance-cleanup-20261020-015257`; application code is unchanged.
 Publication and the final merged-main owner build remain separate. This reuses
 the accepted private job and derivative boundaries, so no additional ADR is needed.
+
+The local unindexed-playback slice restores the shared folder viewer for
+physical video/audio/image paths without fabricating catalog rows. A selected-path
+observation and bounded probe cache feed the existing playback decision and
+HLS manager. Raw ranges, image previews, pinned decoder inputs and session
+artifacts retain source-generation checks and portable admission. Mixed folder
+playlists preserve linked-file progress/cursors, moments and local usage.
+Unindexed files retain the earlier limits that require a catalog identity.
+Linux passes 106 backend cases, 77 focused viewer/File Browser web cases,
+backend/web static checks and the mixed-folder and linked-resume browser cases.
+The mixed folder exercises video, TIFF previews and audio, linked resume and
+progress on file switch, plus unchanged source hashes and authored rows. It
+exposed an additional directory-adapter restriction on unindexed files; both
+that restriction and the obsolete inspector message are corrected. This restores the existing scoped path contract over private media storage;
+no persistent migration or additional ADR is needed. The full Linux gate
+passed 2,034 backend tests, all 1,349 web tests in 161 files, all 58 browser
+scenarios, four frozen checks and 135 Rust tests. Receipt
+`restoration-path-media-v1-linux-20261019-124114` ends in `Final result: 0`
+with unchanged guest source. Both subsequent complete combined restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0` with
+the same path-media implementation. Publication review corrected browser cleanup
+to close its page before stopping its child server. The scenario, lint and
+formatting pass again on both guests in `path-cleanup-20261020-020812`;
+application code is unchanged. Publication and the final merged-main owner
+build remain separate.
+The [synthetic folder viewer](screenshots/portable-path-viewer.png) was reviewed
+edge to edge. PR #105 registered its exact declaration before publication.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.

@@ -9,21 +9,23 @@ import { usePersistentState } from '../../state/usePersistentState'
 import { DEFAULT_PLAYER_PREFS, type PlayerPrefs } from '../types'
 import { playlistFor } from '../bundleRows'
 import { ViewerShell } from './ViewerShell'
-import { viewerItemFromFile, viewerItemFromEntry } from './viewerItem'
+import { viewerItemFromFile, viewerItemFromEntry, pathPlayable } from './viewerItem'
 import { useLibraryHostFiles, type LibraryHostFiles } from '../../desktop/useLibraryHostFiles'
 import { Moments } from '../Moments'
 import { MomentSourceContext } from '../momentSource'
 import { useCatalogMomentSource } from '../useCatalogMomentSource'
-import type { ViewerInspectorTarget } from '../fileFacts'
+import { inspectorTargetForEntry, type ViewerInspectorTarget } from '../fileFacts'
 import { useCatalogHistory } from '../useCatalogHistory'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
 type Storyboard = components['schemas']['ReplicaStoryboardRead']
+type PathObservation = components['schemas']['PathMediaRead']
 
 export interface ReplicaOpen {
   bundleId?: string
   fileId?: string
+  relativePath?: string
   time?: number
 }
 
@@ -76,11 +78,6 @@ export function ReplicaViewer({
     retry: false,
   })
   const bundleId = target.bundleId ?? initial.data?.file.bundle_id
-  const historyError = useCatalogHistory(
-    library,
-    bundleId,
-    (status.data?.browse_version ?? 0) >= 11,
-  )
   const pages = useInfiniteQuery({
     queryKey: ['replica-media', library, 'playlist', bundleId],
     enabled: !folder && Boolean(bundleId),
@@ -113,9 +110,10 @@ export function ReplicaViewer({
     [files, first?.directories, target.fileId, initial.data?.file],
   )
   const sequence = folder
-    ? folder.entries.map((file) => file.file_id!)
+    ? folder.entries.map((file) => file.file_id ?? `path:${file.relative_path}`)
     : playlist.map((file) => file.id)
-  const requested = picked ?? target.fileId
+  const requested =
+    picked ?? target.fileId ?? (target.relativePath ? `path:${target.relativePath}` : undefined)
   const preferred = requested ?? first?.cursor
   const waitingForPreferred =
     !pages.isError && preferred && !sequence.includes(preferred ?? '') && pages.hasNextPage
@@ -124,6 +122,9 @@ export function ReplicaViewer({
     : ((sequence.includes(preferred ?? '') ? preferred : null) ??
       (requested ? undefined : sequence[0]))
   const index = sequence.indexOf(selected ?? '')
+  const selectedEntry = folder?.entries[index]
+  const unlinked = Boolean(selectedEntry && !selectedEntry.file_id)
+  const pathSupported = status.data?.path_media_version === 1
   // Fetch the next metadata page ahead of the ordered transition; this never reads media bytes
   useEffect(() => {
     if (
@@ -138,14 +139,34 @@ export function ReplicaViewer({
   }, [index, playlist, preferred, pages, folder, sequence])
   const local = useQuery({
     queryKey: ['replica-media', library, 'file', selected],
-    enabled: Boolean(selected),
+    enabled: Boolean(selected) && !unlinked,
     queryFn: ({ signal }) =>
       replicaRequest<LocalMedia>(library, `/media/files/${selected}`, 'GET', undefined, signal),
     retry: false,
     // Resume and availability belong to this opening, never an inactive cached observation
     gcTime: 0,
   })
-  const observation = local.isFetchedAfterMount ? local.data : undefined
+  const observation = !unlinked && local.isFetchedAfterMount ? local.data : undefined
+  const path = useQuery({
+    queryKey: ['replica-media', library, 'path', selectedEntry?.relative_path],
+    enabled: unlinked && pathSupported,
+    queryFn: ({ signal }) =>
+      replicaRequest<PathObservation>(
+        library,
+        `/media/path?path=${encodeURIComponent(selectedEntry!.relative_path)}`,
+        'GET',
+        undefined,
+        signal,
+      ),
+    retry: false,
+    gcTime: 0,
+  })
+  const pathObservation = unlinked && path.isFetchedAfterMount ? path.data : undefined
+  const historyError = useCatalogHistory(
+    library,
+    folder ? observation?.file.bundle_id : bundleId,
+    (status.data?.browse_version ?? 0) >= 11,
+  )
   // The server makes the storyboard in the background; poll until it is settled
   const generation = observation?.generation
   const storyboard = useQuery({
@@ -180,6 +201,7 @@ export function ReplicaViewer({
     [files, folder, observation],
   )
   const inspectorTarget = useMemo<ViewerInspectorTarget | null>(() => {
+    if (pathObservation) return inspectorTargetForEntry(pathObservation.entry)
     const showMoments = momentsEnabled && momentFiles.some((file) => file.media_kind === 'video')
     if (!momentBundle) return null
     if (renderInspector)
@@ -193,28 +215,38 @@ export function ReplicaViewer({
         }),
       }
     return showMoments ? { kind: 'moments', bundleId: momentBundle, files: momentFiles } : null
-  }, [hostFiles, momentBundle, momentFiles, momentsEnabled, renderInspector])
+  }, [hostFiles, momentBundle, momentFiles, momentsEnabled, renderInspector, pathObservation])
   useEffect(() => {
     const owner = folder ? observation?.file.bundle_id : bundleId
-    if (!owner || !selected) return
+    if (!owner || !selected || unlinked) return
     void replicaRequest(library, `/media/bundles/${owner}/cursor`, 'PUT', {
       file_id: selected,
     }).catch(() => undefined)
-  }, [bundleId, library, selected, folder, observation?.file.bundle_id])
+  }, [bundleId, library, selected, folder, observation?.file.bundle_id, unlinked])
   const items = useMemo(
     () =>
       (folder ? folder.entries.map(viewerItemFromEntry) : playlist.map(viewerItemFromFile)).map(
         (baseItem) => {
           const id = baseItem.fileId
           const value = id === observation?.file.id ? observation : null
-          const item = value ? viewerItemFromFile(value.file) : baseItem
-          const token = value?.generation
+          const pathValue =
+            !id && baseItem.pathTarget === pathObservation?.entry.relative_path
+              ? pathObservation
+              : null
+          const item = value
+            ? viewerItemFromFile(value.file)
+            : pathValue
+              ? viewerItemFromEntry(pathValue.entry)
+              : baseItem
+          const token = value?.generation ?? pathValue?.generation
           return {
             ...item,
-            key: `${id}:${token ?? 'unobserved'}`,
+            key: `${id ?? `path:${baseItem.key}`}:${token ?? 'unobserved'}`,
             sourceGeneration: token,
             canSetCover: false,
-            contentUrl: token ? `${item.contentUrl}?source_generation=${token}` : item.contentUrl,
+            contentUrl: token
+              ? `${item.contentUrl}${item.contentUrl.includes('?') ? '&' : '?'}source_generation=${token}`
+              : item.contentUrl,
             imageTiers: item.imageTiers.map((tier) => ({
               ...tier,
               src: token
@@ -224,9 +256,16 @@ export function ReplicaViewer({
           }
         },
       ),
-    [playlist, observation, folder],
+    [playlist, observation, pathObservation, folder],
   )
   const playable = useMemo(() => {
+    if (pathObservation?.entry.media_kind === 'video') {
+      const value = pathPlayable(viewerItemFromEntry(pathObservation.entry))
+      return {
+        ...value,
+        stream_url: `${value.stream_url}&source_generation=${pathObservation.generation}`,
+      }
+    }
     const value = observation?.playback
     return value
       ? {
@@ -239,12 +278,24 @@ export function ReplicaViewer({
           })),
         }
       : null
-  }, [observation?.playback, storyboardUrl])
+  }, [observation?.playback, storyboardUrl, pathObservation])
   const retry = useCallback(async () => {
     if (!folder && !bundleId && target.fileId) await initial.refetch()
     if (!folder) await pages.refetch()
-    if (selected) await local.refetch()
-  }, [bundleId, initial, local, pages, selected, target.fileId, folder])
+    if (unlinked && pathSupported) await path.refetch()
+    else if (selected && !unlinked) await local.refetch()
+  }, [
+    bundleId,
+    initial,
+    local,
+    pages,
+    selected,
+    target.fileId,
+    folder,
+    unlinked,
+    pathSupported,
+    path,
+  ])
   const mediaError =
     local.data?.state === 'available' && local.data.message ? new Error(local.data.message) : null
   const shell = (
@@ -261,12 +312,21 @@ export function ReplicaViewer({
       loading={
         (!folder && ((!bundleId && initial.isPending) || !pages.isFetchedAfterMount)) ||
         Boolean(waitingForPreferred) ||
-        (Boolean(selected) && !local.isFetchedAfterMount)
+        (Boolean(selected) &&
+          (unlinked
+            ? status.isPending || (pathSupported && !path.isFetchedAfterMount)
+            : !local.isFetchedAfterMount))
       }
       error={
         initial.error ??
         pages.error ??
-        local.error ??
+        (unlinked ? path.error : local.error) ??
+        (unlinked ? status.error : null) ??
+        (unlinked && !status.isPending && !pathSupported
+          ? new Error(
+              'This server cannot preview unindexed files. Update the server and reopen the file.',
+            )
+          : null) ??
         mediaError ??
         (requested && !pages.hasNextPage && pages.isSuccess && !sequence.includes(requested)
           ? new Error(
@@ -282,9 +342,9 @@ export function ReplicaViewer({
       savedMoments={momentsEnabled ? undefined : first?.moments}
       inspectorTarget={inspectorTarget}
       onRetryMedia={retry}
-      serverExports={status.data?.export_version === 1}
+      serverExports={!unlinked && status.data?.export_version === 1}
       hostFiles={hostFiles}
-      hostPath={observation?.file.relative_path ?? null}
+      hostPath={observation?.file.relative_path ?? pathObservation?.entry.relative_path ?? null}
       startAt={
         target.fileId && target.time !== undefined
           ? { fileId: target.fileId, time: target.time }

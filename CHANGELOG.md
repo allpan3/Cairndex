@@ -370,6 +370,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore unindexed video, audio and image playback in the portable File Browser.
+  Mixed folder playlists keep linked files' resume and viewer tools, while path
+  streams, previews and HLS sessions revalidate the local source generation.
+
 - Restore separate Scan, Suggest grouping, Collect metadata and Generate
   storyboards controls in portable libraries. Explicit media passes run in the
   background with progress, cancellation and retained private work.

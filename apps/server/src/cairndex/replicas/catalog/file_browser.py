@@ -13,6 +13,7 @@ from pathlib import Path
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
+from cairndex.media.image_support import is_openable_media
 from cairndex.replicas.media import ReplicaMedia
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
@@ -132,7 +133,7 @@ def entry(
         extension=Path(path).suffix.lstrip(".") or None,
         mime_type=mimetypes.guess_type(path)[0],
         media_kind=media_kind,
-        supported=bool(identity and media_kind in ("image", "video")),
+        supported=is_openable_media(media_kind, path),
         linked=identity is not None,
         bundle_id=bundle,
         file_id=identity,
