@@ -114,6 +114,14 @@
       ],
       "purpose": "Document editable portable grouping review",
       "provenance": "Playwright capture of fresh synthetic grouping-interaction fixtures; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "b9cf9ece7a20cd635633aec4fbb5afd3e965a87947d9c9fec70caea984fb6db9",
+      "paths": [
+        "docs/screenshots/portable-manual-file-picker.png"
+      ],
+      "purpose": "Document portable manual bundling and the complete Unbundled file picker",
+      "provenance": "Playwright capture of fresh synthetic catalog fixtures and checked selections across paging and search; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
