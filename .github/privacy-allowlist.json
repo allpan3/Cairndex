@@ -106,6 +106,14 @@
       ],
       "purpose": "Document portable selection and inspector restoration",
       "provenance": "Playwright capture from the Linux full gate on the published restoration slice, using only fresh synthetic catalog fixtures; visually reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "1598d9106f33753f386d05720840d6654aa070c1cecd381595797faa89fc2b4a",
+      "paths": [
+        "docs/screenshots/portable-grouping-review.png"
+      ],
+      "purpose": "Document editable portable grouping review",
+      "provenance": "Playwright capture of fresh synthetic grouping-interaction fixtures; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
