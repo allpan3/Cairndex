@@ -9,7 +9,7 @@ import stat
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from typing import Any
 
 from cairndex.core.errors import NotFoundError, ValidationError
@@ -23,6 +23,9 @@ from cairndex.replicas.protocol import ReplicaError
 from cairndex.scanning.media_types import classify
 
 _PROBE_SLOTS = BoundedSemaphore(2)
+# API adapters are request-scoped. Fixed stripes coalesce inspection across
+# adapters without retaining one lock for every file in a large library.
+_FILE_LOCKS = tuple(Lock() for _ in range(64))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS local_media (
@@ -144,6 +147,10 @@ class ReplicaMedia:
 
     # Local observations never establish shared presence or overwrite authored choices
     def file(self, identity: str, *, inspect: bool = False, probe: bool = False) -> AssetFile:
+        with _FILE_LOCKS[hash((self.store.path, identity)) % len(_FILE_LOCKS)]:
+            return self._inspect_file(identity, inspect=inspect, probe=probe)
+
+    def _inspect_file(self, identity: str, *, inspect: bool, probe: bool) -> AssetFile:
         row = self.row("asset_files", identity)
         kind = classify(row["relative_path"])
         with self.store.connection(readonly=True) as db:
@@ -218,7 +225,12 @@ class ReplicaMedia:
                 else:
                     db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
                 db.execute(
-                    "INSERT OR REPLACE INTO local_media VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO local_media VALUES (?, ?, ?, ?, ?) ON CONFLICT(file_id) DO UPDATE "
+                    "SET generation=excluded.generation,state=excluded.state,"
+                    "metadata=excluded.metadata,"
+                    "error=excluded.error WHERE local_media.generation IS NOT excluded.generation "
+                    "OR local_media.state IS NOT excluded.state OR local_media.metadata IS NOT "
+                    "excluded.metadata OR local_media.error IS NOT excluded.error",
                     (identity, token, state, json.dumps(metadata) if metadata else None, error),
                 )
         return AssetFile(

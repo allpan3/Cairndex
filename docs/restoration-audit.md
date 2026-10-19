@@ -135,6 +135,23 @@ population. Packaged sidecar, frozen checks, web checks, 137 Rust tests, desktop
 build and distribution verification passed. A complete corrected run is still
 required before merge.
 
+The renewed macOS gate passed all 1,958 backend tests, four frozen checks,
+155 web test files, 137 Rust tests and packaged-app distribution. It failed two
+of 49 browser scenarios: an album was still loading at the five-second assertion,
+and a selected video reported a local probe failure. Both scenarios passed on an
+isolated two-worker rerun; this does not qualify the full gate. Follow-up tests
+reproduce duplicate simultaneous probes of one generation and redundant writes
+of unchanged local facts. The fix coalesces per-file inspection across request adapters and writes
+observation rows only when their values change. Both reproductions were observed
+failing before the fix; all 28 media/history tests then passed on macOS.
+Durability settings remain unchanged. A synthetic local-disk microbenchmark on
+Cairndex macOS used 150 repeated unchanged observations per mode, alternating
+five runs. Median/p95 elapsed time including connection and transaction was
+11.458/16.874 ms before and 0.213/0.605 ms after. `synchronous=FULL`, `fullfsync=ON`
+and `checkpoint_fullfsync=ON` were confirmed. This measures redundant observation
+writes, not rating/edit commit latency or overall UI response. Renewed full
+qualification is required.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

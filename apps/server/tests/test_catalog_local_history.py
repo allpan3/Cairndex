@@ -65,3 +65,19 @@ def test_metadata_edits_and_opening_have_separate_times(tmp_path, monkeypatch):
         page(store, sort="date_modified", order="desc", limit=1).items[0].date_modified
         == changed.date_modified
     )
+
+
+def test_repeated_file_observation_only_writes_changes(tmp_path):
+    from cairndex.persistence.sqlite_durability import connect_writable
+    from cairndex.replicas.catalog.local_history import SCHEMA, observed
+
+    with connect_writable(tmp_path / "observations.db") as db:
+        db.executescript(SCHEMA)
+        observed(db, "synthetic-file", "Synthetic/clip.mp4", 123, 1_000_000_000)
+        before = db.total_changes
+        observed(db, "synthetic-file", "Synthetic/clip.mp4", 123, 1_000_000_000)
+        assert db.total_changes == before
+        observed(db, "synthetic-file", "Synthetic/clip.mp4", 124, 1_000_000_000)
+        assert db.total_changes == before + 1
+        observed(db, "synthetic-file", "Synthetic/renamed.mp4", 124, 1_000_000_000)
+        assert db.total_changes == before + 2

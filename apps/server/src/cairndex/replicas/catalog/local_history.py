@@ -56,7 +56,11 @@ def observed(
     mtime_ns: int,
 ) -> None:
     db.execute(
-        "INSERT OR REPLACE INTO local_file_facts VALUES (?,?,?,?)",
+        "INSERT INTO local_file_facts VALUES (?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET "
+        "path=excluded.path,size=excluded.size,modified_at=excluded.modified_at "
+        "WHERE local_file_facts.path IS NOT excluded.path "
+        "OR local_file_facts.size IS NOT excluded.size "
+        "OR local_file_facts.modified_at IS NOT excluded.modified_at",
         (file_id, path, size, datetime.fromtimestamp(mtime_ns / 1_000_000_000, UTC).isoformat()),
     )
 
