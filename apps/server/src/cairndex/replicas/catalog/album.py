@@ -5,6 +5,8 @@ import json
 import sqlite3
 from typing import Literal
 
+from pydantic import Field
+
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
 from cairndex.core.errors import ConflictError, NotFoundError
 from cairndex.replicas.catalog.projection import read_row
@@ -27,6 +29,8 @@ class CatalogAlbumPage(StrictModel):
     items: list[CatalogAlbumItem]
     total: int
     next_offset: int | None
+    observed: dict[str, list[str]] = Field(default_factory=dict)
+    editable: bool = False
 
 
 def visible(path: str) -> str:
@@ -71,6 +75,12 @@ def album(
         path = "json_extract(c.body,'$.relative_path')"
         folder_path = "json_extract(d.body,'$.directory_path')"
         owner = f"asset_bundles/{bundle_id}/$members"
+        units = [owner, f"asset_bundles/{bundle_id}/$alive"]
+        observed = {unit: [tip["event"] for tip in media.store.tips(db, unit)] for unit in units}
+        editable = not any(
+            db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone()
+            for unit in units
+        )
         params: list[str | int] = [owner]
         files = (
             "SELECT c.entity AS entity,c.body,'file' AS kind,"
@@ -103,6 +113,24 @@ def album(
         rows = db.execute(
             relation + " ORDER BY sequence,entity LIMIT ? OFFSET ?", [*params, limit, offset]
         ).fetchall()
+        directory_counts = {}
+        directory_ids = [row["entity"] for row in rows if row["kind"] == "directory"]
+        if directory_ids:
+            directory_counts = dict(
+                db.execute(
+                    "SELECT d.entity,count(f.entity) FROM catalog_rows d "
+                    "LEFT JOIN catalog_placements p ON p.owner=? AND p.family='asset_files' "
+                    "LEFT JOIN catalog_rows f ON f.family=p.family AND f.entity=p.entity "
+                    "AND json_extract(f.body,'$.relative_path')>="
+                    "json_extract(d.body,'$.directory_path')||'/' "
+                    "AND json_extract(f.body,'$.relative_path')<"
+                    "json_extract(d.body,'$.directory_path')||'0' "
+                    "AND " + visible("json_extract(f.body,'$.relative_path')") + " "
+                    "WHERE d.family='bundle_directory_members' "
+                    "AND d.entity IN (SELECT value FROM json_each(?)) GROUP BY d.entity",
+                    (owner, json.dumps(directory_ids)),
+                ).fetchall()
+            )
         items = [
             CatalogAlbumItem(
                 id=row["entity"],
@@ -110,7 +138,9 @@ def album(
                 file=FileRead.model_validate(catalog_file(db, row["entity"]))
                 if row["kind"] == "file"
                 else None,
-                directory=DirectoryMemberRead.model_validate(json.loads(row["body"]))
+                directory=DirectoryMemberRead.model_validate(
+                    json.loads(row["body"]) | {"file_count": directory_counts[row["entity"]]}
+                )
                 if row["kind"] == "directory"
                 else None,
             )
@@ -123,4 +153,6 @@ def album(
             items=items,
             total=total,
             next_offset=offset + len(items) if offset + len(items) < total else None,
+            observed=observed,
+            editable=editable,
         )

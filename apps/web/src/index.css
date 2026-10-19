@@ -1800,6 +1800,18 @@ button {
 .files .file-row:focus-visible {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+.catalog-file-grip {
+  flex: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.catalog-member-page .catalog-member-page {
+  padding-left: 14px;
+}
 .files .file-row--dragging {
   cursor: grabbing;
 }

@@ -96,6 +96,7 @@ export function CatalogOrdinaryBrowser(props: {
   onSettings?: () => void
   /** Make this browser's navigation action available to the sibling viewer rail. */
   onRegisterTagFilter?: (action: ((id: string) => void) | null) => void
+  onRegisterFileNavigation?: (action: ((path: string, directory?: boolean) => void) | null) => void
   /** The workspace's viewer is open and shows the bundle inspector itself. */
   viewerOpen?: boolean
   /** A `cairndex://` link to open; reported handled once applied. */
@@ -186,6 +187,24 @@ export function CatalogOrdinaryBrowser(props: {
     onRegisterTagFilter?.(filterFromChip)
     return () => onRegisterTagFilter?.(null)
   }, [onRegisterTagFilter, filterFromChip])
+  const navigateFiles = useCallback((relative: string, directory = false) => {
+    setPath(
+      directory
+        ? relative
+        : relative.includes('/')
+          ? relative.slice(0, relative.lastIndexOf('/'))
+          : '',
+    )
+    setFile(null)
+    setLocated(directory ? null : relative)
+    setUnbundled(false)
+    setMode('file')
+  }, [])
+  const { onRegisterFileNavigation } = props
+  useEffect(() => {
+    onRegisterFileNavigation?.(navigateFiles)
+    return () => onRegisterFileNavigation?.(null)
+  }, [onRegisterFileNavigation, navigateFiles])
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const openPlace = (next: Selection) => {
@@ -381,13 +400,8 @@ export function CatalogOrdinaryBrowser(props: {
               {...props}
               hostFiles={hostFiles}
               onHostPath={setBundleHostPath}
-              onLocateFile={(relative) => {
-                setPath(relative.includes('/') ? relative.slice(0, relative.lastIndexOf('/')) : '')
-                setFile(null)
-                setLocated(relative)
-                setUnbundled(false)
-                setMode('file')
-              }}
+              onLocateFile={(relative) => navigateFiles(relative)}
+              onOpenDirectory={(relative) => navigateFiles(relative, true)}
               onBundleDrag={
                 bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined
               }

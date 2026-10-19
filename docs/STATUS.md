@@ -459,6 +459,27 @@ navigation, publication and the final merged-main build follow separately.
 This restores existing interactions
 without changing storage or APIs, so no additional ADR is needed.
 
+The local `fix/portable-bundle-file-controls` slice implements ordinary file
+ordering, metadata-only removal and reversible collapsed-directory rows.
+Paged reads capture membership bases and interrupted responses retain exact
+retry intent. Linux passes 75 bundle/album/recovery cases, 21 focused/reference
+web cases, backend/web static checks and four affected browser scenarios. The
+expanded file-control browser also passes in 32.6 seconds, including folder
+handoff from both inspectors and unchanged source bytes. API artifacts are
+regenerated and a synthetic capture is reviewed locally. Cross-page keyboard
+moves now fetch one neighbour, retain focus after paging, and offer Beginning/End
+actions. Their full browser scenario passes in 51.6 seconds, with web static and
+retry checks. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The member controls, album reads and regression cases match that qualified source.
+The browser case holds a save acknowledgement, verifies the retained lock and
+preserved file identity, then waits for editable controls before reloading.
+The [synthetic file-control capture](screenshots/portable-bundle-file-controls.png)
+matches its exact declaration merged through PR #106. Bulk selection Size, mixed
+navigation, remaining viewer controls, publication and the final merged-main
+owner build follow separately.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

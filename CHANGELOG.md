@@ -370,6 +370,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore ordinary bundle-file ordering, removal back to Unbundled and
+  reversible folder rows through private reviewed metadata operations.
+
 - Restore portable tag-chip Filter, Rename, Copy and Paste actions and desktop
   tag copy/paste shortcuts. Pasting adds tags to the selected bundles without
   removing existing tags. The clipboard stays within its server and library.
