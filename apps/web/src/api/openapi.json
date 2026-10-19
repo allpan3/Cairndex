@@ -2736,12 +2736,26 @@
         "additionalProperties": false,
         "properties": {
           "bundle_id": {
-            "title": "Bundle Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
           },
           "id": {
-            "title": "Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
           },
           "local_state": {
             "default": "unknown",
@@ -5766,8 +5780,15 @@
             "type": "number"
           },
           "file_id": {
-            "title": "File Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
           },
           "media_kind": {
             "$ref": "#/components/schemas/MediaKind"

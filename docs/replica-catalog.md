@@ -548,3 +548,17 @@ performance remain unqualified. Current gate results are in
 Source-operation routes, workers and controls are unavailable in this application
 extraction. Retained source records remain part of private recovery validation.
 Mounted SMB and physical file changes need their separate feature group.
+
+Servers with `browse_version: 15` include fresh private discoveries in ordinary
+Unbundled reads and manual file suggestions. The latest successful discovery
+supplies paths that have no current catalog claim. Failed, cancelled and running
+passes do not replace it. Retained provisional files keep their real IDs;
+unindexed observations return null file and bundle IDs. Reading choices never
+publishes a provisional bundle. Manual confirmation prepares/revalidates sources
+through the existing private job before authoring the chosen confirmed bundle.
+
+The derived `discovery_suggestion_paths` FTS index follows private planning rows
+and is rebuilt in bounded batches when absent. It supports filename candidates
+outside a selected folder or the current queue page. Recovery recognizes both
+older schemas without the index and the complete new layout. It does not change
+the shared library format or import old playback positions.

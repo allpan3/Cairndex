@@ -196,8 +196,41 @@ def nearby(
         ):
             if row[0] not in excluded and not is_hidden_relative_path(row[1]):
                 candidate_rows[row[0]] = row[1]
+    # Private observations have paths, never catalog identities. Only the latest
+    # completed run participates; a confirmed apply removes its path immediately.
+    from cairndex.replicas.catalog.unbundled_sources import FRESH_WHERE, latest_run
+
+    private: set[str] = set()
+    run = latest_run(db)
+    excluded_paths = {file.relative_path for file in source}
+    if run:
+        for directory in sorted(ctx.dirs):
+            for row in db.execute(
+                "SELECT d.path FROM discovery_plan_files d WHERE d.run=? AND "
+                "(d.directory=? OR (d.directory>=? AND d.directory<?)) AND "
+                + FRESH_WHERE
+                + " ORDER BY d.path LIMIT ?",
+                (run, directory, directory + "/", directory + "0", CAP),
+            ):
+                if row[0] not in excluded_paths and not is_hidden_relative_path(row[0]):
+                    private.add(row[0])
+            if len(private) >= CAP:
+                break
+        if match:
+            for row in db.execute(
+                "SELECT d.path FROM discovery_suggestion_paths s "
+                "JOIN discovery_plan_files d ON d.rowid=s.rowid "
+                "WHERE discovery_suggestion_paths MATCH ? AND "
+                + FRESH_WHERE
+                + " ORDER BY s.rank,d.path LIMIT ?",
+                (match, CAP),
+            ):
+                if row[0] not in excluded_paths and not is_hidden_relative_path(row[0]):
+                    private.add(row[0])
     suggestions: list[dict[str, Any]] = []
-    for identity, path in candidate_rows.items():
+    candidates: list[tuple[str | None, str]] = list(candidate_rows.items())
+    candidates.extend((None, path) for path in private)
+    for identity, path in candidates:
         media = kind(path)
         scored = rules._score(path, media, ctx)
         if scored:
@@ -211,7 +244,8 @@ def nearby(
                 }
             )
     return sorted(
-        suggestions, key=lambda item: (-item["confidence"], item["relative_path"], item["file_id"])
+        suggestions,
+        key=lambda item: (-item["confidence"], item["relative_path"], item["file_id"] or ""),
     )[:limit]
 
 

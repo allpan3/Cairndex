@@ -1115,3 +1115,12 @@ unsafe paths, changed generations, probe reuse and HLS artifact/teardown access.
 `e2e/catalog-path-media.spec.ts` plays generated media through ordinary File
 Browser entry points, retains linked resume and compares source bytes and
 catalog values. Its capture contains only those synthetic fixtures.
+
+### Private Unbundled checks
+
+`tests/test_catalog_private_unbundled.py` covers complete paging/search,
+private peer isolation, filename recommendations, source-checked confirmation,
+latest-complete-run selection and derived-index upgrades. The browser scenario
+in `e2e/catalog-private-unbundled.spec.ts` scans synthetic files through the
+ordinary menu, creates a bundle with a suggested subtitle, then selects fresh
+paths across pages and searches in Add Files. It checks unchanged source bytes.

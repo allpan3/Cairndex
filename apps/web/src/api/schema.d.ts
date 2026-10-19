@@ -5107,9 +5107,9 @@ export interface components {
         /** CatalogUnbundledFile */
         CatalogUnbundledFile: {
             /** Bundle Id */
-            bundle_id: string;
+            bundle_id: string | null;
             /** Id */
-            id: string;
+            id: string | null;
             /**
              * Local State
              * @default unknown
@@ -6120,7 +6120,7 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** File Id */
-            file_id: string;
+            file_id: string | null;
             media_kind: components["schemas"]["MediaKind"];
             /** Reason */
             reason: string;

@@ -44,7 +44,7 @@ class TargetSuggestionRead(BaseModel):
 
 
 class FileSuggestionRead(BaseModel):
-    file_id: str
+    file_id: str | None
     relative_path: str
     media_kind: MediaKind
     confidence: float

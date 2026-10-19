@@ -370,6 +370,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Show fresh private discoveries in Unbundled and manual-bundling choices,
+  including ranked nearby files and complete paged search. Confirmation keeps
+  the existing source checks and creates no shared staging bundles.
+
 - Restore unindexed video, audio and image playback in the portable File Browser.
   Mixed folder playlists keep linked files' resume and viewer tools, while path
   streams, previews and HLS sessions revalidate the local source generation.

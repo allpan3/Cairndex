@@ -380,7 +380,7 @@ function CatalogBrowseScope(props: FileScopeProps) {
 
 const PLAYABLE = new Set(['video', 'image', 'audio'])
 
-/** The portable library's queue: cataloged files whose bundle is still unconfirmed. */
+/** Retained staging and fresh private discoveries share the ordinary file queue. */
 function CatalogUnbundledScope(props: FileScopeProps) {
   const q = props.search.trim()
   const query = useInfiniteQuery({
@@ -410,7 +410,7 @@ function CatalogUnbundledScope(props: FileScopeProps) {
             relative_path: item.relative_path,
             file_id: item.id,
             bundle_id: item.bundle_id,
-            linked: true,
+            linked: item.id != null,
             unbundled: true,
             local_state: item.local_state ?? 'unknown',
             media_kind: item.media_kind ?? null,
