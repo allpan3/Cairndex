@@ -154,6 +154,14 @@
       ],
       "purpose": "Document portable bundle file ordering and reversible folder rows",
       "provenance": "Playwright capture of the generated synthetic album fixture; reviewed edge to edge with no owner media, paths, account state or desktop content"
+    },
+    {
+      "sha256": "0fbb6ebd0cccb0da788ab2a0d0007a23b5a8b0c114d47f6a488a4679c07507e6",
+      "paths": [
+        "docs/screenshots/portable-bulk-size.png"
+      ],
+      "purpose": "Document observed size totals for a portable bundle selection",
+      "provenance": "Playwright capture of fresh generated playback and empty-bundle fixtures; visually reviewed edge to edge with no owner metadata, account state or desktop content"
     }
   ],
   "vendored_trees": []
