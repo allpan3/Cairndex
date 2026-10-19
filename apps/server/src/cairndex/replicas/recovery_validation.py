@@ -461,6 +461,43 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
     for row in db.execute("SELECT * FROM catalog_jobs"):
         intent = json.loads(row["intent"])
         CatalogJobRequest.model_validate({"operation": row["id"], **intent})
+        if row["result"]:
+            result = json.loads(row["result"])
+            if "sources" in result:
+                from cairndex.replicas.catalog.manual_sources import Selection
+                from cairndex.replicas.discovery_validation import observation
+
+                if intent["action"] != "preview" or intent["body"].get("action") != "bundle_files":
+                    raise ReplicaError("Private source preview has inconsistent intent")
+                selected = Selection(
+                    file_ids=intent["body"].get("files", []),
+                    relative_paths=intent["body"].get("relative_paths", []),
+                )
+                if len(result["sources"]) != len(selected.file_ids) + len(selected.relative_paths):
+                    raise ReplicaError("Private source preview is incomplete")
+                for file in result["sources"]:
+                    observation(file)
+                if (
+                    [file["id"] for file in result["sources"][: len(selected.file_ids)]]
+                    != selected.file_ids
+                    or [file["path"] for file in result["sources"][len(selected.file_ids) :]]
+                    != selected.relative_paths
+                    or len({file["path"] for file in result["sources"]}) != len(result["sources"])
+                ):
+                    raise ReplicaError("Private source preview differs from its selection")
+                changes = {change["unit"]: change["value"] for change in result["changes"]}
+                for file in result["sources"][len(selected.file_ids) :]:
+                    for field, expected in (
+                        ("relative_path", file["path"]),
+                        ("$content", file["evidence"]),
+                    ):
+                        if (
+                            json.loads(changes.get(f"asset_files/{file['id']}/{field}", "null"))
+                            != expected
+                        ):
+                            raise ReplicaError(
+                                "Private source preview differs from its catalog values"
+                            )
         if row["state"] not in {"queued", "running", "succeeded", "failed", "cancelled"}:
             raise ReplicaError("Unsupported private job state")
         if intent["action"] == "commit_preview":

@@ -59,15 +59,17 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await expect(listing.locator('[data-file-id="gallery-000"]')).toHaveCount(0)
     await listing.locator('[data-file-id="album-folder"]').dblclick()
     await expect(page.getByRole('button', { name: 'Back to bundle', exact: true })).toBeVisible()
-    await expect(listing.locator('[data-file-id="gallery-000"]')).toBeVisible()
+    // The folder heading renders before its first page arrives.
+    await expect(listing.locator('[data-file-id="gallery-000"]')).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Load more album items' }).click()
-    await expect(page.getByText('100 of 125 items', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Load more album items' }).click()
-    // The button changes its name when fetching starts. Wait for that work to finish.
-    await expect(page.getByRole('button', { name: 'Loading more items…' })).toHaveCount(0, {
+    await expect(page.getByText('100 of 125 items', { exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByText('125 of 125 items', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Load more album items' }).click()
+    // A loading label can still be absent before React publishes the pending state.
+    await expect(page.getByText('125 of 125 items', { exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
     await listing.focus()
     await listing.press('End')
     const last = listing.locator('[data-file-id="gallery-124"]')

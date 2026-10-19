@@ -1,6 +1,7 @@
 import { useContext } from 'react'
 import { CatalogQueryContext, catalogNavigation } from './catalogQuery'
 import { catalog } from './catalog'
+import { useReplicaStatus } from './useReplicaStatus'
 import type { components } from './schema'
 import {
   arrangeHierarchy,
@@ -1271,51 +1272,111 @@ export function useUnbundledFiles(params: UnbundledFilesParams = {}, enabled = t
   })
 }
 
+/** Older portable servers keep search-only dialogs and their unranked file list. */
+export function useManualSuggestionsAvailable(paths = false) {
+  const library = useContext(CatalogQueryContext)
+  const status = useReplicaStatus(library)
+  return !library || (status.data?.browse_version ?? 0) >= (paths ? 13 : 12)
+}
+
 /** Confirmed bundles the selected unbundled files most likely belong to. */
 export function useTargetSuggestions(sel: FileSelection, enabled = true) {
   const library = useContext(CatalogQueryContext)
+  const supported = useManualSuggestionsAvailable(!!sel.relativePaths?.length)
   return useQuery({
-    queryKey: ['mb-target-suggestions', sel],
-    queryFn: () => suggestTargetBundles(sel),
-    enabled: enabled && !library && hasSelection(sel),
+    queryKey: ['mb-target-suggestions', library, sel],
+    staleTime: 0,
+    queryFn: () =>
+      library
+        ? catalog<{ suggestions: Awaited<ReturnType<typeof suggestTargetBundles>> }>(
+            library,
+            '/manual-bundling/suggest-targets',
+            'POST',
+            {
+              file_ids: sel.fileIds ?? [],
+              ...(sel.relativePaths?.length ? { relative_paths: sel.relativePaths } : {}),
+              limit: 10,
+            },
+          ).then((body) => body.suggestions)
+        : suggestTargetBundles(sel),
+    enabled: enabled && supported && hasSelection(sel),
   })
 }
 
 /** Unbundled files that most likely belong in a bundle. */
 export function useUnbundledFileSuggestions(bundleId: string | null) {
   const library = useContext(CatalogQueryContext)
+  const status = useReplicaStatus(library)
+  const supported = (status.data?.browse_version ?? 0) >= 12
   return useQuery({
-    queryKey: ['mb-file-suggestions', library, bundleId],
-    // A portable server ranks nothing, so it offers the first Unbundled files by path
+    queryKey: ['mb-file-suggestions', library, bundleId, supported],
+    staleTime: 0,
     queryFn: () =>
       library
-        ? catalog<components['schemas']['CatalogUnbundledPage']>(
-            library,
-            '/files/unbundled',
-            'POST',
-            { limit: 100 },
-          ).then((page) =>
-            page.items.map((item) => ({
-              file_id: item.id,
-              relative_path: item.relative_path,
-              media_kind: 'other' as const,
-              confidence: 0,
-              reason: '',
-            })),
-          )
+        ? supported
+          ? catalog<{ suggestions: Awaited<ReturnType<typeof suggestUnbundledFilesForBundle>> }>(
+              library,
+              `/manual-bundling/bundles/${bundleId}/suggest-files`,
+            ).then((body) => body.suggestions)
+          : catalog<components['schemas']['CatalogUnbundledPage']>(
+              library,
+              '/files/unbundled',
+              'POST',
+              { limit: 100 },
+            ).then((page) =>
+              page.items.map((item) => ({
+                file_id: item.id,
+                relative_path: item.relative_path,
+                media_kind: 'other' as const,
+                confidence: 0,
+                reason: '',
+              })),
+            )
         : suggestUnbundledFilesForBundle(bundleId as string),
-    enabled: bundleId !== null,
+    enabled: bundleId !== null && (!library || status.isSuccess),
+  })
+}
+
+/** Explicit, complete Unbundled choices supplement ranked recommendations. */
+export function useManualUnbundledChoices(search: string, enabled: boolean) {
+  const library = useContext(CatalogQueryContext)
+  const q = search.trim()
+  return useInfiniteQuery({
+    queryKey: ['mb-unbundled-choices', library, q],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      catalog<components['schemas']['CatalogUnbundledPage']>(library!, '/files/unbundled', 'POST', {
+        q,
+        offset: pageParam,
+        limit: 50,
+      }),
+    getNextPageParam: (page) =>
+      page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
+    enabled: Boolean(library) && enabled,
   })
 }
 
 /** A proposed title/roles for a seed selection, plus nearby unbundled files. */
 export function useBundleDraft(sel: FileSelection) {
-  // A portable server suggests no title or nearby files; the dialog hides them
   const library = useContext(CatalogQueryContext)
+  const supported = useManualSuggestionsAvailable(!!sel.relativePaths?.length)
   return useQuery({
-    queryKey: ['mb-bundle-draft', sel],
-    queryFn: () => suggestBundleFromFiles(sel),
-    enabled: !library && hasSelection(sel),
+    queryKey: ['mb-bundle-draft', library, sel],
+    staleTime: 0,
+    queryFn: () =>
+      library
+        ? catalog<Awaited<ReturnType<typeof suggestBundleFromFiles>>>(
+            library,
+            '/manual-bundling/suggest-bundle',
+            'POST',
+            {
+              file_ids: sel.fileIds ?? [],
+              ...(sel.relativePaths?.length ? { relative_paths: sel.relativePaths } : {}),
+              limit: 30,
+            },
+          )
+        : suggestBundleFromFiles(sel),
+    enabled: supported && hasSelection(sel),
   })
 }
 
@@ -1345,13 +1406,16 @@ export function useConfirmedBundleSearch(query: string) {
 export function useManualBundling() {
   const qc = useQueryClient()
   const library = useContext(CatalogQueryContext)
+  const status = useReplicaStatus(library)
   const invalidate = () => {
     if (!library) return invalidateLibraryContent(qc)
     for (const key of [
       'catalog-browse',
       'catalog-detail',
       'catalog-unbundled',
+      'catalog-local-directory',
       'catalog-navigation',
+      'mb-unbundled-choices',
     ])
       void qc.invalidateQueries({ queryKey: [key, library] })
   }
@@ -1367,7 +1431,7 @@ export function useManualBundling() {
     skipped_missing: 0,
     skipped_non_media: 0,
   })
-  // A portable library bundles only cataloged Unbundled files
+  // Selected paths are prepared privately and validated again by the commit worker.
   const portable = async (
     library: string,
     sel: FileSelection,
@@ -1375,9 +1439,11 @@ export function useManualBundling() {
     title?: string | null,
   ) => {
     const files = sel.fileIds ?? []
-    if (sel.relativePaths?.length) throw new Error('Choose files from Unbundled to bundle them.')
-    const bundle = await bundleFiles(library, files, target, title?.trim() || null)
-    return done(bundle, target === null, files.length)
+    const paths = sel.relativePaths ?? []
+    if (paths.length && (status.data?.browse_version ?? 0) < 13)
+      throw new Error('This server needs an update to bundle files from File Browser.')
+    const bundle = await bundleFiles(library, files, target, title?.trim() || null, paths)
+    return done(bundle, target === null, files.length + paths.length)
   }
   return {
     addFiles: useMutation({

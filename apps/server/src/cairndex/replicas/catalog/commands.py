@@ -407,7 +407,7 @@ class Preview:
                 self.transfer(identity, row["id"], [f"asset_files/{member['id']}"])
         self.delete("asset_bundles", identity)
 
-    def bundle_files(self, command: dict[str, Any]) -> None:
+    def bundle_files(self, command: dict[str, Any], *, new_files: list[Row] | None = None) -> None:
         """Bundle Unbundled files as legacy manual bundling did, keeping their identities.
 
         Without a target, a selected file's staging bundle becomes the confirmed bundle,
@@ -431,11 +431,13 @@ class Preview:
         from cairndex.replicas.discovery import media_kind
 
         files, target, title = command.get("files"), command.get("target"), command.get("title")
+        fresh = {row["id"]: row for row in new_files or []}
         if (
             not isinstance(files, list)
-            or not 0 < len(files) <= 100
+            or not 0 < len(files) + len(fresh) <= 100
             or not all(isinstance(identity, str) for identity in files)
             or len(set(files)) != len(files)
+            or set(files) & fresh.keys()
         ):
             raise ReplicaError("Select 1 to 100 distinct Unbundled files")
         if title is not None and (not isinstance(title, str) or len(title) > 1024):
@@ -449,6 +451,8 @@ class Preview:
                 raise ReplicaError("Only Unbundled files can be bundled; refresh the files")
             assert row is not None
             rows[identity] = row
+        rows.update(fresh)
+        files = list(rows)
         observed = [
             FileObservation(identity, row["relative_path"], media_kind(row["relative_path"]))
             for identity, row in rows.items()
@@ -465,7 +469,8 @@ class Preview:
                 (
                     rows[item.asset_file_id]["bundle_id"]
                     for item in proposed
-                    if set(files_of(rows[item.asset_file_id]["bundle_id"])) <= set(files)
+                    if item.asset_file_id not in fresh
+                    and set(files_of(rows[item.asset_file_id]["bundle_id"])) <= set(files)
                 ),
                 None,
             )
@@ -499,7 +504,22 @@ class Preview:
         sources = []
         for item in proposed:
             source = rows[item.asset_file_id]["bundle_id"]
-            if source != target:
+            if item.asset_file_id in fresh:
+                sequence = (
+                    max(
+                        (
+                            member["sequence"]
+                            for member in self.get(key("asset_bundles", target, "$members"))
+                        ),
+                        default=-1,
+                    )
+                    + 1
+                )
+                self.create(
+                    "asset_files",
+                    rows[item.asset_file_id] | {"bundle_id": target, "sequence": sequence},
+                )
+            elif source != target:
                 self.transfer(source, target, [f"asset_files/{item.asset_file_id}"])
                 sources.append(source)
         unit = key("asset_bundles", target, "$members")
@@ -520,6 +540,23 @@ class Preview:
             self.put(key("asset_bundles", target, field), value)
         for source in dict.fromkeys(sources):
             if not self.get(key("asset_bundles", source, "$members")):
+                original = read_row(self.db, "asset_bundles", source)
+                assert original is not None
+                if (
+                    json.loads(original["notes"] or "[]")
+                    or original["rating"] is not None
+                    or json.loads(original["extra_metadata"] or "{}")
+                    or self.db.execute(
+                        "SELECT 1 FROM catalog_references WHERE target=? AND "
+                        "(source LIKE 'asset_bundle_tags/%' "
+                        "OR source LIKE 'asset_bundle_collections/%' "
+                        "OR source LIKE 'collections/%') LIMIT 1",
+                        ("asset_bundles/" + source,),
+                    ).fetchone()
+                ):
+                    raise ReplicaError(
+                        "Keep source bundles with metadata or memberships in a separate grouping"
+                    )
                 self.delete("asset_bundles", source)
 
         # Link each new subtitle file to the video in its folder with the stem it names

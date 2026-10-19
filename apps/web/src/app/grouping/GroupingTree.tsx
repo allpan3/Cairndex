@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useRef, useState } from 'react'
+import { type KeyboardEvent, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { formatFileRole } from '../../lib/format'
 import type { GroupingPlacementOption } from '../GroupingPlacementPicker'
@@ -35,6 +35,7 @@ export function GroupingTree({
 }) {
   state = { ...state, busy: state.busy || tree.stale }
   const scroll = useRef<HTMLDivElement>(null)
+  const pendingFocus = useRef<{ key: string; origin: Element | null } | null>(null)
   const [focus, setFocus] = useState(0)
   const blocked = state.busy || Boolean(state.status.data?.accepting)
   const rows = tree.rows
@@ -46,6 +47,23 @@ export function GroupingTree({
     overscan: 8,
     getItemKey: (index) => rows[index]?.key ?? index,
   })
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current
+    if (!pending) return
+    const index = rows.findIndex((row) => row.key === pending.key)
+    if (
+      index < 0 ||
+      (document.activeElement !== pending.origin && document.activeElement !== document.body)
+    ) {
+      pendingFocus.current = null
+      return
+    }
+    const target = scroll.current?.querySelector<HTMLElement>(`[data-row-index="${index}"]`)
+    if (target) {
+      pendingFocus.current = null
+      target.focus()
+    }
+  })
   const directoryRows = new Map<string, string>()
   for (const row of rows) {
     const nodes = row.kind === 'node' ? [row.node] : row.kind === 'rollup' ? row.nodes : []
@@ -55,11 +73,12 @@ export function GroupingTree({
   }
   function focusRow(index: number) {
     index = Math.max(0, Math.min(rows.length - 1, index))
+    const row = rows[index]
+    if (!row) return
+    // A virtual row may mount on a later render, after scrolling has settled.
+    pendingFocus.current = { key: row.key, origin: document.activeElement }
     setFocus(index)
     virtual.scrollToIndex(index)
-    requestAnimationFrame(() =>
-      scroll.current?.querySelector<HTMLElement>(`[data-row-index="${index}"]`)?.focus(),
-    )
   }
   function key(event: KeyboardEvent<HTMLDivElement>, row: TreeRow, index: number) {
     const target = event.target as HTMLElement

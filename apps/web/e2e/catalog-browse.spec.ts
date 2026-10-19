@@ -97,10 +97,12 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(inspector.getByText('Saved here', { exact: true })).toBeVisible()
     await expect(inspector.getByRole('alert')).toHaveCount(0)
-    const base = `/api/v1/libraries/${libraries[0]!.id}/replica/catalog`
     const entity = async (index = 0) =>
       (
-        await fetch(backends[index]!.baseUrl + base + '/entities/asset_bundles/bundle-000001')
+        await fetch(
+          backends[index]!.baseUrl +
+            `/api/v1/libraries/${libraries[index]!.id}/replica/catalog/entities/asset_bundles/bundle-000001`,
+        )
       ).json()
     expect(JSON.parse(JSON.parse((await entity()).fields.notes.value))).toEqual([
       'First note',
@@ -109,7 +111,9 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     const other = b.getByRole('complementary', { name: 'Bundle inspector' })
     await other.getByRole('textbox', { name: 'Title', exact: true }).fill('Blue title')
     await other.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(other.getByText('Saved here', { exact: true })).toBeVisible()
+    await expect
+      .poll(async () => JSON.parse((await entity(1)).fields.title.value), { timeout: 30_000 })
+      .toBe('Blue title')
     const deliver = async () => {
       for (let index = 0; index < 2; index++)
         await expect
@@ -147,7 +151,10 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await inspector.getByRole('textbox', { name: 'Title', exact: true }).fill('Amber conflict')
     await other.getByRole('textbox', { name: 'Title', exact: true }).fill('Blue conflict')
     await other.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(other.getByText('Saved here', { exact: true })).toBeVisible()
+    // The previous save's notice can remain visible before this request starts.
+    await expect
+      .poll(async () => JSON.parse((await entity(1)).fields.title.value), { timeout: 30_000 })
+      .toBe('Blue conflict')
     await deliver()
     await expect
       .poll(async () => JSON.parse((await entity()).fields.title.value))

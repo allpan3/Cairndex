@@ -1,6 +1,7 @@
 """Durable catalog jobs keep structural preparation and large saves outside HTTP handlers"""
 
 import json
+from pathlib import Path
 from typing import Any
 
 from cairndex.core.errors import DomainError
@@ -71,7 +72,7 @@ def listing(store: CatalogStore, after: int = 0, limit: int = 30) -> dict[str, A
 
 
 # Only the server worker executes a job; queued work remains retryable after abrupt exits
-def run_one(store: CatalogStore) -> None:
+def run_one(store: CatalogStore, root: Path | None = None) -> None:
     with store.connection() as db:
         row = db.execute(
             "SELECT id,intent FROM catalog_jobs WHERE state='queued' ORDER BY sequence LIMIT 1"
@@ -84,7 +85,14 @@ def run_one(store: CatalogStore) -> None:
     action, body = intent["action"], intent["body"]
     try:
         if action == "preview":
-            result = preview(store, body)
+            if body.get("action") == "bundle_files" and body.get("relative_paths"):
+                from cairndex.replicas.catalog.manual_sources import prepare
+
+                if root is None:
+                    raise ReplicaError("File selection requires the active library root")
+                result = prepare(store, root, body)
+            else:
+                result = preview(store, body)
         elif action == "recover":
             from cairndex.replicas.catalog.recovery import recover_preview
 
@@ -94,7 +102,19 @@ def run_one(store: CatalogStore) -> None:
                 prepared = job(store, body["job"])
                 if prepared["state"] != "succeeded" or prepared["receipt"] != body["receipt"]:
                     raise ReplicaError("The reviewed catalog preview changed")
-                body = prepared["result"]
+                body = dict(prepared["result"])
+                if "sources" in body:
+                    from cairndex.replicas.catalog.manual_sources import revalidate
+
+                    observed = body.pop("sources")
+                    if root is None:
+                        raise ReplicaError("File selection requires the active library root")
+                    with store.connection(readonly=True) as db:
+                        committed = db.execute(
+                            "SELECT 1 FROM events WHERE operation=?", (operation,)
+                        ).fetchone()
+                    if not committed:
+                        revalidate(root, observed)
             if set(body) != {"changes", "parents", "resolve", "recover"}:
                 raise ReplicaError("Complete observed save intent is required")
             result = {
@@ -107,7 +127,7 @@ def run_one(store: CatalogStore) -> None:
                 )
             }
         raw, state, error = value_text(result), "succeeded", None
-    except (DomainError, ValueError, KeyError, TypeError) as failure:
+    except (DomainError, OSError, ValueError, KeyError, TypeError) as failure:
         raw, state = None, "failed"
         error = (
             failure.message

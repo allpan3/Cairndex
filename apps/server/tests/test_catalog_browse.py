@@ -72,7 +72,7 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     ):
         assert client.post(url, json=body).status_code == 422
     assert client.get(base + "/bundles/browse").status_code == 409
-    assert client.get(base + "/replica/status").json()["browse_version"] == 11
+    assert client.get(base + "/replica/status").json()["browse_version"] == 12
 
 
 # Manual follows the authored order, or one collection's own membership order
