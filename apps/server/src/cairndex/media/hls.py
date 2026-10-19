@@ -698,14 +698,26 @@ class SessionManager:
         generation = self._prepare_run(session, index, force_restart=False)
         if self._wait_for(session, seg, run_generation=generation):
             return seg
-        self._raise_if_failed(session)
-        generation = self._prepare_run(session, index, force_restart=True)
+        self._raise_if_failed(session, expected_generation=generation)
+        generation = self._prepare_run(
+            session,
+            index,
+            force_restart=True,
+            expected_generation=generation,
+        )
         if self._wait_for(session, seg, run_generation=generation):
             return seg
-        self._raise_if_failed(session)
+        self._raise_if_failed(session, expected_generation=generation)
         raise NotFoundError(f"segment {index} is unavailable")
 
-    def _prepare_run(self, session: HlsSession, index: int, *, force_restart: bool) -> int:
+    def _prepare_run(
+        self,
+        session: HlsSession,
+        index: int,
+        *,
+        force_restart: bool,
+        expected_generation: int | None = None,
+    ) -> int:
         """Ensure a run that will produce ``index`` (brief lock, no blocking wait)."""
         with session.lock:
             if session.closed:
@@ -713,20 +725,36 @@ class SessionManager:
             self._finalize_finished_run(session)
             if _exists_nonempty(session.output_dir / _segment_name(index)):
                 return session.run_generation
+            self._raise_if_superseded(session, expected_generation)
             frontier = self._frontier(session)
             within_reach = session.run_start <= index <= frontier + self._ahead_window
             if force_restart or not within_reach or not self._process_alive(session):
                 self._start_run(session, index)
             return session.run_generation
 
-    def _raise_if_failed(self, session: HlsSession) -> None:
+    def _raise_if_failed(
+        self,
+        session: HlsSession,
+        *,
+        expected_generation: int | None = None,
+    ) -> None:
         """Raise if the current run exited nonzero (a real encoder failure)."""
         with session.lock:
+            self._raise_if_superseded(session, expected_generation)
             proc = session.process
             rc = proc.poll() if proc is not None else None
             if rc is not None and rc != 0:
                 session.failed = True
                 raise MediaProcessingError(f"playback session encoder exited with status {rc}")
+
+    # Reject stale artifact workers before they can mutate the latest run
+    def _raise_if_superseded(
+        self,
+        session: HlsSession,
+        expected_generation: int | None,
+    ) -> None:
+        if expected_generation is not None and session.run_generation != expected_generation:
+            raise NotFoundError("playback segment request was superseded by a newer seek")
 
     # --- ffmpeg process management ------------------------------------------
     def _start_run(self, session: HlsSession, start_number: int) -> None:

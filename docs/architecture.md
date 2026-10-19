@@ -843,6 +843,9 @@ Clients declare a capability profile (containers, video/audio codecs,
   This keeps copy-remux from duplicating the whole source at disk speed on the
   NAS. Serving a segment ahead of the encoder waits (bounded), and a far seek
   kills and restarts ffmpeg at the requested segment (`-ss` + `-start_number`).
+  Segment waits and fallback restarts retain their encoder generation. Once a
+  newer seek restarts the encoder, an older request exits without restarting
+  its obsolete segment, even if its browser request was already cancelled.
   Each run writes a distinct init file, and the stable init route publishes it
   only after the first complete media fragment proves the init is closed. Remux copies video with an
   AAC audio fallback; its playlist follows source keyframes found by a bounded
@@ -895,6 +898,10 @@ instead of relying on a separate post-metadata seek to redirect an already
 running pipeline. hls.js may still request leading fragments to establish its
 timeline before fetching that target; those probes are distinct from choosing
 time zero as the intended playback position.
+
+For a `transcode` decision, seek-bar dragging updates the thumb and storyboard
+preview locally, then seeks once at pointer release. Direct and copy-remux
+delivery keep their existing coalesced in-drag seeks.
 
 ## 9. Filtering and Smart Collections
 

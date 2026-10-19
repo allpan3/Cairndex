@@ -164,6 +164,18 @@ have a timeout and be killed on teardown.
 
 ## Amendment history
 
+**2026-10-19 — superseded segment requests cannot restart an older seek.**
+An artifact route can continue in FastAPI's worker pool after the browser
+cancels its request. Segment waits, failure checks and fallback restarts now
+retain the encoder generation they belong to. If a newer seek has restarted
+the encoder, the older request returns unavailable without changing that run.
+The fallback rechecks the generation under the session lock, covering a seek
+that arrives after its failure check.
+
+For a `transcode` decision, the web seek bar moves its thumb and storyboard
+preview during a drag but commits only the release position to the media
+engine. Direct and copy-remux delivery keep their coalesced in-drag seeks.
+
 **2026-08-31 — direct delivery may recover into copy-only HLS.** A source can
 pass the capability matrix yet still fail operationally as native progressive
 HTTP: the observed remote browser issued many short or aborted range requests,

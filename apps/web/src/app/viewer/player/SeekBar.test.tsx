@@ -29,7 +29,7 @@ function momentFixture(overrides: Partial<Moment>): Moment {
 }
 
 // A 100s video whose seek bar spans clientX 0..1000, so time = clientX / 10.
-function setup(moments: Moment[] = []) {
+function setup(moments: Moment[] = [], deferSeekDuringDrag = false) {
   const seek = vi.fn()
   const player = {
     duration: 100,
@@ -39,7 +39,15 @@ function setup(moments: Moment[] = []) {
     seekBy: vi.fn(),
   } as unknown as PlayerController
   const video = { chapters: [], storyboard_url: null } as unknown as PlayableVideo
-  const utils = render(<SeekBar player={player} video={video} moments={moments} />, { wrapper })
+  const utils = render(
+    <SeekBar
+      player={player}
+      video={video}
+      moments={moments}
+      deferSeekDuringDrag={deferSeekDuringDrag}
+    />,
+    { wrapper },
+  )
   const track = utils.container.querySelector('.mv-seek__track') as HTMLElement
   vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
     left: 0,
@@ -107,6 +115,24 @@ test('flushes the latest position once the throttle window elapses mid-drag', ()
   vi.advanceTimersByTime(150)
   expect(seek).toHaveBeenCalledTimes(2)
   expect(seek).toHaveBeenLastCalledWith(40)
+})
+
+test('defers an expensive transcode seek until the drag is released', () => {
+  const { seek, track } = setup([], true)
+
+  fireEvent.pointerDown(track, { clientX: 100, pointerId: 1 })
+  for (let x = 200; x <= 800; x += 100) {
+    fireEvent.pointerMove(track, { clientX: x, buttons: 1, pointerId: 1 })
+    vi.advanceTimersByTime(150)
+  }
+
+  // The storyboard/thumb still follows the pointer, but no abandoned encoder
+  // generation is started for an intermediate position
+  expect(seek).not.toHaveBeenCalled()
+
+  fireEvent.pointerUp(track, { clientX: 800, pointerId: 1 })
+  expect(seek).toHaveBeenCalledTimes(1)
+  expect(seek).toHaveBeenLastCalledWith(80)
 })
 
 test('tracks the captured pointer off-track and pins chrome until window release', () => {

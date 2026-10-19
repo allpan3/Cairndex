@@ -53,12 +53,15 @@ export function SeekBar({
   player,
   video,
   onDragChange,
+  deferSeekDuringDrag = false,
   clip,
   moments = [],
 }: {
   player: PlayerController
   video: PlayableVideo
   onDragChange?: (dragging: boolean) => void
+  /** Keep expensive transcode seeks to the final drag position */
+  deferSeekDuringDrag?: boolean
   /** Present while clip mode is on: draws the marked band and its handles. */
   clip?: ClipRangeController
   /**
@@ -196,7 +199,7 @@ export function SeekBar({
     trackRect.current = track.getBoundingClientRect()
     const time = timeFor(event.clientX)
     setDragPct(pctFor(time))
-    commitSeek(time) // instant response to the click / drag start
+    if (!deferSeekDuringDrag) commitSeek(time) // instant response on cheap delivery paths
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== event.pointerId) return
       const next = timeFor(moveEvent.clientX)
@@ -205,7 +208,7 @@ export function SeekBar({
       // covers for it — so it has to track the pointer through the drag, not
       // freeze at wherever the press landed.
       setHover({ x: moveEvent.clientX, time: next, width: trackRect.current?.width ?? 0 })
-      throttledSeek(next)
+      if (!deferSeekDuringDrag) throttledSeek(next)
     }
     const removeListeners = () => {
       trackRect.current = null

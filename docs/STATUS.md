@@ -88,6 +88,30 @@ their scrollbars show only while they scroll.
 Both full VM gates, publication privacy and all 16 hosted checks passed before
 #92 merged. The owner has not yet tested that installed build.
 
+### Transcode seeking (2026-10-19)
+
+Branch `fix/transcode-seek-generation` restores the previously unmerged fix on
+current main. A superseded HLS segment request cannot restart an obsolete
+encoder generation. Transcoded seek-bar drags update their local preview and
+seek once at release; direct and copy-remux behavior stays unchanged.
+
+The concurrency tests control the overlap with events and also exercise a seek
+between the failure check and fallback restart. The browser regression uses a
+disposable portable library, actual transcoding and real Chromium. The original
+main implementation fails the concurrency regression by serving the old segment.
+
+On macOS, Ruff check/format, mypy and the full backend suite pass: 1,956 tests
+passed and one existing test skipped. All 58 HLS tests pass, including generated
+WMV2/WMA2 transcoding and a far seek. With Node 22, the full frontend gate passes
+lint, formatting, types, 1,325 unit tests and the production build. The new real
+Chromium portable-transcode test passes too: no seek during the drag, one seek
+at release, and playback reaches the final position.
+
+The branch uses current GitHub ancestry; the preserved historical branch is
+unchanged. No owner library is used. Branch publication is requested; merge,
+release and deployment are outside this task. Native packaging and NAS playback
+were not retested because the change affects the shared HLS service and web player.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

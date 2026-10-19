@@ -195,6 +195,7 @@ export function ControlBar({
         player={player}
         video={video}
         onDragChange={onDragChange}
+        deferSeekDuringDrag={hls.method === 'transcode'}
         clip={clip}
         moments={moments}
       />
