@@ -36,6 +36,7 @@ import { CatalogViewerInspector } from './CatalogViewerInspector'
 import { StorageAccessNotice } from './StorageAccessNotice'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
 import { useCatalogMaintenance } from './useCatalogMaintenance'
+import { usePortableJobNotifications } from '../desktop/usePortableJobNotifications'
 import { CatalogMaintenanceNotice } from './CatalogMaintenanceNotice'
 import {
   getConnections,
@@ -254,6 +255,7 @@ export function CatalogWorkspace({
     state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
     refresh,
   )
+  usePortableJobNotifications(libraryId, discovery.run.data, maintenance.status.data)
   const pendingIndexVersion = useSyncExternalStore(subscribeConnections, getPendingSelectionVersion)
   useEffect(() => {
     if (!discovery.enabled || !discovery.run.isSuccess) return

@@ -407,6 +407,18 @@ Publication and the final merged-main owner build remain separate. The reviewed
 [synthetic paged file choices](screenshots/portable-private-unbundled.png) use
 the exact image declaration merged through PR #105.
 
+Branch `fix/portable-completion-notifications` reconnects discovery and explicit
+media passes to the existing desktop notification policy. Private jobs have no
+persisted start timestamp, so their notification duration starts when this
+window first observes them running. Retained terminal snapshots do not start
+new runs or make an unrelated later run fail. Linux web lint/type checks and
+64 focused notification/connection cases pass. The 16 notification cases also
+pass after the memo dependency cleanup. Both complete combined restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The notification hook, adapter and regression cases match that qualified source.
+Publication and the final merged-main owner build remain separate.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

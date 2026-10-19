@@ -1,5 +1,10 @@
 import type { JobRead } from '../api/client'
 
+export type JobNotificationSnapshot = Pick<JobRead, 'id' | 'job_type' | 'status'> & {
+  started_at: string | null
+  created_at: string | null
+}
+
 /**
  * A maintenance *run* — the whole stretch of continuous background activity, not
  * one job. `Update library` chains scan → probe → storyboards, so notifying per
@@ -33,7 +38,11 @@ const TYPE_LABELS: Record<JobRead['job_type'], string> = {
 }
 
 /** Folds one polled job snapshot into the run being accumulated. */
-export function accumulateRun(run: JobRun | null, job: JobRead, now: number): JobRun {
+export function accumulateRun(
+  run: JobRun | null,
+  job: JobNotificationSnapshot,
+  now: number,
+): JobRun {
   const started = run?.startedAt ?? jobStart(job, now)
   const types = run?.types ?? []
   return {
@@ -48,7 +57,7 @@ export function accumulateRun(run: JobRun | null, job: JobRead, now: number): Jo
  * Prefers the server's own start timestamp so a run queued behind another job is
  * measured by when it actually ran, not when this client first polled it.
  */
-function jobStart(job: JobRead, now: number): number {
+function jobStart(job: JobNotificationSnapshot, now: number): number {
   const stamp = job.started_at ?? job.created_at
   if (!stamp) return now
   const parsed = Date.parse(stamp)

@@ -596,6 +596,24 @@ Publication and the final merged-main owner build remain separate.
 The [synthetic paged file choices](screenshots/portable-private-unbundled.png)
 were reviewed edge to edge. PR #105 registered the exact image before publication.
 
+The broader comparison finds desktop job notifications disconnected by the
+portable workspace replacement. The earlier workspace called the retained
+notification hook; the current one has no caller. The notification slice
+reconnects its existing polls for discovery and media passes. It keeps the
+long-run threshold, away-window check, one permission request and Dock badge.
+Only jobs observed running belong to the current run, so an old retained failure
+cannot taint new work. Private jobs have no persisted wall-clock start time;
+notification duration therefore starts at the window's first running observation.
+Linux passes web lint/type checks and 64 focused notification/connection
+cases; all 16 notification cases pass again after the memo dependency cleanup.
+They cover overlapping passes, retained success, an older failed snapshot and a
+failure observed during the active run. Both complete combined restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The notification hook, adapter and regression cases match that qualified source.
+Publication and the final merged-main owner build remain separate.
+No new ADR is needed for restoring this existing desktop policy.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed
