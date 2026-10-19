@@ -407,6 +407,34 @@ page delay reproduces the original failure; waiting for the complete item count
 passes on the same schedule. This changes test synchronization only. Both
 corrected full gates remain required.
 
+The next Linux manual gate failed its packaged online-backup scenario after
+passing 2,009 backend tests and all 54 browser scenarios. A deterministic test
+reproduces SQLite removing each temporary sidecar between enumeration and its
+type check. Backup now accepts only those expected disappearances. All eight
+focused cases pass on both guests, and the Linux recovery suite and rebuilt
+packaged scenario pass. Missing primary files, unknown entries, links and
+unsupported types remain refused.
+
+The second macOS manual gate passed 2,010 backend tests, all packaged/web/native
+checks and distribution, but failed four of 54 browser scenarios. Three failures
+used premature completion signals. The repaired checks await actual album data,
+the second peer's committed title and enabled grouping controls. A separate
+test reproduces virtual keyboard focus loss before its target mounts. The fix
+retains the target by row identity until its render, unless focus moved elsewhere.
+Both focus cases and all four affected browser scenarios pass on macOS with web
+lint/type checks. The large Update passed unchanged in isolation and with another
+scenario running. These focused passes do not qualify either full gate.
+
+Both renewed manual-bundling gates now pass on unchanged source. Linux passes
+2,017 backend tests, all 54 browser scenarios, four frozen checks, frontend
+checks/build and 135 Rust tests. macOS passes 2,018 backend tests, all 54 browser
+scenarios, four frozen checks, frontend checks/build, 137 Rust tests and app
+distribution verification. Receipts
+`restoration-manual-bundling-v6-linux-20261019-141556` and
+`restoration-manual-bundling-v3-mac-20261019-141556` both end in
+`Final result: 0`. This qualifies the manual-bundling slice; the later restoration
+branches and final owner build remain pending.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

@@ -258,6 +258,27 @@ refusing links, unsupported types, and disappearing primary or unknown files.
 All eight focused cases pass on both guests; Linux recovery tests and the
 rebuilt packaged scenario also pass. Renewed full qualification is required.
 
+The second macOS manual gate passed 2,010 backend tests, packaged checks, web
+checks, 137 Rust tests and app build/distribution, but failed four of 54 browser
+scenarios. Album and grouping assertions ran before refreshed controls were
+ready; a second-save check accepted the first save's notice. Those checks now
+wait for the loaded item, enabled checkbox and actual saved title. A separate
+regression reproduces focus loss when a virtual grouping row mounts after the
+first animation frame. Focus now waits for that row's render and respects later
+focus changes. Both focus cases and all four affected macOS browser scenarios
+pass, as do web lint and type checks. The 201-file Update passed unchanged in
+isolation and alongside another browser scenario. Both full gates must run again.
+
+The repaired manual-bundling slice now passes both complete VM gates. Linux
+passes 2,017 backend tests, all 54 browser scenarios, four frozen checks, web
+checks/build and 135 Rust tests. macOS passes 2,018 backend tests, all 54 browser
+scenarios, four frozen checks, web checks/build, 137 Rust tests and app
+distribution verification. Receipts
+`restoration-manual-bundling-v6-linux-20261019-141556` and
+`restoration-manual-bundling-v3-mac-20261019-141556` both end in
+`Final result: 0`. Source remains unchanged during each gate. Broader
+restoration and the final owner build remain pending.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

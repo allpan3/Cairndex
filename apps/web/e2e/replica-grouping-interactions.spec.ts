@@ -55,7 +55,7 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
       .click()
     await expect(
       dialog.getByText('10 / 10 files selected · 6 bundles', { exact: true }),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 30_000 })
     await expect(ready).toBeEnabled()
     await dialog
       .getByRole('button', { name: 'Widen the filename match in Renditions', exact: true })
@@ -82,6 +82,7 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
     await rolled.press('ArrowRight')
     await expect(dialog.getByRole('button', { name: 'Alpha', exact: true })).toBeVisible()
     const alphaCheck = tree.getByRole('checkbox', { name: 'Accept Alpha', exact: true })
+    await expect(alphaCheck).toBeEnabled({ timeout: 30_000 })
     await alphaCheck.focus()
     await alphaCheck.press('ArrowDown')
     const beta = tree

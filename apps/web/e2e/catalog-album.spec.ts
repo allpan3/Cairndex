@@ -59,7 +59,8 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await expect(listing.locator('[data-file-id="gallery-000"]')).toHaveCount(0)
     await listing.locator('[data-file-id="album-folder"]').dblclick()
     await expect(page.getByRole('button', { name: 'Back to bundle', exact: true })).toBeVisible()
-    await expect(listing.locator('[data-file-id="gallery-000"]')).toBeVisible()
+    // The folder heading renders before its first page arrives.
+    await expect(listing.locator('[data-file-id="gallery-000"]')).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Load more album items' }).click()
     await expect(page.getByText('100 of 125 items', { exact: true })).toBeVisible({
       timeout: 30_000,

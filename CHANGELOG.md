@@ -359,6 +359,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Keep grouping keyboard focus on a requested virtual row until it mounts,
+  without taking focus after the owner moves to another control.
+
 - Fix intermittent refusal of a live private backup when SQLite removes a
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
