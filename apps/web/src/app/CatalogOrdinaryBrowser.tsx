@@ -301,7 +301,6 @@ export function CatalogOrdinaryBrowser(props: {
             renameCollectionRequest={renameCollection}
             onRenameCollectionHandled={() => setRenameCollection(null)}
             collections={collections}
-            showSubContents={showSubContents}
             onNotice={setNotice}
             activity={props.libraryNotices?.(setNotice)}
             libraryActions={

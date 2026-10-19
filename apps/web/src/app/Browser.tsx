@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import type { BundleSort, BundleSummary, SortOrder } from '../api/client'
+import type { BundleSort, SortOrder } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard, type BundleCardItem } from './BundleCard'
@@ -583,7 +583,7 @@ function ListRow({
   onContextMenu,
   dragProps,
 }: {
-  item: BundleSummary
+  item: BundleCardItem
   unavailableSize?: boolean
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
@@ -620,7 +620,9 @@ function ListRow({
       <div className="list-row__title">{item.title ?? 'Untitled'}</div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
-      <span className="list-cell">{unavailableSize ? '—' : formatBytes(item.total_size)}</span>
+      <span className="list-cell">
+        {unavailableSize || item.size_known === false ? '—' : formatBytes(item.total_size)}
+      </span>
       <span className="list-cell">{formatDate(item.date_added)}</span>
     </div>
   )

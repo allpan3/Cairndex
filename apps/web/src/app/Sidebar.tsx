@@ -134,6 +134,8 @@ export interface SidebarProps {
   counts?: ViewCounts
   collections: CollectionRead[]
   collectionCounts?: Record<string, number>
+  /** With subtree counts, expanded rows show their own membership. */
+  collectionDirectCounts?: Record<string, number>
   onDeleteCollection: (collection: CollectionRead) => void
   onCreateCollection: (
     payload: { name: string; parent_id: string | null },
@@ -281,6 +283,7 @@ export function Sidebar({
   counts,
   collections,
   collectionCounts,
+  collectionDirectCounts,
   onDeleteCollection,
   onCreateCollection,
   onRenameCollection,
@@ -934,6 +937,7 @@ export function Sidebar({
             onModifierSelect={modifierSelectRow}
             onContextMenu={collectionsEditable ? collectionMenu : (_c, e) => e.preventDefault()}
             collectionCounts={collectionCounts}
+            collectionDirectCounts={collectionDirectCounts}
             isExpanded={isExpanded}
             onToggle={toggleExpanded}
             editingId={editingId}
@@ -1097,6 +1101,7 @@ function CollectionBranch({
   onModifierSelect,
   onContextMenu,
   collectionCounts,
+  collectionDirectCounts,
   isExpanded,
   onToggle,
   editingId,
@@ -1125,6 +1130,7 @@ function CollectionBranch({
   onModifierSelect?: (id: string, e: React.MouseEvent) => void
   onContextMenu: (collection: CollectionRead, e: React.MouseEvent) => void
   collectionCounts?: Record<string, number>
+  collectionDirectCounts?: Record<string, number>
   isExpanded: (id: string, depth: number) => boolean
   onToggle: (id: string, depth: number) => void
   editingId: string | null
@@ -1280,7 +1286,11 @@ function CollectionBranch({
         ) : (
           <>
             <span className="nav-item__label">{node.collection.name}</span>
-            <span className="nav-item__count">{collectionCounts?.[node.collection.id] ?? ''}</span>
+            <span className="nav-item__count">
+              {(expanded ? collectionDirectCounts?.[id] : undefined) ??
+                collectionCounts?.[id] ??
+                ''}
+            </span>
           </>
         )}
       </div>
@@ -1303,6 +1313,7 @@ function CollectionBranch({
             onModifierSelect={onModifierSelect}
             onContextMenu={onContextMenu}
             collectionCounts={collectionCounts}
+            collectionDirectCounts={collectionDirectCounts}
             isExpanded={isExpanded}
             onToggle={onToggle}
             editingId={editingId}

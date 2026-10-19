@@ -515,6 +515,15 @@ def test_restored_private_resume_and_new_device_media(replica, tmp_path):
     media.save_progress("file-video", asset.quick_fingerprint, 12, 100)
     with store.connection() as db:
         db.execute("INSERT INTO local_cursors VALUES ('bundle-000000','file-video')")
+        from cairndex.replicas.catalog.local_history import opened
+
+        opened(db, "bundle-000000")
+        history = tuple(
+            db.execute(
+                "SELECT * FROM local_bundle_history WHERE bundle_id='bundle-000000'"
+            ).fetchone()
+        )
+        assert db.execute("SELECT count(*) FROM local_file_facts").fetchone()[0] == 1
     output = tmp_path / "backup"
     recovery.backup(root, base, output)
     review = recovery.prepare(root, tmp_path / "restored", output)
@@ -522,6 +531,15 @@ def test_restored_private_resume_and_new_device_media(replica, tmp_path):
     with other.connection() as db:
         assert db.execute("SELECT state FROM local_media").fetchone()[0] == "unknown"
         assert db.execute("SELECT file_id FROM local_cursors").fetchone()[0] == "file-video"
+        assert db.execute("SELECT count(*) FROM local_file_facts").fetchone()[0] == 0
+        assert (
+            tuple(
+                db.execute(
+                    "SELECT * FROM local_bundle_history WHERE bundle_id='bundle-000000'"
+                ).fetchone()
+            )
+            == history
+        )
     same = ReplicaMedia(other, root, "restored")
     current = same.file("file-video", inspect=True)
     assert same.progress("file-video", current.quick_fingerprint)["position_s"] == 12
@@ -538,7 +556,15 @@ def test_restored_private_resume_and_new_device_media(replica, tmp_path):
 def test_known_older_private_schema_and_protocol_one(replica, tmp_path):
     root, base, store = replica
     with store.connection() as db:
-        for table in ("local_media", "local_progress", "local_cursors", "recovery_receipts"):
+        for table in (
+            "local_media",
+            "local_progress",
+            "local_cursors",
+            "discovery_progress",
+            "local_file_facts",
+            "local_bundle_history",
+            "recovery_receipts",
+        ):
             db.execute(f"DROP TABLE {table}")
     output = tmp_path / "old-backup"
     recovery.backup(root, base, output)

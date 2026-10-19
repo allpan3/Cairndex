@@ -260,6 +260,7 @@ def previous_gaps(previous: Path, prepared: Path, recovery_id: str) -> dict[str,
                 ("file_id", "generation", "position", "duration", "completed"),
             ),
             ("local_cursors", ("bundle_id",), ("bundle_id", "file_id")),
+            ("local_bundle_history", ("bundle_id",), ("bundle_id", "opened_at", "modified_at")),
         ):
             if table not in tables:
                 continue
@@ -328,6 +329,7 @@ def prepare(
             db.execute(
                 "UPDATE local_media SET generation=NULL,state='unknown',metadata=NULL,error=NULL"
             )
+            db.execute("DELETE FROM local_file_facts")
             db.execute("DELETE FROM discovery_baselines")
             db.execute("UPDATE discovery_verified SET trusted=0")
             db.execute(

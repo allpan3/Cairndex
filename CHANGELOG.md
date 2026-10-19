@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Restore local Date Opened and Date Modified sorts, including Recent's date
+  choices, and Size from this device's file observations. Opening and editing
+  have separate private history; unknown sizes and opening times sort last.
+  Old conversion-backup positions are not imported. Cross-device resume remains
+  separate work.
+
 - Restore Save GIF… and Save Contact Sheet… for portable libraries in the
   viewer, the bundle album and the File Browser. Both read this device's
   observed bytes through pinned descriptors and fail if the source changes.
@@ -155,6 +161,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Make the discovery restart test exercise one durable phase per worker tick,
+  so its completion check does not depend on disk commit latency.
+
+- Record the incomplete portable restoration in a
+  [behavior audit](docs/restoration-audit.md), with the decision timeline,
+  missing interactions and acceptance checks. Repairs remain in progress.
 - Wait for background recovery tasks to reach a terminal state in the private
   controls browser test, then require success. Its default five-second UI
   assertion could expire while durable preparation was still running.
@@ -335,6 +347,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Release the bulk inspector after a completed save, while retaining interrupted
+  saves for exact retry. Collection badges now show direct membership while
+  expanded and unique membership across descendants while collapsed.
+- Bundle double-click and Enter open the viewer at this device's current file.
+  Reopening waits for the fresh cursor, and changing tracks saves the departing
+  video's position. Open Bundle still opens the album.
+- Update names its current phase and shows completed/total for catalog checks,
+  moved-file checks and grouping indexes. Enumeration states that its total is
+  not yet known. Unbundled checks availability, size and modification time for
+  its displayed page instead of assigning every file unknown availability.
+  Older Update statuses without a phase keep their observed-file counter.
 
 - Commit SQL-backed API writes before sending a success response. Creating a
   library could return 201 before its registry row was visible, making an

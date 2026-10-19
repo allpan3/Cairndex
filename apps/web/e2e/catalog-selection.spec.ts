@@ -80,7 +80,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(bulk.getByText(/did not finish saving/)).toContainText('for 2 bundles')
     await page.reload()
     await bulk.getByRole('button', { name: 'Retry bulk save' }).click()
-    await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
+    await expect(bulk).toHaveCount(0)
     expect(requests).toHaveLength(2)
     expect(requests[0]).toBe(requests[1])
     const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog`
@@ -91,9 +91,9 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     expect((await entity('bundle-000003')).fields.title.value).not.toBe(
       '"Selected synthetic title"',
     )
-    await bulk.getByRole('button', { name: 'Clear', exact: true }).click()
     const changed = bundles.getByRole('option').filter({ hasText: 'Selected synthetic title' })
     await changed.first().click()
+    await expect(single).toBeVisible()
     await expect(single.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
       'Private single draft',
     )
@@ -123,7 +123,9 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await bulk.getByRole('radio', { name: '4½ stars' }).click()
     await expect(bulk.getByText('Saved here', { exact: true })).toBeVisible()
     await expect.poll(async () => (await entity('bundle-000002')).fields.rating.value).toBe('4.5')
-    await bulk.getByRole('button', { name: 'Clear', exact: true }).click()
+    await changed.first().click()
+    await expect(single).toBeVisible()
+    await expect(bulk).toHaveCount(0)
     await page.close()
     const keyboardPage = await context.newPage()
     await proxyApi(keyboardPage, backend.baseUrl)
@@ -153,7 +155,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(keyboardBulk.getByRole('heading', { name: '50 bundles selected' })).toBeVisible()
     releaseNextPage?.()
     await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('64')
-    await expect(keyboardBulk.getByRole('heading', { name: '0 bundles selected' })).toBeVisible()
+    await expect(keyboardBulk).toHaveCount(0)
     await expect(keyboardBundles.getByRole('option')).toHaveCount(1)
     await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
     await keyboardPage.getByRole('button', { name: /^Random( \d+)?$/ }).click()
@@ -212,7 +214,10 @@ with sqlite3.connect(fixture.source / '.cairndex/library.db') as db:
     for index in range(120):
         insert_row(db, 'asset_files', template | {'id': f'staged-{index:03}', 'relative_path': f'Unbundled/clip-{index:03}.mp4', 'sequence': index + 10})
     db.execute("UPDATE asset_bundles SET grouping_state='PROVISIONAL', grouping_source='SCAN_SUGGESTION' WHERE id='bundle-000000'")
-print(prepare_disposable(fixture).package)
+package = prepare_disposable(fixture).package
+(package / 'Unbundled').mkdir()
+(package / 'Unbundled/clip-000.mp4').write_bytes(b'synthetic availability fixture')
+print(package)
 `
   const root = execFileSync('uv', ['run', 'python', '-c', script, scratch], {
     cwd: fileURLToPath(new URL('../../server/', import.meta.url)),
@@ -233,6 +238,11 @@ print(prepare_disposable(fixture).package)
     const rows = files.locator('[data-relpath]')
     // The queue pages from the server in path order: one page, then the rest
     await expect(rows).toHaveCount(100)
+    await expect(files.getByRole('row', { name: /clip-000\.mp4/ })).toContainText('Observed here')
+    await expect(files.getByRole('row', { name: /clip-001\.mp4/ })).toContainText(
+      'Unavailable here',
+    )
+    await expect(files.getByText('Availability unknown')).toHaveCount(0)
     await page.getByRole('button', { name: 'Load more', exact: true }).click()
     // The 120 staged files and the provisional bundle's two
     await expect(rows).toHaveCount(122)

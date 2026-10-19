@@ -4,7 +4,8 @@ Normal Create and Open use the portable workflow (ADR-0035). Old library-format
 admission and the legacy workspace are unavailable. Manage libraries provides
 per-server access settings and reviewed private backup/recovery controls.
 Source operations are unavailable in this application extraction.
-Recently Used and provider/NAS qualification remain incomplete.
+Provider/NAS qualification is recorded in STATUS. Recently used ordering is
+available locally through Recent's Date Opened sort (`browse_version: 11`).
 
 
 The shared app/API serves complete **synthetic** metadata catalogs under
@@ -174,12 +175,12 @@ library switch. An already observed conflict requires explicit metadata review.
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status` | Create makes a complete portable library; real conversion and provider qualification remain unavailable |
-| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | Recently Used requires a separate private usage contract; a file this device has not opened has no duration or preview |
+| Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | A file this device has not opened has no duration or preview |
 | Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages | Source operations use File Browser; file note/source controls and OS drag remain separate |
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
-| System views | All, Recent, Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Recently Used remains incomplete; Trash uses the source-operation journal |
+| System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
-| Sort and filters | Title, rating and date-added sorts; with `browse_version: 3`, Manual and File Count; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Source observations remain unknown; Size, Date Modified and Date Opened have no portable data; unsupported request fields/sorts return 422 |
+| Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
 | Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
 | File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening and provider hydration |
@@ -301,8 +302,9 @@ again. Structured missing-state filters retain their separate unknown semantics.
 Unbundled is a paginated file list over authored provisional scan suggestions,
 with full-population path search and hidden-path exclusion. New replica Update
 suggestions remain private grouping candidates until accepted; they are not
-published as provisional bundles. Recently Used and Trash are not implemented for
-catalog replicas. No system-view request scans or probes source files.
+published as provisional bundles. Recent's Date Opened sort restores local
+recently used ordering. Trash uses the source-operation journal. No system-view
+request scans or probes source files.
 
 Older servers keep single selection, scalar editing and their existing views.
 Unsupported bulk or system-view endpoints are not called.
@@ -345,9 +347,13 @@ A selected late-page file determines its folder-member playlist before playback
 starts. A failed continuation exposes the error and Retry rather than waiting
 indefinitely for an unloaded cursor. Parent-bundle playback excludes
 directory-member files. Missing bytes remain retryable through the guarded shared viewer. A removed or transferred
-selected file reports an error instead of opening another file. Recently Used
-remains unavailable: private cursors and progress do not define a usage timestamp
-or an ordering contract. Trash requires the separate source-operation contract.
+selected file reports an error instead of opening another file. Opening an album
+or viewer records local usage through `POST /replica/media/bundles/{id}/opened`;
+metadata polling and pagination do not count as new openings. Size uses complete
+local path observations, and Date Modified records observed metadata edits,
+independently of filesystem timestamps and playback. See
+[ADR-0040](adr/0040-local-browsing-history-and-observations.md). Trash requires
+the separate source-operation contract.
 
 ## Local media
 

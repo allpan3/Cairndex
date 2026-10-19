@@ -43,7 +43,6 @@ export function CatalogNavigation({
   activity,
   onToggleSidebar,
   collections,
-  showSubContents,
   onNotice,
 }: {
   systemViewsEnabled: boolean
@@ -79,8 +78,6 @@ export function CatalogNavigation({
   activity?: React.ReactNode
   onToggleSidebar?: () => void
   collections: CatalogCollections
-  /** A collection's badge counts its subtree only while the browser lists it. */
-  showSubContents: boolean
   onNotice: (notice: CatalogNotice) => void
 }) {
   const status = useReplicaStatus(library).data
@@ -128,11 +125,9 @@ export function CatalogNavigation({
         onSelect={onSelect}
         counts={counts.data}
         collections={items}
-        collectionCounts={Object.fromEntries(
-          items.map((item) => [
-            item.id,
-            showSubContents ? item.count : (item.direct_count ?? item.count),
-          ]),
+        collectionCounts={Object.fromEntries(items.map((item) => [item.id, item.count]))}
+        collectionDirectCounts={Object.fromEntries(
+          items.map((item) => [item.id, item.direct_count ?? item.count]),
         )}
         collectionsEditable={!blocked}
         onCopyCollectionUri={

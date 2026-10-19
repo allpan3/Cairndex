@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
+from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.v1.replicas import CommonReplicaStore
 from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.browse import (
@@ -244,9 +245,21 @@ def selected_memberships(
 
 
 @router.post("/files/unbundled", response_model=CatalogUnbundledPage)
-def unbundled_files(payload: CatalogUnbundledRequest, store: Catalog) -> CatalogUnbundledPage:
+def unbundled_files(
+    payload: CatalogUnbundledRequest, store: Catalog, access: MediaAccessDep
+) -> CatalogUnbundledPage:
+    from cairndex.replicas.catalog.file_browser import entry, observe_entries
+
     with store.connection(readonly=True) as db:
-        return unbundled(db, payload)
+        page = unbundled(db, payload)
+    assert access.replica is not None
+    entries = [entry(item.relative_path, "file", item.id, item.bundle_id) for item in page.items]
+    observe_entries(access.replica.root, entries)
+    for item, observed in zip(page.items, entries, strict=True):
+        item.local_state = observed.local_state or "unknown"
+        item.size_bytes = observed.size_bytes
+        item.modified_at = observed.modified_at
+    return page
 
 
 # The folder dialog states what Create will file before it is pressed

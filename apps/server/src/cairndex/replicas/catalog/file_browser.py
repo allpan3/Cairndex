@@ -139,3 +139,31 @@ def entry(
         unbundled=False,
         local_state="unknown",
     )
+
+
+def observe_entries(root: Path, entries: list[FileBrowserEntryRead]) -> None:
+    """Stat only the requested page, without probing, hashing or following links."""
+    parents: dict[str, list[FileBrowserEntryRead]] = {}
+    for value in entries:
+        value.local_state = "unavailable"
+        try:
+            path = normalize_relative_path(value.relative_path)
+        except PathSafetyError:
+            continue
+        if visible(path):
+            parents.setdefault(path.rpartition("/")[0], []).append(value)
+    for parent, children in parents.items():
+        try:
+            with directory_handle(root, parent) as handle:
+                for value in children:
+                    try:
+                        info = os.stat(value.name, dir_fd=handle, follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if not stat.S_ISREG(info.st_mode):
+                        continue
+                    value.local_state = "observed"
+                    value.size_bytes = info.st_size
+                    value.modified_at = datetime.fromtimestamp(info.st_mtime, UTC)
+        except OSError:
+            continue

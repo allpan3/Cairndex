@@ -15,6 +15,7 @@ import { Moments } from '../Moments'
 import { MomentSourceContext } from '../momentSource'
 import { useCatalogMomentSource } from '../useCatalogMomentSource'
 import type { ViewerInspectorTarget } from '../fileFacts'
+import { useCatalogHistory } from '../useCatalogHistory'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
@@ -75,6 +76,11 @@ export function ReplicaViewer({
     retry: false,
   })
   const bundleId = target.bundleId ?? initial.data?.file.bundle_id
+  const historyError = useCatalogHistory(
+    library,
+    bundleId,
+    (status.data?.browse_version ?? 0) >= 11,
+  )
   const pages = useInfiniteQuery({
     queryKey: ['replica-media', library, 'playlist', bundleId],
     enabled: !folder && Boolean(bundleId),
@@ -91,10 +97,17 @@ export function ReplicaViewer({
       last.next_offset == null
         ? undefined
         : { offset: last.next_offset, revision: last.revision ?? '' },
+    refetchOnMount: 'always',
     retry: false,
   })
-  const first = pages.data?.pages[0]
-  const files = useMemo(() => pages.data?.pages.flatMap((page) => page.files) ?? [], [pages.data])
+  // A cached cursor belongs to the previous opening. Using it while refetching
+  // would select (and write back) the wrong file before the current cursor arrives.
+  const currentPages = pages.isFetchedAfterMount ? pages.data : undefined
+  const first = currentPages?.pages[0]
+  const files = useMemo(
+    () => currentPages?.pages.flatMap((page) => page.files) ?? [],
+    [currentPages],
+  )
   const playlist = useMemo(
     () => playlistFor(files, first?.directories ?? [], target.fileId, initial.data?.file),
     [files, first?.directories, target.fileId, initial.data?.file],
@@ -246,7 +259,7 @@ export function ReplicaViewer({
       onPlayerPrefs={setPrefs}
       onClose={onClose}
       loading={
-        (!folder && ((!bundleId && initial.isPending) || pages.isPending)) ||
+        (!folder && ((!bundleId && initial.isPending) || !pages.isFetchedAfterMount)) ||
         Boolean(waitingForPreferred) ||
         (Boolean(selected) && !local.isFetchedAfterMount)
       }
@@ -279,9 +292,14 @@ export function ReplicaViewer({
       }
     />
   )
-  return momentsEnabled ? (
-    <MomentSourceContext value={momentSource}>{shell}</MomentSourceContext>
-  ) : (
-    shell
+  return (
+    <>
+      {historyError && <p role="alert">{historyError}</p>}
+      {momentsEnabled ? (
+        <MomentSourceContext value={momentSource}>{shell}</MomentSourceContext>
+      ) : (
+        shell
+      )}
+    </>
   )
 }

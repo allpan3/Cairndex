@@ -11,7 +11,10 @@ import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundle
  * One card's summary. A portable summary also names its storyboard version,
  * because a portable storyboard URL names the observed source generation.
  */
-export type BundleCardItem = BundleSummary & { resume_storyboard_version?: string | null }
+export type BundleCardItem = BundleSummary & {
+  resume_storyboard_version?: string | null
+  size_known?: boolean
+}
 
 interface BundleCardProps {
   item: BundleCardItem

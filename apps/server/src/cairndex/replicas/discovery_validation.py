@@ -44,6 +44,18 @@ def validate(db: sqlite3.Connection, store: CatalogStore) -> None:
 
     if db.execute("SELECT 1 FROM sqlite_master WHERE name='discovery_verifications'").fetchone():
         validate_verification(db)
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='discovery_progress'").fetchone():
+        for row in db.execute("SELECT * FROM discovery_progress"):
+            if (
+                row["phase"] not in {"known", "repair", "propose", "plan_known"}
+                or not isinstance(row["completed"], int)
+                or not isinstance(row["total"], int)
+                or not 0 <= row["completed"] <= row["total"]
+                or not db.execute(
+                    "SELECT 1 FROM discovery_runs WHERE id=?", (row["run"],)
+                ).fetchone()
+            ):
+                raise ReplicaError("Invalid private discovery progress")
     if db.execute("SELECT 1 FROM sqlite_master WHERE name='discovery_accepted_files'").fetchone():
         for accepted in db.execute("SELECT * FROM discovery_accepted_files"):
             if not db.execute(

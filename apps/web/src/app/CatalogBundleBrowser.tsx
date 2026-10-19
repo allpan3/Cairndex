@@ -13,6 +13,7 @@ import {
   type Selection,
   type SortPref,
   SYSTEM_VIEWS,
+  RECENT_SORTS,
 } from './types'
 import { usePersistentState } from '../state/usePersistentState'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
@@ -53,11 +54,10 @@ import type { DragItem } from './dnd'
 import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
 
 type Page = components['schemas']['CatalogBrowsePage']
-// Browse version 3 adds Manual and File count. A portable catalog records no file
-// sizes, change times or opening times, so Size, Date Modified and Date Opened stay
-// unavailable.
+// Browse version 11 adds local file observations and opening/edit history.
 const BASIC_SORTS: BundleSort[] = ['title', 'rating', 'date_added']
 const ORDERED_SORTS: BundleSort[] = [...BASIC_SORTS, 'manual', 'file_count']
+const LOCAL_SORTS: BundleSort[] = [...ORDERED_SORTS, 'size', 'date_modified', 'date_opened']
 const NO_IDS: ReadonlySet<string> = new Set()
 
 // A prepared bulk review or an interrupted save owns its own targets, so it
@@ -183,7 +183,12 @@ export function CatalogBundleBrowser({
   onScreen?: boolean
 }) {
   const status = useReplicaStatus(library).data
-  const supportedSorts = (status?.browse_version ?? 0) >= 3 ? ORDERED_SORTS : BASIC_SORTS
+  const localHistoryEnabled = (status?.browse_version ?? 0) >= 11
+  const supportedSorts = localHistoryEnabled
+    ? LOCAL_SORTS
+    : (status?.browse_version ?? 0) >= 3
+      ? ORDERED_SORTS
+      : BASIC_SORTS
   const includeDescendants = Boolean(selection.collectionId) && showSubContents
   const expression = adHocFiltersToExpression(filters)
   const smart = useQuery({
@@ -215,7 +220,10 @@ export function CatalogBundleBrowser({
     : selection.collectionId
       ? `coll:${selection.collectionId}`
       : `view:${selection.view}`
-  const allowedSorts: BundleSort[] = selection.view === 'recent' ? ['date_added'] : supportedSorts
+  const allowedSorts: BundleSort[] =
+    selection.view === 'recent'
+      ? RECENT_SORTS.filter((sort) => supportedSorts.includes(sort))
+      : supportedSorts
   const stored: SortPref =
     prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
@@ -283,7 +291,8 @@ export function CatalogBundleBrowser({
           (item) =>
             ({
               ...item,
-              total_size: 0,
+              total_size: item.total_size ?? 0,
+              size_known: localHistoryEnabled && item.total_size != null,
               has_missing: item.has_missing ?? false,
               has_cover: Boolean(item.cover_file_id),
               openable: item.file_count > 0,
@@ -312,7 +321,7 @@ export function CatalogBundleBrowser({
             }) satisfies BundleCardItem,
         ),
       ) ?? [],
-    [browse.data],
+    [browse.data, localHistoryEnabled],
   )
   const scope = JSON.stringify([
     library,
@@ -695,7 +704,7 @@ export function CatalogBundleBrowser({
         if (event.key === 'End') next = items.at(-1)?.id ?? null
         if (event.key === 'Enter' && single) {
           event.preventDefault()
-          openAlbum(single)
+          onOpen(single)
         }
         if (next) {
           event.preventDefault()
@@ -813,7 +822,7 @@ export function CatalogBundleBrowser({
           {!(folders.length > 0 && contentsFolded) && (
             <Browser
               navigationRef={navigation}
-              unavailableSize
+              unavailableSize={!localHistoryEnabled}
               singleSelection={!selectionEnabled}
               items={items}
               total={browse.data?.pages[0]?.total ?? 0}
@@ -826,7 +835,7 @@ export function CatalogBundleBrowser({
               activeId={active}
               onSelect={select}
               onMarqueeSelect={many}
-              onOpen={openAlbum}
+              onOpen={onOpen}
               contextMenuOpen={menu.state !== null}
               onContextMenu={bundleMenu}
               onEmptyContextMenu={emptyMenu}
@@ -907,7 +916,7 @@ export function CatalogBundleBrowser({
           blocked={blocked}
           memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
-          onRetain={() => setBulkRetained(true)}
+          onRetainedChange={setBulkRetained}
           onClose={() => {
             setBulkRetained(false)
             many([])

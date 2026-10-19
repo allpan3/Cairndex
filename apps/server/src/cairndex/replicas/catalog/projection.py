@@ -139,6 +139,9 @@ def rebuild(db: sqlite3.Connection, entities: Iterable[tuple[str, str]]) -> set[
             "SELECT body FROM catalog_placements WHERE family=? AND entity=?", (family, identity)
         ).fetchone()
         row = restore_row(family, identity, values, json.loads(placement[0]) if placement else {})
+        from cairndex.replicas.catalog.local_history import changed
+
+        changed(db, family, identity, read_row(db, family, identity), row)
         db.execute("DELETE FROM catalog_references WHERE source=?", (owner,))
         db.execute("DELETE FROM catalog_unique_values WHERE owner=?", (owner,))
         db.execute("DELETE FROM catalog_rows WHERE family=? AND entity=?", (family, identity))

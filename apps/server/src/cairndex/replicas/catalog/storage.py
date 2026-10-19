@@ -55,12 +55,18 @@ class CatalogStorage(PrivateStore):
     ) -> None:
         super().__init__(directory, descriptor, fault=fault)
         with self.connection() as db:
+            from cairndex.replicas.catalog.local_history import SCHEMA as LOCAL_HISTORY_SCHEMA
             from cairndex.replicas.discovery_state import SCHEMA as DISCOVERY_SCHEMA
             from cairndex.replicas.media import SCHEMA as MEDIA_SCHEMA
             from cairndex.replicas.private_layout import SOURCE_SCHEMA
 
             db.executescript(
-                projection.SCHEMA + SCHEMA + MEDIA_SCHEMA + DISCOVERY_SCHEMA + SOURCE_SCHEMA
+                projection.SCHEMA
+                + SCHEMA
+                + MEDIA_SCHEMA
+                + DISCOVERY_SCHEMA
+                + SOURCE_SCHEMA
+                + LOCAL_HISTORY_SCHEMA
             )
             install(db)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
@@ -80,6 +86,10 @@ class CatalogStorage(PrivateStore):
             db.execute("UPDATE source_uploads SET state='interrupted' WHERE state='receiving'")
             db.execute(
                 "UPDATE discovery_runs SET phase='walk',cursor='',observed=0 WHERE state='running'"
+            )
+            db.execute(
+                "DELETE FROM discovery_progress WHERE run IN "
+                "(SELECT id FROM discovery_runs WHERE state='running')"
             )
             db.execute(
                 "DELETE FROM discovery_entries WHERE run IN (SELECT id FROM "
@@ -314,7 +324,7 @@ class CatalogStorage(PrivateStore):
             return {
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
-                "browse_version": 10,
+                "browse_version": 11,
                 "album_version": 1,
                 "inspector_version": 1,
                 "selection_version": 3,

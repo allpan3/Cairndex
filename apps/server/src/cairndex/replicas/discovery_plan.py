@@ -69,6 +69,8 @@ def group_id(directory: str, subject: str) -> str:
 
 # Index every fresh observation and settled owner before grouping any of their directory context
 def index_batch(store: CatalogStore, run: str, after: str, *, known: bool) -> bool:
+    from cairndex.replicas.discovery_progress import advance
+
     with store.connection() as db:
         if known:
             rows = db.execute(
@@ -82,6 +84,16 @@ def index_batch(store: CatalogStore, run: str, after: str, *, known: bool) -> bo
                 "ORDER BY path LIMIT ?",
                 (run, after, BATCH),
             ).fetchall()
+        advance(
+            db,
+            run,
+            "plan_known" if known else "propose",
+            len(rows),
+            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'"
+            if known
+            else "SELECT count(*) FROM discovery_entries WHERE run=? AND handled=0",
+            () if known else (run,),
+        )
         for row in rows:
             path = row["path"]
             classified = classify(path)

@@ -66,14 +66,13 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     assert all(item["date_added"].endswith("Z") for item in result.json()["items"])
     for body in (
         {"filter": {"version": 1, "root": {"field": "codec", "operator": "equals", "value": "x"}}},
-        {"sort": "size"},
-        {"sort": "date_opened"},
+        {"sort": "unsupported"},
         {"view": "trash"},
         {"limit": 101},
     ):
         assert client.post(url, json=body).status_code == 422
     assert client.get(base + "/bundles/browse").status_code == 409
-    assert client.get(base + "/replica/status").json()["browse_version"] == 10
+    assert client.get(base + "/replica/status").json()["browse_version"] == 11
 
 
 # Manual follows the authored order, or one collection's own membership order

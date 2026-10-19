@@ -123,6 +123,17 @@ def album_page(
     return album(media, bundle_id, directory_id, offset, limit, expected_revision)
 
 
+@router.post("/bundles/{bundle_id}/opened", status_code=204)
+def mark_opened(bundle_id: str, media: Media) -> Response:
+    from cairndex.replicas.catalog.local_history import opened
+
+    with media.store.connection() as db:
+        if read_row(db, "asset_bundles", bundle_id) is None:
+            raise NotFoundError("Bundle is unavailable")
+        opened(db, bundle_id)
+    return Response(status_code=204)
+
+
 # A retry checks this single file and performs one bounded probe only when its generation changed
 @router.get("/files/{file_id}", response_model=LocalMediaRead)
 def local_file(file_id: str, media: Media) -> LocalMediaRead:

@@ -7,6 +7,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -386,6 +387,32 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
     ):
         raise ReplicaError("Private readiness marker has no complete seed")
     media_tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+    for table, family, key in (
+        ("local_file_facts", "asset_files", "file_id"),
+        ("local_bundle_history", "asset_bundles", "bundle_id"),
+    ):
+        if table not in media_tables:
+            continue
+        for row in db.execute(f"SELECT * FROM {table}"):
+            if not db.execute(
+                "SELECT 1 FROM catalog_units WHERE family=? AND entity=? AND field='$alive'",
+                (family, row[key]),
+            ).fetchone():
+                raise ReplicaError("Private local history references an unknown identity")
+            if table == "local_file_facts":
+                from cairndex.core.paths import normalize_relative_path
+
+                if (
+                    type(row["size"]) is not int
+                    or row["size"] < 0
+                    or normalize_relative_path(row["path"]) != row["path"]
+                ):
+                    raise ReplicaError("Invalid private local file observation")
+            for field in (
+                ("modified_at",) if table == "local_file_facts" else ("opened_at", "modified_at")
+            ):
+                if row[field] is not None and datetime.fromisoformat(row[field]).tzinfo is None:
+                    raise ReplicaError("Private local history requires UTC-aware timestamps")
     for table in ("local_media", "local_progress", "local_cursors"):
         if table not in media_tables:
             continue

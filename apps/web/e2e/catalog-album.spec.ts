@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
 
 test.use({ actionTimeout: 15_000 })
+
+async function openAlbum(page: Page, card: Locator) {
+  await card.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open Bundle', exact: true }).click()
+}
 
 test('catalog album pages, folders, selection, missing media and draft return @fullstack', async ({
   browser,
@@ -48,7 +53,7 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
     await note.fill('Album draft remains available')
-    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
+    await openAlbum(page, page.locator('[data-bundle-id="bundle-000001"]'))
     const listing = page.getByRole('list', { name: 'Album items' })
     await expect(listing.locator('[data-file-id="album-folder"]')).toBeVisible()
     await expect(listing.locator('[data-file-id="gallery-000"]')).toHaveCount(0)
@@ -113,7 +118,7 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await page.locator('.media-viewer').press('Escape')
     await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     await expect(note).toHaveValue('Album draft remains available')
-    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
+    await openAlbum(page, page.locator('[data-bundle-id="bundle-000001"]'))
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     await page.getByRole('row').filter({ hasText: 'Synthetic' }).dblclick()
     await page.getByRole('row').filter({ hasText: '雪.mp4' }).click()
@@ -159,7 +164,7 @@ test('album rejects changed pages and ignores a late response after navigation @
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.getByRole('option').filter({ hasText: 'Synthetic album' }).dblclick()
+    await openAlbum(page, page.getByRole('option').filter({ hasText: 'Synthetic album' }))
     await expect(page.getByText('50 of 66 items', { exact: true })).toBeVisible()
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     let received = () => {}
@@ -231,10 +236,10 @@ test('album rejects changed pages and ignores a late response after navigation @
       },
       { times: 1 },
     )
-    await page.locator('[data-bundle-id="bundle-000001"]').dblclick()
+    await openAlbum(page, page.locator('[data-bundle-id="bundle-000001"]'))
     await waiting
     await page.getByRole('button', { name: 'Back to library', exact: true }).click()
-    await page.locator('[data-bundle-id="bundle-000002"]').dblclick()
+    await openAlbum(page, page.locator('[data-bundle-id="bundle-000002"]'))
     await expect(page.getByRole('list', { name: 'Album items' })).toContainText(
       'This bundle has no files or directory members.',
     )

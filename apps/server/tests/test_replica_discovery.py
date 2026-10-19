@@ -2,6 +2,8 @@
 
 import json
 import shutil
+from itertools import count
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -73,6 +75,29 @@ def confirm(store, root, candidate, **overrides):
     result = advance_review(store, root, operation)
     assert result["state"] == "applied", result
     return result
+
+
+def test_update_reports_phase_totals_and_resets_after_restart(replicas):
+    store, root, _ = replicas[0]
+    state.enqueue(store, "phase-counts")
+    initial = state.run(store)
+    assert initial["phase"] == "walk" and initial["total"] is None
+    for _ in range(100):
+        discovery.enumerate_batch(store, root, "phase-counts")
+        if state.run(store)["phase"] == "known":
+            break
+    else:
+        pytest.fail("Enumeration did not finish")
+    discovery.known_batch(store, root, "phase-counts", "")
+    progress = state.run(store)
+    assert progress["total"] > 0
+    assert progress["completed"] == min(discovery.BATCH, progress["total"])
+    assert progress["observed"] > 0
+    reopened = CatalogStore(store.path.parent, store.descriptor)
+    restarted = state.run(reopened)
+    assert restarted["phase"] == "walk"
+    assert restarted["total"] is None
+    assert restarted["completed"] == 0
 
 
 # First/repeated Update keep candidates private; reviewed grouping becomes one causal transaction
@@ -158,9 +183,16 @@ def test_multiple_matching_paths_never_auto_repair(replicas):
 def test_replacement_review_and_revalidation(replicas):
     store, root, _ = replicas[0]
     scan(store, root)
+    with store.connection(readonly=True) as db:
+        assert db.execute("SELECT 1 FROM local_file_facts WHERE file_id='file-video'").fetchone()
     file = root / "Synthetic/雪.mp4"
     file.write_bytes(b"different synthetic source")
     assert scan(store, root)["repaired"] == 0
+    with store.connection(readonly=True) as db:
+        assert (
+            db.execute("SELECT 1 FROM local_file_facts WHERE file_id='file-video'").fetchone()
+            is None
+        )
     candidate = state.candidates(store)["items"][0]
     assert candidate["body"]["kind"] == "replacement"
     operation = uuid4().hex
@@ -270,8 +302,12 @@ def test_delayed_local_delivery_cannot_revert_peer_repair(replicas):
 
 
 # A cancelled walk and process restart can rediscover private candidates without duplicate events
-def test_cancel_restart_and_retry(replicas):
+def test_cancel_restart_and_retry(replicas, monkeypatch):
     store, root, _ = replicas[0]
+    # Slow durable commits can consume a worker tick's entire time allowance.
+    # Exercise that schedule deterministically, independently of the test disk.
+    clock = count()
+    monkeypatch.setattr(discovery, "time", SimpleNamespace(monotonic=lambda: next(clock)))
     for index in range(70):
         (root / f"frame-{index:03}.png").write_bytes(f"synthetic frame {index}".encode())
     state.enqueue(store, "cancelled-run")
@@ -284,7 +320,7 @@ def test_cancel_restart_and_retry(replicas):
     discovery.tick(store, root)
     discovery.close(store)
     reopened = CatalogStore(store.path.parent, store.descriptor)
-    for _ in range(100):
+    for _ in range(1000):
         discovery.tick(reopened, root)
         if state.run(reopened)["state"] != "running":
             break

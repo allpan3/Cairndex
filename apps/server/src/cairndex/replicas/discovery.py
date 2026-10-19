@@ -14,6 +14,7 @@ from cairndex.replicas.catalog.commands import Preview
 from cairndex.replicas.catalog.model import key, value_text
 from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
+from cairndex.replicas.discovery_progress import advance
 from cairndex.replicas.discovery_state import capable
 from cairndex.replicas.protocol import ReplicaError, checksum
 from cairndex.scanning.media_types import classify
@@ -46,6 +47,11 @@ def close_walk(store: CatalogStore) -> None:
 
 # Evidence and reviewed file identity survive scans without entering transport observations
 def baseline(db: sqlite3.Connection, identity: str, observation: dict[str, Any]) -> None:
+    from cairndex.replicas.catalog.local_history import observed
+
+    observed(
+        db, identity, observation["path"], observation["evidence"]["size"], observation["mtime"]
+    )
     db.execute(
         "INSERT OR REPLACE INTO discovery_baselines VALUES (?,?)",
         (identity, value_text(observation)),
@@ -240,6 +246,13 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             ),
             (after, BATCH),
         ).fetchall()
+        advance(
+            db,
+            run,
+            "known",
+            len(rows),
+            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'",
+        )
         for row in rows:
             identity, path = row
             old_row = db.execute(
@@ -258,6 +271,7 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                 new = json.loads(observed[0])
                 expected = shared or (old["evidence"] if old and old["path"] == path else None)
                 if expected is not None and expected != new["evidence"]:
+                    db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
                     needs_verification = (
                         expected["algorithm"] == "sha256"
                         and new["evidence"]["algorithm"] != "sha256"
@@ -302,6 +316,7 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                     "UPDATE discovery_entries SET handled=1 WHERE run=? AND path=?", (run, path)
                 )
             elif sources.absent(root, path):
+                db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
                 db.execute(
                     (
                         "INSERT INTO local_media VALUES (?,NULL,'unavailable',NULL,NULL) "
@@ -346,6 +361,14 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             ),
             (run, after, BATCH),
         ).fetchall()
+        advance(
+            db,
+            run,
+            "repair",
+            len(rows),
+            "SELECT count(*) FROM discovery_entries WHERE run=? AND handled=0",
+            (run,),
+        )
         for path, raw in rows:
             new = json.loads(raw)
             from cairndex.replicas.discovery_choices import matching, stage

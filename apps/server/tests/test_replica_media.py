@@ -617,3 +617,38 @@ def test_storyboard_release_aborts_running_work(media_api, monkeypatch):
     token = client.get(base + "/replica/media/files/media-direct").json()["generation"]
     assert _settle_storyboard(client, request, token)["state"] == "ready"
     assert not list((store.path.parent / "cache" / "storyboards").glob("*/*.tmp-*"))
+
+
+def test_concurrent_requests_share_the_same_generation_probe(media_api, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from time import sleep
+
+    from cairndex.replicas import media
+
+    _, _, store, _, roots = media_api
+    raw = media.run_ffprobe(roots[0] / "Playback/movie.mp4")
+    calls = []
+    start = Barrier(2)
+
+    def probe(*_args, **_kwargs):
+        calls.append(True)
+        # Keep both requests in flight as a real decoder would under load.
+        sleep(0.25)
+        return raw
+
+    monkeypatch.setattr(media, "run_ffprobe", probe)
+
+    def inspect():
+        adapter = ReplicaMedia(store, roots[0], "synthetic")
+        start.wait(timeout=5)
+        return adapter.file("media-direct", inspect=True, probe=True)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = [pool.submit(inspect) for _ in range(2)]
+        results = [future.result(timeout=10) for future in pending]
+    assert len(calls) == 1
+    assert all(
+        file.tech_metadata and file.tech_metadata["video_codec"] == "h264" for file in results
+    )
+    assert results[0].quick_fingerprint == results[1].quick_fingerprint

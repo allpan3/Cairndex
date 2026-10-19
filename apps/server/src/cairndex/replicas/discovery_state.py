@@ -9,6 +9,7 @@ from cairndex.replicas.discovery_plan import SCHEMA as PLAN_SCHEMA
 from cairndex.replicas.discovery_plan import TABLES as PLAN_TABLES
 from cairndex.replicas.discovery_preview import SCHEMA as PREVIEW_SCHEMA
 from cairndex.replicas.discovery_preview import TABLES as PREVIEW_TABLES
+from cairndex.replicas.discovery_progress import SCHEMA as PROGRESS_SCHEMA
 from cairndex.replicas.discovery_proposals import SCHEMA as PROPOSAL_SCHEMA
 from cairndex.replicas.discovery_proposals import TABLES as PROPOSAL_TABLES
 from cairndex.replicas.discovery_verification import SCHEMA as VERIFICATION_SCHEMA
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS discovery_reviews (
     error TEXT, event TEXT);
 """
 TABLES = {
+    "discovery_progress",
     "discovery_path_claim",
     "discovery_baseline_path",
     "discovery_identities",
@@ -65,7 +67,8 @@ TABLES = {
     "discovery_missing",
     "discovery_missing_evidence",
 }
-BASE_TABLES = set(TABLES)
+BASE_TABLES = TABLES - {"discovery_progress"}
+SCHEMA += PROGRESS_SCHEMA
 SCHEMA += VERIFICATION_SCHEMA
 TABLES |= VERIFICATION_TABLES
 SCHEMA += PLAN_SCHEMA
@@ -109,7 +112,16 @@ def run(store: CatalogStore, operation: str | None = None) -> dict[str, Any]:
             "SELECT * FROM discovery_runs WHERE (? IS NULL OR id=?) ORDER BY sequence DESC LIMIT 1",
             (operation, operation),
         ).fetchone()
-        return dict(row) if row else {"state": "idle"}
+        if row is None:
+            return {"state": "idle"}
+        progress = db.execute(
+            "SELECT completed,total FROM discovery_progress WHERE run=? AND phase=?",
+            (row["id"], row["phase"]),
+        ).fetchone()
+        return dict(row) | {
+            "completed": progress[0] if progress else 0,
+            "total": progress[1] if progress else None,
+        }
 
 
 # Cancelling stops future worker steps and never erases candidates or saved events

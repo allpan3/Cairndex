@@ -43,9 +43,12 @@ storyboards through [PR #65](https://github.com/allpan3/Cairndex/pull/65) as
 through [PR #67](https://github.com/allpan3/Cairndex/pull/67) as `4635b0da`. The real-library owner test in step 6 remains the release checkpoint.
 No release tag or production deployment was made.
 
-Steps 4 and 5 are complete (2026-10-17). The remaining restorations merged
-through PRs #69–#82. The SMB share tests led to the conversion and login fixes
-in PRs #83–#85 and #87. Step 6 is in progress: the owner's real library is
+Step 5 is complete (2026-10-17). The initial step 4 restorations merged
+through PRs #69–#82, but owner testing on 2026-10-19 found that restoration is
+incomplete. The [behavior audit](restoration-audit.md) tracks the remaining work
+against the earlier application and subsequent decisions. The SMB share tests
+led to the conversion and login fixes in PRs #83–#85 and #87. Step 6 is paused
+while restoration continues: the owner's real library is
 converted and stays converted. The owner's first look found five problems.
 PR #87 lets the app ask macOS for the share's saved login (Allow Access…).
 [PR #88](https://github.com/allpan3/Cairndex/pull/88), merged as `391e71ff`,
@@ -86,7 +89,40 @@ its result in the window's message, the panels hide, return and resize, and
 their scrollbars show only while they scroll.
 
 Both full VM gates, publication privacy and all 16 hosted checks passed before
-#92 merged. The owner has not yet tested that installed build.
+#92 merged. The owner's later test of the installed build from PR #98 found
+additional missing behavior and stopped before acceptance.
+
+### Completing behavior restoration (2026-10-19)
+
+Branch `fix/complete-portable-restoration` compares the application before
+PR #45 with the current implementation, the decision timeline and the owner's
+feedback. It covers discovery/grouping review, Update progress, collection
+badges, Unbundled availability, bulk selection, playback, local history/sorts,
+manual-bundling suggestions and maintenance controls. The portable catalog,
+reviewed source operations, private drafts and durability fixes remain in use.
+The [audit](restoration-audit.md) records accepted changes, remaining work and
+verification requirements. Earlier restoration claims do not qualify this
+branch or establish behavior equivalence. All new checks use synthetic data.
+
+The owner confirmed local history/sorts and correct current-app playback resume
+are in scope. Importing saved positions from conversion backups and cross-device
+resume are excluded. The first slice fixes bulk-inspector retention, fold-based
+collection badges and viewer entry/resume, with focused macOS web and full-stack
+checks recorded in the audit. Phase-aware Update counters and bounded Unbundled
+availability checks are also implemented; full qualification remains pending.
+Local history and sorts now use private opening/edit times and file observations
+(`browse_version: 11`, ADR-0040). The focused macOS backend and full-stack checks
+passed, including recovery and older-server handling. Grouping review,
+manual-bundling suggestions, maintenance controls and the broader comparison
+remain open; this branch is not ready for another owner build.
+
+The corrected Linux full gate passed, including 1,957 backend tests (one
+platform-specific manifest check deselected), 49 browser scenarios, four frozen
+checks and 135 Rust tests. macOS qualification is still running. Its restart
+test exhausted a fixed worker-iteration limit; a Linux reproducer now forces
+one durable phase per tick and passes with the same allowance as the scan
+helper. This changes test scheduling only. The full macOS result and subsequent
+qualification remain pending.
 
 ### macOS SQLite durability (2026-10-18)
 
