@@ -40,6 +40,11 @@ test('local opening history and observed sizes restore Recent and complete sorts
     await card.click()
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
     await expect(inspector.getByText('Unknown on this device')).toBeVisible()
+    const bulk = page.getByRole('complementary', { name: 'Selected bundles inspector' })
+    const secondCard = page.locator('[data-bundle-id="bundle-000002"]')
+    await secondCard.click({ modifiers: ['ControlOrMeta'] })
+    await expect(bulk.getByText('Unknown on this device', { exact: true })).toBeVisible()
+    await card.click()
     const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica`
     const browse = async (sort: string, order = 'desc') =>
       apiPost<{
@@ -114,6 +119,21 @@ test('local opening history and observed sizes restore Recent and complete sorts
     )
     await card.click()
     await expect(inspector.getByText('Unknown on this device')).toHaveCount(0)
+    const size = await inspector
+      .locator('.prop')
+      .filter({ has: page.getByText('Size', { exact: true }) })
+      .locator('.prop__v')
+      .innerText()
+    await secondCard.click({ modifiers: ['ControlOrMeta'] })
+    await expect(
+      bulk
+        .locator('.prop')
+        .filter({ has: page.getByText('Size', { exact: true }) })
+        .locator('.prop__v'),
+    ).toHaveText(size)
+    await page.mouse.move(0, 0)
+    await page.screenshot({ path: test.info().outputPath('synthetic-bulk-size.png') })
+    await card.click()
     // Servers without this contract keep their supported sort menu.
     await page.route('**/replica/status', async (route) => {
       const response = await fetch(backend.baseUrl + new URL(route.request().url()).pathname)

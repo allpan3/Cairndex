@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, CatalogJobError, operationId } from '../api/catalog'
 import { commit } from '../api/catalogOrganize'
 import type { components } from '../api/schema'
+import { formatBytes } from '../lib/format'
 import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { StarRating } from './Stars'
 import { useCatalogDraft } from './useCatalogDraft'
@@ -32,6 +33,7 @@ export function CatalogMultiBundleInspector({
   editor,
   ids,
   fileCount,
+  totalSize,
   blocked,
   memberships,
   onReview,
@@ -43,7 +45,8 @@ export function CatalogMultiBundleInspector({
   editor: string
   ids: string[]
   /** The selected cards' files together. */
-  fileCount: number
+  fileCount: number | null
+  totalSize?: number | null
   blocked: boolean
   /** The server can list a selection's own tags and collections (`selection_version: 3`). */
   memberships: boolean
@@ -197,7 +200,13 @@ export function CatalogMultiBundleInspector({
           </div>
           <div className="prop">
             <span className="prop__k">Files</span>
-            <span className="prop__v">{fileCount}</span>
+            <span className="prop__v">{fileCount ?? 'Unknown'}</span>
+          </div>
+          <div className="prop">
+            <span className="prop__k">Size</span>
+            <span className="prop__v">
+              {totalSize == null ? 'Unknown on this device' : formatBytes(totalSize)}
+            </span>
           </div>
           {memberships &&
             (['tags', 'collections'] as const).map((family) => (

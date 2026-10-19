@@ -54,6 +54,7 @@ import type { DragItem } from './dnd'
 import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
 import { useCatalogTagClipboard } from './useCatalogTagClipboard'
 import { copiedCatalogTags } from '../api/catalogTagClipboard'
+import { navTargetsFrom, rowStep } from './spatialNav'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 11 adds local file observations and opening/edit history.
@@ -255,6 +256,7 @@ export function CatalogBundleBrowser({
   const menu = useContextMenu()
   const [inspectorFile, setInspectorFile] = useState<{ bundle: string; file: string } | null>(null)
   const navigation = useRef<BrowserNavigation>(null)
+  const browserRoot = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search), 200)
     return () => clearTimeout(timer)
@@ -352,6 +354,7 @@ export function CatalogBundleBrowser({
     scope,
     ids: NO_IDS,
     anchor: null as string | null,
+    active: null as string | null,
   })
   if (picked.scope !== scope) {
     setPicked({ scope, ids: new Set(), active: null, anchor: null })
@@ -359,7 +362,7 @@ export function CatalogBundleBrowser({
     setAlbumFile(null)
   }
   const folderIds = pickedFolders.scope === scope ? pickedFolders.ids : NO_IDS
-  const clearFolders = () => setPickedFolders({ scope, ids: NO_IDS, anchor: null })
+  const clearFolders = () => setPickedFolders({ scope, ids: NO_IDS, anchor: null, active: null })
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
       lastLocate.current = locateRequest
@@ -381,6 +384,10 @@ export function CatalogBundleBrowser({
     [picked.scope, picked.ids, scope],
   )
   const active = picked.scope === scope ? picked.active : null
+  const selectedCards = useMemo(
+    () => items.filter((item) => selectedIds.has(item.id)),
+    [items, selectedIds],
+  )
   const albumId = album?.scope === scope ? album.id : null
   const clipboard = useCatalogTagClipboard(library, onNotice)
   useEffect(() => {
@@ -483,8 +490,12 @@ export function CatalogBundleBrowser({
   const [foldersFolded, setFoldersFolded] = useState(false)
   const [contentsFolded, setContentsFolded] = useState(false)
   // Cmd toggles and Shift extends, as in v0.2.1; Ctrl-click is the macOS menu chord
-  function pickFolders(ids: ReadonlySet<string>, anchor: string | null) {
-    setPickedFolders({ scope, ids, anchor })
+  function pickFolders(
+    ids: ReadonlySet<string>,
+    anchor: string | null,
+    active = [...ids].at(-1) ?? null,
+  ) {
+    setPickedFolders({ scope, ids, anchor, active })
     if (ids.size > 0) setPicked({ scope, ids: new Set(), active: null, anchor: null })
   }
   function selectFolder(id: string, modifiers: SelectionModifiers) {
@@ -494,6 +505,7 @@ export function CatalogBundleBrowser({
       return pickFolders(
         selectionRange(order, anchor, id, modifiers.metaKey ? folderIds : undefined),
         anchor,
+        id,
       )
     }
     if (modifiers.metaKey) {
@@ -734,9 +746,23 @@ export function CatalogBundleBrowser({
   }
   return (
     <div
+      ref={browserRoot}
       className="catalog-bundle-browser"
       onKeyDown={(event) => {
-        if (!(event.target as HTMLElement).closest('[role="listbox"]')) return
+        const target = event.target as HTMLElement
+        if (
+          !event.currentTarget.contains(target) ||
+          event.defaultPrevented ||
+          document.querySelector('[aria-modal="true"], [role="menu"]') ||
+          target.closest('input, textarea, select, [contenteditable="true"]')
+        )
+          return
+        const listing = target.closest('[role="listbox"], .collhead')
+        if (
+          !listing ||
+          (target.closest('button, a') && !target.closest('[data-collection-id], [data-bundle-id]'))
+        )
+          return
         if (
           selectionEnabled &&
           (event.metaKey || event.ctrlKey) &&
@@ -752,31 +778,73 @@ export function CatalogBundleBrowser({
           clearFolders()
           return
         }
+        const folderWalk = foldersFolded ? [] : folders.map((item) => `collection:${item.id}`)
+        const bundleWalk =
+          folders.length > 0 && contentsFolded ? [] : items.map((item) => `bundle:${item.id}`)
+        const walk = [...folderWalk, ...bundleWalk]
+        const folderActive =
+          !foldersFolded && pickedFolders.scope === scope && folderIds.size > 0
+            ? pickedFolders.active
+            : null
+        const from = folderActive
+          ? `collection:${folderActive}`
+          : active
+            ? `bundle:${active}`
+            : null
         let next: string | null = null
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp')
-          next = navigation.current?.step(active, event.key === 'ArrowDown' ? 'down' : 'up') ?? null
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-          next =
-            items[
-              Math.max(
-                0,
-                Math.min(
-                  items.length - 1,
-                  items.findIndex((item) => item.id === active) +
-                    (event.key === 'ArrowLeft' ? -1 : 1),
-                ),
-              )
-            ]?.id ?? null
-        if (event.key === 'Home') next = items[0]?.id ?? null
-        if (event.key === 'End') next = items.at(-1)?.id ?? null
-        if (event.key === 'Enter' && single) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          const direction = event.key === 'ArrowDown' ? 'down' : 'up'
+          const ids = new Set(walk)
+          next = rowStep(
+            navTargetsFrom(
+              event.currentTarget,
+              '[data-collection-id], [data-bundle-id]',
+              (element) => {
+                const key = element.dataset.collectionId
+                  ? `collection:${element.dataset.collectionId}`
+                  : `bundle:${element.dataset.bundleId}`
+                return ids.has(key) ? key : undefined
+              },
+            ),
+            from,
+            direction,
+          )
+          if (!next && !folderActive) {
+            const bundle = navigation.current?.step(active, direction)
+            if (bundle) next = `bundle:${bundle}`
+          }
+        }
+        if (!next && ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) {
+          const index = walk.indexOf(from ?? '')
+          const delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1
+          next = walk[Math.max(0, Math.min(walk.length - 1, index < 0 ? 0 : index + delta))] ?? null
+        }
+        if (event.key === 'Home')
+          next = (listing.classList.contains('collhead') ? folderWalk : bundleWalk)[0] ?? null
+        if (event.key === 'End')
+          next = (listing.classList.contains('collhead') ? folderWalk : bundleWalk).at(-1) ?? null
+        if (event.key === 'Enter' && folderIds.size === 1 && folderActive) {
+          event.preventDefault()
+          onOpenCollection(folderActive)
+        } else if (event.key === 'Enter' && single) {
           event.preventDefault()
           onOpen(single)
         }
         if (next) {
           event.preventDefault()
-          select(next, event)
-          navigation.current?.focus(next)
+          if (next.startsWith('collection:')) {
+            const id = next.slice('collection:'.length)
+            selectFolder(id, event)
+            const card = browserRoot.current?.querySelector<HTMLElement>(
+              `[data-collection-id="${id}"]`,
+            )
+            card?.focus()
+            card?.scrollIntoView({ block: 'nearest' })
+          } else {
+            const id = next.slice('bundle:'.length)
+            select(id, event)
+            navigation.current?.focus(id)
+          }
         }
       }}
     >
@@ -976,10 +1044,19 @@ export function CatalogBundleBrowser({
           library={library}
           editor={editor}
           ids={[...selectedIds].sort()}
-          fileCount={items.reduce(
-            (total, item) => total + (selectedIds.has(item.id) ? item.file_count : 0),
-            0,
-          )}
+          fileCount={
+            selectedIds.size > 0 && selectedCards.length === selectedIds.size
+              ? selectedCards.reduce((total, item) => total + item.file_count, 0)
+              : null
+          }
+          totalSize={
+            localHistoryEnabled &&
+            selectedIds.size > 0 &&
+            selectedCards.length === selectedIds.size &&
+            selectedCards.every((item) => item.size_known)
+              ? selectedCards.reduce((total, item) => total + item.total_size, 0)
+              : null
+          }
           blocked={blocked}
           memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
