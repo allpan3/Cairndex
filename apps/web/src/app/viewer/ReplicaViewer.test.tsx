@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { expect, test, vi } from 'vitest'
 import { setActiveLibraryId } from '../../api/client'
@@ -44,6 +44,71 @@ vi.mock('./ViewerShell', () => ({
     )
   },
 }))
+
+test('reopening waits for the current cursor before observing or writing a file', async () => {
+  setActiveLibraryId('synthetic')
+  let finish!: (value: unknown) => void
+  const fresh = new Promise((resolve) => {
+    finish = resolve
+  })
+  const file = (id: string) => ({
+    id,
+    bundle_id: 'bundle',
+    relative_path: `${id}.mp4`,
+    original_filename: `${id}.mp4`,
+    display_title: id,
+    availability: 'available',
+    media_kind: 'video',
+    supported: true,
+  })
+  const playlist = {
+    files: [file('old'), file('current')],
+    cursor: 'old',
+    directories: [],
+    moments: [],
+    next_offset: null,
+  }
+  const calls: { path: string; body: unknown }[] = []
+  vi.mocked(replicaRequest).mockImplementation(async (_library, path, _method, body) => {
+    calls.push({ path, body })
+    if (path === '/status') return {}
+    if (path.includes('offset=0')) return fresh
+    if (path.startsWith('/media/files/')) return { file: file('current'), state: 'available' }
+    return {}
+  })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  })
+  client.setQueryData(['replica-media', 'synthetic', 'playlist', 'bundle'], {
+    pages: [playlist],
+    pageParams: [{ offset: 0, revision: '' }],
+  })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ReplicaViewer library="synthetic" target={{ bundleId: 'bundle' }} onClose={() => {}} />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText('Loading media')).toBeInTheDocument()
+  expect(
+    calls.some(({ path }) => path.startsWith('/media/files/') || path.endsWith('/cursor')),
+  ).toBe(false)
+  await act(async () => finish({ ...playlist, cursor: 'current' }))
+  await waitFor(() =>
+    expect(calls).toContainEqual({
+      path: '/media/bundles/bundle/cursor',
+      body: { file_id: 'current' },
+    }),
+  )
+  expect(
+    calls.some(
+      ({ path, body }) =>
+        path === '/media/files/old' || (body as { file_id?: string })?.file_id === 'old',
+    ),
+  ).toBe(false)
+  view.unmount()
+  client.clear()
+  setActiveLibraryId(null)
+})
 
 test('a failed continuation exposes the error instead of waiting forever for a late cursor', async () => {
   vi.mocked(replicaRequest).mockImplementation(async (_library, path) => {

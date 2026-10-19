@@ -82,6 +82,10 @@ class CatalogStorage(PrivateStore):
                 "UPDATE discovery_runs SET phase='walk',cursor='',observed=0 WHERE state='running'"
             )
             db.execute(
+                "DELETE FROM discovery_progress WHERE run IN "
+                "(SELECT id FROM discovery_runs WHERE state='running')"
+            )
+            db.execute(
                 "DELETE FROM discovery_entries WHERE run IN (SELECT id FROM "
                 "discovery_runs WHERE state='running')"
             )

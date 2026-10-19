@@ -79,6 +79,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         BASE_TABLES,
         PLAN_TABLES,
         PREVIEW_TABLES,
+        PROGRESS_TABLES,
         PROPOSAL_TABLES,
         SOURCE_TABLES,
         VERIFICATION_TABLES,
@@ -91,6 +92,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         PROPOSAL_TABLES,
         PREVIEW_TABLES,
         SOURCE_TABLES,
+        PROGRESS_TABLES,
     )
     if any(group & actual.keys() for group in groups[1:]) and not actual.keys() >= BASE_TABLES:
         raise ReplicaError("Private discovery schema is incomplete")

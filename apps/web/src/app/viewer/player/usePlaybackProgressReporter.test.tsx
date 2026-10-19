@@ -16,6 +16,7 @@ vi.mock('../../../api/client', () => ({
 }))
 
 interface HarnessProps {
+  fileId?: string
   status: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'
   currentTime: number
   duration?: number
@@ -25,6 +26,7 @@ interface HarnessProps {
 
 // Test shell that gives the hook a React Query client
 function Harness({
+  fileId = 'f0',
   status,
   currentTime,
   duration = 100,
@@ -33,7 +35,7 @@ function Harness({
 }: HarnessProps) {
   usePlaybackProgressReporter({
     bundleId: 'b0',
-    fileId: 'f0',
+    fileId,
     enabled: true,
     status,
     currentTime,
@@ -157,6 +159,27 @@ test('sends a beacon on pagehide', () => {
     position_s: 9,
     duration_s: 100,
   })
+})
+
+test('switching tracks flushes the departing file before the next cadence', async () => {
+  const { rerender, queryClient } = renderReporter({
+    status: 'playing',
+    currentTime: 7,
+    sourceGeneration: 'first',
+  })
+  await act(async () => {
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <Harness fileId="f1" status="loading" currentTime={0} sourceGeneration="second" />
+      </QueryClientProvider>,
+    )
+  })
+  expect(updatePlaybackProgress).toHaveBeenCalledWith('f0', {
+    position_s: 7,
+    duration_s: 100,
+    source_generation: 'first',
+  })
+  expect(updatePlaybackProgress).not.toHaveBeenCalledWith('f1', expect.anything())
 })
 
 // Both ordinary writes and page-exit beacons carry the observed replica source identity

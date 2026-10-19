@@ -45,6 +45,8 @@ export type DiscoveryRun = {
   id?: string
   state: 'idle' | 'running' | 'succeeded' | 'failed' | 'cancelled'
   phase?: string
+  completed?: number
+  total?: number | null
   observed?: number
   repaired?: number
   error?: string | null

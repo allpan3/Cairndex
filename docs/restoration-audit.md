@@ -29,8 +29,8 @@ Preserve these accepted changes:
 
 ## Remaining behavior
 
-All implementation and verification entries below are open at the start of this
-branch. Each completed entry must name the checks that establish its behavior.
+The table defines acceptance for this branch. Implemented slices and their
+verification follow it; remaining rows stay open until demonstrated.
 
 | Behavior | Timeline and evidence | Required treatment |
 | --- | --- | --- |
@@ -45,20 +45,45 @@ branch. Each completed entry must name the checks that establish its behavior.
 | Maintenance actions | The portable library menu omits separate Scan, Suggest grouping, Collect metadata and Generate storyboards actions. | Audit each action against later on-demand work. Restore useful explicit controls through bounded private jobs; retain automatic work that already supersedes an old step. |
 | Earlier restored interactions | PRs #63 through #92 restored features in separate slices. Their tests did not establish complete interaction equivalence. | Compare navigation, menus, selection, inspectors, grouping, playback, exports and file operations with the reference on the same synthetic data. Record each intentional difference. |
 
-## Scope decisions requested
+## Owner scope decisions (2026-10-19)
 
-The owner has been asked whether to include cross-device resume in this work or
-restore local history/sorts while keeping cross-device synchronization separate.
-The existing portable decision keeps private playback state on each serving
-instance. A deferral is recorded as a scope decision, not described as an upgrade.
+Restore Recently Used, Size, Date Modified and Date Opened from this device's
+observations and history. Keep cross-device playback synchronization separate.
+Private playback state remains on each serving instance. This is a scope
+decision, not a claim that a deferred feature was replaced by an upgrade.
 
 Conversion intentionally retained old playback positions, cursors, last-opened
-times and pending grouping plans in the backup. The owner has been asked whether
-this restoration should also add a separate reviewed import of old playback
-state. Correct current-app resume does not depend on importing old positions.
+times and pending grouping plans in the backup. The owner does not want those
+old positions imported. Remembering and resuming the correct file and timestamp
+for current-app activity is required and does not depend on importing them.
 Stale grouping plans and old trash/import staging must not execute themselves.
 
 ## Verification and completion
+
+The first interaction slice fixes bulk retention, fold-based collection badges
+and viewer opening/resume. In Cairndex macOS, 40 focused web tests passed,
+including the fresh-cursor race, track-switch progress, collection folds and
+phase progress. Four full-stack browser scenarios passed: retained bulk edits,
+album pagination/draft return, changed/late album responses, and two-video
+resume through double-click, Enter and reload. The bulk-release and departing
+track tests were observed failing before their fixes. Full VM gates and broader
+reference comparison remain outstanding.
+
+Both selection-suite scenarios subsequently passed, including the displayed
+Unbundled page distinguishing an existing file from missing synthetic paths
+without any unknown rows. Web lint and type checking passed. Backend lint,
+type checking and the two focused backend cases passed as well.
+The wider discovery, browse, API and local-observation backend slice passed
+40 tests on Cairndex macOS. Recovery compatibility and full VM gates remain
+part of branch qualification.
+
+Update now counts phase-local work in a private table committed with each batch.
+Totals cover known catalog checks, repair candidates and grouping indexes;
+enumeration and the grouping/export algorithms retain indeterminate progress
+with explicit phase labels. Counts reset on restart. Two focused backend tests
+passed for phase/restart behavior and bounded path observations. Unbundled's
+page checks use stat through no-follow directory handles, without probing,
+hashing or enumeration. They do not change catalog metadata.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.

@@ -14,6 +14,7 @@ from cairndex.replicas.catalog.commands import Preview
 from cairndex.replicas.catalog.model import key, value_text
 from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
+from cairndex.replicas.discovery_progress import advance
 from cairndex.replicas.discovery_state import capable
 from cairndex.replicas.protocol import ReplicaError, checksum
 from cairndex.scanning.media_types import classify
@@ -240,6 +241,13 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             ),
             (after, BATCH),
         ).fetchall()
+        advance(
+            db,
+            run,
+            "known",
+            len(rows),
+            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'",
+        )
         for row in rows:
             identity, path = row
             old_row = db.execute(
@@ -346,6 +354,14 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             ),
             (run, after, BATCH),
         ).fetchall()
+        advance(
+            db,
+            run,
+            "repair",
+            len(rows),
+            "SELECT count(*) FROM discovery_entries WHERE run=? AND handled=0",
+            (run,),
+        )
         for path, raw in rows:
             new = json.loads(raw)
             from cairndex.replicas.discovery_choices import matching, stage

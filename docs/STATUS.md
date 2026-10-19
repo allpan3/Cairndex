@@ -104,6 +104,13 @@ The [audit](restoration-audit.md) records accepted changes, remaining work and
 verification requirements. Earlier restoration claims do not qualify this
 branch or establish behavior equivalence. All new checks use synthetic data.
 
+The owner confirmed local history/sorts and correct current-app playback resume
+are in scope. Importing saved positions from conversion backups and cross-device
+resume are excluded. The first slice fixes bulk-inspector retention, fold-based
+collection badges and viewer entry/resume, with focused macOS web and full-stack
+checks recorded in the audit. Phase-aware Update counters and bounded Unbundled
+availability checks are also implemented; full qualification remains pending.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

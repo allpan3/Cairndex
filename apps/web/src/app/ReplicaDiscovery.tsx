@@ -10,11 +10,40 @@ function completeStatus(run: DiscoveryRun): string {
   return `Update complete · ${run.observed} files checked · ${run.repaired} links repaired`
 }
 
+function phaseLabel(run: DiscoveryRun | undefined): string {
+  switch (run?.phase) {
+    case 'walk':
+      return 'Finding files · total not yet known'
+    case 'known':
+      return 'Checking cataloged files'
+    case 'repair':
+      return 'Checking moved files'
+    case 'propose':
+      return 'Indexing discovered files'
+    case 'plan_known':
+      return 'Indexing existing groupings'
+    case 'group':
+      return 'Grouping suggestions'
+    case 'export':
+      return 'Preparing suggestions'
+    default:
+      return 'Starting Update'
+  }
+}
+
+function phaseCount(run: DiscoveryRun | undefined): string {
+  return run?.total != null
+    ? `${run.completed ?? 0} / ${run.total}`
+    : run?.phase === 'walk'
+      ? `${run.observed ?? 0} found`
+      : ''
+}
+
 function runStatus(run: ReplicaDiscoveryState['run']): string {
   if (run.isPending) return 'Loading Update status…'
   switch (run.data?.state) {
     case 'running':
-      return `Updating · ${run.data.observed} files checked · ${run.data.repaired} links repaired`
+      return `${phaseLabel(run.data)} · ${phaseCount(run.data)}`
     case 'succeeded':
       return completeStatus(run.data)
     case 'cancelled':
@@ -79,6 +108,9 @@ export function DiscoveryNotice({
   onComplete: (text: string) => void
 }) {
   const state = d.run.data?.state
+  const total = d.run.data?.total
+  const completed = d.run.data?.completed ?? 0
+  const determinate = d.running && total != null
   const stopped = state === 'failed' || state === 'cancelled'
   // The hook forgets the run once it is reported, not this row: the row
   // unmounts with the sidebar, and showing it again must not repeat the result
@@ -97,16 +129,12 @@ export function DiscoveryNotice({
           <div className="job-progress__row">
             <span className="job-progress__label">
               {d.running
-                ? 'Updating'
+                ? phaseLabel(d.run.data)
                 : state === 'cancelled'
                   ? 'Update cancelled'
                   : 'Update failed'}
             </span>
-            {d.running && (
-              <span className="job-progress__count" title="Files checked">
-                {d.run.data?.observed ?? 0}
-              </span>
-            )}
+            {d.running && <span className="job-progress__count">{phaseCount(d.run.data)}</span>}
             {d.running && (
               <button
                 type="button"
@@ -122,12 +150,27 @@ export function DiscoveryNotice({
           </div>
           <div
             className={`job-progress__track${
-              d.running ? ' job-progress__track--indeterminate' : ' job-progress__track--error'
+              d.running
+                ? determinate
+                  ? ''
+                  : ' job-progress__track--indeterminate'
+                : ' job-progress__track--error'
             }`}
             role="progressbar"
             aria-label="Update progress"
+            aria-valuemin={determinate ? 0 : undefined}
+            aria-valuemax={determinate ? total : undefined}
+            aria-valuenow={determinate ? completed : undefined}
+            aria-valuetext={phaseLabel(d.run.data)}
           >
-            <div className="job-progress__bar" />
+            <div
+              className="job-progress__bar"
+              style={
+                determinate
+                  ? { width: `${total ? Math.min(100, (completed / total) * 100) : 100}%` }
+                  : undefined
+              }
+            />
           </div>
           {stopped && <div className="job-progress__error">Run Update to retry.</div>}
         </div>

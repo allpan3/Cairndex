@@ -538,7 +538,13 @@ def test_restored_private_resume_and_new_device_media(replica, tmp_path):
 def test_known_older_private_schema_and_protocol_one(replica, tmp_path):
     root, base, store = replica
     with store.connection() as db:
-        for table in ("local_media", "local_progress", "local_cursors", "recovery_receipts"):
+        for table in (
+            "local_media",
+            "local_progress",
+            "local_cursors",
+            "discovery_progress",
+            "recovery_receipts",
+        ):
             db.execute(f"DROP TABLE {table}")
     output = tmp_path / "old-backup"
     recovery.backup(root, base, output)

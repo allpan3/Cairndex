@@ -32,6 +32,8 @@ interface Overrides {
   newCollectionRequest?: { parentId: string | null } | null
   onNewCollectionHandled?: () => void
   renameCollectionRequest?: { id: string } | null
+  collectionCounts?: Record<string, number>
+  collectionDirectCounts?: Record<string, number>
 }
 
 /** Same, with an explicit collection set. */
@@ -62,6 +64,8 @@ function renderSidebarWith(collections: CollectionRead[], overrides: Overrides =
       }}
       onSelect={() => undefined}
       collections={collections}
+      collectionCounts={overrides.collectionCounts}
+      collectionDirectCounts={overrides.collectionDirectCounts}
       onDeleteCollection={() => undefined}
       onCreateCollection={onCreateCollection}
       onRenameCollection={() => undefined}
@@ -78,6 +82,26 @@ function renderSidebarWith(collections: CollectionRead[], overrides: Overrides =
   )
   return onCreateCollection
 }
+
+test('collection badges follow each row fold independently of the listing', () => {
+  renderSidebarWith([...COLLECTIONS, collection('c3', 'Leaf', 'c2')], {
+    collectionCounts: { c1: 7, c2: 5, c3: 2 },
+    collectionDirectCounts: { c1: 0, c2: 3, c3: 2 },
+  })
+  const row = (name: string) => screen.getByText(name).closest('.collection-row')!
+  const count = (name: string) => row(name).querySelector('.nav-item__count')
+  expect(count('Films')).toHaveTextContent('0')
+  expect(count('Nested')).toHaveTextContent('5')
+  fireEvent.click(row('Nested').querySelector('button')!)
+  expect(count('Nested')).toHaveTextContent('3')
+  expect(count('Leaf')).toHaveTextContent('2')
+  fireEvent.click(row('Films').querySelector('button')!)
+  expect(count('Films')).toHaveTextContent('7')
+  expect(screen.queryByText('Nested')).not.toBeInTheDocument()
+  fireEvent.click(row('Films').querySelector('button')!)
+  expect(count('Films')).toHaveTextContent('0')
+  expect(count('Nested')).toHaveTextContent('3')
+})
 
 test('pointer activation focuses Settings before opening its dialog', () => {
   const onOpenSettings = vi.fn(() => {

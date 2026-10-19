@@ -75,6 +75,29 @@ def confirm(store, root, candidate, **overrides):
     return result
 
 
+def test_update_reports_phase_totals_and_resets_after_restart(replicas):
+    store, root, _ = replicas[0]
+    state.enqueue(store, "phase-counts")
+    initial = state.run(store)
+    assert initial["phase"] == "walk" and initial["total"] is None
+    for _ in range(100):
+        discovery.enumerate_batch(store, root, "phase-counts")
+        if state.run(store)["phase"] == "known":
+            break
+    else:
+        pytest.fail("Enumeration did not finish")
+    discovery.known_batch(store, root, "phase-counts", "")
+    progress = state.run(store)
+    assert progress["total"] > 0
+    assert progress["completed"] == min(discovery.BATCH, progress["total"])
+    assert progress["observed"] > 0
+    reopened = CatalogStore(store.path.parent, store.descriptor)
+    restarted = state.run(reopened)
+    assert restarted["phase"] == "walk"
+    assert restarted["total"] is None
+    assert restarted["completed"] == 0
+
+
 # First/repeated Update keep candidates private; reviewed grouping becomes one causal transaction
 def test_discover_review_repeat(replicas):
     store, root, _ = replicas[0]

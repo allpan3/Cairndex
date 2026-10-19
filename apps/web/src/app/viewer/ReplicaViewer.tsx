@@ -91,10 +91,17 @@ export function ReplicaViewer({
       last.next_offset == null
         ? undefined
         : { offset: last.next_offset, revision: last.revision ?? '' },
+    refetchOnMount: 'always',
     retry: false,
   })
-  const first = pages.data?.pages[0]
-  const files = useMemo(() => pages.data?.pages.flatMap((page) => page.files) ?? [], [pages.data])
+  // A cached cursor belongs to the previous opening. Using it while refetching
+  // would select (and write back) the wrong file before the current cursor arrives.
+  const currentPages = pages.isFetchedAfterMount ? pages.data : undefined
+  const first = currentPages?.pages[0]
+  const files = useMemo(
+    () => currentPages?.pages.flatMap((page) => page.files) ?? [],
+    [currentPages],
+  )
   const playlist = useMemo(
     () => playlistFor(files, first?.directories ?? [], target.fileId, initial.data?.file),
     [files, first?.directories, target.fileId, initial.data?.file],
@@ -246,7 +253,7 @@ export function ReplicaViewer({
       onPlayerPrefs={setPrefs}
       onClose={onClose}
       loading={
-        (!folder && ((!bundleId && initial.isPending) || pages.isPending)) ||
+        (!folder && ((!bundleId && initial.isPending) || !pages.isFetchedAfterMount)) ||
         Boolean(waitingForPreferred) ||
         (Boolean(selected) && !local.isFetchedAfterMount)
       }

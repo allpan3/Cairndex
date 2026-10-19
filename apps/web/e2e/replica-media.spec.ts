@@ -9,6 +9,82 @@ import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from
 
 test.use({ actionTimeout: 15_000 })
 
+test('bundle double-click and Enter resume the current track and its own timestamp @fullstack', async ({
+  browser,
+}) => {
+  test.setTimeout(180_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-resume-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=45))',
+      scratch,
+    ],
+    { cwd: fileURLToPath(new URL('../../server/', import.meta.url)) },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } })
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    const base = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/media`
+    const page = await context.newPage()
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const card = page.locator('[data-bundle-id="bundle-000001"]')
+    await card.dblclick()
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(0.5)
+    await page.locator('video').evaluate((video: HTMLVideoElement) => {
+      video.currentTime = 13
+    })
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(12)
+    await page.mouse.move(300, 250)
+    await page.getByRole('button', { name: 'Next file', exact: true }).click()
+    await expect(page.locator('img.mv-image')).toBeVisible()
+    // Leaving a playing track flushes its position even before the 10-second cadence.
+    const progress = async (id: string) =>
+      (await (await fetch(`${base}/files/${id}`)).json()).playback?.progress?.position_s ?? 0
+    await expect.poll(() => progress('media-direct')).toBeGreaterThan(12)
+    await page.getByRole('button', { name: 'Next file', exact: true }).click()
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(0.5)
+    await page.locator('video').evaluate((video: HTMLVideoElement) => {
+      video.pause()
+      video.currentTime = 23
+    })
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(22)
+    await page.locator('.media-viewer').press('Escape')
+    await expect.poll(() => progress('media-remux')).toBeGreaterThan(22)
+    await expect
+      .poll(async () => (await (await fetch(`${base}/bundles/bundle-000001`)).json()).cursor)
+      .toBe('media-remux')
+    await card.click()
+    await page.getByRole('listbox', { name: 'Bundles', exact: true }).press('Enter')
+    await expect(page.locator('.media-viewer')).toContainText('remux.mkv')
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(22)
+    await page.mouse.move(300, 250)
+    await page.getByRole('button', { name: 'Previous file', exact: true }).click()
+    await expect(page.locator('img.mv-image')).toBeVisible()
+    await page.getByRole('button', { name: 'Previous file', exact: true }).click()
+    await expect(page.locator('.media-viewer')).toContainText('movie.mp4')
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(12)
+    await page.locator('.media-viewer').press('Escape')
+    await page.reload()
+    await card.dblclick()
+    await expect(page.locator('.media-viewer')).toContainText('movie.mp4')
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(12)
+  } finally {
+    await context.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
 // Observe real decoded frames and media time independently of successful API requests
 async function picture(page: Page) {
   return page.locator('video').evaluate((video: HTMLVideoElement) => {

@@ -339,6 +339,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Release the bulk inspector after a completed save, while retaining interrupted
+  saves for exact retry. Collection badges now show direct membership while
+  expanded and unique membership across descendants while collapsed.
+- Bundle double-click and Enter open the viewer at this device's current file.
+  Reopening waits for the fresh cursor, and changing tracks saves the departing
+  video's position. Open Bundle still opens the album.
+- Update names its current phase and shows completed/total for catalog checks,
+  moved-file checks and grouping indexes. Enumeration states that its total is
+  not yet known. Unbundled checks availability, size and modification time for
+  its displayed page instead of assigning every file unknown availability.
+
 - Commit SQL-backed API writes before sending a success response. Creating a
   library could return 201 before its registry row was visible, making an
   immediate Open try a duplicate registration. Commit failures could also

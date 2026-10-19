@@ -456,6 +456,9 @@ class CatalogUnbundledFile(StrictModel):
     relative_path: str
     # Browse version 10: the path's media classification, for the shared file list
     media_kind: str | None = None
+    local_state: Literal["observed", "unavailable", "unknown"] = "unknown"
+    size_bytes: int | None = None
+    modified_at: UtcDatetime | None = None
 
 
 class CatalogUnbundledPage(StrictModel):

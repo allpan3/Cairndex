@@ -695,7 +695,7 @@ export function CatalogBundleBrowser({
         if (event.key === 'End') next = items.at(-1)?.id ?? null
         if (event.key === 'Enter' && single) {
           event.preventDefault()
-          openAlbum(single)
+          onOpen(single)
         }
         if (next) {
           event.preventDefault()
@@ -826,7 +826,7 @@ export function CatalogBundleBrowser({
               activeId={active}
               onSelect={select}
               onMarqueeSelect={many}
-              onOpen={openAlbum}
+              onOpen={onOpen}
               contextMenuOpen={menu.state !== null}
               onContextMenu={bundleMenu}
               onEmptyContextMenu={emptyMenu}
@@ -907,7 +907,7 @@ export function CatalogBundleBrowser({
           blocked={blocked}
           memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
-          onRetain={() => setBulkRetained(true)}
+          onRetainedChange={setBulkRetained}
           onClose={() => {
             setBulkRetained(false)
             many([])

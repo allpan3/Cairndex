@@ -35,7 +35,7 @@ export function CatalogMultiBundleInspector({
   blocked,
   memberships,
   onReview,
-  onRetain,
+  onRetainedChange,
   onClose,
 }: {
   library: string
@@ -47,8 +47,8 @@ export function CatalogMultiBundleInspector({
   /** The server can list a selection's own tags and collections (`selection_version: 3`). */
   memberships: boolean
   onReview: () => void
-  /** A save is retained, so the inspector stays open once the selection changes. */
-  onRetain: () => void
+  /** Retain only unfinished work after its original selection changes. */
+  onRetainedChange: (retained: boolean) => void
   onClose: () => void
 }) {
   const client = useQueryClient()
@@ -71,8 +71,8 @@ export function CatalogMultiBundleInspector({
   const retained = Boolean(draft.body.operation)
   const locked = busy || blocked || retained || !snapshot.data || held
   useEffect(() => {
-    if (draft.body.operation) onRetain()
-  }, [draft.body.operation, onRetain])
+    onRetainedChange(retained || busy)
+  }, [retained, busy, onRetainedChange])
   const titles = new Set(items.map((item) => item.title ?? ''))
   const common = titles.size === 1 ? [...titles][0]! : ''
   const ratings = new Set(items.map((item) => item.rating ?? 0))

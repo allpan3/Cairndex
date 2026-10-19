@@ -4797,10 +4797,20 @@ export interface components {
             bundle_id: string;
             /** Id */
             id: string;
+            /**
+             * Local State
+             * @default unknown
+             * @enum {string}
+             */
+            local_state: "observed" | "unavailable" | "unknown";
             /** Media Kind */
             media_kind?: string | null;
+            /** Modified At */
+            modified_at?: string | null;
             /** Relative Path */
             relative_path: string;
+            /** Size Bytes */
+            size_bytes?: number | null;
         };
         /** CatalogUnbundledPage */
         CatalogUnbundledPage: {

@@ -401,7 +401,7 @@ function CatalogUnbundledScope(props: FileScopeProps) {
         page.items.map((item): FileBrowserEntry => {
           const name = item.relative_path.split('/').pop() ?? item.relative_path
           const dot = name.lastIndexOf('.')
-          // The catalog records no sizes or dates; the inspector checks this device
+          // This bounded page carries a fresh local stat, independently of catalog presence.
           return {
             kind: 'file',
             name,
@@ -410,13 +410,13 @@ function CatalogUnbundledScope(props: FileScopeProps) {
             bundle_id: item.bundle_id,
             linked: true,
             unbundled: true,
-            local_state: 'unknown',
+            local_state: item.local_state ?? 'unknown',
             media_kind: item.media_kind ?? null,
             supported: PLAYABLE.has(item.media_kind ?? ''),
             extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : null,
-            size_bytes: null,
+            size_bytes: item.size_bytes ?? null,
             created_at: null,
-            modified_at: null,
+            modified_at: item.modified_at ?? null,
             duration: null,
             mime_type: null,
             container: null,

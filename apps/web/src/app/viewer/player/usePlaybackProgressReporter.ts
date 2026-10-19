@@ -53,18 +53,6 @@ export function usePlaybackProgressReporter({
   const previousStatusRef = useRef(status)
 
   useEffect(() => {
-    stateRef.current = {
-      fileId,
-      enabled,
-      status,
-      currentTime,
-      duration,
-      completed,
-      sourceGeneration,
-    }
-  }, [completed, currentTime, duration, enabled, fileId, status, sourceGeneration])
-
-  useEffect(() => {
     lastCompletedRef.current = fileId ? { fileId, completed: Boolean(completed) } : null
   }, [completed, fileId])
 
@@ -124,6 +112,21 @@ export function usePlaybackProgressReporter({
     },
     [bundleId, payload, qc],
   )
+
+  useEffect(() => {
+    // Capture the departing file before replacing the live reporting state.
+    // Track changes can happen between cadence writes without a pause event.
+    if (stateRef.current.fileId !== fileId) void flush(true, true).catch(() => undefined)
+    stateRef.current = {
+      fileId,
+      enabled,
+      status,
+      currentTime,
+      duration,
+      completed,
+      sourceGeneration,
+    }
+  }, [completed, currentTime, duration, enabled, fileId, status, sourceGeneration, flush])
 
   useEffect(() => {
     if (!enabled || status !== 'playing') return

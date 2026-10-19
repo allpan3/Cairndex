@@ -2700,6 +2700,16 @@
             "title": "Id",
             "type": "string"
           },
+          "local_state": {
+            "default": "unknown",
+            "enum": [
+              "observed",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Local State",
+            "type": "string"
+          },
           "media_kind": {
             "anyOf": [
               {
@@ -2711,9 +2721,32 @@
             ],
             "title": "Media Kind"
           },
+          "modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified At"
+          },
           "relative_path": {
             "title": "Relative Path",
             "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           }
         },
         "required": [

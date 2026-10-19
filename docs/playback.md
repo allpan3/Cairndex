@@ -19,6 +19,11 @@ retain their authored choices. Every media generation fences decoder inputs,
 streamed bytes, private derivatives and progress. Playback creates no authored
 transactions. Contact sheets, GIF exports and seek-bar storyboards read the same
 pinned generation; storyboards are made in the background after the viewer opens.
+Bundle double-click and Enter open the current media file; Open Bundle opens the
+album. Reopening waits for a fresh device cursor before selecting or writing it.
+Leaving a video saves its position even between periodic progress reports.
+Current-app resume is required independently of conversion: old saved positions
+remain in the retained backup, and cross-device resume remains separate work.
 The [capability contract](replica-catalog.md#local-media) lists the supported
 formats and deferred workflows.
 
