@@ -155,6 +155,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Exercise large discovery reviews with one phase per worker tick and allow
+  their test driver enough ticks for slow durable storage.
 - Keep portable source API tests under manual worker control. The lifespan
   worker could claim the same synthetic intent through the default registry
   while a test drove it against its isolated registry on slower storage.

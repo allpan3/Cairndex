@@ -42,7 +42,9 @@ def replicas(specimen, tmp_path):
 def scan(store, root):
     operation = uuid4().hex
     state.enqueue(store, operation)
-    for _ in range(100):
+    # Durable writes can consume a tick's time budget in one bounded phase.
+    # Large fixtures must also finish when each tick advances just that phase.
+    for _ in range(1000):
         discovery.tick(store, root)
         result = state.run(store, operation)
         if result["state"] != "running":
