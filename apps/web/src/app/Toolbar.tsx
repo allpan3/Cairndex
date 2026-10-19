@@ -137,7 +137,7 @@ export function Toolbar({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           aria-label="Search"
-          title="Search bundle names, notes, file notes, and moment comments"
+          title="Search bundles, files, notes, sources, tags, collections and moments"
         />
 
         {/* Ahead of the buttons rather than among them: a slider between two

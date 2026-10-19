@@ -28,8 +28,8 @@ def test_search_complete_population_and_changes(tmp_path):
     assert [x.id for x in page(store, q="quasar pulsar").items] == ["bundle-000000"]
     save(store, edit(store, "tags", "tags-child", "name", "ExcludedTag"), "tag")
     save(store, edit(store, "asset_files", "file-video", "source", "ExcludedOrigin"), "origin")
-    assert page(store, q="ExcludedTag").total == 0
-    assert page(store, q="ExcludedOrigin").total == 0
+    assert page(store, q="ExcludedTag").total == 1
+    assert page(store, q="ExcludedOrigin").total == 1
     save(store, edit(store, "asset_files", "file-video", "note", None), "clear")
     assert page(store, q="quasar").total == 0
     assert page(store, q="pulsar").total == 1
@@ -213,19 +213,15 @@ def test_browse_population_hidden_provisional_and_empty(tmp_path):
 
 
 def test_index_upgrade_and_rollback_remain_complete(tmp_path):
+    from cairndex.replicas.catalog.index import remove
     from cairndex.replicas.private_schema import validate_schema
 
     store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
     with store.connection() as db:
-        for trigger in ("catalog_search_insert", "catalog_search_delete", "catalog_search_remove"):
-            db.execute(f"DROP TRIGGER {trigger}")
-        db.execute("DROP TABLE catalog_search")
-        db.execute("DROP VIEW catalog_search_source")
-        db.execute("DROP INDEX catalog_file_bundle")
-        db.execute("DROP INDEX catalog_moment_file")
+        remove(db)
         validate_schema(db, catalog=True)
     reopened = CatalogStore(store.path.parent, store.descriptor)
-    assert page(reopened, q="Synthetic").total == 2
+    assert page(reopened, q="Synthetic").total == 3
     with reopened.connection() as db:
         validate_schema(db, catalog=True)
     try:
@@ -235,7 +231,7 @@ def test_index_upgrade_and_rollback_remain_complete(tmp_path):
             raise RuntimeError("synthetic rollback")
     except RuntimeError:
         pass
-    assert page(reopened, q="Synthetic").total == 2
+    assert page(reopened, q="Synthetic").total == 3
 
 
 def test_empty_created_catalog_has_a_valid_empty_browse(tmp_path):

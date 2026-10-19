@@ -297,6 +297,21 @@ distribution verification. Receipts
 `Final result: 0`. Source remains unchanged during each gate. Broader
 restoration and the final owner build remain pending.
 
+Branch `fix/portable-search-fields` restores indexed filenames, paths, sources,
+media kinds, tags and collection names while retaining note and moment search.
+It consolidates the private index implementation and recognizes the historical
+narrower layout for atomic rebuilding. On Linux, 84 focused backend cases,
+backend/web static checks and the whole-population search browser scenario pass.
+The full Linux gate passes 2,012 backend tests, all 55 browser scenarios,
+159 web test files, four frozen checks and 135 Rust tests. Receipt
+`restoration-search-v1-linux-20261019-110423` ends in `Final result: 0`.
+The same index implementation and search regression scenarios also pass in
+both complete combined restoration gates:
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, each ending in
+`Final result: 0`. The other restoration slices and final owner build remain
+separate.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

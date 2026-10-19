@@ -8,6 +8,13 @@ Every category remains in the private checkpoint. Catalog projection retains
 stable IDs and complete relationship units. Private discovery layouts support Update.
 Known additive private upgrades do not change package format. See [migration](replica-migration.md).
 
+The private `catalog_search` FTS5 index covers bundle/file text, sources,
+filename-derived media kind, tag names, collection names and moment comments.
+Projection changes refresh affected bundle rowids in the same transaction.
+The historical narrower layout remains recognizable during recovery; normal
+opening replaces and rebuilds that derived index atomically. Authored values
+and the portable format do not change.
+
 `local_file_facts` records file identity, observed relative path, size and
 filesystem modification time from Update or selected-file inspection.
 `local_bundle_history` records opening time and the time a metadata change was

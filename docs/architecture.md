@@ -9,6 +9,12 @@ Read [catalog](replica-catalog.md), [discovery](replica-discovery.md),
 [recovery](replica-recovery.md) and [playback](playback.md) for the application
 contracts. Private schema upgrades do not convert a library format.
 
+Portable text search uses the private `catalog_search` FTS5 index over bundle
+and file text, sources, tag/collection names and moment comments. Projection
+triggers refresh affected bundle rowids before the transaction commits. Search
+and sorting apply before pagination, without source-file reads. Opening a
+recognized narrower private layout atomically rebuilds this derived index.
+
 Registry rows contain `package_format` and `serving_released`. Durable
 `recovery_tasks` hold server-managed operations. Release blocks new content work,
 drains admitted requests and closes the private binding lock. Reopen is explicit.

@@ -222,8 +222,9 @@ library switch. An already observed conflict requires explicit metadata review.
 | Update/media | Existing discovery controls and shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
 Search has the same token-prefix AND contract as legacy bundle search. It includes
-bundle titles, ordered bundle notes, file notes and moment comments. Filenames,
-paths, origins, tags and collection names are excluded. Empty bundles are eligible;
+bundle titles, ordered bundle notes, file notes and moment comments, plus file
+display titles, original filenames, relative paths, sources, inferred media kinds,
+tag names and collection names. Empty bundles are eligible;
 unconfirmed scan suggestions and bundles with only hidden files are excluded.
 The count, search and order apply before the bounded page. Competing values remain
 in review; search follows the valid local projection. No source file is inspected
@@ -236,7 +237,8 @@ map committed catalog rows to the existing allowlisted filter compiler. No legac
 ORM session or second mutable content projection is used.
 A private derived search index follows projection insert/delete operations in the
 same transaction. Older stores build the index in bounded startup batches;
-backup schema validation accepts the complete old or new schema. Recovery rebuilds
+the earlier narrower index is replaced and repopulated atomically. Backup schema
+validation accepts the complete historical or current layout. Recovery rebuilds
 it from the validated projection. The index never enters shared history.
 
 The shared sidebar supplies the collection hierarchy, descendant counts, saved
