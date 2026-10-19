@@ -116,6 +116,14 @@ passed, including recovery and older-server handling. Grouping review,
 manual-bundling suggestions, maintenance controls and the broader comparison
 remain open; this branch is not ready for another owner build.
 
+The corrected Linux full gate passed, including 1,957 backend tests (one
+platform-specific manifest check deselected), 49 browser scenarios, four frozen
+checks and 135 Rust tests. macOS qualification is still running. Its restart
+test exhausted a fixed worker-iteration limit; a Linux reproducer now forces
+one durable phase per tick and passes with the same allowance as the scan
+helper. This changes test scheduling only. The full macOS result and subsequent
+qualification remain pending.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

@@ -45,6 +45,24 @@ verification follow it; remaining rows stay open until demonstrated.
 | Maintenance actions | The portable library menu omits separate Scan, Suggest grouping, Collect metadata and Generate storyboards actions. | Audit each action against later on-demand work. Restore useful explicit controls through bounded private jobs; retain automatic work that already supersedes an old step. |
 | Earlier restored interactions | PRs #63 through #92 restored features in separate slices. Their tests did not establish complete interaction equivalence. | Compare navigation, menus, selection, inspectors, grouping, playback, exports and file operations with the reference on the same synthetic data. Record each intentional difference. |
 
+## Further comparison findings
+
+Further source comparison found two distinctions to cover during grouping work.
+The private planner currently treats every cataloged bundle as a settled owner,
+including staged Unbundled files. ADR-0011 settles confirmed groupings, so the
+eligible staged-file path must also be restored with stable file identities.
+The card's `review` badge is present even in the pre-portable reference, despite
+ADR-0011 retiring it. That is an older implementation deviation, rather than a
+feature lost in PR #45. Follow the accepted decision when restoring this area.
+Manual bundling already assigns roles during guarded apply; its missing draft
+preview and ranked suggestions must use those same established rules.
+Portable browse search also excludes filenames, paths, source values, tags and
+collection names that the earlier index included. The implementation and topic
+document agree on this narrower scope, but the audit has not found owner approval
+for removing those fields. Restore their indexed search while keeping file notes
+and moment comments searchable. Manual grouping's filename candidates must also
+work at the library root and across folders, independently of the first page.
+
 ## Owner scope decisions (2026-10-19)
 
 Restore Recently Used, Size, Date Modified and Date Opened from this device's
@@ -73,6 +91,8 @@ Both selection-suite scenarios subsequently passed, including the displayed
 Unbundled page distinguishing an existing file from missing synthetic paths
 without any unknown rows. Web lint and type checking passed. Backend lint,
 type checking and the two focused backend cases passed as well.
+The [synthetic selection capture](screenshots/portable-selection.png) comes from
+the corrected Linux full gate and has been visually checked for privacy.
 The wider discovery, browse, API and local-observation backend slice passed
 40 tests on Cairndex macOS. Recovery compatibility and full VM gates remain
 part of branch qualification.
@@ -96,6 +116,15 @@ with explicit phase labels. Counts reset on restart. Two focused backend tests
 passed for phase/restart behavior and bounded path observations. Unbundled's
 page checks use stat through no-follow directory handles, without probing,
 hashing or enumeration. They do not change catalog metadata.
+
+The corrected Linux full gate passed: 1,957 backend tests, 49 browser scenarios,
+four frozen checks and 135 Rust tests. The manifest check for unsupported
+Linux-arm64 packaging is deselected there. macOS qualification exposed a restart
+test that assumed 100 ticks would always finish. Forcing one phase per tick
+reproduces the failure on Linux; allowing the scan helper's 1,000 ticks passes
+while preserving the cancelled-run, restart and unchanged-catalog assertions.
+No production time budget or durability setting changed. The final macOS gate
+and renewed qualification remain pending.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.

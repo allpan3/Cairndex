@@ -161,6 +161,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Make the discovery restart test exercise one durable phase per worker tick,
+  so its completion check does not depend on disk commit latency.
+
 - Record the incomplete portable restoration in a
   [behavior audit](docs/restoration-audit.md), with the decision timeline,
   missing interactions and acceptance checks. Repairs remain in progress.

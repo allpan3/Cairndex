@@ -2,6 +2,8 @@
 
 import json
 import shutil
+from itertools import count
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -300,8 +302,12 @@ def test_delayed_local_delivery_cannot_revert_peer_repair(replicas):
 
 
 # A cancelled walk and process restart can rediscover private candidates without duplicate events
-def test_cancel_restart_and_retry(replicas):
+def test_cancel_restart_and_retry(replicas, monkeypatch):
     store, root, _ = replicas[0]
+    # Slow durable commits can consume a worker tick's entire time allowance.
+    # Exercise that schedule deterministically, independently of the test disk.
+    clock = count()
+    monkeypatch.setattr(discovery, "time", SimpleNamespace(monotonic=lambda: next(clock)))
     for index in range(70):
         (root / f"frame-{index:03}.png").write_bytes(f"synthetic frame {index}".encode())
     state.enqueue(store, "cancelled-run")
@@ -314,7 +320,7 @@ def test_cancel_restart_and_retry(replicas):
     discovery.tick(store, root)
     discovery.close(store)
     reopened = CatalogStore(store.path.parent, store.descriptor)
-    for _ in range(100):
+    for _ in range(1000):
         discovery.tick(reopened, root)
         if state.run(reopened)["state"] != "running":
             break
