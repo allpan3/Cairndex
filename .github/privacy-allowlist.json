@@ -122,6 +122,14 @@
       ],
       "purpose": "Document portable manual bundling and the complete Unbundled file picker",
       "provenance": "Playwright capture of fresh synthetic catalog fixtures and checked selections across paging and search; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
+      "sha256": "57b43fd6068fdb9ec494e356c88e44e343eaa977cccb27534fdcd79826570d46",
+      "paths": [
+        "docs/screenshots/portable-smart-collection.png"
+      ],
+      "purpose": "Document ordinary portable Smart Collection controls and their live match preview",
+      "provenance": "Playwright capture of a fresh synthetic catalog, retained draft and invented rating filter; reviewed edge to edge with no owner media, paths, accounts, notifications or desktop content"
     }
   ],
   "vendored_trees": []
