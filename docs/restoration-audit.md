@@ -152,6 +152,14 @@ and `checkpoint_fullfsync=ON` were confirmed. This measures redundant observatio
 writes, not rating/edit commit latency or overall UI response. Renewed full
 qualification is required.
 
+The next Linux gate passed with 1,959 backend tests and all 49 browser scenarios.
+The corresponding macOS gate passed 1,960 backend tests and all build checks,
+but its replica-delivery scenario copied synthetic envelopes before publication
+finished. Exchange is a bounded, nonblocking attempt; an enabled button is not
+a publication receipt. A temporary write-denied synthetic provider reproduces
+the old peer-value failure. Waiting for fresh HTTP outbox status before copying
+passes that same macOS scenario. Both full gates must pass the corrected test.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

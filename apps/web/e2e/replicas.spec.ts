@@ -1,13 +1,35 @@
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startBackend, stopBackend, proxyApi, apiPost } from './realBackend'
 
 // Copy only immutable envelopes between offline replicas, never their private databases
-async function deliver(a: string, b: string) {
+async function deliver(
+  a: string,
+  b: string,
+  backends: { baseUrl: string }[],
+  libraries: { id: string }[],
+) {
+  // Exchange performs one bounded attempt. Copy only after both actual outboxes
+  // are published; a re-enabled button or cached browser status is not a receipt.
+  await expect
+    .poll(
+      async () =>
+        Promise.all(
+          backends.map(async (backend, index) => {
+            const response = await fetch(
+              `${backend.baseUrl}/api/v1/libraries/${libraries[index].id}/replica/status`,
+            )
+            if (!response.ok) return -1
+            return ((await response.json()) as { outbox: number }).outbox
+          }),
+        ),
+      { timeout: 30_000 },
+    )
+    .toEqual([0, 0])
   for (const [source, target] of [
     [a, b],
     [b, a],
@@ -78,7 +100,7 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
         expect(page.getByRole('button', { name: 'Exchange metadata', exact: true })).toBeEnabled(),
       ),
     )
-    await deliver(roots[0], roots[1])
+    await deliver(roots[0], roots[1], backends, libraries)
     await expect(b.getByLabel('Bundle title')).toHaveValue('Amber title')
     await expect(a.getByLabel('Bundle note 1', { exact: true })).toHaveValue('Blue note')
     // A duplicated tab inherits session storage but must keep independent draft identity
@@ -127,7 +149,7 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
         expect(page.getByRole('button', { name: 'Exchange metadata', exact: true })).toBeEnabled(),
       ),
     )
-    await deliver(roots[0], roots[1])
+    await deliver(roots[0], roots[1], backends, libraries)
     await expect(a.getByRole('heading', { name: 'Title conflict', exact: true })).toBeVisible()
     await expect(b.getByRole('heading', { name: 'Title conflict', exact: true })).toBeVisible()
     await a.getByRole('heading', { name: 'Title conflict', exact: true }).scrollIntoViewIfNeeded()
@@ -170,15 +192,34 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
     await expect(a.getByLabel('Bundle note 1', { exact: true })).toHaveValue(
       'Private unfinished note',
     )
+    const objects = join(roots[0], '.cairndex/replica/objects')
+    await chmod(objects, 0o555)
     await a.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(a.getByText('Saved here', { exact: true })).toBeVisible()
+    const pending = await fetch(
+      `${backends[0].baseUrl}/api/v1/libraries/${libraries[0].id}/replica/status`,
+    )
+    expect(((await pending.json()) as { outbox: number }).outbox).toBeGreaterThan(0)
     await a.getByRole('button', { name: 'Exchange metadata', exact: true }).click()
+    // A short synthetic provider outage makes premature copying fail reliably.
+    // Always restore permissions, including when a later assertion fails.
+    const restorePublication = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // The finally block retries and reports any permission failure.
+        void chmod(objects, 0o755).then(resolve, () => resolve())
+      }, 500)
+    })
     await Promise.all(
       pages.map((page) =>
         expect(page.getByRole('button', { name: 'Exchange metadata', exact: true })).toBeEnabled(),
       ),
     )
-    await deliver(roots[0], roots[1])
+    try {
+      await deliver(roots[0], roots[1], backends, libraries)
+    } finally {
+      await restorePublication
+      await chmod(objects, 0o755)
+    }
     await expect(b.getByLabel('Bundle note 1', { exact: true })).toHaveValue(
       'Private unfinished note',
     )
@@ -223,6 +264,9 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
       expect(metadata).not.toContain('locks')
     }
   } finally {
+    await Promise.all(
+      roots.map((root) => chmod(join(root, '.cairndex/replica/objects'), 0o755).catch(() => {})),
+    )
     await Promise.all(contexts.map((context) => context.close()))
     await Promise.all(backends.map((backend) => stopBackend(backend.child)))
     await rm(scratch, { recursive: true, force: true })
