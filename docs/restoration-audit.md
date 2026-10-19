@@ -77,6 +77,18 @@ The wider discovery, browse, API and local-observation backend slice passed
 40 tests on Cairndex macOS. Recovery compatibility and full VM gates remain
 part of branch qualification.
 
+Local history/sorts are implemented under
+[ADR-0040](adr/0040-local-browsing-history-and-observations.md). Two backend
+tests passed for complete SQL ordering before pagination, unknown sizes,
+separate opening/edit times, unchanged-value saves and peer isolation. A
+full-stack macOS scenario passed for album opening, read-only pagination,
+Recent's persisted Date Opened choice, Date Modified after an edit, Size after
+Update, inspector size and older-server capability handling. Six backend cases
+then passed, including recovery retaining history while clearing file facts,
+older private-schema recovery, replacement invalidation and the browse API.
+Backend lint/type checks and web lint/type checks passed. No old positions were
+imported. Full branch qualification remains pending.
+
 Update now counts phase-local work in a private table committed with each batch.
 Totals cover known catalog checks, repair candidates and grouping indexes;
 enumeration and the grouping/export algorithms retain indeterminate progress

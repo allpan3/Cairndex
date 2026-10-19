@@ -56,3 +56,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0037](0037-portable-mounted-smb.md) | Portable mounted-SMB publication | accepted; fresh extracted qualification recorded separately |
 | [0038](0038-legacy-library-conversion.md) | Owner-started conversion of legacy libraries | accepted; application qualification in progress |
 | [0039](0039-macos-sqlite-durability.md) | SQLite durability on macOS | accepted |
+| [0040](0040-local-browsing-history-and-observations.md) | Local browsing history and observations | accepted within the owner's restoration scope |

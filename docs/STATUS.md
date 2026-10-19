@@ -110,6 +110,11 @@ resume are excluded. The first slice fixes bulk-inspector retention, fold-based
 collection badges and viewer entry/resume, with focused macOS web and full-stack
 checks recorded in the audit. Phase-aware Update counters and bounded Unbundled
 availability checks are also implemented; full qualification remains pending.
+Local history and sorts now use private opening/edit times and file observations
+(`browse_version: 11`, ADR-0040). The focused macOS backend and full-stack checks
+passed, including recovery and older-server handling. Grouping review,
+manual-bundling suggestions, maintenance controls and the broader comparison
+remain open; this branch is not ready for another owner build.
 
 ### macOS SQLite durability (2026-10-18)
 

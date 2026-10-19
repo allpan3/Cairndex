@@ -3465,6 +3465,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/bundles/{bundle_id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Opened */
+        post: operations["mark_opened_api_v1_libraries__library_id__replica_media_bundles__bundle_id__opened_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/media/directory": {
         parameters: {
             query?: never;
@@ -4413,7 +4430,7 @@ export interface components {
              * @default title
              * @enum {string}
              */
-            sort: "title" | "rating" | "date_added" | "manual" | "file_count";
+            sort: "title" | "rating" | "date_added" | "manual" | "file_count" | "size" | "date_modified" | "date_opened";
             /**
              * View
              * @default all
@@ -4486,6 +4503,10 @@ export interface components {
              * Format: date-time
              */
             date_added: string;
+            /** Date Modified */
+            date_modified?: string | null;
+            /** Date Opened */
+            date_opened?: string | null;
             /** Duration */
             duration?: number | null;
             /** Extension */
@@ -4532,6 +4553,8 @@ export interface components {
             resume_video_codec_tag?: string | null;
             /** Title */
             title: string | null;
+            /** Total Size */
+            total_size?: number | null;
             /** Width */
             width?: number | null;
         };
@@ -4626,7 +4649,7 @@ export interface components {
              * @default title
              * @enum {string}
              */
-            sort: "title" | "rating" | "date_added" | "manual" | "file_count";
+            sort: "title" | "rating" | "date_added" | "manual" | "file_count" | "size" | "date_modified" | "date_opened";
             /**
              * Tag Include Descendants
              * @default true
@@ -14772,6 +14795,40 @@ export interface operations {
                 "application/json": components["schemas"]["ReplicaCursorUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_opened_api_v1_libraries__library_id__replica_media_bundles__bundle_id__opened_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {

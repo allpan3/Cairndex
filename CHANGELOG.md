@@ -10,6 +10,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Restore local Date Opened and Date Modified sorts, including Recent's date
+  choices, and Size from this device's file observations. Opening and editing
+  have separate private history; unknown sizes and opening times sort last.
+  Old conversion-backup positions are not imported. Cross-device resume remains
+  separate work.
+
 - Restore Save GIF… and Save Contact Sheet… for portable libraries in the
   viewer, the bundle album and the File Browser. Both read this device's
   observed bytes through pinned descriptors and fail if the source changes.

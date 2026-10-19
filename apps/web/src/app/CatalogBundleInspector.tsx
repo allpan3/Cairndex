@@ -7,7 +7,7 @@ import { StarRating } from './Stars'
 import { IconPlus } from './icons'
 import { useCatalogBundleDraft } from './useCatalogBundleDraft'
 import { thumbnailUrl, fileThumbnailUrl } from '../api/client'
-import { formatDate } from '../lib/format'
+import { formatBytes, formatDate } from '../lib/format'
 import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
@@ -51,7 +51,12 @@ export function CatalogBundleInspector({
   /** Add Unbundled files to this confirmed bundle. */
   onAddFiles?: () => void
   /** The browser's card for this bundle, for the facts the entity does not carry. */
-  summary?: { file_count: number; date_added: string }
+  summary?: {
+    file_count: number
+    date_added: string
+    total_size?: number | null
+    size_known?: boolean
+  }
   onOpenCollection?: (id: string) => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
@@ -146,6 +151,17 @@ export function CatalogBundleInspector({
           <div className="prop">
             <span className="prop__k">Date Added</span>
             <span className="prop__v">{formatDate(summary.date_added)}</span>
+          </div>
+          <div
+            className="prop"
+            title="Sizes last observed on this device. Run Update to refresh them."
+          >
+            <span className="prop__k">Size</span>
+            <span className="prop__v">
+              {summary.size_known && summary.total_size != null
+                ? formatBytes(summary.total_size)
+                : 'Unknown on this device'}
+            </span>
           </div>
         </>
       )}

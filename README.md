@@ -50,7 +50,8 @@ The source-operation and mounted-SMB qualification is recorded in
 Distribution/deployment qualification has its own extraction record; releases
 and production deployment remain separate owner-triggered actions.
 Mapped desktop Open, Reveal and file drag-out are restored. Add Files and file drops
-use reviewed copies with explicit Apply. Folder pagination, Recently Used,
+use reviewed copies with explicit Apply. Recent's Date Opened sort uses private
+local opening history; Size uses this device's observations. Folder pagination,
 file note/source UI, cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,
 offline delivery, hydration, conflicts, large-scale use and power-loss safety

@@ -13,6 +13,7 @@ from cairndex.api.schemas.common import UtcDatetime
 from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
 from cairndex.media.image_support import is_openable_media
+from cairndex.replicas.catalog.local_history import MODIFIED_SQL, OPENED_SQL, SIZE_SQL
 from cairndex.replicas.catalog.query import matching, saved_filter
 from cairndex.replicas.protocol import ReplicaError, StrictModel
 from cairndex.scanning.media_types import HIDDEN_NAMES, classify
@@ -25,6 +26,9 @@ class CatalogBundleSummary(StrictModel):
     rating: float | None
     file_count: int
     date_added: UtcDatetime
+    total_size: int | None = None
+    date_modified: UtcDatetime | None = None
+    date_opened: UtcDatetime | None = None
     grouping_state: GroupingState
     cover_file_id: str | None = None
     cover_key: str | None = None
@@ -66,7 +70,16 @@ class CatalogBrowseRequest(StrictModel):
     view: Literal["all", "uncategorized", "untagged", "recent", "random", "missing"] = "all"
     seed: int = Field(default=0, ge=0, le=2_147_483_647)
     q: str = Field(default="", max_length=1000)
-    sort: Literal["title", "rating", "date_added", "manual", "file_count"] = "title"
+    sort: Literal[
+        "title",
+        "rating",
+        "date_added",
+        "manual",
+        "file_count",
+        "size",
+        "date_modified",
+        "date_opened",
+    ] = "title"
     order: Literal["asc", "desc"] = "asc"
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=50, ge=1, le=100)
@@ -220,6 +233,9 @@ def _ordering(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[st
         "title": "lower(json_extract(b.body,'$.title'))",
         "rating": "json_extract(b.body,'$.rating')",
         "date_added": "json_extract(b.body,'$.created_at')",
+        "date_modified": f"julianday({MODIFIED_SQL})",
+        "date_opened": f"julianday({OPENED_SQL})",
+        "size": SIZE_SQL,
         "manual": "json_extract(b.body,'$.manual_order')",
         "file_count": (
             "(SELECT count(*) FROM catalog_rows f WHERE f.family='asset_files' "
@@ -248,7 +264,10 @@ def _ordering(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[st
         )
         column = "catalog_shuffle(b.entity)"
         order_args, tie = [], "ASC"
-    return f"{column} {request.order},b.entity {tie}", order_args
+    unknown = (
+        f"({column}) IS NULL," if request.sort in {"size", "date_opened", "date_modified"} else ""
+    )
+    return f"{unknown}{column} {request.order},b.entity {tie}", order_args
 
 
 def scope_order(
@@ -315,7 +334,8 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
     total = db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0]
     ordering, order_args = _ordering(db, request)
     rows = db.execute(
-        f"SELECT b.entity,b.body FROM catalog_rows b WHERE {where} "
+        f"SELECT b.entity,b.body,{SIZE_SQL} AS total_size,{MODIFIED_SQL} AS date_modified,"
+        f"{OPENED_SQL} AS date_opened FROM catalog_rows b WHERE {where} "
         f"ORDER BY {ordering} LIMIT ? OFFSET ?",
         [*args, *order_args, request.limit, request.offset],
     ).fetchall()
@@ -338,6 +358,13 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
                 rating=value["rating"],
                 file_count=count,
                 date_added=datetime.fromisoformat(value["created_at"]),
+                total_size=row["total_size"],
+                date_modified=datetime.fromisoformat(row["date_modified"])
+                if row["date_modified"]
+                else None,
+                date_opened=datetime.fromisoformat(row["date_opened"])
+                if row["date_opened"]
+                else None,
                 grouping_state=GroupingState[value["grouping_state"]],
                 cover_file_id=artwork["id"] if artwork else None,
                 cover_key=f"{artwork['id']}:{artwork['cover_time']}" if artwork else None,

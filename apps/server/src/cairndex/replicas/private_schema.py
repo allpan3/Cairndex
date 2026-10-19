@@ -24,6 +24,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog import projection, storage
     from cairndex.replicas.catalog.index import INDEX_SCHEMA
     from cairndex.replicas.private_layout import DISCOVERY_SCHEMA as discovery_schema
+    from cairndex.replicas.private_layout import LOCAL_HISTORY_SCHEMA as local_history_schema
     from cairndex.replicas.private_layout import MEDIA_SCHEMA as media_schema
     from cairndex.replicas.private_layout import SOURCE_SCHEMA as source_schema
     from cairndex.replicas.store import SCHEMA
@@ -44,6 +45,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
                     + media_schema
                     + discovery_schema
                     + source_schema
+                    + local_history_schema
                 )
                 if legacy == 2:
                     expected.execute(
@@ -77,6 +79,8 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         raise ReplicaError("Private schema requires an upgrade")
     from cairndex.replicas.private_layout import (
         BASE_TABLES,
+        LOCAL_FACTS_TABLES,
+        LOCAL_HISTORY_TABLES,
         PLAN_TABLES,
         PREVIEW_TABLES,
         PROGRESS_TABLES,
@@ -85,7 +89,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         VERIFICATION_TABLES,
     )
 
-    groups = (
+    groups: tuple[set[str], ...] = (
         BASE_TABLES,
         VERIFICATION_TABLES,
         PLAN_TABLES,
@@ -94,6 +98,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         SOURCE_TABLES,
         PROGRESS_TABLES,
     )
+    groups += (LOCAL_FACTS_TABLES, LOCAL_HISTORY_TABLES)
     if any(group & actual.keys() for group in groups[1:]) and not actual.keys() >= BASE_TABLES:
         raise ReplicaError("Private discovery schema is incomplete")
     for group in groups:

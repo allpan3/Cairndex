@@ -259,3 +259,12 @@ BASE_TABLES = {
 }
 
 PROGRESS_TABLES = {"discovery_progress"}
+
+LOCAL_HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS local_file_facts (
+    file_id TEXT PRIMARY KEY, path TEXT NOT NULL, size INTEGER NOT NULL, modified_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS local_bundle_history (
+    bundle_id TEXT PRIMARY KEY, opened_at TEXT, modified_at TEXT);
+"""
+LOCAL_FACTS_TABLES = {"local_file_facts"}
+LOCAL_HISTORY_TABLES = {"local_bundle_history"}

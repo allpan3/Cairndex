@@ -16,6 +16,7 @@ import { selectionRange, type SelectionModifiers } from './selection'
 import { rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import type { LayoutMode } from './types'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
+import { useCatalogHistory } from './useCatalogHistory'
 
 type Page = components['schemas']['CatalogAlbumPage']
 type Item = Page['items'][number]
@@ -31,8 +32,15 @@ export function CatalogBundleAlbum(props: {
   hostFiles?: LibraryHostFiles
 }) {
   const [directory, setDirectory] = useState<string | null>(null)
+  const status = useReplicaStatus(props.library).data
+  const historyError = useCatalogHistory(
+    props.library,
+    props.bundle,
+    (status?.browse_version ?? 0) >= 11,
+  )
   return (
     <div className="album">
+      {historyError && <p role="alert">{historyError}</p>}
       <div hidden={directory !== null} className="catalog-album-page">
         <AlbumPage
           {...props}

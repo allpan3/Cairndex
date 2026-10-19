@@ -8,6 +8,16 @@ Every category remains in the private checkpoint. Catalog projection retains
 stable IDs and complete relationship units. Private discovery layouts support Update.
 Known additive private upgrades do not change package format. See [migration](replica-migration.md).
 
+`local_file_facts` records file identity, observed relative path, size and
+filesystem modification time from Update or selected-file inspection.
+`local_bundle_history` records opening time and the time a metadata change was
+observed here. These stay private; sorting never reads source files. Size is
+unknown until every current member has a matching path observation. Date Modified
+uses observed metadata changes, with authored `updated_at` as its baseline.
+Recovery retains opening/edit history and clears file facts for fresh local
+observation. [ADR-0040](adr/0040-local-browsing-history-and-observations.md) records
+the local time semantics and the separate cross-device scope.
+
 Registry `conversion_tasks` records each owner-started step by a 32-hex operation
 ID. Each row contains its normalized root, action, preparation attempt, state,
 exact request body, bounded API result and fixed error. A partial unique index

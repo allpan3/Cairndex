@@ -152,6 +152,7 @@ class ReplicaMedia:
         state = cached["state"] if cached else "unknown"
         metadata = json.loads(cached["metadata"]) if cached and cached["metadata"] else None
         size: int | None = None
+        info = None
         if inspect or probe:
             try:
                 self.check_content(identity, row["relative_path"])
@@ -210,6 +211,12 @@ class ReplicaMedia:
                     metadata = None
                     error = "Local media could not be read or probed; retry when it is readable"
             with self.store.connection() as db:
+                if state == "available" and info is not None:
+                    from cairndex.replicas.catalog.local_history import observed
+
+                    observed(db, identity, row["relative_path"], info.st_size, info.st_mtime_ns)
+                else:
+                    db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
                 db.execute(
                     "INSERT OR REPLACE INTO local_media VALUES (?, ?, ?, ?, ?)",
                     (identity, token, state, json.dumps(metadata) if metadata else None, error),

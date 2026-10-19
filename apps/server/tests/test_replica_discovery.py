@@ -181,9 +181,16 @@ def test_multiple_matching_paths_never_auto_repair(replicas):
 def test_replacement_review_and_revalidation(replicas):
     store, root, _ = replicas[0]
     scan(store, root)
+    with store.connection(readonly=True) as db:
+        assert db.execute("SELECT 1 FROM local_file_facts WHERE file_id='file-video'").fetchone()
     file = root / "Synthetic/雪.mp4"
     file.write_bytes(b"different synthetic source")
     assert scan(store, root)["repaired"] == 0
+    with store.connection(readonly=True) as db:
+        assert (
+            db.execute("SELECT 1 FROM local_file_facts WHERE file_id='file-video'").fetchone()
+            is None
+        )
     candidate = state.candidates(store)["items"][0]
     assert candidate["body"]["kind"] == "replacement"
     operation = uuid4().hex

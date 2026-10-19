@@ -15,6 +15,7 @@ import { Moments } from '../Moments'
 import { MomentSourceContext } from '../momentSource'
 import { useCatalogMomentSource } from '../useCatalogMomentSource'
 import type { ViewerInspectorTarget } from '../fileFacts'
+import { useCatalogHistory } from '../useCatalogHistory'
 
 type Playlist = components['schemas']['ReplicaPlaylist']
 type LocalMedia = components['schemas']['LocalMediaRead']
@@ -75,6 +76,11 @@ export function ReplicaViewer({
     retry: false,
   })
   const bundleId = target.bundleId ?? initial.data?.file.bundle_id
+  const historyError = useCatalogHistory(
+    library,
+    bundleId,
+    (status.data?.browse_version ?? 0) >= 11,
+  )
   const pages = useInfiniteQuery({
     queryKey: ['replica-media', library, 'playlist', bundleId],
     enabled: !folder && Boolean(bundleId),
@@ -286,9 +292,14 @@ export function ReplicaViewer({
       }
     />
   )
-  return momentsEnabled ? (
-    <MomentSourceContext value={momentSource}>{shell}</MomentSourceContext>
-  ) : (
-    shell
+  return (
+    <>
+      {historyError && <p role="alert">{historyError}</p>}
+      {momentsEnabled ? (
+        <MomentSourceContext value={momentSource}>{shell}</MomentSourceContext>
+      ) : (
+        shell
+      )}
+    </>
   )
 }
