@@ -155,6 +155,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Drain background replica work before API-test cleanup closes its transport.
+  Direct close could interrupt an executing transport generator on slow storage.
 - Wait for the synthetic media catalog before the streaming connection-pool
   assertion. Attempted exchanges can skip work while a background pass holds
   the per-library lock.

@@ -15,6 +15,7 @@ from cairndex.api.deps import get_registry_db
 from cairndex.devtools.replica_fixture import create_fixture
 from cairndex.file_ops import smb_transport
 from cairndex.main import create_app
+from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry import library_package as pkg
 from cairndex.registry.engine import create_registry_engine
 from cairndex.replicas import service
@@ -224,7 +225,8 @@ def api(tmp_path):
         base = f"/api/v1/libraries/{library['id']}"
         client.post(base + "/replica/exchange")
         yield client, base, root, library, app
-        service.close(library["id"])
+        # The lifespan worker can still be exchanging this replica.
+        lifecycle.close(library["id"])
     engine.dispose()
 
 

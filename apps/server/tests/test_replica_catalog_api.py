@@ -10,6 +10,7 @@ from cairndex.api.deps import get_registry_db
 from cairndex.devtools.catalog_fixture import create_disposable
 from cairndex.devtools.replica_fixture import create_fixture
 from cairndex.main import create_app
+from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.engine import create_registry_engine
 from cairndex.replicas import service
 from cairndex.replicas.catalog import jobs
@@ -78,7 +79,8 @@ def test_catalog_api_capability_fences(api, tmp_path):
     try:
         assert client.get(f"/api/v1/libraries/{old}/replica/catalog/jobs").status_code == 409
     finally:
-        service.close(old)
+        # Drain the live worker before closing its transport generator.
+        lifecycle.close(old)
 
 
 # HTTP queues bounded intent and exposes completion without importing or executing it in the handler
