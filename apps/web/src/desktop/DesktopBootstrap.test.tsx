@@ -151,7 +151,9 @@ test('opens Servers from the File menu during first run and while browsing', asy
   fireEvent.click(within(dialog).getByRole('button', { name: /This Computer/ }))
 
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
-  expect(screen.queryByRole('dialog', { name: 'Servers' })).not.toBeInTheDocument()
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: 'Servers' })).not.toBeInTheDocument(),
+  )
   act(() => handlers.forEach((handler) => handler('servers')))
   expect(await screen.findByRole('dialog', { name: 'Servers' })).toBeVisible()
 })

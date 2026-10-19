@@ -3659,6 +3659,53 @@ code {
      2026-07-30). Still capped by viewport width. */
   width: min(1100px, 96vw);
 }
+.portable-grp-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.portable-grp-tree {
+  flex: 1 1 auto;
+  height: min(54vh, 560px);
+  min-height: 120px;
+  overflow: auto;
+  padding: 4px 8px;
+}
+.portable-grp-tree [role='treeitem'] {
+  padding-block: 3px;
+}
+.portable-grp-tree [role='treeitem']:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.portable-grp-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.portable-grp-modal .grp-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.portable-grp-modal .grp-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.portable-grp-modal .modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.portable-grp-prepared {
+  max-height: 25vh;
+  overflow: auto;
+}
 /* Follows its content between a floor and a cap. It was a flat
    `height: min(88vh, 900px)`, so a three-row plan sat in a full-height box with
    two thirds of it empty below the buttons (owner, 2026-09-01). The floor is

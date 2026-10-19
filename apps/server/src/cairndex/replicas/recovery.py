@@ -261,6 +261,79 @@ def previous_gaps(previous: Path, prepared: Path, recovery_id: str) -> dict[str,
             ),
             ("local_cursors", ("bundle_id",), ("bundle_id", "file_id")),
             ("local_bundle_history", ("bundle_id",), ("bundle_id", "opened_at", "modified_at")),
+            (
+                "grouping_workspaces",
+                ("id",),
+                ("id", "parents", "revision", "accepting"),
+            ),
+            (
+                "grouping_nodes",
+                ("workspace", "id"),
+                (
+                    "workspace",
+                    "id",
+                    "parent",
+                    "kind",
+                    "title",
+                    "directory",
+                    "target",
+                    "original_target",
+                    "target_title",
+                    "collection",
+                    "collection_basis",
+                    "context",
+                    "position",
+                    "confidence",
+                    "reason",
+                    "roles_dirty",
+                    "role_cursor",
+                    "role_context",
+                ),
+            ),
+            (
+                "grouping_files",
+                ("workspace", "id"),
+                (
+                    "workspace",
+                    "id",
+                    "path",
+                    "directory",
+                    "node",
+                    "body",
+                    "kind",
+                    "part",
+                    "role",
+                    "sequence",
+                    "selected",
+                ),
+            ),
+            (
+                "grouping_folders",
+                ("workspace", "path"),
+                ("workspace", "path", "node", "expanded"),
+            ),
+            (
+                "grouping_stems",
+                ("workspace", "directory"),
+                ("workspace", "directory", "level", "maximum", "example"),
+            ),
+            (
+                "grouping_commands",
+                ("id",),
+                (
+                    "id",
+                    "workspace",
+                    "revision",
+                    "intent",
+                    "state",
+                    "phase",
+                    "cursor",
+                    "result",
+                    "error",
+                    "sequence",
+                ),
+            ),
+            ("grouping_replacements", ("command", "node"), ("command", "node")),
         ):
             if table not in tables:
                 continue
@@ -276,7 +349,21 @@ def previous_gaps(previous: Path, prepared: Path, recovery_id: str) -> dict[str,
                         "SELECT ?,artifact FROM sources WHERE name=?",
                         (row["name"], f"recovery-{recovery_id}/{row['name']}"),
                     ).fetchone()
-                missing += candidate is None or tuple(candidate) != tuple(row)
+                lost = candidate is None or tuple(candidate) != tuple(row)
+                if lost and candidate is not None and table == "grouping_commands":
+                    from cairndex.replicas.grouping.storage import RECOVERED_EDIT_ERROR
+
+                    if (
+                        row["state"] in {"queued", "running"}
+                        and candidate["state"] == "paused"
+                        and candidate["error"] == RECOVERED_EDIT_ERROR
+                    ):
+                        lost = any(
+                            row[column] != candidate[column]
+                            for column in columns
+                            if column not in {"state", "error"}
+                        )
+                missing += lost
             result[table] = missing
     return result
 
@@ -317,6 +404,9 @@ def prepare(
         author = uuid4().hex
         db.execute("UPDATE config SET value=? WHERE key='replica'", (author,))
         if isinstance(store, CatalogStore):
+            from cairndex.replicas.grouping.storage import pause_recovered
+
+            pause_recovered(db)
             db.execute(
                 "UPDATE source_operations SET state='interrupted',"
                 "error='Recovered source intent requires explicit retry' "

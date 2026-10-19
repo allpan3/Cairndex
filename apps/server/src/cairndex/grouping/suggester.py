@@ -345,16 +345,20 @@ def _is_multipart(videos: list[FileObservation]) -> bool:
 
 def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
     videos = [f for f in files if f.media_kind is MediaKind.VIDEO]
-    sidecars = len(files) - len(videos)
-    if len(files) == 1:
+    return _bundle_reason_counts(len(files), len(videos), _is_multipart(videos))
+
+
+def _bundle_reason_counts(files: int, videos: int, multipart: bool) -> tuple[float, str]:
+    """Share the same reason with disk-backed reviews without loading their files."""
+    if files == 1:
         # No reason text: "single file on its own" restates what the row already
         # shows (one file), and a library of loose files repeats it hundreds of
         # times (owner-reported noise, 2026-07-29).
         return 0.5, ""
-    if len(videos) == 1:
-        return 0.9, f"one video with {sidecars} sidecar file(s)"
-    if _is_multipart(videos):
-        return 0.75, f"{len(videos)} parts of one video"
+    if videos == 1:
+        return 0.9, f"one video with {files - videos} sidecar file(s)"
+    if multipart:
+        return 0.75, f"{videos} parts of one video"
     return 0.5, "grouped by folder"
 
 

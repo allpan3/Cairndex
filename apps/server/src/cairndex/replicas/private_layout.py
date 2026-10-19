@@ -268,3 +268,87 @@ CREATE TABLE IF NOT EXISTS local_bundle_history (
 """
 LOCAL_FACTS_TABLES = {"local_file_facts"}
 LOCAL_HISTORY_TABLES = {"local_bundle_history"}
+
+GROUPING_SCHEMA = """
+CREATE TABLE IF NOT EXISTS grouping_workspaces (
+    id TEXT PRIMARY KEY REFERENCES discovery_runs(id), state TEXT NOT NULL,
+    phase TEXT NOT NULL, cursor TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 0,
+    parents TEXT NOT NULL, accepting TEXT, error TEXT,
+    files INTEGER NOT NULL DEFAULT 0, selected INTEGER NOT NULL DEFAULT 0,
+    bundles INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS grouping_workspace_state ON grouping_workspaces(state);
+CREATE INDEX IF NOT EXISTS grouping_workspace_review ON grouping_workspaces(accepting)
+    WHERE accepting IS NOT NULL;
+CREATE TABLE IF NOT EXISTS grouping_nodes (
+    workspace TEXT NOT NULL REFERENCES grouping_workspaces(id), id TEXT NOT NULL,
+    parent TEXT, kind TEXT NOT NULL, title TEXT NOT NULL, directory TEXT NOT NULL,
+    target TEXT, original_target TEXT, target_title TEXT,
+    collection TEXT, collection_basis TEXT, context INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL, confidence REAL NOT NULL, reason TEXT NOT NULL,
+    roles_dirty INTEGER NOT NULL DEFAULT 0, role_cursor INTEGER NOT NULL DEFAULT -1,
+    role_context TEXT,
+    PRIMARY KEY(workspace,id));
+CREATE INDEX IF NOT EXISTS grouping_node_parent ON grouping_nodes(workspace,parent,position,id);
+CREATE UNIQUE INDEX IF NOT EXISTS grouping_node_collection ON grouping_nodes(workspace,collection)
+    WHERE collection IS NOT NULL;
+CREATE INDEX IF NOT EXISTS grouping_node_roles ON grouping_nodes(workspace,roles_dirty,position,id);
+CREATE INDEX IF NOT EXISTS grouping_node_uncertain ON grouping_nodes(workspace,id)
+    WHERE kind='bundle' AND confidence<0.75;
+CREATE TABLE IF NOT EXISTS grouping_files (
+    workspace TEXT NOT NULL REFERENCES grouping_workspaces(id), id TEXT NOT NULL,
+    path TEXT NOT NULL, directory TEXT NOT NULL, node TEXT NOT NULL,
+    body TEXT NOT NULL, kind TEXT NOT NULL, part TEXT, role TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    selected INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY(workspace,id));
+CREATE INDEX IF NOT EXISTS grouping_file_node ON grouping_files(workspace,node,sequence,id);
+CREATE UNIQUE INDEX IF NOT EXISTS grouping_file_path ON grouping_files(workspace,path);
+CREATE INDEX IF NOT EXISTS grouping_file_directory ON grouping_files(workspace,directory,path);
+CREATE INDEX IF NOT EXISTS grouping_file_selection ON grouping_files(workspace,selected,node);
+CREATE TABLE IF NOT EXISTS grouping_folders (
+    workspace TEXT NOT NULL REFERENCES grouping_workspaces(id), path TEXT NOT NULL,
+    node TEXT NOT NULL, expanded INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(workspace,path));
+CREATE INDEX IF NOT EXISTS grouping_folder_node ON grouping_folders(workspace,node,path);
+CREATE TABLE IF NOT EXISTS grouping_stems (
+    workspace TEXT NOT NULL REFERENCES grouping_workspaces(id), directory TEXT NOT NULL,
+    level INTEGER NOT NULL, maximum INTEGER NOT NULL, example TEXT NOT NULL,
+    PRIMARY KEY(workspace,directory));
+CREATE TABLE IF NOT EXISTS grouping_commands (
+    id TEXT PRIMARY KEY, workspace TEXT NOT NULL REFERENCES grouping_workspaces(id),
+    revision INTEGER NOT NULL, intent TEXT NOT NULL, state TEXT NOT NULL,
+    phase TEXT NOT NULL, cursor TEXT NOT NULL DEFAULT '', result TEXT, error TEXT,
+    sequence INTEGER NOT NULL UNIQUE);
+CREATE INDEX IF NOT EXISTS grouping_command_state ON grouping_commands(state,sequence);
+CREATE INDEX IF NOT EXISTS grouping_command_workspace
+    ON grouping_commands(workspace,state,sequence);
+CREATE TABLE IF NOT EXISTS grouping_replacements (
+    command TEXT NOT NULL REFERENCES grouping_commands(id), node TEXT NOT NULL,
+    PRIMARY KEY(command,node));
+CREATE INDEX IF NOT EXISTS grouping_review_file_identity ON
+    discovery_review_files(operation,json_extract(original,'$.id'));
+"""
+
+GROUPING_TABLES = {
+    "grouping_workspaces",
+    "grouping_workspace_state",
+    "grouping_workspace_review",
+    "grouping_nodes",
+    "grouping_node_parent",
+    "grouping_node_collection",
+    "grouping_node_roles",
+    "grouping_node_uncertain",
+    "grouping_files",
+    "grouping_file_node",
+    "grouping_file_path",
+    "grouping_file_directory",
+    "grouping_file_selection",
+    "grouping_folders",
+    "grouping_folder_node",
+    "grouping_stems",
+    "grouping_commands",
+    "grouping_command_state",
+    "grouping_command_workspace",
+    "grouping_replacements",
+    "grouping_review_file_identity",
+}

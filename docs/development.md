@@ -744,20 +744,22 @@ path on the server.
 
 For local manual testing, start the backend and frontend, open the app, use the
 sidebar `+` to add a library directory, then run **Update**.
-Update scans files, persists a grouping plan, refreshes the UI, and opens
-grouping review when suggestions exist. It then collects ffprobe metadata in the
-background and starts missing/stale storyboard generation only after that probe
-succeeds. The maintenance overflow menu exposes standalone **Scan new files**,
-**Suggest grouping**, **Collect metadata**, and **Generate storyboards** actions.
-In grouping review, double-click a new-bundle or collection suggestion title to
-edit it; Enter or blur saves the open-plan edit, while Escape cancels it. A
-re-scan addition can be switched from its recommended existing bundle to
-a new bundle with the circular-arrows icon beside its title, renamed, and
-switched back on the same row. Hover or focus the icon to see its exact action.
-Use Narrow or Widen beside a represented filesystem directory to regenerate the
-plan with stricter or broader filename-stem matching. This supersedes the open
-plan like any other regeneration, so finish drag, rename, and selection review
-after choosing stem sensitivity.
+For portable libraries, Update saves private observations and grouping suggestions
+and opens review when suggestions exist. The remaining maintenance-menu work is
+tracked in the [restoration audit](restoration-audit.md).
+In editable grouping review, double-click a new-bundle or collection title to
+edit it. Enter or blur saves the private edit; Escape cancels it. The row's
+actions menu switches an addition between its existing bundle and a new bundle.
+Narrow/Widen changes matching in the represented source folder, retaining
+unrelated edits and file selection. Media summaries and expandable sibling runs
+keep file lists closed until needed; Show files also applies to later pages.
+File drags and the keyboard Move dialog change logical grouping only.
+
+Prepare selected grouping captures the chosen files, order and collection
+placement. Optional complete-content verification is cancellable. Accept reviewed
+grouping rechecks those bytes and metadata bases before saving. Unselected files
+remain in the private draft. Check reopening from both Bundle Browser and
+Metadata review, and confirm that source bytes remain unchanged.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the

@@ -134,13 +134,17 @@ def cancel(store: CatalogStore, operation: str) -> None:
 
 
 # Candidates are paginated separately from the authored catalog
-def candidates(store: CatalogStore, after: str = "", limit: int = 30) -> dict[str, Any]:
+def candidates(
+    store: CatalogStore, after: str = "", limit: int = 30, *, file_changes: bool = False
+) -> dict[str, Any]:
     from cairndex.replicas.discovery_proposals import display
 
     with store.connection(readonly=True) as db:
         rows = db.execute(
-            "SELECT * FROM discovery_candidates WHERE state='pending' AND id>? ORDER BY id LIMIT ?",
-            (after, limit + 1),
+            "SELECT * FROM discovery_candidates WHERE state='pending' AND id>? "
+            "AND (?=0 OR json_extract(body,'$.kind') IN ('repair','replacement','verification')) "
+            "ORDER BY id LIMIT ?",
+            (after, file_changes, limit + 1),
         ).fetchall()
         return {
             "items": [display(db, row) for row in rows[:limit]],

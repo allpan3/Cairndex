@@ -11,7 +11,7 @@ from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.discovery_sources import file_id, stable_id
-from cairndex.scanning.media_types import classify
+from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS discovery_plan_files (
@@ -107,7 +107,23 @@ def index_batch(store: CatalogStore, run: str, after: str, *, known: bool) -> bo
                 if not file or not bundle:
                     continue
                 identity, body = row[0], {}
-                owner, owner_title = bundle["id"], bundle["title"]
+                if bundle["grouping_state"] == "CONFIRMED":
+                    owner, owner_title = bundle["id"], bundle["title"]
+                else:
+                    from cairndex.replicas.discovery_staged import capture
+
+                    if is_hidden_relative_path(path):
+                        continue
+                    observed = db.execute(
+                        "SELECT e.body FROM discovery_entries e JOIN discovery_baselines b "
+                        "ON b.file_id=? AND json_extract(b.body,'$.generation')="
+                        "json_extract(e.body,'$.generation') WHERE e.run=? AND e.path=? "
+                        "AND e.handled=1",
+                        (identity, run, path),
+                    ).fetchone()
+                    if not observed:
+                        continue
+                    body = capture(store, db, file, bundle, json.loads(observed[0]))
             else:
                 body = json.loads(row[0])
                 prior = db.execute(
@@ -146,7 +162,7 @@ def index_batch(store: CatalogStore, run: str, after: str, *, known: bool) -> bo
                     owner_title,
                 ),
             )
-            if not known:
+            if owner is None:
                 while True:
                     db.execute(
                         "INSERT OR IGNORE INTO discovery_plan_directories(run,path) VALUES (?,?)",
@@ -174,12 +190,21 @@ def directory_stats(db: sqlite3.Connection, run: str, directory: str) -> sqlite3
 
 
 # Videos establish every subject before any sidecar chooses its unique matching subject
-def assign_batch(db: sqlite3.Connection, run: str, directory: sqlite3.Row) -> None:
+def assign_batch(
+    db: sqlite3.Connection,
+    run: str,
+    directory: sqlite3.Row,
+    *,
+    level: int = 1,
+    split: bool = False,
+) -> None:
     path, phase = directory["path"], directory["phase"]
     stats = directory_stats(db, run, path)
     one = (
         stats["videos"] == 1
-        or stats["videos"] >= 2
+        and (level >= 1 or split)
+        or not split
+        and stats["videos"] >= 2
         and stats["parts"] == 1
         and not stats["no_part"]
     )
@@ -192,7 +217,7 @@ def assign_batch(db: sqlite3.Connection, run: str, directory: sqlite3.Row) -> No
         subject = (
             "one"
             if one
-            else "video:" + file["stem"]
+            else "video:" + (file["file_id"] if split else file["stem"])
             if phase == "videos"
             else "file:" + file["path"]
         )
@@ -200,20 +225,19 @@ def assign_batch(db: sqlite3.Connection, run: str, directory: sqlite3.Row) -> No
         if not one and phase != "videos" and stats["videos"]:
             exact = db.execute(
                 "SELECT proposal FROM discovery_plan_files WHERE run=? AND directory=? "
-                "AND owner IS NULL AND kind='video' AND stem=? LIMIT 1",
-                (run, path, file["stem"]),
-            ).fetchone()
-            matches = []
+                "AND owner IS NULL AND kind='video' AND stem=? LIMIT ?",
+                (run, path, file["stem"], 2 if split else 1),
+            ).fetchall()
+            matches: list[str] = []
             if not exact:
                 for prefix in rules._space_prefixes(file["stem"]):
                     match = db.execute(
                         "SELECT proposal FROM discovery_plan_files WHERE run=? AND directory=? "
-                        "AND owner IS NULL AND kind='video' AND stem=? LIMIT 1",
-                        (run, path, prefix),
-                    ).fetchone()
-                    if match:
-                        matches.append(match[0])
-                if len(matches) != 1:
+                        "AND owner IS NULL AND kind='video' AND stem=? LIMIT ?",
+                        (run, path, prefix, 2 if split else 1),
+                    ).fetchall()
+                    matches.extend(row[0] for row in match)
+                if len(matches) != 1 and not split and level >= 1:
                     matches = [
                         row[0]
                         for row in db.execute(
@@ -223,8 +247,8 @@ def assign_batch(db: sqlite3.Connection, run: str, directory: sqlite3.Row) -> No
                             (run, path, file["prefix"]),
                         )
                     ]
-            if exact or len(matches) == 1:
-                identity = exact[0] if exact else matches[0]
+            if len(exact) == 1 or not exact and len(matches) == 1:
+                identity = exact[0][0] if exact else matches[0]
         db.execute(
             "INSERT OR IGNORE INTO discovery_plan_groups(run,id,directory,parent) VALUES (?,?,?,?)",
             (run, identity, path, path or None),

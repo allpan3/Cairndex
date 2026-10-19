@@ -104,6 +104,7 @@ test('normal Create preserves source bytes and opens one portable library @fulls
     await page.getByRole('button', { name: 'Create library', exact: true }).click()
     await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toContainText(
       'Synthetic portable library',
+      { timeout: 30_000 },
     )
     const invalidDetails: string[] = []
     page.on('request', (request) => {

@@ -3224,6 +3224,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/commands/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Command */
+        get: operations["command_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/commands/{operation}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retry_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workspaces */
+        get: operations["workspaces_api_v1_libraries__library_id__replica_discovery_grouping_workspaces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open Workspace */
+        post: operations["open_workspace_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__run__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Attention */
+        get: operations["attention_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue */
+        post: operations["enqueue_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Destinations */
+        get: operations["destinations_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__destinations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Nodes */
+        get: operations["nodes_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes/{node}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files */
+        get: operations["files_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/nodes/{node}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Folders */
+        get: operations["folders_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/stems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stems */
+        get: operations["stems_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__stems_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/discovery/reviews": {
         parameters: {
             query?: never;
@@ -5921,6 +6125,80 @@ export interface components {
          * @enum {string}
          */
         Grouping: "per_file" | "single_bundle";
+        /** GroupingCancelReview */
+        GroupingCancelReview: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "cancel_review";
+            /** Review */
+            review: string;
+        };
+        /** GroupingCommand */
+        GroupingCommand: {
+            /** Intent */
+            intent: components["schemas"]["GroupingRename"] | components["schemas"]["GroupingSelect"] | components["schemas"]["GroupingMoveFile"] | components["schemas"]["GroupingReparent"] | components["schemas"]["GroupingDestination"] | components["schemas"]["GroupingFolder"] | components["schemas"]["GroupingKind"] | components["schemas"]["GroupingStem"] | components["schemas"]["GroupingPrepare"] | components["schemas"]["GroupingCancelReview"];
+            /** Operation */
+            operation: string;
+            /** Revision */
+            revision: number;
+        };
+        /** GroupingDestination */
+        GroupingDestination: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "destination";
+            /** Create New */
+            create_new: boolean;
+            /** Node */
+            node: string;
+        };
+        /** GroupingFolder */
+        GroupingFolder: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "folder";
+            /** Expanded */
+            expanded: boolean;
+            /** Folder */
+            folder: string;
+            /** Node */
+            node: string;
+        };
+        /** GroupingKind */
+        GroupingKind: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "kind";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bundle" | "container";
+            /** Node */
+            node: string;
+        };
+        /** GroupingMoveFile */
+        GroupingMoveFile: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "move_file";
+            /** Before */
+            before?: string | null;
+            /** File */
+            file: string;
+            /** Node */
+            node: string;
+        };
         /**
          * GroupingPlanStatus
          * @description Lifecycle of a durable grouping plan (ADR-0009).
@@ -5930,6 +6208,65 @@ export interface components {
          * @enum {string}
          */
         GroupingPlanStatus: "open" | "applied" | "superseded" | "cancelled";
+        /** GroupingPrepare */
+        GroupingPrepare: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "prepare";
+            /**
+             * Verify Content
+             * @default false
+             */
+            verify_content: boolean;
+        };
+        /** GroupingRename */
+        GroupingRename: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "rename";
+            /** Node */
+            node: string;
+            /** Title */
+            title: string;
+        };
+        /** GroupingReparent */
+        GroupingReparent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "reparent";
+            /** Before */
+            before?: string | null;
+            /** Collection */
+            collection?: string | null;
+            /** Node */
+            node: string;
+            /** Parent */
+            parent?: string | null;
+        };
+        /** GroupingSelect */
+        GroupingSelect: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "select";
+            /** File */
+            file?: string | null;
+            /** Folder */
+            folder?: string | null;
+            /** Node */
+            node?: string | null;
+            /** Nodes */
+            nodes?: string[] | null;
+            /** Selected */
+            selected: boolean;
+        };
         /**
          * GroupingSource
          * @description What produced a bundle's current grouping (ADR-0009).
@@ -5952,6 +6289,18 @@ export interface components {
          * @enum {string}
          */
         GroupingState: "provisional" | "confirmed";
+        /** GroupingStem */
+        GroupingStem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "stem";
+            /** Level */
+            level: number;
+            /** Node */
+            node: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -6928,6 +7277,8 @@ export interface components {
             exchange_error?: string | null;
             /** Export Version */
             export_version?: number | null;
+            /** Grouping Version */
+            grouping_version?: number | null;
             /** Inspector Version */
             inspector_version?: number | null;
             /** Invalid */
@@ -14004,6 +14355,7 @@ export interface operations {
             query?: {
                 after?: string;
                 limit?: number;
+                file_changes?: boolean;
             };
             header?: {
                 authorization?: string | null;
@@ -14132,6 +14484,500 @@ export interface operations {
             };
             path: {
                 candidate: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    command_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_api_v1_libraries__library_id__replica_discovery_grouping_commands__operation__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workspaces_api_v1_libraries__library_id__replica_discovery_grouping_workspaces_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_workspace_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__run__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                run: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attention_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__attention_get: {
+        parameters: {
+            query: {
+                revision: number;
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__commands_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupingCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    destinations_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__destinations_get: {
+        parameters: {
+            query: {
+                revision: number;
+                kind?: "bundle" | "container";
+                query?: string;
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nodes_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes_get: {
+        parameters: {
+            query: {
+                revision: number;
+                parent?: string | null;
+                after?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    files_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__files_get: {
+        parameters: {
+            query: {
+                revision: number;
+                after?: number;
+                limit?: number;
+                visible_only?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                node: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    folders_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__nodes__node__folders_get: {
+        parameters: {
+            query: {
+                revision: number;
+                after?: string;
+                limit?: number;
+                visible_only?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                node: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stems_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__stems_get: {
+        parameters: {
+            query: {
+                revision: number;
+                after?: string | null;
+                directory?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
                 library_id: string;
             };
             cookie?: {

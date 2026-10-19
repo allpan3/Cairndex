@@ -18,6 +18,16 @@ Recovery retains opening/edit history and clears file facts for fresh local
 observation. [ADR-0040](adr/0040-local-browsing-history-and-observations.md) records
 the local time semantics and the separate cross-device scope.
 
+The additive private `grouping_workspaces`, `grouping_nodes` and `grouping_files`
+tables hold editable suggestion trees, original observations and persistent
+selection. Logical parent IDs are separate from physical source directories.
+`grouping_folders` and `grouping_stems` retain folder display choices and matching
+levels; `grouping_commands` retains revision guards, exact intent and resumable
+receipts. Normalized discovery candidates remain immutable acceptance snapshots.
+Recovery validates these graphs and detects missing private choices. These tables
+do not change package format. The paged application tree is available through
+`grouping_version: 1`; full restoration qualification remains in progress.
+
 Registry `conversion_tasks` records each owner-started step by a 32-hex operation
 ID. Each row contains its normalized root, action, preparation attempt, state,
 exact request body, bounded API result and fixed error. A partial unique index

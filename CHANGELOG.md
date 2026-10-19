@@ -161,6 +161,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for completed dialog closure, pagination, nested tag saves and grouping
+  work in UI checks. Refreshing controls and changed button labels are not
+  completion receipts. Batch synthetic fixture schema and rows in one
+  transaction to avoid per-DDL durable commits.
+
 - Make the discovery restart test exercise one durable phase per worker tick,
   so its completion check does not depend on disk commit latency.
 
@@ -347,6 +352,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Restore editable grouping review for portable libraries: tree selection,
+  rename, Narrow/Widen, file moves/order, bundle/collection conversion and
+  collection placement, media summaries and expandable same-shape sibling runs.
+  Keyboard navigation works from row controls; file drags reveal their targets.
+  Drafts stay private until guarded acceptance; partial
+  acceptance retains remaining choices. Complete-content verification and
+  identity-change review remain available. Servers advertise `grouping_version: 1`.
+
+- Include still-unconfirmed catalog files in grouping suggestions and preserve
+  their file identities, notes, moments and subtitle selections when accepted.
+  Reuse a complete provisional source bundle where possible; retain its metadata
+  and refuse to discard metadata from another source. Confirmed groupings stay
+  settled, and changed identities require fresh review.
 
 - Release the bulk inspector after a completed save, while retaining interrupted
   saves for exact retry. Collection badges now show direct membership while

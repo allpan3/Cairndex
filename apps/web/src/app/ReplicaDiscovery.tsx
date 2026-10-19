@@ -1,6 +1,7 @@
 // Manual Update keeps pending discoveries and grouping review separate from catalog editors
-import { useEffect } from 'react'
-import type { DiscoveryRun } from '../api/discovery'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { discovery, type DiscoveryCandidate, type DiscoveryRun } from '../api/discovery'
 import { CandidateReview } from './DiscoveryCandidateReview'
 import { DiscoveryPrepared } from './DiscoveryPrepared'
 import { useModalDialog } from './useModalDialog'
@@ -195,13 +196,39 @@ export function DiscoveryReviewDialog({
   discovery: d,
   library,
   editor,
+  fileChangesOnly = false,
+  onBack,
 }: {
   discovery: ReplicaDiscoveryState
   library: string
   editor: string
+  fileChangesOnly?: boolean
+  onBack?: () => void
 }) {
   const { ref, close } = useModalDialog(() => d.setOpen(false), d.busy)
-  const { candidates, reviews, review, candidate, reviewId } = d
+  const [earlierChoices, setEarlierChoices] = useState(false)
+  const changes = useQuery({
+    queryKey: ['discovery-file-changes', library, d.after],
+    enabled: fileChangesOnly && !earlierChoices,
+    queryFn: ({ signal }) =>
+      discovery<{ items: DiscoveryCandidate[]; next_cursor: string | null }>(
+        library,
+        `/candidates?file_changes=true&after=${encodeURIComponent(d.after)}`,
+        'GET',
+        undefined,
+        signal,
+      ),
+    refetchInterval: 1500,
+  })
+  const candidates = fileChangesOnly && !earlierChoices ? changes : d.candidates
+  const { reviews, review, reviewId } = d
+  const candidate =
+    fileChangesOnly &&
+    !earlierChoices &&
+    d.candidate &&
+    ['new', 'collection'].includes(d.candidate.body.kind)
+      ? null
+      : d.candidate
   return (
     <div className="modal-backdrop" onMouseDown={close}>
       <div
@@ -214,11 +241,33 @@ export function DiscoveryReviewDialog({
       >
         <div className="modal__head">
           <h2>Review discovered files</h2>
+          {onBack && (
+            <button className="btn" disabled={d.busy} onClick={onBack}>
+              Back to grouping
+            </button>
+          )}
           <button className="btn" disabled={d.busy} onClick={close}>
             Close
           </button>
         </div>
         <p>Choices stay private until you accept a prepared review.</p>
+        {fileChangesOnly && (
+          <button
+            className="btn"
+            onClick={() => {
+              if (
+                earlierChoices &&
+                d.candidate &&
+                ['new', 'collection'].includes(d.candidate.body.kind)
+              )
+                d.setCandidate(null)
+              setEarlierChoices((value) => !value)
+              d.setAfter('')
+            }}
+          >
+            {earlierChoices ? 'File changes only' : 'Earlier grouping choices…'}
+          </button>
+        )}
         {candidates.isPending && <p>Loading discoveries…</p>}
         {candidates.error && (
           <p role="alert">

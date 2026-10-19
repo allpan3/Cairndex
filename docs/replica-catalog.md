@@ -3,13 +3,15 @@
 Normal Create and Open use the portable workflow (ADR-0035). Old library-format
 admission and the legacy workspace are unavailable. Manage libraries provides
 per-server access settings and reviewed private backup/recovery controls.
-Source operations are unavailable in this application extraction.
+Reviewed source operations use the [File Browser workflow](file-operations.md).
 Provider/NAS qualification is recorded in STATUS. Recently used ordering is
 available locally through Recent's Date Opened sort (`browse_version: 11`).
 
 
-The shared app/API serves complete **synthetic** metadata catalogs under
-[ADR-0029](adr/0029-cloud-metadata-replicas.md). Real-library conversion and provider qualification remain unavailable. Format-three packages support [manual discovery](replica-discovery.md).
+The shared app/API serves complete metadata catalogs under
+[ADR-0029](adr/0029-cloud-metadata-replicas.md). Reviewed legacy conversion follows
+[ADR-0038](adr/0038-legacy-library-conversion.md); provider qualification is recorded
+in STATUS. Format-three packages support [manual discovery](replica-discovery.md).
 Complete catalogs support local media through
 the shared production viewer. Legacy library admission is unavailable.
 
