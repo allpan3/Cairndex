@@ -126,6 +126,15 @@ while preserving the cancelled-run, restart and unchanged-catalog assertions.
 No production time budget or durability setting changed. The final macOS gate
 and renewed qualification remain pending.
 
+That macOS run ended with 1,957 backend passes and the restart-limit failure.
+It also passed 48 of 49 browser scenarios; the nested-tag check saw only the
+first segment when its five-second population poll expired. Creation uses two
+guarded segment saves. The focused macOS scenario passes in isolation. Its
+completion check now waits for the creation dialog to close before checking the complete tag
+population. Packaged sidecar, frozen checks, web checks, 137 Rust tests, desktop
+build and distribution verification passed. A complete corrected run is still
+required before merge.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed
