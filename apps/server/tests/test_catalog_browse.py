@@ -75,6 +75,32 @@ def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
     assert client.get(base + "/replica/status").json()["browse_version"] == 12
 
 
+def test_api_single_bundle_summary_matches_browse_without_observing_or_writing(api):  # noqa: F811
+    from cairndex.replicas.catalog.local_history import observed
+
+    client, base, store = api
+    endpoint = base + "/replica/catalog/bundles/bundle-000000/summary"
+    assert client.get(base + "/replica/status").json()["bundle_summary_version"] == 1
+    first = client.get(endpoint)
+    assert first.status_code == 200
+    assert first.json()["total_size"] is None
+    with store.connection() as db:
+        for file in db.execute(
+            "SELECT entity,path FROM catalog_paths WHERE family='asset_files'"
+        ).fetchall():
+            observed(db, file["entity"], file["path"], 10, 1_700_000_000_000_000_000)
+        before = tuple(db.execute("SELECT count(*) FROM events").fetchone())
+    expected = client.post(base + "/replica/catalog/bundles/browse", json={}).json()["items"]
+    summary = client.get(endpoint).json()
+    assert summary == next(item for item in expected if item["id"] == "bundle-000000")
+    assert summary["file_count"] == 2
+    assert summary["total_size"] == 20
+    with store.connection(readonly=True) as db:
+        assert tuple(db.execute("SELECT count(*) FROM events").fetchone()) == before
+        assert db.execute("SELECT count(*) FROM local_media").fetchone()[0] == 0
+    assert client.get(base + "/replica/catalog/bundles/absent/summary").status_code == 409
+
+
 # Manual follows the authored order, or one collection's own membership order
 def test_manual_and_file_count_sorts(tmp_path):
     import sqlite3

@@ -498,6 +498,26 @@ final audit reconciliation, publication and the merged-main owner build follow
 separately. No API or schema changes are needed; ADR-0040 already defines the
 local-observation policy.
 
+The local `fix/portable-viewer-inspector` slice repairs three further caller
+omissions: Add Files, collection navigation and mapped cover drag-out. Add Files
+and drag handling now live in the shared inspector. The viewer retains portable
+query scope and reads Files, Date Added and local Size through the browser's
+complete summary query, advertised as `bundle_summary_version: 1`. Fifteen Linux
+backend browse/history cases, eight focused web cases, static checks and both
+affected full-stack scenarios pass. The viewer scenario checks the dialog,
+collection handoff and totals; native callback cases cover complete selection,
+refusal and a library switch. Both manual-bundling scenarios also pass through
+the shared dialog. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0` and
+qualify the unchanged production implementation. The expanded inspector and
+All Tags browser workflows also pass on both guests in
+`inspector-filter-20261020-031801`, with 31 focused cases and static checks.
+Those added browser assertions were checked separately after the full receipts.
+Final reference comparison, publication and the merged-main owner build remain.
+These are read/UI repairs without a persistent migration; existing catalog and
+local-observation ADRs cover them.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

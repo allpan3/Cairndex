@@ -267,6 +267,25 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
         f"ORDER BY {ordering} LIMIT ? OFFSET ?",
         [*args, *order_args, request.limit, request.offset],
     ).fetchall()
+    return CatalogBrowsePage(
+        items=_summaries(db, rows), total=total, offset=request.offset, limit=request.limit
+    )
+
+
+def bundle_summary(db: sqlite3.Connection, identity: str) -> CatalogBundleSummary:
+    """Read one live bundle's complete local summary without browsing or probing media."""
+    rows = db.execute(
+        f"SELECT b.entity,b.body,{SIZE_SQL} AS total_size,{MODIFIED_SQL} AS date_modified,"
+        f"{OPENED_SQL} AS date_opened FROM catalog_rows b "
+        "WHERE b.family='asset_bundles' AND b.entity=?",
+        (identity,),
+    ).fetchall()
+    if not rows:
+        raise ReplicaError("Bundle is no longer in the catalog")
+    return _summaries(db, rows)[0]
+
+
+def _summaries(db: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[CatalogBundleSummary]:
     local = _local_facts(db, [row["entity"] for row in rows])
     items = []
     for row in rows:
@@ -299,7 +318,7 @@ def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrow
                 **local.get(row["entity"], {}),
             )
         )
-    return CatalogBrowsePage(items=items, total=total, offset=request.offset, limit=request.limit)
+    return items
 
 
 # True when the shared viewer has a stage for this file type, as on the legacy card

@@ -363,6 +363,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Scheduling and active-job listings now use the recorded creation time, with
   stable IDs only for exact timestamp ties. Work-class priorities stay the same.
 
+- Restore Add Files, collection navigation and mapped cover drag-out in the
+  viewer's bundle inspector. Its Files, Date Added and local Size summary now
+  uses the same complete read-only values as the browser.
+
 - Restore keyboard movement between collection cards and bundles, including
   row-aware vertical movement and virtualized rows. Restore bulk selection Size
   from this device's observations, with unknown totals stated explicitly.

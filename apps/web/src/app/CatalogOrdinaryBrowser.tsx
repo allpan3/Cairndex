@@ -97,6 +97,7 @@ export function CatalogOrdinaryBrowser(props: {
   /** Make this browser's navigation action available to the sibling viewer rail. */
   onRegisterTagFilter?: (action: ((id: string) => void) | null) => void
   onRegisterFileNavigation?: (action: ((path: string, directory?: boolean) => void) | null) => void
+  onRegisterCollectionNavigation?: (action: ((id: string) => void) | null) => void
   /** The workspace's viewer is open and shows the bundle inspector itself. */
   viewerOpen?: boolean
   /** A `cairndex://` link to open; reported handled once applied. */
@@ -207,13 +208,22 @@ export function CatalogOrdinaryBrowser(props: {
   }, [onRegisterFileNavigation, navigateFiles])
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
-  const openPlace = (next: Selection) => {
+  const openPlace = useCallback((next: Selection) => {
     setUnbundled(false)
     setSelection(next)
     // A filter left over from the last place would quietly empty this one
     setFilters(emptyAdHocFilters())
     setMode('collection')
-  }
+  }, [])
+  const openCollection = useCallback(
+    (id: string) => openPlace({ view: 'all', collectionId: id }),
+    [openPlace],
+  )
+  const { onRegisterCollectionNavigation } = props
+  useEffect(() => {
+    onRegisterCollectionNavigation?.(openCollection)
+    return () => onRegisterCollectionNavigation?.(null)
+  }, [onRegisterCollectionNavigation, openCollection])
   const collections = useCatalogCollections(props.library, {
     selection,
     onSelect: openPlace,
@@ -409,7 +419,7 @@ export function CatalogOrdinaryBrowser(props: {
               collections={collections}
               showSubContents={showSubContents}
               onShowSubContents={setShowSubContents}
-              onOpenCollection={(id) => openPlace({ view: 'all', collectionId: id })}
+              onOpenCollection={openCollection}
               onFilterTag={filterFromChip}
               onRenameCollection={(id) => setRenameCollection({ id })}
               dragItem={dragItem}

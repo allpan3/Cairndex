@@ -41,6 +41,7 @@ class ReplicaStatus(StrictModel):
     browse_version: int | None = None
     album_version: int | None = None
     inspector_version: int | None = None
+    bundle_summary_version: int | None = None
     selection_version: int | None = None
     system_views_version: int | None = None
     catalog_version: int | None = None

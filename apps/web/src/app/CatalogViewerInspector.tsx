@@ -2,6 +2,9 @@ import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { catalog, type Entity } from '../api/catalog'
+import { CatalogQueryContext } from '../api/catalogQuery'
+import type { components } from '../api/schema'
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 
@@ -25,6 +28,7 @@ export function CatalogViewerInspector({
   onFilterTag,
   onLocateFile,
   onOpenDirectory,
+  onOpenCollection,
 }: {
   library: string
   bundle: string
@@ -40,8 +44,17 @@ export function CatalogViewerInspector({
   onFilterTag?: (id: string) => void
   onLocateFile?: (path: string) => void
   onOpenDirectory?: (path: string) => void
+  onOpenCollection?: (id: string) => void
 }) {
   const queryClient = useQueryClient()
+  const status = useReplicaStatus(library).data
+  const summary = useQuery({
+    queryKey: ['catalog-bundle-summary', library, bundle],
+    queryFn: () =>
+      catalog<components['schemas']['CatalogBundleSummary']>(library, `/bundles/${bundle}/summary`),
+    enabled: status?.bundle_summary_version === 1,
+    refetchInterval: 2000,
+  })
   const detail = useQuery({
     queryKey: ['catalog-detail', library, 'asset_bundles', bundle],
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${bundle}`),
@@ -55,24 +68,29 @@ export function CatalogViewerInspector({
       </aside>
     )
   return (
-    <CatalogBundleInspector
-      library={library}
-      entity={detail.data}
-      editor={editor}
-      inspectorEnabled={inspectorEnabled}
-      blocked={blocked}
-      // The browser under the viewer shows the saved title and cover when it returns
-      refresh={() => {
-        void detail.refetch()
-        void queryClient.invalidateQueries({ queryKey: ['catalog-browse', library] })
-      }}
-      onReview={onReview}
-      onOpenFile={onOpenFile}
-      hostFiles={hostFiles}
-      onFilterTag={onFilterTag}
-      onLocateFile={onLocateFile}
-      onOpenDirectory={onOpenDirectory}
-      moments={moments}
-    />
+    <CatalogQueryContext value={library}>
+      <CatalogBundleInspector
+        library={library}
+        entity={detail.data}
+        editor={editor}
+        inspectorEnabled={inspectorEnabled}
+        blocked={blocked}
+        // The browser under the viewer shows the saved title and cover when it returns
+        refresh={() => {
+          void detail.refetch()
+          if (status?.bundle_summary_version === 1) void summary.refetch()
+          void queryClient.invalidateQueries({ queryKey: ['catalog-browse', library] })
+        }}
+        onReview={onReview}
+        onOpenFile={onOpenFile}
+        hostFiles={hostFiles}
+        onFilterTag={onFilterTag}
+        onLocateFile={onLocateFile}
+        onOpenDirectory={onOpenDirectory}
+        onOpenCollection={onOpenCollection}
+        summary={summary.data && { ...summary.data, size_known: summary.data.total_size != null }}
+        moments={moments}
+      />
+    </CatalogQueryContext>
   )
 }

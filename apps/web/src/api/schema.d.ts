@@ -2899,6 +2899,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/{bundle_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Bundle Summary */
+        get: operations["read_bundle_summary_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/controls/{family}": {
         parameters: {
             query?: never;
@@ -7388,6 +7405,8 @@ export interface components {
             blocked: string | null;
             /** Browse Version */
             browse_version?: number | null;
+            /** Bundle Summary Version */
+            bundle_summary_version?: number | null;
             /** Catalog Version */
             catalog_version?: number | null;
             /** Discovery Version */
@@ -13820,6 +13839,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogMomentPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_bundle_summary_api_v1_libraries__library_id__replica_catalog_bundles__bundle_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBundleSummary"];
                 };
             };
             /** @description Validation Error */

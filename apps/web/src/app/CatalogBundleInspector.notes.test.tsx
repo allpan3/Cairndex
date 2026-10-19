@@ -6,6 +6,7 @@ import type { Entity } from '../api/catalog'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 
 const saved = vi.hoisted(() => vi.fn())
+vi.mock('../api/useReplicaStatus', () => ({ useReplicaStatus: () => ({ data: {} }) }))
 vi.mock('./useCatalogBundleDraft', () => ({
   useCatalogBundleDraft: () => {
     const [notes, setNotes] = useState(['first note', 'second note', 'third note'])

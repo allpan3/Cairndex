@@ -10,10 +10,12 @@ from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.browse import (
     CatalogBrowsePage,
     CatalogBrowseRequest,
+    CatalogBundleSummary,
     CatalogDirectoryBundleCount,
     CatalogUnbundledPage,
     CatalogUnbundledRequest,
     browse,
+    bundle_summary,
     directory_bundles,
     unbundled,
 )
@@ -172,6 +174,12 @@ def dismiss(
 def browse_bundles(payload: CatalogBrowseRequest, store: Catalog) -> CatalogBrowsePage:
     with store.connection(readonly=True) as db:
         return browse(db, payload)
+
+
+@router.get("/bundles/{bundle_id}/summary", response_model=CatalogBundleSummary)
+def read_bundle_summary(bundle_id: Token, store: Catalog) -> CatalogBundleSummary:
+    with store.connection(readonly=True) as db:
+        return bundle_summary(db, bundle_id)
 
 
 @router.get("/bundles/{bundle_id}/memberships/{family}", response_model=CatalogMembershipPage)

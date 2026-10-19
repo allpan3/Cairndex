@@ -715,6 +715,29 @@ final audit reconciliation, publication and the merged-main owner build follow
 separately. This restores existing interactions and uses ADR-0040's private
 observations, so no new ADR or migration is required.
 
+The viewer caller comparison found Add Files, collection navigation and cover
+drag-out omitted even though the browser supplied them. Add Files and drag
+resolution now belong to the shared inspector. The viewer provides portable
+query scope and delegates collection chips to the browser's ordinary navigation.
+Its previously omitted Files, Date Added and Size rows use the same complete
+read-only summary query as browser cards, behind an additive server capability.
+Fifteen Linux backend browse/history cases and eight focused web cases pass,
+with backend/web static checks. Both affected full-stack scenarios pass in
+18.8 seconds, including viewer dialog scope, collection handoff, totals and
+unchanged media. Both manual-bundling browser scenarios also pass through the
+shared dialog. Native callback cases verify complete bundle selection, refused
+drags and suppression after a library switch. The first viewer assertion
+incorrectly classified a supported thumbnail URL as a legacy metadata call;
+the corrected check permits that existing media route. Both complete combined
+restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0` and
+qualify the unchanged production implementation. The later expanded inspector
+and All Tags browser workflows pass on both guests in
+`inspector-filter-20261020-031801`, with 31 focused cases and static checks.
+These additional assertions were checked separately after the full receipts.
+Final reference comparison, publication and the merged-main owner build remain.
+This adds no persistent migration or new architectural policy.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed
