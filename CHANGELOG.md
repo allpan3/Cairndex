@@ -355,6 +355,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   moved-file checks and grouping indexes. Enumeration states that its total is
   not yet known. Unbundled checks availability, size and modification time for
   its displayed page instead of assigning every file unknown availability.
+  Older Update statuses without a phase keep their observed-file counter.
 
 - Commit SQL-backed API writes before sending a success response. Creating a
   library could return 201 before its registry row was visible, making an

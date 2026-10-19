@@ -27,7 +27,7 @@ function phaseLabel(run: DiscoveryRun | undefined): string {
     case 'export':
       return 'Preparing suggestions'
     default:
-      return 'Starting Update'
+      return 'Updating'
   }
 }
 
@@ -36,7 +36,9 @@ function phaseCount(run: DiscoveryRun | undefined): string {
     ? `${run.completed ?? 0} / ${run.total}`
     : run?.phase === 'walk'
       ? `${run.observed ?? 0} found`
-      : ''
+      : run?.phase == null
+        ? `${run?.observed ?? 0}`
+        : ''
 }
 
 function runStatus(run: ReplicaDiscoveryState['run']): string {
