@@ -4,7 +4,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from cairndex.api.v1.replicas import replica_store
+from cairndex.api.v1.replicas import CommonReplicaStore
 from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.browse import (
     CatalogBrowsePage,
@@ -52,13 +52,12 @@ from cairndex.replicas.catalog.selection import (
 )
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import ReplicaError, Token
-from cairndex.replicas.store import Store
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/catalog", tags=["replica-catalog"])
 
 
 # Richer catalog routes refuse the bounded protocol-one store before any mutation
-def catalog_store(store: Annotated[Store | CatalogStore, Depends(replica_store)]) -> CatalogStore:
+def catalog_store(store: CommonReplicaStore) -> CatalogStore:
     if not isinstance(store, CatalogStore):
         raise ReplicaError("This API requires the complete authored catalog capability")
     return store

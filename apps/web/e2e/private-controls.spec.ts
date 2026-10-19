@@ -27,6 +27,15 @@ test('access and private backup controls complete reviewed recovery @fullstack',
     .toString()
     .trim()
   const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  // Durable recovery can outlast a UI assertion's default five-second budget.
+  // Wait for a terminal job state, then fail immediately if it did not succeed.
+  const completed = async (action: string) => {
+    const result = page
+      .getByRole('status')
+      .filter({ hasText: new RegExp(`^${action}: (succeeded|failed|interrupted)$`) })
+    await expect(result).toBeVisible({ timeout: 30_000 })
+    expect(await result.textContent()).toBe(`${action}: succeeded`)
+  }
   try {
     await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
     await proxyApi(page, backend.baseUrl)
@@ -47,10 +56,10 @@ test('access and private backup controls complete reviewed recovery @fullstack',
       .fill('Synthetic guard')
     await page.getByRole('dialog').getByRole('button', { name: 'Unlock', exact: true }).click()
     await page.getByRole('button', { name: 'Create private snapshot', exact: true }).click()
-    await expect(page.getByText('backup: succeeded', { exact: true })).toBeVisible()
+    await completed('backup')
     await page.getByRole('button', { name: 'Use this snapshot', exact: true }).click()
     await page.getByRole('button', { name: 'Verify snapshot', exact: true }).click()
-    await expect(page.getByText('verify: succeeded', { exact: true })).toBeVisible()
+    await completed('verify')
     await page.getByRole('button', { name: 'Release library', exact: true }).click()
     await page.getByRole('button', { name: 'Lock', exact: true }).click()
     await page.reload()
@@ -61,12 +70,12 @@ test('access and private backup controls complete reviewed recovery @fullstack',
       page.getByRole('button', { name: 'Prepare separate recovery', exact: true }),
     ).toBeEnabled()
     await page.getByRole('button', { name: 'Prepare separate recovery', exact: true }).click()
-    await expect(page.getByText('prepare: succeeded', { exact: true })).toBeVisible()
+    await completed('prepare')
     await page.getByRole('button', { name: 'Review this recovery', exact: true }).click()
-    await expect(page.getByText('review: succeeded', { exact: true })).toBeVisible()
+    await completed('review')
     await page.getByRole('button', { name: 'I reviewed this recovery', exact: true }).click()
     await page.getByRole('button', { name: 'Activate reviewed recovery', exact: true }).click()
-    await expect(page.getByText('activate: succeeded', { exact: true })).toBeVisible()
+    await completed('activate')
     await page.getByRole('button', { name: 'Reopen library', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Release library', exact: true })).toBeVisible()
     await expect(page.getByText('Passphrase protection is on.', { exact: false })).toBeVisible()

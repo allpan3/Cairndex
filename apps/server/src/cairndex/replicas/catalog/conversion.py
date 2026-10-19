@@ -11,6 +11,7 @@ from typing import Literal
 from uuid import uuid4
 
 from cairndex.devtools.catalog_fixture import DisposableCatalog, insert_row
+from cairndex.persistence.sqlite_durability import configure_durability, connect_writable
 from cairndex.replicas.binding import sync_directory, write_json
 from cairndex.replicas.catalog.model import AUTHORED, IDENTITIES
 from cairndex.replicas.catalog.protocol import (
@@ -147,7 +148,7 @@ def prepare_disposable(
         original.execute("BEGIN")
         validate_checkpoint(original)
         for schema, name in (("main", "library.db"), ("plans", "plans.db")):
-            with sqlite3.connect(archive / name) as destination:
+            with connect_writable(archive / name) as destination:
                 original.backup(destination, name=schema)
         original.rollback()
     (archive / "manifest.json").write_bytes(manifest_raw)
@@ -189,8 +190,9 @@ def build_candidate(
     epoch = epoch or uuid4().hex
     objects = package / ".cairndex" / "replica" / "objects"
     objects.mkdir(parents=True)
-    with sqlite3.connect(archive / "library.db") as db:
+    with connect_writable(archive / "library.db") as db:
         db.execute("ATTACH DATABASE ? AS plans", (str(archive / "plans.db"),))
+        configure_durability(db, schema="plans")
         validate_checkpoint(db)
         genesis = ""
         for identity, raw in payload(
@@ -269,11 +271,11 @@ def export_projection(archive: Path, store: CatalogStore) -> Path:
         # Preserve all unpublished events, conflict branches, drafts and receipts at this checkpoint
         # A second read connection allows the backup API while the first excludes new writers
         with (
-            sqlite3.connect(store.path) as reader,
-            sqlite3.connect(output / "replica-recovery.db") as backup,
+            connect_writable(store.path) as reader,
+            connect_writable(output / "replica-recovery.db") as backup,
         ):
             reader.backup(backup)
-        with sqlite3.connect(output / "library.db") as legacy:
+        with connect_writable(output / "library.db") as legacy:
             legacy.row_factory = sqlite3.Row
             legacy.execute("BEGIN IMMEDIATE")
             from cairndex.metadata.schema import trigger_definitions
@@ -361,7 +363,7 @@ def export_projection(archive: Path, store: CatalogStore) -> Path:
 
 # Full row/cell comparison preserves relationships, NULL, order, timestamps and numeric values
 def compare_checkpoints(first: Path, second: Path) -> None:
-    with sqlite3.connect(first) as left, sqlite3.connect(second) as right:
+    with connect_writable(first) as left, connect_writable(second) as right:
         tables = [
             row[0]
             for row in left.execute(

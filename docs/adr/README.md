@@ -55,3 +55,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0036](0036-portable-source-operations.md) | Portable source operations and retained versions | accepted |
 | [0037](0037-portable-mounted-smb.md) | Portable mounted-SMB publication | accepted; fresh extracted qualification recorded separately |
 | [0038](0038-legacy-library-conversion.md) | Owner-started conversion of legacy libraries | accepted; application qualification in progress |
+| [0039](0039-macos-sqlite-durability.md) | SQLite durability on macOS | accepted |

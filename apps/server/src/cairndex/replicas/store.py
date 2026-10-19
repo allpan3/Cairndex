@@ -11,6 +11,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from cairndex.core.errors import ValidationError as InputError
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.protocol import (
     MAX_CANDIDATES,
     Change,
@@ -180,7 +181,7 @@ class PrivateStore:
                 info = self.path.stat(follow_symlinks=False)
                 if self._database_identity != (info.st_dev, info.st_ino):
                     raise ReplicaError("Private database changed; explicit recovery required")
-            db = sqlite3.connect(
+            db = connect_writable(
                 self.path.as_uri() + ("?mode=rwc" if self._initializing else "?mode=rw"),
                 uri=True,
                 timeout=10,
@@ -193,7 +194,6 @@ class PrivateStore:
         try:
             db.execute("PRAGMA foreign_keys=ON")
             db.execute("PRAGMA journal_mode=WAL")
-            db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN" if readonly else "BEGIN IMMEDIATE")
             yield db
             db.commit()

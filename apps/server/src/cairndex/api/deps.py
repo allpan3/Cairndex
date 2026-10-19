@@ -32,19 +32,21 @@ def get_db() -> Iterator[Session]:
     yield from _get_session()
 
 
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession = Annotated[Session, Depends(get_db, scope="function")]
 
 
 def get_registry_db() -> Iterator[Session]:
     """FastAPI registry-DB session dependency (ADR-0008).
 
-    The registry tracks registered libraries and the job queue; it is a
-    separate database from the content/library DBs. Overridden in tests.
+    Commit before response headers acknowledge a write. Request-scoped
+    teardown would run after a success reply, hiding commit failures and
+    letting immediate follow-up requests miss the new row.
+    The registry is separate from content/library DBs. Overridden in tests.
     """
     yield from _get_registry_session()
 
 
-RegistryDbSession = Annotated[Session, Depends(get_registry_db)]
+RegistryDbSession = Annotated[Session, Depends(get_registry_db, scope="function")]
 
 
 def _bearer_token(authorization: str) -> str:
@@ -152,18 +154,18 @@ def get_library_session(
         session.close()
 
 
-LibrarySession = Annotated[Session, Depends(get_library_session)]
+LibrarySession = Annotated[Session, Depends(get_library_session, scope="function")]
 
 
 @dataclass
 class RegistryAccess:
     """A registry-session factory that does NOT pin a connection (see below).
 
-    ``RegistryDbSession`` is a ``yield`` dependency, so a route (or another
-    dependency) that takes it keeps a registry connection checked out until the
-    *response body finishes*. Streaming gates must instead open a short-lived
-    scope through this factory and close it before the bytes flow. Overridden
-    in tests to bind to the test registry session.
+    JSON handlers use function-scoped ``RegistryDbSession`` transactions.
+    Streaming handlers use this factory to finish registry resolution and close
+    the session before constructing a response, without retaining a Session
+    object that a response-body iterator could accidentally reuse.
+    Overridden in tests to bind to the test registry session.
     """
 
     open_session: Callable[[], AbstractContextManager[Session]]
@@ -184,19 +186,11 @@ RegistryAccessDep = Annotated[RegistryAccess, Depends(get_registry_access)]
 class LibraryAccess:
     """An authorized library handle that does NOT pin a DB connection.
 
-    ``LibrarySession`` is a ``yield`` dependency, so FastAPI keeps its content
-    connection — and the registry connection it depends on — checked out of the
-    pool until the *response body finishes*. For a streaming ``FileResponse``
-    (video range requests, HLS segments, full-res images) that means two
-    connections are held for the entire byte transfer. Under drag-seek, the
-    browser fires many overlapping range requests, and the held connections
-    exhaust the per-library and registry QueuePools; new requests then block for
-    ``pool_timeout`` (30s) and fail with a ``QueuePool`` timeout 500.
-
-    This handle does the same registry-resolution + passphrase-lock gate up
-    front, but hands back a *short-lived* ``session()`` scope the caller opens
-    only to resolve the path and closes **before** constructing the response.
-    No connection is held while the bytes stream.
+    JSON handlers use function-scoped ``LibrarySession`` transactions. This
+    factory gives streaming handlers an explicit short scope for registry
+    resolution, authorization and path lookup, closed before constructing the
+    response. No Session object is passed into the response-body iterator and
+    no connection remains checked out while bytes stream.
     """
 
     open_session: Callable[[], AbstractContextManager[Session]]
@@ -219,16 +213,11 @@ def get_library_access(
     whose ``session()`` the caller scopes narrowly around path resolution, so
     the streaming response body runs with no DB connection checked out.
 
-    The registry gate itself is also scoped: taking ``RegistryDbSession`` here
-    would pin a *registry* connection for the whole streaming body (yield-dep
-    teardown runs only after the response finishes — and not at all when a
-    client abort cancels the request task, stranding the connection until GC),
-    which is exactly the drag-seek pool exhaustion this dependency exists to
-    prevent — the library pool was freed but the registry pool still filled,
-    new gates blocked 30s at resolution, and range requests 500ed mid-drag.
-    Scoping the session inside this sync function is cancellation-immune. The
-    registry sessionmaker uses ``expire_on_commit=False``, so the resolved
-    library row stays readable after the scope closes.
+    The registry lookup also has its own explicit scope. Resolution finishes
+    before a streaming response is constructed and cannot leave a lazily reused
+    Session in its body iterator. Scoping the session inside this sync function
+    is cancellation-immune. The registry sessionmaker uses
+    ``expire_on_commit=False``, so the resolved row stays readable after close.
     """
     with registry_access.session() as registry:
         library = registry_service.get_library(registry, library_id)  # 404 if unknown

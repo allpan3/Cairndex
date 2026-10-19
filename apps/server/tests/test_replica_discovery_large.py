@@ -1,16 +1,25 @@
 """Complete directory reviews, settled additions and collection selections use synthetic sources"""
 
 import json
+from itertools import count
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from cairndex.replicas import discovery_review
+from cairndex.replicas import discovery, discovery_review
 from cairndex.replicas import discovery_state as state
 from cairndex.replicas.catalog.model import key
 from tests.test_replica_discovery import replicas as replicas
 from tests.test_replica_discovery import scan
 from tests.test_replica_discovery import specimen as specimen
+
+
+@pytest.fixture
+def expired_tick_budget(monkeypatch):
+    """Exercise progress when slow I/O leaves time for just one phase per tick."""
+    clock = count()
+    monkeypatch.setattr(discovery, "time", SimpleNamespace(monotonic=lambda: next(clock)))
 
 
 # Drive durable phases until the requested boundary, reporting retained errors on failure
@@ -35,7 +44,7 @@ def accept(store, root, candidate, **intent):
 
 # Whole sets retain one bundle, order, roles and folder context across more than 128 files
 @pytest.mark.parametrize("kind", ["parts", "album"])
-def test_large_review_is_complete(replicas, kind):
+def test_large_review_is_complete(replicas, kind, expired_tick_budget):
     store, root, _ = replicas[0]
     folder = root / "Complete"
     folder.mkdir()
@@ -176,7 +185,7 @@ def test_partial_album_reuses_settled_bundle_and_keeps_order(replicas):
 
 
 # Every missing identity stays selectable even when matching evidence spans more than 128 originals
-def test_missing_identity_choices_are_complete_and_paged(replicas):
+def test_missing_identity_choices_are_complete_and_paged(replicas, expired_tick_budget):
     from cairndex.replicas.discovery_choices import page
     from cairndex.replicas.discovery_validation import validate
 

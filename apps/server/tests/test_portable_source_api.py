@@ -10,6 +10,13 @@ from cairndex.replicas.source_execute import run_one
 from tests.test_library_scoped import create
 
 
+@pytest.fixture(autouse=True)
+def _manual_source_execution(monkeypatch):
+    # These tests drive run_one against their isolated registry. The lifespan
+    # worker uses the default registry and can claim their intents first on slow I/O.
+    monkeypatch.setattr(service.ReplicaWorker, "run", lambda self: None)
+
+
 def test_normal_portable_source_review_and_gates(isolated_client, registry_session, tmp_path):
     root = tmp_path / "library"
     identity, _ = create(isolated_client, root)

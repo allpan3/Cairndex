@@ -1,11 +1,11 @@
 """Small playable synthetic catalogs for independent-replica media qualification"""
 
 import shutil
-import sqlite3
 from pathlib import Path
 
 from cairndex.devtools.catalog_fixture import create_disposable, insert_row, synthetic_row
 from cairndex.media.ffmpeg_exec import ffmpeg_exe, run_ffmpeg
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.catalog.conversion import prepare_disposable
 
 
@@ -89,7 +89,7 @@ def create_playable(*, parent: Path | None = None, duration: int = 150) -> Path:
         "1\n00:00:00,000 --> 00:02:30,000\nSynthetic local captions\n",
         encoding="utf-8",
     )
-    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+    with connect_writable(fixture.source / ".cairndex/library.db") as db:
         db.execute("UPDATE asset_bundles SET title='Synthetic playback' WHERE id='bundle-000001'")
         for order, (identity, filename, role) in enumerate(
             [

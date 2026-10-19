@@ -1,5 +1,6 @@
 """Direct playback: capability detection, range streaming, and VTT subtitles."""
 
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -147,7 +148,7 @@ def test_stream_releases_db_connection_before_body(
 ) -> None:
     """Regression: the content session must be released before the body streams.
 
-    A ``yield`` session dependency stays checked out until the response body
+    A request-scoped ``yield`` dependency stays checked out until the response body
     finishes, so a streaming ``FileResponse`` used to pin a per-library (and
     registry) connection for the whole transfer. Under drag-seek, overlapping
     range requests then exhausted the QueuePool and new requests timed out (30s)
@@ -200,9 +201,18 @@ def test_stream_releases_registry_connection_before_body(tmp_path: Path) -> None
         identity = response.json()["id"]
         base = f"/api/v1/libraries/{identity}"
         raw_client.get(base + "/replica/status")
-        for _ in range(15):
+        # An exchange can return immediately while the background worker holds
+        # its lock. Wait for the catalog instead of counting attempted passes.
+        deadline = time.monotonic() + 30
+        while True:
             service.exchange(identity)
-        local = raw_client.get(base + "/replica/media/files/media-direct").json()
+            local_response = raw_client.get(base + "/replica/media/files/media-direct")
+            if local_response.status_code == 200 or time.monotonic() >= deadline:
+                break
+            assert local_response.status_code in (404, 409), local_response.text
+            time.sleep(0.01)
+        assert local_response.status_code == 200, local_response.text
+        local = local_response.json()
         with raw_client.stream(
             "GET",
             base + "/files/media-direct/stream",

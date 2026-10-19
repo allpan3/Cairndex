@@ -55,14 +55,16 @@ def replica_store(
         lifecycle.leave(library_id)
 
 
+CommonReplicaStore = Annotated[Store | CatalogStore, Depends(replica_store, scope="function")]
+
+
 # Legacy metadata endpoints never run against a catalog-capable store
-def bundle_store(store: Annotated[Store | CatalogStore, Depends(replica_store)]) -> Store:
+def bundle_store(store: CommonReplicaStore) -> Store:
     if not isinstance(store, Store):
         raise ReplicaError("This API requires bundle_metadata_v1")
     return store
 
 
-CommonReplicaStore = Annotated[Store | CatalogStore, Depends(replica_store)]
 ReplicaStore = Annotated[Store, Depends(bundle_store)]
 Cursor = Annotated[str, Query(max_length=64)]
 Limit = Annotated[int, Query(ge=1, le=50)]

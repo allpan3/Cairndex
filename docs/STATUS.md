@@ -78,11 +78,116 @@ left, a discovery review that no longer opened after Update, and always-visible
 panel scrollbars. Tracing them found more v0.2.1 losses:
 the View menu's panel, mode and zoom commands and New Collection/New Empty
 Bundle did nothing in a portable library, the panels could not be hidden or
-resized, and its selects had lost their colours. `fix/shell-and-sidebar-v021`
+resized, and its selects had lost their colours.
+[PR #92](https://github.com/allpan3/Cairndex/pull/92), merged as `c973be79`,
 fixes all of these: **File ▸ Servers…** replaces the bar, the browser fills the
 window, Update runs in the sidebar footer as v0.2.1's job rows did and reports
 its result in the window's message, the panels hide, return and resize, and
 their scrollbars show only while they scroll.
+
+Both full VM gates, publication privacy and all 16 hosted checks passed before
+#92 merged. The owner has not yet tested that installed build.
+
+### macOS SQLite durability (2026-10-18)
+
+macOS writers now use FULL synchronous and both fullfsync flags through
+`persistence/sqlite_durability.py`. The policy covers private replicas/catalogs,
+ORM library and registry connections, attached plans, backups, conversion and
+recovery copies, and the standalone registry backup/restore helpers.
+Linux/Docker keeps its existing SQLite pragma policy. No schema migration,
+API shape change or Rust SQLite dependency is involved.
+[ADR-0039](adr/0039-macos-sqlite-durability.md) records the owner's approved
+durability choice because it amends ADR-0002 and has a measurable cost.
+
+Qualification also exposed a response-ordering bug. Request-scoped SQL session
+cleanup ran after HTTP headers, so an immediate list or Open could miss a newly
+created registry row, and a commit failure could follow a 201 success reply.
+SQL session dependencies now use function scope on every platform, committing
+before headers. A deterministic regression checks row visibility at response
+start and rejects a false success when commit fails. FastAPI's minimum version
+is 0.121 for this scope API; the locked package version is unchanged.
+
+Synthetic storage timings on the approved macOS VM, Python 3.12.13 and SQLite
+3.53.1. The columns compare median / p95 milliseconds before and after. Three fresh
+databases per policy, with alternating policy order, supply 150 samples per
+rating mode, 60 batches of each size and 30 checkpoints. Automatic checkpoints
+are disabled for the pooled WAL timings; each explicit checkpoint has 1 MiB of
+new payload.
+These are SQLite transaction timings, excluding API, catalog replay and media
+work. The first row includes opening, committing and closing the last
+connection, which also checkpoints its WAL.
+
+| Storage and operation | Before, median / p95 ms | After, median / p95 ms |
+| --- | ---: | ---: |
+| Local WAL, rating including open/close, previous FULL | 0.62 / 2.02 | 18.45 / 28.69 |
+| Local WAL, pooled rating, previous FULL | 0.10 / 0.32 | 5.24 / 9.38 |
+| Local WAL, pooled rating, previous ORM NORMAL | 0.007 / 0.013 | 5.24 / 9.38 |
+| Local WAL, 32-row batch, previous FULL | 0.26 / 0.49 | 7.19 / 18.77 |
+| Local WAL, 200-row batch, previous ORM NORMAL | 0.41 / 0.44 | 8.20 / 15.20 |
+| Local WAL, 1 MiB checkpoint, previous FULL | 1.03 / 1.52 | 5.25 / 15.93 |
+| Local rollback, rating, previous ORM NORMAL | 0.44 / 0.89 | 17.46 / 24.73 |
+| Local rollback, 200-row batch, previous ORM NORMAL | 1.10 / 1.23 | 21.33 / 34.54 |
+
+On the mounted test SMB share, rollback journaling remained in use. No WAL was
+attempted there. The synthetic file rejected `F_FULLFSYNC` with errno 45,
+`ENOTSUP`, and accepted `fsync`. SQLite commits and integrity checks passed
+with both flags on, consistent with its documented fallback.
+
+| SMB rollback operation | Before ORM NORMAL, median / p95 ms | After, median / p95 ms |
+| --- | ---: | ---: |
+| Rating | 76.81 / 118.36 | 120.79 / 142.70 |
+| 32-row batch | 86.83 / 100.21 | 132.75 / 154.69 |
+| 200-row batch | 106.74 / 152.78 | 151.08 / 181.91 |
+
+With FULL already set and both flags off, the SMB rating median was 118.52 ms
+and the 200-row batch 150.66 ms. Most of the increase therefore comes from
+NORMAL → FULL, rather than the rejected fullfsync call. This cost is acceptable
+for the retained network-library engine and conversion paths. Current portable
+libraries keep their working databases local. The benchmark created only its
+own uniquely named scratch tree, removed it and unmounted its test mount.
+
+The local synthetic file accepted `F_FULLFSYNC`. All benchmark databases passed
+integrity checks and exact scan-row counts. The absolute local costs are
+acceptable for edits and existing scan batches, so scans retain the same
+durability policy. This does not qualify large-library throughput or physical
+power-loss safety. SQLite's fallback and a successful flush request cannot
+establish that the hypervisor, host or NAS persists bytes on stable storage.
+Run `uv run python -m cairndex.devtools.benchmark_sqlite_durability` from
+`apps/server` to reproduce. Gates and benchmarks use isolated synthetic temp
+state; the owner's library, registry and private store are outside the tests.
+
+Qualification exposed five test assumptions about fast I/O. Source API tests
+manually advanced work while their lifespan worker could claim it through the
+default registry. Large discovery tests allowed only 100 time-limited worker
+ticks. The test fixtures now keep source execution under manual control and
+exercise large discovery with a budget that expires after each phase. Their
+driver allows enough ticks to finish. The playback connection-pool test now
+waits for a successful media lookup: its fixed exchange count could consist of
+skipped calls while the background worker held the lock. Forced contention
+reproduced that failure and passed after the setup repair. Two API cleanup paths
+also closed transports while their worker could still execute a generator. They
+now use the existing lifecycle drain. Pausing a synthetic generator reproduced
+the old failure, and the repaired case and all 40 affected module tests passed.
+The private-controls browser test also waits up to 30 seconds for a terminal
+background recovery state, then requires success. Its five-second UI assertion
+expired while preparation still reported running in a three-worker VM run.
+The shipping worker and its time budget are unchanged. These repairs have
+separate commits from the durability change.
+
+Both full VM gates ended with `Final result: 0`. macOS passed 1,954 backend
+tests and 137 Rust tests; Linux passed 1,788 + 165 backend tests and 135 Rust
+tests. Both passed 4 frozen binary tests, 154 web test files, all 47 browser
+tests, static checks, sidecar smoke and the web build. The macOS app build and
+distribution check passed too. The documented ARM manifest assertion is
+excluded in the Linux guest and remains covered by hosted x86 CI.
+Docker context/image privacy, API/restart/arbitrary-UID smoke, registry
+backup/restore and private recovery smoke also ended with `Final result: 0`
+against the local test VM daemon. Receipts:
+`fullfsync-ack-final-mac-20261018-230329`,
+`fullfsync-ack-final-linux-20261018-230705` and
+`fullfsync-docker-20261018-230350`.
+
+### Earlier portable feature qualification
 
 Portable exports restore Save GIF… and Save Contact Sheet… in the viewer, album
 and File Browser for servers that advertise `export_version: 1`. The server

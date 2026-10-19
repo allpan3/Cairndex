@@ -4,7 +4,8 @@ version = "0.2.1"
 description = "Cairndex backend: FastAPI service for a local-first media asset manager."
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
+    # Function-scoped sessions commit before HTTP response headers.
+    "fastapi>=0.121",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",

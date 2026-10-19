@@ -155,6 +155,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for background recovery tasks to reach a terminal state in the private
+  controls browser test, then require success. Its default five-second UI
+  assertion could expire while durable preparation was still running.
+- Drain background replica work before API-test cleanup closes its transport.
+  Direct close could interrupt an executing transport generator on slow storage.
+- Wait for the synthetic media catalog before the streaming connection-pool
+  assertion. Attempted exchanges can skip work while a background pass holds
+  the per-library lock.
+- Exercise large discovery reviews with one phase per worker tick and allow
+  their test driver enough ticks for slow durable storage.
+- Keep portable source API tests under manual worker control. The lifespan
+  worker could claim the same synthetic intent through the default registry
+  while a test drove it against its isolated registry on slower storage.
 - Wait for the path suggestion menu's measured layout in its browser test.
   Keep both edge hit tests so persistent clipping still fails.
 
@@ -323,6 +336,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Commit SQL-backed API writes before sending a success response. Creating a
+  library could return 201 before its registry row was visible, making an
+  immediate Open try a duplicate registration. Commit failures could also
+  follow an already-sent success reply.
+- Request device-cache flushes for every SQLite writer on macOS, including
+  private metadata, the registry, backups and conversion/recovery copies.
+  Connections use FULL synchronous and enable fullfsync for commits and WAL
+  checkpoints. Linux/Docker settings and network journal-mode selection stay
+  unchanged. Filesystems that reject fullfsync retain SQLite's fsync fallback.
 - **The window's top edge is the app again, as in v0.2.1.** A "Server:" bar with
   *Servers…* and *Reconnect* sat above the whole app, pushed the sidebar down
   below the window buttons and could not move the window. The server choice is

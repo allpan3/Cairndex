@@ -49,8 +49,10 @@ API/worker/UI. See [file operations](file-operations.md).
   defined in `domain/enums.py`.
 - **Hierarchy:** adjacency list (`parent_id` self-FK) plus recursive CTEs for
   descendants where needed (tags and collections).
-- **FK enforcement:** `PRAGMA foreign_keys=ON` per SQLite connection; WAL mode is
-  enabled for content/library DBs.
+- **SQLite settings:** `PRAGMA foreign_keys=ON` per ORM/private-store connection.
+  Private stores use WAL; the retained library engine uses rollback on network
+  mounts under ADR-0021. macOS writers use FULL synchronous and both fullfsync
+  flags under [ADR-0039](adr/0039-macos-sqlite-durability.md).
 - **Optimistic concurrency:** frequently edited content entities carry a
   `version` integer. Single-entity `PATCH` routes accept optional
   `If-Match: <version>` and return 409 (`version_conflict`) on stale edits;

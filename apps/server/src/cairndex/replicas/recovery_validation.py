@@ -10,6 +10,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.catalog import projection
 from cairndex.replicas.catalog.protocol import CatalogDescriptor, Root
 from cairndex.replicas.catalog.protocol import decode as catalog_decode
@@ -33,7 +34,7 @@ def snapshot(source: Path, destination: Path) -> None:
     try:
         with (
             closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as src,
-            closing(sqlite3.connect(destination)) as dst,
+            closing(connect_writable(destination)) as dst,
         ):
             src.execute("BEGIN")
             src.execute("SELECT count(*) FROM sqlite_master").fetchone()
