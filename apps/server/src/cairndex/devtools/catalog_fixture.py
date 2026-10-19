@@ -91,6 +91,8 @@ def create_disposable(*, parent: Path | None = None, bundles: int = 125) -> Disp
     with connect_writable(metadata / "library.db") as db:
         db.execute("ATTACH DATABASE ? AS plans", (str(private / "plans.db"),))
         configure_durability(db, schema="plans")
+        # DDL otherwise autocommits each table/index under Python's legacy transaction mode.
+        db.execute("BEGIN")
         create_schema(db)
         for index in range(bundles):
             insert_row(
