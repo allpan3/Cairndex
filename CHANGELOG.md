@@ -333,6 +333,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Request device-cache flushes for every SQLite writer on macOS, including
+  private metadata, the registry, backups and conversion/recovery copies.
+  Connections use FULL synchronous and enable fullfsync for commits and WAL
+  checkpoints. Linux/Docker settings and network journal-mode selection stay
+  unchanged. Filesystems that reject fullfsync retain SQLite's fsync fallback.
 - **The window's top edge is the app again, as in v0.2.1.** A "Server:" bar with
   *Servers…* and *Reconnect* sat above the whole app, pushed the sidebar down
   below the window buttons and could not move the window. The server choice is

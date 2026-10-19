@@ -2,6 +2,12 @@
 # Restore one Cairndex SQLite backup atomically while the application is stopped
 set -euo pipefail
 
+# Use the same standard-library policy from a checkout or installed server.
+cairndex_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/apps/server/src"
+if [[ -d "$cairndex_source_dir" ]]; then
+    export PYTHONPATH="$cairndex_source_dir${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
 if [[ $# -ne 3 || "$1" != "--stopped" ]]; then
     echo "usage: $0 --stopped BACKUP_PATH DATABASE_PATH" >&2
     echo "error: stop every Cairndex process that can open this database first" >&2
@@ -46,12 +52,13 @@ from __future__ import annotations
 
 import os
 import shutil
-import sqlite3
 import stat
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from cairndex.persistence.sqlite_durability import connect_writable
 
 source = Path(sys.argv[1]).resolve()
 destination = Path(sys.argv[2]).resolve()
@@ -73,7 +80,7 @@ try:
     # only this private copy, keeping a read-only backup mount untouched and
     # treating `?` and `#` literally without SQLite URI interpretation.
     shutil.copyfile(source, temporary)
-    dst = sqlite3.connect(temporary)
+    dst = connect_writable(temporary)
     try:
         result = dst.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":

@@ -14,6 +14,14 @@ Registry rows contain `package_format` and `serving_released`. Durable
 drains admitted requests and closes the private binding lock. Reopen is explicit.
 Access settings remain outside recovery generations.
 
+All macOS SQLite writers use `synchronous=FULL`, `fullfsync=ON` and
+`checkpoint_fullfsync=ON`, including backups, recovery and conversion copies.
+`persistence/sqlite_durability.py` applies the policy per connection and sets
+synchronous for each writable attached schema. Linux settings and journal-mode
+selection are unchanged. SQLite falls back to `fsync` if a filesystem rejects
+`F_FULLFSYNC`; physical durability depends on the storage stack. See
+[ADR-0039](adr/0039-macos-sqlite-durability.md) and [measurements](STATUS.md#macos-sqlite-durability-2026-10-18).
+
 Durable `conversion_tasks` hold global owner-setup inspection, preparation,
 activation and Undo. One worker executes slow metadata work outside HTTP handlers.
 Exact operation IDs resolve lost replies. Private review receipts bind the root,

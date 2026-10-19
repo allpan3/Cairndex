@@ -10,6 +10,13 @@
 # backups. Restore the registry with restore.sh while the server is stopped.
 set -euo pipefail
 
+# A checkout can use the shared policy without installing the server package.
+# Containers already have it installed, so their source-path fallback is unused.
+cairndex_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/apps/server/src"
+if [[ -d "$cairndex_source_dir" ]]; then
+  export PYTHONPATH="$cairndex_source_dir${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
 DB_PATH="${1:-${CAIRNDEX_DATA_DIR:-/data}/registry.db}"
 DEST_DIR="${2:-./backups}"
 BACKUP_LABEL="${3:-}"
@@ -50,12 +57,13 @@ trap cleanup EXIT
 # sqlite3.backup() copies a live database safely under concurrent writes; a
 # plain `cp` of a WAL database can capture a torn/partial state.
 python3 - "$DB_PATH" "$OUT" <<'PY'
-import sqlite3
 import sys
 
+from cairndex.persistence.sqlite_durability import connect_writable
+
 src_path, dst_path = sys.argv[1], sys.argv[2]
-src = sqlite3.connect(src_path)
-dst = sqlite3.connect(dst_path)
+src = connect_writable(src_path)
+dst = connect_writable(dst_path)
 with dst:
     src.backup(dst)
 dst.close()
@@ -64,10 +72,11 @@ PY
 
 # Integrity-check the copy so a corrupt backup fails loudly rather than silently.
 result="$(python3 - "$OUT" <<'PY'
-import sqlite3
 import sys
 
-conn = sqlite3.connect(sys.argv[1])
+from cairndex.persistence.sqlite_durability import connect_writable
+
+conn = connect_writable(sys.argv[1])
 print(conn.execute("PRAGMA integrity_check").fetchone()[0])
 conn.close()
 PY

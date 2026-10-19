@@ -401,7 +401,9 @@ working database or activate one by replacing its file.
 `infra/backup.sh` creates an integrity-checked hot registry copy with a unique
 mode-0600 filename. `restore.sh` restores it while stopped; both reject legacy
 `library.db` maintenance. Portable working stores require the verified private
-recovery workflow. For the registry:
+recovery workflow. Both helpers load the shared SQLite durability policy from a
+source checkout or the installed server package. Their Python code uses only
+the standard library. For the registry:
 
 ```bash
 docker compose exec app /app/infra/backup.sh /data/registry.db /backups

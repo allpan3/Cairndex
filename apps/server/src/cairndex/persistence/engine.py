@@ -1,9 +1,11 @@
 import hashlib
 import logging
+import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy import Connection, Engine, Table, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -13,6 +15,7 @@ from cairndex.core.errors import LibraryDatabaseOpenError
 from cairndex.domain.enums import CONTEXT_DIRECTORY_PREFIX as _CONTEXT_DIRECTORY_PREFIX
 from cairndex.persistence import journal
 from cairndex.persistence.base import PLANS_SCHEMA
+from cairndex.persistence.sqlite_durability import configure_durability
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,7 @@ _CACHE_KIB = 32 * 1024
 def _apply_connection_pragmas(dbapi_connection: object, _connection_record: object) -> None:
     """Set the genuinely connection-scoped SQLite pragmas (ADR-0002).
 
-    These three really are per-connection, so they must run on every new DBAPI
+    These settings are per-connection, so they must run on every new DBAPI
     connection rather than once at startup.
 
     ``journal_mode`` is deliberately **not** here, and used to be. It is stored
@@ -48,11 +51,11 @@ def _apply_connection_pragmas(dbapi_connection: object, _connection_record: obje
     difference matter; :mod:`cairndex.persistence.journal` owns it now, once per
     engine, and differently for a library than for the server's own registry.
     """
+    configure_durability(cast(sqlite3.Connection, dbapi_connection), synchronous="NORMAL")
     cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
     try:
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.execute(f"PRAGMA cache_size=-{_CACHE_KIB}")
     finally:
         cursor.close()
@@ -128,6 +131,7 @@ def _attach_plans_database(target: str) -> Callable[[object, object], None]:
         cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
         try:
             cursor.execute(f"ATTACH DATABASE ? AS {PLANS_SCHEMA}", (target,))
+            configure_durability(cast(sqlite3.Connection, dbapi_connection), schema="plans")
             if target != _MEMORY_PLANS:
                 # This file is always on the server's own disk, so ADR-0021's
                 # "no WAL on a filesystem that cannot host it" does not reach it,

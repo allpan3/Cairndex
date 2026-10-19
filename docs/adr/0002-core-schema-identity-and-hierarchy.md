@@ -67,6 +67,9 @@ Use **synchronous** SQLAlchemy 2.0 (typed `Mapped[...]` models) with a
 
 ### 4. SQLite pragmas
 
+Amended by [ADR-0021](0021-library-journal-mode-lifecycle.md) for journal-mode
+lifecycle and [ADR-0039](0039-macos-sqlite-durability.md) for macOS durability.
+
 On every connection: `journal_mode=WAL` (concurrent readers + one writer —
 ADR-0001), `foreign_keys=ON` (SQLite disables FK enforcement by default),
 `busy_timeout=5000` (tolerate brief write-lock contention from the future

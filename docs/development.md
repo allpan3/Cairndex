@@ -672,6 +672,20 @@ The content schema is reused by catalog projection and synthetic model tests.
 Model-fixture tests do not qualify public old-format admission. Use real portable
 API fixtures for admission, authorization, isolation and serving lifecycle checks.
 
+SQLite writers share `persistence/sqlite_durability.py`. macOS connections use
+FULL synchronous and both fullfsync flags, including writable attached schemas.
+Use `connect_writable` for raw file writers and backup destinations; read-only
+URI connections and in-memory schema validators can use `sqlite3.connect`.
+Linux's existing synchronous settings remain unchanged. See
+[ADR-0039](adr/0039-macos-sqlite-durability.md) for the storage limits.
+
+From `apps/server`, `uv run python -m cairndex.devtools.benchmark_sqlite_durability`
+compares the previous and current policies on fresh synthetic temp databases.
+For an already mounted test share, pass `--storage smb --parent <scratch-directory>`.
+It removes its own temporary directory and reports no paths. SMB uses rollback
+journaling; WAL checkpoints are measured only on local storage. Results are
+storage transaction timings, excluding API, catalog and media processing work.
+
 ### Adding a library
 
 The Libraries dialog (sidebar `+`) has one **Add library** action. The client

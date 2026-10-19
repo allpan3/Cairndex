@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.inventory import INVENTORY
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.search.index import FTS_TABLE
@@ -190,7 +191,7 @@ def _copy_database(metadata: Path, target: Path) -> str:
             shutil.copyfile(source, target / name)
         elif name == "library.db":
             raise ReplicaError("The library database is missing")
-    with closing(sqlite3.connect(target / "library.db")) as db:
+    with closing(connect_writable(target / "library.db")) as db:
         if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
             raise ReplicaError("The library database failed its integrity check")
         if db.execute("PRAGMA foreign_key_check").fetchone():
@@ -326,7 +327,7 @@ def inspect(root: Path) -> dict[str, Any]:
     else:
         with tempfile.TemporaryDirectory(prefix="cairndex-inspect-") as scratch:
             _copy_database(metadata, Path(scratch) / "copy")
-            with closing(sqlite3.connect(Path(scratch) / "copy" / "library.db")) as db:
+            with closing(connect_writable(Path(scratch) / "copy" / "library.db")) as db:
                 tables, problems = _layout(db)
                 blocking.extend(problems)
                 if not problems:

@@ -14,6 +14,7 @@ from sqlalchemy.schema import CreateIndex, CreateTable
 
 from cairndex.persistence import models as _models  # noqa: F401
 from cairndex.persistence.base import Base
+from cairndex.persistence.sqlite_durability import configure_durability, connect_writable
 from cairndex.replicas.catalog.model import Row
 from cairndex.replicas.protocol import canonical
 
@@ -87,8 +88,9 @@ def create_disposable(*, parent: Path | None = None, bundles: int = 125) -> Disp
     metadata.mkdir(parents=True)
     private = directory / "private"
     private.mkdir()
-    with sqlite3.connect(metadata / "library.db") as db:
+    with connect_writable(metadata / "library.db") as db:
         db.execute("ATTACH DATABASE ? AS plans", (str(private / "plans.db"),))
+        configure_durability(db, schema="plans")
         create_schema(db)
         for index in range(bundles):
             insert_row(

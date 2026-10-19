@@ -18,6 +18,7 @@ from typing import Any
 
 from cairndex.devtools.catalog_fixture import create_schema
 from cairndex.file_ops import smb_transport
+from cairndex.persistence.sqlite_durability import configure_durability, connect_writable
 from cairndex.replicas.binding import private_path, read_json, sync_directory, write_json
 from cairndex.replicas.catalog.conversion import build_candidate, seal_archive, verify_archive
 from cairndex.replicas.catalog.legacy_input import (
@@ -81,8 +82,9 @@ def normalize(source: Path, checkpoint: Path) -> None:
     checkpoint.mkdir(mode=0o700)
     defaults = _additive_defaults()
     # URI filenames let the source attach read-only
-    with closing(sqlite3.connect((checkpoint / "library.db").as_uri(), uri=True)) as db:
+    with closing(connect_writable((checkpoint / "library.db").as_uri(), uri=True)) as db:
         db.execute("ATTACH DATABASE ? AS plans", ((checkpoint / "plans.db").as_uri(),))
+        configure_durability(db, schema="plans")
         create_schema(db)
         db.execute("ATTACH DATABASE ? AS source", (source.as_uri() + "?mode=ro",))
         tables = {

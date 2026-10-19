@@ -18,11 +18,12 @@ Two defences, both here:
 import contextlib
 import logging
 import os
-import sqlite3
 import tempfile
 from pathlib import Path
 
 from sqlalchemy import Engine
+
+from cairndex.persistence.sqlite_durability import connect_writable
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,8 @@ def snapshot_database(source: Path, destination: Path) -> bool:
         # The mkstemp file exists and is empty; sqlite3 initializes a
         # zero-length file as a database happily.
         with (
-            contextlib.closing(sqlite3.connect(source)) as src,
-            contextlib.closing(sqlite3.connect(tmp)) as dst,
+            contextlib.closing(connect_writable(source)) as src,
+            contextlib.closing(connect_writable(tmp)) as dst,
         ):
             src.backup(dst)
         os.replace(tmp, destination)

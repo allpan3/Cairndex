@@ -1,7 +1,6 @@
 """Disposable paginated albums with generated images and optional video."""
 
 import shutil
-import sqlite3
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -13,6 +12,7 @@ from cairndex.devtools.catalog_fixture import (
     synthetic_row,
 )
 from cairndex.media.ffmpeg_exec import ffmpeg_exe, run_ffmpeg
+from cairndex.persistence.sqlite_durability import connect_writable
 from cairndex.replicas.catalog.conversion import prepare_disposable
 
 
@@ -20,7 +20,7 @@ def prepare_album(*, parent: Path | None = None, video: bool = False) -> Disposa
     fixture = create_disposable(parent=parent, bundles=3)
     picture = Image.new("RGB", (320, 180), "#246f91")
     ImageDraw.Draw(picture).text((20, 80), "Synthetic album", fill="white")
-    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+    with connect_writable(fixture.source / ".cairndex/library.db") as db:
         db.execute(
             "UPDATE asset_bundles SET title='Synthetic album',cover_file_id='loose-000' "
             "WHERE id='bundle-000001'"
