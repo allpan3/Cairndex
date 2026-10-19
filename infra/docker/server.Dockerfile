@@ -5,7 +5,7 @@
 # image is infra/docker/production.Dockerfile. Build context is apps/server
 # (see docker-compose.yml).
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # ffmpeg/ffprobe are not optional for a usable server: scanning probes every
 # media file through ffprobe, and thumbnails, storyboards, subtitle conversion,
