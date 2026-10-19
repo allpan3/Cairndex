@@ -14,6 +14,12 @@ Registry rows contain `package_format` and `serving_released`. Durable
 drains admitted requests and closes the private binding lock. Reopen is explicit.
 Access settings remain outside recovery generations.
 
+SQL-backed JSON handlers commit and close their function-scoped sessions before
+HTTP response headers. Commit failures can therefore produce an error response,
+and immediate follow-up requests can read acknowledged changes. This ordering
+applies on all platforms. Streaming handlers use explicit short session scopes
+for resolution and pass no Session into the response-body iterator.
+
 All macOS SQLite writers use `synchronous=FULL`, `fullfsync=ON` and
 `checkpoint_fullfsync=ON`, including backups, recovery and conversion copies.
 `persistence/sqlite_durability.py` applies the policy per connection and sets

@@ -94,10 +94,18 @@ macOS writers now use FULL synchronous and both fullfsync flags through
 `persistence/sqlite_durability.py`. The policy covers private replicas/catalogs,
 ORM library and registry connections, attached plans, backups, conversion and
 recovery copies, and the standalone registry backup/restore helpers.
-Linux/Docker keeps its existing policy. No schema migration,
-API change or Rust SQLite dependency is involved.
+Linux/Docker keeps its existing SQLite pragma policy. No schema migration,
+API shape change or Rust SQLite dependency is involved.
 [ADR-0039](adr/0039-macos-sqlite-durability.md) records the owner's approved
 durability choice because it amends ADR-0002 and has a measurable cost.
+
+Qualification also exposed a response-ordering bug. Request-scoped SQL session
+cleanup ran after HTTP headers, so an immediate list or Open could miss a newly
+created registry row, and a commit failure could follow a 201 success reply.
+SQL session dependencies now use function scope on every platform, committing
+before headers. A deterministic regression checks row visibility at response
+start and rejects a false success when commit fails. FastAPI's minimum version
+is 0.121 for this scope API; the locked package version is unchanged.
 
 Synthetic storage timings on the approved macOS VM, Python 3.12.13 and SQLite
 3.53.1. The columns compare median / p95 milliseconds before and after. Three fresh

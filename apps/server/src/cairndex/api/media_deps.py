@@ -85,4 +85,4 @@ def get_media_context(access: MediaAccessDep) -> Iterator[MediaContext]:
         yield db
 
 
-MediaSession = Annotated[MediaContext, Depends(get_media_context)]
+MediaSession = Annotated[MediaContext, Depends(get_media_context, scope="function")]

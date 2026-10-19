@@ -672,6 +672,12 @@ The content schema is reused by catalog projection and synthetic model tests.
 Model-fixture tests do not qualify public old-format admission. Use real portable
 API fixtures for admission, authorization, isolation and serving lifecycle checks.
 
+SQL-backed JSON dependencies use `Depends(..., scope="function")` so commit and
+rollback finish before response headers. Keep yielding parent dependencies in
+that scope too. Streaming handlers retain explicit session factories for short
+resolution scopes. FastAPI 0.121 is the minimum version for function scopes;
+the resolved package version is unchanged by this requirement correction.
+
 SQLite writers share `persistence/sqlite_durability.py`. macOS connections use
 FULL synchronous and both fullfsync flags, including writable attached schemas.
 Use `connect_writable` for raw file writers and backup destinations; read-only

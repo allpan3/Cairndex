@@ -333,6 +333,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Commit SQL-backed API writes before sending a success response. Creating a
+  library could return 201 before its registry row was visible, making an
+  immediate Open try a duplicate registration. Commit failures could also
+  follow an already-sent success reply.
 - Request device-cache flushes for every SQLite writer on macOS, including
   private metadata, the registry, backups and conversion/recovery copies.
   Connections use FULL synchronous and enable fullfsync for commits and WAL

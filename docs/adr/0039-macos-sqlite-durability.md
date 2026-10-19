@@ -13,6 +13,10 @@ a device-cache flush. The audit does not establish the cause of the damage.
 The ORM library and registry connections also used `synchronous=NORMAL`,
 which can lose recent WAL commits after an OS crash or power loss.
 
+Slower commits also exposed request-scoped HTTP session cleanup. A success reply
+could precede its registry commit, so an immediate Open missed the new row and
+tried duplicate registration. Even a commit failure could follow a 201 reply.
+
 ## Decision
 
 Every SQLite writer on macOS uses `synchronous=FULL`, `fullfsync=ON` and
@@ -34,6 +38,13 @@ SQLite requests `F_FULLFSYNC` where supported. If the filesystem rejects it,
 SQLite falls back to `fsync`; a failing fallback remains a SQLite I/O error.
 `fullfsync` already covers checkpoints, but both flags are explicit so the
 checkpoint policy remains clear.
+
+SQL-backed JSON handlers use function-scoped session dependencies, including
+yielding parent dependencies, so commits finish before HTTP response headers.
+Commit failures must not acknowledge success. This correction applies on every
+platform and preserves their SQLite pragma choices. Streaming handlers keep
+explicit short session scopes. FastAPI 0.121 is the minimum version for function
+scopes; the existing lock already resolves a newer version.
 
 ## Cost and limits
 
@@ -67,3 +78,5 @@ Non-SQLite file publication and directory sync are outside this change.
   and [synchronous](https://sqlite.org/pragma.html#pragma_synchronous).
 - SQLite's Unix VFS `full_fsync` in
   [os_unix.c](https://sqlite.org/src/file/src/os_unix.c) implements the fallback.
+
+- [FastAPI dependency scopes](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#early-exit-and-scope).

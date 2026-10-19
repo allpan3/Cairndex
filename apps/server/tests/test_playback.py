@@ -148,7 +148,7 @@ def test_stream_releases_db_connection_before_body(
 ) -> None:
     """Regression: the content session must be released before the body streams.
 
-    A ``yield`` session dependency stays checked out until the response body
+    A request-scoped ``yield`` dependency stays checked out until the response body
     finishes, so a streaming ``FileResponse`` used to pin a per-library (and
     registry) connection for the whole transfer. Under drag-seek, overlapping
     range requests then exhausted the QueuePool and new requests timed out (30s)
