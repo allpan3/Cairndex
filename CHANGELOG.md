@@ -155,6 +155,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for the synthetic media catalog before the streaming connection-pool
+  assertion. Attempted exchanges can skip work while a background pass holds
+  the per-library lock.
 - Exercise large discovery reviews with one phase per worker tick and allow
   their test driver enough ticks for slow durable storage.
 - Keep portable source API tests under manual worker control. The lifespan
