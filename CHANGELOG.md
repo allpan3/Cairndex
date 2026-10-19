@@ -155,6 +155,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Record the incomplete portable restoration in a
+  [behavior audit](docs/restoration-audit.md), with the decision timeline,
+  missing interactions and acceptance checks. Repairs remain in progress.
 - Wait for background recovery tasks to reach a terminal state in the private
   controls browser test, then require success. Its default five-second UI
   assertion could expire while durable preparation was still running.
