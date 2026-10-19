@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
@@ -72,13 +73,21 @@ def new_directory(path: Path, root: Path) -> Path:
 
 # Unknown private root artifacts must be classified instead of silently skipped by a backup
 def check_store_files(path: Path) -> None:
+    sqlite_sidecars = {"replica.db-wal", "replica.db-shm", "replica.db-journal"}
     for item in path.iterdir():
-        if item.is_symlink():
+        try:
+            mode = item.stat(follow_symlinks=False).st_mode
+        except FileNotFoundError as error:
+            # Closing SQLite's last connection can remove a sidecar after enumeration.
+            if item.name in sqlite_sidecars:
+                continue
+            raise ReplicaError("Private artifact changed during backup") from error
+        if stat.S_ISLNK(mode):
             raise ReplicaError("Linked private artifacts cannot be backed up")
-        if item.name in {"replica.db", "replica.db-wal", "replica.db-shm", "replica.db-journal"}:
-            if not item.is_file():
+        if item.name == "replica.db" or item.name in sqlite_sidecars:
+            if not stat.S_ISREG(mode):
                 raise ReplicaError("Unsupported private database artifact")
-        elif item.is_dir() and (
+        elif stat.S_ISDIR(mode) and (
             item.name in {"cache", "generations"}
             or re.fullmatch(r"recovery-[A-Za-z0-9_-]+", item.name)
         ):

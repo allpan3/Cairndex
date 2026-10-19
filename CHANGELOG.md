@@ -359,6 +359,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Fix intermittent refusal of a live private backup when SQLite removes a
+  temporary WAL, shared-memory or journal file during the backup's inventory.
+  Unknown files, links and unsupported file types remain refused.
+
 - Restore Create Bundle and Add to Bundle for unlinked files selected in
   File Browser, with title/target suggestions, unchanged source bytes and
   source revalidation before the guarded catalog commit.

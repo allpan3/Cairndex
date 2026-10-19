@@ -70,6 +70,9 @@ discover a provider's other configured roots.
 
 Choose a new backup directory outside the server data directory. Backup can run
 while the server is serving requests, exchanging metadata or saving private work.
+SQLite may remove its own temporary sidecars while backup inventories the
+directory. Their disappearance is accepted; a missing database, linked entry,
+unsupported file type or unclassified artifact still blocks backup.
 
 ```bash
 uv run python -m cairndex.replicas.recovery_cli \

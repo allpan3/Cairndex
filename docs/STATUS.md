@@ -250,6 +250,14 @@ pending state. A controlled six-second response delay reproduces the failure;
 waiting for the actual complete item count passes the same macOS scenario.
 Both corrected full gates remain required before publication.
 
+The next Linux manual run failed a packaged online-backup check after passing
+2,009 backend tests and all 54 browser scenarios. SQLite removed a listed
+temporary sidecar before the backup inspected its type. The inventory now
+tolerates disappearance of only the three recognized SQLite sidecars and keeps
+refusing links, unsupported types, and disappearing primary or unknown files.
+All eight focused cases pass on both guests; Linux recovery tests and the
+rebuilt packaged scenario also pass. Renewed full qualification is required.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through
