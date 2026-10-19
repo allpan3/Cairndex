@@ -58,6 +58,8 @@ export function ControlBar({
 }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
+  // A transcode seek can restart the encoder, so drags seek once at release.
+  const deferSeekDuringDrag = hls.method === 'transcode'
 
   // Publish where the seek track starts, measured rather than guessed. The
   // resume toast is *about* the playhead, so "near the controls" means near the
@@ -100,6 +102,7 @@ export function ControlBar({
           onExport={onExportClip}
           maxExportSeconds={maxExportSeconds}
           onSaveMoment={onSaveMoment}
+          deferSeekDuringDrag={deferSeekDuringDrag}
         />
       )}
       <div className="mv-controls__row">
@@ -195,6 +198,7 @@ export function ControlBar({
         player={player}
         video={video}
         onDragChange={onDragChange}
+        deferSeekDuringDrag={deferSeekDuringDrag}
         clip={clip}
         moments={moments}
       />

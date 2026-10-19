@@ -11,7 +11,7 @@ import type { PlayerController } from './usePlayer'
  * 2026-08-30). The window's two ends are printed either side of the track, so
  * they are what these read.
  */
-function setup(range = { start: 40, end: 60 }) {
+function setup(range = { start: 40, end: 60 }, deferSeekDuringDrag = false) {
   const clip = {
     range,
     adjustBase: null,
@@ -21,7 +21,9 @@ function setup(range = { start: 40, end: 60 }) {
     setAdjusting: vi.fn(),
   } as unknown as ClipRangeController
   const player = { duration: 600, currentTime: 45, seek: vi.fn() } as unknown as PlayerController
-  const utils = render(<ClipTimeline clip={clip} player={player} />)
+  const utils = render(
+    <ClipTimeline clip={clip} player={player} deferSeekDuringDrag={deferSeekDuringDrag} />,
+  )
   const track = utils.container.querySelector('.mv-clip-zoom__track') as HTMLElement
   vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
     left: 0,
@@ -44,7 +46,7 @@ function setup(range = { start: 40, end: 60 }) {
     }
     return secs(b!) - secs(a!)
   }
-  return { track, edges, width, utils }
+  return { clip, track, edges, width, utils }
 }
 
 test('the wheel zooms the magnified track', () => {
@@ -128,4 +130,23 @@ test('the track keeps the wheel to itself', () => {
 
   expect(seenByViewer).not.toHaveBeenCalled()
   document.removeEventListener('wheel', seenByViewer)
+})
+
+// A transcoded source can restart its encoder on each seek, so dragging a
+// handle moves the band live but previews the frame only once, at release.
+test('a transcoded handle drag seeks only at release', () => {
+  Element.prototype.setPointerCapture = vi.fn()
+  Element.prototype.releasePointerCapture = vi.fn()
+  const { clip, utils } = setup({ start: 40, end: 60 }, true)
+  const handle = utils.container.querySelector('.mv-clip-zoom__handle--start') as HTMLElement
+
+  fireEvent.pointerDown(handle, { clientX: 300, pointerId: 1, button: 0 })
+  fireEvent.pointerMove(window, { clientX: 320, pointerId: 1 })
+  fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 })
+  const seeking = (calls: unknown[][]) => calls.filter((call) => call[2] === undefined)
+  expect(clip.moveTo).toHaveBeenCalledTimes(3)
+  expect(seeking(vi.mocked(clip.moveTo).mock.calls)).toHaveLength(0)
+
+  fireEvent.pointerUp(window, { clientX: 360, pointerId: 1 })
+  expect(seeking(vi.mocked(clip.moveTo).mock.calls)).toHaveLength(1)
 })

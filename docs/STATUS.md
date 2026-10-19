@@ -185,6 +185,17 @@ files, modes, sizes and modification times. Credentials were untouched. Rollback
 and local receipts are retained under `20261106-open-bundle-drop`. Owner
 acceptance remains open.
 
+## Transcode seeking
+
+A superseded HLS segment request can no longer restart an obsolete encoder
+generation. For a transcoded video, seek-bar and clip-handle drags seek once, at
+release ([ADR-0014](adr/0014-hls-session-model.md)). Concurrency tests control
+the overlap with events, including a seek between the failure check and the
+fallback restart; a real-Chromium test plays a disposable portable library with
+actual transcoding. Limits: arrow-key and media-key seeks are not coalesced, so
+holding an arrow key on a transcoded video can restart the encoder at each
+repeat. Native packaging and NAS playback were not retested.
+
 ## Eagle interaction polish
 
 Branch `feat/eagle-interaction-polish`, rebased onto current `main` including

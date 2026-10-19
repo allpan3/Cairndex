@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.api.v1.playback_sessions import get_manager
 from cairndex.core.config import get_settings
-from cairndex.core.errors import CapacityError, ValidationError
+from cairndex.core.errors import CapacityError, NotFoundError, ValidationError
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.media import hls
 from cairndex.media.hls import (
@@ -205,6 +205,90 @@ def test_backward_seek_restarts_encoder(make_manager: ManagerFactory) -> None:
     # A segment before the current run can never be produced by it → restart.
     assert manager.serve_artifact("lib", session.id, "10.m4s").read_bytes() == b"seg10"
     assert session.run_start == 10
+
+
+# Prove an abandoned artifact fetch cannot reclaim a superseded transcode run
+def test_superseded_seek_does_not_restart_its_old_segment(
+    make_manager: ManagerFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep segment 1 absent beyond the synchronization deadlines, even on slow CI
+    manager = make_manager(delay=60.0, ahead_window=1, poll_interval=0.01)
+    session = _create(manager, duration=600.0, kind="transcode")
+    result: dict[str, object] = {}
+    assert manager.serve_artifact("lib", session.id, "0.m4s").read_bytes() == b"seg0"
+    waiting = threading.Event()
+    resume = threading.Event()
+    original_wait = manager._wait_for
+
+    def wait_after_seek(
+        current: HlsSession,
+        path: Path,
+        *,
+        run_generation: int | None = None,
+        deadline: float | None = None,
+    ) -> bool:
+        if path.name == "1.m4s":
+            waiting.set()
+            assert resume.wait(timeout=5.0)
+        return original_wait(current, path, run_generation=run_generation, deadline=deadline)
+
+    monkeypatch.setattr(manager, "_wait_for", wait_after_seek)
+
+    # Segment 1 waits on the initial run. A later far seek supersedes it while
+    # the synchronous route is still alive in FastAPI's worker thread — exactly
+    # what an aborted hls.js request does during a playhead drag
+    def fetch_old_segment() -> None:
+        try:
+            manager.serve_artifact("lib", session.id, "1.m4s")
+            result["served"] = True
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = type(exc).__name__
+
+    old = threading.Thread(target=fetch_old_segment)
+    old.start()
+    try:
+        assert waiting.wait(timeout=5.0)
+        assert manager.serve_artifact("lib", session.id, "50.m4s").read_bytes() == b"seg50"
+    finally:
+        resume.set()
+        old.join(timeout=5.0)
+
+    assert not old.is_alive()
+    assert result == {"error": "NotFoundError"}
+    assert session.run_start == 50
+
+
+def test_seek_between_failure_check_and_restart_cannot_reclaim_the_run(
+    make_manager: ManagerFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = make_manager(delay=60.0, ahead_window=1)
+    session = _create(manager, duration=600.0, kind="transcode")
+    assert manager.serve_artifact("lib", session.id, "0.m4s").read_bytes() == b"seg0"
+    original_wait = manager._wait_for
+    original_check = manager._raise_if_failed
+
+    def expire_old_wait(
+        current: HlsSession,
+        path: Path,
+        *,
+        run_generation: int | None = None,
+        deadline: float | None = None,
+    ) -> bool:
+        if path.name == "1.m4s":
+            return False
+        return original_wait(current, path, run_generation=run_generation, deadline=deadline)
+
+    def seek_after_check(current: HlsSession, *, expected_generation: int | None = None) -> None:
+        original_check(current, expected_generation=expected_generation)
+        assert manager.serve_artifact("lib", current.id, "50.m4s").read_bytes() == b"seg50"
+
+    monkeypatch.setattr(manager, "_wait_for", expire_old_wait)
+    monkeypatch.setattr(manager, "_raise_if_failed", seek_after_check)
+    with pytest.raises(NotFoundError, match="superseded"):
+        manager.serve_artifact("lib", session.id, "1.m4s")
+    assert session.run_start == 50
 
 
 def test_each_encoder_run_is_bounded_to_the_playback_window(
@@ -566,6 +650,36 @@ def _make_mkv(path: Path, *, duration: int = 15) -> None:
     )
 
 
+# Generate a small legacy-codec source that requires transcoding
+def _make_wmv(path: Path, *, duration: int = 15) -> None:
+    assert _FFMPEG is not None
+    subprocess.run(
+        [
+            _FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc=duration={duration}:size=160x90:rate=10",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:duration={duration}",
+            "-c:v",
+            "wmv2",
+            "-c:a",
+            "wmav2",
+            "-shortest",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
 @requires_ffmpeg
 def test_real_ffmpeg_remux_and_transcode_produce_segments(tmp_path: Path) -> None:
     source = tmp_path / "movie.mkv"
@@ -610,6 +724,38 @@ def test_real_ffmpeg_remux_and_transcode_produce_segments(tmp_path: Path) -> Non
         )
         assert manager.serve_artifact("lib", trans.id, "init.mp4").stat().st_size > 0
         assert manager.serve_artifact("lib", trans.id, "0.m4s").stat().st_size > 0
+    finally:
+        manager.shutdown()
+
+
+# Exercise the production command builder across a real legacy-format far seek
+@requires_ffmpeg
+def test_real_wmv_transcode_can_restart_at_a_far_seek(tmp_path: Path) -> None:
+    source = tmp_path / "legacy.wmv"
+    try:
+        _make_wmv(source)
+    except subprocess.CalledProcessError:  # pragma: no cover - optional legacy encoders
+        pytest.skip("ffmpeg build cannot encode the synthetic WMV fixture")
+
+    manager = SessionManager(
+        transcode_dir=tmp_path / "transcode",
+        ahead_window=0,
+        start_reaper=False,
+        segment_wait=30.0,
+    )
+    try:
+        session = manager.create_session(
+            library_id="lib",
+            file_id="legacy",
+            source_path=source,
+            duration=15.0,
+            kind="transcode",
+            params=SessionParams(max_height=90),
+        )
+        assert manager.serve_artifact("lib", session.id, "init.mp4").stat().st_size > 0
+        assert manager.serve_artifact("lib", session.id, "0.m4s").stat().st_size > 0
+        assert manager.serve_artifact("lib", session.id, "2.m4s").stat().st_size > 0
+        assert session.run_start == 2
     finally:
         manager.shutdown()
 
