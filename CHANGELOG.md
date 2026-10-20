@@ -370,6 +370,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore portable search across filenames, paths, source values, tags and
+  collections, while retaining bundle/file notes and moment comments. Changes
+  and moves update the private index before paged search results are read.
+
 - Restore Create Bundle and Add to Bundle for unlinked files selected in
   File Browser, with title/target suggestions, unchanged source bytes and
   source revalidation before the guarded catalog commit.

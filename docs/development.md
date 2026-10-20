@@ -803,7 +803,15 @@ uv run python -m cairndex.devtools.benchmark_queries \
 
 ## Search index
 
-Whole-library text search uses a per-library SQLite FTS5 index (`bundle_search`)
+Portable search uses the private `catalog_search` FTS5 index in
+`replicas/catalog/index.py`. It indexes the complete metadata population before
+paging and follows file, source, tag, collection, note and moment changes.
+Opening an older private store atomically replaces its narrower derived index;
+authored history and other private state remain intact. Run
+`tests/test_catalog_search_fields.py` and `tests/test_catalog_browse.py` for field,
+projection, historical-layout and interrupted-upgrade coverage.
+
+Retained ORM fixtures use a per-library SQLite FTS5 index (`bundle_search`)
 kept fresh by triggers. It is created and first-populated automatically when a
 library DB is opened. To rebuild it for one library (after a bulk external change
 or to recover from drift):

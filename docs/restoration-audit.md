@@ -435,6 +435,30 @@ distribution verification. Receipts
 `Final result: 0`. This qualifies the manual-bundling slice; the later restoration
 branches and final owner build remain pending.
 
+The local search slice restores filename, path, source, tag and collection
+matches over the complete indexed catalog, keeping file notes and moment
+comments. Filename classification also supplies searchable media kinds without
+probing. File transfers, field edits, edge changes and tag/collection renames
+refresh affected bundle rowids in the same transaction. Startup replaces the
+known narrower derived layout atomically and repopulates it in bounded batches.
+One index module now supplies both startup and private-schema recognition.
+The focused Linux slice passes 84 backend cases for later-page matches,
+changes, historical upgrades, rollback and recovery. Backend/web static checks
+and the new whole-population browser scenario also pass. Full gates remain
+required before publication. This restores the earlier search contract and
+changes a private derived index only, so another ADR is unnecessary.
+
+The full Linux search gate passes 2,012 backend tests, all 55 browser scenarios,
+159 web test files, four frozen checks and 135 Rust tests. Receipt
+`restoration-search-v1-linux-20261019-110423` ends in `Final result: 0` with
+unchanged guest source. Later parent changes affect test synchronization only;
+the search implementation is unchanged. Both complete combined restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in `Final result: 0`.
+They exercise the same index module and search regression scenarios, alongside
+the remaining restoration work. This search branch contains only its own slice;
+the other branches and final merged-main owner build remain separate.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

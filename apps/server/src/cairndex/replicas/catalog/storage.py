@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cairndex.replicas.catalog import projection
-from cairndex.replicas.catalog.browse import install
+from cairndex.replicas.catalog.index import install
 from cairndex.replicas.catalog.model import split_key, structural_targets, value_text
 from cairndex.replicas.catalog.protocol import CatalogDescriptor, Part, Root, UnitChange, decode
 from cairndex.replicas.protocol import ReplicaError, checksum
