@@ -695,6 +695,26 @@ navigation, remaining viewer controls, publication and the final merged-main
 owner build follow separately. These operations use the existing structural-preview protocol,
 so no new ADR or migration is required.
 
+The local navigation follow-up restores the reference's mixed collection/bundle
+arrow sequence and nearest-column vertical movement. The bundle layout still
+owns steps outside the rendered window; folded sections are excluded. Existing
+bundle Home/End behavior remains. Bulk selection Size now uses complete selected
+card observations, with unknown values preserved. Linux lint/type checks and
+17 focused/reference cases pass. All five affected browser cases pass, including
+the 75-bundle virtual window, folded sections, geometric transitions, bulk totals,
+selection recovery and the earlier inspector actions. The new fixture initially
+read an empty catalog before admission finished; it now waits for the actual
+population before taking its order snapshot. Both new browser scenarios pass
+together in 18.9 seconds. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The navigation logic, bulk inspector and both browser regression cases match
+that qualified source. The [synthetic bulk Size capture](screenshots/portable-bulk-size.png)
+matches its exact declaration merged through PR #106. Remaining viewer controls,
+final audit reconciliation, publication and the merged-main owner build follow
+separately. This restores existing interactions and uses ADR-0040's private
+observations, so no new ADR or migration is required.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

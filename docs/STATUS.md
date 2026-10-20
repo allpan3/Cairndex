@@ -480,6 +480,24 @@ matches its exact declaration merged through PR #106. Bulk selection Size, mixed
 navigation, remaining viewer controls, publication and the final merged-main
 owner build follow separately.
 
+The next local `fix/portable-browser-navigation` slice restores mixed folder/
+bundle arrows using the earlier geometry helper and retains full-layout bundle
+navigation outside the virtual window. Bulk selection Size uses existing local
+observations and stays unknown when any selected total is unknown. Linux web
+lint/types and 17 focused/reference cases pass. All five affected browser cases
+pass, including mixed geometry, folded sections, 75-bundle virtual navigation,
+bulk known/unknown totals, selection recovery and the earlier inspector actions.
+The new fixture waits for the admitted catalog before reading its initial order.
+Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The navigation logic, bulk inspector and both browser regression cases match
+that qualified source. The [synthetic bulk Size capture](screenshots/portable-bulk-size.png)
+matches its exact declaration merged through PR #106. Remaining viewer controls,
+final audit reconciliation, publication and the merged-main owner build follow
+separately. No API or schema changes are needed; ADR-0040 already defines the
+local-observation policy.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through
