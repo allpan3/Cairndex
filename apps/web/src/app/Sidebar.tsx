@@ -183,6 +183,8 @@ export interface SidebarProps {
   renameCollectionRequest?: { id: string } | null
   onRenameCollectionHandled?: () => void
   smartCollections: SmartCollectionRead[]
+  /** Ordinary editing can be supplied by the portable workspace too. */
+  smartCollectionsEditable?: boolean
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
   onDeleteSmartCollection: (sc: SmartCollectionRead) => void
@@ -303,6 +305,7 @@ export function Sidebar({
   onNewSmartCollection,
   onEditSmartCollection,
   onDeleteSmartCollection,
+  smartCollectionsEditable = !navigationOnly,
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const jobsMenuRef = useRef<HTMLDivElement | null>(null)
@@ -843,7 +846,7 @@ export function Sidebar({
           label="Smart Collections"
           collapsed={smartCollapsed}
           onToggle={() => setSmartCollapsed(!smartCollapsed)}
-          onAdd={navigationOnly ? undefined : onNewSmartCollection}
+          onAdd={smartCollectionsEditable ? onNewSmartCollection : undefined}
           addLabel="New smart collection"
         />
         {!smartCollapsed &&
@@ -856,7 +859,7 @@ export function Sidebar({
                 onClick={() =>
                   onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
                 }
-                onContextMenu={navigationOnly ? undefined : (e) => smartMenu(sc, e)}
+                onContextMenu={smartCollectionsEditable ? (e) => smartMenu(sc, e) : undefined}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -875,6 +878,7 @@ export function Sidebar({
                     onEditSmartCollection(sc)
                   }}
                   aria-label={`Edit ${sc.name}`}
+                  disabled={!smartCollectionsEditable}
                 >
                   ✎
                 </button>

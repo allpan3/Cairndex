@@ -484,6 +484,30 @@ branches and the final merged-main owner build remain separate.
 This restores the earlier initial indexing outcome within ADR-0032,
 so another ADR is unnecessary.
 
+The local Smart Collection slice reconnects ordinary sidebar creation, editing
+and explicit deletion at `browse_version: 14`. It shares the existing condition
+builder and preview query while retaining private drafts, opening causal bases,
+creation identities and exact pending requests. Guarded previews refuse stale
+openings. Name-only changes leave advanced filter text untouched; deletion
+keeps all bundles and media. Linux passes 25 backend cases, 15 web cases,
+backend/web static checks and the real browser workflow. The browser verifies
+draft reopening, matching results, exact advanced-rule preservation, refusal
+of a stale save and deletion without bundle loss. Its focused receipt is
+`smart-collections-focused-20261019.log`. The full Linux gate passed 2,017
+backend tests, all 1,347 web tests in 160 files, all 56 browser scenarios, four
+frozen checks and 135 Rust tests. Receipt
+`restoration-smart-collections-v1-linux-20261019-115727` ends in
+`Final result: 0` with unchanged guest source. Both complete combined
+restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in `Final result: 0`.
+They exercise the same editor, guarded command and regression scenarios,
+including the capability check accepting supported later browse versions.
+Other restoration slices and the final merged-main owner build remain separate.
+The [synthetic editor capture](screenshots/portable-smart-collection.png) was
+reviewed edge to edge; PR #103 registered its declaration before publication.
+This restores an existing workflow over the accepted catalog/draft contracts;
+it does not need another ADR.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

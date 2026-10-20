@@ -1,10 +1,11 @@
 import { useModalDialog } from './useModalDialog'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import type { SmartCollectionRead } from '../api/client'
 import { useFilterPreview, useSmartCollectionMutations } from '../api/hooks'
 import { FilterBuilder } from './FilterBuilder'
-import { type FilterDraft, draftToExpression, emptyDraft, expressionToDraft } from './filterModel'
+import { type FilterDraft, draftToExpression, emptyDraft } from './filterModel'
+import { smartCollectionInput, type SmartCollectionInput } from './smartCollectionModel'
 
 /**
  * Create or edit a Smart Collection. Wraps the shared FilterBuilder with a name
@@ -25,44 +26,74 @@ export function SmartCollectionEditor({
   const { create, update, remove } = useSmartCollectionMutations()
   // Keep the accepted expression and concurrency basis from when this editor opened
   const [original] = useState(existing)
-  const [name, setName] = useState(existing?.name ?? '')
-  const [draft, setDraft] = useState<FilterDraft | null>(
-    () => initialDraft ?? (existing ? expressionToDraft(existing.filter) : emptyDraft()),
+  const [input, setInput] = useState(() => ({
+    ...smartCollectionInput(existing),
+    ...(initialDraft ? { draft: initialDraft } : {}),
+  }))
+  return (
+    <SmartCollectionForm
+      existing={original}
+      input={input}
+      onChange={setInput}
+      onClose={onClose}
+      busy={create.isPending || update.isPending || remove.isPending}
+      error={create.error ?? update.error ?? remove.error}
+      onDelete={original ? () => remove.mutate(original.id, { onSuccess: onClose }) : undefined}
+      onSave={(expr) => {
+        const payload = { name: input.name.trim() }
+        if (!payload.name) return
+        if (original) {
+          update.mutate(
+            {
+              id: original.id,
+              payload: input.conditionsEdited ? { ...payload, filter: expr } : payload,
+              version: original.version,
+            },
+            { onSuccess: onSaved },
+          )
+        } else {
+          create.mutate({ ...payload, filter: expr }, { onSuccess: onSaved })
+        }
+      }}
+    />
   )
-  const [conditionsEdited, setConditionsEdited] = useState(false)
+}
 
+/** Shared ordinary controls; each storage workflow owns its bases and draft delivery. */
+export function SmartCollectionForm({
+  existing,
+  input,
+  onChange,
+  onClose,
+  onSave,
+  onDelete,
+  onDiscard,
+  busy,
+  error,
+  locked = false,
+  saveLabel,
+  children,
+}: {
+  existing?: SmartCollectionRead | null
+  input: SmartCollectionInput
+  onChange: (input: SmartCollectionInput) => void
+  onClose: () => void
+  onSave: (filter: SmartCollectionRead['filter']) => void
+  onDelete?: () => void
+  onDiscard?: () => void
+  busy: boolean
+  error?: unknown
+  locked?: boolean
+  saveLabel?: string
+  children?: ReactNode
+}) {
+  const { name, draft, conditionsEdited } = input
   const expr = useMemo(
     () =>
-      original && !conditionsEdited ? original.filter : draftToExpression(draft ?? emptyDraft()),
-    [original, conditionsEdited, draft],
+      existing && !conditionsEdited ? existing.filter : draftToExpression(draft ?? emptyDraft()),
+    [existing, conditionsEdited, draft],
   )
   const preview = useFilterPreview(expr)
-
-  const save = () => {
-    const payload = { name: name.trim() }
-    if (!payload.name) return
-    if (original) {
-      update.mutate(
-        {
-          id: original.id,
-          payload: conditionsEdited ? { ...payload, filter: expr } : payload,
-          version: original.version,
-        },
-        { onSuccess: onSaved },
-      )
-    } else {
-      create.mutate({ ...payload, filter: expr }, { onSuccess: onSaved })
-    }
-  }
-
-  const del = () => {
-    if (!existing) return
-    remove.mutate(existing.id, { onSuccess: onClose })
-  }
-
-  const busy = create.isPending || update.isPending || remove.isPending
-  const error = create.error ?? update.error
-
   const { ref: dialogRef, close: closeDialog } = useModalDialog(onClose, busy)
 
   return (
@@ -86,25 +117,27 @@ export function SmartCollectionEditor({
           className="edit edit--title"
           value={name}
           placeholder="Smart collection name"
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => onChange({ ...input, name: e.target.value })}
+          disabled={busy || locked}
           aria-label="Smart collection name"
           autoFocus
         />
 
-        {draft ? (
-          <FilterBuilder
-            draft={draft}
-            onChange={(next) => {
-              setDraft(next)
-              setConditionsEdited(true)
-            }}
-          />
-        ) : (
-          <p role="note">
-            These saved conditions use advanced rules. They are preserved; only the name can be
-            edited here.
-          </p>
-        )}
+        <fieldset disabled={busy || locked} className="smart-collection__conditions">
+          {draft ? (
+            <FilterBuilder
+              draft={draft}
+              onChange={(next) => {
+                onChange({ ...input, draft: next, conditionsEdited: true })
+              }}
+            />
+          ) : (
+            <p role="note">
+              These saved conditions use advanced rules. They are preserved; only the name can be
+              edited here.
+            </p>
+          )}
+        </fieldset>
 
         <div className="modal__preview">
           {preview.isError ? (
@@ -121,15 +154,21 @@ export function SmartCollectionEditor({
           )}
         </div>
 
-        {error && (
+        {Boolean(error) && (
           <div className="modal__error" role="alert">
             {(error as Error).message}
           </div>
         )}
 
+        {children}
         <div className="modal__actions">
-          {existing && (
-            <button className="btn btn--danger" onClick={del} disabled={busy}>
+          {onDiscard && (
+            <button className="btn" onClick={onDiscard} disabled={busy || locked}>
+              Discard draft
+            </button>
+          )}
+          {onDelete && (
+            <button className="btn btn--danger" onClick={onDelete} disabled={busy || locked}>
               Delete
             </button>
           )}
@@ -137,8 +176,12 @@ export function SmartCollectionEditor({
           <button className="btn" onClick={closeDialog} disabled={busy}>
             Cancel
           </button>
-          <button className="btn btn--primary" onClick={save} disabled={busy || !name.trim()}>
-            {existing ? 'Save' : 'Create'}
+          <button
+            className="btn btn--primary"
+            onClick={() => onSave(expr)}
+            disabled={busy || !name.trim()}
+          >
+            {saveLabel ?? (existing ? 'Save' : 'Create')}
           </button>
         </div>
       </div>

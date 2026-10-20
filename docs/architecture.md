@@ -912,6 +912,11 @@ preview, filtered browse, and Smart Collection CRUD/browse.
 
 The current Smart Collection editor supports one Eagle-style all/any condition
 group. The AST supports nested boolean groups for a later richer editor.
+Portable ordinary controls reuse that form with private retained inputs and
+captured causal bases. A guarded catalog preview checks the displayed bases
+before preparing a save or deletion. A later conflicting commit keeps its
+alternatives for metadata review. Renaming does not reserialize an unchanged
+filter. Deleting a saved filter never removes its matching bundles or media.
 
 Text search is whole-library and indexed (`cairndex.search`). Each library DB
 carries a `bundle_search` FTS5 table that indexes, per bundle, its title/note,

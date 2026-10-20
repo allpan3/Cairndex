@@ -197,6 +197,14 @@ recovery. **Saved operations**, under Metadata review, recovers a prepared revie
 after a lost response, reload or restart. The indexed File Browser shows cataloged paths beneath the active
 root; it does not browse arbitrary server paths or prove local media availability.
 
+With `browse_version: 14`, the sidebar also offers ordinary Smart Collection
+Create, Edit and Delete with the shared condition builder and live match count.
+Inputs, opening bases, creation identities and pending requests remain private
+across closing and reopening. An unchanged advanced expression keeps its exact
+text during rename. A stale opening cannot authorize a newer save or deletion;
+competing changes during commit stay available for metadata review. Deletion
+removes only the saved filter. Earlier servers keep the raw metadata controls.
+
 ## Ordinary browse and edit boundary
 
 Ordinary Open registers an existing complete synthetic package. A server with

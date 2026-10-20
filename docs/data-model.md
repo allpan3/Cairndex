@@ -448,6 +448,11 @@ drag-reorder / "Clean up by…". The global counterpart is
 
 ### `smart_folders` (model `SmartCollection`)
 
+The portable catalog keeps this family as authored scalar units and the atomic
+`$filter` composite. Ordinary controls use guarded catalog jobs at
+`browse_version: 14`; their drafts and opening bases stay private. The following
+table and route describe the retained ORM/reference representation.
+
 Saved **Smart Collections**. The ORM model is `SmartCollection` and the API is
 `/api/v1/libraries/{library_id}/smart-collections`; the table keeps the legacy
 name `smart_folders` to avoid a second data migration. Columns: `id`, `name`,
