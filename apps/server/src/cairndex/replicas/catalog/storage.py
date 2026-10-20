@@ -73,6 +73,9 @@ class CatalogStorage(PrivateStore):
             from cairndex.replicas.catalog.suggestion_index import install as install_suggestions
 
             install_suggestions(db)
+            from cairndex.replicas.catalog.discovery_index import install as install_discoveries
+
+            install_discoveries(db)
             if "anchor" not in {row[1] for row in db.execute("PRAGMA table_info(catalog_cohorts)")}:
                 db.execute(
                     "ALTER TABLE catalog_cohorts ADD COLUMN anchor INTEGER NOT NULL DEFAULT 1"
@@ -328,7 +331,7 @@ class CatalogStorage(PrivateStore):
             return {
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
-                "browse_version": 14 if self.descriptor.format_version == 3 else 12,
+                "browse_version": 15 if self.descriptor.format_version == 3 else 12,
                 "album_version": 1,
                 "inspector_version": 1,
                 "selection_version": 3,

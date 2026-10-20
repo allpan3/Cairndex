@@ -406,8 +406,8 @@ class CatalogUnbundledRequest(StrictModel):
 
 
 class CatalogUnbundledFile(StrictModel):
-    id: str
-    bundle_id: str
+    id: str | None
+    bundle_id: str | None
     relative_path: str
     # Browse version 10: the path's media classification, for the shared file list
     media_kind: str | None = None
@@ -424,27 +424,22 @@ class CatalogUnbundledPage(StrictModel):
 
 
 def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> CatalogUnbundledPage:
-    """List staged files from the complete catalog without observing source bytes."""
+    """Page staged and privately discovered files without observing source bytes."""
+    from cairndex.replicas.catalog.unbundled_sources import QUEUE
+
     where = (
-        "f.family='asset_files' AND b.family='asset_bundles' "
-        "AND json_extract(b.body,'$.grouping_state')='PROVISIONAL' "
-        "AND json_extract(b.body,'$.grouping_source')='SCAN_SUGGESTION' "
-        "AND json_extract(f.body,'$.relative_path') NOT LIKE '.%' "
-        "AND json_extract(f.body,'$.relative_path') NOT LIKE '%/.%' "
-        "AND instr(lower(json_extract(f.body,'$.relative_path')),lower(?))>0"
+        "relative_path NOT LIKE '.%' AND relative_path NOT LIKE '%/.%' "
+        "AND instr(lower(relative_path),lower(?))>0"
     ) + "".join(
-        f" AND instr('/'||json_extract(f.body,'$.relative_path')||'/','/{name}/')=0"
-        for name in sorted(HIDDEN_NAMES)
+        f" AND instr('/'||relative_path||'/','/{name}/')=0" for name in sorted(HIDDEN_NAMES)
     )
-    source = (
-        "FROM catalog_rows f JOIN catalog_rows b "
-        "ON b.entity=json_extract(f.body,'$.bundle_id') WHERE " + where
-    )
-    total = db.execute("SELECT count(*) " + source, (request.q,)).fetchone()[0]
+    source = "FROM unbundled_sources WHERE " + where
+    total = db.execute(QUEUE + "SELECT count(*) " + source, (request.q,)).fetchone()[0]
     rows = db.execute(
-        "SELECT f.entity,json_extract(f.body,'$.bundle_id'),json_extract(f.body,'$.relative_path') "
+        QUEUE
+        + "SELECT id,bundle_id,relative_path "
         + source
-        + " ORDER BY lower(json_extract(f.body,'$.relative_path')),f.entity LIMIT ? OFFSET ?",
+        + " ORDER BY lower(relative_path),relative_path,id LIMIT ? OFFSET ?",
         (request.q, request.limit, request.offset),
     )
     return CatalogUnbundledPage(

@@ -22,6 +22,7 @@ def schema(db: sqlite3.Connection) -> dict[str, str]:
 @lru_cache
 def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog import projection, storage
+    from cairndex.replicas.catalog.discovery_index import SCHEMA as discovery_index_schema
     from cairndex.replicas.catalog.index import INDEX_SCHEMA, LEGACY_INDEX_SCHEMA
     from cairndex.replicas.catalog.suggestion_index import SCHEMA as suggestion_schema
     from cairndex.replicas.private_layout import DISCOVERY_SCHEMA as discovery_schema
@@ -79,6 +80,12 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
             expected.executescript(projection.SCHEMA)
             before = schema(expected)
             expected.executescript(suggestion_schema)
+            addition = {name: sql for name, sql in schema(expected).items() if name not in before}
+        results.extend([item | addition for item in results.copy()])
+        with closing(sqlite3.connect(":memory:")) as expected:
+            expected.executescript(storage.SCHEMA + discovery_schema)
+            before = schema(expected)
+            expected.executescript(discovery_index_schema)
             addition = {name: sql for name, sql in schema(expected).items() if name not in before}
         results.extend([item | addition for item in results.copy()])
     return tuple(results)

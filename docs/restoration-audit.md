@@ -73,6 +73,12 @@ currently opens Metadata Review instead of the earlier filter editor and
 explicit deletion. These ordinary workflows remain open in the final comparison;
 their underlying portable safeguards do not require losing the controls.
 
+The comparison also finds that desktop completion notifications have no caller
+in the portable workspace. The earlier workspace fed its active maintenance
+snapshots to the shared notification hook. Restore that connection for discovery
+and explicit media passes, preserving the existing long-run, away-window and
+permission rules. This is a disconnected feature, not a documented replacement.
+
 ## Owner scope decisions (2026-10-19)
 
 Restore Recently Used, Size, Date Modified and Date Opened from this device's
@@ -565,6 +571,30 @@ application code is unchanged. Publication and the final merged-main owner
 build remain separate.
 The [synthetic folder viewer](screenshots/portable-path-viewer.png) was reviewed
 edge to edge. PR #105 registered its exact declaration before publication.
+
+The next local slice unifies retained provisional files and fresh private
+observations in the ordinary Unbundled queue and manual dialogs. It selects
+only the latest completed discovery, excludes current catalog paths and keeps
+unaccepted files private. A derived filename index feeds bounded ranked
+candidates; paged choices retain paths and catalog IDs separately. Explicit
+confirmation uses the existing source preparation/revalidation jobs. Older
+private schemas remain recognizable and gain the derived index on open. Linux
+passes 93 backend cases, four focused web cases, backend/web static checks and
+the fresh-discovery plus both existing manual-bundling browser scenarios. The
+fresh-discovery scenario creates with a suggested subtitle and adds paths across
+pages/searches while source hashes remain unchanged. It also verifies immediate
+sidebar count refresh after confirmation. This restores the earlier workflow under the
+accepted private discovery contract, so another ADR is unnecessary.
+Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`
+with the same Unbundled implementation. Publication review corrected browser
+cleanup to close its page before stopping its child server. The scenario, lint
+and formatting pass again on both guests in
+`private-unbundled-cleanup-20261020-022328`; application code is unchanged.
+Publication and the final merged-main owner build remain separate.
+The [synthetic paged file choices](screenshots/portable-private-unbundled.png)
+were reviewed edge to edge. PR #105 registered the exact image before publication.
 
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.

@@ -1415,6 +1415,7 @@ export function useManualBundling() {
       'catalog-unbundled',
       'catalog-local-directory',
       'catalog-navigation',
+      'catalog-view-counts',
       'mb-unbundled-choices',
     ])
       void qc.invalidateQueries({ queryKey: [key, library] })

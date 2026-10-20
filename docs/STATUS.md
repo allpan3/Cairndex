@@ -388,6 +388,25 @@ build remain separate. The reviewed
 [synthetic folder viewer](screenshots/portable-path-viewer.png) uses the exact
 image declaration merged through PR #105.
 
+Branch `fix/portable-private-unbundled` adds fresh observations from the latest
+completed private discovery to Unbundled, its sidebar count and manual choices
+(`browse_version: 15`). Paths retain no catalog identity until explicit guarded
+confirmation. A private derived filename index supports ranked choices beyond
+the current page. Interrupted scans keep the prior complete queue. Linux passes 93 backend cases,
+backend/web static checks, four focused web cases and all three manual-bundling
+browser scenarios. The fresh-discovery scenario confirms source bytes stay
+unchanged while selections survive pages and searches. Manual confirmation also
+refreshes sidebar counts immediately. Both complete combined restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`
+with the same Unbundled implementation. Publication review corrected browser
+cleanup to close its page before stopping its child server. The scenario, lint
+and formatting pass again on both guests in
+`private-unbundled-cleanup-20261020-022328`; application code is unchanged.
+Publication and the final merged-main owner build remain separate. The reviewed
+[synthetic paged file choices](screenshots/portable-private-unbundled.png) use
+the exact image declaration merged through PR #105.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

@@ -1,4 +1,5 @@
 import { useModalDialog } from './useModalDialog'
+import { fileChoiceKey, withFileChoices } from './manualFileChoices'
 import { useContext, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -293,26 +294,22 @@ export function CreateBundleDialog({
   // `null` until the user types: the field then shows the suggested title as it
   // arrives, without a setState-in-effect (derived, not synced).
   const [typedTitle, setTypedTitle] = useState<string | null>(null)
-  const [extra, setExtra] = useState<Set<string>>(new Set())
+  const [extra, setExtra] = useState<Map<string, FileSuggestion>>(new Map())
   const { createFromFiles } = useManualBundling()
 
   const title = typedTitle ?? draft.data?.proposed_title ?? ''
 
-  const toggle = (id: string) =>
+  const toggle = (file: FileSuggestion) =>
     setExtra((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const next = new Map(prev)
+      const key = fileChoiceKey(file)
+      if (next.has(key)) next.delete(key)
+      else next.set(key, file)
       return next
     })
 
   const apply = () => {
-    // The seed selection (ids and/or paths) plus any checked additional files
-    // (suggested unbundled files, always backend ids).
-    const sel: FileSelection = {
-      fileIds: [...(selection.fileIds ?? []), ...extra],
-      relativePaths: selection.relativePaths,
-    }
+    const sel = withFileChoices(selection, extra.values())
     createFromFiles.mutate(
       { sel, title: title.trim() || null },
       {
@@ -392,10 +389,10 @@ export function CreateBundleDialog({
           <div className="mb-list">
             {additional.map((s) => (
               <FileCheckRow
-                key={s.file_id}
+                key={fileChoiceKey(s)}
                 suggestion={s}
-                checked={extra.has(s.file_id)}
-                onToggle={() => toggle(s.file_id)}
+                checked={extra.has(fileChoiceKey(s))}
+                onToggle={() => toggle(s)}
               />
             ))}
           </div>
@@ -432,7 +429,7 @@ export function AddFilesToBundleDialog({
   const bundle = useBundle(portable ? null : bundleId)
   const bundleTitle = knownTitle ?? bundle.data?.title
   const suggestions = useUnbundledFileSuggestions(bundleId)
-  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [checked, setChecked] = useState<Map<string, FileSuggestion>>(new Map())
   const [filter, setFilter] = useState('')
   const [browseAll, setBrowseAll] = useState(false)
   const showAll =
@@ -441,11 +438,12 @@ export function AddFilesToBundleDialog({
   const matchSearch = usePinyinSearch(filter)
   const { addFiles } = useManualBundling()
 
-  const toggle = (id: string) =>
+  const toggle = (file: FileSuggestion) =>
     setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const next = new Map(prev)
+      const key = fileChoiceKey(file)
+      if (next.has(key)) next.delete(key)
+      else next.set(key, file)
       return next
     })
 
@@ -469,7 +467,7 @@ export function AddFilesToBundleDialog({
 
   const apply = () => {
     addFiles.mutate(
-      { bundleId, sel: { fileIds: [...checked] } },
+      { bundleId, sel: withFileChoices({}, checked.values()) },
       {
         onSuccess: (r) =>
           onApplied(
@@ -547,10 +545,10 @@ export function AddFilesToBundleDialog({
       <div className="mb-list">
         {visible.map((s) => (
           <FileCheckRow
-            key={s.file_id}
+            key={fileChoiceKey(s)}
             suggestion={s}
-            checked={checked.has(s.file_id)}
-            onToggle={() => toggle(s.file_id)}
+            checked={checked.has(fileChoiceKey(s))}
+            onToggle={() => toggle(s)}
             ranked={suggested && !showAll}
             disabled={addFiles.isPending}
           />
