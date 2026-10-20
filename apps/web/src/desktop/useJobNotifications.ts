@@ -1,13 +1,19 @@
 import { useEffect } from 'react'
 
-import type { JobRead } from '../api/client'
 import {
   ensureHostNotificationPermission,
   isDesktopHost,
   notifyHost,
   setHostBadgeCount,
 } from '../platform'
-import { accumulateRun, isNotableRun, runNotification, RUN_SETTLE_MS, type JobRun } from './jobRun'
+import {
+  accumulateRun,
+  isNotableRun,
+  runNotification,
+  RUN_SETTLE_MS,
+  type JobRun,
+  type JobNotificationSnapshot,
+} from './jobRun'
 
 /**
  * Run state lives at module scope rather than in refs because the Workspace that
@@ -20,9 +26,15 @@ interface NotificationState {
   run: JobRun | null
   settleTimer: ReturnType<typeof setTimeout> | null
   askedPermission: boolean
+  observedJobs: Set<string>
 }
 
-const state: NotificationState = { run: null, settleTimer: null, askedPermission: false }
+const state: NotificationState = {
+  run: null,
+  settleTimer: null,
+  askedPermission: false,
+  observedJobs: new Set(),
+}
 
 /**
  * Drop any run in flight.
@@ -41,6 +53,7 @@ export function resetJobNotifications(): void {
   if (state.settleTimer) clearTimeout(state.settleTimer)
   state.run = null
   state.settleTimer = null
+  state.observedJobs.clear()
 }
 
 /** Test-only: seed a run and the permission flag. */
@@ -79,10 +92,11 @@ function isAway(): boolean {
  *
  * Inert in the browser.
  */
-export function useJobNotifications(activeJobs: readonly JobRead[]): void {
+export function useJobNotifications(activeJobs: readonly JobNotificationSnapshot[]): void {
   useEffect(() => {
     if (!isDesktopHost()) return
-    if (activeJobs.length > 0) {
+    const running = activeJobs.filter((job) => job.status === 'queued' || job.status === 'running')
+    if (running.length > 0) {
       if (state.settleTimer) {
         clearTimeout(state.settleTimer)
         state.settleTimer = null
@@ -99,18 +113,28 @@ export function useJobNotifications(activeJobs: readonly JobRead[]): void {
       // hands metadata and storyboards to background watchers and returns), and
       // a run is the stretch of activity, not the job that reported last.
       const now = Date.now()
-      for (const job of activeJobs) state.run = accumulateRun(state.run, job, now)
+      for (const job of running) state.observedJobs.add(job.id)
+      for (const job of activeJobs) {
+        if (state.observedJobs.has(job.id)) state.run = accumulateRun(state.run, job, now)
+      }
       return
     }
 
     // Nothing running: the run may be over, or the chained Update flow may just
     // be between stages. Wait out the gap before deciding.
-    const finished = state.run
-    if (!finished || state.settleTimer) return
+    if (!state.run) return
+    // Portable status retains terminal snapshots. Only jobs observed running
+    // belong to this run; an older retained failure must not taint a new one.
+    for (const job of activeJobs) {
+      if (state.observedJobs.has(job.id)) state.run = accumulateRun(state.run, job, Date.now())
+    }
+    if (state.settleTimer) return
     state.settleTimer = setTimeout(() => {
+      const finished = state.run
       state.settleTimer = null
       state.run = null
-      if (!isNotableRun(finished, Date.now()) || !isAway()) return
+      state.observedJobs.clear()
+      if (!finished || !isNotableRun(finished, Date.now()) || !isAway()) return
       const { title, body } = runNotification(finished)
       // Report rather than swallow: a denied capability or refused permission is a
       // real misconfiguration, and silently discarding it is exactly how the dock

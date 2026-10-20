@@ -374,6 +374,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   including ranked nearby files and complete paged search. Confirmation keeps
   the existing source checks and creates no shared staging bundles.
 
+- Reconnect desktop completion notifications and the Dock badge to portable
+  Update and media-maintenance jobs, using the existing long-run and away-window
+  policy. Retained terminal status cannot trigger repeated notifications.
+
 - Restore unindexed video, audio and image playback in the portable File Browser.
   Mixed folder playlists keep linked files' resume and viewer tools, while path
   streams, previews and HLS sessions revalidate the local source generation.
