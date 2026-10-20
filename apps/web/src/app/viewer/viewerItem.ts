@@ -1,6 +1,7 @@
 import {
   type FileBrowserEntry,
   type FileRead,
+  type PlayableVideo,
   fileBrowserContentUrl,
   fileBrowserPreviewUrl,
   fileContentUrl,
@@ -212,5 +213,24 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     nativeImage,
     coverTime: null,
     canSetCover: false,
+  }
+}
+
+/** Native fallback while the path-scoped decision checks client playback support. */
+export function pathPlayable(item: ViewerItem): PlayableVideo {
+  return {
+    file_id: '',
+    display_title: item.title,
+    playable: true,
+    reason: '',
+    mime_type: item.mimeType ?? '',
+    stream_url: item.contentUrl,
+    width: item.width,
+    height: item.height,
+    duration: item.duration,
+    storyboard_url: null,
+    chapters: [],
+    progress: null,
+    subtitles: [],
   }
 }

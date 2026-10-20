@@ -19,7 +19,6 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibraryAccessDep, LibrarySession
 from cairndex.api.media_deps import MediaAccessDep, MediaContext, MediaSession
 from cairndex.api.schemas.playback import (
     AudioStreamRead,
@@ -42,6 +41,7 @@ from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, Session
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.replicas.media import ReplicaMedia
+from cairndex.replicas.path_media import PathMedia
 from cairndex.services import file_browser as file_browser_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
@@ -662,16 +662,28 @@ def _resolve_browser_video(db: Session, raw_path: str) -> tuple[Path, str, dict[
 def file_browser_playback_decision(
     library_id: str,
     payload: FileBrowserPlaybackDecisionRequest,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> PlaybackDecisionResponse:
     """Decide direct/remux/transcode for a library-relative path, session and all."""
-    video_path, relative_path, meta = _resolve_browser_video(db, payload.path)
+    source = (
+        PathMedia(db, payload.path, payload.source_generation)
+        if isinstance(db, ReplicaMedia)
+        else None
+    )
+    if source is not None:
+        if source.kind != MediaKind.VIDEO:
+            raise ValidationError("Only video files are streamable")
+        video_path, relative_path, meta = source.path, source.relative, source.metadata()
+    else:
+        assert isinstance(db, Session)
+        video_path, relative_path, meta = _resolve_browser_video(db, payload.path)
     caps = _profile(payload.caps)
     streams = _audio_streams(meta)
     height = meta.get("height")
     depth = meta.get("bit_depth")
-    tag, note = _effective_video_tag(caps, meta, video_path)
+    with source.input_scope() if source else nullcontext():
+        tag, note = _effective_video_tag(caps, meta, video_path)
     decision = _explained(
         playback.decide_playback(
             caps,
@@ -703,6 +715,8 @@ def file_browser_playback_decision(
     reason = decision.reason
     if decision.method == "direct":
         stream_url = f"/api/v1/libraries/{library_id}/file?path={quote(relative_path, safe='')}"
+        if source is not None:
+            stream_url += f"&source_generation={source.token}"
     elif duration is None or duration <= 0:
         # Same degradation as the per-file route: answer without a session and
         # let the client fall back, rather than refusing the whole decision.
@@ -716,7 +730,16 @@ def file_browser_playback_decision(
             kind=decision.session_kind,
             params=_path_session_params(meta, caps, payload),
             start_s=payload.start_s or 0.0,
+            reuse=source is None,
+            input_scope=source.input_scope if source else nullcontext,
         )
+        if source is not None:
+            created.source_generation = source.token
+            try:
+                source.validate()
+            except Exception:
+                manager.teardown(library_id, created.id)
+                raise
         session_ref = PlaybackSessionRef(
             id=created.id,
             playlist_url=(
@@ -774,7 +797,7 @@ def file_browser_session_artifact(
     library_id: str,
     session_id: str,
     artifact: str,
-    access: LibraryAccessDep,
+    access: MediaAccessDep,
     manager: SessionManagerDep,
 ) -> Response:
     """Serve a path-scoped session's playlist, init segment, or media segment.
@@ -782,6 +805,17 @@ def file_browser_session_artifact(
     Identical to the per-file route: a session is addressed by its own id, and
     the manager holds the bytes, so nothing here needs to know what produced it.
     """
+    if access.replica is not None:
+        session = manager.get(library_id, session_id)
+        if not session.file_id.startswith("path:"):
+            raise ValidationError("Playback session belongs to a cataloged file")
+        try:
+            if session.source_generation is None:
+                raise ValidationError("Reopen this local file to start playback")
+            PathMedia(access.replica, session.file_id[5:], session.source_generation).validate()
+        except Exception:
+            manager.teardown(library_id, session_id)
+            raise
     no_store = {"Cache-Control": "no-store"}
     if artifact == "index.m3u8":
         body = manager.serve_playlist(library_id, session_id)
@@ -797,7 +831,7 @@ def file_browser_session_artifact(
 def delete_file_browser_session(
     library_id: str,
     session_id: str,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> Response:
     """Tear down a path-scoped session (player close, file switch, unmount)."""
@@ -812,7 +846,7 @@ def delete_file_browser_session(
 def beacon_teardown_file_browser_session(
     library_id: str,
     session_id: str,
-    db: LibrarySession,
+    db: MediaSession,
     manager: SessionManagerDep,
 ) -> Response:
     """Tear down a path-scoped session via a POST beacon (see the per-file alias)."""

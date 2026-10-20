@@ -226,6 +226,10 @@ plus the desktop app build and distribution verification. Receipt
 unchanged guest source. Both VM gates now qualify this grouping slice; the
 broader restoration remains open.
 
+Editable grouping review merged through
+[PR #104](https://github.com/allpan3/Cairndex/pull/104) after both full VM gates
+and all 16 hosted checks passed. The remaining restoration continues below.
+
 Manual-bundling recommendations are implemented on
 `fix/portable-bundling-recommendations` with `browse_version: 12`. Nine focused
 backend cases, the recovery suite and a synthetic full-stack Linux scenario
@@ -361,6 +365,28 @@ browser test's cleanup to close its page and stop its child server. The unchange
 application passes that scenario again on both guests, with lint and formatting,
 in the `maintenance-cleanup-20261020-015257` receipts. Publication and the final
 merged-main owner build remain separate.
+
+Branch `fix/portable-file-browser-playback` restores unindexed video/audio/image
+opening in File Browser and mixed folder playlists. Path reads, previews and
+HLS use pinned sources and generation checks; unindexed paths gain no catalog
+identity or saved progress. Linked items retain their viewer tools and local
+history. Linux passes 106 backend cases, 77 focused viewer/File Browser web
+cases, backend/web static checks and the two mixed-folder and linked-resume
+browser scenarios. The mixed-folder check also verifies unchanged source bytes
+and authored rows. The full Linux gate passed 2,034 backend tests, all 1,349 web
+tests in 161 files, all 58 browser scenarios, four frozen checks and 135 Rust
+tests. Receipt `restoration-path-media-v1-linux-20261019-124114` ends in
+`Final result: 0` with unchanged guest source. Both subsequent complete combined
+restoration
+receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0` with
+the same path-media implementation. Publication review corrected browser cleanup
+to close its page before stopping its child server. The scenario, lint and
+formatting pass again on both guests in `path-cleanup-20261020-020812`;
+application code is unchanged. Publication and the final merged-main owner
+build remain separate. The reviewed
+[synthetic folder viewer](screenshots/portable-path-viewer.png) uses the exact
+image declaration merged through PR #105.
 
 ### macOS SQLite durability (2026-10-18)
 

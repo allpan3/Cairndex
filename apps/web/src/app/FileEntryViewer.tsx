@@ -5,7 +5,7 @@ import { usePlaybackManifest } from '../api/hooks'
 import type { PlayerPrefs } from './types'
 import { inspectorTargetForEntry } from './fileFacts'
 import { ViewerShell } from './viewer/ViewerShell'
-import { type ViewerItem, viewerItemFromEntry } from './viewer/viewerItem'
+import { pathPlayable, viewerItemFromEntry } from './viewer/viewerItem'
 
 /**
  * Fullscreen media viewer for the read-only File Browser.
@@ -64,7 +64,7 @@ export function FileEntryViewer({
     if (indexed) return indexed
     // Still waiting on the manifest that will supply the real entry.
     if (manifestBundleId && manifestLoading) return null
-    return directEntry(current)
+    return pathPlayable(current)
   }, [current, isVideo, manifest?.videos, manifestBundleId, manifestLoading])
 
   return (
@@ -84,30 +84,4 @@ export function FileEntryViewer({
       inspectorTarget={inspectorTarget}
     />
   )
-}
-
-/**
- * A direct-play entry for a path with no usable manifest row.
- *
- * Covers both an unindexed path and an indexed one the manifest doesn't list
- * (e.g. never probed). This is only the *fallback* the player uses when the
- * decision itself cannot be made; `playable: true` then defers the verdict to
- * the media element, because native playback is the one option left.
- */
-function directEntry(item: ViewerItem): PlayableVideo {
-  return {
-    file_id: item.fileId ?? '',
-    display_title: item.title,
-    playable: true,
-    reason: '',
-    mime_type: item.mimeType ?? '',
-    stream_url: item.contentUrl,
-    width: item.width,
-    height: item.height,
-    duration: item.duration,
-    storyboard_url: null,
-    chapters: [],
-    progress: null,
-    subtitles: [],
-  }
 }

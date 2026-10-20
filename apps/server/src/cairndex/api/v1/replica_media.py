@@ -1,6 +1,7 @@
 """Catalog playlist reads and local retry/cursor state for the shared media viewer"""
 
 import json
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -9,7 +10,7 @@ from pydantic import BaseModel
 
 from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
-from cairndex.api.schemas.file_browser import FileBrowserListingRead
+from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.moments import MomentRead
 from cairndex.api.schemas.playback import PlayableVideo, PlaybackProgressRead
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
@@ -33,6 +34,51 @@ def replica_media(access: MediaAccessDep) -> ReplicaMedia:
 
 
 Media = Annotated[ReplicaMedia, Depends(replica_media)]
+
+
+class PathMediaRead(BaseModel):
+    entry: FileBrowserEntryRead
+    generation: str
+
+
+@router.get("/path", response_model=PathMediaRead)
+def local_path(path: str, media: Media) -> PathMediaRead:
+    from cairndex.replicas.path_media import PathMedia
+
+    source = PathMedia(media, path)
+    meta = source.metadata()
+    name = source.relative.rsplit("/", 1)[-1]
+    entry = FileBrowserEntryRead(
+        local_state="observed",
+        name=name,
+        relative_path=source.relative,
+        kind="file",
+        size_bytes=source.info.st_size,
+        modified_at=datetime.fromtimestamp(source.info.st_mtime, UTC),
+        created_at=None,
+        extension=source.path.suffix.lstrip("."),
+        mime_type=source.mime,
+        media_kind=source.kind.value,
+        supported=True,
+        linked=False,
+        bundle_id=None,
+        file_id=None,
+        container=meta.get("container"),
+        video_codec=meta.get("video_codec"),
+        video_codec_tag=meta.get("video_codec_tag"),
+        audio_codec=meta.get("audio_codec"),
+        video_bitrate=meta.get("video_bitrate"),
+        audio_bitrate=meta.get("audio_bitrate"),
+        audio_sample_rate=meta.get("audio_sample_rate"),
+        duration=meta.get("duration"),
+        width=meta.get("width"),
+        height=meta.get("height"),
+        fps=meta.get("fps"),
+        bit_depth=meta.get("bit_depth"),
+        resume_position=None,
+        unbundled=True,
+    )
+    return PathMediaRead(entry=entry, generation=source.token)
 
 
 class MaintenanceStart(MaintenanceIntent):

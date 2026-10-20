@@ -5252,6 +5252,18 @@
             "title": "Path",
             "type": "string"
           },
+          "source_generation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Generation"
+          },
           "start_s": {
             "anyOf": [
               {
@@ -7831,6 +7843,23 @@
         "title": "PairStartResponse",
         "type": "object"
       },
+      "PathMediaRead": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/FileBrowserEntryRead"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry",
+          "generation"
+        ],
+        "title": "PathMediaRead",
+        "type": "object"
+      },
       "PathProbeRead": {
         "description": "What a candidate path is, before anything is created or registered.\n\nDrives the single \"Add library\" step: an already-registered folder is\nselected, an unregistered library is registered, and a plain folder is\noffered as a new library named after itself.",
         "properties": {
@@ -9458,6 +9487,17 @@
           "outbox": {
             "title": "Outbox",
             "type": "integer"
+          },
+          "path_media_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path Media Version"
           },
           "peer_delivery": {
             "const": "unknown",
@@ -17090,6 +17130,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "source_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Generation"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -18490,6 +18546,22 @@
               ],
               "title": "Size",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Generation"
             }
           },
           {
@@ -30220,6 +30292,89 @@
           }
         },
         "summary": "Moment Poster",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/path": {
+      "get": {
+        "operationId": "local_path_api_v1_libraries__library_id__replica_media_path_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathMediaRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Local Path",
         "tags": [
           "replica-media"
         ]

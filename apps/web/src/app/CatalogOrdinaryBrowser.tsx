@@ -479,7 +479,9 @@ export function CatalogOrdinaryBrowser(props: {
                         Locate in Bundle Browser
                       </button>
                     )}
-                    {!file.linked && <p>This file must be cataloged before it can open here.</p>}
+                    {!file.linked && status?.path_media_version !== 1 && (
+                      <p>Update the server to preview unindexed files.</p>
+                    )}
                   </>
                 ) : (
                   <p>Select a file to see its details.</p>

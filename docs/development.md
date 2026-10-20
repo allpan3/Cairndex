@@ -1106,3 +1106,12 @@ enqueue retries, cancellation, restart, backup validation and safe failure count
 `e2e/catalog-maintenance.spec.ts` exercises the ordinary menu with generated media,
 checks completed metadata/storyboard passes, and compares source hashes and
 authored file values before and after. Use disposable fixtures only.
+
+### Unindexed media checks
+
+`tests/test_replica_path_media.py` checks scoped raw ranges, private previews,
+unsafe paths, changed generations, probe reuse and HLS artifact/teardown access.
+`ReplicaViewer.paths.test.tsx` checks mixed-folder transitions and older servers.
+`e2e/catalog-path-media.spec.ts` plays generated media through ordinary File
+Browser entry points, retains linked resume and compares source bytes and
+catalog values. Its capture contains only those synthetic fixtures.

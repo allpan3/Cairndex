@@ -161,6 +161,7 @@ class PlaybackDecisionRequest(BaseModel):
 # Deliberately narrower than the per-file request: subtitle burn-in names a
 # `SubtitleTrack` row, and a bare path has none.
 class FileBrowserPlaybackDecisionRequest(BaseModel):
+    source_generation: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     # Library-root-relative; absolute paths and traversal are rejected server-side.
     path: str
     caps: ClientCapabilities
