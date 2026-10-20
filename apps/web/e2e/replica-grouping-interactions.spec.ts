@@ -179,7 +179,7 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
     await page.getByRole('button', { name: 'More library actions', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Review Discoveries…', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Suggest grouping…', exact: true }).click()
     await expect(
       dialog.getByText('10 / 10 files selected · 5 bundles', { exact: true }),
     ).toBeVisible()

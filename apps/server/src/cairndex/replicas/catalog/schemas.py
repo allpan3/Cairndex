@@ -58,14 +58,14 @@ class CatalogPage(StrictModel):
 # Only bounded commands enter handlers; semantic validation and structural work run in jobs
 class CatalogJobRequest(StrictModel):
     operation: Token
-    action: Literal["save", "preview", "commit_preview", "recover"]
+    action: Literal["save", "preview", "commit_preview", "recover", "media_maintenance"]
     body: dict[str, Any]
 
 
 # A queued job is durable intent, while a succeeded save contains the authored event receipt
 class CatalogJob(StrictModel):
     id: Token
-    action: Literal["save", "preview", "commit_preview", "recover"]
+    action: Literal["save", "preview", "commit_preview", "recover", "media_maintenance"]
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     result: dict[str, Any] | None
     error: str | None

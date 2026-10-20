@@ -119,6 +119,18 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                         authorize_source,
                         lambda: close_library_sessions(library_id),
                     )
+                    from cairndex.replicas.maintenance import step as maintain_media
+
+                    maintain_media(
+                        handle[0],
+                        handle[1].root,
+                        library_id,
+                        lambda: (
+                            source_work is None
+                            or not source_work()
+                            or lifecycle.blocked(library_id)
+                        ),
+                    )
             handle[1].tick()
             source_transport = _source_transports.get(library_id)
             if source_transport:
@@ -272,7 +284,9 @@ class ReplicaWorker:
                         with handle[0].connection(readonly=True) as db:
                             waiting = db.execute(
                                 "SELECT 1 FROM source_operations "
-                                "WHERE state IN ('queued','accepted') LIMIT 1"
+                                "WHERE state IN ('queued','accepted') UNION ALL "
+                                "SELECT 1 FROM catalog_jobs WHERE state='queued' "
+                                "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
                             ).fetchone()
                         if waiting:
                             self._pending[library_id] = self._sources.submit(

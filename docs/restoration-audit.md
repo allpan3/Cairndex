@@ -508,6 +508,32 @@ reviewed edge to edge; PR #103 registered its declaration before publication.
 This restores an existing workflow over the accepted catalog/draft contracts;
 it does not need another ADR.
 
+The local maintenance slice restores separate Scan, Suggest grouping, Collect
+metadata and Generate storyboards controls. On-demand probes/storyboards are
+useful additions, but did not replace explicit library preparation. Scan runs
+the existing private discovery pipeline without opening review; its prepared
+suggestions remain private. Suggest grouping opens the retained editable tree.
+Explicit media passes use private catalog jobs on the bounded source worker,
+then the existing storyboard queue. They retain progress across restart, support
+cancellation and pause on private recovery. No media bytes or authored catalog
+values change. Eight Linux backend/worker cases and backend/web static checks
+pass. The real maintenance and grouping-menu browser scenarios pass in
+`maintenance-browser-20261019.log`, with source hashes and authored values
+unchanged. The full Linux gate passed 2,023 backend tests, all 57 browser
+scenarios, four frozen checks and 135 Rust tests. Receipt
+`restoration-maintenance-v1-linux-20261019-121536` ends in `Final result: 0`
+with unchanged guest source. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in `Final result: 0`
+with the same maintenance implementation. Publication review found the browser
+test passed its server wrapper to the child-process stop helper. Correct cleanup
+also closes the page before stopping its server, preventing polling requests
+from reaching a stopped backend. The intermediate Linux cleanup run exposed that
+ordering mistake. The corrected scenario, lint and formatting pass on both guests
+in `maintenance-cleanup-20261020-015257`; application code is unchanged.
+Publication and the final merged-main owner build remain separate. This reuses
+the accepted private job and derivative boundaries, so no additional ADR is needed.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

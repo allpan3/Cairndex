@@ -8,6 +8,7 @@ const actions: Record<Job['action'], string> = {
   preview: 'Prepare operation',
   recover: 'Prepare recovery',
   commit_preview: 'Apply reviewed operation',
+  media_maintenance: 'Prepare local media',
 }
 
 // Only explicitly opened jobs fetch large review payloads; the list stays paginated

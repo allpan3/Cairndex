@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from cairndex.core.errors import DomainError
 from cairndex.replicas.catalog.commands import preview
 from cairndex.replicas.catalog.model import value_text
@@ -18,14 +20,30 @@ def enqueue(
 ) -> dict[str, Any]:
     intent = value_text({"action": action, "body": body})
     if (
-        action not in ("save", "preview", "commit_preview", "recover")
+        action not in ("save", "preview", "commit_preview", "recover", "media_maintenance")
         or len(intent.encode()) > 1024 * 1024
     ):
         raise ReplicaError("Unsupported or oversized catalog job")
+    if action == "media_maintenance":
+        from cairndex.replicas.maintenance import MaintenanceIntent
+
+        try:
+            MaintenanceIntent.model_validate(body)
+        except ValidationError as error:
+            raise ReplicaError("Choose a supported local media pass") from error
     with store.connection() as db:
         prior = db.execute("SELECT intent FROM catalog_jobs WHERE id=?", (operation,)).fetchone()
         if prior and prior[0] != intent:
             raise ReplicaError("Retry identity was reused for a different catalog job")
+        if (
+            action == "media_maintenance"
+            and not prior
+            and db.execute(
+                "SELECT 1 FROM catalog_jobs WHERE state IN ('queued','running') "
+                "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
+            ).fetchone()
+        ):
+            raise ReplicaError("A local media pass is already queued; finish or cancel it first")
         db.execute(
             "INSERT OR IGNORE INTO catalog_jobs VALUES (?, ?, 'queued', NULL, NULL, "
             "(SELECT COALESCE(MAX(sequence),0)+1 FROM catalog_jobs))",
@@ -75,7 +93,9 @@ def listing(store: CatalogStore, after: int = 0, limit: int = 30) -> dict[str, A
 def run_one(store: CatalogStore, root: Path | None = None) -> None:
     with store.connection() as db:
         row = db.execute(
-            "SELECT id,intent FROM catalog_jobs WHERE state='queued' ORDER BY sequence LIMIT 1"
+            "SELECT id,intent FROM catalog_jobs WHERE state='queued' "
+            "AND json_extract(intent,'$.action') != 'media_maintenance' "
+            "ORDER BY sequence LIMIT 1"
         ).fetchone()
         if row is not None:
             db.execute("UPDATE catalog_jobs SET state='running' WHERE id=?", (row["id"],))

@@ -1098,3 +1098,11 @@ real backend with its worker enabled. It drops an accepted activation reply,
 reopens the same task, saves a converted edit and verifies its retention after
 Undo. Historical-release and mounted-storage qualification remain separate from
 current-schema fixture coverage. Record actual results in `docs/STATUS.md`.
+
+### Portable maintenance checks
+
+`tests/test_replica_maintenance.py` verifies bounded private preparation, exact
+enqueue retries, cancellation, restart, backup validation and safe failure counts.
+`e2e/catalog-maintenance.spec.ts` exercises the ordinary menu with generated media,
+checks completed metadata/storyboard passes, and compares source hashes and
+authored file values before and after. Use disposable fixtures only.
