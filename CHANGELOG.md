@@ -167,6 +167,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Wait for the file-change acknowledgement before reloading the bundle-file
+  browser test. Delayed acknowledgement coverage checks that the file remains
+  alive, leaves the old bundle and keeps controls locked until delivery finishes.
+
+- Keep the Smart Collection capability check compatible with later browse
+  features while retaining its exact-filter and guarded-rename assertions.
+
+- Record the behavior-restoration audit, published-history check and accepted
+  differences, and reconcile the catalog workflow documentation.
+
 - Wait for completed dialog closure, pagination, nested tag saves and grouping
   work in UI checks. Refreshing controls and changed button labels are not
   completion receipts. Batch synthetic fixture schema and rows in one
@@ -358,6 +368,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Restore Collect metadata for indexed audio files. Codec, sample rate and
+  duration stay private, reuse the local probe cache and refresh when bytes change.
+
+- Keep All Tags' global Equal/direct filtering distinct from an inspector
+  chip's Any/subtags filter, which retains the current search, rating and
+  collection scope as in the earlier application.
 
 - Preserve job arrival order when two jobs are created in the same millisecond.
   Scheduling and active-job listings now use the recorded creation time, with

@@ -153,7 +153,9 @@ their existing ID-based bundling actions.
 snapshot: All, Recent (every bundle), Uncategorized, Untagged, recorded local
 Missing Files and Unbundled files. Each collection in `/navigation/collections`
 also carries `direct_count`, its own bundles, beside the subtree `count`; the
-sidebar shows the one that opening the collection lists. A collection thumbnail
+sidebar uses the subtree count when a row is folded and its direct count when
+expanded, independently of the listing's Show subcontents preference. A
+collection thumbnail
 resolves the chosen cover bundle's artwork, or else the earliest browsable bundle
 in the subtree that has any, and serves this device's cached frame with
 `no-store`. Unbundled files carry their `media_kind`. Servers advertise these as
@@ -230,17 +232,17 @@ library switch. An already observed conflict requires explicit metadata review.
 
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
-| Open | Existing `/libraries/register`; capability read at `/replica/status` | Create makes a complete portable library; real conversion and provider qualification remain unavailable |
+| Open | Existing `/libraries/register`; capability read at `/replica/status`; normal portable Create and reviewed legacy conversion | Provider delivery and owner acceptance retain the limits in STATUS |
 | Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | A file this device has not opened has no duration or preview |
-| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages | Source operations use File Browser; file note/source controls and OS drag remain separate |
+| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages; mapped regular-file drag-out | Source operations use File Browser; file note/source controls remain deferred |
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
 | System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
-| Inspector | Title, notes, rating, cover choice, paginated tag/collection membership reviews, files and selected-file local facts | File order, structural changes, moments and history use Metadata review; file note/source controls remain deferred |
+| Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; local summaries | Complete conflicts/history use Metadata Review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
-| File Browser | Shared File Browser through `/replica/media/directory`, plus paginated indexed `/replica/catalog/files` | Unlinked media opening and provider hydration |
-| Update/media | Existing discovery controls and shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
+| File Browser | Shared File Browser through `/replica/media/directory`, paginated indexed `/replica/catalog/files`, and scoped unindexed media opening | Provider hydration and physical-directory pagination remain separate |
+| Update/media | Phase-aware discovery, editable grouping, initial indexing, explicit bounded media passes and the shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
 Search has the same token-prefix AND contract as legacy bundle search. It includes
 bundle titles, ordered bundle notes, file notes and moment comments, plus file
@@ -313,9 +315,10 @@ retains its cursor pages. Folder pagination redesign remains deferred.
 No-follow directory descriptors prevent symlink escapes. Hidden paths follow the
 scanner exclusions. Absolute and traversal paths are rejected. Cataloged video
 and images open through the guarded shared viewer. File Browser playback follows
-the visible folder order; bundle playback follows bundle order. Unlinked files
-must be cataloged before media opening. Source operations use the reviewed
-File Browser workflow. Save Contact Sheet… is offered for a cataloged video. A retained bundle draft survives Files/Tags navigation, and closing
+the visible folder order; bundle playback follows bundle order. Servers with
+`path_media_version: 1` also open supported unindexed paths as described below.
+Source operations use the reviewed File Browser workflow. Save Contact Sheet…
+is offered for a cataloged video. A retained bundle draft survives Files/Tags navigation, and closing
 the viewer retains file selection.
 
 Bundle query size and missing-state predicates use SQL unknown for nonempty
@@ -336,8 +339,10 @@ only the loaded bundle pages; Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.
 
-The bulk inspector has v0.2.1's layout and accepts 1–100 explicit bundle IDs. A
-title (saved on Enter or leaving the field) or a rating replaces one field on all
+The bulk inspector has v0.2.1's layout and accepts 1–100 explicit bundle IDs.
+Size sums current selected-card observations only when every total is known;
+otherwise it states that the value is unknown on this device. A title (saved on
+Enter or leaving the field) or a rating replaces one field on all
 listed bundles; picking a destination or removing a chip changes only that
 membership pair. Each change commits at once. Notes are not a bulk field. A chip
 that only some selected bundles have is dashed. Destination search covers the
@@ -380,8 +385,9 @@ Notes retain exact list values; dragging a grip or using its arrow keys moves
 a note and its manual height. These changes remain in the private draft until
 Save. Tag chips restore Filter, Rename, Copy and Paste, including keyboard-opened
 menus. Browser and viewer chips use Any with subtags and preserve the current
-search, rating filters and collection scope. All Tags keeps its separate global
-Equal/direct action. The viewer's chip filter returns to the browser through
+search, rating filters and collection scope. All Tags' double-click selects All
+bundles, clears search and applies Equal/direct membership. These actions follow
+the earlier application. The viewer's chip filter returns to the browser through
 the same inspector action. Desktop
 Shift+Cmd/Ctrl+C copies the active bundle's complete assigned tag list;
 Shift+Cmd/Ctrl+V adds those tags to the selection. Browser tabs retain their
@@ -397,8 +403,9 @@ library queries and mutations retain their existing routes and behavior.
 
 ## Bundle albums
 
-Servers with `album_version: 1` open bundle contents from the Bundle Browser: a
-double-click, Enter, or **Open Bundle** in the card menu. The shared album tiles and rows support
+Servers with `album_version: 1` open bundle contents through **Open Bundle** in
+the card menu. Double-click and Enter open the viewer at this device's current
+file and saved position. The shared album tiles and rows support
 grid/list layout, item size, pointer toggles, Shift ranges, marquee selection,
 arrows, Home/End and Enter. Command/Ctrl+A selects loaded album items only.
 Escape clears selection, then returns to the parent view. Bundle metadata drafts
@@ -444,8 +451,10 @@ viewer while retaining the catalog editor and its draft. Bundle playlists use
 catalog order and paged file metadata; folder-member selection keeps its existing
 scope. A local cursor is resolved before starting a later-page member.
 
-Only the selected cataloged file is inspected. Video uses a bounded FFprobe operation
-for local codec/duration observations; images do not require FFprobe. Inspection never discovers tracks, creates file identities,
+Only the selected cataloged file is inspected. Video and audio use a bounded FFprobe operation
+for private codec/duration observations; images do not require FFprobe. Unchanged
+generations reuse the probe cache; changed bytes require fresh observations.
+Inspection never discovers tracks, creates file identities,
 repairs paths or changes authored choices. Unavailable bytes leave the catalog usable.
 **Retry local media** rechecks the file after it becomes readable. No provider
 hydration/download API or placeholder-recognition claim is included.
@@ -468,16 +477,20 @@ HLS startup failure frees its reservation, and release stops local sessions.
 Private observations and resume tables live beside authored projection in the
 private DB. Image/subtitle derivatives live under its `cache` directory; HLS stays
 in the server's private transcode directory. None becomes an authored event or a
-synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. Audio-only viewing, cross-device resume,
-source discovery and physical source operations are outside this media capability.
+synced `.cairndex/cache` entry. Legacy authored APIs remain fenced. File Browser
+audio uses the existing native audio element and guarded direct source URL.
+Video decisions and HLS sessions apply to video. Cross-device resume, source
+discovery and physical source operations are outside this media capability.
 
 Servers advertising `maintenance_version: 1` also offer explicit **Collect
 metadata** and **Generate storyboards** passes through `/replica/media/maintenance`.
 The HTTP request only retains a `media_maintenance` catalog job. The background
 source worker inspects one cataloged file at a time; normal exchange and status
 requests never execute probes or whole-library media work. Storyboard preparation
-uses the existing bounded queue after probing duration. Progress retains a cursor,
-completed/total counts and skipped/failed counts, with no raw exception text.
+uses the existing bounded queue after probing duration. Collect metadata includes
+audio files as well as videos and images. Audio is probed for technical facts and
+never queued for video storyboards. Progress retains a cursor, completed/total
+counts and skipped/failed counts, with no raw exception text.
 The pass captures an upper file identity and an initial total once, then uses
 indexed cursor reads. Completion reconciles the total if files changed during
 the pass. A new pass covers files added after its boundary.

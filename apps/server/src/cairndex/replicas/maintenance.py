@@ -108,6 +108,7 @@ def step(store: CatalogStore, root: Path, library: str, stopped: Callable[[], bo
                     if asset.availability != FileAvailability.AVAILABLE or asset.media_kind not in {
                         MediaKind.VIDEO,
                         MediaKind.IMAGE,
+                        MediaKind.AUDIO,
                     }:
                         progress.skipped += 1
                     elif not asset.tech_metadata:

@@ -27,7 +27,8 @@ between byte blocks.
 
 File selection accepts at most 128 regular files, each no larger than 128 GiB.
 Folder drops are refused. Copying does not link a dropped file in place or infer
-its host location. Use reviewed Update to admit existing library files. Stop an
+its host location. Existing library files can enter manual bundling directly
+from File Browser without Update; reviewed Update also discovers them. Stop an
 upload with Cancel upload. Already prepared operations remain available in Saved
 file operations and require their own Apply. Native Reveal, Open and drag-out
 need a verified local mapping; picker and dropped byte copies do not.
