@@ -353,7 +353,20 @@ request scans or probes source files.
 
 Older servers keep single selection, scalar editing and their existing views.
 Unsupported bulk or system-view endpoints are not called.
-Notes retain exact list values; arrow keys on each reorder control move a note.
+Notes retain exact list values; dragging a grip or using its arrow keys moves
+a note and its manual height. These changes remain in the private draft until
+Save. Tag chips restore Filter, Rename, Copy and Paste, including keyboard-opened
+menus. Browser and viewer chips use Any with subtags and preserve the current
+search, rating filters and collection scope. All Tags keeps its separate global
+Equal/direct action. The viewer's chip filter returns to the browser through
+the same inspector action. Desktop
+Shift+Cmd/Ctrl+C copies the active bundle's complete assigned tag list;
+Shift+Cmd/Ctrl+V adds those tags to the selection. Browser tabs retain their
+reserved shortcuts. The session clipboard is scoped to its server and library.
+Pasting requires selection version two, adds through the existing guarded
+membership jobs and never removes other tags. Each tag is a separate save;
+interruption retains earlier additions, and retry skips fully assigned tags.
+Conflicted or deleted tags require review rather than automatic substitution.
 Metadata review retains the all-family controls, saved jobs and deleted objects.
 The bundle browser opens it from **Metadata Review** in the sidebar's ⋯ menu.
 Servers without browse version two keep the complete catalog controls. Legacy

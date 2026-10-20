@@ -94,6 +94,8 @@ export function CatalogOrdinaryBrowser(props: {
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
+  /** Make this browser's navigation action available to the sibling viewer rail. */
+  onRegisterTagFilter?: (action: ((id: string) => void) | null) => void
   /** The workspace's viewer is open and shows the bundle inspector itself. */
   viewerOpen?: boolean
   /** A `cairndex://` link to open; reported handled once applied. */
@@ -160,14 +162,30 @@ export function CatalogOrdinaryBrowser(props: {
     setActiveDrag(item)
     setDragItem(item)
   }, [])
-  const showTag = (id: string) => {
+  // All Tags deliberately starts a global Equal/direct filter.
+  const showTag = useCallback((id: string) => {
     setFilters({
       ...emptyAdHocFilters(),
-      tags: { ...emptyAdHocFilters().tags, include: [id] },
+      tags: { rule: 'equal', includeDescendants: false, include: [id], exclude: [] },
     })
     setSelection({ view: 'all', collectionId: null })
     setMode('collection')
-  }
+    setLocateRequest((value) => value + 1)
+  }, [])
+  const { onRegisterTagFilter } = props
+  // Inspector chips keep the current place and other filters, with subtags included.
+  const filterFromChip = useCallback((id: string) => {
+    setFilters((previous) => ({
+      ...previous,
+      tags: { ...emptyAdHocFilters().tags, include: [id] },
+    }))
+    setUnbundled(false)
+    setMode('collection')
+  }, [])
+  useEffect(() => {
+    onRegisterTagFilter?.(filterFromChip)
+    return () => onRegisterTagFilter?.(null)
+  }, [onRegisterTagFilter, filterFromChip])
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const openPlace = (next: Selection) => {
@@ -378,6 +396,7 @@ export function CatalogOrdinaryBrowser(props: {
               showSubContents={showSubContents}
               onShowSubContents={setShowSubContents}
               onOpenCollection={(id) => openPlace({ view: 'all', collectionId: id })}
+              onFilterTag={filterFromChip}
               onRenameCollection={(id) => setRenameCollection({ id })}
               dragItem={dragItem}
               onDragItem={updateDragItem}

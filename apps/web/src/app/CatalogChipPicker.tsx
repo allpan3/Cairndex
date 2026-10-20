@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopover } from './usePopover'
 
@@ -32,6 +32,7 @@ export function CatalogChipPicker({
   onToggle,
   onReview,
   onOpenChip,
+  onTagMenu,
 }: {
   family: 'tags' | 'collections'
   chips: ChipChoice[]
@@ -48,6 +49,7 @@ export function CatalogChipPicker({
   onReview: () => void
   /** Collections open from their chip. */
   onOpenChip?: (id: string) => void
+  onTagMenu?: (chip: ChipChoice, event: MouseEvent) => void
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   useEffect(() => onOpenChange(open), [open, onOpenChange])
@@ -62,6 +64,7 @@ export function CatalogChipPicker({
       {chips.map((chip) => (
         <span
           key={chip.id}
+          onContextMenu={onTagMenu ? (event) => onTagMenu(chip, event) : undefined}
           className={`chip${onOpenChip ? ' chip--collection' : ''}${
             chip.state === 'some' ? ' chip--partial' : ''
           }`}
@@ -72,6 +75,14 @@ export function CatalogChipPicker({
               className="chip__open"
               onClick={() => onOpenChip(chip.id)}
               aria-label={`Open collection ${chip.name}`}
+            >
+              {chip.name}
+            </button>
+          ) : onTagMenu ? (
+            <button
+              className="chip__open"
+              aria-label={`Tag actions ${chip.name}`}
+              onClick={(event) => onTagMenu(chip, event)}
             >
               {chip.name}
             </button>

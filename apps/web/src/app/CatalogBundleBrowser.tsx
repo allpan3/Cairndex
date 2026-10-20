@@ -52,6 +52,8 @@ import { CollectionHeader } from './CollectionHeader'
 import { useDesktopMenu } from '../desktop/useDesktopMenu'
 import type { DragItem } from './dnd'
 import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
+import { useCatalogTagClipboard } from './useCatalogTagClipboard'
+import { copiedCatalogTags } from '../api/catalogTagClipboard'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 11 adds local file observations and opening/edit history.
@@ -135,6 +137,7 @@ export function CatalogBundleBrowser({
   headerLeading,
   headerTrailing,
   onScreen = true,
+  onFilterTag,
 }: {
   library: string
   locateRequest: number
@@ -181,6 +184,7 @@ export function CatalogBundleBrowser({
   headerTrailing?: ReactNode
   /** On screen; the View menu's zoom applies only then. */
   onScreen?: boolean
+  onFilterTag?: (id: string) => void
 }) {
   const status = useReplicaStatus(library).data
   const localHistoryEnabled = (status?.browse_version ?? 0) >= 11
@@ -357,6 +361,8 @@ export function CatalogBundleBrowser({
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
       lastLocate.current = locateRequest
+      setSearch('')
+      setQuery('')
       outgoing.current = selected
       setPicked((current) => ({
         ...current,
@@ -368,9 +374,55 @@ export function CatalogBundleBrowser({
       setAlbumFile(null)
     }
   }, [selected, locateRequest])
-  const selectedIds = picked.scope === scope ? picked.ids : new Set<string>()
+  const selectedIds = useMemo(
+    () => (picked.scope === scope ? picked.ids : new Set<string>()),
+    [picked.scope, picked.ids, scope],
+  )
   const active = picked.scope === scope ? picked.active : null
   const albumId = album?.scope === scope ? album.id : null
+  const clipboard = useCatalogTagClipboard(library, onNotice)
+  useEffect(() => {
+    if (
+      !onScreen ||
+      viewerOpen ||
+      albumId ||
+      (status?.selection_version ?? 0) < 2 ||
+      getHostPlatform().kind !== 'desktop'
+    )
+      return
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        !event.shiftKey ||
+        document.querySelector('[aria-modal="true"], [role="menu"]')
+      )
+        return
+      if (event.key.toLowerCase() === 'c' && active) {
+        event.preventDefault()
+        void clipboard.copy(active)
+      } else if (
+        event.key.toLowerCase() === 'v' &&
+        !blocked &&
+        selectedIds.size &&
+        copiedCatalogTags(library).length
+      ) {
+        event.preventDefault()
+        void clipboard.paste([...selectedIds])
+      }
+    }
+    window.addEventListener('keydown', keydown)
+    return () => window.removeEventListener('keydown', keydown)
+  }, [
+    onScreen,
+    viewerOpen,
+    albumId,
+    active,
+    selectedIds,
+    blocked,
+    library,
+    clipboard,
+    status?.selection_version,
+  ])
   const single = albumId ?? (selectedIds.size === 1 ? [...selectedIds][0]! : null)
   // A selected card's collection, else the open one when nothing else is picked
   const inspectedFolder =
@@ -695,11 +747,24 @@ export function CatalogBundleBrowser({
         if (event.key === 'Escape') {
           event.preventDefault()
           many([])
+          clearFolders()
           return
         }
         let next: string | null = null
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp')
           next = navigation.current?.step(active, event.key === 'ArrowDown' ? 'down' : 'up') ?? null
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+          next =
+            items[
+              Math.max(
+                0,
+                Math.min(
+                  items.length - 1,
+                  items.findIndex((item) => item.id === active) +
+                    (event.key === 'ArrowLeft' ? -1 : 1),
+                ),
+              )
+            ]?.id ?? null
         if (event.key === 'Home') next = items[0]?.id ?? null
         if (event.key === 'End') next = items.at(-1)?.id ?? null
         if (event.key === 'Enter' && single) {
@@ -917,6 +982,7 @@ export function CatalogBundleBrowser({
           memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
           onRetainedChange={setBulkRetained}
+          onFilterTag={onFilterTag}
           onClose={() => {
             setBulkRetained(false)
             many([])
@@ -949,6 +1015,7 @@ export function CatalogBundleBrowser({
           albumFile={albumId ? albumFile : null}
           summary={items.find((item) => item.id === detail.data.id)}
           onOpenCollection={onOpenCollection}
+          onFilterTag={onFilterTag}
           onOpen={() => onOpen(detail.data.id)}
           onAddFiles={
             bundling && detail.data.fields.grouping_state?.value === '"CONFIRMED"'

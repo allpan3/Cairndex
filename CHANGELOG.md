@@ -370,6 +370,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Restore portable tag-chip Filter, Rename, Copy and Paste actions and desktop
+  tag copy/paste shortcuts. Pasting adds tags to the selected bundles without
+  removing existing tags. The clipboard stays within its server and library.
+  Browser and viewer tag chips retain the current browsing context and include
+  subtags when filtering.
+  Note grips drag again while retaining the private draft and explicit Save;
+  Left/Right again move between bundle cards.
+
 - Remove the obsolete bundle-card review badge, as ADR-0011 requires. Internal
   grouping confirmation still controls future suggestions.
 

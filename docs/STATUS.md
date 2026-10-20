@@ -428,6 +428,37 @@ combined restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
 The card and its regression case match that qualified source. Publication and
 the final merged-main owner build remain separate.
 
+The broader comparison found tag chip actions/desktop copy-paste, horizontal
+and mixed folder/bundle navigation, note dragging and ordinary file-order,
+removal and collapsed-directory controls incomplete. Separate restoration slices
+address them before the next owner build. The [audit](restoration-audit.md)
+distinguishes these missing controls from the documented peer-safety reason for
+withholding Forget Missing
+Files. File note/source editing was not wired in the pre-portable frontend.
+
+The local `fix/portable-inspector-interactions` slice restores tag-chip actions,
+desktop copy/paste, note dragging and horizontal bundle keys. Tag pastes use
+existing guarded additive saves and a server/library-scoped session clipboard.
+Note moves preserve draft values and manual heights. Linux web lint/type checks
+and 22 focused clipboard, note and inspector cases pass. The existing inspector
+browser scenario passes, and the new workflow passes in 17.5 seconds for note
+drag/reload/save, tag union, rename, filtering and horizontal keys, with unchanged
+source bytes. Browser and viewer tag chips preserve the current context and use
+Any with subtags; All Tags keeps its separate global Equal/direct action. Both
+complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The already-qualified viewer handoff moves into this slice from the later viewer
+restoration, so both inspectors use the same action. Its new browser assertion
+checks search preservation on return from the viewer. That assertion fails with
+the former global callback because it clears the search. The corrected scenario,
+the separate All Tags journey, 31 focused cases, lint, formatting and types pass
+on both guests in `inspector-filter-20261020-031041` on macOS and
+`inspector-filter-20261020-031241` on Linux. File-rail controls, mixed
+navigation, publication and the final merged-main build follow separately.
+This restores existing interactions
+without changing storage or APIs, so no additional ADR is needed.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

@@ -1,6 +1,6 @@
 import { CatalogOrdinaryBrowser } from './CatalogOrdinaryBrowser'
 // Shared bundle-first navigation and creation across every authored catalog family
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   advancedCatalogFields,
@@ -222,6 +222,10 @@ export function CatalogWorkspace({
   const [fileBrowser, setFileBrowser] = useState(false)
   const [showJobs, setShowJobs] = useState(false)
   const [media, setMedia] = useState<ReplicaOpen | null>(null)
+  const browserTagFilter = useRef<((id: string) => void) | null>(null)
+  const registerTagFilter = useCallback((action: ((id: string) => void) | null) => {
+    browserTagFilter.current = action
+  }, [])
   const [after, setAfter] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
@@ -422,6 +426,14 @@ export function CatalogWorkspace({
                     editor={editor}
                     inspectorEnabled={state?.inspector_version === 1}
                     blocked={!state?.ready || Boolean(state?.blocked)}
+                    onFilterTag={
+                      !reviewMode
+                        ? (id) => {
+                            setMedia(null)
+                            browserTagFilter.current?.(id)
+                          }
+                        : undefined
+                    }
                     onReview={() => {
                       setMedia(null)
                       setFamily('asset_bundles')
@@ -463,6 +475,7 @@ export function CatalogWorkspace({
           onChangeLibrary={onChangeLibrary}
           onManage={onManage}
           onSettings={onSettings}
+          onRegisterTagFilter={registerTagFilter}
           onReviewEntity={(family, id) => {
             setFamily(family)
             setSelected(id)
