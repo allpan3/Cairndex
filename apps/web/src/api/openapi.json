@@ -1370,6 +1370,11 @@
             ],
             "title": "Directory Path"
           },
+          "editable": {
+            "default": false,
+            "title": "Editable",
+            "type": "boolean"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/CatalogAlbumItem"
@@ -1387,6 +1392,16 @@
               }
             ],
             "title": "Next Offset"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "object"
           },
           "revision": {
             "title": "Revision",

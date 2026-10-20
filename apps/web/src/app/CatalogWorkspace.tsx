@@ -226,6 +226,13 @@ export function CatalogWorkspace({
   const registerTagFilter = useCallback((action: ((id: string) => void) | null) => {
     browserTagFilter.current = action
   }, [])
+  const browserFileNavigation = useRef<((path: string, directory?: boolean) => void) | null>(null)
+  const registerFileNavigation = useCallback(
+    (action: ((path: string, directory?: boolean) => void) | null) => {
+      browserFileNavigation.current = action
+    },
+    [],
+  )
   const [after, setAfter] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
@@ -434,6 +441,22 @@ export function CatalogWorkspace({
                           }
                         : undefined
                     }
+                    onLocateFile={
+                      !reviewMode
+                        ? (path) => {
+                            setMedia(null)
+                            browserFileNavigation.current?.(path)
+                          }
+                        : undefined
+                    }
+                    onOpenDirectory={
+                      !reviewMode
+                        ? (path) => {
+                            setMedia(null)
+                            browserFileNavigation.current?.(path, true)
+                          }
+                        : undefined
+                    }
                     onReview={() => {
                       setMedia(null)
                       setFamily('asset_bundles')
@@ -476,6 +499,7 @@ export function CatalogWorkspace({
           onManage={onManage}
           onSettings={onSettings}
           onRegisterTagFilter={registerTagFilter}
+          onRegisterFileNavigation={registerFileNavigation}
           onReviewEntity={(family, id) => {
             setFamily(family)
             setSelected(id)

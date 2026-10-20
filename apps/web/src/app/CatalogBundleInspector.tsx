@@ -33,6 +33,8 @@ export function CatalogBundleInspector({
   summary,
   onOpenCollection,
   onFilterTag,
+  onLocateFile,
+  onOpenDirectory,
 }: {
   hostFiles?: LibraryHostFiles
   onStartBundleDrag?: () => void
@@ -61,6 +63,8 @@ export function CatalogBundleInspector({
   }
   onOpenCollection?: (id: string) => void
   onFilterTag?: (id: string) => void
+  onLocateFile?: (path: string) => void
+  onOpenDirectory?: (path: string) => void
 }) {
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
   const [heights, setHeights] = useState<Record<number, number | null>>({})
@@ -270,6 +274,9 @@ export function CatalogBundleInspector({
           }
           onOpen={onOpenFile}
           onAddFiles={onAddFiles}
+          onReview={onReview}
+          onLocateFile={onLocateFile}
+          onOpenDirectory={onOpenDirectory}
           hostFiles={hostFiles}
           onSelectHostFile={onSelectHostFile}
         />

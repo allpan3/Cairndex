@@ -4655,10 +4655,19 @@ export interface components {
         CatalogAlbumPage: {
             /** Directory Path */
             directory_path: string | null;
+            /**
+             * Editable
+             * @default false
+             */
+            editable: boolean;
             /** Items */
             items: components["schemas"]["CatalogAlbumItem"][];
             /** Next Offset */
             next_offset: number | null;
+            /** Observed */
+            observed?: {
+                [key: string]: string[];
+            };
             /** Revision */
             revision: string;
             /** Title */

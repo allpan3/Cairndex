@@ -23,6 +23,8 @@ export function CatalogViewerInspector({
   onOpenFile,
   hostFiles,
   onFilterTag,
+  onLocateFile,
+  onOpenDirectory,
 }: {
   library: string
   bundle: string
@@ -36,6 +38,8 @@ export function CatalogViewerInspector({
   onOpenFile: (file: string) => void
   hostFiles?: LibraryHostFiles
   onFilterTag?: (id: string) => void
+  onLocateFile?: (path: string) => void
+  onOpenDirectory?: (path: string) => void
 }) {
   const queryClient = useQueryClient()
   const detail = useQuery({
@@ -66,6 +70,8 @@ export function CatalogViewerInspector({
       onOpenFile={onOpenFile}
       hostFiles={hostFiles}
       onFilterTag={onFilterTag}
+      onLocateFile={onLocateFile}
+      onOpenDirectory={onOpenDirectory}
       moments={moments}
     />
   )

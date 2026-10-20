@@ -48,6 +48,19 @@ representative large-library performance or provider readiness.
 
 ## Units and relationships
 
+With `browse_version: 16`, the ordinary inspector uses paged album reads for
+files and folder rows. These reads include the observed membership and bundle
+lifetime bases. A `bundle_member` preview moves a visible row, removes a file
+back to Unbundled, collapses a non-root directory, or expands a folder into its
+files. Moves retain every hidden member and move a folder's contents together.
+Removal preserves file identity, note/source values and moments; a subtitle
+pair split between bundles is removed. Missing local bytes never authorize
+deleting a shared file record. Collapse/expand change directory metadata only.
+Stale displayed membership is refused; a concurrent edit after preparation is
+retained for conflict review by the existing catalog protocol. Interrupted
+responses retain the exact operation for explicit retry. This extends the
+existing structural-preview boundary and needs no schema migration or new ADR.
+
 [`replicas/inventory.py`](../apps/server/src/cairndex/replicas/inventory.py) pins every
 legacy table and column. Every authored cell maps to an independent scalar unless
 it belongs to one of these units:

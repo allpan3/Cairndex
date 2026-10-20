@@ -791,6 +791,10 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             builder.order(command)
         elif action == "bundle_files":
             builder.bundle_files(command)
+        elif action == "bundle_member":
+            from cairndex.replicas.catalog.bundle_members import prepare as prepare_member
+
+            prepare_member(builder, command)
         elif action == "dissolve":
             from cairndex.replicas.catalog.selection import CatalogSelectionRequest
 

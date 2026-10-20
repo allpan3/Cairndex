@@ -666,6 +666,35 @@ navigation, publication and the final merged-main owner build follow separately.
 This restores existing interactions without storage or API changes and
 does not need another ADR.
 
+The next local file-control slice implements complete guarded member ordering,
+pointer and Alt+Arrow moves, metadata-only removal back to Unbundled, and
+reversible collapsed-directory rows with paged inline disclosure. Removal keeps
+file identity and dependent moments, clears stale cover references and prunes
+only a newly empty containing folder. Missing local bytes do not erase shared
+records. The ordinary rail also exposes mapped host actions and contact sheets.
+Linux passes 75 bundle/album/recovery cases, 21 focused/reference web cases,
+backend/web static checks and four affected browser scenarios. The expanded
+scenario also passes in 32.6 seconds with folder handoff from both inspectors,
+reload, later-page removal and unchanged source bytes. A lost reply retries the
+same staging identity, including after a hook remount. The harness now opens
+the viewer's initially closed inspector and waits for refreshed controls before
+opening its final menu. API artifacts are regenerated and the synthetic capture
+is reviewed locally. A follow-up restores keyboard moves across page boundaries
+with one-row neighbour reads and focus after the destination page mounts. Menu
+actions can move a row to the beginning or end of the complete list. Controls
+remain busy until active queries refresh their saved bases. The expanded browser
+passes in 51.6 seconds with lint/type and exact-retry checks. Both complete
+combined restoration receipts, `restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, end in `Final result: 0`.
+The member controls, album reads and regression cases match that qualified source.
+The browser case holds a save acknowledgement, verifies the retained lock and
+preserved file identity, then waits for editable controls before reloading.
+The [synthetic file-control capture](screenshots/portable-bundle-file-controls.png)
+matches its exact declaration merged through PR #106. Bulk selection Size, mixed
+navigation, remaining viewer controls, publication and the final merged-main
+owner build follow separately. These operations use the existing structural-preview protocol,
+so no new ADR or migration is required.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

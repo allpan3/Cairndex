@@ -122,6 +122,7 @@ export function CatalogBundleBrowser({
   hostFiles,
   onHostPath,
   onLocateFile,
+  onOpenDirectory,
   onBundleDrag,
   onNewCollection,
   viewerOpen = false,
@@ -160,6 +161,7 @@ export function CatalogBundleBrowser({
   onHostPath?: (path: string | null) => void
   /** Show one library-relative file in the File Browser. */
   onLocateFile?: (path: string) => void
+  onOpenDirectory?: (path: string) => void
   /** Cards drag into sidebar collections when set; `null` ends the drag. */
   onBundleDrag?: (ids: string[] | null) => void
   /** Start naming a new collection under `parent` (null: the top level). */
@@ -1016,6 +1018,8 @@ export function CatalogBundleBrowser({
           summary={items.find((item) => item.id === detail.data.id)}
           onOpenCollection={onOpenCollection}
           onFilterTag={onFilterTag}
+          onLocateFile={onLocateFile}
+          onOpenDirectory={onOpenDirectory}
           onOpen={() => onOpen(detail.data.id)}
           onAddFiles={
             bundling && detail.data.fields.grouping_state?.value === '"CONFIRMED"'
