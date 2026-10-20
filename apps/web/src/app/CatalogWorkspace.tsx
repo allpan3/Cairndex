@@ -223,6 +223,10 @@ export function CatalogWorkspace({
   const [showJobs, setShowJobs] = useState(false)
   const [media, setMedia] = useState<ReplicaOpen | null>(null)
   const browserTagFilter = useRef<((id: string) => void) | null>(null)
+  const browserCollectionNavigation = useRef<((id: string) => void) | null>(null)
+  const registerCollectionNavigation = useCallback((action: ((id: string) => void) | null) => {
+    browserCollectionNavigation.current = action
+  }, [])
   const registerTagFilter = useCallback((action: ((id: string) => void) | null) => {
     browserTagFilter.current = action
   }, [])
@@ -441,6 +445,14 @@ export function CatalogWorkspace({
                           }
                         : undefined
                     }
+                    onOpenCollection={
+                      !reviewMode
+                        ? (id) => {
+                            setMedia(null)
+                            browserCollectionNavigation.current?.(id)
+                          }
+                        : undefined
+                    }
                     onLocateFile={
                       !reviewMode
                         ? (path) => {
@@ -500,6 +512,7 @@ export function CatalogWorkspace({
           onSettings={onSettings}
           onRegisterTagFilter={registerTagFilter}
           onRegisterFileNavigation={registerFileNavigation}
+          onRegisterCollectionNavigation={registerCollectionNavigation}
           onReviewEntity={(family, id) => {
             setFamily(family)
             setSelected(id)

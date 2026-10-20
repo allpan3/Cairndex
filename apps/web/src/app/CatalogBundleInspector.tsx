@@ -1,6 +1,9 @@
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useRef, useState, type ReactNode } from 'react'
 import type { Entity } from '../api/catalog'
+import { captureRequestScope } from '../api/requestScope'
+import { useReplicaStatus } from '../api/useReplicaStatus'
+import { catalogBundleDragPaths } from '../desktop/catalogHostFiles'
 import { BundleTitleEditor, NoteBox } from './Inspector'
 import { InspectorSection } from './InspectorSection'
 import { StarRating } from './Stars'
@@ -12,6 +15,7 @@ import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
 import { moveTo } from './reorder'
+import { AddFilesToBundleDialog } from './ManualBundlingDialogs'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
@@ -24,12 +28,10 @@ export function CatalogBundleInspector({
   onReview,
   onOpen,
   hostFiles,
-  onStartBundleDrag,
   onSelectHostFile,
   onOpenFile,
   moments,
   albumFile,
-  onAddFiles,
   summary,
   onOpenCollection,
   onFilterTag,
@@ -37,7 +39,6 @@ export function CatalogBundleInspector({
   onOpenDirectory,
 }: {
   hostFiles?: LibraryHostFiles
-  onStartBundleDrag?: () => void
   onSelectHostFile?: (file: string | null) => void
   library: string
   entity: Entity
@@ -52,8 +53,6 @@ export function CatalogBundleInspector({
   /** The moments section; each surface supplies its own source and actions. */
   moments?: ReactNode
   albumFile?: string | null
-  /** Add Unbundled files to this confirmed bundle. */
-  onAddFiles?: () => void
   /** The browser's card for this bundle, for the facts the entity does not carry. */
   summary?: {
     file_count: number
@@ -66,7 +65,33 @@ export function CatalogBundleInspector({
   onLocateFile?: (path: string) => void
   onOpenDirectory?: (path: string) => void
 }) {
+  const status = useReplicaStatus(library).data
   const draft = useCatalogBundleDraft(library, entity, editor, refresh)
+  const [addingFiles, setAddingFiles] = useState(false)
+  const [actionMessage, setActionMessage] = useState('')
+  const canAddFiles =
+    inspectorEnabled &&
+    !blocked &&
+    (status?.browse_version ?? 0) >= 9 &&
+    entity.fields.grouping_state?.value === '"CONFIRMED"'
+  function startBundleDrag() {
+    const current = captureRequestScope()
+    setActionMessage('')
+    void catalogBundleDragPaths(library, entity.id)
+      .then((paths) => {
+        current()
+        if (!paths.length) throw new Error('This bundle has no file.')
+        hostFiles?.onStartFileDrag?.(paths)
+      })
+      .catch((reason: Error) => {
+        try {
+          current()
+        } catch {
+          return
+        }
+        setActionMessage(reason.message)
+      })
+  }
   const [heights, setHeights] = useState<Record<number, number | null>>({})
   const title = JSON.parse(draft.read('title')) as string | null
   const rating = JSON.parse(draft.read('rating')) as number | null
@@ -115,10 +140,10 @@ export function CatalogBundleInspector({
     <aside className="inspector" aria-label="Bundle inspector">
       <div
         className="inspector__cover catalog-inspector-cover"
-        draggable={Boolean(onStartBundleDrag)}
+        draggable={Boolean(hostFiles?.onStartFileDrag)}
         onDragStart={(event) => {
           event.preventDefault()
-          onStartBundleDrag?.()
+          if (hostFiles?.onStartFileDrag) startBundleDrag()
         }}
       >
         {inspectorEnabled &&
@@ -147,6 +172,7 @@ export function CatalogBundleInspector({
         />
       )}
       {draft.error && <p role="alert">{draft.error}</p>}
+      {actionMessage && <p role="status">{actionMessage}</p>}
       {entity.has_conflicts && (
         <p className="catalog-inspector-conflict" role="alert">
           <span>Competing metadata requires review.</span>{' '}
@@ -273,12 +299,24 @@ export function CatalogBundleInspector({
             draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
           }
           onOpen={onOpenFile}
-          onAddFiles={onAddFiles}
+          onAddFiles={canAddFiles ? () => setAddingFiles(true) : undefined}
           onReview={onReview}
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           hostFiles={hostFiles}
           onSelectHostFile={onSelectHostFile}
+        />
+      )}
+      {addingFiles && (
+        <AddFilesToBundleDialog
+          bundleId={entity.id}
+          title={title}
+          onClose={() => setAddingFiles(false)}
+          onApplied={(message) => {
+            setAddingFiles(false)
+            setActionMessage(message)
+            refresh()
+          }}
         />
       )}
       {!inspectorEnabled && (

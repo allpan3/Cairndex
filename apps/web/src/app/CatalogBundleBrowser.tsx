@@ -29,7 +29,7 @@ import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 import { CatalogBundleMoments } from './CatalogBundleMoments'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
-import { catalogBundleHostPath, catalogBundleDragPaths } from '../desktop/catalogHostFiles'
+import { catalogBundleHostPath } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
 import {
@@ -547,13 +547,10 @@ export function CatalogBundleBrowser({
   useEffect(() => {
     onHostPath?.(hostPath)
   }, [hostPath, onHostPath])
-  function hostAction(bundle: string, action: (paths: string[]) => void, drag = false) {
+  function hostAction(bundle: string, action: (paths: string[]) => void) {
     const current = captureRequestScope()
-    void (
-      drag
-        ? catalogBundleDragPaths(library, bundle)
-        : catalogBundleHostPath(library, bundle).then((path) => (path ? [path] : []))
-    )
+    void catalogBundleHostPath(library, bundle)
+      .then((path) => (path ? [path] : []))
       .then((paths) => {
         current()
         if (!paths.length) throw new Error('This bundle has no file.')
@@ -1079,11 +1076,6 @@ export function CatalogBundleBrowser({
           entity={detail.data}
           editor={editor}
           hostFiles={hostFiles}
-          onStartBundleDrag={
-            hostFiles?.onStartFileDrag
-              ? () => hostAction(detail.data.id, hostFiles.onStartFileDrag!, true)
-              : undefined
-          }
           onSelectHostFile={(file) =>
             setInspectorFile(file ? { bundle: detail.data.id, file } : null)
           }
@@ -1098,15 +1090,6 @@ export function CatalogBundleBrowser({
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           onOpen={() => onOpen(detail.data.id)}
-          onAddFiles={
-            bundling && detail.data.fields.grouping_state?.value === '"CONFIRMED"'
-              ? () =>
-                  setAddingFiles({
-                    id: detail.data.id,
-                    title: JSON.parse(detail.data.fields.title?.value ?? 'null') as string | null,
-                  })
-              : undefined
-          }
           onOpenFile={(file) => onOpenFile(detail.data.id, file)}
           moments={
             <CatalogBundleMoments

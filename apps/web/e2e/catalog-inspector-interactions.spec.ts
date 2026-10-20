@@ -164,6 +164,55 @@ test('ordinary note dragging and tag chip actions survive saves and navigation @
     )
     await expect(page.getByRole('checkbox', { name: 'subtags', exact: true })).toBeChecked()
     await page.keyboard.press('Escape')
+
+    // The viewer uses the same ordinary actions and the portable query scope.
+    await first.click()
+    const collections = inspector.locator('[data-section="collections"]')
+    await collections.getByRole('button', { name: '+ Collection', exact: true }).click()
+    const collectionPicker = page.getByRole('dialog', { name: 'Choose collections' })
+    await collectionPicker
+      .getByRole('textbox', { name: 'Search collections' })
+      .fill('Synthetic child')
+    await collectionPicker.getByRole('button', { name: /Synthetic child/ }).click()
+    await page.keyboard.press('Escape')
+    await expect(
+      collections.getByRole('button', { name: 'Open collection Synthetic child', exact: true }),
+    ).toBeEnabled()
+    await inspector.getByRole('button', { name: 'Play Playback/picture.png', exact: true }).click()
+    await expect(page.locator('.media-viewer')).toBeVisible({ timeout: 30_000 })
+    const showInspector = page.getByRole('button', { name: 'Show bundle inspector', exact: true })
+    if (await showInspector.isVisible()) await showInspector.click()
+    await expect(inspector).toBeVisible()
+    const unsupported = [] as string[]
+    page.on('request', (request) => {
+      if (
+        /\/api\/v1\/libraries\/[^/]+\/(bundles\/[^/?]+(?:\?|$)|manual-bundling\b)/.test(
+          request.url(),
+        )
+      )
+        unsupported.push(request.url())
+    })
+    await inspector.getByRole('button', { name: 'Add files to this bundle', exact: true }).click()
+    const add = page.getByRole('dialog', { name: 'Add files to bundle', exact: true })
+    await expect(
+      add.getByRole('textbox', { name: 'Search Unbundled files', exact: true }),
+    ).toBeVisible()
+    await expect(add.getByText('No matching unbundled files found.', { exact: true })).toBeVisible()
+    expect(unsupported).toEqual([])
+    await page.keyboard.press('Escape')
+    await expect(add).toHaveCount(0)
+    await expect(page.locator('.media-viewer')).toBeVisible()
+    await expect(
+      inspector.locator('.prop').filter({ has: page.getByText('Files', { exact: true }) }),
+    ).toContainText('6')
+    await expect(inspector.getByText('Date Added', { exact: true })).toBeVisible()
+    await expect(inspector.getByText('Unknown on this device', { exact: true })).toBeVisible()
+    await inspector
+      .getByRole('button', { name: 'Open collection Synthetic child', exact: true })
+      .click()
+    await expect(page.locator('.media-viewer')).toHaveCount(0)
+    await expect(first).toBeVisible({ timeout: 30_000 })
+    await expect(second).toHaveCount(0)
     expect(await readFile(join(root, 'Playback/movie.mp4'))).toEqual(original)
   } finally {
     try {

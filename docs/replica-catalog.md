@@ -351,6 +351,16 @@ reloads; it cannot be discarded until its receipt is known. Bulk fields remain
 disabled while such a save is pending. Scalar inspector drafts stay separate.
 Malformed retained bytes remain available for recovery.
 
+The browser and viewer share Add Files and mapped cover drag-out inside the
+bundle inspector. Add Files requires a confirmed bundle and a supported server;
+its dialog retains the portable library scope in either inspector. Collection
+chips in the viewer close it and invoke ordinary collection navigation.
+Servers advertising `bundle_summary_version: 1` expose
+`GET /replica/catalog/bundles/{id}/summary`. The viewer uses the same complete
+file count, Date Added and local Size query as bundle cards, without probing
+source bytes or recording an opening. Unknown local sizes remain explicit.
+Older servers are not asked for this additional endpoint.
+
 Servers with `system_views_version: 1` also expose Random, Missing Files and
 Unbundled. Random uses a seed and stable bundle IDs before pagination; Reshuffle
 chooses a new seed. Missing Files lists eligible bundles with recorded unavailable
