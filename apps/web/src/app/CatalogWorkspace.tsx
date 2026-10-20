@@ -1,6 +1,6 @@
 import { CatalogOrdinaryBrowser } from './CatalogOrdinaryBrowser'
 // Shared bundle-first navigation and creation across every authored catalog family
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   advancedCatalogFields,
@@ -35,6 +35,12 @@ import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
 import { StorageAccessNotice } from './StorageAccessNotice'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
+import {
+  getConnections,
+  getPendingSelectionVersion,
+  subscribeConnections,
+  takeLibraryIndex,
+} from '../desktop/connections'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -242,6 +248,13 @@ export function CatalogWorkspace({
     state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
     refresh,
   )
+  const pendingIndexVersion = useSyncExternalStore(subscribeConnections, getPendingSelectionVersion)
+  useEffect(() => {
+    if (!discovery.enabled || !discovery.run.isSuccess) return
+    if (!takeLibraryIndex(getConnections().activeConnectionId, libraryId)) return
+    // A manual Update already satisfies the initial request. Creation never accepts grouping.
+    if (discovery.run.data.state === 'idle') void discovery.start({ openReview: false })
+  }, [pendingIndexVersion, libraryId, discovery])
   const page = useQuery({
     queryKey: ['catalog-page', libraryId, family, after, deleted],
     queryFn: () =>

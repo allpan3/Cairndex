@@ -358,16 +358,19 @@ export function resetConnectionsForTests(): void {
 }
 
 // Hands first indexing to the destination app after a native create crosses a server switch
-const pendingIndexes = new Map<string, string>()
-export function queueLibraryIndex(connectionId: string, libraryId: string): void {
-  pendingIndexes.set(connectionId, libraryId)
+const pendingIndexes = new Map<string | null, Set<string>>()
+export function queueLibraryIndex(connectionId: string | null, libraryId: string): void {
+  const libraries = pendingIndexes.get(connectionId) ?? new Set<string>()
+  libraries.add(libraryId)
+  pendingIndexes.set(connectionId, libraries)
   pendingVersion += 1
   notify()
 }
 
 // Consumes only when the intended library is available on the destination
 export function takeLibraryIndex(connectionId: string | null, libraryId: string): boolean {
-  if (!connectionId || pendingIndexes.get(connectionId) !== libraryId) return false
-  pendingIndexes.delete(connectionId)
+  const libraries = pendingIndexes.get(connectionId)
+  if (!libraries?.delete(libraryId)) return false
+  if (libraries.size === 0) pendingIndexes.delete(connectionId)
   return true
 }

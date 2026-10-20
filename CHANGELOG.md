@@ -370,6 +370,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   temporary WAL, shared-memory or journal file during the backup's inventory.
   Unknown files, links and unsupported file types remain refused.
 
+- Start initial private discovery after creating a portable library, including
+  native creates that switch servers. Keep discovered files private until
+  reviewed; registering or reopening an existing library does not rescan it.
+
 - Restore portable search across filenames, paths, source values, tags and
   collections, while retaining bundle/file notes and moment comments. Changes
   and moves update the private index before paged search results are read.

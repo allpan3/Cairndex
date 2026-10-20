@@ -312,6 +312,21 @@ both complete combined restoration gates:
 `Final result: 0`. The other restoration slices and final owner build remain
 separate.
 
+Branch `fix/portable-initial-discovery` reconnects new-library creation to
+private discovery, including native requests crossing a server switch. It
+waits for workspace admission and keeps pending discoveries private, with no
+automatic review opening. Registration and reopening remain scan-free.
+Linux lint/type checks, 86 focused web cases and the normal-Create browser
+scenario pass. The delayed-result case failed before its run guard was fixed.
+The Linux full gate passed 2,012 backend tests, all 55 browser scenarios,
+159 web test files, four frozen checks and 135 Rust tests. Receipt
+`restoration-initial-discovery-v1-linux-20261019-113016` ends in
+`Final result: 0`. Both complete combined restoration receipts,
+`restoration-combined-v4-mac-20261019-165332` and
+`restoration-combined-v4-linux-20261019-165332`, also end in
+`Final result: 0`, exercising the same initial-discovery hooks and scenarios.
+Other restoration branches and the final merged-main owner build remain separate.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

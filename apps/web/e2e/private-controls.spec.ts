@@ -89,19 +89,36 @@ test('access and private backup controls complete reviewed recovery @fullstack',
 test('normal Create preserves source bytes and opens one portable library @fullstack', async ({
   page,
 }) => {
+  test.setTimeout(120_000)
   const scratch = await realpath(await mkdtemp(join(tmpdir(), 'cairndex-normal-create-')))
   const root = join(scratch, 'Library')
   await mkdir(root)
   await writeFile(join(root, 'example.txt'), 'Synthetic source')
+  await writeFile(join(root, 'new-video.mp4'), 'Synthetic discovery bytes')
   const backend = await startBackend(join(scratch, 'private'))
+  let admit: () => void = () => undefined
+  const admission = new Promise<void>((resolve) => {
+    admit = resolve
+  })
   try {
     await proxyApi(page, backend.baseUrl)
+    await page.route('**/replica/status', async (route) => {
+      await admission
+      await route.fallback()
+    })
     await page.goto('/')
     await page.getByRole('button', { name: 'Manage libraries', exact: true }).click()
     await page.getByLabel('Library path').fill(root)
     await page.getByRole('button', { name: 'Add library', exact: true }).click()
     await page.getByLabel('Library name').fill('Synthetic portable library')
     await page.getByRole('button', { name: 'Create library', exact: true }).click()
+    await expect
+      .poll(async () => (await (await fetch(`${backend.baseUrl}/api/v1/libraries`)).json()).length)
+      .toBe(1)
+    const registrations = await (await fetch(`${backend.baseUrl}/api/v1/libraries`)).json()
+    const base = `${backend.baseUrl}/api/v1/libraries/${registrations[0].id}/replica`
+    expect((await (await fetch(`${base}/discovery/status`)).json()).state).toBe('idle')
+    admit()
     await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toContainText(
       'Synthetic portable library',
       { timeout: 30_000 },
@@ -114,6 +131,24 @@ test('normal Create preserves source bytes and opens one portable library @fulls
     await expect(
       page.getByText('Select a bundle to see its details.', { exact: true }),
     ).toBeVisible()
+    expect(registrations).toHaveLength(1)
+    await expect
+      .poll(async () => (await (await fetch(`${base}/discovery/status`)).json()).state, {
+        timeout: 60_000,
+      })
+      .toBe('succeeded')
+    const indexed = await (await fetch(`${base}/discovery/status`)).json()
+    expect(indexed.observed).toBe(1)
+    const candidates = await (await fetch(`${base}/discovery/candidates`)).json()
+    expect(candidates.items).toHaveLength(1)
+    expect(candidates.items[0].body.files[0].path).toBe('new-video.mp4')
+    expect(
+      (await (await fetch(`${base}/catalog/entities/asset_files?limit=50`)).json()).items,
+    ).toEqual([])
+    await expect(page.getByRole('dialog', { name: 'Grouping review' })).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Update', exact: true })).toBeEnabled()
+    expect((await (await fetch(`${base}/discovery/status`)).json()).id).toBe(indexed.id)
     // Metadata review's Refresh reloads its list and detail; an empty library has no detail
     await openMetadataReview(page)
     await Promise.all([
@@ -126,7 +161,9 @@ test('normal Create preserves source bytes and opens one portable library @fulls
     expect(manifest.format_version).toBe(3)
     expect(await readdir(join(root, '.cairndex'))).not.toContain('library.db')
     expect(await readFile(join(root, 'example.txt'), 'utf8')).toBe('Synthetic source')
+    expect(await readFile(join(root, 'new-video.mp4'), 'utf8')).toBe('Synthetic discovery bytes')
   } finally {
+    admit()
     await page.close()
     await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })
