@@ -960,7 +960,9 @@ move/rename/delete controls in the current milestone.
 ## 11. Background jobs
 
 The registry-owned `job_queue` backs a lightweight in-process worker. The worker
-claims the oldest queued job, resolves its library, opens the library DB, runs the
+claims by work-class priority, then recorded creation time and ID for exact ties.
+ULIDs alone do not preserve arrival order within one millisecond. The worker
+resolves its library, opens the library DB, runs the
 registered handler with a `JobContext`, commits durable content work into the
 library DB, and records progress/result/error back into the registry row.
 

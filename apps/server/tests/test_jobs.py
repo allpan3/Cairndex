@@ -6,6 +6,7 @@ worker opens that library's content DB to run a handler.
 
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -508,11 +509,22 @@ def test_urgent_work_is_claimed_before_older_background_work(
     assert claimed == [scan, probe, storyboard]
 
 
-def test_arrival_order_still_decides_within_one_class(
-    registry_session_factory: sessionmaker[Session], library_id: str
+@pytest.mark.parametrize("separation_us", [100, 0])
+def test_creation_time_orders_within_one_class_with_stable_exact_ties(
+    registry_session_factory: sessionmaker[Session], library_id: str, separation_us: int
 ) -> None:
-    first = _queue(registry_session_factory, library_id, JobType.SCAN)
-    second = _queue(registry_session_factory, library_id, JobType.SCAN)
+    # Same ULID millisecond, reversed random suffixes. Clock speed cannot decide
+    # whether this reproduces the CI failure; both creation times are explicit.
+    first = "01K0000000ZZZZZZZZZZZZZZZZ"
+    second = "01K00000000000000000000000"
+    with registry_session_factory() as reg:
+        for identity, microsecond in ((first, 100), (second, 100 + separation_us)):
+            job = job_service.create_job(reg, library_id=library_id, job_type=JobType.SCAN)
+            job.id = identity
+            job.created_at = datetime(2030, 1, 1, microsecond=microsecond, tzinfo=UTC)
+        reg.commit()
+        expected = [first, second] if separation_us else [second, first]
+        assert [job.id for job in job_service.list_active_jobs(reg)] == expected
 
     claimed: list[str] = []
     for _ in range(2):
@@ -522,7 +534,7 @@ def test_arrival_order_still_decides_within_one_class(
             claimed.append(job.id)
             reg.commit()
 
-    assert claimed == [first, second]
+    assert claimed == expected
 
 
 def test_a_running_pass_stands_aside_for_a_scan_and_finishes_afterwards(

@@ -131,17 +131,17 @@ def list_active_jobs(session: Session, *, library_id: str | None = None) -> list
     )
     if library_id is not None:
         stmt = stmt.where(JobQueueEntry.library_id == library_id)
-    # ULID ids sort chronologically, so this is queue order: what is running
-    # now, then what is waiting behind it.
-    return list(session.scalars(stmt.order_by(JobQueueEntry.id)))
+    # ULID suffixes are random within a millisecond; the recorded creation time
+    # preserves arrival order there. Exact timestamp ties use a stable ID order.
+    return list(session.scalars(stmt.order_by(JobQueueEntry.created_at, JobQueueEntry.id)))
 
 
 def claim_next_queued(session: Session) -> JobQueueEntry | None:
     """Atomically move the next queued job to RUNNING and return it.
 
     "Next" is the most urgent class of work first (``JOB_PRIORITY``), then
-    oldest within that class — ULID ids sort chronologically, so the id is the
-    FIFO tie-break.
+    oldest recorded creation time within that class, then ID for exact ties.
+    ULID order alone can reverse arrivals within a millisecond.
     """
     stmt = (
         select(JobQueueEntry)
@@ -152,7 +152,7 @@ def claim_next_queued(session: Session) -> JobQueueEntry | None:
             # already asked to stop is the one outcome worth two guards.
             JobQueueEntry.cancel_requested.is_(False),
         )
-        .order_by(_priority_order(), JobQueueEntry.id)
+        .order_by(_priority_order(), JobQueueEntry.created_at, JobQueueEntry.id)
         .limit(1)
     )
     job = session.scalars(stmt).first()
