@@ -94,6 +94,56 @@ additional missing behavior and stopped before acceptance.
 
 ### Completing behavior restoration (2026-10-19)
 
+The reported behavior losses and further audit findings are implemented.
+Fresh complete VM gates pass on unchanged implementation and regression sources.
+The earlier commits remain available on GitHub; PR #45 replaced active callers,
+and subsequent restoration missed ordinary interactions. The
+[behavior audit](restoration-audit.md#cause-and-history) records the cause,
+restored workflows and deliberate differences. Owner acceptance of a build from
+merged main remains the release checkpoint.
+
+| Guest | Backend tests | Web tests | Browser scenarios | Packaged checks | Rust tests |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cairndex macOS | 2,061 | 1,366 | 62 | 4 | 137 |
+| Cairndex Linux | 2,060 | 1,366 | 62 | 4 | 135 |
+
+Receipts `restoration-audio-v1-mac-20261019-213840` and
+`restoration-audio-v1-linux-20261019-213840` both end in `Final result: 0`.
+Web tests span 169 files. Both guests pass lint, formatting, types, packaged
+smoke checks and production builds; macOS also passes the desktop app build
+and distribution check. Linux retains the known unsupported-platform manifest
+deselection. Both source trees remain clean throughout. These fresh runs include
+the expanded viewer assertions and browser cleanup corrections checked separately
+after V4, plus the final indexed-audio metadata repair. All fixtures are synthetic
+and use their own temporary storage.
+
+The implementation PRs below merged after all 16 hosted results and renewed
+local publication-privacy checks passed. Synthetic capture declarations reached
+main through their prerequisite PRs.
+
+| Restoration slice | Merged PR |
+| --- | --- |
+| Browsing, selection, local history and resume | [#99](https://github.com/allpan3/Cairndex/pull/99) |
+| Editable grouping review | [#104](https://github.com/allpan3/Cairndex/pull/104) |
+| Manual bundling and reliable private backup | [#107](https://github.com/allpan3/Cairndex/pull/107) |
+| Stable job arrival order | [#108](https://github.com/allpan3/Cairndex/pull/108) |
+| Complete indexed search | [#109](https://github.com/allpan3/Cairndex/pull/109) |
+| Initial private discovery | [#110](https://github.com/allpan3/Cairndex/pull/110) |
+| Ordinary Smart Collection editing | [#111](https://github.com/allpan3/Cairndex/pull/111) |
+| Explicit maintenance | [#112](https://github.com/allpan3/Cairndex/pull/112) |
+| Unindexed File Browser playback | [#113](https://github.com/allpan3/Cairndex/pull/113) |
+| Fresh private Unbundled choices | [#114](https://github.com/allpan3/Cairndex/pull/114) |
+| Desktop completion notifications | [#115](https://github.com/allpan3/Cairndex/pull/115) |
+| Retired review-badge correction | [#116](https://github.com/allpan3/Cairndex/pull/116) |
+| Ordinary inspector interactions | [#117](https://github.com/allpan3/Cairndex/pull/117) |
+| Complete bundle file controls | [#118](https://github.com/allpan3/Cairndex/pull/118) |
+| Mixed navigation and bulk Size | [#119](https://github.com/allpan3/Cairndex/pull/119) |
+| Shared viewer inspector actions and totals | [#120](https://github.com/allpan3/Cairndex/pull/120) |
+
+Earlier checkpoints below retain failures and pending states from implementation.
+The current qualification above supersedes them; the audit keeps the detailed
+failed, cancelled and corrected receipts.
+
 A delayed CI result for PR #106's superseded head exposed a separate registry
 queue bug: sorting solely by ULID can reverse arrivals within one millisecond.
 The local `fix/job-queue-arrival-order` repair uses recorded creation time for
@@ -111,6 +161,18 @@ on unchanged source: 2,060/2,059 backend tests, 1,366 frontend tests, all 62
 browser scenarios, four packaged checks and 137/135 Rust tests. macOS app
 build/distribution and both platforms' static/build checks pass. Other
 restoration slices remain separate; this queue branch does not contain them.
+Focused receipt `queue-focused-20261019-154500` records the macOS
+before/after reproduction.
+
+The source comparison now has dispositions for the reported losses and further
+ordinary-workflow findings. The pre-replacement reference remains reachable from
+published main and available on GitHub. PR #45 changed the active application
+path; later restoration missed callers and interactions. The evidence does not
+support wiped commits. The [audit](restoration-audit.md#cause-and-history)
+separates restored controls from accepted private drafts, reviewed source writes,
+device-local history and peer-safe missing-file behavior. The selected restoration
+implementation has passed the fresh full gates above. Owner acceptance remains
+the release checkpoint.
 
 Branch `fix/complete-portable-restoration` compares the application before
 PR #45 with the current implementation, the decision timeline and the owner's

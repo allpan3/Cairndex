@@ -1,9 +1,11 @@
 # Portable application behavior restoration
 
-Restoration is incomplete. Owner testing on 2026-10-19 found missing workflows
-and interaction defects after the portable application replacement. This record
-defines the remaining work and its acceptance checks. A passing replacement
-test suite does not establish equivalence to the earlier application.
+The reported losses and further comparison findings are implemented and pass
+fresh complete VM gates, including the final indexed-audio metadata repair.
+Owner acceptance of a build from merged main remains the release checkpoint.
+This record separates restored behavior from accepted changes and records the
+evidence.
+A passing replacement test suite alone does not establish earlier behavior.
 
 ## Reference and decisions
 
@@ -27,10 +29,26 @@ Preserve these accepted changes:
 - Reviewed conversion, retained originals and explicit Undo under ADR-0038,
   and the macOS SQLite durability policy under ADR-0039.
 
-## Remaining behavior
+## Cause and history
 
-The table defines acceptance for this branch. Implemented slices and their
-verification follow it; remaining rows stay open until demonstrated.
+The reference commit remains an ancestor of published main and is available
+from GitHub. The evidence does not support lost commits. PR #45 selected a new
+workspace and catalog API while leaving several earlier components present but
+unreachable. Their isolated tests could pass without those workflows appearing
+in the application. Later restoration PRs checked useful slices, but did not
+compare every caller and interaction with the earlier workspace. For example,
+PR #92 reopened review after Update without restoring the grouping editor;
+browser inspector actions also did not all reach the viewer inspector.
+
+These were implementation and verification gaps during replacement. Conversion's
+intentional omission of old private history is a separate decision and does not
+explain disconnected controls. New outcome checks exercise the ordinary portable
+workspace, its actual dialogs and viewer, with synthetic data.
+
+## Reported behavior and acceptance
+
+The table preserves the acceptance requirements. The disposition table below
+and the qualification record distinguish implementation from completed gates.
 
 | Behavior | Timeline and evidence | Required treatment |
 | --- | --- | --- |
@@ -47,53 +65,48 @@ verification follow it; remaining rows stay open until demonstrated.
 
 ## Further comparison findings
 
-Further source comparison found two distinctions to cover during grouping work.
-The private planner currently treats every cataloged bundle as a settled owner,
-including staged Unbundled files. ADR-0011 settles confirmed groupings, so the
-eligible staged-file path must also be restored with stable file identities.
-The card's `review` badge is present even in the pre-portable reference, despite
-ADR-0011 retiring it. That is an older implementation deviation, rather than a
-feature lost in PR #45. Follow the accepted decision when restoring this area.
-Manual bundling already assigns roles during guarded apply; its missing draft
-preview and ranked suggestions must use those same established rules.
-Portable browse search also excludes filenames, paths, source values, tags and
-collection names that the earlier index included. The implementation and topic
-document agree on this narrower scope, but the audit has not found owner approval
-for removing those fields. Restore their indexed search while keeping file notes
-and moment comments searchable. Manual grouping's filename candidates must also
-work at the library root and across folders, independently of the first page.
+The source comparison covered ordinary navigation, menus, selection, inspectors,
+grouping, playback, exports and file operations. These findings have explicit
+dispositions; qualification and publication still follow the record below.
 
-The broader source comparison also finds unlinked media opening disconnected
-in File Browser: portable entries require a catalog ID, while the earlier
-viewer could open a supported relative path without indexing it. New-library
-creation also no longer invokes the earlier indexing callback; desktop index
-requests have no active consumer. Verify and restore initial private discovery
-without publishing provisional groupings. Smart Collection creation/deletion
-currently opens Metadata Review instead of the earlier filter editor and
-explicit deletion. These ordinary workflows remain open in the final comparison;
-their underlying portable safeguards do not require losing the controls.
+| Finding | Disposition and focused evidence |
+| --- | --- |
+| Cataloged Unbundled files were treated as settled groupings | Restored eligibility for unconfirmed owners and identity-preserving reviewed acceptance. Confirmed owners stay settled. `test_replica_grouping_acceptance.py` covers identities, moments, stale confirmation and retained metadata. |
+| Filename, path, source, tag and collection search were omitted | Restored complete indexed search before pagination. Manual recommendations use the earlier scoring rules at the root and across folders. `catalog-search.spec.ts` and `catalog-bundling-suggestions.spec.ts` cover the active workflows. |
+| New-library indexing and native index requests had no consumer | Initial private discovery now waits for admission, consumes each server/library request once and does not accept suggestions. Create and admission checks are in `catalog-browse.spec.ts`; reopening starts no second scan. |
+| Fresh private discoveries did not appear in ordinary Unbundled dialogs | The queue now combines eligible staged rows with the latest completed private discovery, while accepted paths disappear. `catalog-private-unbundled.spec.ts` covers paging, search, confirmation and source preservation. |
+| Ordinary Smart Collection creation/edit/deletion opened Metadata Review | Restored the structured editor, preview, private draft and explicit deletion through guarded jobs. `catalog-smart-collections.spec.ts` covers stale saves, exact advanced rules and retained bundles. |
+| Unindexed File Browser media could not open | Restored the scoped folder viewer without fabricating catalog identities. `catalog-path-media.spec.ts` covers mixed files, linked resume and unchanged source bytes. Identity-dependent tools still require a linked file, as before. |
+| Explicit maintenance and completion notifications were disconnected | Restored bounded media jobs alongside on-demand generation, plus the existing long-run, away-window notification policy. `catalog-maintenance.spec.ts` and notification/connection tests cover the current callers. |
+| Collect metadata skipped indexed audio | The generated PCM WAV regression fails before the repair and verifies codec, sample rate, duration, cache reuse, changed-byte refresh, private state and unchanged source bytes afterward. The narrow repair uses the existing bounded probe path; fresh complete VM gates pass. |
+| Ordinary inspector and navigation controls were missing | Restored tag-chip actions, clipboard shortcuts, note dragging, mixed folder/bundle keys, file order/removal/folder controls and bulk Size. The browser scenarios `catalog-inspector-interactions`, `catalog-bundle-files`, `catalog-navigation` and `catalog-history` cover them, including virtual windows and late pages. |
+| Viewer inspector callers omitted shared actions and totals | Add Files and guarded native cover drag now live in the shared inspector; collection navigation returns to the browser. The viewer uses the browser's complete summary query. Actual viewer checks cover dialog scope, navigation and totals; native callback tests cover refusal and library switching. |
+| The card still displayed the retired review badge | Removed under ADR-0011. It already existed before PR #45, so this was an older deviation. The focused presentation case retains normal media and missing-file badges. |
 
-The comparison also finds that desktop completion notifications have no caller
-in the portable workspace. The earlier workspace fed its active maintenance
-snapshots to the shared notification hook. Restore that connection for discovery
-and explicit media passes, preserving the existing long-run, away-window and
-permission rules. This is a disconnected feature, not a documented replacement.
+Keep these intentional differences:
 
-The final ordinary-interaction comparison found further controls disconnected
-from the portable path. Tag chips lack Filter, Rename, Copy and Paste, and the
-desktop copy/paste shortcuts have no caller. Bundle cards handle vertical keys
-but omit horizontal movement and traversal between folder cards and bundles.
-Note grips explicitly disable pointer reordering. The ordinary file rail also
-omits order changes, metadata-only removal and collapsed-directory controls;
-Metadata Review is not an equivalent ordinary workflow. These controls remain
-restoration work. File note/source editing, by contrast, has no caller in the
-pre-PR-45 frontend either and is not a migration regression.
+- Single-bundle edits remain a private draft with explicit Save. Interrupted
+  operations retain exact retry intent; completed bulk saves release their UI.
+- Grouping changes use private preparation and identity revalidation. Selection,
+  Narrow/Widen, rename, ordering and collection placement remain ordinary review
+  controls, rather than requiring Metadata Review.
+- Date Opened and Size describe this device. Date Modified records metadata
+  changes observed here, independently of source-file modification times.
+  ADR-0040 defines those semantics and unknown values.
+- A device's missing observation cannot authorize deleting a shared file record.
+  Forget Missing Files stays unavailable for that documented peer-safety reason.
+  Reviewed Update handles identity repair; local absence does not erase metadata.
+- Physical Copy, Rename, Move, Replace, Trash and Undo retain the reviewed journal
+  under ADR-0036. Earlier direct mutation and import prompts are superseded by
+  that contract. Existing files can enter manual bundling without Update; incoming
+  bytes first require an explicitly applied copy review.
+- File-level note/source editing had no frontend caller in the reference either.
+  Cross-device resume and importing old playback positions remain outside the
+  owner's selected scope below.
 
-Keep the documented exception for Forget Missing Files. One device's missing
-observation cannot establish that a shared catalog record should be deleted;
-the file can still exist on another device. Explicit source operations retain
-their reviewed journal workflow. This changes the earlier local-only action's
-safety meaning, rather than merely hiding its button.
+No new ADR is needed for these restorations. They reconnect existing behavior
+through accepted catalog, discovery, source-operation and local-observation
+contracts. Their bounds and actual qualification belong in this record and STATUS.
 
 ## Owner scope decisions (2026-10-19)
 
@@ -109,6 +122,67 @@ for current-app activity is required and does not depend on importing them.
 Stale grouping plans and old trash/import staging must not execute themselves.
 
 ## Verification and completion
+
+The final fresh receipts, `restoration-audio-v1-mac-20261019-213840` and
+`restoration-audio-v1-linux-20261019-213840`, both end in `Final result: 0` on
+clean, unchanged source. macOS passes 2,061 backend tests; Linux passes 2,060
+with its known platform deselection. Both pass 1,366 web tests in 169 files,
+all 62 browser scenarios, four packaged checks, static checks and builds.
+Rust passes 137/135 tests; macOS app build and distribution also pass. These
+runs include the final audio regression, expanded viewer assertions and all
+three browser cleanup corrections. All qualification uses synthetic temporary
+data. Owner acceptance remains the next release checkpoint.
+
+This chronological record retains earlier failures and pending checkpoints.
+Later results supersede those entries for the same slice. The opening status
+states whether the combined restoration is ready for an owner build.
+
+The corrected combined Linux receipt
+`restoration-combined-v3-linux-20261019-155338` ends in `Final result: 0` on
+unchanged source. It passes 2,059 backend tests, 1,366 frontend tests in 169
+files, all 62 browser scenarios, four packaged checks and 135 Rust tests,
+including lint, types and builds. This covers the final restoration code,
+including the queue ordering, capability assertion and distinct tag actions
+described later in this record.
+
+The matching macOS receipt
+`restoration-combined-v3-mac-20261019-155255` ends in `Final result: 1` on
+unchanged source. All 2,060 backend tests, 1,366 frontend tests, four packaged
+checks, 137 Rust tests and app build/distribution pass. The browser suite passes
+61 of 62 scenarios. Its file-control scenario reloads after a polled count
+changes, which can precede the file-change acknowledgement. Holding that
+acknowledgement reproduces the exact later disabled-control failure: the app
+retains the interrupted operation for explicit Retry, with editable metadata
+and no other block. The unchanged scenario passes alone in 51.9 seconds.
+The corrected test checks that the removed file stays alive and leaves the
+old bundle, asserts the lock while acknowledgement is held, then releases it
+and waits for controls to enable before reloading. No application behavior or
+durability policy changes. Renewed qualification, publication, remaining merges
+and the final owner build remain pending.
+The corrected scenario passes on macOS in 48.8 seconds, with formatting, lint
+and type checks. The focused logs are `bundle-files-delayed-ack-before.log` and
+`bundle-files-delayed-ack-after.log` in the private VM receipts directory.
+
+The renewed Linux receipt
+`restoration-combined-v4-linux-20261019-165332` includes that corrected scenario
+and ends in `Final result: 0` on unchanged source. All 2,059 backend tests,
+1,366 frontend tests in 169 files, 62 browser scenarios, four packaged checks
+and 135 Rust tests pass, with lint, types and builds. The matching macOS receipt
+`restoration-combined-v4-mac-20261019-165332` also ends in `Final result: 0` on
+unchanged source. It passes 2,060 backend tests, the same frontend/browser and
+packaged checks, 137 Rust tests and app build/distribution, with lint and types.
+These complete gates qualify the combined restoration implementation. Remaining
+publication, merges and the final merged-main owner build remain pending.
+
+Subsequent publication review corrected cleanup in the maintenance, path-media
+and private-Unbundled browser cases. Each corrected case passed on both guests.
+The viewer's already-qualified tag-filter handoff also moved into the inspector
+slice. Its new assertion catches the former callback clearing the search.
+The combined inspector scenario, including later viewer controls, passes on both
+guests with All Tags, 31 focused cases, lint, formatting and types in
+`inspector-filter-20261020-031801`. Production source through PR #120 matches
+the complete V4 qualification; these updated test steps were checked
+separately after those full receipts.
 
 The first interaction slice fixes bulk retention, fold-based collection badges
 and viewer opening/resume. In Cairndex macOS, 40 focused web tests passed,
@@ -737,6 +811,31 @@ and All Tags browser workflows pass on both guests in
 These additional assertions were checked separately after the full receipts.
 Final reference comparison, publication and the merged-main owner build remain.
 This adds no persistent migration or new architectural policy.
+
+The combined Linux gate found one obsolete Smart Collection capability assertion,
+requiring exactly 14 after file controls advanced it to 16. Its rename and exact
+filter assertions passed. The test now requires the minimum supported capability.
+Separately, a delayed CI failure exposed registry queue ordering by ULID alone,
+which can reverse arrivals within one millisecond. Claims and active listings
+now order by recorded creation time, with stable IDs for exact timestamp ties.
+Priority classes and schemas are unchanged. The deterministic regression fails
+against the old code; all 33 job/Smart Collection cases and static checks pass on
+macOS in `queue-focused-20261019-154500` and on Linux in
+`tag-filter-focused-20261019-155036`. The first two combined macOS runs were
+cancelled before completion as those test contracts were corrected. Neither
+is a pass. Renewed complete gates are required for the final source.
+
+The combined Linux run also passed 61 of 62 browser scenarios. The remaining
+journey expected Any/subtags after double-clicking All Tags, while the reference
+and its decision record specify a global Equal/direct filter. Inspector chips
+use a different action: Any with subtags, retaining search, rating and collection
+scope. Those actions are now separate. The corrected journey tests direct
+membership and explicit descendant matching; the inspector case verifies a
+parent tag matches child membership without losing search. That parent-tag
+case fails against the earlier shared action. Both corrected browser workflows
+pass together in 16.5 seconds with lint/type checks. The complete Linux run
+ended `Final result: 1`; packaged checks, web checks/build and 135 Rust tests
+passed. Full corrected qualification remains required.
 
 The final maintenance comparison confirmed a further technical-metadata loss.
 The pre-portable probe service includes audio, while the private probe handled
