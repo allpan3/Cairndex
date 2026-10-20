@@ -738,6 +738,25 @@ These additional assertions were checked separately after the full receipts.
 Final reference comparison, publication and the merged-main owner build remain.
 This adds no persistent migration or new architectural policy.
 
+The final maintenance comparison confirmed a further technical-metadata loss.
+The pre-portable probe service includes audio, while the private probe handled
+video/images and maintenance skipped audio. A generated one-second PCM WAV in
+a disposable converted catalog reproduces a succeeded job with empty audio
+metadata. Adding audio to the existing bounded probe and maintenance eligibility
+restores codec, sample rate and duration observations. The regression checks
+cache reuse, changed-byte generation refresh, unchanged authored catalog/frontier
+and source bytes, and refusal to queue audio for video storyboards. Linux passes
+55 related maintenance/media/path/probe cases. The extended regression and
+backend lint, format and type checks pass on both guests. Fresh complete receipts
+`restoration-audio-v1-mac-20261019-213840` and
+`restoration-audio-v1-linux-20261019-213840` both end in `Final result: 0`.
+They pass 2,061/2,060 backend tests, 1,366 web tests in 169 files, all 62 browser
+scenarios, four packaged checks and 137/135 Rust tests, including static checks
+and builds. The macOS app and distribution check pass. Both guests remain clean
+on unchanged source throughout qualification.
+This extends the existing private observation path without an API, schema or
+architectural-policy change, so no new ADR is needed.
+
 Use synthetic libraries only. Compare the earlier and restored applications on
 equivalent fixtures, then add outcome-based tests for the identified losses.
 Include large paginated reviews, interrupted/retried saves, missing or changed

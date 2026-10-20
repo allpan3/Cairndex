@@ -359,6 +359,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore Collect metadata for indexed audio files. Codec, sample rate and
+  duration stay private, reuse the local probe cache and refresh when bytes change.
+
 - Preserve job arrival order when two jobs are created in the same millisecond.
   Scheduling and active-job listings now use the recorded creation time, with
   stable IDs only for exact timestamp ties. Work-class priorities stay the same.

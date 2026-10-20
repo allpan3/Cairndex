@@ -200,7 +200,7 @@ class ReplicaMedia:
             if (
                 probe
                 and kind is not None
-                and kind[0] == MediaKind.VIDEO
+                and kind[0] in (MediaKind.VIDEO, MediaKind.AUDIO)
                 and state == "available"
                 and (not metadata or metadata.get("probe_version") != PROBE_VERSION)
             ):

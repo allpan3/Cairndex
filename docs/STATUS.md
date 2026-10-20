@@ -518,6 +518,24 @@ Final reference comparison, publication and the merged-main owner build remain.
 These are read/UI repairs without a persistent migration; existing catalog and
 local-observation ADRs cover them.
 
+The final maintenance comparison found one more omission: the earlier metadata
+pass included audio, but the private probe handled only video and images.
+A generated one-second PCM WAV reproduced a successful Collect metadata job
+with no audio details. The narrow repair adds audio to the existing bounded
+FFprobe/cache path and maintenance eligibility. Codec, sample rate and duration
+remain private; unchanged generations reuse their cache and replaced bytes
+refresh it. Shared catalog rows and source bytes remain unchanged, and audio
+never enters the video storyboard queue. Linux passes 55 related maintenance,
+media, path-media and probe cases. The extended regression and backend lint,
+format and type checks pass on both guests. Fresh complete receipts
+`restoration-audio-v1-mac-20261019-213840` and
+`restoration-audio-v1-linux-20261019-213840` both end in `Final result: 0`.
+They pass 2,061/2,060 backend tests, 1,366 web tests in 169 files, all 62 browser
+scenarios, four packaged checks and 137/135 Rust tests, with static checks and
+builds. The macOS app and distribution check pass. Both guest source trees stay
+clean and unchanged throughout. No API, schema or new ADR is needed; the existing
+local-observation boundary applies.
+
 ### macOS SQLite durability (2026-10-18)
 
 macOS writers now use FULL synchronous and both fullfsync flags through

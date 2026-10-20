@@ -444,8 +444,10 @@ viewer while retaining the catalog editor and its draft. Bundle playlists use
 catalog order and paged file metadata; folder-member selection keeps its existing
 scope. A local cursor is resolved before starting a later-page member.
 
-Only the selected cataloged file is inspected. Video uses a bounded FFprobe operation
-for local codec/duration observations; images do not require FFprobe. Inspection never discovers tracks, creates file identities,
+Only the selected cataloged file is inspected. Video and audio use a bounded FFprobe operation
+for private codec/duration observations; images do not require FFprobe. Unchanged
+generations reuse the probe cache; changed bytes require fresh observations.
+Inspection never discovers tracks, creates file identities,
 repairs paths or changes authored choices. Unavailable bytes leave the catalog usable.
 **Retry local media** rechecks the file after it becomes readable. No provider
 hydration/download API or placeholder-recognition claim is included.
@@ -476,8 +478,10 @@ metadata** and **Generate storyboards** passes through `/replica/media/maintenan
 The HTTP request only retains a `media_maintenance` catalog job. The background
 source worker inspects one cataloged file at a time; normal exchange and status
 requests never execute probes or whole-library media work. Storyboard preparation
-uses the existing bounded queue after probing duration. Progress retains a cursor,
-completed/total counts and skipped/failed counts, with no raw exception text.
+uses the existing bounded queue after probing duration. Collect metadata includes
+audio files as well as videos and images. Audio is probed for technical facts and
+never queued for video storyboards. Progress retains a cursor, completed/total
+counts and skipped/failed counts, with no raw exception text.
 The pass captures an upper file identity and an initial total once, then uses
 indexed cursor reads. Completion reconciles the total if files changed during
 the pass. A new pass covers files added after its boundary.
