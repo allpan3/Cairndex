@@ -762,6 +762,11 @@ grouping rechecks those bytes and metadata bases before saving. Unselected files
 remain in the private draft. Check reopening from both Bundle Browser and
 Metadata review, and confirm that source bytes remain unchanged.
 
+For bundle-file changes, wait for this window's save acknowledgement as well as
+the server's new order. Open Actions during a pending save: file changes stay
+disabled, then become available in that same menu against the refreshed order.
+Search checks must wait for replica admission before expecting browser controls.
+
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the
 active mechanism unless a new ADR reinstates one. Removing a library must stay

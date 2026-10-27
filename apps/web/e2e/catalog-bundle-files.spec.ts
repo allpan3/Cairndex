@@ -63,6 +63,8 @@ test('ordinary bundle files reorder, collapse, page, expand and return to Unbund
         timeout: 30_000,
       })
       .toEqual(['loose-000', 'album-folder', 'gallery2-000'])
+    // The server applies the drop before this window receives its acknowledgement
+    await expect(grip).toBeEnabled({ timeout: 30_000 })
     await rail.getByRole('button', { name: 'Actions for Loose/frame000.png', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Collapse “Loose” into One Row', exact: true }).click()
     const folder = rail.getByRole('button', { name: 'Show files in Loose', exact: true })

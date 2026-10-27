@@ -14,7 +14,7 @@ import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFileRow } from './CatalogBundleFileRow'
 import { useCatalogBundleMembers } from './useCatalogBundleMembers'
 import { ContextMenu } from './ContextMenu'
-import { useContextMenu, type MenuEntry } from './useContextMenu'
+import { useContextMenu, type MenuEntry, type MenuState } from './useContextMenu'
 import { hostFileMenuEntries } from './hostActions'
 import { useLocalContactSheet } from './useLocalContactSheet'
 import { ContactSheetDialog } from './ContactSheetDialog'
@@ -104,6 +104,7 @@ function FilePage(
   const sheet = useLocalContactSheet(library, setError)
   const exportEnabled = useReplicaStatus(library).data?.export_version === 1
   const menu = useContextMenu()
+  const [menuRow, setMenuRow] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const drag = useRef<{
     id: string
@@ -281,6 +282,10 @@ function FilePage(
     }
     return result
   }
+  function openMenu(event: React.MouseEvent, item: Item) {
+    setMenuRow(item.id)
+    menu.open(event, entries(item))
+  }
   return (
     <div ref={root} className="catalog-member-page">
       {page.isPending && <p role="status">Loading files…</p>}
@@ -324,7 +329,7 @@ function FilePage(
                     : undefined
               }
               tabIndex={0}
-              onContextMenu={props.enabled ? (event) => menu.open(event, entries(item)) : undefined}
+              onContextMenu={props.enabled ? (event) => openMenu(event, item) : undefined}
               onKeyDown={(event) => {
                 if (
                   !props.enabled ||
@@ -447,7 +452,7 @@ function FilePage(
                 <button
                   className="btn btn--compact"
                   aria-label={`Actions for ${item.file?.relative_path ?? item.directory?.directory_path}`}
-                  onClick={(event) => menu.open(event, entries(item))}
+                  onClick={(event) => openMenu(event, item)}
                 >
                   …
                 </button>
@@ -482,7 +487,12 @@ function FilePage(
         </div>
       )}
       {error && <p role="alert">{error}</p>}
-      <ContextMenu state={menu.state} onClose={menu.close} />
+      <FileMenu
+        state={menu.state}
+        item={menu.state ? items.find((row) => row.id === menuRow) : undefined}
+        entries={entries}
+        onClose={menu.close}
+      />
       {sheet.target && (
         <ContactSheetDialog
           target={sheet.target}
@@ -491,5 +501,30 @@ function FilePage(
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The open menu follows its row, so a save that settles while it is open enables
+ * its actions against the arrangement now shown. The opening snapshot remains
+ * only when a refresh takes the row off this page.
+ *
+ * FileMenu, not FilePage, rebuilds the entries while rendering. A move reads a
+ * ref, and the compiler must assume that any call FilePage makes while rendering
+ * may run the moves the entries capture. Building the entries only creates their
+ * click handlers, and only those handlers run a move.
+ */
+function FileMenu(props: {
+  state: MenuState | null
+  item: Item | undefined
+  entries: (item: Item) => MenuEntry[]
+  onClose: () => void
+}) {
+  const { state, item } = props
+  return (
+    <ContextMenu
+      state={state && item ? { ...state, items: props.entries(item) } : state}
+      onClose={props.onClose}
+    />
   )
 }

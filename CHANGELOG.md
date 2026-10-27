@@ -395,6 +395,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - Restore the per-library Write mode control in Libraries. Open library Settings
   in a separate, scrollable dialog, keeping the library list and keyboard focus
   intact. Keep visible descriptions short and provide longer help in tooltips.
+- Keep an open bundle-file Actions menu current while a file change saves. Its
+  file actions become available when the save is acknowledged, instead of
+  staying disabled until the menu is reopened.
 
 - Reduce bundle-to-collection review latency by batching cached copying and
   planning while retaining durable writes and final validation. Keep additions
