@@ -2,6 +2,67 @@
 
 ## Current: release preparation (2026-10-12)
 
+Owner testing on 2026-10-27 found presentation and interaction problems in the
+installed restoration build. The local branch restores concise grouping review,
+File Browser badges, Write Mode and bounded library Settings. Opus implemented
+the UI fixes. Additions to existing bundles have their own section above new
+bundles and collections; accepted memberships stay intact. This choice replaces
+inserting their collection ancestors into the review tree.
+
+The 420-file synthetic split fell from 9.891 seconds and 454 durable worker steps
+to 0.724 seconds and 17 steps. Cached copying and planning share a transaction
+bounded by 32 steps or 50 ms; SQLite durability and final acceptance checks are
+unchanged. The 200-file browser journey measured 1.55 seconds to merge and
+3.69 seconds to split, including saving and refreshing controls. The
+[measurement notes](replica-discovery.md#conversion-timing) record the smaller
+cases, Update timing and limits. A multi-folder round-trip regression preserves
+same-named subjects, sidecars, selection and identity after interruption and retry.
+No new ADR is needed: the private-draft, identity and source-write contracts stay
+in place, and capability 2 gates the new API for remote compatibility.
+
+Protected Write Mode prompts, two-server permissions, the 420-pixel-high Settings
+window and keyboard tooltips pass their focused browser checks. Fresh-list tests
+cover reopening review and failed refreshes.
+
+Cached Update indexing, grouping and export share the same bounded transaction
+policy as regrouping. A 200-file in-process Update fell from 10.986 to 1.264 seconds,
+with 355 write transactions reduced to 29. All 41 focused discovery cases pass,
+including atomic retry, batch limits and cancellation. In the subsequent full
+macOS run, the 203-file browser journey passed with a 13.577-second Update and
+10.363 seconds for review initialization. Merge took 2.164 seconds and split
+3.543 seconds. These synthetic timings do not qualify representative media or NAS.
+
+The v3 macOS browser run exposed an Actions menu that kept disabled actions and
+stale callbacks after a save, plus a Search test that ran before replica admission.
+Opus repaired the menu and added semantic readiness waits. A delayed-reply unit
+test proves that the same open menu enables its actions against the refreshed
+arrangement; it fails against the earlier behavior.
+
+Final frontend qualification passes on both VMs with 1,402 unit tests and all
+65 browser tests each. Formatting, lint, types and production builds pass, as do
+the macOS app build and distribution checks. Backend, packaged-server and Rust
+qualification is retained from the full v3 runs because those sources and
+dependencies are identical after the frontend-only repair.
+
+| Platform | Backend tests, v3 | Packaged tests, v3 | Rust tests, v3 | Web units, v4 | Browser tests, v4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| macOS | 2,068 | 4 | 137 | 1,402 | 65 |
+| Linux | 2,067 | 4 | 135 | 1,402 | 65 |
+
+Receipts are `review-clarity-final-v3-{mac,linux}-20261027-041512`,
+`review-clarity-web-final-v4-mac-20261027-060052` and
+`review-clarity-web-final-v4-linux-20261027-061056`. Initial and final guest source
+status are clean. Prerequisite dependency updates and capture declarations
+merged through [PR #126](https://github.com/allpan3/Cairndex/pull/126) after the full
+hosted matrix passed. The UI fixes are qualified locally; their publication and
+installation are pending. Representative media and NAS performance remain unqualified.
+
+After this round, the owner requested a separate Opus 5.5 extra-high audit that
+builds an older application and compares it interactively with current main on a
+large, varied synthetic library. The audit must distinguish accepted upgrades
+from visual and interaction regressions across the application; the earlier
+source audit and passing replacement tests do not establish that equivalence.
+
 The owner decided the work before the next release. Each step is its own branch
 and PR. The owner authorized the agent to open and merge each PR after its full
 gates, the privacy gate and CI pass. A release tag follows only after step 6.

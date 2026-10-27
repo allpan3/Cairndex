@@ -225,8 +225,13 @@ function LibraryApp() {
   // every state the menu item is enabled in — including the ones that replace
   // the workspace, which are exactly the states (a lease refusal, a locked
   // library) where switching to another library is what a user wants.
+  //
+  // Keyed, because those states put it at different positions among its
+  // siblings. Unkeyed, a Lock, Release or Reopen from a library's settings
+  // would remount it and drop the owner back at the list mid-step.
   const libraryDialog = managing && (
     <LibraryManager
+      key="library-manager"
       onClose={() => setManaging(false)}
       onSelect={changeLibrary}
       onRemoved={forgetRemovedLibrary}

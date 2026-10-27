@@ -130,12 +130,19 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
     await expect(dialog.getByRole('button', { name: 'Beta', exact: true })).toHaveCount(0)
     await seriesRow.press('ArrowRight')
     await expect(dialog.getByRole('button', { name: 'Beta', exact: true })).toBeVisible()
-    // Type and placement controls operate on the same retained draft.
+    // Type and placement controls operate on the same retained draft. The kind
+    // glyph converts; the row's context menu offers the same conversion.
     for (const kind of ['bundle', 'collection', 'bundle']) {
-      await dialog
-        .getByRole('button', { name: 'Actions for suggestion Renditions', exact: true })
-        .click()
-      await page.getByRole('menuitem', { name: `Make ${kind}`, exact: true }).click()
+      if (kind === 'collection') {
+        await tree
+          .getByRole('treeitem')
+          .filter({ has: page.getByRole('button', { name: 'Renditions', exact: true }) })
+          .click({ button: 'right' })
+        await page.getByRole('menuitem', { name: 'Convert to collection', exact: true }).click()
+      } else
+        await dialog
+          .getByRole('button', { name: `Convert to ${kind}: Renditions`, exact: true })
+          .click()
       await expect(
         tree
           .locator(`.grp-row--${kind}`)
@@ -190,19 +197,12 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
       .getByRole('button', { name: 'Expand suggestion Synthetic child', exact: true })
       .click()
     await expect(dialog.getByRole('button', { name: 'Renditions', exact: true })).toBeVisible()
+    // An existing collection is context only: its glyph is not a control
     await expect(
-      dialog.getByRole('button', { name: 'Actions for suggestion Synthetic root', exact: true }),
+      dialog.getByRole('button', { name: 'Convert to bundle: Synthetic root', exact: true }),
     ).toHaveCount(0)
-    const attention = dialog.getByRole('checkbox', { name: /^Needs a look \(/ })
-    await expect(attention).toHaveAccessibleName('Needs a look (0)')
-    await attention.check()
-    await expect(
-      dialog.getByText('No grouping suggestions in this view.', { exact: true }),
-    ).toBeVisible()
-    await expect(
-      dialog.getByText('10 / 10 files selected · 5 bundles', { exact: true }),
-    ).toBeVisible()
-    await attention.uncheck()
+    // Nothing needs a look, so the filter is not offered
+    await expect(dialog.getByRole('button', { name: /needs? a look$/ })).toHaveCount(0)
     await expect(dialog.getByRole('button', { name: 'Renditions', exact: true })).toBeVisible()
     for (let index = 0; index < paths.length; index++)
       expect(await readFile(join(root, paths[index]!))).toEqual(before[index])

@@ -238,11 +238,15 @@ print(package)
     const rows = files.locator('[data-relpath]')
     // The queue pages from the server in path order: one page, then the rest
     await expect(rows).toHaveCount(100)
-    await expect(files.getByRole('row', { name: /clip-000\.mp4/ })).toContainText('Observed here')
-    await expect(files.getByRole('row', { name: /clip-001\.mp4/ })).toContainText(
-      'Unavailable here',
-    )
-    await expect(files.getByText('Availability unknown')).toHaveCount(0)
+    // A present file carries no availability text; only a file this device did
+    // not find is badged
+    const present = files.getByRole('row', { name: /clip-000\.mp4/ })
+    await expect(present).toBeVisible()
+    await expect(present.getByText('missing', { exact: true })).toHaveCount(0)
+    await expect(
+      files.getByRole('row', { name: /clip-001\.mp4/ }).getByText('missing', { exact: true }),
+    ).toBeVisible()
+    await expect(files.getByText(/Observed|Availability unknown|·/)).toHaveCount(0)
     await page.getByRole('button', { name: 'Load more', exact: true }).click()
     // The 120 staged files and the provisional bundle's two
     await expect(rows).toHaveCount(122)

@@ -375,6 +375,35 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Batch Update's cached indexing, grouping and export within one bounded
+  transaction, avoiding a durable flush for each small subject. Retain the
+  32-step or 50 ms limit, cancellation and atomic retry progress.
+
+- Reopen grouping review from a fresh draft list after each Update, so a cached
+  empty draft cannot hide new suggestions. Name the side-view entry for the
+  actual file changes, saved reviews or earlier grouping choices available.
+- Keep repeated video names and their sidecars in separate source folders when
+  converting a merged bundle back to a collection. Preserve file identity,
+  selection and one-subject folder titles through an interrupted edit and retry.
+- Make grouping review compact, with short status text and help on demand.
+  Restore row menus, keyboard rename, relevant Narrow/Widen controls and a
+  clear optional file-verification choice. Show other drafts only when available.
+- Restore File Browser status badges for unlinked, unbundled and missing files.
+  Remove separator dots and routine local-observation text. Report an unreadable
+  folder once above its entries.
+
+- Restore the per-library Write mode control in Libraries. Open library Settings
+  in a separate, scrollable dialog, keeping the library list and keyboard focus
+  intact. Keep visible descriptions short and provide longer help in tooltips.
+- Keep an open bundle-file Actions menu current while a file change saves. Its
+  file actions become available when the save is acknowledged, instead of
+  staying disabled until the menu is reopened.
+
+- Reduce bundle-to-collection review latency by batching cached copying and
+  planning while retaining durable writes and final validation. Keep additions
+  to existing bundles in a separate paged section above collection suggestions,
+  with independent collection counts and selection.
+
 - Restore Collect metadata for indexed audio files. Codec, sample rate and
   duration stay private, reuse the local probe cache and refresh when bytes change.
 
@@ -469,8 +498,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Reopening waits for the fresh cursor, and changing tracks saves the departing
   video's position. Open Bundle still opens the album.
 - Update names its current phase and shows completed/total for catalog checks,
-  moved-file checks and grouping indexes. Enumeration states that its total is
-  not yet known. Unbundled checks availability, size and modification time for
+  moved-file checks and grouping indexes. Enumeration shows its observed count
+  without a total. Unbundled checks availability, size and modification time for
   its displayed page instead of assigning every file unknown availability.
   Older Update statuses without a phase keep their observed-file counter.
 

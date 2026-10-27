@@ -373,6 +373,12 @@ function CatalogBrowseScope(props: FileScopeProps) {
             ? 'This folder is unavailable on this device.'
             : 'This folder is empty.'
         }
+        // An unreadable folder still lists its cataloged entries; say so once
+        notice={
+          query.data?.local_state === 'unavailable'
+            ? 'This folder is unavailable on this device.'
+            : undefined
+        }
       />
     </div>
   )
@@ -563,6 +569,8 @@ interface FileListProps extends FileScopeProps {
   onRetry: () => void
   errorText?: string
   emptyText: string
+  /** One plain line for a listing-wide exception that rows do not repeat. */
+  notice?: string
   /**
    * The rows on screen are the previous folder's, held while the next one loads.
    * They must not be interacted with: the breadcrumb already reads the new
@@ -598,6 +606,7 @@ function FileList({
   onRetry,
   errorText,
   emptyText,
+  notice,
   hasMore,
   isFetchingMore,
   onLoadMore,
@@ -1349,6 +1358,11 @@ function FileList({
             </button>
           </div>
         )}
+        {notice && entries.length > 0 && (
+          <div className="empty" role="status">
+            {notice}
+          </div>
+        )}
         {isLoading ? (
           <div className="empty">Loading…</div>
         ) : isError && entries.length === 0 ? null : entries.length === 0 ? (
@@ -1582,19 +1596,13 @@ function FileRow({
             onCancel={onCancelRename}
           />
         ) : (
-          <span className="file-row__text">
-            {label}
-            {entry.local_state && (
-              <small>
-                {' '}
-                · {entry.linked ? 'Cataloged' : 'Unlinked'} ·{' '}
-                {entry.local_state === 'observed'
-                  ? 'Observed here'
-                  : entry.local_state === 'unavailable'
-                    ? 'Unavailable here'
-                    : 'Availability unknown'}
-              </small>
-            )}
+          <span className="file-row__text">{label}</span>
+        )}
+        {/* Only the exception is shown: a catalog entry this device did not find.
+            Present files carry no availability text. */}
+        {entry.local_state === 'unavailable' && (
+          <span className="badge badge--missing" title="Not found on this device">
+            missing
           </span>
         )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
@@ -1703,12 +1711,17 @@ function FileCard({
             <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
           }
         />
-        {!isDir && !entry.linked && (
+        {/* The corner holds one badge; a file this device did not find outranks
+            its bundle status, as a missing bundle member does on a bundle card. */}
+        {entry.local_state === 'unavailable' ? (
+          <span className="card__badge card__badge--missing" title="Not found on this device">
+            missing
+          </span>
+        ) : !isDir && !entry.linked ? (
           <span className="card__badge card__badge--missing">unlinked</span>
-        )}
-        {!isDir && entry.linked && entry.unbundled && (
+        ) : !isDir && entry.unbundled ? (
           <span className="card__badge card__badge--review">unbundled</span>
-        )}
+        ) : null}
       </HoverPreview>
       <div className="card__meta">
         {renaming ? (

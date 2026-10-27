@@ -19,9 +19,10 @@ function notice(run: DiscoveryRun) {
   return cancel
 }
 
-test('enumeration states that its total is unknown and remains cancellable', () => {
+test('enumeration shows its observed count without a total and remains cancellable', () => {
   const cancel = notice({ state: 'running', phase: 'walk', observed: 64, total: null })
-  expect(screen.getByText('Finding files · total not yet known')).toBeVisible()
+  expect(screen.getByText('Finding files')).toBeVisible()
+  expect(screen.queryByText(/not yet known/)).toBeNull()
   expect(screen.getByText('64 found')).toBeVisible()
   expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
   fireEvent.click(screen.getByRole('button', { name: 'Cancel Update' }))

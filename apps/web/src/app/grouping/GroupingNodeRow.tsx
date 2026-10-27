@@ -2,13 +2,11 @@ import { type DragEvent, useLayoutEffect, useRef, useState } from 'react'
 import type { GroupingNode } from '../../api/grouping'
 import { GroupingPlacementPicker, type GroupingPlacementOption } from '../GroupingPlacementPicker'
 import { IconChevron, IconFolder, IconLayers } from '../icons'
-import { ContextMenu } from '../ContextMenu'
-import { useContextMenu } from '../useContextMenu'
 import type { GroupingWorkspaceState } from './useGroupingWorkspace'
-import type { GroupingMove } from './GroupingMoveDialog'
 import { GROUPING_DRAG, groupingDrag } from './groupingDrag'
 import { GroupingStemControls } from './GroupingStemControls'
-import { groupingFileSummary } from './groupingRows'
+import { convertible, groupingFileSummary, groupingTitle, needsLook } from './groupingRows'
+import { useGroupingStem } from './useGroupingStem'
 
 export function GroupingCheck({
   selected,
@@ -62,17 +60,25 @@ export function GroupingNodeRow({
   expanded,
   toggle,
   stem,
+  separate,
+  inAdditions,
   collections,
-  onMove,
+  collectionsLoading,
+  collectionsError,
   onDragEnd,
 }: {
   node: GroupingNode
   state: GroupingWorkspaceState
   expanded: boolean
   toggle: () => void
+  /** This row speaks for its folder and carries the folder's Narrow/Widen */
   stem: boolean
+  /** The server lists additions separately (grouping_version 2) */
+  separate: boolean
+  inAdditions: boolean
   collections: GroupingPlacementOption[]
-  onMove: (move: GroupingMove) => void
+  collectionsLoading: boolean
+  collectionsError: boolean
   onDragEnd: () => void
 }) {
   const blocked = state.busy || Boolean(state.status.data?.accepting)
@@ -80,9 +86,11 @@ export function GroupingNodeRow({
   const [title, setTitle] = useState(node.title)
   const caret = useRef<number | null>(null)
   const renameDone = useRef(false)
-  const menu = useContextMenu()
+  const dial = useGroupingStem(node, state, stem)
   const editable = !blocked && !node.context && !node.target
-  const displayed = node.target ? (node.target_title ?? node.title) : node.title
+  const displayed = groupingTitle(node, inAdditions)
+  const attention = needsLook(node)
+  const folder = node.directory || 'the library root'
   function rename(offset: number | null = null) {
     if (!editable) return
     setTitle(node.title)
@@ -104,7 +112,8 @@ export function GroupingNodeRow({
     onDragEnd()
     if (dragged.file && node.kind === 'bundle')
       state.edit({ action: 'move_file', node: node.id, file: dragged.file })
-    else if (!dragged.file && dragged.node !== node.id) {
+    // An addition joins a bundle that already has its place
+    else if (!dragged.file && dragged.node !== node.id && !node.target) {
       const rect = event.currentTarget.getBoundingClientRect()
       const before = node.kind === 'bundle' || event.clientY < rect.top + rect.height / 3
       state.edit(
@@ -114,12 +123,17 @@ export function GroupingNodeRow({
       )
     }
   }
+  const kindIcon = node.kind === 'container' ? <IconFolder /> : <IconLayers />
+  const convertLabel = node.kind === 'bundle' ? 'Convert to collection' : 'Convert to bundle'
   return (
     <div className={`grp-node grp-node--${node.kind}`}>
       <div
-        className={`grp-row ${node.kind === 'bundle' ? 'grp-row--bundle' : 'grp-row--collection grp-row--folder'}${node.confidence < 0.75 && !node.context ? ' grp-row--attention' : ''}`}
+        className={`grp-row ${node.kind === 'bundle' ? 'grp-row--bundle' : 'grp-row--collection'}${
+          node.kind === 'container' && dial.dial ? ' grp-row--folder' : ''
+        }${attention ? ' grp-row--attention' : ''}`}
         data-grouping-node={node.id}
-        draggable={!blocked && !node.context && !renaming}
+        // An addition has no placement of its own, so it is not dragged
+        draggable={!blocked && !node.context && !node.target && !renaming}
         onDragStart={(event) => {
           if ((event.target as HTMLElement).closest('button, input, [data-no-row-drag]')) {
             event.preventDefault()
@@ -150,74 +164,148 @@ export function GroupingNodeRow({
           total={node.files}
           disabled={blocked}
           label={`Accept ${displayed}`}
-          change={(selected) => state.edit({ action: 'select', node: node.id, selected })}
+          change={(selected) =>
+            state.edit({
+              action: 'select',
+              node: node.id,
+              selected,
+              // The additions above keep their own checkboxes
+              ...(separate && node.kind === 'container' ? { exclude_additions: true } : {}),
+            })
+          }
         />
-        <span className="grp-kind">
-          {node.kind === 'container' ? <IconFolder /> : <IconLayers />}
-        </span>
+        {/* The kind glyph is the convert control, in the place the kind is shown */}
+        {convertible(node) ? (
+          <button
+            className="grp-kind grp-kind--convert"
+            disabled={blocked}
+            title={convertLabel}
+            aria-label={`${convertLabel}: ${displayed}`}
+            draggable={false}
+            data-no-row-drag=""
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() =>
+              state.edit({
+                action: 'kind',
+                node: node.id,
+                kind: node.kind === 'bundle' ? 'container' : 'bundle',
+              })
+            }
+          >
+            {kindIcon}
+          </button>
+        ) : (
+          <span className="grp-kind">{kindIcon}</span>
+        )}
         <div className="grp-row__content">
-          {renaming ? (
-            <span className="grp-title grp-title-editor" data-value={title || ' '}>
-              <input
-                className="grp-title-input"
-                aria-label={`Rename suggestion ${displayed}`}
-                value={title}
-                ref={(element) => {
-                  if (element && document.activeElement !== element) {
-                    element.focus()
-                    const p = caret.current ?? title.length
-                    element.setSelectionRange(p, p)
-                  }
-                }}
-                onChange={(event) => setTitle(event.target.value)}
-                onBlur={commit}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
+          <span className="grp-title-cluster">
+            {renaming ? (
+              <span className="grp-title grp-title-editor" data-value={title || ' '}>
+                <input
+                  className="grp-title-input"
+                  aria-label={`Rename suggestion ${displayed}`}
+                  value={title}
+                  ref={(element) => {
+                    if (element && document.activeElement !== element) {
+                      element.focus()
+                      const p = caret.current ?? title.length
+                      element.setSelectionRange(p, p)
+                    }
+                  }}
+                  onChange={(event) => setTitle(event.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== 'Escape') return
                     event.preventDefault()
                     event.stopPropagation()
-                    commit()
-                  } else if (event.key === 'Escape') {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    renameDone.current = true
-                    setRenaming(false)
-                  }
+                    // Keyboard renames return to their row rather than to the page
+                    const item = event.currentTarget.closest<HTMLElement>('[role="treeitem"]')
+                    if (event.key === 'Enter') commit()
+                    else {
+                      renameDone.current = true
+                      setRenaming(false)
+                    }
+                    item?.focus()
+                  }}
+                />
+              </span>
+            ) : (
+              <button
+                className={`grp-title${editable ? ' grp-title--editable' : ''}`}
+                disabled={!editable}
+                onDoubleClick={(event) => rename(caretOffset(event))}
+                onClick={(event) => {
+                  if (event.detail === 0) rename()
                 }}
-              />
+                // Where the files come from; the tree says where they go
+                title={[
+                  `From ${folder}`,
+                  attention ? '' : node.reason,
+                  editable ? 'Double-click or press F2 to rename' : '',
+                ]
+                  .filter(Boolean)
+                  .join('\n')}
+              >
+                {displayed}
+              </button>
+            )}
+            {node.original_target && (
+              <button
+                className="btn btn--compact grp-dest"
+                disabled={blocked || node.files === 0}
+                title={
+                  node.target
+                    ? 'Create a new bundle from these files'
+                    : `Add these files to “${node.target_title ?? 'the existing bundle'}” instead`
+                }
+                aria-label={
+                  node.target
+                    ? `New bundle instead of adding to ${node.target_title ?? node.title}`
+                    : `Add to bundle ${node.target_title ?? node.title} instead`
+                }
+                draggable={false}
+                data-no-row-drag=""
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() =>
+                  state.edit({
+                    action: 'destination',
+                    node: node.id,
+                    create_new: Boolean(node.target),
+                  })
+                }
+              >
+                {node.target ? 'New bundle' : 'Add to bundle'}
+              </button>
+            )}
+          </span>
+          {node.context && (
+            <span className="grp-existing" title="A collection already in your library">
+              Existing
             </span>
-          ) : (
-            <button
-              className={`grp-title${editable ? ' grp-title--editable' : ''}`}
-              disabled={!editable}
-              onDoubleClick={(event) => rename(caretOffset(event))}
-              onClick={(event) => {
-                if (event.detail === 0) rename()
-              }}
-              title={node.reason}
-            >
-              {displayed}
-            </button>
           )}
           <span className="grp-hint">
-            {node.context
-              ? 'Existing collection'
-              : node.kind === 'container'
-                ? `${node.bundles} ${node.bundles === 1 ? 'bundle' : 'bundles'}`
+            {node.kind === 'container'
+              ? `${node.bundles} ${node.bundles === 1 ? 'bundle' : 'bundles'}`
+              : node.target
+                ? `${node.files} new ${node.files === 1 ? 'file' : 'files'}`
                 : groupingFileSummary(node)}
-            {node.target ? ' · Add to existing bundle' : ''}
-            {node.confidence < 0.75 && !node.context ? ' · Needs a look' : ''}
           </span>
+          {attention && node.reason && <span className="grp-attention">{node.reason}</span>}
         </div>
         {!node.context && (
           <span className="portable-grp-actions" data-no-row-drag="">
-            {stem && <GroupingStemControls node={node} state={state} />}
+            {/* An addition joins a bundle that already has its place */}
             {!node.target && (
               <GroupingPlacementPicker
-                compact
+                // A nested row's place is the row it is drawn inside
+                compact={Boolean(node.parent)}
+                restated={Boolean(node.parent)}
                 kind={node.kind === 'bundle' ? 'bundle' : 'collection'}
                 title={displayed}
                 currentId={node.collection ?? (node.parent ? undefined : null)}
                 options={collections}
+                loading={collectionsLoading}
+                error={collectionsError}
                 disabled={blocked}
                 onChange={(collection) =>
                   state.edit(
@@ -228,58 +316,10 @@ export function GroupingNodeRow({
                 }
               />
             )}
-            <button
-              className="btn btn--compact"
-              aria-label={`Actions for suggestion ${displayed}`}
-              disabled={blocked}
-              aria-haspopup="menu"
-              onClick={(event) => {
-                const r = event.currentTarget.getBoundingClientRect()
-                menu.open(
-                  event,
-                  [
-                    { label: 'Rename', disabled: !editable, onClick: () => rename() },
-                    {
-                      label: `Make ${node.kind === 'bundle' ? 'collection' : 'bundle'}`,
-                      disabled: Boolean(node.target),
-                      onClick: () =>
-                        state.edit({
-                          action: 'kind',
-                          node: node.id,
-                          kind: node.kind === 'bundle' ? 'container' : 'bundle',
-                        }),
-                    },
-                    {
-                      label: 'Move to suggestion…',
-                      disabled: Boolean(node.target),
-                      onClick: () => onMove({ node }),
-                    },
-                    ...(node.original_target
-                      ? [
-                          {
-                            label: node.target
-                              ? 'Make a new bundle instead'
-                              : 'Add to existing bundle instead',
-                            onClick: () =>
-                              state.edit({
-                                action: 'destination',
-                                node: node.id,
-                                create_new: Boolean(node.target),
-                              }),
-                          },
-                        ]
-                      : []),
-                  ],
-                  { x: r.left, y: r.bottom },
-                )
-              }}
-            >
-              …
-            </button>
+            {stem && <GroupingStemControls node={node} state={state} stem={dial} />}
           </span>
         )}
       </div>
-      {menu.state && <ContextMenu state={menu.state} onClose={menu.close} />}
     </div>
   )
 }

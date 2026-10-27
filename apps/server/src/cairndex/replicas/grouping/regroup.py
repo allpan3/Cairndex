@@ -1,7 +1,8 @@
-"""Rebuild one folder in bounded planner pages, then replace its draft rows atomically."""
+"""Rebuild selected suggestions in bounded pages, then splice their draft rows atomically."""
 
 import json
 import sqlite3
+import time
 from typing import Any
 
 from cairndex.core.ids import new_id
@@ -94,10 +95,11 @@ def begin(db: sqlite3.Connection, command: sqlite3.Row, intent: dict[str, Any]) 
         "position": header["position"] if header else row["position"],
         "files": count,
     }
-    db.execute(
-        "INSERT INTO discovery_plan_directories(run,path) VALUES (?,?)",
-        (scratch(command["id"]), directory),
-    )
+    if not split:
+        db.execute(
+            "INSERT INTO discovery_plan_directories(run,path) VALUES (?,?)",
+            (scratch(command["id"]), directory),
+        )
     db.execute(
         "UPDATE grouping_commands SET state='running',phase='copy',cursor='',result=? WHERE id=?",
         (value_text(context), command["id"]),
@@ -132,7 +134,9 @@ def copy(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) 
     for row in rows:
         body = dict(row) | {
             "run": scratch(operation),
-            "directory": context["directory"],
+            # A manual split must match sidecars within their source folder.
+            # Flattening folders makes repeated video stems ambiguous.
+            "directory": row["directory"] if context["split"] else context["directory"],
             "stem": keys.of(row["path"]),
             "proposal": None,
             "role": None,
@@ -140,6 +144,10 @@ def copy(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) 
         }
         if context["split"] and row["owner"]:
             continue
+        db.execute(
+            "INSERT OR IGNORE INTO discovery_plan_directories(run,path) VALUES (?,?)",
+            (scratch(operation), body["directory"]),
+        )
         db.execute(
             "INSERT INTO discovery_plan_files ("
             + ",".join(body)
@@ -157,10 +165,11 @@ def copy(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) 
 def plan(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) -> None:
     run = scratch(command["id"])
     directory = db.execute(
-        "SELECT * FROM discovery_plan_directories WHERE run=?",
+        "SELECT * FROM discovery_plan_directories WHERE run=? AND phase IN ('videos','sidecars') "
+        "ORDER BY path LIMIT 1",
         (run,),
     ).fetchone()
-    if directory["phase"] in {"videos", "sidecars"}:
+    if directory:
         assign_batch(db, run, directory, level=context["level"], split=context["split"])
         return
     group = db.execute(
@@ -176,10 +185,15 @@ def plan(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) 
                 (run, group["id"]),
             )
         return
-    if not context["split"] and directory["phase"] == "assigned":
-        combine_additions(db, run, context["directory"])
-        classify_directory(db, run, context["directory"])
-        return
+    if not context["split"]:
+        directory = db.execute(
+            "SELECT * FROM discovery_plan_directories WHERE run=? AND phase='assigned' LIMIT 1",
+            (run,),
+        ).fetchone()
+        if directory:
+            combine_additions(db, run, context["directory"])
+            classify_directory(db, run, context["directory"])
+            return
     group = db.execute(
         "SELECT * FROM discovery_plan_groups WHERE run=? AND kind='bundle' "
         "AND stage IN ('classified','roles') "
@@ -206,11 +220,14 @@ def splice(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]
         "SELECT count(*) FROM discovery_plan_groups WHERE run=? AND kind='bundle'", (run,)
     ).fetchone()[0]
     if context["split"] and groups == 1:
-        title = db.execute(
-            "SELECT title FROM discovery_plan_groups WHERE run=?", (run,)
-        ).fetchone()[0]
+        only_group = db.execute(
+            "SELECT title,directory FROM discovery_plan_groups WHERE run=?", (run,)
+        ).fetchone()
         header_row = edits.node(db, workspace, context["header"])
-        if title == header_row["title"].strip():
+        if (
+            only_group["title"] == header_row["title"].strip()
+            and only_group["directory"] == context["directory"]
+        ):
             raise ReplicaError(
                 "This subject already carries its own name; a collection adds no structure"
             )
@@ -269,6 +286,13 @@ def splice(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]
     ):
         identity = new_id()
         title = group["title"]
+        if context["split"] and group["directory"] != context["directory"]:
+            peers = db.execute(
+                "SELECT count(*) FROM discovery_plan_groups WHERE run=? AND directory=?",
+                (run, group["directory"]),
+            ).fetchone()[0]
+            if peers == 1:
+                title = group["directory"].rsplit("/", 1)[-1]
         if not header and context["directory"] and not group["target"]:
             title = context["directory"].rsplit("/", 1)[-1]
         owner = (
@@ -288,7 +312,7 @@ def splice(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]
                 identity,
                 header or context["parent"],
                 title,
-                context["directory"],
+                group["directory"],
                 group["target"],
                 group["target"],
                 owner[0] if owner else None,
@@ -364,5 +388,18 @@ def cleanup(db: sqlite3.Connection, operation: str) -> None:
 
 def step(db: sqlite3.Connection, command: sqlite3.Row) -> bool:
     context = json.loads(command["result"])
-    {"copy": copy, "plan": plan, "splice": splice}[command["phase"]](db, command, context)
+    if command["phase"] in {"copy", "plan"}:
+        # Copying observations and planning subjects both read cached rows only.
+        # Share their bounded transaction; the final splice remains separate.
+        deadline = time.monotonic() + 0.05
+        current = command
+        for _ in range(BATCH):
+            {"copy": copy, "plan": plan}[current["phase"]](db, current, context)
+            current = db.execute(
+                "SELECT * FROM grouping_commands WHERE id=?", (command["id"],)
+            ).fetchone()
+            if current["phase"] == "splice" or time.monotonic() >= deadline:
+                break
+    else:
+        splice(db, command, context)
     return bool(command["phase"] == "splice")

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { LibraryRead, PathProbe, PathSuggestion } from '../api/client'
@@ -22,12 +22,20 @@ const MOVIES: LibraryRead = {
   name: 'Movies',
   root_path: '/srv/movies',
   status: 'available',
-  schema_version: 1,
+  schema_version: 3,
   package_format: 'cairndex.replica-library',
   write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',
   last_opened_at: null,
+}
+
+const TRIPS: LibraryRead = {
+  ...MOVIES,
+  id: 'lib-trips',
+  library_uuid: '01J11111111111111111111111',
+  name: 'Trips',
+  root_path: '/srv/trips',
 }
 
 const PLAIN_FOLDER: PathProbe = {
@@ -54,6 +62,11 @@ let deploymentWriteMode: 'allowed' | 'disabled'
 // The passphrase the stubbed server will accept, or null for an unlocked
 // library that needs none. Anything else gets the same generic 401.
 let requiredPassphrase: string | null
+// A locked library authorizes a write-mode change only by its passphrase.
+let locked: boolean
+// Failures the next write-mode changes meet before the server accepts one.
+let writeFailures: number
+let ownershipState: 'own' | 'locally_released'
 
 // Routes the API surface this modal touches; every request is recorded so a test
 // can assert what was *not* sent as easily as what was.
@@ -95,8 +108,13 @@ function stubApi() {
           enabled?: boolean
           passphrase?: string | null
         }
-        if (body.enabled && requiredPassphrase !== null && body.passphrase !== requiredPassphrase) {
+        const verified = requiredPassphrase !== null && body.passphrase === requiredPassphrase
+        if ((locked || (body.enabled && requiredPassphrase !== null)) && !verified) {
           return reply(401, { code: 'auth_required', message: 'Passphrase required.' })
+        }
+        if (writeFailures > 0) {
+          writeFailures -= 1
+          return reply(503, { message: 'Synthetic registry failure' })
         }
         // The registry now holds the new flag, so the listing this modal
         // refetches must agree — otherwise the test would only ever prove the
@@ -113,6 +131,17 @@ function stubApi() {
           requires_passphrase: requiredPassphrase !== null,
         })
       }
+      if (url.endsWith('/ownership'))
+        return reply(200, { state: ownershipState, mountable: ownershipState === 'own' })
+      if (url.endsWith('/auth/status'))
+        return reply(200, {
+          protected: requiredPassphrase !== null,
+          unlocked: !locked,
+          access_settings_version: 1,
+          private_recovery_version: 1,
+        })
+      if (url.includes('/private-recovery/tasks'))
+        return reply(200, { items: [], next_cursor: null })
       if (method === 'DELETE') return reply(204)
       throw new Error(`unexpected request: ${method} ${url}`)
     }),
@@ -126,6 +155,9 @@ beforeEach(() => {
   suggestions = []
   deploymentWriteMode = 'allowed'
   requiredPassphrase = null
+  locked = false
+  writeFailures = 0
+  ownershipState = 'own'
   vi.clearAllMocks()
   stubApi()
 })
@@ -133,6 +165,13 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+// jsdom has no layout, and an InfoTip shows its text only beside a button
+// that is on screen, so give the button the box a browser would
+function onScreen(element: HTMLElement) {
+  const box = { left: 100, top: 100, right: 116, bottom: 116, width: 16, height: 16 }
+  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(box as DOMRect)
+}
 
 function renderManager(
   handlers: {
@@ -510,8 +549,311 @@ test('the browser has no Browse… button, because it cannot produce a server pa
   expect(screen.queryByRole('button', { name: 'Browse…' })).toBeNull()
 })
 
-test('offers private controls without legacy write mode', async () => {
+test('the add hint is short, with the explanation in a tooltip the keyboard reaches', () => {
+  const onClose = vi.fn()
+  renderManager({ onClose })
+  const tip = screen.getByRole('button', { name: 'About adding a library' })
+  const text = screen.getByRole('tooltip', { hidden: true })
+  expect(tip).toHaveAttribute('aria-describedby', text.id)
+  expect(text).toHaveTextContent(/existing library is added under its own name/)
+  expect(text).not.toBeVisible()
+
+  onScreen(tip)
+  fireEvent.focus(tip)
+  expect(screen.getByRole('tooltip')).toBeVisible()
+
+  // Escape hides the tip and leaves the dialog open
+  fireEvent.keyDown(tip, { key: 'Escape' })
+  expect(screen.getByRole('tooltip', { hidden: true })).not.toBeVisible()
+  expect(onClose).not.toHaveBeenCalled()
+})
+
+// --- write mode (ADR-0013 §1, ADR-0036) --------------------------------------
+
+const writeModeButton = () => screen.getByRole('button', { name: 'Write mode for Movies' })
+const writeModeChanges = () =>
+  requests.filter((request) => request.method === 'PUT' && request.url.endsWith('/write-mode'))
+
+test('turning write mode on says what it allows before it does it', async () => {
   renderManager()
-  expect(await screen.findAllByRole('button', { name: 'Settings…' })).not.toHaveLength(0)
-  expect(screen.queryByRole('button', { name: /Write mode/ })).not.toBeInTheDocument()
+  await waitFor(() => expect(writeModeButton()).toBeEnabled())
+  expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false')
+  expect(writeModeButton()).toHaveTextContent('Write mode: off')
+
+  fireEvent.click(writeModeButton())
+
+  // Nothing is sent yet: the step says what write mode allows first, and the
+  // safe choice has focus.
+  expect(writeModeChanges()).toHaveLength(0)
+  expect(screen.getByText(/reviewed copy, rename, move and trash/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+  expect(writeModeButton()).toHaveTextContent('Write mode: on')
+  expect(writeModeChanges().map((request) => request.body)).toEqual([
+    { enabled: true, passphrase: null },
+  ])
+  // Focus goes back to the switch the step replaced
+  await waitFor(() => expect(writeModeButton()).toHaveFocus())
+})
+
+test('Escape leaves the write-mode step without closing the dialog or sending anything', async () => {
+  const onClose = vi.fn()
+  renderManager({ onClose })
+  await waitFor(() => expect(writeModeButton()).toBeEnabled())
+
+  fireEvent.click(writeModeButton())
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Cancel' }), { key: 'Escape' })
+
+  expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false')
+  expect(onClose).not.toHaveBeenCalled()
+  expect(writeModeChanges()).toHaveLength(0)
+})
+
+test('a protected library is asked for its passphrase, and told when it is wrong', async () => {
+  requiredPassphrase = 'synthetic-guard'
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toBeEnabled())
+
+  fireEvent.click(writeModeButton())
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  // The field appears only once the server has asked for it: an unprotected
+  // library must not be prompted for a passphrase it does not have.
+  const field = await screen.findByLabelText('Passphrase for Movies')
+  expect(field).toHaveFocus()
+  expect(screen.queryByText(/not accepted/)).toBeNull()
+  expect(screen.getByRole('button', { name: 'Turn on' })).toBeDisabled()
+
+  fireEvent.change(field, { target: { value: 'guess' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  expect(await screen.findByText('That passphrase was not accepted.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Write mode for Movies' })).toBeNull()
+
+  fireEvent.change(screen.getByLabelText('Passphrase for Movies'), {
+    target: { value: 'synthetic-guard' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+  expect(writeModeChanges().map((request) => request.body?.passphrase)).toEqual([
+    null,
+    'guess',
+    'synthetic-guard',
+  ])
+})
+
+test('turning write mode off is immediate and asks for nothing', async () => {
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  requiredPassphrase = 'synthetic-guard'
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+
+  fireEvent.click(writeModeButton())
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false'))
+  expect(writeModeChanges().map((request) => request.body)).toEqual([
+    { enabled: false, passphrase: null },
+  ])
+  expect(screen.queryByLabelText('Passphrase for Movies')).toBeNull()
+})
+
+test('a locked library turns write mode off with its passphrase', async () => {
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  requiredPassphrase = 'synthetic-guard'
+  locked = true
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+
+  fireEvent.click(writeModeButton())
+
+  // The passphrase stands in for unlocking the library first
+  const field = await screen.findByLabelText('Passphrase for Movies')
+  expect(field).toHaveFocus()
+  fireEvent.change(field, { target: { value: 'synthetic-guard' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Turn off' }))
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false'))
+  expect(writeModeChanges().map((request) => request.body)).toEqual([
+    { enabled: false, passphrase: null },
+    { enabled: false, passphrase: 'synthetic-guard' },
+  ])
+})
+
+test('a failed change is reported in the row and the same switch retries it', async () => {
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  writeFailures = 1
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+
+  fireEvent.click(writeModeButton())
+
+  expect(await screen.findByText('Synthetic registry failure')).toBeInTheDocument()
+  expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true')
+  expect(writeModeButton()).toBeEnabled()
+
+  fireEvent.click(writeModeButton())
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false'))
+  expect(screen.queryByText('Synthetic registry failure')).toBeNull()
+})
+
+test('turning on keeps its step after a failure, so Turn on retries the same intent', async () => {
+  writeFailures = 1
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toBeEnabled())
+
+  fireEvent.click(writeModeButton())
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  expect(await screen.findByText('Synthetic registry failure')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+  expect(writeModeChanges().map((request) => request.body)).toEqual([
+    { enabled: true, passphrase: null },
+    { enabled: true, passphrase: null },
+  ])
+})
+
+test('a server that does not allow write mode disables every switch and says why once', async () => {
+  deploymentWriteMode = 'disabled'
+  libraries = [MOVIES, TRIPS]
+  renderManager()
+
+  const note = await screen.findByText('This server does not allow write mode.')
+  expect(writeModeButton()).toBeDisabled()
+  expect(writeModeButton()).toHaveAttribute('aria-describedby', note.id)
+  expect(screen.getByRole('button', { name: 'Write mode for Trips' })).toBeDisabled()
+  expect(screen.getAllByText('This server does not allow write mode.')).toHaveLength(1)
+
+  fireEvent.click(writeModeButton())
+
+  expect(writeModeChanges()).toHaveLength(0)
+})
+
+test('a switch left on while the server forbids it says so and can still be turned off', async () => {
+  deploymentWriteMode = 'disabled'
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  renderManager()
+
+  await waitFor(() => expect(writeModeButton()).toHaveTextContent('Write mode: on (blocked)'))
+  // The library's own flag is the owner's to clear
+  expect(writeModeButton()).toBeEnabled()
+})
+
+test('a released library waits for Reopen before write mode can be turned on', async () => {
+  ownershipState = 'locally_released'
+  renderManager()
+
+  expect(await screen.findByText('Released on this server')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(writeModeButton()).toHaveAttribute(
+      'title',
+      'Reopen this library here to turn on write mode.',
+    ),
+  )
+  expect(writeModeButton()).toBeDisabled()
+})
+
+test('an older portable package cannot change write mode, and says why', async () => {
+  libraries = [{ ...MOVIES, schema_version: 1 }]
+  renderManager()
+
+  await waitFor(() =>
+    expect(writeModeButton()).toHaveAttribute(
+      'title',
+      'Write mode needs the current library format.',
+    ),
+  )
+  expect(writeModeButton()).toBeDisabled()
+  expect(writeModeButton()).toHaveTextContent('Write mode: off')
+})
+
+test('an old-format library has no write mode until it is converted', async () => {
+  libraries = [{ ...MOVIES, package_format: 'cairndex.library', status: 'unavailable' }]
+  renderManager()
+
+  await screen.findByRole('button', { name: 'Convert Movies' })
+  expect(screen.queryByRole('button', { name: 'Write mode for Movies' })).toBeNull()
+})
+
+// --- library settings ----------------------------------------------------------
+
+test('Settings… opens its own dialog over an intact list, and Escape returns to it', async () => {
+  libraries = [MOVIES, TRIPS]
+  const onClose = vi.fn()
+  renderManager({ onClose })
+  const opener = await screen.findByRole('button', { name: 'Settings for Movies' })
+  opener.focus()
+  fireEvent.click(opener)
+
+  const settings = await screen.findByRole('dialog', { name: 'Movies settings' })
+  expect(
+    await within(settings).findByRole('heading', { name: 'Access on this server' }),
+  ).toBeInTheDocument()
+  // The list is hidden behind it, not replaced: both rows are still rows
+  const list = screen
+    .getByRole('heading', { name: 'Libraries', hidden: true })
+    .closest('[role="dialog"]') as HTMLElement
+  expect(list).not.toBeVisible()
+  expect(within(list).getAllByRole('button', { name: /^Open /, hidden: true })).toHaveLength(2)
+  expect(list).not.toContainElement(
+    within(settings).getByRole('heading', { name: 'Access on this server' }),
+  )
+
+  fireEvent.keyDown(settings, { key: 'Escape' })
+
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Movies settings' })).toBeNull())
+  expect(screen.getByRole('heading', { name: 'Libraries' })).toBeVisible()
+  expect(onClose).not.toHaveBeenCalled()
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Settings for Movies' })).toHaveFocus(),
+  )
+})
+
+test('Back returns to the list, and settings are not reopened by a later visit', async () => {
+  const view = renderManager()
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings for Movies' }))
+  const settings = await screen.findByRole('dialog', { name: 'Movies settings' })
+
+  fireEvent.click(within(settings).getByRole('button', { name: 'Back to libraries' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Movies settings' })).toBeNull())
+  expect(screen.getByRole('button', { name: 'Write mode for Movies' })).toBeInTheDocument()
+
+  // Left open when the dialog goes away, it is still not remembered
+  fireEvent.click(screen.getByRole('button', { name: 'Settings for Movies' }))
+  await screen.findByRole('dialog', { name: 'Movies settings' })
+  view.unmount()
+  renderManager()
+  await screen.findByRole('button', { name: 'Settings for Movies' })
+  expect(screen.queryByRole('dialog', { name: 'Movies settings' })).toBeNull()
+  const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+  expect(keys.filter((key) => key?.includes('libraryControls'))).toEqual([])
+})
+
+test('settings descriptions stay short, with the explanations in tooltips', async () => {
+  renderManager()
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings for Movies' }))
+  const settings = await screen.findByRole('dialog', { name: 'Movies settings' })
+
+  // The consequential sentence stays visible; the reasons are one focus away
+  expect(await within(settings).findByText('Not a complete library backup.')).toBeVisible()
+  const backups = within(settings).getByRole('button', { name: 'About private backups' })
+  const explanation = document.getElementById(backups.getAttribute('aria-describedby')!)
+  expect(explanation).toHaveTextContent(/source media, cloud-delivered metadata, credentials/)
+  expect(explanation).not.toBeVisible()
+  onScreen(backups)
+  fireEvent.focus(backups)
+  expect(explanation).toBeVisible()
+
+  // Recovery says what gates Prepare, where the disabled button is
+  expect(
+    within(settings).getByText('Release the library before you prepare a recovery.'),
+  ).toBeVisible()
+  expect(within(settings).getByRole('button', { name: 'Prepare separate recovery' })).toBeDisabled()
 })

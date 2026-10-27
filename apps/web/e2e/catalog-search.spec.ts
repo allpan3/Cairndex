@@ -38,7 +38,21 @@ print(prepare_disposable(fixture,format_version=3).package)
   ).trim()
   const backend = await startBackend(join(scratch, 'private'))
   try {
-    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    // Registration returns before the replica worker has imported the converted catalog
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await fetch(`${backend.baseUrl}/api/v1/libraries/${library.id}/replica/status`)
+            ).json()
+          ).ready,
+        { timeout: 30_000 },
+      )
+      .toBe(true)
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
     const search = page.getByRole('searchbox', { name: 'Search', exact: true })

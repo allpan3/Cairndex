@@ -748,8 +748,9 @@ For portable libraries, Update saves private observations and grouping suggestio
 and opens review when suggestions exist. The remaining maintenance-menu work is
 tracked in the [restoration audit](restoration-audit.md).
 In editable grouping review, double-click a new-bundle or collection title to
-edit it. Enter or blur saves the private edit; Escape cancels it. The row's
-actions menu switches an addition between its existing bundle and a new bundle.
+edit it; F2 also starts rename from a focused row or its controls. Enter or blur
+saves the private edit; Escape cancels it. Right-click or Shift+F10 opens the row
+menu. An addition's destination switch chooses its existing bundle or a new one.
 Narrow/Widen changes matching in the represented source folder, retaining
 unrelated edits and file selection. Media summaries and expandable sibling runs
 keep file lists closed until needed; Show files also applies to later pages.
@@ -760,6 +761,11 @@ placement. Optional complete-content verification is cancellable. Accept reviewe
 grouping rechecks those bytes and metadata bases before saving. Unselected files
 remain in the private draft. Check reopening from both Bundle Browser and
 Metadata review, and confirm that source bytes remain unchanged.
+
+For bundle-file changes, wait for this window's save acknowledgement as well as
+the server's new order. Open Actions during a pending save: file changes stay
+disabled, then become available in that same menu against the refreshed order.
+Search checks must wait for replica admission before expecting browser controls.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the
