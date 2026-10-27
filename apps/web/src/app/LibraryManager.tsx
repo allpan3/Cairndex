@@ -1,9 +1,10 @@
-import { usePersistentState } from '../state/usePersistentState'
 import { getConnectionScopeKey } from '../api/requestScope'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { captureRequestScope } from '../api/requestScope'
-import { LibraryPrivateControls } from './LibraryPrivateControls'
+import { InfoTip } from './InfoTip'
+import { LibrarySettingsDialog } from './LibraryPrivateControls'
 import { LibraryConversionDialog } from './LibraryConversionDialog'
+import { READ_ONLY_SERVER, WriteModeConfirm, WriteModeToggle } from './LibraryWriteMode'
 import {
   conversionStorageKey,
   conversionVisible,
@@ -15,12 +16,19 @@ import {
 } from '../api/libraryConversion'
 import { useModalDialog } from './useModalDialog'
 
-import { type LibraryRead, type PathSuggestion, fetchPathSuggestions } from '../api/client'
 import {
+  type LibraryRead,
+  type PathSuggestion,
+  PassphraseRequiredError,
+  fetchPathSuggestions,
+} from '../api/client'
+import {
+  useDeploymentWriteMode,
   useLibraries,
   useLibraryMutations,
   useLibraryOwnership,
   useLibraryServing,
+  useWriteModeMutation,
 } from '../api/hooks'
 import {
   activeConnectionLabel,
@@ -67,6 +75,17 @@ export function LibraryManager({
 }) {
   const libraries = useLibraries()
   const { create, register, probe, remove } = useLibraryMutations()
+  const deployment = useDeploymentWriteMode()
+  const titleId = useId()
+  const readOnlyNote = useId()
+
+  // The library whose settings are open over this dialog. Plain state, so it
+  // lasts as long as the dialog does — not across a reload, and not into
+  // another server.
+  const [settingsId, setSettingsId] = useState<string | null>(null)
+  // The Settings… button that opened them. Closing returns focus there even
+  // where a click does not focus a button (WebKit, so the desktop app).
+  const settingsOpener = useRef<HTMLElement | null>(null)
 
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
@@ -100,6 +119,13 @@ export function LibraryManager({
   }
 
   const rows = libraries.data ?? []
+  // A legacy row has neither settings nor the switch, so it opens nothing here
+  const settingsLibrary = conversion
+    ? undefined
+    : rows.find((row) => row.id === settingsId && row.package_format !== 'cairndex.library')
+  // Said once for the list rather than on every disabled switch
+  const readOnly =
+    deployment === 'disabled' && rows.some((row) => row.package_format !== 'cairndex.library')
   const listUnavailable = libraries.isError && !addedLibrary
   const busy =
     hostBusy || create.isPending || register.isPending || probe.isPending || remove.isPending
@@ -314,6 +340,17 @@ export function LibraryManager({
       })
   }
 
+  const openSettings = (libraryId: string, opener: HTMLElement) => {
+    settingsOpener.current = opener
+    setSettingsId(libraryId)
+  }
+  const closeSettings = () => {
+    setSettingsId(null)
+    requestAnimationFrame(() => {
+      if (settingsOpener.current?.isConnected) settingsOpener.current.focus()
+    })
+  }
+
   const { ref: dialogRef, close: closeDialog } = useModalDialog(
     confirming ? cancelConfirm : onClose,
     busy,
@@ -324,7 +361,9 @@ export function LibraryManager({
       <div
         className="modal-backdrop"
         onMouseDown={closeDialog}
-        style={conversion ? { display: 'none' } : undefined}
+        // Hidden rather than unmounted behind the conversion review or a
+        // library's settings, so a typed path or name step survives them
+        style={conversion || settingsLibrary ? { display: 'none' } : undefined}
       >
         <div
           // `--menus`: this dialog's suggestion menu must be able to escape it.
@@ -333,15 +372,23 @@ export function LibraryManager({
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
+          aria-labelledby={titleId}
         >
           <div className="modal__head">
-            <h2>Libraries</h2>
+            <h2 id={titleId}>Libraries</h2>
             <button className="modal__close" onClick={closeDialog} aria-label="Close">
               ×
             </button>
           </div>
 
-          <p className="lib-add__hint">Libraries served by {activeConnectionLabel()}</p>
+          <p className="lib-add__hint">
+            Libraries served by {activeConnectionLabel()}
+            {readOnly && (
+              <>
+                . <span id={readOnlyNote}>{READ_ONLY_SERVER}</span>
+              </>
+            )}
+          </p>
           {conversionHistory.task && (
             <button className="btn" onClick={() => setConversion({ root: null })}>
               Resume conversion
@@ -364,8 +411,11 @@ export function LibraryManager({
                 key={library.id}
                 library={library}
                 busy={busy}
+                deployment={deployment}
+                readOnlyNote={readOnly ? readOnlyNote : undefined}
                 onRemove={() => removeLibrary(library.id)}
                 onConvert={() => convert(library.root_path)}
+                onSettings={(opener) => openSettings(library.id, opener)}
                 onSelect={() => {
                   onSelect?.(library.id)
                   onClose()
@@ -468,23 +518,35 @@ export function LibraryManager({
               </button>
             </div>
             <p className="lib-add__hint">
-              {addedLibrary
-                ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
-                : confirming
-                  ? newLibraryAsk(confirming)
-                  : `Typed paths belong to ${activeConnectionLabel()}. An existing library is added as it is; any other folder is offered as a new one.`}
+              {addedLibrary ? (
+                `“${addedLibrary.name}” was added. Refresh the list to finish.`
+              ) : confirming ? (
+                newLibraryAsk(confirming)
+              ) : (
+                <>
+                  A folder on {activeConnectionLabel()}.{' '}
+                  <InfoTip label="About adding a library">
+                    An existing library is added under its own name. Any other folder becomes a new
+                    library after you confirm its name.
+                  </InfoTip>
+                </>
+              )}
             </p>
 
-            {isDesktopHost() && (
+            {/* Browse always picks on This Computer. Only from another server is
+                that a different place, and adding there switches servers. */}
+            {isDesktopHost() && getActiveConnection()?.kind === 'remote' && (
               <p className="lib-add__hint">
-                Browse selects a folder on This Computer. Adding it uses this computer’s private
-                metadata store and access settings.
+                Browse… adds a folder on This Computer and switches to it.
               </p>
             )}
             {error && <div className="modal__error">{error}</div>}
           </form>
         </div>
       </div>
+      {settingsLibrary && (
+        <LibrarySettingsDialog library={settingsLibrary} onClose={closeSettings} />
+      )}
       {conversion && (
         <LibraryConversionDialog
           root={conversion.root}
@@ -636,39 +698,68 @@ export function NewLibraryDialog({
 function LibraryRow({
   library,
   busy,
+  deployment,
+  readOnlyNote,
   onRemove,
   onSelect,
   onConvert,
+  onSettings,
 }: {
   library: LibraryRead
   busy: boolean
+  /** The deployment master switch (ADR-0013 §1); `undefined` until known. */
+  deployment: 'allowed' | 'disabled' | undefined
+  /** The dialog's sentence saying why every switch is off, when one applies. */
+  readOnlyNote?: string
   onRemove: () => void
   onSelect: () => void
   onConvert: () => void
+  /** Opens this library's settings; `opener` gets focus back when they close. */
+  onSettings: (opener: HTMLElement) => void
 }) {
-  // At most one of the two confirmations is open, because they ask about the
-  // same row and both replace it.
-  const [asking, setAsking] = useState<'remove' | null>(null)
-  const [privatePanel, setPrivatePanel] = usePersistentState(
-    `cairndex.libraryControls:${getConnectionScopeKey() ?? 'web'}:${library.id}`,
-    false,
-  )
+  // At most one confirmation is open, because each asks about this row and
+  // replaces it. Turning write mode off asks only when the server wants the
+  // passphrase.
+  const [asking, setAsking] = useState<'remove' | 'write-on' | 'write-off' | null>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
   const available = library.status === 'available'
   const legacy = library.package_format === 'cairndex.library'
   const ownership = useLibraryOwnership(legacy ? null : library.id)
   const serving = useLibraryServing(legacy ? null : library.id)
+  const writeMode = useWriteModeMutation()
   const released = ownership.data?.state === 'locally_released'
+  // A passphrase request opens the step below; anything else is said here and
+  // the switch stays live, so clicking it again retries.
+  const writeModeError =
+    writeMode.error && !(writeMode.error instanceof PassphraseRequiredError)
+      ? writeMode.error.message
+      : null
 
-  if (privatePanel && !legacy)
-    return (
-      <div className="library-private-panel">
-        <button className="btn" onClick={() => setPrivatePanel(false)}>
-          Back to libraries
-        </button>
-        <h2>{library.name}</h2>
-        <LibraryPrivateControls libraryId={library.id} released={released} />
-      </div>
+  const finishWriteMode = () => {
+    setAsking(null)
+    // The step replaced the switch, so put focus back on it once it returns
+    requestAnimationFrame(() => toggleRef.current?.focus())
+  }
+  const toggleWriteMode = () => {
+    if (!library.write_mode_enabled) {
+      setAsking('write-on')
+      return
+    }
+    writeMode.mutate(
+      { libraryId: library.id, enabled: false },
+      {
+        onError: (failure) => {
+          if (failure instanceof PassphraseRequiredError) setAsking('write-off')
+        },
+      },
     )
+  }
+
+  if (asking === 'write-on' || asking === 'write-off') {
+    return (
+      <WriteModeConfirm library={library} enable={asking === 'write-on'} onDone={finishWriteMode} />
+    )
+  }
 
   if (asking === 'remove') {
     return (
@@ -698,6 +789,11 @@ function LibraryRow({
         <span className="lib-row__name">{library.name}</span>
         <span className="lib-row__path">{library.root_path}</span>
         {released && <span className="lib-row__note">Released on this server</span>}
+        {writeModeError && (
+          <span className="lib-row__note" role="alert">
+            {writeModeError}
+          </span>
+        )}
       </div>
       {/* Only a problem is shown: an available library is the normal case */}
       {!available && <span className="badge badge--warn">Unavailable</span>}
@@ -727,11 +823,24 @@ function LibraryRow({
       >
         {serving.isPending ? 'Working…' : released ? 'Reopen' : 'Release'}
       </button>
+      {/* An old-format library converts first; it has no write mode to show */}
+      {!legacy && (
+        <WriteModeToggle
+          library={library}
+          deployment={deployment}
+          released={released}
+          disabled={busy || writeMode.isPending}
+          describedBy={library.write_mode_enabled ? undefined : readOnlyNote}
+          toggleRef={toggleRef}
+          onClick={toggleWriteMode}
+        />
+      )}
       <button
         className="btn btn--sm"
         disabled={legacy || busy}
-        title="Access passphrase, private backups and recovery for this library"
-        onClick={() => setPrivatePanel(true)}
+        aria-label={`Settings for ${library.name}`}
+        title="Passphrase, private backups and recovery"
+        onClick={(event) => onSettings(event.currentTarget)}
       >
         Settings…
       </button>

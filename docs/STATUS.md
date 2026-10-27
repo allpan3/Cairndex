@@ -2,6 +2,17 @@
 
 ## Current: release preparation (2026-10-12)
 
+The Opus library-settings implementation is integrated locally. Libraries again
+shows the per-server Write mode flag with confirmation, protected-library prompts,
+deployment and Release gating, and immediate permission-cache updates. Settings
+opens over the preserved list in a bounded dialog with a scrollable body. Visible
+copy is shorter and longer explanations use keyboard-accessible tooltips. macOS
+passes 66 focused web cases and two new full-stack browser journeys, including
+the 420-pixel-high window and two servers with different write permissions.
+The tooltip follow-up passes 44 focused web cases and five browser journeys,
+including recovery and the earlier portable-package write gate. The wider set of
+16 library-management browser cases also passed. Full combined gates are pending.
+
 The owner decided the work before the next release. Each step is its own branch
 and PR. The owner authorized the agent to open and merge each PR after its full
 gates, the privacy gate and CI pass. A release tag follows only after step 6.

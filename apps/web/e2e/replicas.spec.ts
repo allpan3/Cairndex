@@ -254,7 +254,11 @@ test('two independent replicas preserve offline edits, conflicts, drafts and ret
     await fresh.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(fresh.getByText('Saved here', { exact: true })).toBeVisible()
     await a.getByRole('button', { name: 'Manage libraries', exact: true }).click()
-    await expect(a.getByRole('checkbox', { name: /write mode/i })).toHaveCount(0)
+    // An older portable package keeps write mode off, and says why it cannot change
+    const writeMode = a.getByRole('button', { name: /^Write mode for / })
+    await expect(writeMode).toHaveAttribute('aria-pressed', 'false')
+    await expect(writeMode).toBeDisabled()
+    await expect(writeMode).toHaveAttribute('title', 'Write mode needs the current library format.')
     for (const root of roots) {
       expect(await readFile(join(root, 'synthetic-source.txt'), 'utf8')).toBe(
         'Source stays unchanged',

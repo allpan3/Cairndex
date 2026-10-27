@@ -1,9 +1,21 @@
 # Portable source operations
 
 The sidebar's ⋯ library menu provides **Add Files…** and **File Operations…**. Both open file
-operations and recovery for the selected library. Enable file operations on that serving
-instance first. The deployment must permit writes. A protected library requires its
-passphrase when enabling writes.
+operations and recovery for the selected library. In **Libraries**, turn on that
+library's **Write mode** on the serving instance first. The deployment must permit
+writes. A protected library requires its passphrase when enabling writes.
+
+Turning write mode on asks for confirmation; turning it off takes effect at once
+for an authorized session. A locked library asks for its passphrase. Released
+libraries must be reopened before enabling writes. A read-only deployment keeps
+the control visible and explains why it is blocked. Library **Settings…** opens
+in its own dialog; closing it restores the list and its keyboard focus.
+
+![Write mode in two synthetic libraries](screenshots/library-write-mode.png)
+
+Generated temporary paths are masked. Settings also fits a short window; its
+[keyboard-accessible help](screenshots/library-settings-tooltip.png) stays visible
+outside the scrolling body.
 
 Select a regular file or directory and choose an action. Enter a library-relative
 destination for Copy, Rename or Move. **Copy files…** receives files through the file

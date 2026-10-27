@@ -545,17 +545,19 @@ export function useLibraryMutations() {
  * The deployment's write-mode master switch, from `/health`.
  *
  * Server configuration, not user data: it cannot change while the app is open,
- * so it is fetched once and never refetched. `undefined` while it loads, which
- * the caller treats as "not allowed yet" — a toggle that flickers enabled
- * before the answer arrives is worse than one that arrives enabled.
+ * so it is fetched once and never refetched. `undefined` until it is known,
+ * which the caller treats as "not allowed yet" — a toggle that flickers enabled
+ * before the answer arrives is worse than one that arrives enabled — but must
+ * not describe as read-only, because nothing has said so.
  */
-export function useDeploymentWriteMode() {
+export function useDeploymentWriteMode(): 'allowed' | 'disabled' | undefined {
   const health = useQuery({
     queryKey: ['health'],
     queryFn: ({ signal }) => fetchHealth(signal),
     staleTime: Infinity,
   })
-  return health.data?.write_mode === 'allowed'
+  const mode = health.data?.write_mode
+  return mode === undefined ? undefined : mode === 'allowed' ? 'allowed' : 'disabled'
 }
 
 /** Turn guarded file operations on or off for one library. */
@@ -580,6 +582,9 @@ export function useWriteModeMutation() {
           library.id === libraryId ? { ...library, write_mode_enabled: state.enabled } : library,
         ),
       )
+      // The file-operations panel reads the same switch; a cached copy must not
+      // keep offering what the Libraries dialog just turned off.
+      qc.setQueryData(['source-write-mode', libraryId], state)
       return qc.invalidateQueries({ queryKey: ['libraries'] })
     },
   })

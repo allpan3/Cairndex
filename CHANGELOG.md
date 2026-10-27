@@ -375,6 +375,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore the per-library Write mode control in Libraries. Open library Settings
+  in a separate, scrollable dialog, keeping the library list and keyboard focus
+  intact. Keep visible descriptions short and provide longer help in tooltips.
+
 - Restore Collect metadata for indexed audio files. Codec, sample rate and
   duration stay private, reuse the local probe cache and refresh when bytes change.
 

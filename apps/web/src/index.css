@@ -6483,6 +6483,9 @@ code {
   font-size: 12px;
   color: var(--text-muted);
 }
+.lib-row__note[role='alert'] {
+  color: var(--error);
+}
 /* The write-mode passphrase re-prompt (ADR-0013 §1), inline in the row it
    belongs to. Bounded so it does not push the row's buttons off the edge. */
 .lib-row__main .edit {
@@ -6518,6 +6521,58 @@ code {
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-muted);
+}
+
+/* --- A longer explanation on demand (InfoTip) ------------------------------ */
+.info-tip {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: none;
+  vertical-align: middle;
+  cursor: help;
+}
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--text-strong);
+  border-color: var(--text-muted);
+}
+/* Portalled to the page and placed beside its button on every frame, so no
+   scrolling box clips it; above the dialogs and pickers that host it. */
+.info-tip__bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 320;
+  display: block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+}
+.info-tip__bubble[hidden] {
+  display: none;
 }
 .lib-confirm__ask {
   margin: 0 0 10px;
@@ -7986,27 +8041,79 @@ button.pick-row:disabled {
   display: none;
 }
 
-.library-private-panel {
-  width: 100%;
+/* One library's settings, over the Libraries dialog. Bounded by the window,
+   with the title and Back above a body that scrolls on its own. */
+.library-settings {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+.library-settings__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for focus rings, which the scroll edge would otherwise clip */
+  margin: -4px -6px 0;
+  padding: 4px 6px 6px;
 }
 .library-private {
   display: grid;
-  gap: 1rem;
+  gap: 14px;
 }
-.library-private form,
+.library-private__section {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.library-private__section + .library-private__section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.library-private__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.library-private h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+.library-private p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.library-private [role='alert'] {
+  color: var(--error);
+}
+.library-private [role='status'] {
+  font-size: 12px;
+  color: var(--text-strong);
+}
+.library-private form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
 .library-private label {
   display: grid;
-  gap: 0.5rem;
-}
-.library-private input {
-  max-width: 26rem;
-}
-.library-private .btn {
-  margin: 0.25rem;
+  gap: 4px;
+  width: min(26rem, 100%);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .library-private__actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.library-private__records {
+  width: 100%;
+  margin: 0;
+  padding-left: 18px;
 }
 .library-private__record {
   max-height: 15rem;
