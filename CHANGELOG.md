@@ -134,6 +134,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Update the web development dependencies Undici to 7.30.1 and Zod to 4.6.7
+  for their HTTP parsing, integrity and constrained-collection advisories.
+- Require Pillow 13.0.0 and update certifi and setuptools for image parsing,
+  certificate trust and Windows installation advisories. Update rustls-webpki,
+  webpki-roots and Tokio for certificate distrust and file-descriptor safety.
+
 - Update the Rust lockfile to rustls 0.23.46 for four TLS advisories published
   on 2026-10-14, including a ServerHello downgrade and secrets in `Debug`
   output.
