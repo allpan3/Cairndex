@@ -26,7 +26,9 @@ def prepare_index(store, root):
     for known in (False, True):
         after = ""
         for _ in range(1000):
-            if plan.index_batch(store, run, after, known=known):
+            with store.connection() as db:
+                done = plan.index_batch(store, db, run, after, known=known)
+            if done:
                 break
             after = state.run(store)["cursor"]
         else:

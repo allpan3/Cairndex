@@ -375,6 +375,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Batch Update's cached indexing, grouping and export within one bounded
+  transaction, avoiding a durable flush for each small subject. Retain the
+  32-step or 50 ms limit, cancellation and atomic retry progress.
+
 - Reopen grouping review from a fresh draft list after each Update, so a cached
   empty draft cannot hide new suggestions. Name the side-view entry for the
   actual file changes, saved reviews or earlier grouping choices available.

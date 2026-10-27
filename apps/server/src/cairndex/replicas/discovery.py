@@ -437,20 +437,20 @@ def propose_batch(store: CatalogStore, run: str) -> None:
     from cairndex.replicas import discovery_proposals as proposals
 
     deadline = time.monotonic() + 0.05
-    for _ in range(32):
-        with store.connection(readonly=True) as db:
+    # Cached indexing, grouping and export share one bounded transaction. A
+    # durable flush per subject otherwise dominates small-file Updates on macOS.
+    with store.connection() as db:
+        for _ in range(BATCH):
             job = db.execute("SELECT * FROM discovery_runs WHERE id=?", (run,)).fetchone()
-        if job["state"] != "running":
-            return
-        phase = job["phase"]
-        if phase in ("propose", "plan_known"):
-            done = plan.index_batch(store, run, job["cursor"], known=phase == "plan_known")
-        else:
-            with store.connection() as db:
+            if job["state"] != "running":
+                return
+            phase = job["phase"]
+            if phase in ("propose", "plan_known"):
+                done = plan.index_batch(store, db, run, job["cursor"], known=phase == "plan_known")
+            else:
                 done = plan.tick(db, run) if phase == "group" else proposals.tick(db, run)
-        if done:
-            following = {"propose": "plan_known", "plan_known": "group", "group": "export"}
-            with store.connection() as db:
+            if done:
+                following = {"propose": "plan_known", "plan_known": "group", "group": "export"}
                 if phase in following:
                     db.execute(
                         "UPDATE discovery_runs SET phase=?,cursor='' WHERE id=?",
@@ -467,5 +467,5 @@ def propose_batch(store: CatalogStore, run: str) -> None:
                         (run,),
                     )
                     return
-        if time.monotonic() >= deadline:
-            return
+            if time.monotonic() >= deadline:
+                return

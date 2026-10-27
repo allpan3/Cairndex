@@ -68,113 +68,114 @@ def group_id(directory: str, subject: str) -> str:
 
 
 # Index every fresh observation and settled owner before grouping any of their directory context
-def index_batch(store: CatalogStore, run: str, after: str, *, known: bool) -> bool:
+def index_batch(
+    store: CatalogStore, db: sqlite3.Connection, run: str, after: str, *, known: bool
+) -> bool:
     from cairndex.replicas.discovery_progress import advance
 
-    with store.connection() as db:
+    if known:
+        rows = db.execute(
+            "SELECT entity,path FROM catalog_paths WHERE family='asset_files' "
+            "AND path>? ORDER BY path LIMIT ?",
+            (after, BATCH),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT body,path FROM discovery_entries WHERE run=? AND handled=0 AND path>? "
+            "ORDER BY path LIMIT ?",
+            (run, after, BATCH),
+        ).fetchall()
+    advance(
+        db,
+        run,
+        "plan_known" if known else "propose",
+        len(rows),
+        "SELECT count(*) FROM catalog_paths WHERE family='asset_files'"
+        if known
+        else "SELECT count(*) FROM discovery_entries WHERE run=? AND handled=0",
+        () if known else (run,),
+    )
+    for row in rows:
+        path = row["path"]
+        classified = classify(path)
+        if not classified:
+            continue
+        kind = classified[0]
+        owner, owner_title = None, None
         if known:
-            rows = db.execute(
-                "SELECT entity,path FROM catalog_paths WHERE family='asset_files' "
-                "AND path>? ORDER BY path LIMIT ?",
-                (after, BATCH),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                "SELECT body,path FROM discovery_entries WHERE run=? AND handled=0 AND path>? "
-                "ORDER BY path LIMIT ?",
-                (run, after, BATCH),
-            ).fetchall()
-        advance(
-            db,
-            run,
-            "plan_known" if known else "propose",
-            len(rows),
-            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'"
-            if known
-            else "SELECT count(*) FROM discovery_entries WHERE run=? AND handled=0",
-            () if known else (run,),
-        )
-        for row in rows:
-            path = row["path"]
-            classified = classify(path)
-            if not classified:
+            file = read_row(db, "asset_files", row[0])
+            bundle = read_row(db, "asset_bundles", file["bundle_id"]) if file else None
+            if not file or not bundle:
                 continue
-            kind = classified[0]
-            owner, owner_title = None, None
-            if known:
-                file = read_row(db, "asset_files", row[0])
-                bundle = read_row(db, "asset_bundles", file["bundle_id"]) if file else None
-                if not file or not bundle:
-                    continue
-                identity, body = row[0], {}
-                if bundle["grouping_state"] == "CONFIRMED":
-                    owner, owner_title = bundle["id"], bundle["title"]
-                else:
-                    from cairndex.replicas.discovery_staged import capture
-
-                    if is_hidden_relative_path(path):
-                        continue
-                    observed = db.execute(
-                        "SELECT e.body FROM discovery_entries e JOIN discovery_baselines b "
-                        "ON b.file_id=? AND json_extract(b.body,'$.generation')="
-                        "json_extract(e.body,'$.generation') WHERE e.run=? AND e.path=? "
-                        "AND e.handled=1",
-                        (identity, run, path),
-                    ).fetchone()
-                    if not observed:
-                        continue
-                    body = capture(store, db, file, bundle, json.loads(observed[0]))
+            identity, body = row[0], {}
+            if bundle["grouping_state"] == "CONFIRMED":
+                owner, owner_title = bundle["id"], bundle["title"]
             else:
-                body = json.loads(row[0])
-                prior = db.execute(
-                    "SELECT file_id FROM discovery_identities WHERE path=? AND evidence=?",
-                    (path, value_text(body["evidence"])),
+                from cairndex.replicas.discovery_staged import capture
+
+                if is_hidden_relative_path(path):
+                    continue
+                observed = db.execute(
+                    "SELECT e.body FROM discovery_entries e JOIN discovery_baselines b "
+                    "ON b.file_id=? AND json_extract(b.body,'$.generation')="
+                    "json_extract(e.body,'$.generation') WHERE e.run=? AND e.path=? "
+                    "AND e.handled=1",
+                    (identity, run, path),
                 ).fetchone()
-                identity = (
-                    prior[0]
-                    if prior
-                    else file_id(store.descriptor.library_uuid, store.descriptor.epoch, body)
-                )
-                db.execute(
-                    "INSERT OR IGNORE INTO discovery_identities VALUES (?,?,?)",
-                    (path, value_text(body["evidence"]), identity),
-                )
-                body = body | {"id": identity}
-            directory = path.rpartition("/")[0]
-            db.execute(
-                "INSERT OR REPLACE INTO discovery_plan_files "
-                "(run,path,directory,body,file_id,kind,rank,natural,stem,prefix,part,"
-                "owner,owner_title) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    run,
-                    path,
-                    directory,
-                    value_text(body),
-                    identity,
-                    kind.value,
-                    rules._MEDIA_SEQUENCE_RANK.get(kind, 3),
-                    natural(path),
-                    rules._normalized_stem(path, fold_rendition=True),
-                    rules._subject_prefix(path),
-                    rules._part_base(path) if kind is MediaKind.VIDEO else None,
-                    owner,
-                    owner_title,
-                ),
+                if not observed:
+                    continue
+                body = capture(store, db, file, bundle, json.loads(observed[0]))
+        else:
+            body = json.loads(row[0])
+            prior = db.execute(
+                "SELECT file_id FROM discovery_identities WHERE path=? AND evidence=?",
+                (path, value_text(body["evidence"])),
+            ).fetchone()
+            identity = (
+                prior[0]
+                if prior
+                else file_id(store.descriptor.library_uuid, store.descriptor.epoch, body)
             )
-            if owner is None:
-                while True:
-                    db.execute(
-                        "INSERT OR IGNORE INTO discovery_plan_directories(run,path) VALUES (?,?)",
-                        (run, directory),
-                    )
-                    if not directory:
-                        break
-                    directory = directory.rpartition("/")[0]
+            db.execute(
+                "INSERT OR IGNORE INTO discovery_identities VALUES (?,?,?)",
+                (path, value_text(body["evidence"]), identity),
+            )
+            body = body | {"id": identity}
+        directory = path.rpartition("/")[0]
         db.execute(
-            "UPDATE discovery_runs SET cursor=? WHERE id=?", (rows[-1]["path"] if rows else "", run)
+            "INSERT OR REPLACE INTO discovery_plan_files "
+            "(run,path,directory,body,file_id,kind,rank,natural,stem,prefix,part,"
+            "owner,owner_title) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                run,
+                path,
+                directory,
+                value_text(body),
+                identity,
+                kind.value,
+                rules._MEDIA_SEQUENCE_RANK.get(kind, 3),
+                natural(path),
+                rules._normalized_stem(path, fold_rendition=True),
+                rules._subject_prefix(path),
+                rules._part_base(path) if kind is MediaKind.VIDEO else None,
+                owner,
+                owner_title,
+            ),
         )
-        return not rows
+        if owner is None:
+            while True:
+                db.execute(
+                    "INSERT OR IGNORE INTO discovery_plan_directories(run,path) VALUES (?,?)",
+                    (run, directory),
+                )
+                if not directory:
+                    break
+                directory = directory.rpartition("/")[0]
+    db.execute(
+        "UPDATE discovery_runs SET cursor=? WHERE id=?", (rows[-1]["path"] if rows else "", run)
+    )
+    return not rows
 
 
 # Whole-directory aggregates determine grouping once, independently of source enumeration pages

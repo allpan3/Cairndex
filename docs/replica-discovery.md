@@ -164,9 +164,21 @@ The reverse conversion takes about 0.06 / 0.13 / 0.32 seconds for those sizes.
 These timings establish the cached-planner improvement. A separate real-server
 browser run on the same VM measured 1.549 seconds for collection to bundle and
 3.691 seconds for the 200-file reverse conversion, from clicking until the saved
-summary and controls returned. Assertions polled every 50 ms. Its 203-file Update
-took 44.323 seconds, followed by 6.362 seconds to reopen and initialize review.
-These single synthetic runs do not establish network-share or media-probing cost.
+summary and controls returned. Assertions polled every 50 ms. Before Update
+batching, its 203-file Update took 44.323 seconds, followed by 6.362 seconds to
+reopen and initialize review.
+
+A separate in-process 200-file Update measurement fell from 10.986 to 1.264
+seconds after cached indexing, grouping and export shared a bounded transaction.
+Write transactions fell from 355 to 29; filesystem enumeration, known-file
+validation and repair retained their existing boundaries. Both runs use 100
+synthetic video/subtitle pairs, include status reads and exclude worker pauses,
+UI polling and metadata transport. These single local runs do not establish
+network-share or media-probing cost.
+The real-server 203-file browser journey passes after this change: Update takes
+8.713 seconds and review initialization 7.558 seconds. The same run measures
+1.882 seconds to merge and 3.125 seconds to split its 200-file grouping. Selection,
+accepted identities, collection placement and unchanged source bytes are checked.
 
 Optional complete-content verification operates on the immutable exported graph
 before review preparation. Its byte progress and cancellation remain available
@@ -212,6 +224,10 @@ library is idle. Each pass keeps the bounded steps, so Release drains promptly.
 Private disk-backed planning indexes every fresh source and settled catalog owner
 before classifying complete directories. Assignment and role work advances in
 32-file batches; worker batches never split bundles or omit later-page owners.
+Cached indexing, grouping and candidate export share one transaction for at most
+32 steps or 50 ms. Phase and cursor updates commit with those rows. Failure rolls
+back that batch; cancellation takes effect between batches. This reduces durable
+flushes without changing SQLite settings or moving filesystem work into the batch.
 Preparation stages selected files, relationships and original causal bases in
 private tables and emits complete linked catalog payloads. Final catalog validation
 and activation are atomic operations; complete membership/forest units and the
