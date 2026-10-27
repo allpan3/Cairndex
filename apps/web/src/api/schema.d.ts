@@ -3377,6 +3377,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/additions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Additions */
+        get: operations["additions_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__additions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/attention": {
         parameters: {
             query?: never;
@@ -6370,6 +6387,11 @@ export interface components {
              * @enum {string}
              */
             action: "select";
+            /**
+             * Exclude Additions
+             * @default false
+             */
+            exclude_additions: boolean;
             /** File */
             file?: string | null;
             /** Folder */
@@ -15014,12 +15036,56 @@ export interface operations {
             };
         };
     };
+    additions_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__additions_get: {
+        parameters: {
+            query: {
+                revision: number;
+                after?: string;
+                limit?: number;
+                uncertain?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                workspace: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     attention_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__attention_get: {
         parameters: {
             query: {
                 revision: number;
                 after?: string;
                 limit?: number;
+                exclude_additions?: boolean;
             };
             header?: {
                 authorization?: string | null;
@@ -15149,6 +15215,7 @@ export interface operations {
                 parent?: string | null;
                 after?: number;
                 limit?: number;
+                exclude_additions?: boolean;
             };
             header?: {
                 authorization?: string | null;

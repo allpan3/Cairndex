@@ -388,8 +388,14 @@ export function CatalogWorkspace({
       {reviewMode && discovery.enabled && <DiscoveryControls discovery={discovery} />}
       {discovery.open &&
         editor &&
-        (state?.grouping_version === 1 ? (
-          <GroupingReviewDialog discovery={discovery} library={libraryId} editor={editor} />
+        ((state?.grouping_version ?? 0) >= 1 ? (
+          <GroupingReviewDialog
+            discovery={discovery}
+            library={libraryId}
+            editor={editor}
+            // Version 2 pages additions to existing bundles as their own section
+            separateAdditions={(state?.grouping_version ?? 0) >= 2}
+          />
         ) : (
           <DiscoveryReviewDialog discovery={discovery} library={libraryId} editor={editor} />
         ))}
@@ -556,7 +562,9 @@ export function CatalogWorkspace({
                   },
                   {
                     label:
-                      state?.grouping_version === 1 ? 'Suggest grouping…' : 'Review Discoveries…',
+                      (state?.grouping_version ?? 0) >= 1
+                        ? 'Suggest grouping…'
+                        : 'Review Discoveries…',
                     onClick: () => discovery.setOpen(true),
                   },
                 ]

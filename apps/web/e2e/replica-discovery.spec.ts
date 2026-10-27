@@ -15,9 +15,24 @@ import { apiPost, proxyApi, startBackend, stopBackend, openMetadataReview } from
 // prepared reviews. replica-grouping.spec.ts exercises the active editable tree.
 async function reviewOpened(page: Page) {
   await expect(page.getByRole('dialog', { name: /^(Discovery|Grouping) review$/ })).toBeVisible()
-  if (await page.getByRole('dialog', { name: 'Grouping review' }).isVisible()) {
-    await page.getByRole('button', { name: 'File changes and saved reviews…' }).click()
-    await page.getByRole('button', { name: 'Earlier grouping choices…' }).click()
+  const grouping = page.getByRole('dialog', { name: 'Grouping review' })
+  if (await grouping.isVisible()) {
+    // The footer names what waits beside the tree. With only this Update's
+    // proposals it opens the earlier choices directly; otherwise they are one
+    // step further, behind file changes or saved reviews.
+    const earlier = grouping.getByRole('button', {
+      name: 'Earlier grouping choices…',
+      exact: true,
+    })
+    const beside = grouping.getByRole('button', {
+      name: /^(File changes|Saved reviews|File changes and saved reviews)…$/,
+    })
+    await expect(earlier.or(beside)).toBeVisible()
+    if (await earlier.isVisible()) await earlier.click()
+    else {
+      await beside.click()
+      await page.getByRole('button', { name: 'Earlier grouping choices…' }).click()
+    }
   }
   await expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
 }

@@ -1,42 +1,72 @@
-import { type KeyboardEvent, useLayoutEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, type MouseEvent, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import type { GroupingNode } from '../../api/grouping'
 import { formatFileRole } from '../../lib/format'
+import { ContextMenu } from '../ContextMenu'
 import type { GroupingPlacementOption } from '../GroupingPlacementPicker'
 import { IconChevron, IconFolder } from '../icons'
+import { useContextMenu, type MenuEntry } from '../useContextMenu'
 import { GroupingCheck, GroupingNodeRow } from './GroupingNodeRow'
+import { convertible } from './groupingRows'
 import { GROUPING_DRAG, groupingDrag } from './groupingDrag'
 import type { GroupingMove } from './GroupingMoveDialog'
 import type { GroupingWorkspaceState } from './useGroupingWorkspace'
 import type { GroupingTreeState, TreeRow } from './useGroupingTree'
 import { GroupingRollup } from './GroupingRollup'
 
+/** One selection command holds at most this many suggestions */
+const SELECT_LIMIT = 50
+
+type SectionRow = Extract<TreeRow, { kind: 'section' }>
+type FileRow = Extract<TreeRow, { kind: 'file' }>
+
+/** A section can be selected as one only when all of it is loaded and fits one command */
+function sectionSelectable(row: SectionRow) {
+  return (
+    row.section === 'additions' &&
+    row.complete &&
+    row.nodes.length > 0 &&
+    row.nodes.length <= SELECT_LIMIT
+  )
+}
+
 function checked(row: TreeRow): boolean | 'mixed' | undefined {
   if (row.kind === 'file') return row.file.selected
   let selected: number, total: number
   if (row.kind === 'node') ({ selected, files: total } = row.node)
   else if (row.kind === 'folder') ({ selected, files: total } = row.folder)
-  else if (row.kind === 'rollup') {
+  else if (row.kind === 'rollup' || (row.kind === 'section' && sectionSelectable(row))) {
     selected = row.nodes.reduce((sum, node) => sum + node.selected, 0)
     total = row.nodes.reduce((sum, node) => sum + node.files, 0)
   } else return undefined
   return selected === 0 ? false : selected === total ? true : 'mixed'
 }
 
+const SECTION_TITLES = {
+  additions: 'Add to existing bundles',
+  suggestions: 'New bundles and collections',
+} as const
+
 export function GroupingTree({
   state,
   tree,
   collections,
+  collectionsLoading = false,
+  collectionsError = false,
   onMove,
 }: {
   state: GroupingWorkspaceState
   tree: GroupingTreeState
   collections: GroupingPlacementOption[]
+  collectionsLoading?: boolean
+  collectionsError?: boolean
   onMove: (move: GroupingMove) => void
 }) {
   state = { ...state, busy: state.busy || tree.stale }
   const scroll = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<{ key: string; origin: Element | null } | null>(null)
   const [focus, setFocus] = useState(0)
+  const menu = useContextMenu()
   const blocked = state.busy || Boolean(state.status.data?.accepting)
   const rows = tree.rows
   // eslint-disable-next-line react-hooks/incompatible-library -- Used directly, without memoized consumers.
@@ -64,12 +94,57 @@ export function GroupingTree({
       target.focus()
     }
   })
+  // The shared menu takes no focus, and this modal keeps Tab inside itself, so
+  // the menu's first item takes focus, arrows move between items, and Tab
+  // closes it.
+  useLayoutEffect(() => {
+    if (menu.state)
+      document
+        .querySelector<HTMLElement>('.context-menu [role="menuitem"]:not(:disabled)')
+        ?.focus({ preventScroll: true })
+  }, [menu.state])
+  function menuKey(event: KeyboardEvent<HTMLDivElement>) {
+    const list = (event.target as HTMLElement).closest('.context-menu')
+    if (!list) return
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      menu.state?.returnFocus?.focus({ preventScroll: true })
+      menu.close()
+      return
+    }
+    const items = Array.from(list.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'))
+    const at = items.indexOf(event.target as HTMLElement)
+    const moves: Record<string, number> = {
+      ArrowDown: at + 1,
+      ArrowUp: at - 1,
+      Home: 0,
+      End: items.length - 1,
+    }
+    const next = moves[event.key]
+    if (next === undefined || items.length === 0) return
+    event.preventDefault()
+    items.at(next % items.length)?.focus({ preventScroll: true })
+  }
+  // The row that speaks for a folder carries its Narrow/Widen. Rows in the
+  // separated tree claim their folders first: an addition's pair would regroup
+  // suggestions drawn in the other section.
   const directoryRows = new Map<string, string>()
+  const rowNodes = (row: TreeRow) =>
+    row.kind === 'node' ? [row.node] : row.kind === 'rollup' ? row.nodes : []
+  for (const pass of tree.sectioned ? [false, true] : [null])
+    for (const row of rows)
+      for (const node of rowNodes(row))
+        if (
+          !node.context &&
+          (pass === null || Boolean(node.target) === pass) &&
+          !directoryRows.has(node.directory)
+        )
+          directoryRows.set(node.directory, node.id)
+  const additionIds = new Set<string>()
+  let inAdditions = false
   for (const row of rows) {
-    const nodes = row.kind === 'node' ? [row.node] : row.kind === 'rollup' ? row.nodes : []
-    for (const node of nodes)
-      if (!node.context && !directoryRows.has(node.directory))
-        directoryRows.set(node.directory, node.id)
+    if (row.kind === 'section') inAdditions = row.section === 'additions'
+    else if (inAdditions && row.kind === 'node') additionIds.add(row.node.id)
   }
   function focusRow(index: number) {
     index = Math.max(0, Math.min(rows.length - 1, index))
@@ -80,12 +155,121 @@ export function GroupingTree({
     setFocus(index)
     virtual.scrollToIndex(index)
   }
+  function selectNode(node: GroupingNode, selected: boolean) {
+    state.edit({
+      action: 'select',
+      node: node.id,
+      selected,
+      ...(tree.separate && node.kind === 'container' ? { exclude_additions: true } : {}),
+    })
+  }
+  function fileMoves(row: FileRow) {
+    const fileRows = rows.filter(
+      (item): item is FileRow => item.kind === 'file' && item.node.id === row.node.id,
+    )
+    const previous = fileRows.find((item) => item.file.sequence === row.file.sequence - 1)
+    const next = fileRows.find((item) => item.file.sequence === row.file.sequence + 1)
+    const afterNext = fileRows.find((item) => item.file.sequence === row.file.sequence + 2)
+    return {
+      up: previous
+        ? () =>
+            state.edit({
+              action: 'move_file',
+              file: row.file.id,
+              node: row.node.id,
+              before: previous.file.id,
+            })
+        : null,
+      down:
+        next && (afterNext || row.file.sequence + 2 >= row.node.files)
+          ? () =>
+              state.edit({
+                action: 'move_file',
+                file: row.file.id,
+                node: row.node.id,
+                before: afterNext?.file.id ?? null,
+              })
+          : null,
+    }
+  }
+  // Secondary actions live in one menu, opened by right-click, Shift+F10 or
+  // the Menu key, so rows carry no button cluster for them
+  function openMenu(event: MouseEvent<HTMLDivElement>, row: TreeRow) {
+    const target = event.target as HTMLElement
+    // Pickers rendered in portals, and the rename field, keep their own menus
+    if (!event.currentTarget.contains(target) || target.closest('input:not([type="checkbox"])'))
+      return
+    let items: MenuEntry[] = []
+    if (row.kind === 'node' && !row.node.context) {
+      const node = row.node
+      const title = event.currentTarget.querySelector<HTMLButtonElement>('.grp-title--editable')
+      items = [
+        { label: 'Rename', disabled: blocked || !title, onClick: () => title?.click() },
+        ...(convertible(node)
+          ? [
+              {
+                label: node.kind === 'bundle' ? 'Convert to collection' : 'Convert to bundle',
+                disabled: blocked,
+                onClick: () =>
+                  state.edit({
+                    action: 'kind',
+                    node: node.id,
+                    kind: node.kind === 'bundle' ? 'container' : 'bundle',
+                  }),
+              },
+            ]
+          : []),
+        ...(!node.target
+          ? [{ label: 'Move to…', disabled: blocked, onClick: () => onMove({ node }) }]
+          : []),
+        ...(node.original_target
+          ? [
+              {
+                label: node.target ? 'New bundle instead' : 'Add to existing bundle instead',
+                disabled: blocked || node.files === 0,
+                onClick: () =>
+                  state.edit({
+                    action: 'destination',
+                    node: node.id,
+                    create_new: Boolean(node.target),
+                  }),
+              },
+            ]
+          : []),
+      ]
+    } else if (row.kind === 'file') {
+      const moves = fileMoves(row)
+      items = [
+        { label: 'Move up', disabled: blocked || !moves.up, onClick: () => moves.up?.() },
+        { label: 'Move down', disabled: blocked || !moves.down, onClick: () => moves.down?.() },
+        {
+          label: 'Move to another bundle…',
+          disabled: blocked,
+          onClick: () => onMove({ node: row.node, file: row.file.id }),
+        },
+      ]
+    }
+    if (items.length === 0) return
+    // A keyboard-opened menu reports 0, 0; place it under the row instead
+    const rect = event.currentTarget.getBoundingClientRect()
+    const keyboard = event.clientX === 0 && event.clientY === 0
+    menu.open(event, items, keyboard ? { x: rect.left + 24, y: rect.bottom } : undefined)
+  }
   function key(event: KeyboardEvent<HTMLDivElement>, row: TreeRow, index: number) {
     const target = event.target as HTMLElement
     // Portal pickers keep their own navigation even though React bubbles their events here.
     if (!event.currentTarget.contains(target)) return
     if (target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable="true"]'))
       return
+    // Shift+F10 and the Menu key open the row's menu on every platform, macOS
+    // included, which has no key of its own for it
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      event.preventDefault()
+      event.currentTarget.dispatchEvent(
+        new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      )
+      return
+    }
     if (event.key === ' ' && event.target !== event.currentTarget) return
     const next =
       event.key === 'ArrowDown'
@@ -102,9 +286,22 @@ export function GroupingTree({
       focusRow(next)
       return
     }
+    // Left from a top-level row goes to the heading of its section
+    const heading = () => {
+      for (let i = index - 1; i >= 0; i--) if (rows[i]?.kind === 'section') return focusRow(i)
+    }
+    if (row.kind === 'section' && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      event.preventDefault()
+      if (row.open !== (event.key === 'ArrowRight'))
+        tree.toggleSection(row.section, event.key === 'ArrowRight')
+    }
     if (row.kind === 'rollup' && event.key === 'ArrowRight') {
       event.preventDefault()
       tree.toggleRun(row.run, true)
+    }
+    if (row.kind === 'rollup' && event.key === 'ArrowLeft' && tree.sectioned && row.depth === 0) {
+      event.preventDefault()
+      heading()
     }
     if (row.kind === 'folder' && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
       event.preventDefault()
@@ -124,16 +321,25 @@ export function GroupingTree({
           (item) => item.kind === 'node' && item.node.id === row.node.parent,
         )
         if (parent >= 0) focusRow(parent)
+        else if (tree.sectioned && row.depth === 0) heading()
       }
+    }
+    // F2 renames from anywhere in the row. Enter renames only from the row
+    // itself, so the row's buttons keep their own Enter.
+    if (
+      row.kind === 'node' &&
+      (event.key === 'F2' || (event.key === 'Enter' && event.target === event.currentTarget))
+    ) {
+      const title = event.currentTarget.querySelector<HTMLButtonElement>('.grp-title--editable')
+      if (title && !title.disabled && !(event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        title.click()
+      }
+      return
     }
     if (event.key !== ' ' || blocked) return
     event.preventDefault()
-    if (row.kind === 'node')
-      state.edit({
-        action: 'select',
-        node: row.node.id,
-        selected: row.node.selected !== row.node.files,
-      })
+    if (row.kind === 'node') selectNode(row.node, row.node.selected !== row.node.files)
     else if (row.kind === 'file')
       state.edit({ action: 'select', file: row.file.id, selected: !row.file.selected })
     else if (row.kind === 'folder')
@@ -143,7 +349,7 @@ export function GroupingTree({
         folder: row.folder.path,
         selected: row.folder.selected !== row.folder.files,
       })
-    else if (row.kind === 'rollup')
+    else if (row.kind === 'rollup' || (row.kind === 'section' && sectionSelectable(row)))
       state.edit({
         action: 'select',
         nodes: row.nodes.map((node) => node.id),
@@ -151,6 +357,47 @@ export function GroupingTree({
       })
   }
   function render(row: TreeRow) {
+    if (row.kind === 'section') {
+      const selectable = sectionSelectable(row)
+      return (
+        <div className="grp-section">
+          <button
+            className="grp-disclosure"
+            aria-label={`${row.open ? 'Collapse' : 'Expand'} ${SECTION_TITLES[row.section]}`}
+            aria-expanded={row.open}
+            onClick={() => tree.toggleSection(row.section, !row.open)}
+          >
+            <IconChevron open={row.open} />
+          </button>
+          {selectable && (
+            <GroupingCheck
+              selected={row.nodes.reduce((sum, node) => sum + node.selected, 0)}
+              total={row.nodes.reduce((sum, node) => sum + node.files, 0)}
+              disabled={blocked}
+              label={
+                row.nodes.length === 1
+                  ? 'Accept the addition'
+                  : `Accept all ${row.nodes.length} additions`
+              }
+              change={(selected) =>
+                state.edit({ action: 'select', nodes: row.nodes.map((node) => node.id), selected })
+              }
+            />
+          )}
+          <span
+            className="grp-section__title"
+            title={
+              row.section === 'additions'
+                ? 'New files that join bundles already in your library. Those bundles keep their place.'
+                : 'New bundles, and collections to hold them'
+            }
+          >
+            {SECTION_TITLES[row.section]}
+          </span>
+          {row.complete && <span className="grp-hint">{row.nodes.length}</span>}
+        </div>
+      )
+    }
     if (row.kind === 'rollup')
       return (
         <GroupingRollup
@@ -169,18 +416,22 @@ export function GroupingTree({
     if (row.kind === 'loading') return <span role="status">Loading suggestions…</span>
     if (row.kind === 'error')
       return (
-        <span role="alert">
-          {row.message}
-          <button onClick={row.retry}>Retry suggestion page</button>
+        <span className="grp-error" role="alert">
+          {row.message}{' '}
+          <button className="btn btn--compact" onClick={row.retry}>
+            Retry suggestion page
+          </button>
         </span>
       )
     if (row.kind === 'more')
       return (
-        <button className="btn" onClick={() => tree.loadMore(row.scope)}>
+        <button className="btn btn--compact" onClick={() => tree.loadMore(row.scope)}>
           Show more{' '}
-          {row.scope.kind === 'nodes' || row.scope.kind === 'attention'
-            ? 'suggestions'
-            : row.scope.kind}
+          {row.scope.kind === 'additions' || row.scope.kind === 'uncertain_additions'
+            ? 'additions'
+            : row.scope.kind === 'nodes' || row.scope.kind === 'attention'
+              ? 'suggestions'
+              : row.scope.kind}
         </button>
       )
     if (row.kind === 'node')
@@ -191,8 +442,11 @@ export function GroupingTree({
           expanded={tree.expanded.has(row.node.id)}
           toggle={() => tree.toggle(row.node)}
           stem={directoryRows.get(row.node.directory) === row.node.id}
+          separate={tree.separate}
+          inAdditions={additionIds.has(row.node.id)}
           collections={collections}
-          onMove={onMove}
+          collectionsLoading={collectionsLoading}
+          collectionsError={collectionsError}
           onDragEnd={() => tree.setFileDragging(false)}
         />
       )
@@ -229,13 +483,7 @@ export function GroupingTree({
           <span>{row.folder.files} files</span>
         </div>
       )
-    const fileRows = rows.filter(
-      (item): item is Extract<TreeRow, { kind: 'file' }> =>
-        item.kind === 'file' && item.node.id === row.node.id,
-    )
-    const previous = fileRows.find((item) => item.file.sequence === row.file.sequence - 1)
-    const next = fileRows.find((item) => item.file.sequence === row.file.sequence + 1)
-    const afterNext = fileRows.find((item) => item.file.sequence === row.file.sequence + 2)
+    const moves = fileMoves(row)
     return (
       <div
         className="grp-file grp-file--draggable"
@@ -283,40 +531,30 @@ export function GroupingTree({
           {row.file.path.split('/').at(-1)}
         </span>
         <span className="grp-file__role">{formatFileRole(row.file.media_kind, row.file.path)}</span>
-        <span className="portable-grp-actions">
+        {/* Shown with the row's hover or focus; the menu and drag do the same */}
+        <span className="portable-grp-actions portable-grp-actions--quiet">
           <button
             className="btn btn--compact"
             aria-label={`Move ${row.file.path} up`}
-            disabled={blocked || !previous}
-            onClick={() =>
-              state.edit({
-                action: 'move_file',
-                file: row.file.id,
-                node: row.node.id,
-                before: previous!.file.id,
-              })
-            }
+            title="Move up"
+            disabled={blocked || !moves.up}
+            onClick={() => moves.up?.()}
           >
             ↑
           </button>
           <button
             className="btn btn--compact"
             aria-label={`Move ${row.file.path} down`}
-            disabled={blocked || !next || (!afterNext && row.file.sequence + 2 < row.node.files)}
-            onClick={() =>
-              state.edit({
-                action: 'move_file',
-                file: row.file.id,
-                node: row.node.id,
-                before: afterNext?.file.id ?? null,
-              })
-            }
+            title="Move down"
+            disabled={blocked || !moves.down}
+            onClick={() => moves.down?.()}
           >
             ↓
           </button>
           <button
             className="btn btn--compact"
             aria-label={`Move file ${row.file.path} to another suggestion`}
+            title="Move to another bundle"
             disabled={blocked}
             onClick={() => onMove({ node: row.node, file: row.file.id })}
           >
@@ -334,6 +572,8 @@ export function GroupingTree({
       aria-label="Grouping suggestions"
       onDrop={() => tree.setFileDragging(false)}
       onDragEnd={() => tree.setFileDragging(false)}
+      // The menu renders in a portal but its key events arrive here
+      onKeyDown={menuKey}
       style={{ height: `min(54vh, ${Math.max(120, virtual.getTotalSize())}px)` }}
     >
       {rows.length === 0 && (
@@ -352,7 +592,8 @@ export function GroupingTree({
               data-index={item.index}
               data-row-index={item.index}
               role="treeitem"
-              aria-level={row.depth + 1}
+              // Rows sit one level inside their section heading
+              aria-level={row.kind === 'section' ? 1 : row.depth + (tree.sectioned ? 2 : 1)}
               aria-expanded={
                 row.kind === 'node'
                   ? tree.expanded.has(row.node.id)
@@ -360,12 +601,15 @@ export function GroupingTree({
                     ? false
                     : row.kind === 'folder'
                       ? row.folder.expanded
-                      : undefined
+                      : row.kind === 'section'
+                        ? row.open
+                        : undefined
               }
               aria-checked={checked(row)}
               tabIndex={item.index === Math.min(focus, rows.length - 1) ? 0 : -1}
               onFocus={() => setFocus(item.index)}
               onKeyDown={(event) => key(event, row, item.index)}
+              onContextMenu={(event) => openMenu(event, row)}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -381,6 +625,7 @@ export function GroupingTree({
           )
         })}
       </div>
+      {menu.state && <ContextMenu state={menu.state} onClose={menu.close} />}
     </div>
   )
 }

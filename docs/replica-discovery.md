@@ -68,8 +68,9 @@ catalog entries. No discovery operation renames, moves, overwrites or deletes me
 
 The private store now contains an editable draft graph, separate from immutable
 candidate and prepared-review tables. Its API and lifecycle worker are wired;
-the application opens its paged tree when `grouping_version: 1` is available.
-Feature qualification is still in progress. Its `grouping_*` tables retain logical placement independently of
+the application opens its paged tree when `grouping_version` is at least 1.
+Current qualification is recorded in [STATUS](STATUS.md). Its `grouping_*` tables
+retain logical placement independently of
 physical source directories, file selection, folder display choices, per-folder
 stem levels and exact edit receipts. The revision counter guards concurrent edits;
 it does not version the library format.
@@ -77,7 +78,13 @@ it does not version the library format.
 Rename and drag commands change private rows only. Narrow/Widen prepares bounded
 planner pages for the chosen folder before replacing that folder's suggestions
 atomically. Bundle-to-collection conversion splits video subjects with strict
-sidecar matching; the inverse keeps file identities and folder display choices.
+sidecar matching within each source folder; repeated filenames in separate
+folders remain independent. A one-subject subfolder keeps its folder title.
+The inverse keeps file identities and folder display choices.
+Cached regrouping now advances copying and planning by up to 32 steps or
+50 ms per transaction, rather than committing each page or small subject
+separately. Durable commits, the final atomic splice and reviewed acceptance
+checks remain unchanged.
 Recovery validates the graph and detects missing private decisions. Preparing a
 graph exports its selected files, order and logical ancestors into an immutable
 candidate, then uses the existing guarded discovery preparation and acceptance.
@@ -95,7 +102,8 @@ The tree fetches only opened branches and requested pages and virtualizes its
 visible rows. Loaded pages stay visible during edits, but controls wait until
 fresh revision-bound pages arrive. Refresh restarts each loaded prefix with fresh
 cursors, retaining later-page context without reusing stale page boundaries.
-Expand shown collections acts on loaded suggestions; later pages remain explicit.
+Expand all acts on loaded collections; its tooltip explains that later pages
+remain explicit.
 Show files also applies to newly requested pages, with individual folds retained.
 Bundle rows summarize media kinds without downloading their file lists. Runs of
 three or more matching sibling bundles fold into an expandable summary; uncertain
@@ -103,15 +111,62 @@ groups and existing-bundle additions remain individual. A run checkbox changes
 only its displayed members, at most fifty per saved command. File drags temporarily
 reveal individual targets without changing the Show files preference. Arrows
 navigate from row controls as well as row whitespace; text editors retain their
-normal keys. Rename keeps the clicked caret position. Narrow/Widen uses the
-established stem rules. File and proposal drags, keyboard move choices, file
-ordering and persisted collection placement all change private draft rows only.
+normal keys. Rename keeps the clicked caret position. F2 renames from a row or
+its controls; Enter renames only when the row has focus. Right-click or Shift+F10 opens the row
+menu for rename, conversion and movement. The kind icon also converts the row.
+Narrow/Widen appears only on the row representing a matching source folder.
+File and proposal drags, keyboard move choices, file ordering and persisted
+collection placement all change private draft rows only.
 
-Needs a look pages uncertain bundles across the complete draft, including folded
-branches. Filtering never changes what Accept selects. File changes and saved
-reviews opens identity repair/replacement and retained prepared reviews; its
-category filter runs before server pagination. Earlier grouping choices remains
-available there for candidate drafts created before the editable tree.
+The need-a-look toggle appears only when suggestions are uncertain and pages them
+across the complete draft, including folded branches. Filtering never changes
+what Accept selects. The side view keeps identity repair, replacement and saved
+prepared reviews reachable. Its category filter runs before server pagination.
+Earlier grouping choices opens candidate drafts made before the editable tree.
+
+Servers advertising `grouping_version: 2` show **Add to existing bundles**
+above **New bundles and collections**. Both populations are filtered before
+pagination. Collection counts and branch checkboxes cover only that tree;
+Select all and Select none cover both
+sections. Moving an addition into its own display section changes no accepted
+collection membership. A section checkbox selects its additions only when the
+whole section is loaded and fits one command (at most 50 suggestions); larger
+sections retain individual selection and global Select all/none. Older servers
+retain their mixed tree. Full-content verification remains optional; its tooltip
+explains that it reads every byte.
+**Other drafts** appears only when another draft or page is available. The side-view
+entry names the available work: File changes, Saved reviews, or both. Ordinary
+grouping candidates remain reachable through Earlier grouping choices. The file
+change query filters before pagination. Reopening after a newer Update waits for
+a fresh draft list before choosing the draft. Longer explanations are available
+on demand.
+
+![Synthetic grouping review with additions above new suggestions](screenshots/grouping-review-sections.png)
+
+The synthetic example keeps an addition to an accepted bundle above the new
+collection suggestions. Changing their display does not move source files.
+
+### Conversion timing
+
+Synthetic local-disk measurements in Cairndex macOS compare one fresh run per
+size before and after batching. They include private worker transactions and
+status reads, but exclude UI polling, the worker's scheduling pause and shared
+metadata transport. Every subject has one generated video-shaped file and one
+subtitle-shaped file; no decoder or owner data is involved.
+
+| Selected files | Bundle to collection, before / after | Durable worker steps, before / after |
+| --- | ---: | ---: |
+| 4 | 0.244 / 0.082 s | 13 / 3 |
+| 200 | 5.190 / 0.211 s | 221 / 9 |
+| 420 | 9.891 / 0.724 s | 454 / 17 |
+
+The reverse conversion takes about 0.06 / 0.13 / 0.32 seconds for those sizes.
+These timings establish the cached-planner improvement. A separate real-server
+browser run on the same VM measured 1.549 seconds for collection to bundle and
+3.691 seconds for the 200-file reverse conversion, from clicking until the saved
+summary and controls returned. Assertions polled every 50 ms. Its 203-file Update
+took 44.323 seconds, followed by 6.362 seconds to reopen and initialize review.
+These single synthetic runs do not establish network-share or media-probing cost.
 
 Optional complete-content verification operates on the immutable exported graph
 before review preparation. Its byte progress and cancellation remain available

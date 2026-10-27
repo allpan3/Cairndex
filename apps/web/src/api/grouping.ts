@@ -1,7 +1,15 @@
 import { replicaRequest } from './replicas'
 import type { components } from './schema'
 
-export type GroupingIntent = components['schemas']['GroupingCommand']['intent']
+type GeneratedIntent = components['schemas']['GroupingCommand']['intent']
+type GeneratedSelect = Extract<GeneratedIntent, { action: 'select' }>
+/** The intents the client sends. openapi-typescript marks a field with a
+ * server default as required, but `exclude_additions` must stay optional: only
+ * a grouping_version 2 server defines it, so a request to an older server omits
+ * it rather than sending `false`. */
+export type GroupingIntent =
+  | Exclude<GeneratedIntent, { action: 'select' }>
+  | (Omit<GeneratedSelect, 'exclude_additions'> & { exclude_additions?: boolean })
 export type GroupingStatus = {
   id: string
   state: 'building' | 'editing' | 'ready'

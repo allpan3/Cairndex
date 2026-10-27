@@ -33,7 +33,9 @@ levels; `grouping_commands` retains revision guards, exact intent and resumable
 receipts. Normalized discovery candidates remain immutable acceptance snapshots.
 Recovery validates these graphs and detects missing private choices. These tables
 do not change package format. The paged application tree is available through
-`grouping_version: 1`; full restoration qualification remains in progress.
+`grouping_version: 1`. Capability 2 adds separately paged existing-bundle
+additions and collection selection that excludes them, without schema changes.
+Current qualification is recorded in [STATUS](STATUS.md).
 
 Registry `conversion_tasks` records each owner-started step by a 32-hex operation
 ID. Each row contains its normalized root, action, preparation attempt, state,

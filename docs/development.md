@@ -748,8 +748,9 @@ For portable libraries, Update saves private observations and grouping suggestio
 and opens review when suggestions exist. The remaining maintenance-menu work is
 tracked in the [restoration audit](restoration-audit.md).
 In editable grouping review, double-click a new-bundle or collection title to
-edit it. Enter or blur saves the private edit; Escape cancels it. The row's
-actions menu switches an addition between its existing bundle and a new bundle.
+edit it; F2 also starts rename from a focused row or its controls. Enter or blur
+saves the private edit; Escape cancels it. Right-click or Shift+F10 opens the row
+menu. An addition's destination switch chooses its existing bundle or a new one.
 Narrow/Widen changes matching in the represented source folder, retaining
 unrelated edits and file selection. Media summaries and expandable sibling runs
 keep file lists closed until needed; Show files also applies to later pages.

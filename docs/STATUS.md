@@ -2,16 +2,31 @@
 
 ## Current: release preparation (2026-10-12)
 
-The Opus library-settings implementation is integrated locally. Libraries again
-shows the per-server Write mode flag with confirmation, protected-library prompts,
-deployment and Release gating, and immediate permission-cache updates. Settings
-opens over the preserved list in a bounded dialog with a scrollable body. Visible
-copy is shorter and longer explanations use keyboard-accessible tooltips. macOS
-passes 66 focused web cases and two new full-stack browser journeys, including
-the 420-pixel-high window and two servers with different write permissions.
-The tooltip follow-up passes 44 focused web cases and five browser journeys,
-including recovery and the earlier portable-package write gate. The wider set of
-16 library-management browser cases also passed. Full combined gates are pending.
+Owner testing on 2026-10-27 found presentation and interaction problems in the
+installed restoration build. The local branch restores concise grouping review,
+File Browser badges, Write Mode and bounded library Settings. Opus implemented
+the UI fixes. Additions to existing bundles have their own section above new
+bundles and collections; accepted memberships stay intact. This choice replaces
+inserting their collection ancestors into the review tree.
+
+The 420-file synthetic split fell from 9.891 seconds and 454 durable worker steps
+to 0.724 seconds and 17 steps. Cached copying and planning share a transaction
+bounded by 32 steps or 50 ms; SQLite durability and final acceptance checks are
+unchanged. The 200-file browser journey measured 1.55 seconds to merge and
+3.69 seconds to split, including saving and refreshing controls. The
+[measurement notes](replica-discovery.md#conversion-timing) record the smaller
+cases, Update timing and limits. A multi-folder round-trip regression preserves
+same-named subjects, sidecars, selection and identity after interruption and retry.
+No new ADR is needed: the private-draft, identity and source-write contracts stay
+in place, and capability 2 gates the new API for remote compatibility.
+
+Focused macOS backend, frontend static, unit and browser checks pass, including
+protected Write Mode prompts, two servers with different permissions, the
+420-pixel-high Settings window, and keyboard tooltips outside its scrolling body.
+The two large browser journeys pass when run alone. They timed out during Update
+while a Linux disk suite ran concurrently; this was not a review-reopening failure.
+Fresh-list tests cover reopening and failed refreshes. Full combined VM gates are
+pending; these fixes are not yet published or installed.
 
 The owner decided the work before the next release. Each step is its own branch
 and PR. The owner authorized the agent to open and merge each PR after its full

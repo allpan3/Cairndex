@@ -11,13 +11,24 @@ import type { GroupingWorkspaceState } from './useGroupingWorkspace'
 import { groupingRuns } from './groupingRows'
 
 type Scope = {
-  kind: 'nodes' | 'files' | 'folders' | 'attention'
+  kind: 'nodes' | 'files' | 'folders' | 'attention' | 'additions' | 'uncertain_additions'
   node: string
   after: number | string
 }
 type Item = GroupingNode | GroupingFile | GroupingFolder
 type TreePage = GroupingPage<Item, number | string> & { pages: number }
+export type TreeSection = 'additions' | 'suggestions'
 export type TreeRow =
+  | {
+      kind: 'section'
+      key: string
+      depth: number
+      section: TreeSection
+      open: boolean
+      /** Loaded section members, complete when `complete` is set */
+      nodes: GroupingNode[]
+      complete: boolean
+    }
   | { kind: 'node'; key: string; depth: number; node: GroupingNode }
   | { kind: 'rollup'; key: string; run: string; depth: number; nodes: GroupingNode[] }
   | { kind: 'fold'; key: string; run: string; depth: number; nodes: GroupingNode[] }
@@ -35,7 +46,10 @@ type TreeSource = Pick<GroupingWorkspaceState, 'library' | 'workspace' | 'scope'
   status: Pick<GroupingWorkspaceState['status'], 'data'>
 }
 
-export function useGroupingTree(state: TreeSource, attention: boolean) {
+/** With `separateAdditions` (grouping_version 2), additions to existing bundles
+ * page as their own section above a tree that excludes them. An older server
+ * keeps the mixed tree it can serve. */
+export function useGroupingTree(state: TreeSource, attention: boolean, separateAdditions = false) {
   const { library, workspace, scope, status } = state
   const client = useQueryClient()
   const revision = status.data?.revision ?? 0
@@ -82,9 +96,22 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
       return { workspace, keys }
     })
   }
-  const roots: Scope[] = [
-    { kind: attention ? 'attention' : 'nodes', node: '', after: attention ? '' : -1 },
-  ]
+  const [closedSections, setClosedSections] = useState<{
+    workspace: string | null
+    keys: Set<TreeSection>
+  }>({ workspace, keys: new Set() })
+  function toggleSection(section: TreeSection, shown: boolean) {
+    setClosedSections((prior) => {
+      const keys = new Set(prior.workspace === workspace ? prior.keys : [])
+      if (shown) keys.delete(section)
+      else keys.add(section)
+      return { workspace, keys }
+    })
+  }
+  const rootKind = attention ? 'attention' : 'nodes'
+  const additionsKind = attention ? 'uncertain_additions' : 'additions'
+  const roots: Scope[] = [{ kind: rootKind, node: '', after: attention ? '' : -1 }]
+  if (separateAdditions) roots.unshift({ kind: additionsKind, node: '', after: '' })
   for (const [node, kind] of expanded) {
     if (kind === 'container') {
       if (!attention) roots.push({ kind: 'nodes', node, after: -1 })
@@ -96,7 +123,16 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
   }))
   const queries = useQueries({
     queries: requests.map((request) => ({
-      queryKey: ['grouping-tree', scope, library, workspace, request.kind, request.node],
+      // The section flag keeps a mixed page from serving the separated tree
+      queryKey: [
+        'grouping-tree',
+        scope,
+        library,
+        workspace,
+        request.kind,
+        request.node,
+        separateAdditions,
+      ],
       enabled: workspace !== null && revision > 0 && ready,
       staleTime: Infinity,
       queryFn: async ({ signal }: { signal: AbortSignal }): Promise<TreePage> => {
@@ -107,6 +143,7 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
           workspace,
           request.kind,
           request.node,
+          separateAdditions,
         ])
         let result: TreePage =
           previous?.revision === revision
@@ -126,8 +163,14 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
               ? '/attention'
               : request.kind === 'nodes'
                 ? '/nodes'
-                : `/nodes/${request.node}/${request.kind}`
+                : request.kind === 'additions' || request.kind === 'uncertain_additions'
+                  ? '/additions'
+                  : `/nodes/${request.node}/${request.kind}`
           if (request.kind === 'nodes' && request.node) params.set('parent', request.node)
+          // Sent only to a grouping_version 2 server, which defines these parameters
+          if (separateAdditions && (request.kind === 'nodes' || request.kind === 'attention'))
+            params.set('exclude_additions', 'true')
+          if (request.kind === 'uncertain_additions') params.set('uncertain', 'true')
           const page = await grouping<GroupingPage<Item, number | string>>(
             library,
             `/workspaces/${workspace}${path}?${params}`,
@@ -169,6 +212,8 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
   for (const request of roots.filter((item) => item.kind === 'nodes' || item.kind === 'attention'))
     for (const node of loaded(request.kind, request.node) as GroupingNode[])
       nodes.set(node.id, node)
+  const root = (kind: Scope['kind']) =>
+    queries[requests.findIndex((item) => item.kind === kind && item.node === '')]
   const rows: TreeRow[] = []
   function tail(kind: Scope['kind'], node: string, depth: number) {
     const indices = requests.flatMap((request, i) =>
@@ -197,8 +242,12 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
         scope: { ...request, after: query.data.next_cursor },
       })
   }
-  function branch(parent: string, depth: number) {
-    const siblings = loaded(attention && !parent ? 'attention' : 'nodes', parent) as GroupingNode[]
+  function branch(
+    parent: string,
+    depth: number,
+    kind: Scope['kind'] = parent ? 'nodes' : rootKind,
+  ) {
+    const siblings = loaded(kind, parent) as GroupingNode[]
     for (const run of groupingRuns(
       siblings,
       !fileDragging && !(open.workspace === workspace && open.showFiles),
@@ -247,9 +296,49 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
       if (run.rolled)
         rows.push({ kind: 'fold', key: `${run.key}:fold`, run: run.key, depth, nodes: run.nodes })
     }
-    tail(attention && !parent ? 'attention' : 'nodes', parent, depth)
+    tail(kind, parent, depth)
   }
-  branch('', 0)
+  const additions = root(additionsKind)
+  const suggestions = root(rootKind)
+  // Neither section is drawn until both first pages have arrived, so a late
+  // first page never moves rows that are already on screen.
+  const firstLoad = separateAdditions && Boolean(additions?.isPending || suggestions?.isPending)
+  const sectioned =
+    separateAdditions && !firstLoad && Boolean(additions?.error || additions?.data?.items.length)
+  const folded =
+    closedSections.workspace === workspace ? closedSections.keys : new Set<TreeSection>()
+  if (firstLoad) {
+    rows.push({ kind: 'loading', key: 'sections:loading', depth: 0 })
+  } else if (sectioned) {
+    const members = (additions?.data?.items ?? []) as GroupingNode[]
+    rows.push({
+      kind: 'section',
+      key: 'section:additions',
+      depth: 0,
+      section: 'additions',
+      open: !folded.has('additions'),
+      nodes: members,
+      complete: Boolean(additions?.data && additions.data.next_cursor === null),
+    })
+    if (!folded.has('additions')) branch('', 0, additionsKind)
+    // A tree with no new work keeps no heading of its own
+    if (
+      suggestions?.error ||
+      loaded(rootKind, '').length ||
+      suggestions?.data?.next_cursor != null
+    ) {
+      rows.push({
+        kind: 'section',
+        key: 'section:suggestions',
+        depth: 0,
+        section: 'suggestions',
+        open: !folded.has('suggestions'),
+        nodes: [],
+        complete: false,
+      })
+      if (!folded.has('suggestions')) branch('', 0)
+    }
+  } else branch('', 0)
   function toggle(node: GroupingNode) {
     const wasExpanded = expanded.has(node.id)
     setOpen((prior) => {
@@ -276,12 +365,18 @@ export function useGroupingTree(state: TreeSource, attention: boolean) {
     expanded,
     toggle,
     toggleRun,
+    toggleSection,
+    /** The server lists additions separately (grouping_version 2) */
+    separate: separateAdditions,
+    /** Rows sit inside the two section headings, one tree level down */
+    sectioned,
+    filesShown: open.workspace === workspace && open.showFiles,
     setFileDragging,
     stale: queries.some((query, index) => {
       if (query.data) return query.data.revision !== revision
       // Opening an uncached file list must not disable existing drop targets.
       // Loaded rows from an older revision still block every edit until refreshed.
-      return requests[index]?.kind === 'nodes' || requests[index]?.kind === 'attention'
+      return !['files', 'folders'].includes(requests[index]?.kind ?? '')
     }),
     loadMore: (request: Scope) =>
       setPages((prior) => {

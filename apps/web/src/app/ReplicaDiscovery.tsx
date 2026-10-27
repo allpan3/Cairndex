@@ -197,16 +197,19 @@ export function DiscoveryReviewDialog({
   library,
   editor,
   fileChangesOnly = false,
+  earlier = false,
   onBack,
 }: {
   discovery: ReplicaDiscoveryState
   library: string
   editor: string
   fileChangesOnly?: boolean
+  /** Open on the earlier grouping choices rather than on file changes */
+  earlier?: boolean
   onBack?: () => void
 }) {
   const { ref, close } = useModalDialog(() => d.setOpen(false), d.busy)
-  const [earlierChoices, setEarlierChoices] = useState(false)
+  const [earlierChoices, setEarlierChoices] = useState(earlier)
   const changes = useQuery({
     queryKey: ['discovery-file-changes', library, d.after],
     enabled: fileChangesOnly && !earlierChoices,

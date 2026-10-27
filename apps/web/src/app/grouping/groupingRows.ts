@@ -8,6 +8,24 @@ export function groupingFileSummary(node: GroupingNode): string {
   return kinds.length ? `${files} · ${kinds.join(', ')}` : files
 }
 
+/** Suggestions the review flags, matching the server's uncertain count */
+export function needsLook(node: GroupingNode): boolean {
+  return node.kind === 'bundle' && !node.context && node.files > 0 && node.confidence < 0.75
+}
+
+/** The title a row shows. In the additions section its heading already says
+ * "Add to existing bundles", so the row names only the bundle. */
+export function groupingTitle(node: GroupingNode, inAdditions = false): string {
+  if (!node.target) return node.title
+  const bundle = node.target_title ?? node.title
+  return inAdditions ? bundle : `Add to ${bundle}`
+}
+
+/** Whether the kind glyph can convert this row, as the server allows it */
+export function convertible(node: GroupingNode): boolean {
+  return node.kind === 'container' ? !node.context : !node.target && node.files > 0
+}
+
 function shape(node: GroupingNode): string | null {
   if (
     node.kind !== 'bundle' ||

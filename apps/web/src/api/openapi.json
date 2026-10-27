@@ -6394,6 +6394,11 @@
             "title": "Action",
             "type": "string"
           },
+          "exclude_additions": {
+            "default": false,
+            "title": "Exclude Additions",
+            "type": "boolean"
+          },
           "file": {
             "anyOf": [
               {
@@ -27312,6 +27317,134 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/additions": {
+      "get": {
+        "operationId": "additions_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__additions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uncertain",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Uncertain",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Additions Api V1 Libraries  Library Id  Replica Discovery Grouping Workspaces  Workspace  Additions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Additions",
+        "tags": [
+          "replica-grouping"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/replica/discovery/grouping/workspaces/{workspace}/attention": {
       "get": {
         "operationId": "attention_api_v1_libraries__library_id__replica_discovery_grouping_workspaces__workspace__attention_get",
@@ -27365,6 +27498,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_additions",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Exclude Additions",
+              "type": "boolean"
             }
           },
           {
@@ -27740,6 +27883,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_additions",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Exclude Additions",
+              "type": "boolean"
             }
           },
           {

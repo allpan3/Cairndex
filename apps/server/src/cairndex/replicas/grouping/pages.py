@@ -38,9 +38,49 @@ def destinations(
 
 
 def attention(
-    db: sqlite3.Connection, workspace: str, revision: int, after: str = "", limit: int = 50
+    db: sqlite3.Connection,
+    workspace: str,
+    revision: int,
+    after: str = "",
+    limit: int = 50,
+    *,
+    exclude_additions: bool = False,
 ) -> dict[str, Any]:
     """Page uncertain bundles across the complete draft, including folded branches."""
+    return bundle_page(
+        db,
+        workspace,
+        revision,
+        after,
+        limit,
+        addition=False if exclude_additions else None,
+        uncertain=True,
+    )
+
+
+def additions(
+    db: sqlite3.Connection,
+    workspace: str,
+    revision: int,
+    after: str = "",
+    limit: int = 50,
+    *,
+    uncertain: bool = False,
+) -> dict[str, Any]:
+    """Page additions independently of their current tree parent or loaded branches."""
+    return bundle_page(db, workspace, revision, after, limit, addition=True, uncertain=uncertain)
+
+
+def bundle_page(
+    db: sqlite3.Connection,
+    workspace: str,
+    revision: int,
+    after: str,
+    limit: int,
+    *,
+    addition: bool | None,
+    uncertain: bool,
+) -> dict[str, Any]:
     current(db, workspace, revision)
     rows = db.execute(
         "SELECT n.*,count(f.id) AS files,coalesce(sum(f.selected),0) AS selected,"
@@ -48,9 +88,10 @@ def attention(
         "(SELECT count(*) FROM grouping_folders p WHERE p.workspace=n.workspace AND p.node=n.id) "
         "AS folders," + MEDIA_COUNTS + "FROM grouping_nodes n JOIN grouping_files f "
         "ON f.workspace=n.workspace AND f.node=n.id "
-        "WHERE n.workspace=? AND n.kind='bundle' AND n.confidence<0.75 AND n.id>? "
+        "WHERE n.workspace=? AND n.kind='bundle' AND (?=0 OR n.confidence<0.75) "
+        "AND (? IS NULL OR (n.target IS NOT NULL)=?) AND n.id>? "
         "GROUP BY n.id ORDER BY n.id LIMIT ?",
-        (workspace, after, limit + 1),
+        (workspace, uncertain, addition, addition, after, limit + 1),
     ).fetchall()
     return {
         "items": [public_node(row) for row in rows[:limit]],
@@ -82,24 +123,50 @@ def nodes(
     parent: str | None = None,
     after: int = -1,
     limit: int = 50,
+    *,
+    exclude_additions: bool = False,
 ) -> dict[str, Any]:
     current(db, workspace, revision)
+    # Apply the section before pagination. Filtering a loaded page would hide
+    # later suggestions and let collection counts include a different section.
+    eligible = (
+        "eligible(id) AS (SELECT n.id FROM grouping_nodes n WHERE n.workspace=? "
+        "AND n.kind='bundle' AND n.target IS NULL AND EXISTS (SELECT 1 FROM grouping_files f "
+        "WHERE f.workspace=n.workspace AND f.node=n.id) UNION SELECT n.parent "
+        "FROM grouping_nodes n JOIN eligible e ON n.id=e.id WHERE n.workspace=? "
+        "AND n.parent IS NOT NULL), "
+        if exclude_additions
+        else ""
+    )
+    page_filter = "AND id IN (SELECT id FROM eligible) " if exclude_additions else ""
+    branch_filter = "AND n.target IS NULL " if exclude_additions else ""
+    child_filter = "AND c.id IN (SELECT id FROM eligible) " if exclude_additions else ""
+    parameters = ((workspace, workspace) if exclude_additions else ()) + (
+        workspace,
+        parent,
+        after,
+        limit + 1,
+        workspace,
+        workspace,
+    )
     rows = db.execute(
-        "WITH RECURSIVE page AS (SELECT * FROM grouping_nodes WHERE workspace=? "
-        "AND parent IS ? AND position>? ORDER BY position,id LIMIT ?), "
+        "WITH RECURSIVE " + eligible + "page AS (SELECT * FROM grouping_nodes WHERE workspace=? "
+        "AND parent IS ? AND position>? " + page_filter + "ORDER BY position,id LIMIT ?), "
         "branch(root,id) AS (SELECT id,id FROM page UNION ALL SELECT b.root,n.id "
-        "FROM branch b JOIN grouping_nodes n ON n.workspace=? AND n.parent=b.id), "
+        "FROM branch b JOIN grouping_nodes n ON n.workspace=? AND n.parent=b.id "
+        + branch_filter
+        + "), "
         "totals AS (SELECT b.root,count(f.id) AS files,coalesce(sum(f.selected),0) AS selected,"
         "count(DISTINCT f.node) AS bundles FROM branch b LEFT JOIN grouping_files f "
         "ON f.workspace=? AND f.node=b.id GROUP BY b.root) "
         "SELECT n.*,t.files,t.selected,t.bundles,"
         "(SELECT count(*) FROM grouping_nodes c WHERE c.workspace=n.workspace "
-        "AND c.parent=n.id) AS children,"
+        "AND c.parent=n.id " + child_filter + ") AS children,"
         "(SELECT count(*) FROM grouping_folders f WHERE f.workspace=n.workspace "
         "AND f.node=n.id) AS folders,"
         + MEDIA_COUNTS
         + "FROM page n JOIN totals t ON t.root=n.id ORDER BY n.position,n.id",
-        (workspace, parent, after, limit + 1, workspace, workspace),
+        parameters,
     ).fetchall()
     return {
         "items": [public_node(row) for row in rows[:limit]],

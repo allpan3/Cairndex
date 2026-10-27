@@ -27,6 +27,7 @@ class GroupingSelect(StrictModel):
     file: Token | None = None
     nodes: list[Token] | None = Field(default=None, min_length=1, max_length=50)
     folder: str | None = Field(default=None, max_length=4096)
+    exclude_additions: bool = False
 
     @model_validator(mode="after")
     def scope(self) -> Self:
@@ -34,6 +35,8 @@ class GroupingSelect(StrictModel):
             raise ValueError("Choose suggestions or a file")
         if self.folder is not None and self.node is None:
             raise ValueError("A folder selection must name its suggestion")
+        if self.exclude_additions and (self.node is None or self.folder is not None):
+            raise ValueError("Choose a collection branch for this selection")
         return self
 
 
@@ -141,9 +144,25 @@ def nodes(
     parent: Token | None = None,
     after: int = Query(default=-1, ge=-1),
     limit: int = Query(default=50, ge=1, le=50),
+    exclude_additions: bool = False,
 ) -> dict[str, Any]:
     with store.connection(readonly=True) as db:
-        return pages.nodes(db, workspace, revision, parent, after, limit)
+        return pages.nodes(
+            db, workspace, revision, parent, after, limit, exclude_additions=exclude_additions
+        )
+
+
+@router.get("/workspaces/{workspace}/additions")
+def additions(
+    workspace: Token,
+    store: Catalog,
+    revision: int = Query(ge=1),
+    after: str = "",
+    limit: int = Query(default=50, ge=1, le=50),
+    uncertain: bool = False,
+) -> dict[str, Any]:
+    with store.connection(readonly=True) as db:
+        return pages.additions(db, workspace, revision, after, limit, uncertain=uncertain)
 
 
 @router.get("/workspaces/{workspace}/nodes/{node}/files")
@@ -167,9 +186,12 @@ def attention(
     revision: int = Query(ge=1),
     after: str = "",
     limit: int = Query(default=50, ge=1, le=50),
+    exclude_additions: bool = False,
 ) -> dict[str, Any]:
     with store.connection(readonly=True) as db:
-        return pages.attention(db, workspace, revision, after, limit)
+        return pages.attention(
+            db, workspace, revision, after, limit, exclude_additions=exclude_additions
+        )
 
 
 @router.get("/workspaces/{workspace}/destinations")

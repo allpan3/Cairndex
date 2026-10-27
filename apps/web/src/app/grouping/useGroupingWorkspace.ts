@@ -39,7 +39,10 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
   })
   const { refetch: refetchLists } = lists
   useEffect(() => {
-    if (chosen.current || !lists.data) return
+    // A list cached by an earlier opening predates any Update since, so the
+    // draft is chosen from this opening's own answer. A failed refresh also
+    // counts as fetched, but leaves only the cached list to choose from.
+    if (chosen.current || !lists.isSuccess || !lists.isFetchedAfterMount) return
     const retained = lists.data.items.find((item) => item.accepting || item.files > 0)
     const run = retained?.id ?? lists.data.available_run
     if (!run) return
@@ -50,7 +53,7 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
         chosen.current = false
         setError(reason.message)
       })
-  }, [library, lists.data])
+  }, [library, lists.data, lists.isSuccess, lists.isFetchedAfterMount])
   const status = useQuery({
     queryKey: ['grouping-status', scope, library, workspace],
     queryFn: ({ signal }) =>

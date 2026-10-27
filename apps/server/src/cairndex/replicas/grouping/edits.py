@@ -39,6 +39,13 @@ def select(db: sqlite3.Connection, workspace: str, intent: dict[str, Any]) -> se
     if type(intent["selected"]) is not bool:
         raise ReplicaError("Choose whether the files are selected")
     selected = int(intent["selected"])
+    exclude_additions = intent.get("exclude_additions", False)
+    if (
+        type(exclude_additions) is not bool
+        or exclude_additions
+        and (not intent.get("node") or intent.get("folder") is not None)
+    ):
+        raise ReplicaError("Choose a collection branch for this selection")
     if intent.get("nodes") is not None:
         identities = intent["nodes"]
         if (
@@ -86,8 +93,9 @@ def select(db: sqlite3.Connection, workspace: str, intent: dict[str, Any]) -> se
                 "WITH RECURSIVE branch(id) AS (SELECT ? UNION ALL SELECT n.id "
                 "FROM grouping_nodes n JOIN branch b ON n.parent=b.id WHERE n.workspace=?) "
                 "UPDATE grouping_files SET selected=? WHERE workspace=? AND node IN (SELECT "
-                "id FROM branch)",
-                (row["id"], workspace, selected, workspace),
+                "b.id FROM branch b JOIN grouping_nodes n ON n.workspace=? AND n.id=b.id "
+                "WHERE ?=0 OR n.target IS NULL)",
+                (row["id"], workspace, selected, workspace, workspace, exclude_additions),
             )
     else:
         db.execute("UPDATE grouping_files SET selected=? WHERE workspace=?", (selected, workspace))

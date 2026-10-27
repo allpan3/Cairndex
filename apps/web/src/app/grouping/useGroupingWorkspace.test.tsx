@@ -23,9 +23,16 @@ const ready: GroupingStatus = {
   command: null,
 }
 const clients: QueryClient[] = []
-function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function newClient(queries: { staleTime?: number; structuralSharing?: boolean } = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, ...queries } } })
   clients.push(client)
+  return client
+}
+// As the app's QueryScope client: reopening within 30 s does not refetch on mount
+const APP_QUERIES = { staleTime: 30_000, structuralSharing: false }
+// The workspace list polls every 1.5 s; each wait for its next answer allows two polls
+const NEXT_POLL = { timeout: 3_000 }
+function setup(client = newClient()) {
   return renderHook(() => useGroupingWorkspace('synthetic-library', vi.fn()), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -36,6 +43,20 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear()
   vi.resetAllMocks()
 })
+// Lists name the newest Update or fail while `failing`; each chosen draft is
+// recorded by its POST
+function reopenServer() {
+  const server = { latest: 'synthetic-first', failing: false, chosen: [] as string[] }
+  vi.mocked(grouping).mockImplementation(async (_library, path, method = 'GET') => {
+    if (path === '/workspaces') {
+      if (server.failing) throw new Error('Synthetic list failure')
+      return { items: [], available_run: server.latest, next_cursor: null }
+    }
+    if (method === 'POST') server.chosen.push(path)
+    return { ...ready, id: path.slice('/workspaces/'.length) }
+  })
+  return server
+}
 
 describe('private grouping operation lifecycle', () => {
   it('leaves recovered edits paused until their exact resume action', async () => {
@@ -99,6 +120,43 @@ describe('private grouping operation lifecycle', () => {
       requests.some((request) => request.endsWith('/undefined') || request.endsWith('/null')),
     ).toBe(false)
   })
+
+  it('reopens on the latest Update rather than the list an earlier opening cached', async () => {
+    const server = reopenServer()
+    const client = newClient(APP_QUERIES)
+    const first = setup(client)
+    await waitFor(() => expect(first.result.current.workspace).toBe('synthetic-first'))
+    first.unmount()
+    // A later Update finishes while the review is closed
+    server.latest = 'synthetic-second'
+    const second = setup(client)
+    // The cached list is still fresh, so it is shown but not chosen from
+    expect(second.result.current.lists.data?.available_run).toBe('synthetic-first')
+    expect(server.chosen).toEqual(['/workspaces/synthetic-first'])
+    await waitFor(() => expect(second.result.current.workspace).toBe('synthetic-second'), NEXT_POLL)
+    expect(server.chosen).toEqual(['/workspaces/synthetic-first', '/workspaces/synthetic-second'])
+  }, 10_000)
+
+  it('makes no choice from the cached list when its refresh fails', async () => {
+    const server = reopenServer()
+    const client = newClient(APP_QUERIES)
+    const first = setup(client)
+    await waitFor(() => expect(first.result.current.workspace).toBe('synthetic-first'))
+    first.unmount()
+    server.latest = 'synthetic-second'
+    server.failing = true
+    const second = setup(client)
+    await waitFor(() => expect(second.result.current.lists.isError).toBe(true), NEXT_POLL)
+    // The failure counts as fetched after mount, and the cached list still
+    // names the earlier Update
+    expect(second.result.current.lists.isFetchedAfterMount).toBe(true)
+    expect(second.result.current.lists.data?.available_run).toBe('synthetic-first')
+    expect(second.result.current.workspace).toBeNull()
+    expect(server.chosen).toEqual(['/workspaces/synthetic-first'])
+    server.failing = false
+    await waitFor(() => expect(second.result.current.workspace).toBe('synthetic-second'), NEXT_POLL)
+    expect(server.chosen).toEqual(['/workspaces/synthetic-first', '/workspaces/synthetic-second'])
+  }, 10_000)
 
   it('recovers and cancels running verification after the dialog is reopened', async () => {
     vi.mocked(grouping).mockImplementation(async (_library, path) => {

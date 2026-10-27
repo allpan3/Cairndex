@@ -3,6 +3,7 @@ import { IconChevron, IconLayers } from '../icons'
 import { GroupingCheck } from './GroupingNodeRow'
 import { GroupingStemControls } from './GroupingStemControls'
 import { groupingFileSummary } from './groupingRows'
+import { useGroupingStem } from './useGroupingStem'
 import type { GroupingWorkspaceState } from './useGroupingWorkspace'
 
 export function GroupingRollup({
@@ -14,8 +15,11 @@ export function GroupingRollup({
   nodes: GroupingNode[]
   state: GroupingWorkspaceState
   expand: () => void
+  /** The member that speaks for the run's folder, which a folder of
+   *  identically shaped clips is exactly the folder worth widening */
   stem?: GroupingNode
 }) {
+  const dial = useGroupingStem(stem, state, Boolean(stem))
   const first = nodes[0]!
   const last = nodes.at(-1)!
   const total = nodes.reduce((sum, node) => sum + node.files, 0)
@@ -48,13 +52,15 @@ export function GroupingRollup({
         <span className="grp-hint">
           {nodes.length} bundles, same shape · each {groupingFileSummary(first)}
         </span>
-      </span>
-      <span className="portable-grp-actions">
-        <button className="btn btn--compact" onClick={expand}>
+        <button className="btn btn--compact grp-rollup__expand" onClick={expand}>
           Show all {nodes.length}
         </button>
-        {stem && <GroupingStemControls node={stem} state={state} />}
       </span>
+      {stem && (
+        <span className="portable-grp-actions" data-no-row-drag="">
+          <GroupingStemControls node={stem} state={state} stem={dial} />
+        </span>
+      )}
     </div>
   )
 }
