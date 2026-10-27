@@ -19,9 +19,9 @@ opening the grouping dialog automatically. Registration and ordinary reopening
 do not schedule a scan. Native creates retain their request across the server
 switch, scoped to the intended server and library.
 
-The footer names the current phase. Finding files reports the observed count
-and states that the total is not yet known. Catalog checks, moved-file checks
-and grouping indexes show completed/total with a determinate bar. Grouping and
+The footer names the current phase. Finding files reports the count found so far
+with an indeterminate bar. Catalog checks, moved-file checks and grouping indexes
+show completed/total with a determinate bar. Grouping and
 preparing suggestions show their phase with an indeterminate bar. These are
 phase totals, not a whole-Update time estimate. Counts commit with each worker
 batch and restart from enumeration after interruption. Cancellation remains

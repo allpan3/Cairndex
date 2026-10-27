@@ -503,14 +503,15 @@ export function CatalogOrdinaryBrowser(props: {
                         hostFiles={hostFiles}
                       />
                     )}
-                    <p>
-                      {file.linked ? 'Cataloged' : 'Unlinked'} ·{' '}
-                      {file.local_state === 'observed'
-                        ? 'Observed on this device'
-                        : file.local_state === 'unavailable'
+                    {!file.linked && <p>Unlinked</p>}
+                    {/* The polled listing is the live signal; present files say nothing */}
+                    {file.local_state && file.local_state !== 'observed' && (
+                      <p>
+                        {file.local_state === 'unavailable'
                           ? 'Unavailable on this device'
                           : 'Availability is unknown on this device'}
-                    </p>
+                      </p>
+                    )}
                     {file.bundle_id && (
                       <button
                         onClick={() => {

@@ -427,7 +427,8 @@ test('ordinary collection filters and File Browser share one library journey @fu
     await page.getByRole('row').filter({ hasText: 'Playback' }).dblclick()
     await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('movie')
     const movie = page.getByRole('row').filter({ hasText: 'movie.mp4' })
-    await expect(movie).toContainText('Observed here')
+    await expect(movie).toBeVisible()
+    await expect(movie.getByText('missing', { exact: true })).toHaveCount(0)
     await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('')
     // Clearing the search refetches the listing, and rows ignore input until the
     // full listing replaces the filtered one, so repeat the click until it selects.
@@ -465,9 +466,9 @@ test('ordinary collection filters and File Browser share one library journey @fu
     )
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     await rm(join(root, 'Playback/movie.mp4'))
-    await expect(page.getByRole('row').filter({ hasText: 'movie.mp4' })).toContainText(
-      'Unavailable here',
-    )
+    await expect(
+      page.getByRole('row').filter({ hasText: 'movie.mp4' }).getByText('missing', { exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('complementary', { name: 'File inspector' })).toContainText(
       'Unavailable on this device',
     )

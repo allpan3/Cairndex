@@ -375,6 +375,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore File Browser status badges for unlinked, unbundled and missing files.
+  Remove separator dots and routine local-observation text. Report an unreadable
+  folder once above its entries.
+
 - Restore the per-library Write mode control in Libraries. Open library Settings
   in a separate, scrollable dialog, keeping the library list and keyboard focus
   intact. Keep visible descriptions short and provide longer help in tooltips.
@@ -473,8 +477,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Reopening waits for the fresh cursor, and changing tracks saves the departing
   video's position. Open Bundle still opens the album.
 - Update names its current phase and shows completed/total for catalog checks,
-  moved-file checks and grouping indexes. Enumeration states that its total is
-  not yet known. Unbundled checks availability, size and modification time for
+  moved-file checks and grouping indexes. Enumeration shows its observed count
+  without a total. Unbundled checks availability, size and modification time for
   its displayed page instead of assigning every file unknown availability.
   Older Update statuses without a phase keep their observed-file counter.
 

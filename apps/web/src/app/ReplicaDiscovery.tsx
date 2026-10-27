@@ -14,7 +14,7 @@ function completeStatus(run: DiscoveryRun): string {
 function phaseLabel(run: DiscoveryRun | undefined): string {
   switch (run?.phase) {
     case 'walk':
-      return 'Finding files · total not yet known'
+      return 'Finding files'
     case 'known':
       return 'Checking cataloged files'
     case 'repair':
