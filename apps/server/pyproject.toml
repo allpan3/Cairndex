@@ -12,7 +12,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
     "python-ulid>=2.7",
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
     # Decode-only HEIF, deliberately NOT `pillow-heif` (ADR-0019 §3,
     # THIRD-PARTY-NOTICES.md). Same maintainer and codebase; the difference is
     # that pillow-heif's wheel bundles libx265 (GPL-2.0+) for encoding and

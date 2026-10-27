@@ -162,6 +162,30 @@
       ],
       "purpose": "Document observed size totals for a portable bundle selection",
       "provenance": "Playwright capture of fresh generated playback and empty-bundle fixtures; visually reviewed edge to edge with no owner metadata, account state or desktop content"
+    },
+    {
+      "sha256": "0c9fa3a57ddc5a52a666a0f64fc8827855619ae62d608cf9425771418f53b6a3",
+      "paths": [
+        "docs/screenshots/library-write-mode.png"
+      ],
+      "purpose": "Document the per-server library Write mode controls",
+      "provenance": "Playwright capture of two fresh synthetic libraries; generated temporary roots masked before capture. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
+    },
+    {
+      "sha256": "65a3ff053c9bf96939b7bc609d6b9fbb396f10b03102fdddd13e06cdc44d6329",
+      "paths": [
+        "docs/screenshots/library-settings-tooltip.png"
+      ],
+      "purpose": "Document bounded library Settings and keyboard-accessible help in a short window",
+      "provenance": "Playwright capture of a fresh synthetic library at 1000 by 420 pixels. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
+    },
+    {
+      "sha256": "8f356f4f6565a20b97a1f410d824c6658c6ff59161866c6a7f7dc71cbb496d1a",
+      "paths": [
+        "docs/screenshots/grouping-review-sections.png"
+      ],
+      "purpose": "Document compact grouping review and additions above new collection suggestions",
+      "provenance": "Playwright capture from the approved macOS VM using only fresh synthetic discovery fixtures. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
     }
   ],
   "vendored_trees": []
