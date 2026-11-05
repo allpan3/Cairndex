@@ -16,8 +16,9 @@ restart. With write mode on, a file or folder's context menu holds **Rename…**
 **Copy to…**, **Move to…** and **Move to Trash**. **F2** or **Enter** renames a
 single selected item, and so does a double-click on its name in the inspector.
 **Delete** or **⌘⌫** asks to move the selection to the Trash. Each action asks
-only what it needs (a name, a folder, or a confirmation for the Trash) and then
-runs as a background task. Turning write mode off removes these actions.
+only what it needs (a name, a folder, or a confirmation for the Trash).
+Naming stays in its editor until the server answers; copies and moves run as
+background tasks. Turning write mode off removes these actions.
 Existing directory-size and source-safety limits still apply. Interrupted writes
 retain their intent and show permission, read-only, full-storage or saved-login
 failures specifically. Private job results retain numeric storage error codes
@@ -29,9 +30,10 @@ hide that request; authorization alone never applies the source operation.
 In File Browser, **New Folder** in the toolbar, context menu or desktop File
 menu inserts an inline row with **Untitled** selected. Type a name and press
 Enter or click outside to create it in the current directory; Escape cancels
-without creating a folder. Invalid names stay editable. It requires Write Mode
-and a server that advertises
-`source_mkdir`. Existing names are refused without replacement. Undo is available
+without creating a folder. Invalid or occupied names stay editable with a small
+inline error. An occupied name says **That name already exists.**, with no Retry
+or recovery card. Rename uses the same behavior in the browser and inspector.
+New Folder requires Write Mode and a server that advertises `source_mkdir`. Existing names are refused without replacement. Undo is available
 while the folder still matches the recorded empty tree; adding files prevents
 Undo from removing them. Creating a folder does not create a bundle or collection.
 
@@ -66,9 +68,10 @@ location. Move from the desktop app needs native drop paths and is a separate st
 
 ## Background tasks
 
-**Copy**, and each library action above, closes its dialog at once. The work runs
-as a task above the browser content, visible with the sidebar closed. It shows
-completed-file counts, received bytes, transfer percentage, speed and the current
+**Copy** closes its dialog at once. The work runs
+as a compact activity card at the bottom right, visible with the sidebar closed.
+It floats over the browser without moving the toolbar or reducing the grid
+height. It shows completed-file counts, received bytes, transfer percentage, speed and the current
 transfer, verification or saving phase. Transfer completion does not mean final
 publication has finished. The rest of the app stays usable. **×** stops a task: files not yet applied are cancelled, a file
 already being applied finishes, and **Continue** resumes the rest. A task that ends
@@ -83,14 +86,15 @@ Each file is still its own saved operation with its own review. The task prepare
 each review and accepts it unchanged: the click that named the files, the action
 and the destination is the approval. An occupied name stops that file in the
 activity panel with **New name**, **Keep Both**, **Replace** or **Skip**.
-New Folder offers a new name or Cancel, because it never replaces a folder. Keep Both selects a vacant
-suffix during preparation and checks that absence again during application, so it
+Rename and New Folder instead reject an occupied name in their inline editor.
+Keep Both selects a vacant suffix during preparation and checks that absence again during application, so it
 cannot overwrite a new arrival. Replace keeps the displaced file as a recoverable
 version. The chosen answer becomes a new operation over the same received bytes,
 and it is accepted the same way.
 
-Stopped operations from a reload, another window or an earlier version show
-their name, reason and available actions directly above the browser. No separate
+Unstarted naming collisions from earlier versions stay in the private journal
+but do not appear as recovery tasks. Actual stopped operations from a reload,
+another window or an earlier version show their name, reason and available actions directly in the activity card. No separate
 Review dialog is needed. **Cancel** persists in the operation journal; it does not
 return after reload. An operation that already changed files must finish recovery
 and cannot be dismissed as cancelled. Changing a collision choice or name cancels

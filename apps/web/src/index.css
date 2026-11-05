@@ -6520,6 +6520,20 @@ code {
 /* --- Inline rename / New Folder (ADR-0013 W1) ----------------------------- */
 /* Sized to the row it replaces so committing a name does not make the list
    jump — the entry is in the same place before and after being renamed. */
+.file-name-error {
+  position: fixed;
+  z-index: 100;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: #ff8a8a;
+  font-size: 12px;
+  white-space: normal;
+  pointer-events: none;
+}
+
 .file-row__rename {
   flex: 1 1 auto;
   min-width: 6em;
@@ -8569,17 +8583,34 @@ button.pick-row:disabled {
   min-width: 0;
 }
 
-/* File work stays visible above the content, including with the sidebar closed. */
+/* File activity does not participate in the browser layout. */
 .file-activity {
-  flex: 0 0 auto;
-  max-height: 38vh;
-  overflow-y: auto;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  position: absolute;
+  z-index: 40;
+  right: 12px;
+  bottom: 12px;
+  width: min(400px, calc(100% - 24px));
+  max-height: min(320px, 45dvh);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   background: var(--bg-2);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 30%);
+  font-size: 13px;
 }
 .file-activity .source-task {
-  padding: 8px 0;
+  padding: 0;
+}
+.file-activity .source-task + .source-task {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.file-activity .job-progress__label,
+.file-activity .job-progress__count {
+  font-size: 12px;
+  color: var(--text);
 }
 .file-activity .source-task__question,
 .file-activity .source-task__note,
@@ -8609,8 +8640,14 @@ button.pick-row:disabled {
   overflow: visible;
 }
 .source-stopped section {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.source-stopped h3,
+.source-stopped p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .source-stopped section:first-child {
   border-top: 0;
@@ -8620,12 +8657,16 @@ button.pick-row:disabled {
   margin-block: 4px;
 }
 .source-task__choices label {
+  flex: 1 1 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .source-task__choices input {
-  max-width: min(320px, 50vw);
+  flex: 1;
+  min-width: 0;
+  width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 5px;

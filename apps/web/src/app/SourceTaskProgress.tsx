@@ -16,9 +16,11 @@ export function SourceTaskProgress({ tasks }: { tasks: SourceTasks }) {
   if (tasks.tasks.length === 0) return null
   return (
     <div className="source-tasks" aria-label="File tasks">
-      {tasks.tasks.map((task) => (
-        <TaskRow key={task.id} task={task} tasks={tasks} />
-      ))}
+      {tasks.tasks
+        .filter((task) => !task.inline)
+        .map((task) => (
+          <TaskRow key={task.id} task={task} tasks={tasks} />
+        ))}
     </div>
   )
 }
@@ -180,10 +182,14 @@ export function ChangeName({
   name,
   onChange,
   disabled = false,
+  onCancel,
+  cancelDisabled = false,
 }: {
   name: string
   onChange: (name: string) => void
   disabled?: boolean
+  onCancel?: () => void
+  cancelDisabled?: boolean
 }) {
   const [value, setValue] = useState(name)
   const error = newFolderError(value.trim())
@@ -210,6 +216,11 @@ export function ChangeName({
       >
         Use this name
       </button>
+      {onCancel && (
+        <button type="button" className="btn btn--sm" disabled={cancelDisabled} onClick={onCancel}>
+          Cancel item
+        </button>
+      )}
       {error && <span role="alert">{error}</span>}
     </form>
   )

@@ -1,5 +1,6 @@
 import { useModalDialog } from './useModalDialog'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   useBundleFiles,
@@ -567,21 +568,51 @@ export function NameEditor({
   onCancel,
   label,
   validate,
+  className = 'edit file-row__rename',
 }: {
+  className?: string
   initial: string
-  onSubmit: (name: string) => void
+  onSubmit: (name: string) => void | Promise<void>
   onCancel: () => void
   label: string
   validate?: (name: string) => string | null
 }) {
   const [value, setValue] = useState(initial)
-  const error = validate?.(value.trim())
+  const [remoteError, setRemoteError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const error = validate?.(value.trim()) || remoteError
   const errorId = useId()
   // Guards the blur handler: committing on Enter also blurs, which would
   // otherwise submit the same name twice. A ref as well as state, because the
   // outside-pointerdown path below can fire before the re-render.
   const settled = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const errorRef = useRef<HTMLSpanElement>(null)
+  // The file table can scroll behind the inspector. Keep the short error by
+  // the field without letting that table clip it or change the row layout.
+  useLayoutEffect(() => {
+    if (!error) return
+    const place = () => {
+      const input = inputRef.current
+      const note = errorRef.current
+      if (!input || !note) return
+      const box = input.getBoundingClientRect()
+      const left = Math.max(8, Math.min(box.left, window.innerWidth - note.offsetWidth - 8))
+      const top =
+        box.bottom + note.offsetHeight + 12 <= window.innerHeight
+          ? box.bottom + 4
+          : Math.max(8, box.top - note.offsetHeight - 4)
+      note.style.left = `${left}px`
+      note.style.top = `${top}px`
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [error])
 
   // Focus and stem-selection together, so the extension stays unselected on
   // every engine — see renameSelection.
@@ -593,7 +624,21 @@ export function NameEditor({
   const commit = () => {
     if (settled.current || error) return
     settled.current = true
-    onSubmit(value)
+    const reject = (reason: unknown) => {
+      settled.current = false
+      setBusy(false)
+      setRemoteError((reason as Error).message)
+      inputRef.current?.focus()
+    }
+    try {
+      const result = onSubmit(value)
+      if (result) {
+        setBusy(true)
+        void result.catch(reject)
+      }
+    } catch (reason) {
+      reject(reason)
+    }
   }
   // Clicking anywhere else confirms the name. Blur alone does not cover it: a
   // mousedown on a draggable row is `preventDefault`ed by the marquee handling,
@@ -604,13 +649,18 @@ export function NameEditor({
     <>
       <input
         ref={inputRef}
-        className="edit file-row__rename"
+        className={className}
+        readOnly={busy}
+        aria-busy={busy}
         value={value}
         aria-label={label}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         spellCheck={false}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          setValue(event.target.value)
+          setRemoteError('')
+        }}
         onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
@@ -620,18 +670,20 @@ export function NameEditor({
           if (event.key === 'Enter') {
             event.preventDefault()
             commit()
-          } else if (event.key === 'Escape') {
+          } else if (event.key === 'Escape' && !busy) {
             event.preventDefault()
             settled.current = true
             onCancel()
           }
         }}
       />
-      {error && (
-        <span id={errorId} role="alert">
-          {error}
-        </span>
-      )}
+      {error &&
+        createPortal(
+          <span ref={errorRef} className="file-name-error" id={errorId} role="alert">
+            {error}
+          </span>,
+          document.body,
+        )}
     </>
   )
 }

@@ -35,7 +35,7 @@ export function CatalogUnbundledBrowser({
   headerTrailing?: ReactNode
   /** Offer Create Bundle and Add to Bundle; the server needs `browse_version: 9`. */
   bundling?: boolean
-  onRename?: (relativePath: string, newName: string) => void
+  onRename?: (relativePath: string, newName: string) => void | Promise<void>
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
 }) {
   const [file, setFile] = useState<FileBrowserEntry | null>(null)

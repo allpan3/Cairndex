@@ -30,7 +30,7 @@ export function CatalogFileDetails({
   onLocate?: () => void
   /** False greys Locate out: the file is not in a bundle the browser shows */
   locatable?: boolean
-  onRename?: (relativePath: string, newName: string) => void
+  onRename?: (relativePath: string, newName: string) => void | Promise<void>
 }) {
   const detail = useQuery({
     queryKey: ['catalog-local-file', library, file, entry?.local_state],

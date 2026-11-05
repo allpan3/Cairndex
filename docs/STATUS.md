@@ -80,8 +80,8 @@ authorization failures through the existing Allow Access notice and retains
 the intent for explicit retry. See its source-operation documentation.
 
 Copy performance and activity UI follow-up is installed from the incoming branch.
-It batches upload writes, removes a redundant retained copy and throttles progress-only commits. File activity moves
-above the browser and collision cancellation persists. macOS passed 108 source
+It batches upload writes, removes a redundant retained copy and throttles
+progress-only commits. Collision cancellation persists. macOS passed 108 source
 cases. Linux passed 2,071 memory and 81 disk cases, then 19 final upload/API cases
 covering the last cancellation and immutable-upload guards. Both platforms passed
 1,443 frontend units, static checks, production web builds and four affected
@@ -90,6 +90,19 @@ Synthetic screenshots were inspected. Sidecar smoke, four frozen integrations,
 app-only build, signature/distribution and installed desktop/web checks passed.
 Component measurements and the full-SMB publication qualification limit are in [file operations](file-operations.md).
 Owner-NAS timing remains open; no Finder-parity claim is made.
+
+The naming/activity correction is qualified and awaiting test installation.
+Rename and New Folder keep occupied names editable with a short adjacent error;
+no retry/recovery card appears for an unstarted naming collision, including old
+saved rejections. Actual interrupted writes retain recovery. Copy progress floats
+in a compact bottom-right card without shifting the toolbar or grid. macOS passed
+all 1,447 frontend units, lint/format/type checks, production build and four
+source/Rename browser scenarios. Synthetic narrow-window error and copy-progress
+screenshots were inspected. Backend, Rust, Linux and frozen-integration evidence
+is retained for unchanged sources; no backend/API/dependency change is included.
+Finder was checked with disposable synthetic folders: it rejects the occupied
+name with a short message and an OK button. The correction keeps that refusal
+beside the editor, with Escape to abandon the name.
 
 ## Qualification and evidence
 

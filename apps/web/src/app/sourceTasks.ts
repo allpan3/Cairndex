@@ -38,7 +38,7 @@ export type TaskFinish =
 /**
  * A group of source operations the owner started with one click: files copied
  * in from this computer, a move, a trash or an undo. It runs in the background
- * and reports above the browser; only a question (an occupied name) or a failure
+ * and reports in a floating activity card; only a question (an occupied name) or a failure
  * keeps it there after it ends.
  */
 export interface SourceTask {
@@ -54,6 +54,8 @@ export interface SourceTask {
   running: boolean
   stopping: boolean
   busy?: boolean
+  /** Naming stays in its editor until the server accepts or rejects it. */
+  inline?: boolean
   /** A failure of the finishing step, after every item landed. */
   error: string
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import {
   formatBitrate,
@@ -13,8 +13,8 @@ import {
 import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
 import type { FileFacts } from './fileFacts'
-import { focusRenameInput } from './renameSelection'
-import { useCommitOnPointerDownOutside } from './useCommitOutside'
+import { NameEditor } from './FileWriteDialogs'
+import { renameError } from './sourceActions'
 import { OverlayScrollbar } from './OverlayScrollbar'
 
 /**
@@ -47,7 +47,7 @@ export function FileInspector({
   // Drag this file out to Finder/other apps (plan 3 §6); undefined disables it.
   onStartFileDrag?: (relativePaths: string[]) => void
   // Rename this entry; undefined leaves the title read-only (no write mode).
-  onRename?: (relativePath: string, newName: string) => void
+  onRename?: (relativePath: string, newName: string) => void | Promise<void>
   // In-app navigation, available in both web and desktop builds.
   locateLabel?: string
   onLocate?: (relativePath: string) => void
@@ -55,11 +55,6 @@ export function FileInspector({
   locateDisabled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
-  const titleRef = useRef<HTMLInputElement>(null)
-  // Guards the commit paths against each other: an outside pointerdown and the
-  // blur it may or may not produce would otherwise rename twice.
-  const editingRef = useRef(false)
-  const [draft, setDraft] = useState('')
   // Abandon any in-progress edit when the selection changes underneath it —
   // adjusted during render (React's pattern for resetting state on a prop
   // change) rather than in an effect, which would flash the stale editor first.
@@ -70,40 +65,11 @@ export function FileInspector({
     setEditing(false)
   }
 
-  // The guard the two commit paths share, kept in step with the state here
-  // rather than written during render.
-  useEffect(() => {
-    editingRef.current = editing
-  }, [editing])
-
-  // Focus and stem-selection together, so the extension stays unselected on
-  // every engine — see renameSelection. Above the early return below, since a
-  // hook cannot sit behind one.
-  useEffect(() => {
-    const input = titleRef.current
-    return editing && input ? focusRenameInput(input) : undefined
-  }, [editing])
-
   const canRename = onRename !== undefined
   if (!canRename && editing) setEditing(false)
   const startEditing = () => {
-    if (!canRename || !entry) return
-    setDraft(entry.name)
-    setEditing(true)
-    editingRef.current = true
+    if (canRename && entry) setEditing(true)
   }
-  // Defined above the early return so the dismiss hook below can take it: a hook
-  // cannot sit behind a conditional return.
-  const commit = () => {
-    if (!editingRef.current || !entry) return
-    editingRef.current = false
-    setEditing(false)
-    const name = draft.trim()
-    if (name && name !== entry.name) onRename?.(entry.relativePath, name)
-  }
-  // Clicking away confirms the new name, wherever the click lands — see the hook
-  // for why blur alone misses the case that matters most (a row in the listing).
-  useCommitOnPointerDownOutside(editing, titleRef, commit)
 
   if (entry === null) {
     return (
@@ -165,24 +131,21 @@ export function FileInspector({
     <aside className="inspector" data-tauri-drag-region>
       <OverlayScrollbar />
       {editing ? (
-        <input
-          ref={titleRef}
+        <NameEditor
+          key={entry.relativePath}
           className="edit inspector__title-edit"
-          value={draft}
-          aria-label={`Rename ${entry.name}`}
-          spellCheck={false}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              commit()
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              editingRef.current = false
-              setEditing(false)
-            }
+          initial={entry.name}
+          label={`Rename ${entry.name}`}
+          validate={renameError}
+          onSubmit={(name) => {
+            const result =
+              name.trim() && name.trim() !== entry.name
+                ? onRename?.(entry.relativePath, name.trim())
+                : undefined
+            if (result) return result.then(() => setEditing(false))
+            setEditing(false)
           }}
+          onCancel={() => setEditing(false)}
         />
       ) : (
         <div

@@ -6,7 +6,14 @@ import {
   type SourcePage,
 } from '../api/sourceOperations'
 import { trashRows } from './sourceActions'
-import { type SourceTasks } from './useSourceTasks'
+import { isCollision, type SourceTasks } from './useSourceTasks'
+
+/** An occupied name is a refused edit, not an interrupted file mutation. */
+export const rejectedName = (job: SourceJob) =>
+  ['mkdir', 'rename'].includes(job.action) &&
+  job.state === 'interrupted' &&
+  !job.result?.started &&
+  isCollision(job)
 
 /**
  * The library's Trash, newest first. The open Trash view polls for other
@@ -43,6 +50,8 @@ export function useUnfinishedOperations(library: string, enabled: boolean, tasks
   )
   return (page.data?.items ?? []).filter(
     (job: SourceJob) =>
-      !own.has(job.id) && (job.state === 'prepared' || job.state === 'interrupted'),
+      !own.has(job.id) &&
+      !rejectedName(job) &&
+      (job.state === 'prepared' || job.state === 'interrupted'),
   )
 }
