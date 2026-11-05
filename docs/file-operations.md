@@ -18,7 +18,13 @@ single selected item, and so does a double-click on its name in the inspector.
 **Delete** or **⌘⌫** asks to move the selection to the Trash. Each action asks
 only what it needs (a name, a folder, or a confirmation for the Trash) and then
 runs as a background task. Turning write mode off removes these actions.
-Existing directory-size and source-safety limits still apply.
+Existing directory-size and source-safety limits still apply. Interrupted writes
+retain their intent and show permission, read-only, full-storage or saved-login
+failures specifically. Private job results retain numeric storage error codes
+and the failed phase, without exception text or source paths. If macOS blocks
+the saved network login, the library shows **Allow Access…**. Authorize it, then
+choose **Try Again** for the stopped task. Successful metadata exchange does not
+hide that request; authorization alone never applies the source operation.
 
 In File Browser, **New Folder** in the toolbar, context menu or desktop File
 menu inserts an inline row with **Untitled** selected. Type a name and press

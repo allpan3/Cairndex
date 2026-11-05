@@ -72,8 +72,10 @@ budget, saved-draft and recent-operation panels are removed; the default budget
 remains. Waiting operations cover only the newest page. Native-drop Move remains
 deferred. New Folder is installed with journaled creation and conditional Undo.
 It uses an inline row with Untitled selected; Enter or clicking outside confirms,
-and Escape cancels. Owner testing is next. See its source-operation documentation
-for details.
+and Escape cancels. An owner-network folder request completed after saved-login
+authorization. Source-worker failures now expose that authorization requirement
+through the existing library notice; final qualification and installation of
+this recovery fix are in progress. See its source-operation documentation.
 
 ## Qualification and evidence
 

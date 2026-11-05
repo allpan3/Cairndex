@@ -171,7 +171,10 @@ def retry(store: CatalogStore, operation: str) -> SourceJob:
     with store.connection() as db:
         db.execute(
             "UPDATE source_operations SET state=CASE WHEN phase='prepare' THEN 'queued' "
-            "ELSE 'accepted' END,error=NULL WHERE id=? AND state='interrupted'",
+            "ELSE 'accepted' END,error=NULL,"
+            "result=CASE WHEN result IS NULL THEN NULL "
+            "ELSE json_remove(result,'$.storage_failure') END "
+            "WHERE id=? AND state='interrupted'",
             (operation,),
         )
     return job(store, operation)

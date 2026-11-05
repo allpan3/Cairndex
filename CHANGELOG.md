@@ -427,6 +427,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Show **Allow Access…** when a source operation cannot use the saved network
+  login, including after a successful metadata exchange. Authorization preserves
+  the stopped intent for explicit retry. Distinguish permission, read-only and
+  full-storage failures; retain numeric storage diagnostics privately.
+
 - Reduce Update overhead after a macOS SMB reconnect by retaining checked
   directory handles and overlapping at most sixteen fingerprint reads. Native
   device changes still require fresh evidence. Cancellation and failures discard

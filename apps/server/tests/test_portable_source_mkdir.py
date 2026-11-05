@@ -175,3 +175,32 @@ def test_received_mkdir_receipt_never_creates_a_peer_directory(tmp_path):
             db.execute("SELECT state FROM source_receipts WHERE id='folder'").fetchone()[0]
             == "accepted"
         )
+
+
+@pytest.mark.parametrize("code", [5, 13, 28, 30])
+def test_storage_failures_keep_safe_diagnostics_and_retry(tmp_path, monkeypatch, code):
+    from cairndex.replicas import source_claims
+
+    root, store = fixture(tmp_path)
+    claim = source_claims.claim
+
+    def unavailable(*args):
+        raise OSError(code, "synthetic private path must never enter diagnostics")
+
+    monkeypatch.setattr(source_claims, "claim", unavailable)
+    failed = prepared(store, root)
+    assert failed.state == "interrupted"
+    assert failed.result["storage_failure"] == {
+        "step": "claim",
+        "errno": code,
+        "ntstatus": None,
+        "access": None,
+    }
+    assert "synthetic private" not in failed.model_dump_json()
+    monkeypatch.setattr(source_claims, "claim", claim)
+    retry(store, failed.id)
+    run_one(store, root, lambda: None)
+    ready = job(store, failed.id)
+    assert ready.state == "prepared"
+    assert "storage_failure" not in (ready.result or {})
+    assert not (root / "Nested").exists()
