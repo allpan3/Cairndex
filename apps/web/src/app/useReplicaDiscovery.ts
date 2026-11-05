@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { operationId } from '../api/catalog'
 import {
   discovery,
@@ -72,6 +72,14 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
       if (intent.openReview && data?.items.length) setOpen(true)
     })
   }, [succeeded, refetchCandidates])
+  // Update is the library-wide refresh. Once any run finishes, every file's details
+  // read the file again (CatalogFileDetails), rather than each file being checked.
+  const queryClient = useQueryClient()
+  const lastSucceeded = run.data?.state === 'succeeded' ? run.data.id : null
+  useEffect(() => {
+    if (lastSucceeded)
+      void queryClient.invalidateQueries({ queryKey: ['catalog-local-file', library] })
+  }, [lastSucceeded, library, queryClient])
   const reviews = useQuery({
     queryKey: ['discovery-reviews', library, reviewsAfter],
     queryFn: ({ signal }) =>

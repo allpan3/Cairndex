@@ -507,6 +507,62 @@ test('portable cards preview a video this device has observed @fullstack', async
   }
 })
 
+// v0.2.1's Update made storyboards; a portable card asks for its missing one when
+// hovered, so resting after a skim shows the frame under the pointer, not the cover
+test('portable card hover makes a missing storyboard for its skim @fullstack', async ({ page }) => {
+  test.setTimeout(150_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-card-storyboard-'))
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]), duration=60))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const card = page.getByRole('option').filter({ hasText: 'Synthetic playback' })
+    const thumb = card.locator('.card__thumb')
+    await expect(card).toBeVisible()
+    // Collect metadata observes the video without the viewer, which would make the storyboard
+    await apiPost(backend.baseUrl, `/api/v1/libraries/${library.id}/replica/media/maintenance`, {
+      kind: 'probe',
+      operation: 'synthetic-collect',
+    })
+    await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'direct', { timeout: 60_000 })
+    const box = (await thumb.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    const sprite = thumb.getByTestId('hover-preview-storyboard')
+    await expect
+      .poll(
+        async () => {
+          for (const at of [0.3, 0.5, 0.7])
+            await page.mouse.move(box.x + box.width * at, box.y + box.height / 2)
+          return sprite.count()
+        },
+        { timeout: 90_000, intervals: [1_000] },
+      )
+      .toBeGreaterThan(0)
+    expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
 // Moments are catalog rows: marked in the portable viewer, listed in its rail, edited by jobs
 test('portable viewer marks, comments on, tags, previews and deletes moments @fullstack', async ({
   page,
@@ -584,9 +640,14 @@ test('portable viewer marks, comments on, tags, previews and deletes moments @fu
     // A moment tag also tags the bundle, and removing it leaves the bundle tag (ADR-0025)
     const seeded = rail.locator('.moment-row').filter({ hasText: '0:42' })
     await seeded.getByRole('button', { name: 'Add tag' }).click()
-    const chooser = page.getByRole('listbox', { name: 'Moment tags' })
-    await chooser.getByRole('option', { name: /Synthetic root$/ }).click()
-    await expect(seeded.locator('.chip')).toHaveText(['Synthetic root'])
+    const chooser = page.getByRole('dialog', { name: 'Moment tags' })
+    const child = chooser.getByRole('button', { name: /^Synthetic child/ })
+    await expect(child.locator('.pick-guide')).toHaveCount(1)
+    await chooser.getByRole('button', { name: 'Collapse', exact: true }).click()
+    await expect(child).toHaveCount(0)
+    await chooser.getByRole('button', { name: 'Expand', exact: true }).click()
+    await child.click()
+    await expect(seeded.locator('.chip')).toHaveText(['Synthetic child'])
     const bundleTags = () =>
       page.evaluate(async (id) => {
         const response = await fetch(
@@ -596,10 +657,10 @@ test('portable viewer marks, comments on, tags, previews and deletes moments @fu
           (item) => item.name,
         )
       }, library.id)
-    await expect.poll(bundleTags).toEqual(['Synthetic root'])
-    await chooser.getByRole('option', { name: /✓\s*Synthetic root$/ }).click()
+    await expect.poll(bundleTags).toEqual(['Synthetic child'])
+    await chooser.getByRole('button', { name: /^Synthetic root\/Synthetic child/ }).click()
     await expect(seeded.locator('.chip')).toHaveCount(0)
-    await expect.poll(bundleTags).toEqual(['Synthetic root'])
+    await expect.poll(bundleTags).toEqual(['Synthetic child'])
     // Escape belongs to the viewer, so the chooser closes from its own button
     await seeded.getByRole('button', { name: 'Add tag' }).click()
     await expect(chooser).toHaveCount(0)

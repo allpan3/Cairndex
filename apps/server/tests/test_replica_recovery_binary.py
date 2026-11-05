@@ -104,13 +104,14 @@ def running(base, tmp_path, *, worker_enabled=False):
 
 # Poll observable HTTP state rather than trusting command dispatch or database serialization alone
 def eventually(read, valid, *, timeout=15):
+    value = None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         value = read()
         if valid(value):
             return value
         time.sleep(0.05)
-    raise AssertionError("Synthetic sidecar did not reach the expected state")
+    raise AssertionError(f"Synthetic sidecar did not reach the expected state: {value!r}")
 
 
 # Full local command lifecycle restores private work to a new server and repairs a damaged original

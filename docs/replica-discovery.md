@@ -146,6 +146,35 @@ on demand.
 The synthetic example keeps an addition to an accepted bundle above the new
 collection suggestions. Changing their display does not move source files.
 
+### Initial Update timing
+
+In the final full-server browser run, Update took 283.481 seconds and the review
+was editable 290.964 seconds after the click. The earlier run took 592.386 and
+633.314 seconds respectively. Review initialization therefore fell from 40.928
+to 7.483 seconds. The dialog opened automatically, kept Prepare disabled while
+building, then enabled it. Both runs used the same 9,000-file synthetic copy and
+one-second status polling. These local VM runs do not establish NAS performance
+or parity with the older application's different scan/review pipeline.
+
+The November follow-up also measured initial Update on a fresh copy of 9,000
+synthetic files, of which 8,707 were supported. The production loop took 76.290
+seconds before and 39.586 seconds after the reader and export repairs in Cairndex
+macOS. Walking fell from 21.534 to 8.142 seconds; export fell from 27.866 to 7.273
+seconds. These runs include profiling overhead and status reads, but exclude
+browser polling and exchange scheduling.
+
+Enumeration shares one read snapshot per 32-entry batch. Ordinary bundle
+exports select that bundle directly; collection exports retain all descendants.
+Each export page resumes from the last committed group and member instead of
+numbering the complete candidate again. Candidate order, complete checksums,
+retry boundaries and writer durability are unchanged. The batching regression
+checks every exported member against the complete ordered stream.
+
+Update now advances up to 32 bounded steps or 0.25 seconds before the next
+exchange pass. Initial review construction batches cached pages within one
+transaction, capped at 32 steps or 50 ms. It performs no source I/O and rolls
+back the entire batch on failure, retaining the last committed cursor for retry.
+
 ### Conversion timing
 
 Synthetic local-disk measurements in Cairndex macOS compare one fresh run per

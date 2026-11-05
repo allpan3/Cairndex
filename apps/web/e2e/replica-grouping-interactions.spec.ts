@@ -79,8 +79,12 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
     await expect(
       dialog.getByText('2 / 10 files selected · 5 bundles', { exact: true }),
     ).toBeVisible()
+    // Unfolding grows the tree downward, so the rows above it stay where they were
+    const fold = dialog.getByRole('button', { name: 'Collapse suggestion Series', exact: true })
+    const anchor = await fold.boundingBox()
     await rolled.press('ArrowRight')
     await expect(dialog.getByRole('button', { name: 'Alpha', exact: true })).toBeVisible()
+    expect((await fold.boundingBox())?.y).toBe(anchor?.y)
     const alphaCheck = tree.getByRole('checkbox', { name: 'Accept Alpha', exact: true })
     await expect(alphaCheck).toBeEnabled({ timeout: 30_000 })
     await alphaCheck.focus()

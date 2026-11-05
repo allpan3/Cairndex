@@ -885,6 +885,14 @@ authored history and other private state remain intact. Run
 `tests/test_catalog_search_fields.py` and `tests/test_catalog_browse.py` for field,
 projection, historical-layout and interrupted-upgrade coverage.
 
+A correlated lookup that compares a JSON expression index with a TEXT column,
+such as `json_extract(f.body, '$.bundle_id') = b.entity`, must write `+b.entity`.
+Otherwise the column's affinity makes SQLite scan every file row for each bundle.
+The plan test in `tests/test_catalog_browse.py` fails on such a scan. Opening a
+store whose search view and triggers predate this rule replaces only those
+plans and keeps the FTS contents; an earlier pre-release build then refuses the
+store.
+
 Retained ORM fixtures use a per-library SQLite FTS5 index (`bundle_search`)
 kept fresh by triggers. It is created and first-populated automatically when a
 library DB is opened. To rebuild it for one library (after a bulk external change

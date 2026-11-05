@@ -385,3 +385,97 @@ def test_view_counts_and_direct_collection_counts(api, tmp_path):  # noqa: F811
     assert served.status_code == 200
     assert set(served.json()) == set(counts)
     assert served.json()["all"] == page(api[2]).total
+
+
+# A page of sidebar counts is one read that probes the edges' destination index; the
+# per-row filter it replaced took seconds a page on a few thousand bundles
+def test_member_counts_match_browse_totals_in_one_indexed_read(tmp_path):
+    from cairndex.filters.ast import FilterExpression
+    from cairndex.replicas.catalog.browse import browse_total
+    from cairndex.replicas.catalog.navigation import member_counts
+
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=4)).store
+    with store.connection(readonly=True) as db:
+        for family in ("tags", "collections"):
+            roots = [
+                row[0]
+                for row in db.execute("SELECT entity FROM catalog_rows WHERE family=?", (family,))
+            ]
+            for descendants in (True, False):
+                statements: list[str] = []
+                db.set_trace_callback(statements.append)
+                counts = member_counts(db, family, roots, descendants=descendants)
+                db.set_trace_callback(None)
+                expected = {
+                    root: browse_total(
+                        db,
+                        CatalogBrowseRequest(
+                            filter=FilterExpression.model_validate(
+                                {
+                                    "root": {
+                                        "field": family,
+                                        "operator": "contains_any",
+                                        "value": [root],
+                                        "include_descendants": descendants,
+                                    }
+                                }
+                            )
+                        ),
+                    )
+                    for root in roots
+                }
+                assert counts == expected
+                assert any(counts.values())
+                plan = db.execute("EXPLAIN QUERY PLAN " + statements[-1]).fetchall()
+                assert any(f"catalog_search_{family[:-1]}_owners" in row[3] for row in plan)
+
+
+def correlated_scans(db, statement):
+    """Plan lines that read a whole table or family once per outer row.
+
+    A lookup bound only by ``family=?`` reads every row of that family, although
+    SQLite reports it as a SEARCH of the primary key.
+    """
+    plan = db.execute("EXPLAIN QUERY PLAN " + statement).fetchall()
+    details = {row[0]: (row[1], row[3]) for row in plan}
+    scans = set()
+    for parent, detail in details.values():
+        whole = detail.startswith("SCAN") and "VIRTUAL TABLE" not in detail
+        if not whole and not detail.endswith("(family=?)"):
+            continue
+        while parent in details:
+            parent, above = details[parent]
+            if above.startswith("CORRELATED"):
+                scans.add(detail)
+                break
+    return scans
+
+
+# Every correlated per-bundle lookup must probe an index. A JSON expression index
+# compared with a TEXT column is unusable, and the resulting per-bundle scan of
+# every file row made a 2,000-bundle library take a minute per sidebar count.
+def test_browse_and_counts_never_scan_inside_correlated_subqueries(tmp_path):
+    from cairndex.replicas.catalog.navigation import (
+        CatalogFacetRequest,
+        facets,
+        navigation,
+        view_counts,
+    )
+
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=4)).store
+    statements: list[str] = []
+    with store.connection(readonly=True) as db:
+        db.set_trace_callback(statements.append)
+        for sort in ("title", "manual", "file_count", "size", "date_modified", "date_opened"):
+            browse(db, CatalogBrowseRequest(sort=sort))
+        for view in ("uncategorized", "untagged", "missing", "recent"):
+            browse(db, CatalogBrowseRequest(view=view))
+        view_counts(db)
+        navigation(db, "collections", "", 50)
+        navigation(db, "tags", "", 50)
+        facets(db, CatalogFacetRequest())
+        db.set_trace_callback(None)
+        reads = {s for s in statements if s.lstrip().upper().startswith(("SELECT", "WITH"))}
+        scans = set().union(*(correlated_scans(db, statement) for statement in reads))
+    assert len(reads) > 20
+    assert scans == set()

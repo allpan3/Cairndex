@@ -68,3 +68,27 @@ def test_changed_projection_requires_new_page_basis(media):
 def test_album_requires_current_scoped_id(media, bundle, directory):
     with pytest.raises(NotFoundError):
         album(media, bundle, directory, 0, 50, None)
+
+
+def test_album_files_carry_this_devices_last_observations(media, monkeypatch):
+    monkeypatch.setattr("cairndex.replicas.media.open_source", None)
+    files = [item.file for item in album(media, "bundle-000001", "album-folder", 0, 3, None).items]
+    assert all(file for file in files)
+    seen, moved, unseen = files[0], files[1], files[2]
+    assert seen and moved and unseen
+    with media.store.connection() as db:
+        db.executemany(
+            "INSERT INTO local_media VALUES (?,'token','available',?,NULL)",
+            [(seen.id, '{"width": 400, "height": 300}'), (moved.id, None)],
+        )
+        db.executemany(
+            "INSERT INTO local_file_facts VALUES (?,?,?,'2026-01-01T00:00:00+00:00')",
+            [(seen.id, seen.relative_path, 9100), (moved.id, "Earlier/place.jpg", 7)],
+        )
+    page = album(media, "bundle-000001", "album-folder", 0, 3, None)
+    by_id = {item.id: item.file for item in page.items}
+    assert by_id[seen.id] and by_id[seen.id].size_bytes == 9100
+    assert by_id[seen.id].tech_metadata == {"width": 400, "height": 300}
+    # A size observed under an earlier path no longer describes the file
+    assert by_id[moved.id] and by_id[moved.id].size_bytes is None
+    assert by_id[unseen.id] and by_id[unseen.id].tech_metadata is None

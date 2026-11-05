@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent } from 'react'
+import { useEffect, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopover } from './usePopover'
 
@@ -33,6 +33,7 @@ export function CatalogChipPicker({
   onReview,
   onOpenChip,
   onTagMenu,
+  panel,
 }: {
   family: 'tags' | 'collections'
   chips: ChipChoice[]
@@ -50,6 +51,8 @@ export function CatalogChipPicker({
   /** Collections open from their chip. */
   onOpenChip?: (id: string) => void
   onTagMenu?: (chip: ChipChoice, event: MouseEvent) => void
+  /** The picker's contents in place of the flat search list, as v0.2.1's tag tree. */
+  panel?: ReactNode
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   useEffect(() => onOpenChange(open), [open, onOpenChange])
@@ -65,10 +68,7 @@ export function CatalogChipPicker({
         <span
           key={chip.id}
           onContextMenu={onTagMenu ? (event) => onTagMenu(chip, event) : undefined}
-          className={`chip${onOpenChip ? ' chip--collection' : ''}${
-            chip.state === 'some' ? ' chip--partial' : ''
-          }`}
-          title={chip.state === 'some' ? `Only some selected bundles have ${chip.name}` : undefined}
+          className="chip"
         >
           {onOpenChip ? (
             <button
@@ -123,56 +123,60 @@ export function CatalogChipPicker({
                 maxHeight: pos.maxHeight,
               }}
             >
-              <div className="picker__head">
-                <input
-                  className="edit picker__search"
-                  placeholder={`Search ${family}…`}
-                  value={search}
-                  onChange={(event) => onSearch(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter') return
-                    event.preventDefault()
-                    const exact = sorted.find(
-                      (choice) => choice.name.toLowerCase() === search.trim().toLowerCase(),
-                    )
-                    if (exact && exact.state !== 'on') pick(exact)
-                  }}
-                  autoFocus
-                  aria-label={`Search ${family}`}
-                />
-              </div>
-              {!loading && sorted.length === 0 && (
-                <div className="pick-group">No matching {family}</div>
-              )}
-              {/* Toggle buttons rather than listbox options: each row acts at
-                  once, and Tab reaches every one without a roving focus */}
-              {sorted.map((choice) => (
-                <button
-                  key={choice.id}
-                  className={`pick-row${choice.state === 'on' ? ' pick-row--on' : ''}`}
-                  aria-pressed={
-                    choice.state === 'on' ? true : choice.state === 'some' ? 'mixed' : false
-                  }
-                  disabled={disabled && !choice.held}
-                  title={choice.held ? `This ${noun} needs metadata review first.` : undefined}
-                  onClick={() => pick(choice)}
-                >
-                  <span
-                    className={`pick-row__box${choice.state === 'on' ? ' pick-row__box--on' : ''}`}
-                    aria-hidden="true"
-                  >
-                    {choice.state === 'on' ? '✓' : choice.state === 'some' ? '–' : ''}
-                  </span>
-                  <span className="pick-row__name">{choice.name}</span>
-                  {choice.path.length > 1 && (
-                    <span className="pick-row__parent">{choice.path.at(-2)}</span>
+              {panel ?? (
+                <>
+                  <div className="picker__head">
+                    <input
+                      className="edit picker__search"
+                      placeholder={`Search ${family}…`}
+                      value={search}
+                      onChange={(event) => onSearch(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') return
+                        event.preventDefault()
+                        const exact = sorted.find(
+                          (choice) => choice.name.toLowerCase() === search.trim().toLowerCase(),
+                        )
+                        if (exact && exact.state !== 'on') pick(exact)
+                      }}
+                      autoFocus
+                      aria-label={`Search ${family}`}
+                    />
+                  </div>
+                  {!loading && sorted.length === 0 && (
+                    <div className="pick-group">No matching {family}</div>
                   )}
-                </button>
-              ))}
-              {onMore && (
-                <button className="pick-row pick-row--more" onClick={onMore}>
-                  More {family}…
-                </button>
+                  {/* Toggle buttons rather than listbox options: each row acts at
+                  once, and Tab reaches every one without a roving focus */}
+                  {sorted.map((choice) => (
+                    <button
+                      key={choice.id}
+                      className={`pick-row${choice.state === 'on' ? ' pick-row--on' : ''}`}
+                      aria-pressed={
+                        choice.state === 'on' ? true : choice.state === 'some' ? 'mixed' : false
+                      }
+                      disabled={disabled && !choice.held}
+                      title={choice.held ? `This ${noun} needs metadata review first.` : undefined}
+                      onClick={() => pick(choice)}
+                    >
+                      <span
+                        className={`pick-row__box${choice.state === 'on' ? ' pick-row__box--on' : ''}`}
+                        aria-hidden="true"
+                      >
+                        {choice.state === 'on' ? '✓' : choice.state === 'some' ? '–' : ''}
+                      </span>
+                      <span className="pick-row__name">{choice.name}</span>
+                      {choice.path.length > 1 && (
+                        <span className="pick-row__parent">{choice.path.at(-2)}</span>
+                      )}
+                    </button>
+                  ))}
+                  {onMore && (
+                    <button className="pick-row pick-row--more" onClick={onMore}>
+                      More {family}…
+                    </button>
+                  )}
+                </>
               )}
             </div>,
             document.body,

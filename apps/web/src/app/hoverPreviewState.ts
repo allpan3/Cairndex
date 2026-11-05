@@ -23,6 +23,8 @@ export interface HoverPreviewSource {
   startTime?: number | null
   /** The storyboard version, when it is not the legacy library's constant one. */
   storyboardVersion?: string | null
+  /** A portable file's observed generation, which names the storyboard to make. */
+  generation?: string | null
 }
 
 export type HoverPreviewMode = 'image' | 'direct' | 'storyboard' | 'none'

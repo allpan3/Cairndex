@@ -22,6 +22,7 @@ from cairndex.replicas.catalog.schemas import CatalogJob
 from cairndex.replicas.maintenance import MaintenanceIntent
 from cairndex.replicas.media import ReplicaMedia, catalog_file
 from cairndex.replicas.protocol import ReplicaError, Token
+from cairndex.replicas.service import wake
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/media", tags=["replica-media"])
 
@@ -102,6 +103,7 @@ def start_maintenance(payload: MaintenanceStart, media: Media) -> MaintenanceRea
     from cairndex.replicas.catalog.jobs import enqueue
 
     job = enqueue(media.store, payload.operation, "media_maintenance", {"kind": payload.kind})
+    wake()
     return MaintenanceRead(job=CatalogJob.model_validate(job), kind=payload.kind)
 
 

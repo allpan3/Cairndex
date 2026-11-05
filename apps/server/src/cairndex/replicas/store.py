@@ -181,10 +181,17 @@ class PrivateStore:
                 info = self.path.stat(follow_symlinks=False)
                 if self._database_identity != (info.st_dev, info.st_ino):
                     raise ReplicaError("Private database changed; explicit recovery required")
-            db = connect_writable(
-                self.path.as_uri() + ("?mode=rwc" if self._initializing else "?mode=rw"),
-                uri=True,
-                timeout=10,
+            # A reader must not become the last writable connection and checkpoint
+            # the WAL when it closes. Probing and scans open many short snapshots;
+            # writer configuration and checkpoints used to dominate their work.
+            db = (
+                sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True, timeout=10)
+                if readonly
+                else connect_writable(
+                    self.path.as_uri() + ("?mode=rwc" if self._initializing else "?mode=rw"),
+                    uri=True,
+                    timeout=10,
+                )
             )
         except (sqlite3.Error, OSError) as error:
             raise ReplicaError(
@@ -193,7 +200,8 @@ class PrivateStore:
         db.row_factory = sqlite3.Row
         try:
             db.execute("PRAGMA foreign_keys=ON")
-            db.execute("PRAGMA journal_mode=WAL")
+            if not readonly:
+                db.execute("PRAGMA journal_mode=WAL")
             db.execute("BEGIN" if readonly else "BEGIN IMMEDIATE")
             yield db
             db.commit()
@@ -208,6 +216,19 @@ class PrivateStore:
             raise
         finally:
             db.close()
+
+    # Exchange rereads every provider object in rotation. An object already retained
+    # under the same name needs no write transaction, whose commit is a full flush on macOS.
+    def _known(self, source: str, identity: str) -> bool:
+        with self.connection(readonly=True) as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM sources s JOIN inbox i ON i.id=s.artifact "
+                    "WHERE s.name=? AND s.artifact=?",
+                    (source, identity),
+                ).fetchone()
+                is not None
+            )
 
 
 # The protocol-one store cannot be used for a richer catalog package
@@ -396,6 +417,8 @@ class Store(PrivateStore):
         except ReplicaError as error:
             reason = error.message
             state = "invalid" if "upgrade" in reason or "identity" in reason else "unverified"
+        if source and state != "invalid" and self._known(source, token):
+            return
         with self.connection() as db:
             db.execute(
                 "INSERT OR IGNORE INTO inbox(id,raw,state,reason) VALUES (?, ?, ?, ?)",

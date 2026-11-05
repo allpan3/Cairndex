@@ -364,3 +364,93 @@ it('draws neither section before both first pages arrive and leaves out an empty
     vi.resetAllMocks()
   }
 })
+
+it('heads each listed folder with its files one level inside it, in the bundle order', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const file = (id: string, path: string) => ({
+    id,
+    path,
+    role: 'primary',
+    sequence: 0,
+    selected: true,
+    media_kind: 'video',
+  })
+  const folder = (path: string, expanded: boolean) => ({ path, expanded, files: 1, selected: 1 })
+  vi.mocked(grouping).mockImplementation(async (_library, path) => {
+    const url = new URL(path, 'http://synthetic.invalid')
+    const revision = Number(url.searchParams.get('revision'))
+    const kind = url.pathname.split('/').at(-1)
+    const items =
+      kind === 'folders'
+        ? [folder('Season 1', true), folder('Season 1/Extras', true), folder('Season 2', false)]
+        : kind === 'files'
+          ? [
+              file('poster', 'poster.jpg'),
+              file('one', 'Season 1/one.mp4'),
+              file('extra', 'Season 1/Extras/extra.mp4'),
+              file('two', 'Season 1/two.mp4'),
+              file('three', 'Season 2/three.mp4'),
+            ]
+          : [{ ...node('show'), folders: 3, files: 5, selected: 5 }]
+    return { revision, items, next_cursor: null }
+  })
+  const { result, unmount } = renderHook(
+    () =>
+      useGroupingTree(
+        {
+          library: 'synthetic',
+          scope: 'local',
+          workspace: 'folders',
+          status: {
+            data: {
+              id: 'folders',
+              state: 'ready',
+              phase: 'ready',
+              revision: 1,
+              accepting: null,
+              error: null,
+              files: 5,
+              selected: 5,
+              bundles: 1,
+              uncertain: 0,
+              command: null,
+            } as GroupingStatus,
+          },
+        },
+        false,
+      ),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  )
+  try {
+    await waitFor(() => expect(result.current.rows.some((row) => row.kind === 'node')).toBe(true))
+    const show = result.current.rows.find((row) => row.kind === 'node')!
+    if (show.kind !== 'node') throw new Error('Expected the bundle row')
+    act(() => result.current.toggle(show.node))
+    await waitFor(() => expect(result.current.rows.some((row) => row.kind === 'file')).toBe(true))
+    const shape = result.current.rows.flatMap((row) =>
+      row.kind === 'folder'
+        ? [`${row.depth} ${row.folder.path}/`]
+        : row.kind === 'file'
+          ? [`${row.depth} ${row.file.path}`]
+          : [],
+    )
+    // A folded folder hides its files and keeps its place
+    expect(shape).toEqual([
+      '1 poster.jpg',
+      '1 Season 1/',
+      '2 Season 1/one.mp4',
+      '2 Season 1/Extras/',
+      '3 Season 1/Extras/extra.mp4',
+      '2 Season 1/two.mp4',
+      '1 Season 2/',
+    ])
+  } finally {
+    unmount()
+    client.clear()
+    vi.resetAllMocks()
+  }
+})

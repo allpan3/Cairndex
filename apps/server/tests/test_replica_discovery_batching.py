@@ -1,5 +1,7 @@
 """Cached Update work amortizes durable commits while retaining bounded, atomic progress."""
 
+import hashlib
+import json
 from contextlib import contextmanager
 from itertools import count
 from types import SimpleNamespace
@@ -8,6 +10,7 @@ import pytest
 
 from cairndex.replicas import discovery, discovery_plan
 from cairndex.replicas import discovery_state as state
+from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.recovery_validation import validate_snapshot
 from tests.test_replica_discovery import replicas as replicas
 from tests.test_replica_discovery import scan
@@ -45,6 +48,63 @@ def candidates(store, run):
                 "SELECT id,path,body FROM discovery_candidates WHERE run=? ORDER BY id", (run,)
             )
         ]
+
+
+def test_enumeration_shares_one_read_snapshot_per_source_batch(replicas, monkeypatch):
+    store, root, _ = replicas[0]
+    sources = subjects(root)
+    state.enqueue(store, "enumeration")
+    discovery.enumerate_batch(store, root, "enumeration")
+    original = store.connection
+    reads, writes = 0, 0
+
+    @contextmanager
+    def measured_connection(*, readonly=False):
+        nonlocal reads, writes
+        reads += int(readonly)
+        writes += int(not readonly)
+        with original(readonly=readonly) as db:
+            yield db
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "connection", measured_connection)
+        discovery.enumerate_batch(store, root, "enumeration")
+    assert (reads, writes) == (1, 1)
+    assert all(path.read_bytes() == content for path, content in sources.items())
+
+
+def test_export_pages_preserve_complete_member_order_and_digest(replicas):
+    store, root, _ = replicas[0]
+    subjects(root)
+    run = scan(store, root)["id"]
+    with store.connection(readonly=True) as db:
+        for candidate in db.execute("SELECT * FROM discovery_candidates WHERE run=?", (run,)):
+            body = json.loads(candidate["body"])
+            if body.get("version") != 2:
+                continue
+            expected = db.execute(
+                "SELECT f.body,f.role,f.sequence,f.proposal FROM discovery_plan_files f "
+                "JOIN discovery_plan_groups g ON g.run=f.run AND g.id=f.proposal "
+                "JOIN discovery_candidate_groups c ON c.id=g.id AND c.candidate=? "
+                "WHERE f.run=? ORDER BY g.directory,g.id,f.sequence,f.path",
+                (candidate["id"], run),
+            ).fetchall()
+            exported = db.execute(
+                "SELECT * FROM discovery_candidate_files WHERE candidate=? ORDER BY position",
+                (candidate["id"],),
+            ).fetchall()
+            assert len(exported) == len(expected) == body["file_count"]
+            digest = hashlib.sha256()
+            for position, (actual, source) in enumerate(zip(exported, expected, strict=True)):
+                member = json.loads(source["body"]) | {
+                    "role": source["role"],
+                    "sequence": source["sequence"],
+                }
+                assert actual["position"] == position
+                assert actual["group_id"] == source["proposal"]
+                assert json.loads(actual["body"]) == member
+                digest.update(value_text([source["proposal"], member]).encode() + b"\n")
+            assert digest.hexdigest() == body["files_digest"]
 
 
 def test_cached_batch_rolls_back_and_retry_preserves_complete_suggestions(replicas, monkeypatch):
@@ -119,7 +179,7 @@ def test_cached_step_and_time_limits_yield_one_transaction_and_allow_cancel(
     reach_group(store, root, "bounded", monkeypatch)
     frontier = store.frontier()
     original_step, original_connection = discovery_plan.tick, store.connection
-    steps, writes = 0, 0
+    steps, writes, connection_time = 0, 0, 0
 
     def measured_step(db, run):
         nonlocal steps
@@ -128,9 +188,11 @@ def test_cached_step_and_time_limits_yield_one_transaction_and_allow_cancel(
 
     @contextmanager
     def measured_connection(*, readonly=False):
-        nonlocal writes
+        nonlocal writes, connection_time
         if not readonly:
             writes += 1
+            # A slow connection must not spend the in-transaction work budget.
+            connection_time += 1
         with original_connection(readonly=readonly) as db:
             yield db
 
@@ -139,7 +201,9 @@ def test_cached_step_and_time_limits_yield_one_transaction_and_allow_cancel(
         patch.setattr(discovery_plan, "tick", measured_step)
         patch.setattr(store, "connection", measured_connection)
         patch.setattr(
-            discovery, "time", SimpleNamespace(monotonic=lambda: next(clock) if expired else 0)
+            discovery,
+            "time",
+            SimpleNamespace(monotonic=lambda: connection_time + (next(clock) if expired else 0)),
         )
         discovery.propose_batch(store, "bounded")
     assert steps == (1 if expired else 32)

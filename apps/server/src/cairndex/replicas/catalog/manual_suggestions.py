@@ -173,7 +173,7 @@ def nearby(
         for row in db.execute(
             "SELECT p.entity,p.path FROM catalog_search s JOIN catalog_rows b "
             "ON b.family='asset_bundles' AND b.entity=s.bundle_id JOIN catalog_rows f "
-            "ON f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity "
+            "ON f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=+b.entity "
             "JOIN catalog_paths p ON p.owner='asset_files/'||f.entity "
             "WHERE catalog_search MATCH ? "
             "AND json_extract(b.body,'$.grouping_state')='PROVISIONAL' "

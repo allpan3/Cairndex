@@ -61,14 +61,17 @@ def group_body(db: sqlite3.Connection, run: str, group: sqlite3.Row) -> dict[str
 
 # Group membership is selected relationally so a collection includes every later-page descendant
 def selected_groups(db: sqlite3.Connection, run: str, group: sqlite3.Row) -> sqlite3.Cursor:
+    if group["kind"] != "container":
+        return db.execute(
+            "SELECT * FROM discovery_plan_groups WHERE run=? AND id=? AND kind='bundle'",
+            (run, group["id"]),
+        )
     return db.execute(
         "SELECT * FROM discovery_plan_groups WHERE run=? AND kind='bundle' AND "
-        "(id=? OR (?='container' AND (directory=? OR substr(directory,1,length(?)+1)=?||'/'))) "
+        "(directory=? OR substr(directory,1,length(?)+1)=?||'/') "
         "ORDER BY directory,id",
         (
             run,
-            group["id"],
-            group["kind"],
             group["directory"],
             group["directory"],
             group["directory"],
@@ -78,16 +81,18 @@ def selected_groups(db: sqlite3.Connection, run: str, group: sqlite3.Row) -> sql
 
 # A complete source receipt uses constant hash buffers and a deterministic full member stream
 def source_rows(db: sqlite3.Connection, run: str, group: sqlite3.Row) -> sqlite3.Cursor:
+    if group["kind"] != "container":
+        return db.execute(
+            "SELECT * FROM discovery_plan_files WHERE run=? AND proposal=? ORDER BY sequence,path",
+            (run, group["id"]),
+        )
     return db.execute(
         "SELECT f.* FROM discovery_plan_files f JOIN discovery_plan_groups g "
         "ON g.run=f.run AND g.id=f.proposal WHERE g.run=? AND g.kind='bundle' AND "
-        "(g.id=? OR (?='container' AND (g.directory=? OR "
-        "substr(g.directory,1,length(?)+1)=?||'/'))) "
+        "(g.directory=? OR substr(g.directory,1,length(?)+1)=?||'/') "
         "ORDER BY g.directory,g.id,f.sequence,f.path",
         (
             run,
-            group["id"],
-            group["kind"],
             group["directory"],
             group["directory"],
             group["directory"],
@@ -142,6 +147,51 @@ def begin(db: sqlite3.Connection, run: str, group: sqlite3.Row) -> str:
     return identity
 
 
+def source_page(db: sqlite3.Connection, run: str, candidate: str, cursor: int) -> list[sqlite3.Row]:
+    """Resume at the last exported member, without numbering the complete stream again."""
+    directory, identity, sequence, path = "", "", -1, ""
+    if cursor:
+        prior = db.execute(
+            "SELECT g.directory,f.group_id,f.body FROM discovery_candidate_files f "
+            "JOIN discovery_plan_groups g ON g.run=? AND g.id=f.group_id "
+            "WHERE f.candidate=? AND f.position=?",
+            (run, candidate, cursor - 1),
+        ).fetchone()
+        if prior is None:
+            raise ReplicaError("Grouping export cursor has no committed member")
+        body = json.loads(prior["body"])
+        directory, identity, sequence, path = (
+            prior["directory"],
+            prior["group_id"],
+            body["sequence"],
+            body["path"],
+        )
+    rows: list[sqlite3.Row] = []
+    while len(rows) < BATCH:
+        if identity:
+            rows.extend(
+                db.execute(
+                    "SELECT body,role,sequence,proposal,path FROM discovery_plan_files "
+                    "WHERE run=? AND proposal=? AND (sequence,path)>(?,?) "
+                    "ORDER BY sequence,path LIMIT ?",
+                    (run, identity, sequence, path, BATCH - len(rows)),
+                ).fetchall()
+            )
+            if len(rows) == BATCH:
+                break
+        group = db.execute(
+            "SELECT g.directory,g.id FROM discovery_candidate_groups c "
+            "JOIN discovery_plan_groups g ON g.run=? AND g.id=c.id "
+            "WHERE c.candidate=? AND (g.directory,g.id)>(?,?) "
+            "ORDER BY g.directory,g.id LIMIT 1",
+            (run, candidate, directory, identity),
+        ).fetchone()
+        if group is None:
+            break
+        directory, identity, sequence, path = group["directory"], group["id"], -1, ""
+    return rows
+
+
 # Copying internal pages changes neither the complete candidate checksum nor its review boundary
 def tick(db: sqlite3.Connection, run: str) -> bool:
     group = db.execute(
@@ -163,20 +213,13 @@ def tick(db: sqlite3.Connection, run: str) -> bool:
         ).fetchone()
     else:
         identity = group["stage"].split(":", 1)[1]
-    rows = db.execute(
-        "SELECT * FROM (SELECT f.body,f.role,f.sequence,f.proposal,ROW_NUMBER() OVER "
-        "(ORDER BY g.directory,g.id,f.sequence,f.path)-1 AS position FROM discovery_plan_files f "
-        "JOIN discovery_plan_groups g ON g.run=f.run AND g.id=f.proposal "
-        "JOIN discovery_candidate_groups c ON c.id=g.id AND c.candidate=? WHERE f.run=?) "
-        "WHERE position>=? ORDER BY position LIMIT ?",
-        (identity, run, group["cursor"], BATCH),
-    ).fetchall()
-    for row in rows:
+    rows = source_page(db, run, identity, group["cursor"])
+    for position, row in enumerate(rows, start=group["cursor"]):
         db.execute(
             "INSERT OR IGNORE INTO discovery_candidate_files VALUES (?,?,?,?)",
             (
                 identity,
-                row["position"],
+                position,
                 row["proposal"],
                 value_text(
                     json.loads(row["body"]) | {"role": row["role"], "sequence": row["sequence"]}

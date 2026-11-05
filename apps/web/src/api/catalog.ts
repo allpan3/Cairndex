@@ -70,8 +70,12 @@ export async function runJob(
 ): Promise<Job> {
   const assertScope = captureRequestScope()
   let job = await catalog<Job>(library, '/jobs', 'POST', { action, body, operation })
+  // Queuing wakes the server's worker, so most jobs finish within tens of milliseconds;
+  // the wait doubles up to 250 ms for longer ones
+  let wait = 20
   while (job.state === 'queued' || job.state === 'running') {
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await new Promise((resolve) => setTimeout(resolve, wait))
+    wait = Math.min(wait * 2, 250)
     assertScope()
     job = await catalog<Job>(library, `/jobs/${operation}`)
   }

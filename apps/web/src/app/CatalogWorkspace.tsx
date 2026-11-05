@@ -307,8 +307,13 @@ export function CatalogWorkspace({
   }
   // Known only once status answers, so loading does not flash the not-ready view
   const notReady = (state !== undefined || status.error !== null) && !state?.ready
-  // The bundle browser shows the library's status only when it needs the owner
-  const attention = status.error?.message ?? state?.exchange_error ?? state?.blocked ?? null
+  // The bundle browser shows the library's status only when it needs the owner. A
+  // share login the server may not read yet has its own notice, which says why.
+  const attention =
+    status.error?.message ??
+    (state?.storage_access ? null : state?.exchange_error) ??
+    state?.blocked ??
+    null
   const storageAccess = state?.storage_access && (
     <StorageAccessNotice
       access={state.storage_access}

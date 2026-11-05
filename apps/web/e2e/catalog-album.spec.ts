@@ -128,6 +128,13 @@ test('catalog album pages, folders, selection, missing media and draft return @f
     await page.getByRole('row').filter({ hasText: 'Synthetic' }).dblclick()
     await page.getByRole('row').filter({ hasText: '雪.mp4' }).click()
     await page.getByRole('button', { name: 'Locate in Bundle Browser', exact: true }).click()
+    // Locate opens the owning bundle on the located file, as v0.2.1 opened the bundle
+    const located = listing.locator('[data-file-id="file-video"]')
+    await expect(located).toHaveAttribute('aria-pressed', 'true')
+    await expect(located).toBeFocused()
+    // The file sits in the bundle's folder member, so Locate opened that folder on it
+    await page.getByRole('button', { name: 'Back to bundle', exact: true }).click()
+    await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     await expect(page.getByRole('list', { name: 'Album items' })).toHaveCount(0)
     await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('')
     await page.getByRole('option').filter({ hasText: 'Synthetic album' }).click()

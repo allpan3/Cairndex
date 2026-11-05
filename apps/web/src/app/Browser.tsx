@@ -408,11 +408,6 @@ export function Browser(props: BrowserProps) {
       onDrop={onContainerDrop}
       onDragLeave={onContainerDragLeave}
     >
-      {!props.singleSelection && props.hasNextPage && selectedIds.size > 0 && (
-        <div className="listing-selection-note" role="status">
-          {selectedIds.size} selected · Select All includes {items.length} loaded bundles
-        </div>
-      )}
       {props.isError && (
         <div className="state state--error">
           <div>Couldn’t load the library.</div>

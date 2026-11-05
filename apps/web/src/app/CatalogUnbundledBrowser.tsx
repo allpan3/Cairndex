@@ -84,6 +84,7 @@ export function CatalogUnbundledBrowser({
             key={file.file_id}
             library={library}
             file={file.file_id}
+            entry={file}
             hostFiles={hostFiles}
           />
         </aside>

@@ -195,30 +195,27 @@ def enumerate_batch(store: CatalogStore, root: Path, run: str) -> None:
     walker = _walks[store][1]
     found = []
     complete = False
-    for _ in range(BATCH):
-        try:
-            path = next(walker)
-        except StopIteration:
-            complete = True
-            break
-        if path is None or classify(path) is None:
-            continue
-        cached = None
-        with store.connection(readonly=True) as db:
+    with store.connection(readonly=True) as db:
+        for _ in range(BATCH):
+            try:
+                path = next(walker)
+            except StopIteration:
+                complete = True
+                break
+            if path is None or classify(path) is None:
+                continue
             prior = db.execute(
                 "SELECT body FROM discovery_baselines WHERE json_extract(body,'$.path')=? LIMIT 1",
                 (path,),
             ).fetchone()
-            if prior:
-                cached = json.loads(prior[0])
-        observation = sources.inspect(root, path, cached)
-        from cairndex.replicas.discovery_verification import evidence
+            cached = json.loads(prior[0]) if prior else None
+            observation = sources.inspect(root, path, cached)
+            from cairndex.replicas.discovery_verification import evidence
 
-        with store.connection(readonly=True) as db:
             full = evidence(db, observation)
             if full and observation["evidence"]["algorithm"] != "sha256":
                 observation = observation | {"sample": observation["evidence"], "evidence": full}
-        found.append((run, path, path.rpartition("/")[0], value_text(observation)))
+            found.append((run, path, path.rpartition("/")[0], value_text(observation)))
     with store.connection() as db:
         if not db.execute(
             "SELECT 1 FROM discovery_runs WHERE id=? AND state='running'", (run,)
@@ -436,10 +433,12 @@ def propose_batch(store: CatalogStore, run: str) -> None:
     from cairndex.replicas import discovery_plan as plan
     from cairndex.replicas import discovery_proposals as proposals
 
-    deadline = time.monotonic() + 0.05
     # Cached indexing, grouping and export share one bounded transaction. A
     # durable flush per subject otherwise dominates small-file Updates on macOS.
     with store.connection() as db:
+        # Connection setup and waiting for a writer do not consume the work
+        # budget; under load that would reduce every batch to a single step.
+        deadline = time.monotonic() + 0.05
         for _ in range(BATCH):
             job = db.execute("SELECT * FROM discovery_runs WHERE id=?", (run,)).fetchone()
             if job["state"] != "running":

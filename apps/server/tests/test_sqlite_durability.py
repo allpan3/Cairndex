@@ -12,6 +12,7 @@ from cairndex.devtools.replica_fixture import create_fixture
 from cairndex.persistence import sqlite_durability
 from cairndex.persistence.engine import create_app_engine
 from cairndex.registry.engine import create_registry_engine
+from cairndex.replicas.protocol import ReplicaError
 from cairndex.replicas.store import Store
 
 
@@ -61,3 +62,22 @@ def test_writers_and_new_pooled_connections_use_policy(
                         assert _settings(db, "plans") == (2, *flags)
         finally:
             engine.dispose()
+
+
+def test_private_reader_is_readonly_and_keeps_its_snapshot_during_a_durable_write(tmp_path):
+    store = Store(tmp_path / "private", create_fixture(tmp_path / "source"))
+    query = "SELECT value FROM config WHERE key='synthetic-read-check'"
+    with store.connection() as db:
+        db.execute("INSERT INTO config VALUES ('synthetic-read-check','before')")
+    with store.connection(readonly=True) as reader:
+        assert reader.execute(query).fetchone()[0] == "before"
+        with store.connection() as writer:
+            writer.execute("UPDATE config SET value='after' WHERE key='synthetic-read-check'")
+        assert reader.execute(query).fetchone()[0] == "before"
+    with store.connection(readonly=True) as reader:
+        assert reader.execute(query).fetchone()[0] == "after"
+    with (
+        pytest.raises(ReplicaError, match="transaction failed"),
+        store.connection(readonly=True) as reader,
+    ):
+        reader.execute("UPDATE config SET value='forbidden' WHERE key='synthetic-read-check'")

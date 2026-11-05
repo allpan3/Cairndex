@@ -55,8 +55,8 @@ local opening history; Size uses this device's observations. Folder pagination,
 file note/source UI, cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,
 offline delivery, hydration, conflicts, large-scale use and power-loss safety
-are not qualified. The installed application's earlier evidence does not qualify
-this branch. See [STATUS](docs/STATUS.md) for exact checks and remaining limits.
+are not qualified. See [STATUS](docs/STATUS.md) for local build checks, the
+installed test build and remaining limits.
 
 ## Install (macOS desktop app)
 

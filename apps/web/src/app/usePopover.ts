@@ -115,11 +115,16 @@ export function usePopover() {
 
 type HierItem = { id: string; parent_id: string | null; name: string }
 
-/** Order hierarchical items (parent_id self-ref) depth-first with a depth. */
+/**
+ * Order hierarchical items (parent_id self-ref) depth-first with a depth. A parent
+ * that isn't itself in `items` makes its children top-level, as in
+ * `visibleHierarchy`; otherwise a tag group's child tag vanished from a search.
+ */
 export function flattenHierarchy<T extends HierItem>(items: T[]): { item: T; depth: number }[] {
+  const ids = new Set(items.map((i) => i.id))
   const byParent = new Map<string | null, T[]>()
   for (const it of items) {
-    const key = it.parent_id ?? null
+    const key = it.parent_id && ids.has(it.parent_id) ? it.parent_id : null
     byParent.set(key, [...(byParent.get(key) ?? []), it])
   }
   const out: { item: T; depth: number }[] = []

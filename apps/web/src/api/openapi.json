@@ -1649,6 +1649,11 @@
             "title": "Assigned",
             "type": "boolean"
           },
+          "common": {
+            "default": false,
+            "title": "Common",
+            "type": "boolean"
+          },
           "family": {
             "enum": [
               "tags",
@@ -26263,6 +26268,23 @@
               "default": false,
               "title": "Assigned",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
             }
           },
           {

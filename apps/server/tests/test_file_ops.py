@@ -1501,22 +1501,22 @@ def test_a_move_undo_still_works_when_the_source_is_free(
 # and its safety properties.
 
 
-def _fail_rename_across(boundary: str, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+def _fail_rename_across(boundary: Path, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     """Make `os.rename` behave as if `boundary` were a separate filesystem.
 
     Any rename with exactly one side under `boundary` raises EXDEV, the way a
     real mount point would; renames wholly inside or wholly outside still work,
     which is what lets the fallback's own staging rename succeed.
 
-    Compared on path *components*: the fallback's staging file is named
-    `.cairndex-xdev-…`, so a substring test would read it as living under the
-    `.cairndex` package and refuse the commit rename that must succeed.
+    Compare against the complete directory, so a test root beneath `/mnt`
+    does not make both paths look like they cross the simulated `mnt` boundary.
+    A staging name beside `.cairndex` also stays outside that directory.
     """
     real = os.rename
     attempts: list[tuple[str, str]] = []
 
     def under(path: object) -> bool:
-        return boundary in Path(str(path)).parts
+        return Path(str(path)).is_relative_to(boundary)
 
     def fake(src, dst, *args, **kwargs):  # type: ignore[no-untyped-def]
         attempts.append((str(src), str(dst)))
@@ -1535,7 +1535,7 @@ def test_a_cross_device_move_copies_then_deletes(
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
     _link(session, "a.mkv")
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     result = operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
 
@@ -1553,7 +1553,7 @@ def test_a_cross_device_move_leaves_no_staging_entry(
     """A completed move cleans up after itself."""
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
 
@@ -1568,7 +1568,7 @@ def test_a_cross_device_directory_move_carries_its_contents(
     _touch(library_root, "Show/S01/ep2.mkv", b"two")
     (library_root / "mnt").mkdir()
     _link(session, "Show/S01/ep1.mkv")
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     operations.move(session, library_root, paths=["Show/S01"], dest_dir="mnt")
 
@@ -1589,7 +1589,7 @@ def test_a_failed_cross_device_copy_leaves_the_original_alone(
     """
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     def explode(*args, **kwargs):  # type: ignore[no-untyped-def]
         raise OSError(errno.ENOSPC, "No space left on device")
@@ -1614,7 +1614,7 @@ def test_a_cross_device_copy_refuses_to_overwrite_a_destination(
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
     occupied = _touch(library_root, "mnt/a.mkv", b"do not lose me")
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     with pytest.raises(FileExistsError):
         fsmove.move_path(library_root / "a.mkv", occupied)
@@ -1697,7 +1697,7 @@ def test_a_completed_cross_device_move_leaves_no_marker(
     """The marker exists only across the crash window, never after success."""
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
-    _fail_rename_across("mnt", monkeypatch)
+    _fail_rename_across(library_root / "mnt", monkeypatch)
 
     operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
 
@@ -1712,7 +1712,7 @@ def test_trashing_across_a_device_boundary_works(
     _touch(library_root, "a.mkv", b"payload")
     _link(session, "a.mkv")
     # The package dir is the "other" filesystem here.
-    _fail_rename_across(".cairndex", monkeypatch)
+    _fail_rename_across(library_root / ".cairndex", monkeypatch)
 
     result = operations.trash_paths(session, library_root, paths=["a.mkv"])
 

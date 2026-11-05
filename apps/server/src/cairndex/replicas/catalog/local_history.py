@@ -65,11 +65,12 @@ def observed(
     )
 
 
-# Correlated only through indexed bundle members; no source reads during sorting.
+# Correlated only through indexed bundle members (``+`` keeps the JSON index usable);
+# no source reads during sorting.
 SIZE_SQL = """(SELECT CASE WHEN count(*)=count(s.file_id) THEN coalesce(sum(s.size),0) END
 FROM catalog_rows f LEFT JOIN local_file_facts s ON s.file_id=f.entity
 AND s.path=json_extract(f.body,'$.relative_path')
-WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity)"""
+WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=+b.entity)"""
 OPENED_SQL = "(SELECT opened_at FROM local_bundle_history WHERE bundle_id=b.entity)"
 MODIFIED_SQL = """coalesce((SELECT modified_at FROM local_bundle_history WHERE bundle_id=b.entity),
 json_extract(b.body,'$.updated_at'))"""

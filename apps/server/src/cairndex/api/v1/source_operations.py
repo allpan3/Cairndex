@@ -9,6 +9,7 @@ from cairndex.api.v1.catalog_replicas import Catalog
 from cairndex.file_ops.gate import ensure_portable_write_mode
 from cairndex.replicas import source_journal as journal
 from cairndex.replicas.protocol import Token
+from cairndex.replicas.service import wake
 from cairndex.replicas.source_journal import SourceAccept, SourceJob, SourcePage, SourceRequest
 
 router = APIRouter(prefix="/libraries/{library_id}/source-operations", tags=["source-operations"])
@@ -47,7 +48,9 @@ def enqueue(
 ) -> SourceJob:
     ensure_portable_write_mode(registry, library_id)
     registry.commit()
-    return journal.enqueue(store, payload)
+    job = journal.enqueue(store, payload)
+    wake()
+    return job
 
 
 @router.get("", response_model=SourcePage)

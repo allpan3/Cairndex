@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { cp, mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -179,11 +179,25 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     ])
     await a.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
     await openBundle(a, 'Amber conflict')
-    await expect(a.getByRole('listbox', { name: 'Bundles' })).toHaveAttribute(
-      'aria-multiselectable',
-      'true',
-    )
-    await expect(a.getByText(/Select All includes/)).toBeVisible()
+    const listing = a.getByRole('listbox', { name: 'Bundles' })
+    await expect(listing).toHaveAttribute('aria-multiselectable', 'true')
+    // After keyboard use the active card carries the ring; the grid itself is not framed
+    await a.keyboard.press('ArrowRight')
+    await expect(listing.locator("[data-focused='true']")).toHaveCount(1)
+    expect(
+      await listing.evaluate((element) => [
+        element.matches(':focus-visible'),
+        getComputedStyle(element).outlineStyle,
+      ]),
+    ).toEqual([true, 'none'])
+    // The count lives in the toolbar, so selecting never shifts the listing
+    await a.keyboard.press('Escape')
+    await expect(listing.getByRole('option', { selected: true })).toHaveCount(0)
+    const top = await listing.getByRole('option').first().boundingBox()
+    await a.keyboard.press('ControlOrMeta+A')
+    const count = a.locator('.toolbar__count').filter({ hasText: /\d selected/ })
+    await expect(count).toHaveAttribute('title', /^Select All selects the \d+ loaded bundles$/)
+    expect(await listing.getByRole('option').first().boundingBox()).toEqual(top)
     await a.screenshot({ path: '/tmp/cairndex-catalog-browse.png' })
   } finally {
     await Promise.all(contexts.map((context) => context.close()))
@@ -1104,6 +1118,19 @@ test('portable sidebar and inspector hide, return and resize @fullstack', async 
     await expect(sidebar).toBeVisible()
     await expect(inspector).toBeVisible()
 
+    // Between both panels the search field gives up width, and a short title
+    // keeps all of it: a fraction of a pixel less draws an ellipsis
+    const title = page.locator('.catalog-bundle-browser .toolbar__title')
+    await expect(title).toHaveText('All')
+    const search = page.getByRole('searchbox', { name: 'Search' })
+    expect((await search.boundingBox())!.width).toBeLessThan(200)
+    const overflow = await title.evaluate((node) => {
+      const text = document.createRange()
+      text.selectNodeContents(node)
+      return text.getBoundingClientRect().width - node.getBoundingClientRect().width
+    })
+    expect(overflow).toBeLessThanOrEqual(0)
+
     // The sidebar's toggle moves into the toolbar while the sidebar is hidden
     await sidebar.getByRole('button', { name: 'Toggle Sidebar' }).click()
     await expect(sidebar).toHaveCount(0)
@@ -1136,6 +1163,61 @@ test('portable sidebar and inspector hide, return and resize @fullstack', async 
     await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
     expect(await width(sidebar)).toBe(300)
     expect(await width(inspector)).toBe(340)
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+// The File Browser sits beside its inspector, outside the Bundle Browser's query
+// container, so its toolbar once kept every control and slid under the inspector
+test('portable File Browser toolbar fits the narrowest desktop window @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-file-toolbar-e2e-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=20))',
+      scratch,
+    ],
+    { cwd: serverDir },
+  )
+    .toString()
+    .trim()
+  await mkdir(join(root, 'Playback', 'Synthetic level one', 'Synthetic level two'), {
+    recursive: true,
+  })
+  const backend = await startBackend(join(scratch, 'private'))
+  try {
+    await apiPost(backend.baseUrl, '/api/v1/libraries/register', { root_path: root })
+    await proxyApi(page, backend.baseUrl)
+    // The desktop window's minimum width, with the sidebar and inspector both open
+    await page.setViewportSize({ width: 960, height: 700 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    for (const folder of ['Playback', 'Synthetic level one', 'Synthetic level two'])
+      await page.getByRole('row').filter({ hasText: folder }).first().dblclick()
+    const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
+    const current = trail.getByRole('button', { name: 'Synthetic level two', exact: true })
+    await expect(current).toBeVisible()
+    const toolbar = (await page.locator('.file-browser__bar .toolbar').boundingBox())!
+    const toggle = (await page.getByRole('button', { name: 'Toggle Inspector' }).boundingBox())!
+    expect(toggle.x + toggle.width).toBeLessThanOrEqual(toolbar.x + toolbar.width + 0.5)
+    // A trail too long for its share of the row scrolls to the current folder
+    await expect
+      .poll(() =>
+        trail.evaluate((nav) => ({
+          overflows: nav.scrollWidth > nav.clientWidth,
+          atEnd: nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 1,
+        })),
+      )
+      .toEqual({ overflows: true, atEnd: true })
   } finally {
     await page.close()
     await stopBackend(backend.child)

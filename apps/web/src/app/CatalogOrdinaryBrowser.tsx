@@ -10,7 +10,7 @@ import { CatalogNavigation } from './CatalogNavigation'
 import { CollectionFromFolderDialog } from './CollectionFromFolderDialog'
 import { FileBrowser } from './FileBrowser'
 import { emptyAdHocFilters } from './adHocFilters'
-import { DEFAULT_PLAYER_PREFS, type AppMode, type Selection } from './types'
+import { DEFAULT_PLAYER_PREFS, type AppMode, type LocatedFile, type Selection } from './types'
 import { visibleHierarchy } from './usePopover'
 import { CatalogUnbundledBrowser } from './CatalogUnbundledBrowser'
 import { CatalogFileDetails } from './CatalogFileDetails'
@@ -71,6 +71,7 @@ import { SourceOperations } from './SourceOperations'
 import { CatalogLibraryActions } from './CatalogLibraryActions'
 import { InspectorToggle, SidebarToggle } from './PanelToggles'
 import { PanelResizer } from './PanelResizer'
+import { RefreshButton } from './RefreshButton'
 import { useDesktopMenu } from '../desktop/useDesktopMenu'
 import type { MenuEntry } from './useContextMenu'
 
@@ -116,6 +117,8 @@ export function CatalogOrdinaryBrowser(props: {
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [filters, setFilters] = useState(emptyAdHocFilters)
   const [locateRequest, setLocateRequest] = useState(0)
+  // The file Locate in Bundle Browser opens its bundle on
+  const [locateFile, setLocateFile] = useState<LocatedFile | null>(null)
   const [unbundled, setUnbundled] = useState(false)
   const [path, setPath] = useState('')
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
@@ -172,6 +175,7 @@ export function CatalogOrdinaryBrowser(props: {
     })
     setSelection({ view: 'all', collectionId: null })
     setMode('collection')
+    setLocateFile(null)
     setLocateRequest((value) => value + 1)
   }, [])
   const { onRegisterTagFilter } = props
@@ -201,6 +205,21 @@ export function CatalogOrdinaryBrowser(props: {
     setUnbundled(false)
     setMode('file')
   }, [])
+  // Locate in Bundle Browser, as in v0.2.1: All bundles, no filters, the bundle
+  // selected and opened, here also on the located file
+  const { onSelect } = props
+  const locate = useCallback(
+    (bundle: string, located: LocatedFile | null) => {
+      setSelection({ view: 'all', collectionId: null })
+      setFilters(emptyAdHocFilters())
+      setUnbundled(false)
+      onSelect(bundle)
+      setLocateFile(located)
+      setLocateRequest((value) => value + 1)
+      setMode('collection')
+    },
+    [onSelect],
+  )
   const { onRegisterFileNavigation } = props
   useEffect(() => {
     onRegisterFileNavigation?.(navigateFiles)
@@ -243,11 +262,13 @@ export function CatalogOrdinaryBrowser(props: {
     setLocated(null)
   })
   // The sidebar's toggle rides in its own top row while it is open, and moves
-  // into the toolbar when it is not; the inspector's ends the toolbar
+  // into the toolbar when it is not; the inspector's ends the toolbar. Refresh
+  // follows Back/Forward, as Reload does in a web browser.
   const headerLeading = (
     <>
       {!panels.sidebar && <SidebarToggle visible={false} onToggle={toggleSidebar} />}
       {history}
+      <RefreshButton />
     </>
   )
   const headerTrailing = <InspectorToggle visible={panels.inspector} onToggle={toggleInspector} />
@@ -271,7 +292,7 @@ export function CatalogOrdinaryBrowser(props: {
   const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
   const tagManagement = (status?.browse_version ?? 0) >= 8 && !props.blocked
   const manualBundling = (status?.browse_version ?? 0) >= 9 && !props.blocked
-  const { deepLink, onDeepLinkHandled, onSelect } = props
+  const { deepLink, onDeepLinkHandled } = props
   // A bundle link selects and locates the bundle; a collection link opens the collection
   useEffect(() => {
     if (!deepLink) return
@@ -285,6 +306,7 @@ export function CatalogOrdinaryBrowser(props: {
       if (deepLink.kind === 'bundle') {
         setSelection({ view: 'all', collectionId: null })
         onSelect(deepLink.id)
+        setLocateFile(null)
         setLocateRequest((value) => value + 1)
       } else {
         setSelection({ view: 'all', collectionId: deepLink.id })
@@ -430,6 +452,7 @@ export function CatalogOrdinaryBrowser(props: {
               headerTrailing={headerTrailing}
               onScreen={mode === 'collection'}
               locateRequest={locateRequest}
+              locateFile={locateFile}
               selection={selection}
               filters={filters}
               onFilters={setFilters}
@@ -484,45 +507,26 @@ export function CatalogOrdinaryBrowser(props: {
                 onStartFileDrag={hostFiles.onStartFileDrag}
                 playerPrefs={player}
                 onPlayerPrefs={setPlayer}
-                onLocateBundle={(id) => {
-                  props.onSelect(id)
-                  setLocateRequest((value) => value + 1)
-                  setMode('collection')
-                }}
+                onLocateBundle={locate}
               />
               <aside className="inspector" aria-label="File inspector">
                 {file ? (
                   <>
-                    <h2>{file.name}</h2>
-                    <p>{file.relative_path}</p>
-                    {props.inspectorEnabled && file.file_id && (
-                      <CatalogFileDetails
-                        key={file.file_id}
-                        library={props.library}
-                        file={file.file_id}
-                        hostFiles={hostFiles}
-                      />
-                    )}
-                    {!file.linked && <p>Unlinked</p>}
-                    {/* The polled listing is the live signal; present files say nothing */}
-                    {file.local_state && file.local_state !== 'observed' && (
-                      <p>
-                        {file.local_state === 'unavailable'
-                          ? 'Unavailable on this device'
-                          : 'Availability is unknown on this device'}
-                      </p>
-                    )}
-                    {file.bundle_id && (
-                      <button
-                        onClick={() => {
-                          props.onSelect(file.bundle_id!)
-                          setLocateRequest((value) => value + 1)
-                          setMode('collection')
-                        }}
-                      >
-                        Locate in Bundle Browser
-                      </button>
-                    )}
+                    <CatalogFileDetails
+                      key={file.relative_path}
+                      library={props.library}
+                      file={props.inspectorEnabled ? (file.file_id ?? null) : null}
+                      entry={file}
+                      hostFiles={hostFiles}
+                      onLocate={() => {
+                        if (file.bundle_id && !file.unbundled)
+                          locate(
+                            file.bundle_id,
+                            file.file_id ? { id: file.file_id, path: file.relative_path } : null,
+                          )
+                      }}
+                      locatable={Boolean(file.bundle_id && !file.unbundled)}
+                    />
                     {!file.linked && status?.path_media_version !== 1 && (
                       <p>Update the server to preview unindexed files.</p>
                     )}

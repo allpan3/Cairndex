@@ -115,6 +115,8 @@ class CatalogStorage(PrivateStore):
         except ReplicaError as error:
             reason = error.message
             state = "invalid" if "upgrade" in reason or "identity" in reason else "unverified"
+        if source and state != "invalid" and self._known(source, identity):
+            return
         with self.connection() as db:
             db.execute(
                 "INSERT OR IGNORE INTO inbox(id,raw,state,reason) VALUES (?, ?, ?, ?)",
@@ -335,7 +337,7 @@ class CatalogStorage(PrivateStore):
                 "album_version": 1,
                 "inspector_version": 1,
                 "bundle_summary_version": 1,
-                "selection_version": 3,
+                "selection_version": 4,
                 "system_views_version": 1,
                 "discovery_version": 1 if self.descriptor.format_version == 3 else None,
                 "grouping_version": 2 if self.descriptor.format_version == 3 else None,
@@ -345,7 +347,7 @@ class CatalogStorage(PrivateStore):
                 "maintenance_version": 1,
                 "export_version": 1,
                 "storyboard_version": 1,
-                "moments_version": 4,
+                "moments_version": 5,
                 "blocked": config.get("blocked"),
                 "outbox": db.execute(
                     "SELECT COUNT(*) FROM events WHERE local=1 AND published=0"

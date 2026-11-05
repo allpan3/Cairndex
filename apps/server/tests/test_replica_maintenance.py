@@ -59,6 +59,29 @@ def test_enqueue_and_ordinary_exchange_never_probe_and_each_background_step_is_b
     assert store.frontier() == frontier
 
 
+# One worker pass continues file by file, but never past a storyboard it must wait for
+def test_a_worker_pass_advances_several_files_and_stops_at_a_wait(fixture, monkeypatch):
+    from cairndex.replicas.storyboards import StoryboardState
+
+    converted, calls = fixture
+    store = converted.store
+    # Durable commits on a loaded VM must not end the pass before the assertions
+    monkeypatch.setattr(maintenance, "PASS_SECONDS", 60)
+    jobs.enqueue(store, "whole-pass", "media_maintenance", {"kind": "probe"})
+    maintenance.advance(store, converted.package, "synthetic-library", lambda: False)
+    assert calls == ["file-subtitle", "file-video"]
+    assert jobs.job(store, "whole-pass")["state"] == "succeeded"
+
+    queue = SimpleNamespace(request=lambda *args: StoryboardState("queued"))
+    monkeypatch.setattr("cairndex.replicas.storyboards.get_queue", lambda: queue)
+    jobs.enqueue(store, "waiting-pass", "media_maintenance", {"kind": "storyboards"})
+    maintenance.advance(store, converted.package, "synthetic-library", lambda: False)
+    progress = jobs.job(store, "waiting-pass")["result"]
+    assert (progress["completed"], progress["waiting_file"]) == (1, "file-video")
+    maintenance.advance(store, converted.package, "synthetic-library", lambda: True)
+    assert calls == ["file-subtitle", "file-video"] * 2
+
+
 def test_cancel_blocks_later_files_and_changed_retry_intent_is_refused(fixture):
     converted, calls = fixture
     store = converted.store

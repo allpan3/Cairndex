@@ -9,6 +9,7 @@ from cairndex.api.v1.catalog_replicas import Catalog
 from cairndex.replicas import discovery_state as state
 from cairndex.replicas import discovery_verification as verification
 from cairndex.replicas.protocol import Digest, StrictModel, Token
+from cairndex.replicas.service import wake
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/discovery", tags=["replica-discovery"])
 
@@ -61,7 +62,9 @@ def status(store: Catalog) -> dict[str, Any]:
 # Stable enqueue identities preserve safe retries after a lost response
 @router.post("/runs", status_code=202)
 def start(payload: DiscoveryStart, store: Catalog) -> dict[str, Any]:
-    return state.enqueue(store, payload.operation)
+    run = state.enqueue(store, payload.operation)
+    wake()
+    return run
 
 
 # Cancellation is private and leaves already committed events intact
@@ -124,9 +127,11 @@ def candidate_choices(
 # Preparation captures the user selection before a background worker touches catalog relationships
 @router.post("/reviews", status_code=202)
 def prepare(payload: DiscoveryPrepare, store: Catalog) -> dict[str, Any]:
-    return state.prepare(
+    review = state.prepare(
         store, payload.operation, payload.model_dump(exclude={"operation"}, exclude_unset=True)
     )
+    wake()
+    return review
 
 
 # Recover queued/ready/applied reviews independently of the browser session
@@ -168,7 +173,9 @@ def review_page(
 # Commit is asynchronous and revalidates source observations before authoring
 @router.post("/reviews/{operation}/accept", status_code=202)
 def accept(operation: Token, payload: DiscoveryAccept, store: Catalog) -> dict[str, Any]:
-    return state.accept(store, operation, payload.receipt)
+    review = state.accept(store, operation, payload.receipt)
+    wake()
+    return review
 
 
 # Closing a queued preview is reversible and cannot accidentally authorize a queued commit
@@ -188,7 +195,9 @@ def cancel_review(operation: Token, store: Catalog) -> Response:
 # Request handlers enqueue complete reads and never hash source content
 @router.post("/verifications", status_code=202)
 def verify(payload: DiscoveryVerify, store: Catalog) -> dict[str, Any]:
-    return verification.enqueue(store, payload.operation, payload.candidate)
+    queued = verification.enqueue(store, payload.operation, payload.candidate)
+    wake()
+    return queued
 
 
 # Byte progress is visible without reopening the media source

@@ -13,7 +13,6 @@ from cairndex.main import create_app
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.engine import create_registry_engine
 from cairndex.replicas import service
-from cairndex.replicas.catalog import jobs
 from cairndex.replicas.catalog.conversion import prepare_disposable
 from cairndex.replicas.catalog.store import CatalogStore
 
@@ -83,6 +82,18 @@ def test_catalog_api_capability_fences(api, tmp_path):
         lifecycle.close(old)
 
 
+def finished_job(client, path, operation):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        response = client.get(path + "/jobs/" + operation)
+        assert response.status_code == 200
+        result = response.json()
+        if result["state"] not in {"queued", "running"}:
+            return result
+        time.sleep(0.01)
+    raise AssertionError("The synthetic catalog job did not finish")
+
+
 # HTTP queues bounded intent and exposes completion without importing or executing it in the handler
 def test_catalog_http_job_receipts_drafts_and_missing_basis(api):
     client, base, store = api
@@ -106,10 +117,9 @@ def test_catalog_http_job_receipts_drafts_and_missing_basis(api):
     }
     response = client.post(path + "/jobs", json=body)
     assert response.status_code == 202
-    assert response.json()["state"] == "queued"
+    assert response.json()["state"] in {"queued", "running", "succeeded"}
     assert store.entity("moments", "moment-one")["fields"]["$alive"]["value"] == "true"
-    jobs.run_one(store)
-    prepared = client.get(path + "/jobs/preview").json()
+    prepared = finished_job(client, path, "preview")
     assert prepared["state"] == "succeeded"
     assert client.get(path + "/jobs").json()["items"][0]["result"] is None
     intent = {
@@ -124,8 +134,7 @@ def test_catalog_http_job_receipts_drafts_and_missing_basis(api):
         ).status_code
         == 202
     )
-    jobs.run_one(store)
-    assert client.get(path + "/jobs/invalid").json()["state"] == "failed"
+    assert finished_job(client, path, "invalid")["state"] == "failed"
     assert client.post(path + "/jobs", json=body | {"body": {}}).status_code == 409
     commit = {
         "operation": "commit",
@@ -133,6 +142,5 @@ def test_catalog_http_job_receipts_drafts_and_missing_basis(api):
         "body": {"job": "preview", "receipt": prepared["receipt"]},
     }
     assert client.post(path + "/jobs", json=commit).status_code == 202
-    jobs.run_one(store)
-    assert client.get(path + "/jobs/commit").json()["state"] == "succeeded"
+    assert finished_job(client, path, "commit")["state"] == "succeeded"
     assert store.entity("moments", "moment-one")["fields"]["$alive"]["value"] == "false"

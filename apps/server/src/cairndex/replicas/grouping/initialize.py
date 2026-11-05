@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from typing import Any
 
 from cairndex.grouping import suggester as rules
@@ -206,3 +207,15 @@ def step(db: sqlite3.Connection, workspace: str) -> None:
     {"nodes": nodes, "files": files, "folders": folders, "reasons": reasons}[work["phase"]](
         db, workspace, work["cursor"]
     )
+
+
+def advance(db: sqlite3.Connection, workspace: str) -> None:
+    """Build cached review pages in one bounded durable transaction."""
+    deadline = time.monotonic() + 0.05
+    for _ in range(BATCH):
+        step(db, workspace)
+        ready = db.execute(
+            "SELECT state='ready' FROM grouping_workspaces WHERE id=?", (workspace,)
+        ).fetchone()[0]
+        if ready or time.monotonic() >= deadline:
+            return

@@ -14,7 +14,7 @@ import type { MomentSource } from './momentSource'
  * One portable bundle's moments as a moment source, for the viewer's rail and
  * the browser inspector. The server's `moments_version` decides what a row
  * offers: 1 lists and edits moments, 2 adds tags, 3 adds private previews, and
- * 4 names the marked files, which the browser inspector needs.
+ * 4 names the marked files, and 5 supports exact hierarchical tag choices.
  *
  * Only `storyboardFile` has a storyboard, at `storyboardUrl`: a storyboard URL
  * names one observed generation, and only the viewer observes a file.

@@ -42,8 +42,14 @@ function checked(row: TreeRow): boolean | 'mixed' | undefined {
   return selected === 0 ? false : selected === total ? true : 'mixed'
 }
 
+// "2 bundles · 5 files" on the additions heading, once every addition is loaded
+function additionCount(nodes: readonly { files: number }[]) {
+  const files = nodes.reduce((sum, node) => sum + node.files, 0)
+  return `${nodes.length} ${nodes.length === 1 ? 'bundle' : 'bundles'} · ${files} ${files === 1 ? 'file' : 'files'}`
+}
+
 const SECTION_TITLES = {
-  additions: 'Add to existing bundles',
+  additions: 'New files for existing bundles',
   suggestions: 'New bundles and collections',
 } as const
 
@@ -369,6 +375,8 @@ export function GroupingTree({
           >
             <IconChevron open={row.open} />
           </button>
+          {/* The spacer keeps both titles in one column when only one heading selects */}
+          {!selectable && <span className="grp-check-spacer" aria-hidden="true" />}
           {selectable && (
             <GroupingCheck
               selected={row.nodes.reduce((sum, node) => sum + node.selected, 0)}
@@ -394,7 +402,7 @@ export function GroupingTree({
           >
             {SECTION_TITLES[row.section]}
           </span>
-          {row.complete && <span className="grp-hint">{row.nodes.length}</span>}
+          {row.complete && <span className="grp-hint">{additionCount(row.nodes)}</span>}
         </div>
       )
     }

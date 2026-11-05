@@ -145,6 +145,31 @@ def test_historical_search_is_rebuilt_without_changing_authored_events(tmp_path)
         assert list(map(tuple, db.execute("SELECT id,raw FROM events ORDER BY id"))) == before
 
 
+# Earlier builds' search view compared JSON indexes with TEXT columns, so every
+# refreshed bundle scanned all files. Opening replaces only the plans.
+def test_previous_search_plans_are_replaced_without_a_rebuild(tmp_path):
+    from tests.test_catalog_browse import correlated_scans
+
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
+    view = "SELECT * FROM catalog_search_source WHERE id=1"
+    content = "SELECT rowid,* FROM catalog_search ORDER BY rowid"
+    with store.connection() as db:
+        db.executescript(
+            "BEGIN IMMEDIATE;DROP VIEW catalog_search_source;DROP TRIGGER catalog_search_insert;"
+            "DROP TRIGGER catalog_search_remove;" + index.PREVIOUS_INDEX_SCHEMA
+        )
+        validate_schema(db, catalog=True)
+        assert correlated_scans(db, view)
+        before = list(map(tuple, db.execute(content)))
+    reopened = CatalogStore(store.path.parent, store.descriptor)
+    with reopened.connection(readonly=True) as db:
+        validate_schema(db, catalog=True)
+        assert correlated_scans(db, view) == set()
+        assert list(map(tuple, db.execute(content))) == before
+    save(reopened, edit(reopened, "asset_files", "file-video", "source", "ReplannedBeacon"), "x")
+    assert page(reopened, q="ReplannedBeacon").total == 1
+
+
 def test_failed_derived_search_upgrade_rolls_back_its_ddl_and_contents(tmp_path):
     store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
     legacy(store)

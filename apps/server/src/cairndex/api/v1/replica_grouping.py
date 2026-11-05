@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 from cairndex.api.v1.catalog_replicas import Catalog
 from cairndex.replicas.grouping import pages, storage
 from cairndex.replicas.protocol import StrictModel, Token
+from cairndex.replicas.service import wake
 
 router = APIRouter(
     prefix="/libraries/{library_id}/replica/discovery/grouping", tags=["replica-grouping"]
@@ -128,7 +129,9 @@ def workspaces(
 
 @router.post("/workspaces/{run}", status_code=202)
 def open_workspace(run: Token, store: Catalog) -> dict[str, Any]:
-    return storage.open_workspace(store, run)
+    workspace = storage.open_workspace(store, run)
+    wake()
+    return workspace
 
 
 @router.get("/workspaces/{workspace}")
@@ -237,13 +240,15 @@ def stems(
 
 @router.post("/workspaces/{workspace}/commands", status_code=202)
 def enqueue(workspace: Token, payload: GroupingCommand, store: Catalog) -> dict[str, Any]:
-    return storage.enqueue(
+    queued = storage.enqueue(
         store,
         workspace,
         payload.operation,
         payload.revision,
         payload.intent.model_dump(exclude_unset=True),
     )
+    wake()
+    return queued
 
 
 @router.get("/commands/{operation}")
@@ -253,4 +258,6 @@ def command(operation: Token, store: Catalog) -> dict[str, Any]:
 
 @router.post("/commands/{operation}/retry", status_code=202)
 def retry(operation: Token, store: Catalog) -> dict[str, Any]:
-    return storage.retry(store, operation)
+    queued = storage.retry(store, operation)
+    wake()
+    return queued

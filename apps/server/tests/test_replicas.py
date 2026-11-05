@@ -3,7 +3,9 @@
 import errno
 import json
 import shutil
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -188,6 +190,47 @@ def test_bounded_discovery_and_path_confinement(pair, tmp_path):
     with pytest.raises(OSError):
         ta.publish(prefix + "a" * 62, b"synthetic")
     assert list(outside.iterdir()) == before
+
+
+def _row_changes(store: Any, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    changes: list[int] = []
+    original = store.connection
+
+    @contextmanager
+    def counting(*, readonly: bool = False) -> Iterator[Any]:
+        with original(readonly=readonly) as db:
+            yield db
+            changes.append(db.total_changes)
+
+    monkeypatch.setattr(store, "connection", counting)
+    return changes
+
+
+# Exchange rereads every provider object in rotation. On macOS every write commit is a
+# full flush, so rewriting unchanged rows made an idle large library flush continuously.
+def test_rereading_known_objects_writes_nothing(pair, tmp_path, monkeypatch):
+    from cairndex.devtools.catalog_fixture import create_disposable
+    from cairndex.replicas.catalog.conversion import prepare_disposable
+
+    a, b, ta, tb = pair
+    a.save("synthetic-bundle", change(a, "title", "Retained"), "known")
+    for _ in range(3):
+        ta.tick()
+        tb.tick()
+    changes = _row_changes(b, monkeypatch)
+    for _ in range(3):
+        tb.tick()
+    assert changes and sum(changes) == 0
+
+    catalog = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
+    with catalog.connection(readonly=True) as db:
+        raw = db.execute("SELECT raw FROM events ORDER BY id LIMIT 1").fetchone()[0]
+    catalog.ingest(raw, "00/known.json")
+    changes = _row_changes(catalog, monkeypatch)
+    catalog.ingest(raw, "00/known.json")
+    assert changes and sum(changes) == 0
+    catalog.ingest(raw, "01/copy.json")
+    assert sum(changes) == 1
 
 
 # New columns cannot quietly fall outside the reversible migration specification

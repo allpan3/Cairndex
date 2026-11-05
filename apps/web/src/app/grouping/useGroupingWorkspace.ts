@@ -68,7 +68,10 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     queryFn: ({ signal }) =>
       grouping<GroupingCommand>(library, `/commands/${commandId}`, 'GET', undefined, signal),
     enabled: commandId !== null,
-    refetchInterval: commandId ? 300 : false,
+    // Queuing wakes the server's worker, so an edit usually finishes within a few
+    // passes; poll quickly until it does, then slowly in case it is retried
+    refetchInterval: (query) =>
+      ['succeeded', 'failed'].includes(query.state.data?.state ?? '') ? 1000 : 50,
     retry: false,
   })
   useEffect(() => {

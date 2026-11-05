@@ -6,6 +6,7 @@ import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFil
 import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
+import { SelectionCount } from './SelectionCount'
 import { SortControl } from './SortControl'
 import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
@@ -26,6 +27,8 @@ interface ToolbarProps {
   onReshuffle?: () => void
   title: string
   total: number
+  /** The listing's selection, counted beside the total. */
+  selection?: { selected: number; loaded: number; more: boolean }
   search: string
   onSearch: (value: string) => void
   // prefs drives layout + zoom; the sort is passed separately (App resolves it
@@ -65,6 +68,7 @@ export function Toolbar({
   onReshuffle,
   title,
   total,
+  selection,
   search,
   onSearch,
   prefs,
@@ -98,7 +102,13 @@ export function Toolbar({
       <div className="toolbar" data-tauri-drag-region="deep">
         {leading}
         <span className="toolbar__title">{title}</span>
-        <span className="toolbar__count">{total.toLocaleString()} items</span>
+        <SelectionCount
+          total={total}
+          selected={selection?.selected ?? 0}
+          loaded={selection?.loaded ?? 0}
+          more={selection?.more ?? false}
+          noun="bundles"
+        />
         <span className="toolbar__spacer" />
 
         {/* Actions sit left of the resident controls, which is where the File

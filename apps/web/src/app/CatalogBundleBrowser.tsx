@@ -10,6 +10,7 @@ import { Toolbar } from './Toolbar'
 import {
   type BrowsePrefs,
   DEFAULT_PREFS,
+  type LocatedFile,
   type Selection,
   type SortPref,
   SYSTEM_VIEWS,
@@ -106,6 +107,7 @@ function folderCards(
 export function CatalogBundleBrowser({
   library,
   locateRequest,
+  locateFile = null,
   selection,
   filters,
   onFilters,
@@ -143,6 +145,8 @@ export function CatalogBundleBrowser({
 }: {
   library: string
   locateRequest: number
+  /** The file a Locate request opens its bundle on */
+  locateFile?: LocatedFile | null
   filters: AdHocFilters
   onFilters: (filters: AdHocFilters) => void
   selection: Selection
@@ -246,7 +250,7 @@ export function CatalogBundleBrowser({
   // Manual has no direction: the arrangement is the order, as in the legacy browser
   const activeOrder: SortOrder = activeSort === 'manual' ? 'asc' : resolved.order
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
-  const [album, setAlbum] = useState<{ id: string; scope: string } | null>(null)
+  const [album, setAlbum] = useState<{ id: string; scope: string; file?: LocatedFile } | null>(null)
   const [albumFile, setAlbumFile] = useState<string | null>(null)
   const [bulkRetained, setBulkRetained] = useState(() => pendingBulkSave(library, editor))
   const [deleting, setDeleting] = useState<string[] | null>(null)
@@ -292,55 +296,61 @@ export function CatalogBundleBrowser({
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
     refetchInterval: 2000,
   })
+  const leaving = collections.leaving
   const items = useMemo(
     () =>
       browse.data?.pages.flatMap((page) =>
-        page.items.map(
-          (item) =>
-            ({
-              ...item,
-              total_size: item.total_size ?? 0,
-              size_known: localHistoryEnabled && item.total_size != null,
-              has_missing: item.has_missing ?? false,
-              has_cover: Boolean(item.cover_file_id),
-              openable: item.file_count > 0,
-              cover_key: item.cover_key ?? null,
-              cover_width: null,
-              cover_height: null,
-              primary_relative_path: null,
-              resume_file_id: item.resume_file_id ?? null,
-              // The observed generation versions the file thumbnail URL
-              resume_file_updated_at: item.resume_generation ?? null,
-              resume_media_kind: item.resume_media_kind ?? null,
-              resume_relative_path: item.resume_relative_path ?? null,
-              resume_mime_type: item.resume_mime_type ?? null,
-              resume_container: item.resume_container ?? null,
-              resume_video_codec: item.resume_video_codec ?? null,
-              resume_video_codec_tag: item.resume_video_codec_tag ?? null,
-              resume_audio_codec: item.resume_audio_codec ?? null,
-              resume_duration: item.resume_duration ?? null,
-              resume_position: item.resume_position ?? null,
-              resume_storyboard_version: item.resume_storyboard_version ?? null,
-              media_kind: item.media_kind ?? null,
-              width: item.width ?? null,
-              height: item.height ?? null,
-              duration: item.duration ?? null,
-              extension: item.extension ?? null,
-            }) satisfies BundleCardItem,
-        ),
+        page.items
+          .filter((item) => !leaving.has(item.id))
+          .map(
+            (item) =>
+              ({
+                ...item,
+                total_size: item.total_size ?? 0,
+                size_known: localHistoryEnabled && item.total_size != null,
+                has_missing: item.has_missing ?? false,
+                has_cover: Boolean(item.cover_file_id),
+                openable: item.file_count > 0,
+                cover_key: item.cover_key ?? null,
+                cover_width: null,
+                cover_height: null,
+                primary_relative_path: null,
+                resume_file_id: item.resume_file_id ?? null,
+                // The observed generation versions the file thumbnail URL
+                resume_file_updated_at: item.resume_generation ?? null,
+                resume_media_kind: item.resume_media_kind ?? null,
+                resume_relative_path: item.resume_relative_path ?? null,
+                resume_mime_type: item.resume_mime_type ?? null,
+                resume_container: item.resume_container ?? null,
+                resume_video_codec: item.resume_video_codec ?? null,
+                resume_video_codec_tag: item.resume_video_codec_tag ?? null,
+                resume_audio_codec: item.resume_audio_codec ?? null,
+                resume_duration: item.resume_duration ?? null,
+                resume_position: item.resume_position ?? null,
+                resume_storyboard_version: item.resume_storyboard_version ?? null,
+                resume_generation: item.resume_generation ?? null,
+                media_kind: item.media_kind ?? null,
+                width: item.width ?? null,
+                height: item.height ?? null,
+                duration: item.duration ?? null,
+                extension: item.extension ?? null,
+              }) satisfies BundleCardItem,
+          ),
       ) ?? [],
-    [browse.data, localHistoryEnabled],
+    [browse.data, localHistoryEnabled, leaving],
   )
-  const scope = JSON.stringify([
-    library,
-    query,
-    activeSort,
-    activeOrder,
-    selection,
-    includeDescendants,
-    expression,
-    seed,
-  ])
+  const scopeFor = (text: string) =>
+    JSON.stringify([
+      library,
+      text,
+      activeSort,
+      activeOrder,
+      selection,
+      includeDescendants,
+      expression,
+      seed,
+    ])
+  const scope = scopeFor(query)
   const [picked, setPicked] = useState({
     scope,
     ids: new Set(selected ? [selected] : []),
@@ -365,19 +375,28 @@ export function CatalogBundleBrowser({
   const clearFolders = () => setPickedFolders({ scope, ids: NO_IDS, anchor: null, active: null })
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
+      const located = locateRequest !== lastLocate.current
       lastLocate.current = locateRequest
       setSearch('')
       setQuery('')
       outgoing.current = selected
-      setPicked((current) => ({
-        ...current,
+      // The cleared search is part of the scope the selection and album belong to
+      const cleared = scopeFor('')
+      setPicked({
+        scope: cleared,
         ids: new Set(selected ? [selected] : []),
         active: selected,
         anchor: selected,
-      }))
-      setAlbum(null)
+      })
+      // Locate opens the bundle on the located file, as v0.2.1 opened the bundle
+      setAlbum(
+        located && selected && locateFile && albumEnabled
+          ? { id: selected, scope: cleared, file: locateFile }
+          : null,
+      )
       setAlbumFile(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per selection or request
   }, [selected, locateRequest])
   const selectedIds = useMemo(
     () => (picked.scope === scope ? picked.ids : new Set<string>()),
@@ -860,6 +879,11 @@ export function CatalogBundleBrowser({
                 : (SYSTEM_VIEWS.find((item) => item.view === selection.view)?.label ?? 'All')
           }
           total={browse.data?.pages[0]?.total ?? 0}
+          selection={
+            selectionEnabled
+              ? { selected: selectedIds.size, loaded: items.length, more: browse.hasNextPage }
+              : undefined
+          }
           search={search}
           onSearch={setSearch}
           prefs={prefs}
@@ -1010,6 +1034,7 @@ export function CatalogBundleBrowser({
             key={albumId}
             library={library}
             bundle={albumId}
+            initialFile={album?.file ?? null}
             layout={prefs.layout}
             zoom={prefs.zoom}
             onBack={() => {

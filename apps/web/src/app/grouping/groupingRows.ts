@@ -14,7 +14,7 @@ export function needsLook(node: GroupingNode): boolean {
 }
 
 /** The title a row shows. In the additions section its heading already says
- * "Add to existing bundles", so the row names only the bundle. */
+ * "New files for existing bundles", so the row names only the bundle. */
 export function groupingTitle(node: GroupingNode, inAdditions = false): string {
   if (!node.target) return node.title
   const bundle = node.target_title ?? node.title

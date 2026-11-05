@@ -203,10 +203,7 @@ export function CatalogBundleInspector({
             <span className="prop__k">Files</span>
             <span className="prop__v">{summary.file_count}</span>
           </div>
-          <div className="prop">
-            <span className="prop__k">Date Added</span>
-            <span className="prop__v">{formatDate(summary.date_added)}</span>
-          </div>
+          {/* v0.2.1's order: Files, Size, Date Added */}
           <div
             className="prop"
             title="Sizes last observed on this device. Run Update to refresh them."
@@ -217,6 +214,10 @@ export function CatalogBundleInspector({
                 ? formatBytes(summary.total_size)
                 : 'Unknown on this device'}
             </span>
+          </div>
+          <div className="prop">
+            <span className="prop__k">Date Added</span>
+            <span className="prop__v">{formatDate(summary.date_added)}</span>
           </div>
         </>
       )}

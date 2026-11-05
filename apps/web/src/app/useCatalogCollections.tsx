@@ -33,6 +33,8 @@ export interface CatalogCollections {
   arrange: (moved: string[], parent: string | null, before: string | null) => void
   /** Drop the dragged bundles on `target`; `copy` adds without leaving this collection. */
   moveBundlesInto: (target: string, copy: boolean) => void
+  /** Bundles moving out of the open collection, hidden from its grid until the move settles */
+  leaving: ReadonlySet<string>
   requestDelete: (collections: CollectionRead[]) => void
   requestCleanup: () => void
   /** The confirmation dialogs these actions open. */
@@ -61,17 +63,19 @@ export function useCatalogCollections(
   const client = useQueryClient()
   const [deleting, setDeleting] = useState<CollectionRead[] | null>(null)
   const [cleaning, setCleaning] = useState(false)
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(() => new Set())
   const items = collections.data ?? []
   const names = Object.fromEntries(items.map((item) => [item.id, item.name]))
   const refresh = async () => {
-    for (const key of [
-      'catalog-navigation',
-      'catalog-browse',
-      'catalog-detail',
-      'catalog-memberships',
-      'catalog-view-counts',
-    ])
-      await client.invalidateQueries({ queryKey: [key, library] })
+    await Promise.all(
+      [
+        'catalog-navigation',
+        'catalog-browse',
+        'catalog-detail',
+        'catalog-memberships',
+        'catalog-view-counts',
+      ].map((key) => client.invalidateQueries({ queryKey: [key, library] })),
+    )
   }
   // Each change saves at once; a reply after a library switch is dropped
   function run(action: () => Promise<void>, done?: () => void, failed?: () => void) {
@@ -104,7 +108,12 @@ export function useCatalogCollections(
     if (live?.kind !== 'bundles' || live.ids.length === 0) return
     // Option/Alt adds; a plain drop out of an open collection moves
     const source = copy ? null : selection.collectionId
-    run(() => moveBundlesToCollection(library, live.ids, target, source))
+    // The cards leave at once, as in v0.2.1, and come back if the move is refused
+    const moved = live.ids
+    const settle = () =>
+      setLeaving((current) => new Set([...current].filter((id) => !moved.includes(id))))
+    if (source && source !== target) setLeaving((current) => new Set([...current, ...moved]))
+    run(() => moveBundlesToCollection(library, moved, target, source), settle, settle)
   }
   const dialogs = (
     <>
@@ -160,6 +169,7 @@ export function useCatalogCollections(
     run,
     arrange,
     moveBundlesInto,
+    leaving,
     requestDelete: setDeleting,
     requestCleanup: () => setCleaning(true),
     dialogs,

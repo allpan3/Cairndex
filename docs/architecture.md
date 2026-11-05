@@ -34,6 +34,21 @@ selection are unchanged. SQLite falls back to `fsync` if a filesystem rejects
 `F_FULLFSYNC`; physical durability depends on the storage stack. See
 [ADR-0039](adr/0039-macos-sqlite-durability.md) and [measurements](development.md#macos-sqlite-durability).
 
+Private-store readers open SQLite in read-only mode and retain transaction
+snapshots without writer setup or close-time writer checkpoints. Update shares
+one read snapshot across each 32-entry enumeration batch. Media maintenance
+inspects sources outside writer transactions, then commits at most 32 local
+observations and their progress cursor together. Cancellation discards the
+uncommitted batch. A delayed observation cannot replace a newer cached result
+or apply to a changed authored path. Writer durability remains unchanged.
+The existing two source workers advance maintenance independently of metadata
+exchange, so each small batch does not repeat a full history walk. Maintenance
+uses lifecycle admission and the same guarded media adapter as playback;
+source-write operations retain the exchange lock and permission checks.
+Local maintenance alone leaves history polling at its idle interval.
+Update also advances several existing transactions per exchange pass, yielding
+after 32 steps or 0.25 seconds. Each transaction keeps its original bound.
+
 Durable `conversion_tasks` hold global owner-setup inspection, preparation,
 activation and Undo. One worker executes slow metadata work outside HTTP handlers.
 Exact operation IDs resolve lost replies. Private review receipts bind the root,

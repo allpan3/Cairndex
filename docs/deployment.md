@@ -668,8 +668,11 @@ local-network prompt the shell already triggers when reaching a LAN server.
 Re-approving is expected under this model, not a sign of misconfiguration; a
 stable Developer ID signature is what removes it.
 
-Mounted-SMB Copy/Replace/Undo requests the saved SMB login through the packaged
-backend. Ad-hoc builds use a code hash as their designated requirement, so saved
+Mounted-SMB Copy/Replace/Undo, and publishing metadata to a library on an SMB
+share (the share refuses the hard links publication uses, ADR-0037), request the
+saved SMB login through the packaged backend. While the request waits, publication
+pauses and changes stay saved on this device; the library's status shows
+**Allow Access…** rather than the general storage message. Ad-hoc builds use a code hash as their designated requirement, so saved
 Keychain grants may not cover a rebuilt executable. Local source builders can
 [configure a persistent sidecar certificate](development.md#local-server-sidecar-appsserverpackaging)
 with `uv run python packaging/macos_signing.py create-local` from `apps/server`.
