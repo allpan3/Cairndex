@@ -10,7 +10,8 @@ are preserved. Owner acceptance remains a release checkpoint.
 
 The incoming-files redesign is prepared on a dependent branch. It is not
 installed, and its combined runtime has not yet been qualified. The preparation
-branches below are unpushed; publication remains blocked by the history gate.
+branches below are unpushed. The owner authorized publishing qualified work and
+merging it after required checks; incoming-files work must remain unmerged.
 
 ## Implementation and decisions
 
@@ -46,8 +47,8 @@ Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 ## Work awaiting consolidation
 
 Original branches remain available as local implementation and evidence records.
-The prepared stack has six audit commits, one SMB commit and one incoming-files
-commit. Application files match the tested audit and installed SMB snapshots;
+The prepared stack has six audit commits, an independent privacy-gate correction,
+one SMB commit and one incoming-files commit. Application files match the tested audit and installed SMB snapshots;
 the incoming application tree matches a merge of the original branches. Open
 dependent PRs in this order after qualification and publication clearance.
 
@@ -106,12 +107,12 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Each prepared range passes the privacy gate. Whole-history scanning still
-  reports 740 inherited literal findings: 351 overlap a standard signing key
-  and 389 match a generic temporary-directory prefix in synthetic test records.
-  Inspection confirms these false positives are already reachable from main.
-  Publication remains blocked until the required gate can pass without weakening
-  private patterns. No push, PR, tag or release has been made by this cleanup.
+- The owner approved correcting the two verified privacy false positives: a
+  generic temporary-directory prefix in the local profile and a literal inside
+  a fixed public signing key. Actual private values remain protected. Repeat
+  publication audits before each push. All 25 privacy-gate tests, focused lint,
+  format and mypy checks pass in the Linux guest; the corrected whole-history
+  scan passes with all actual private literals retained. Merge the qualified audit and SMB PRs only after required checks.
 - Review the prepared PR summaries and complete proportional VM regressions for
   the incoming combination. Qualify any later combined package before install.
   This cleanup verified source equivalence and documentation; it did not rerun

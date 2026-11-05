@@ -134,6 +134,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Correct an owner-approved privacy-gate false positive for literal substrings
+  inside the exact public codesign field name. Field values, longer identifiers,
+  private names and secret detection remain protected.
+
 - Update the web development dependencies Undici to 7.30.1 and Zod to 4.6.7
   for their HTTP parsing, integrity and constrained-collection advisories.
 - Require Pillow 13.0.0 and update certifi and setuptools for image parsing,

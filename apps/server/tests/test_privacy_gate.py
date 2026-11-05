@@ -73,6 +73,45 @@ def test_private_literal_findings_are_redacted():
     assert private_value not in findings[0]
 
 
+# Public syntax may overlap a literal without exempting its value or later text.
+def test_signing_key_overlap_keeps_private_occurrences_protected():
+    key = "Team" + "Identifier"
+    private_value = "identifier"
+    assert privacy_gate.scan_text(f"{key}=not set", "fixture", [private_value]) == []
+    assert privacy_gate.scan_text(f"{key.lower()}=not set", "fixture", [private_value]) == []
+    for text in (f"{key}={private_value}", f"{key}=not set {private_value}"):
+        assert privacy_gate.scan_text(text, "fixture", [private_value]) == [
+            "fixture:1: private pattern #1"
+        ]
+    text = f"{key}=not set\n{private_value}"
+    assert privacy_gate.scan_text(text, "fixture", [private_value]) == [
+        "fixture:2: private pattern #1"
+    ]
+
+
+# Do not generalize the exception to other identifiers or a complete private name.
+def test_signing_key_exception_requires_a_proper_substring_of_the_exact_token():
+    key = "Team" + "Identifier"
+    for text in (f"Private{key}", f"{key}Suffix", f"{key}_private", f"{key}7"):
+        assert privacy_gate.scan_text(text, "fixture", ["identifier"]) == [
+            "fixture:1: private pattern #1"
+        ]
+    assert privacy_gate.scan_text(key, "fixture", [key]) == ["fixture:1: private pattern #1"]
+
+
+# A public key does not exempt a whole line from credential or path inspection.
+def test_signing_key_does_not_hide_secrets_or_private_paths():
+    key = "Team" + "Identifier"
+    secret = github_token()
+    findings = privacy_gate.scan_text(f"{key}={secret}", "fixture", ["identifier"])
+    assert findings == ["fixture:1: GitHub credential"]
+    private_name = "owner-only-catalogue-name"
+    path = "/private/" + "tmp/" + private_name
+    assert privacy_gate.scan_text(path, "fixture", [private_name]) == [
+        "fixture:1: private pattern #1"
+    ]
+
+
 # Allow Git identity emails while continuing to scan the commit message
 def test_commit_identity_email_is_public_metadata():
     identity_email = "maintainer" + "@invalid" + ".dev"

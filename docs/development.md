@@ -1078,6 +1078,14 @@ expected path, purpose, and provenance; a new or moved binary fails until it
 receives deliberate review. Do not use `--no-verify` or weaken the profile to
 make a finding disappear.
 
+With explicit owner approval, the scanner excludes a proper-substring literal
+match inside the exact public codesign field name `TeamIdentifier`. It still
+checks the field value, later occurrences, longer identifiers and a private
+pattern equal to the entire field name. Secret and home-path rules are unchanged.
+A generic temporary-directory prefix is not owner identity; the owner-approved
+local profile correction removes that prefix while retaining actual private
+names and paths, including those used beneath temporary directories.
+
 ## CI
 
 The full scope of `.github/workflows/ci.yml` runs dependency audits; backend

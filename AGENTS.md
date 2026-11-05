@@ -147,7 +147,9 @@ in Git's untracked `cairndex-private-patterns` file, one literal per line. The i
 seeds the local checkout and home-path prefixes; add incident-specific values without
 copying them into tracked configuration. Never use `--no-verify`, change
 `core.hooksPath`, or remove a pattern to get a commit or push through. A scanner finding
-is a stop signal to inspect and sanitize, not a lint exception.
+is a stop signal to inspect and sanitize, not a lint exception. Correcting a
+verified false-positive rule requires explicit owner authorization. Keep actual
+private literals protected and test the precise public-syntax boundary.
 
 Before **every push** and before creating or updating a pull request:
 
