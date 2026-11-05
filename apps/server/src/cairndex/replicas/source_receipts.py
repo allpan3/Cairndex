@@ -37,7 +37,7 @@ class SourceReceipt(StrictModel):
     library: Token
     epoch: Token
     operation: Token
-    action: Literal["copy", "rename", "move", "trash", "undo", "restore"]
+    action: Literal["copy", "rename", "move", "trash", "undo", "restore", "mkdir"]
     event: Digest | None
     source: str = Field(max_length=4096)
     destination: str = Field(max_length=4096)

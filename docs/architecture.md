@@ -174,6 +174,11 @@ viewer surfaces, self-drags and unsupported folder drops block new selections.
 No absolute source path crosses this workflow. Library mappings are needed for
 native Open, Reveal and drag-out; receiving chosen bytes needs no mapping.
 
+New Folder uses the same journaled source queue, with an empty retained tree
+and no catalog edit. It rechecks the reviewed destination parent and publishes
+without replacement; the existing exact Undo refuses later directory contents.
+The `source_mkdir` capability keeps older servers from receiving this action.
+
 Where a drop lands decides what the files become: a new bundle from the Bundle
 Browser's empty space, more files for a bundle from its card, or plain copies in
 the File Browser's open folder. Selection itself changes no source files. Copy,

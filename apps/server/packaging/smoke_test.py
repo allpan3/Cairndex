@@ -244,6 +244,8 @@ def check_source_operations(port: int, library_id: str, root: Path) -> None:
         raise SmokeFailure("could not enable synthetic source operations")
     path = base + "/source-operations"
     intents = [
+        {"operation": "smoke-folder", "action": "mkdir", "destination": "New Folder"},
+        {"operation": "smoke-folder-undo", "action": "undo", "prior": "smoke-folder"},
         {
             "operation": "smoke-copy",
             "action": "copy",
@@ -273,6 +275,10 @@ def check_source_operations(port: int, library_id: str, root: Path) -> None:
         if status != 202:
             raise SmokeFailure("could not accept synthetic source review")
         await_state(port, target, "succeeded")
+        if intent["operation"] == "smoke-folder" and not (root / "New Folder").is_dir():
+            raise SmokeFailure("New Folder did not create its directory")
+        if intent["operation"] == "smoke-folder-undo" and (root / "New Folder").exists():
+            raise SmokeFailure("New Folder Undo did not remove the empty directory")
     if (root / "moved.jpg").read_bytes() != (root / "photo.jpg").read_bytes():
         raise SmokeFailure("source Undo did not restore the synthetic image")
     if (root / "copy.jpg").exists():

@@ -139,6 +139,8 @@ interface FileBrowserProps {
   writeMode?: boolean
   /** Portable Rename runs a journaled source operation instead of a legacy write. */
   onRename?: (relativePath: string, newName: string) => void
+  /** Portable directory creation uses the current library source journal. */
+  onNewFolder?: (parent: string) => void
   /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
   // Transient message, with an Undo action when the operation has an inverse.
@@ -656,6 +658,7 @@ function FileList({
   path: currentPath,
   writeMode = false,
   onRename,
+  onNewFolder,
   onSourceAction,
   onFlash,
   onImportFiles,
@@ -676,7 +679,11 @@ function FileList({
   })
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
-  const canCreateFolder = writeMode && scope === 'browse'
+  const canCreateFolder = (Boolean(onNewFolder) || writeMode) && scope === 'browse'
+  const startNewFolder = () => {
+    if (onNewFolder) onNewFolder(currentPath)
+    else if (writeMode) write.startNewFolder()
+  }
   const canRename = Boolean(onRename) || writeMode
   if (!canRename && write.renamingPath) write.cancelRename()
   const submitRename = (path: string, name: string) => {
@@ -862,7 +869,7 @@ function FileList({
         { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
       )
     }
-    if (canCreateFolder) items.push({ label: 'New Folder', onClick: write.startNewFolder })
+    if (canCreateFolder) items.push({ label: 'New Folder', onClick: startNewFolder })
     menu.open(e, items)
   }
 
@@ -930,8 +937,8 @@ function FileList({
           label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
           onClick: () => write.askToDelete(targets, linkedCount(targets)),
         })
-        if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
       }
+      if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: startNewFolder })
       if (writeItems.length > 0) {
         if (items.length > 0) items.push(null)
         items.push(...writeItems)
@@ -1011,7 +1018,7 @@ function FileList({
     if (!canCreateFolder) return
     if ((e.target as HTMLElement).closest('[data-relpath]')) return // a row handles its own
     e.preventDefault()
-    menu.open(e, [{ label: 'New Folder', onClick: write.startNewFolder }])
+    menu.open(e, [{ label: 'New Folder', onClick: startNewFolder }])
   }
 
   // Dropping files from the desktop copies them into the folder being browsed.
@@ -1172,7 +1179,7 @@ function FileList({
         zoom: Math.max(FILE_ZOOM_MIN, Math.min(FILE_ZOOM_MAX, previous.zoom + step)),
       }))
     } else if (action === 'new-folder' && canCreateFolder && !write.busy) {
-      write.startNewFolder()
+      startNewFolder()
     }
   })
   useDesktopNewFolderAvailability(canCreateFolder && !stale)
@@ -1283,11 +1290,13 @@ function FileList({
           />
           <span className="toolbar__spacer" />
 
-          {/* New Folder used to sit here too. It is a once-in-a-while action that
-            permanently cost toolbar width, so it now lives in the File menu and
-            the listing's context menus, where the rest of the write actions
-            already are (owner, 2026-09-01). */}
-          {canCreateFolder && (
+          {/* Portable writes use callbacks; do not enable the retired upload routes. */}
+          {onNewFolder && canCreateFolder && (
+            <button className="btn btn--sm" onClick={startNewFolder} disabled={stale}>
+              New Folder
+            </button>
+          )}
+          {writeMode && scope === 'browse' && (
             <>
               <button
                 className="btn btn--sm"
@@ -1377,7 +1386,9 @@ function FileList({
           </div>
 
           <ViewOptions
-            onAddFiles={canCreateFolder ? () => fileInputRef.current?.click() : undefined}
+            onAddFiles={
+              writeMode && scope === 'browse' ? () => fileInputRef.current?.click() : undefined
+            }
             addFilesDisabled={write.busy}
             layout={prefs.layout}
             layouts={[
@@ -1408,9 +1419,9 @@ function FileList({
         onMouseDown={stale || openKey !== null ? undefined : onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={stale ? undefined : listKeyDown}
-        onDragOver={canCreateFolder ? onDragOverFiles : undefined}
-        onDragLeave={canCreateFolder ? () => setDropActive(false) : undefined}
-        onDrop={canCreateFolder ? onDropFiles : undefined}
+        onDragOver={writeMode && scope === 'browse' ? onDragOverFiles : undefined}
+        onDragLeave={writeMode && scope === 'browse' ? () => setDropActive(false) : undefined}
+        onDrop={writeMode && scope === 'browse' ? onDropFiles : undefined}
         // Focusable so F2/Enter reach the list without stealing the tab order
         // from the toolbar controls above it.
         tabIndex={0}

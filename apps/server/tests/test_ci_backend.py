@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "infra/ci_backend.sh"
-DISK_TESTS = {"tests/test_backup_restore_scripts.py", "tests/test_portable_source_operations.py"}
+DISK_TESTS = {
+    "tests/test_backup_restore_scripts.py",
+    "tests/test_portable_source_operations.py",
+    "tests/test_portable_source_mkdir.py",
+}
 
 
 @pytest.mark.parametrize("fail_at", [None, 1, 2])
