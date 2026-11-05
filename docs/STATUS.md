@@ -2,8 +2,8 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `9f802152`, qualified on
-2026-11-05. It includes copy throughput/progress and persistent collision controls,
+The local desktop and web test installation is `1433ce0e`, qualified on
+2026-11-05. It includes inline name rejection, compact copy throughput/progress,
 inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
@@ -91,7 +91,7 @@ app-only build, signature/distribution and installed desktop/web checks passed.
 Component measurements and the full-SMB publication qualification limit are in [file operations](file-operations.md).
 Owner-NAS timing remains open; no Finder-parity claim is made.
 
-The naming/activity correction is qualified and awaiting test installation.
+The naming/activity correction is installed on desktop and web.
 Rename and New Folder keep occupied names editable with a short adjacent error;
 no retry/recovery card appears for an unstarted naming collision, including old
 saved rejections. Actual interrupted writes retain recovery. Copy progress floats
@@ -102,7 +102,13 @@ screenshots were inspected. Backend, Rust, Linux and frozen-integration evidence
 is retained for unchanged sources; no backend/API/dependency change is included.
 Finder was checked with disposable synthetic folders: it rejects the occupied
 name with a short message and an OK button. The correction keeps that refusal
-beside the editor, with Escape to abandon the name.
+beside the editor, with Escape to abandon the name. The app-only package,
+sidecar smoke, signature/distribution and installed desktop/web identity, health,
+production page and shutdown checks passed. Installed app bytes, modes and
+symlinks match the qualified package. A stopped-profile snapshot confirms private
+file names, modes, sizes and modification times survived installation and smoke;
+credentials were untouched. Rollback and receipts are retained locally under
+`20261105-inline-name-errors`. The branch remains unmerged for owner acceptance.
 
 ## Qualification and evidence
 
@@ -132,7 +138,7 @@ package and did not rerun DMG creation.
 Installed desktop/web identity, health, startup and shutdown checks passed using
 disposable private data. Package bytes, modes and symlinks matched. Earlier
 installations retained private-file names, modes, sizes and modification times;
-the current shutdown comparison is qualified below. Credentials were untouched. Receipts are retained locally under
+the earlier copy-progress shutdown comparison is qualified below. Credentials were untouched. Receipts are retained locally under
 `20261105-copy-progress`, `20261105-folder-access`, `20261105-inline-folder`, `20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
 `20261104-widen-title`. The local testing
 checklist records rollback and installation details. Do not publish private
